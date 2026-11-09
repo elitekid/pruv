@@ -1,0 +1,14 @@
+fn g(x: i64) -> Option<i64> { if x > 0 { return Some(x); } return None; }
+fn f(a: [i64]) -> i64 {
+  let mut i: i64 = 0;
+  let mut j: i64 = 0;
+  while i < 3
+    invariant 0 <= i && i <= 3
+    decreases 3 - i
+  {
+    match g(i) { Some(v) => { j = v * 1000; } None => { } }
+    i = i + 1;
+  }
+  if len(a) > 0 { return a[j]; }
+  return 0;
+}

@@ -1,0 +1,26 @@
+fn prefix(a: [i64]) -> [i64] ! alloc
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): a[k] >= -1_000_000_000 && a[k] <= 1_000_000_000
+  ensures len(result) == len(a) + 1
+{
+  let mut out: [i64] = alloc(len(a) + 1, 0);
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(out) == len(a) + 1
+    invariant s >= -1_000_000_000 * i && s <= 1_000_000_000 * i
+    decreases len(a) - i
+  {
+    s = s + a[i];
+    out[i + 1] = s;
+    i = i + 1;
+  }
+  return out;
+}
+
+fn main() -> () ! io, alloc {
+  let b: [i64] = alloc(3, 7);
+  let p: [i64] = prefix(b);
+  print(p[3]);
+}

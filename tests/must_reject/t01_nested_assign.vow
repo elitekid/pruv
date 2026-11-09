@@ -1,0 +1,12 @@
+fn f(a: [i64]) -> i64 {
+  let mut i: i64 = 0;
+  let mut j: i64 = 0;
+  while i < 10
+    invariant 0 <= i && i <= 10
+    decreases 10 - i
+  {
+    if i == 5 { j = 100; }
+    i = i + 1;
+  }
+  return a[j];
+}

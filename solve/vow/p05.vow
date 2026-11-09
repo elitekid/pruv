@@ -1,0 +1,23 @@
+fn prefix_sums(a: [i64]) -> [i64] ! alloc
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): a[k] >= -1_000_000_000 && a[k] <= 1_000_000_000
+  ensures len(result) == len(a) + 1
+  ensures result[0] == 0
+  ensures forall k in 0..len(a): result[k + 1] == result[k] + a[k]
+{
+  let n: i64 = len(a);
+  let mut out: [i64] = alloc(n + 1, 0);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(out) == n + 1
+    invariant out[0] == 0
+    invariant forall k in 0..i: out[k + 1] == out[k] + a[k]
+    invariant out[i] >= -1_000_000_000 * i && out[i] <= 1_000_000_000 * i
+    decreases n - i
+  {
+    out[i + 1] = out[i] + a[i];
+    i = i + 1;
+  }
+  return out;
+}

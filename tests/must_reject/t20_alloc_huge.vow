@@ -1,0 +1,10 @@
+fn mk(n: i64) -> [i64] ! alloc
+  requires n >= 0
+  ensures len(result) == n
+{ return alloc(n, 0); }
+
+fn g() -> i64 ! alloc {
+  let a: [i64] = mk(2199023255552 * 2);
+  assert 1 == 2;
+  return a[4398046511104 * 2];
+}

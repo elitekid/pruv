@@ -1,0 +1,1 @@
+fn f(x: i64) -> i64 requires x > -5 && x < 5 { return 10 % x; }

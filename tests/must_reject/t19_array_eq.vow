@@ -1,0 +1,8 @@
+fn f(a: [i64], b: [i64]) -> i64
+  requires a == b
+{ return a[100]; }
+
+fn main() -> () ! io, alloc {
+  let x: [i64] = alloc(0, 0);
+  print(f(x, x));
+}

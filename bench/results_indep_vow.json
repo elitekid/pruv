@@ -1,0 +1,85 @@
+{
+ "p01": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 122125,
+  "ref_ns": 108834
+ },
+ "p02": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 251542,
+  "ref_ns": 247500
+ },
+ "p03": {
+  "status": "vow_error",
+  "vow_errors": [
+   {
+    "stage": "verify",
+    "line": 6,
+    "col": 11,
+    "code": "overflow",
+    "message": "cannot prove no i64 overflow in `+` in is_sorted",
+    "fix": "bound the operands with requires (element ranges, len(a) <= N) and loop invariants on accumulators",
+    "counterexample": {
+     "a": {
+      "len": 0,
+      "first": []
+     },
+     "i": 9223372036854775807
+    }
+   }
+  ]
+ },
+ "p04": {
+  "status": "ok",
+  "tests_passed": 307,
+  "tests_total": 307,
+  "sol_ns": 92900375,
+  "ref_ns": 74401791
+ },
+ "p05": {
+  "status": "ok",
+  "tests_passed": 302,
+  "tests_total": 302,
+  "sol_ns": 608833,
+  "ref_ns": 925375
+ },
+ "p06": {
+  "status": "ok",
+  "tests_passed": 305,
+  "tests_total": 305,
+  "sol_ns": 982833,
+  "ref_ns": 1239833
+ },
+ "p07": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 98459,
+  "ref_ns": 99166
+ },
+ "p08": {
+  "status": "ok",
+  "tests_passed": 302,
+  "tests_total": 302,
+  "sol_ns": 428542,
+  "ref_ns": 413375
+ },
+ "p09": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 325584,
+  "ref_ns": 247459
+ },
+ "p10": {
+  "status": "ok",
+  "tests_passed": 305,
+  "tests_total": 305,
+  "sol_ns": 95497334,
+  "ref_ns": 97151375
+ }
+}

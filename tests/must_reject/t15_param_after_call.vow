@@ -1,0 +1,5 @@
+fn h(a: [i64]) -> [i64] ! alloc ensures len(result) == len(a) { return copy(a); }
+fn f(a: [i64]) -> i64 ! alloc requires len(a) == 3 {
+  let b: [i64] = h(a);
+  return b[3];
+}

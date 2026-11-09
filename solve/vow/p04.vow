@@ -1,0 +1,24 @@
+fn binary_search(a: [i64], x: i64) -> Option<i64>
+  requires len(a) <= 1_000_000
+  ensures is_some(result) ==> (some_val(result) >= 0 && some_val(result) < len(a) && a[some_val(result)] == x)
+{
+  let mut lo: i64 = 0;
+  let mut hi: i64 = len(a);
+  while lo < hi
+    invariant 0 <= lo && lo <= hi && hi <= len(a)
+    decreases hi - lo
+  {
+    let mid: i64 = lo + (hi - lo) / 2;
+    if a[mid] < x {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  if lo < len(a) {
+    if a[lo] == x {
+      return Some(lo);
+    }
+  }
+  return None;
+}

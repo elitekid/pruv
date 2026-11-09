@@ -1,0 +1,26 @@
+fn binary_search(a: [i64], x: i64) -> Option<i64>
+  requires forall p in 0..len(a): forall q in p..len(a): a[p] <= a[q]
+  ensures is_some(result) ==> (0 <= some_val(result) && some_val(result) < len(a) && a[some_val(result)] == x)
+  ensures is_some(result) ==> (forall k in 0..some_val(result): a[k] < x)
+  ensures !is_some(result) ==> (forall k in 0..len(a): a[k] != x)
+{
+  let mut lo: i64 = 0;
+  let mut hi: i64 = len(a);
+  while lo < hi
+    invariant 0 <= lo && lo <= hi && hi <= len(a)
+    invariant forall k in 0..lo: a[k] < x
+    invariant forall k in hi..len(a): a[k] >= x
+    decreases hi - lo
+  {
+    let mid: i64 = lo + (hi - lo) / 2;
+    if a[mid] < x {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  if lo < len(a) && a[lo] == x {
+    return Some(lo);
+  }
+  return None;
+}

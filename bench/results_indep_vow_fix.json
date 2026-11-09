@@ -1,0 +1,9 @@
+{
+ "p03": {
+  "status": "ok",
+  "tests_passed": 305,
+  "tests_total": 305,
+  "sol_ns": 590250,
+  "ref_ns": 722375
+ }
+}

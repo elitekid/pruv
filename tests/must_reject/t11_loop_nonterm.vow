@@ -1,0 +1,10 @@
+fn f(n: i64) -> i64 requires n >= 0 && n <= 10 {
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i
+    decreases n - i
+  {
+    i = i + 0;
+  }
+  return i;
+}

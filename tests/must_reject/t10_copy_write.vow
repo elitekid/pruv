@@ -1,0 +1,7 @@
+fn f(a: [i64]) -> i64 ! alloc
+  requires len(a) == 1
+{
+  let mut b: [i64] = copy(a);
+  b[1] = 5;
+  return b[0];
+}

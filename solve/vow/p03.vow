@@ -1,0 +1,18 @@
+fn is_sorted(a: [i64]) -> bool
+  requires len(a) <= 1_000_000
+  ensures result == (forall k in 0..len(a) - 1: a[k] <= a[k + 1])
+{
+  let mut i: i64 = 0;
+  while i + 1 < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant i < len(a) || i == 0
+    invariant forall k in 0..i: a[k] <= a[k + 1]
+    decreases len(a) - i
+  {
+    if a[i] > a[i + 1] {
+      return false;
+    }
+    i = i + 1;
+  }
+  return true;
+}

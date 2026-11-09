@@ -1,0 +1,6 @@
+fn f(a: [i64]) -> i64
+  requires forall k in 0..len(a): a[k] >= 0
+  ensures result >= 0
+{
+  return a[0];
+}
