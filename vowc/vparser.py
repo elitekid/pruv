@@ -5,6 +5,11 @@ from vast import *
 KEYWORDS = {"fn", "let", "mut", "if", "else", "while", "return", "match", "true", "false",
             "invariant", "decreases", "requires", "ensures", "assert", "forall", "exists",
             "in", "Some", "None", "Ok", "Err"}
+# Rust keywords that are not Vow keywords: user names go into the generated Rust unchanged.
+RUST_KEYWORDS = {"as", "async", "await", "break", "const", "continue", "crate", "dyn", "enum", "extern", "for",
+                 "impl", "loop", "mod", "move", "pub", "ref", "self", "Self", "static", "struct", "super",
+                 "trait", "type", "unsafe", "use", "where", "abstract", "become", "box", "do", "final", "gen",
+                 "macro", "override", "priv", "try", "typeof", "unsized", "virtual", "yield", "union", "_"}
 TOKEN_RE = re.compile(r"""
  (?P<ws>[ \t\r]+) | (?P<nl>\n) | (?P<comment>//[^\n]*)
 |(?P<int>[0-9][0-9_]*)
@@ -41,6 +46,10 @@ def lex(src):
                 raise VowError("parse", line, col, "bad_int", "integer literal ends with _", "")
             toks.append(Tok("int", int(v.replace("_", "")), line, col))
         elif k == "id":
+            if v not in KEYWORDS and (v.startswith("vow_") or "__" in v or v in RUST_KEYWORDS):
+                raise VowError("parse", line, col, "reserved_name",
+                               "name %r is reserved for the compiler" % v,
+                               "rename it; names starting with vow_, containing __, `_` and Rust keywords are reserved")
             toks.append(Tok("kw" if v in KEYWORDS else "id", v, line, col))
         elif k == "op":
             toks.append(Tok("op", v, line, col))

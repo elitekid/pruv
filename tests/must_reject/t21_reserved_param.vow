@@ -1,0 +1,1 @@
+fn f(vow_k1: i64) -> i64 requires vow_k1 >= 0 && vow_k1 < 100 ensures result == vow_k1 + 1 { return vow_k1 + 1; }

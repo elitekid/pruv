@@ -1,0 +1,5 @@
+fn w(a: [i64]) -> i64 ! alloc {
+  let mut b: [i64] = copy(a);
+  b[len(b)] = 1;
+  return 0;
+}

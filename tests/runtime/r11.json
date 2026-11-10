@@ -1,0 +1,1 @@
+{"flags": ["--no-verify", "--trust-callers"], "exit": 101, "stderr_contains": "vow: index out of bounds", "stderr_absent": "requires violated"}

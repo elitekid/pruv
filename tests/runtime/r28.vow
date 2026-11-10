@@ -1,0 +1,42 @@
+fn h(a: [i64]) -> [i64] ! alloc {
+  let mut b: [i64] = copy(a);
+  b[0] = b[0] + 1;
+  return b;
+}
+
+fn q(a: [i64], i: i64) -> i64 ! alloc {
+  if i > 0 && len(h(a)) == 3 {
+    return 1;
+  }
+  return 0;
+}
+
+fn e() -> i64 ! alloc {
+  let mut i: i64 = 0;
+  while i < 10 decreases 10 - i {
+    let t: [i64] = alloc(2, i);
+    if i == 3 {
+      let u: [i64] = alloc(4, 1);
+      return t[0] + u[3];
+    }
+    i = i + 1;
+  }
+  return 0;
+}
+
+fn ib(n: i64) -> i64 ! alloc {
+  let mut s: i64 = 0;
+  if n > 0 {
+    let u: [i64] = alloc(3, n);
+    s = u[2];
+  } else {
+    let v: [i64] = alloc(2, 9);
+    s = v[1];
+  }
+  return s;
+}
+
+fn top() -> i64 ! alloc {
+  let a: [i64] = alloc(3, 0);
+  return q(a, 0) + q(a, 1) * 10 + e() * 100 + ib(2) * 1000 + ib(0) * 10000;
+}

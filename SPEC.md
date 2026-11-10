@@ -13,6 +13,7 @@ signature; no null, no exceptions, no implicit conversions, no globals, no overl
 - Comments: `// ...` to end of line.
 - Identifiers: `[a-zA-Z_][a-zA-Z0-9_]*`. Integer literals: decimal digits, optional `_` separators (`1_000_000`).
 - Keywords: `fn let mut if else while return match true false invariant decreases requires ensures assert forall exists in result Some None Ok Err`.
+- Names starting with `vow_` or containing `__`, the name `_`, and Rust keywords (`type`, `loop`, `self`, `for`, ...) are reserved; the parser rejects them (`reserved_name`).
 
 ## 2. Types
 | Vow | meaning | Rust |
@@ -109,6 +110,17 @@ Allowed only in `requires`, `ensures`, `invariant`, `assert`:
 5. Loop invariants hold on entry and are preserved; `decreases` is >= 0 at each iteration start and strictly decreases.
 6. Array parameters have `0 <= len(a) <= 2^40` and elements in i64 range (assumed; guaranteed for Vow callers because every alloc is proven <= 2^40).
 Variables not assigned in a loop keep their values across it; assigned ones are only known through invariants.
+
+### Run-time `requires` and modes
+A public function's `requires` are checked at run time, left to right with short-circuit evaluation; a violation
+panics with `vow: requires violated`. If evaluation reaches something outside the contract domain (index out of
+range, division by zero, `max`/`min` over an empty range, `some_val(None)`, ...), it panics with
+`vow: requires undefined`. So write domain conditions first, e.g. `0 <= i && i < len(a) && a[i] > 0`.
+Number-range quantifiers and aggregates iterate once per element of the range, so their cost is the range length.
+
+`--no-verify` emits safe mode: no proof exists, so indexing and arithmetic are checked (panic on out-of-range index
+or i64 overflow), and `/` `%` use the verifier's domain (divisor > 0 and dividend >= 0, otherwise panic).
+`--trust-callers` makes the public entry skip the `requires` checks (for benchmarking; callers must be trusted).
 
 ## 8. Errors
 Compiler prints JSON lines: `{"stage": "parse|type|effect|verify|rustc", "line": n, "col": n,

@@ -1,0 +1,1 @@
+{"flags": ["--no-verify"], "exit": 101, "stderr_contains": "vow: arithmetic error"}

@@ -1,0 +1,25 @@
+fn pick(n: i64) -> Option<i64> {
+  if n > 0 {
+    return Some(n);
+  }
+  return None;
+}
+
+fn om(n: i64) -> i64 ! alloc {
+  let mut r: i64 = 0;
+  match pick(n) {
+    Some(v) => {
+      let a: [i64] = alloc(v, 7);
+      r = a[0] + len(a);
+    }
+    None => {
+      let b: [i64] = alloc(2, 1);
+      r = b[0] - 5;
+    }
+  }
+  return r;
+}
+
+fn mm() -> i64 ! alloc {
+  return om(3) + om(0) * 100;
+}

@@ -33,7 +33,8 @@
 | 명세 | `SPEC.md`(약 6쪽): i64, bool, 배열, Option, Result, 계약(집계 sum/count/max/min 포함), 효과 |
 | 컴파일러 | `vowc/`(Python): 파서 → 타입·효과 검사 → z3 검증 → Rust 생성(증명된 접근은 `get_unchecked`) |
 | 시험 장치 | `bench/`: 문제 10개, 참조 구현, 무작위 시험 300개, 성능 측정, 변이 시험 |
-| 회귀 시험 | `tests/must_reject/`: 거부돼야 하는 프로그램 20개 |
+| 회귀 시험 | `tests/run_all.py`: 거부 24개(`tests/must_reject/`), examples 세 모드, 런타임 23개(`tests/runtime/`) |
+| 실행 안전 | 공개 함수는 requires를 실행 중 검사(`--trust-callers`로 끔), `--no-verify`는 검사 있는 안전 모드 |
 
 ### 실험 결과 요약 (`RESULTS.md`)
 - 처음 보는 AI(Claude sonnet)가 명세만 읽고 Vow로 9/10을 첫 시도에 통과했고, JSON 오류 한 번으로 10/10이 됐다. Rust로는 첫 시도에 10/10이었다.
@@ -52,7 +53,7 @@
 
 각 단계는 시험 숫자(첫 시도 통과율, 변이 잡는 비율, 속도)가 실제로 오를 때만 다음 단계로 넘어간다.
 
-### 단기 목표: 독립 실행 (2026-11-10 정함, 아직 착수 전)
+### 단기 목표: 독립 실행 (2026-11-10 정함, M1 진행 중)
 **목표:** `vowc` 실행 파일 하나로 `.vow` → 실행 파일. 사용자가 Python도 rustc도 깔 필요가 없다.
 - 남는 의존(정직하게): z3·LLVM은 실행 파일 안에 넣는다(정적 링크, 파일이 커짐). 시스템 링커(macOS `ld`, Windows `link.exe`)는 Rust처럼 빌린다.
 - 이 목표의 가치는 배포와 속도 상한(증명 결과를 LLVM에 직접 넘김)이다. 우리 개발 속도를 올리는 일은 아니다 — 개발 속도는 0·1·3단계 도구가 올린다.
@@ -77,12 +78,14 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 2. 구현: `vowc/llvmgen.py`(새 파일, codegen.py는 그대로 둠), `vowc.py`에 `--backend` 옵션, 실행 지원 코드 `vowc/runtime.c` 또는 IR로 작성.
 3. 확인: examples·bench 10문제를 두 뒷단으로 돌려 출력 대조, 변이 시험, 속도 비교.
 4. 감사 1회 + 확인 1회. 결과를 RESULTS에 기록.
-- 결정이 필요한 점(착수 전에 정함): 실행 지원 코드를 C로 쓸지(빠르지만 C 컴파일 필요) IR로 직접 쓸지, 범위 밖 접근 실패 시 동작(지금 Rust는 panic → 같은 종료 코드 유지).
+- **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. 남은 기준 미달: p04가 4~5% 느림(FFI 경계). 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
+- 정함(2026-11-10): 실행 지원 코드는 C(`vowc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
 
 ### 0단계: 검증기 신뢰 (진행 중)
 - 독립 감사, 고친 뒤 확인 감사, 거부 회귀 시험을 한다.
 - 다음: 무작위 프로그램 퍼징을 한다. 통과된 프로그램을 실제로 실행해서 약속이 깨지는지 본다.
-- 안전 모드 빌드 옵션: `get_unchecked` 대신 일반 인덱싱을 쓴다.
+- ~~안전 모드 빌드 옵션~~ 완료(2026-11-10): `--no-verify`는 검사 있는 인덱싱·산술, 공개 함수 경계에서 requires 실행 검사(RESULTS 6절).
+- 남은 것: 무거운 requires의 O(n) 검사 변환, 수 범위 한정자 상한, 계약 정의역을 검증기 의무로.
 
 ### 1단계: 정제 타입과 불변식 자동 추론 (Liquid Haskell에서)
 - `a: [i64 | -1e9..1e9; ..1e6]`처럼 조건을 타입에 붙인다.
@@ -175,7 +178,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 ## 7. 작업 규칙
 
 - 감사는 Claude로 한다(Codex는 보안 필터로 막힘). 최상위 모델은 비용을 먼저 알리고 범위를 좁힌다.
-- 검증기를 고치면 `tests/must_reject/` 전체, `examples/`, `bench` 풀이 재채점을 함께 돌린다.
+- 검증기·코드 생성을 고치면 `tests/run_all.py` 전체, `bench` 풀이 재채점(기본·`--trust-callers`), 변이 시험을 함께 돌린다.
 - 결과는 부풀리지 않는다. 측정 못 한 것은 그대로 적는다.
 
 ## 8. 파일 지도
@@ -185,10 +188,14 @@ ai-first-lang/
   BLUEPRINT.md        이 문서
   SPEC.md             언어 명세
   RESULTS.md          실험 결과
-  vowc/               컴파일러 (vowc.py, vparser.py, check.py, verify.py, codegen.py, vast.py)
+  vowc/               컴파일러 (vowc.py, vparser.py, check.py, verify.py, codegen.py, vast.py,
+                      llvmgen.py = LLVM IR 뒷단, runtime.c = LLVM판 실행 지원)
   examples/           예제
+  tests/run_all.py    회귀 시험 실행기
   tests/must_reject/  거부 회귀 시험
+  tests/runtime/      실행 시험(경계 검사·안전 모드)
   bench/              문제, 참조 구현, 시험 장치(harness/run.py), 변이 시험(mutate.py)
   solve/              독립 AI 풀이 (rust, vow)
+  docs/M1_LLVM_SPEC.md  LLVM 뒷단 명세(타입·ABI·메모리·시험 연결)
   docs/research-2026-11.md  관련 연구 조사와 청사진 수정 제안
 ```

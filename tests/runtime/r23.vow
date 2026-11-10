@@ -1,0 +1,5 @@
+fn o(x: Option<i64>) -> i64
+  requires is_some(x) ==> some_val(x) >= 0
+{
+  return 0;
+}

@@ -1,0 +1,14 @@
+fn g(x: i64) -> i64
+  requires x > 0
+  ensures result >= 0 && result <= 100
+{
+  return 100 / x;
+}
+
+fn f(y: i64) -> i64
+  requires y > 0
+  ensures result >= 1 && result <= 101
+{
+  let r: i64 = g(y);
+  return r + 1;
+}

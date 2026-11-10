@@ -1,0 +1,3 @@
+fn mk(n: i64) -> [i64] ! alloc {
+  return alloc(n, 0);
+}

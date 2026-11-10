@@ -94,7 +94,29 @@ fn main() {
 '''
 
 
-def build_and_run(sol_path, pid, workdir, noperf=False):
+CLANG = shutil.which("clang") or "/usr/bin/clang"
+
+
+def build_llvm_objects(llvm_path, stem, workdir):
+    """Compile gen .ll and runtime.c into objects inside workdir.
+    Returns (link_args, error_text); error_text is None on success."""
+    gen_o = os.path.join(workdir, stem + "_gen.o")
+    rt_o = os.path.join(workdir, stem + "_rt.o")
+    import platform
+    cpu = "-mcpu=native" if platform.machine().lower() in ("arm64", "aarch64") else "-march=native"
+    c = subprocess.run([CLANG, "-O2", cpu, "-Wno-override-module", "-c", llvm_path, "-o", gen_o],
+                       capture_output=True, text=True)
+    if c.returncode != 0:
+        return [], "clang (gen.ll): " + c.stderr[-1500:]
+    c = subprocess.run([CLANG, "-O2", cpu, "-std=c11", "-DVOW_RUST_ALLOCATOR", "-c",
+                        os.path.join(ROOT, "vowc/runtime.c"), "-o", rt_o],
+                       capture_output=True, text=True)
+    if c.returncode != 0:
+        return [], "clang (runtime.c): " + c.stderr[-1500:]
+    return ["-C", "link-arg=" + gen_o, "-C", "link-arg=" + rt_o], None
+
+
+def build_and_run(sol_path, pid, workdir, noperf=False, llvm_path=None):
     fn, gen, call, perf = P[pid]
     edges = "\n    ".join("inputs.push(%s);" % e for e in EDGE[pid])
     perf = perf or call.replace("t.", "black_box(&t).")
@@ -108,7 +130,12 @@ def build_and_run(sol_path, pid, workdir, noperf=False):
     main = os.path.join(workdir, pid + "_main.rs")
     exe = os.path.join(workdir, pid + "_bin")
     open(main, "w").write(src)
-    c = subprocess.run([RUSTC, "-O", "--edition", "2021", "-C", "target-cpu=native", main, "-o", exe],
+    extra = []
+    if llvm_path:
+        extra, err = build_llvm_objects(os.path.abspath(llvm_path), pid, workdir)
+        if err:
+            return {"status": "compile_error", "compile_error": err[:2000]}
+    c = subprocess.run([RUSTC, "-O", "--edition", "2021", "-C", "target-cpu=native", main, "-o", exe] + extra,
                        capture_output=True, text=True)
     if c.returncode != 0:
         return {"status": "compile_error", "compile_error": c.stderr[:2000]}
@@ -127,12 +154,29 @@ def build_and_run(sol_path, pid, workdir, noperf=False):
             a, b = p[1].split(); out["sol_ns"], out["ref_ns"] = int(a), int(b)
     if out.get("tests_passed") != out.get("tests_total") or "tests_passed" not in out:
         out["status"] = "wrong"
+    if r.returncode != 0:
+        out["status"] = "wrong"
+        out["exit_code"] = r.returncode
+        out["stderr"] = r.stderr[-300:]
+    elif not noperf and out["status"] == "ok" and "sol_ns" not in out:
+        out["status"] = "wrong"
     return out
 
 
 def main():
     sdir, outp = os.path.abspath(sys.argv[1]), sys.argv[2]
     vow = "--vow" in sys.argv
+    backend = "rust"
+    if "--backend" in sys.argv:
+        bi = sys.argv.index("--backend")
+        backend = sys.argv[bi + 1] if bi + 1 < len(sys.argv) else ""
+        if backend not in ("rust", "llvm"):
+            print("usage: run.py <solutions_dir> <out.json> [--vow] [--backend rust|llvm] [--no-verify] [--trust-callers] [pNN ...]")
+            sys.exit(2)
+        if backend == "llvm" and not vow:
+            print("--backend llvm requires --vow")
+            sys.exit(2)
+    llvm = backend == "llvm"
     only = [a for a in sys.argv[3:] if a.startswith("p")]
     res = {}
     work = tempfile.mkdtemp(prefix="vowbench_")
@@ -144,13 +188,19 @@ def main():
             res[pid] = {"status": "missing"}; continue
         if vow:
             rs = os.path.join(work, pid + "_gen.rs")
-            c = subprocess.run([PY, VOWC, src, "-o", rs] + (["--no-verify"] if "--no-verify" in sys.argv else []),
-                               capture_output=True, text=True)
+            flags = [f for f in ("--no-verify", "--trust-callers") if f in sys.argv]
+            ll = None
+            if llvm:
+                ll = os.path.join(work, pid + "_gen.ll")
+                cmd = [PY, VOWC, src, "-o", ll, "--backend", "llvm", "--rust-bindings", rs] + flags
+            else:
+                cmd = [PY, VOWC, src, "-o", rs] + flags
+            c = subprocess.run(cmd, capture_output=True, text=True)
             if c.returncode != 0:
                 res[pid] = {"status": "vow_error", "vow_errors": [json.loads(l) for l in c.stdout.splitlines() if l.startswith("{")]}
                 continue
             src = rs
-        res[pid] = build_and_run(src, pid, work)
+        res[pid] = build_and_run(src, pid, work, llvm_path=ll if vow else None)
     json.dump(res, open(outp, "w"), indent=1, ensure_ascii=False)
     print("%-4s %-13s %-9s %12s %12s" % ("id", "status", "tests", "sol_ms", "ref_ms"))
     for pid, r in res.items():

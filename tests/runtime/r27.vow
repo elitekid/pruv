@@ -1,0 +1,19 @@
+fn h(a: [i64]) -> [i64] ! alloc {
+  let mut b: [i64] = copy(a);
+  b[0] = b[0] + 1;
+  return b;
+}
+
+fn k(a: [i64]) -> i64 {
+  return a[0];
+}
+
+fn tmp() -> i64 ! alloc {
+  let a: [i64] = alloc(3, 5);
+  let x: i64 = len(h(a));
+  let y: i64 = k(h(a));
+  let z: i64 = h(a)[0];
+  let mut c: [i64] = copy(h(a));
+  c[1] = 7;
+  return x + y * 10 + z * 100 + c[0] * 1000 + c[1] * 10000;
+}

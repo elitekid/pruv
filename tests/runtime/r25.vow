@@ -1,0 +1,13 @@
+fn f(x: i64) -> i64 ! io
+  ensures result == x
+{
+  print(x);
+  return x;
+}
+
+fn g() -> i64 ! io, alloc
+{
+  let mut a: [i64] = alloc(3, 0);
+  a[f(1)] = f(2);
+  return a[1];
+}

@@ -1,0 +1,5 @@
+fn mx(a: [i64]) -> i64
+  requires max(k in 0..len(a): a[k]) <= 100
+{
+  return 0;
+}

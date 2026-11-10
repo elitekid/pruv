@@ -1,0 +1,22 @@
+fn h(a: [i64]) -> [i64] ! alloc {
+  let mut b: [i64] = copy(a);
+  b[0] = b[0] + 1;
+  return b;
+}
+
+fn w() -> i64 ! alloc {
+  let mut i: i64 = 0;
+  let mut s: i64 = 0;
+  while i < 5 decreases 5 - i {
+    let t: [i64] = alloc(2, i);
+    s = s + t[1];
+    i = i + 1;
+  }
+  let mut b: [i64] = alloc(2, 0);
+  let mut j: i64 = 0;
+  while j < 3 decreases 3 - j {
+    b = h(b);
+    j = j + 1;
+  }
+  return s + b[0] * 100;
+}

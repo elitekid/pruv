@@ -1,0 +1,16 @@
+fn sum(a: [i64]) -> i64
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): a[k] >= -1_000_000_000 && a[k] <= 1_000_000_000
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant s >= -1_000_000_000 * i && s <= 1_000_000_000 * i
+    decreases len(a) - i
+  {
+    s = s + a[i];
+    i = i + 1;
+  }
+  return s;
+}

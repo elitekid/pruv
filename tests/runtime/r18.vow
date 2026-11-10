@@ -1,0 +1,6 @@
+fn f(x: i64) -> i64
+  requires (x - 7) / 2 == -4
+  ensures result == x
+{
+  return x;
+}

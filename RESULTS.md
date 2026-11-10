@@ -52,3 +52,49 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - 감사(Claude sonnet) 건전성 필수 0, 고친 뒤 확인 감사 필수 0. 두 감사 모두 셸이 막혀 코드 읽기로만 판단했고, 재현은 내가 위 시험으로 했다.
 - 한계: 펼치기가 자리마다 한 칸이라 `sum(k in 0..3: j) == 3*j`처럼 고정 구간을 여러 칸 계산하는 맞는 계약은 증명 못 한다(시간 초과).
   구간 중간 원소 <= max, sum 임의 지점 분할 같은 사실도 자동으로 모른다. 집계 계약은 내가 썼다. 독립 AI가 집계 계약을 스스로 쓰는지는 아직 안 쟀다.
+
+## 6. 0단계: 안전 모드와 공개 함수 경계 검사 (2026-11-10)
+고친 구멍 두 개:
+1. `--no-verify`(증명 안 함)인데도 `get_unchecked`와 조용히 wrap 되는 산술을 내던 문제 → 안전 모드: 인덱싱·산술·alloc 크기를 검사하고 어기면 panic(`vow: index out of bounds`, `vow: arithmetic error`). `/` `%`는 검증기와 같은 정의역(제수 > 0, 피제수 >= 0).
+2. 생성된 `pub fn`을 Rust 쪽에서 requires를 어겨 부르면 막을 게 없던 문제 → requires가 있는 함수는 `pub fn f`(실행 중 requires 검사, `vow: requires violated`) + 비공개 `f__vow_body`. 증명 모드의 안쪽 호출은 본체로 바로 간다. 계약은 i128·유클리드 나눗셈으로 평가. `--trust-callers`로 검사를 끈다.
+
+- 시험: `tests/run_all.py` 57/57(거부 24, examples 세 모드 10, 런타임 23).
+- 감사(Claude) 필수 2건: 생성 임시 이름(`vow_k1`, `vow_i`)이 같은 이름의 사용자 변수를 가려 requires 검사를 우회하고 증명 모드에서 범위 밖 `get_unchecked`(비정상 종료 재현), 안전 모드 배열 쓰기가 틀린 값을 씀. → `vow_` 접두어·`__` 포함 이름을 파서에서 거부(`reserved_name`).
+- 고친 뒤 확인(Claude) 필수 0. 권고였던 Rust 키워드·`_` 이름(rustc 컴파일 실패)도 예약어로 거부했고, 계약 도우미가 Rust 2015판(`rustc -O x.rs` 기본)에서 컴파일 안 되던 것(`usize::try_from`)을 직접 재현해 고쳤다.
+- 변이 시험(`bench/mutants4.json`, vow_agg): 79/79 거부, 오탐 1/4 그대로. 기준 빌드(`--no-verify`)가 안전 모드가 되면서 시간 초과(미정의 동작 무한 루프 등)였던 변이 9개가 `wrong`(panic)으로 바뀌었다.
+- 속도(vow_agg, ms, 21회 중앙값): `--trust-callers`면 예전과 같다(Rust 참조와 오차 안). 검사를 켜면 원소 범위 forall이 붙은 문제가 느려진다(p01 0.20→1.13, p05 0.30→0.76, p09 0.43→1.20). p04는 정렬 전제를 이중 forall로 써서 n=10^6에서 O(n^2) 검사가 돼 성능 단계가 시간 초과. 속도 비교는 `--trust-callers`로 잰다.
+- 남은 것: 무거운 requires(정렬 등)를 같은 뜻의 O(n) 검사로 바꾸기(증명된 동치 변환), 수 범위 한정자 길이 상한, 계약 정의역(범위 밖 인덱스 등)을 검증기 의무로도 넣어 실행 검사와 의미 맞추기.
+
+## 7. M1 = C2: LLVM IR 뒷단 (2026-11-10)
+`vowc --backend llvm`은 텍스트 LLVM IR(`.ll`)과 Rust 바인딩(`.rs`)을 함께 낸다. 실행 지원 코드는 `vowc/runtime.c`이고 clang이 컴파일한다. 명세는 `docs/M1_LLVM_SPEC.md`에 있다. 정본은 Rust 뒷단(`codegen.py`)이며 고치지 않았다.
+- 시험 장치는 Rust 드라이버를 그대로 두고 `mod sol`에 바인딩을 넣는다. 두 오브젝트(gen.o, rt.o)는 rustc에 link-arg로 붙인다. 반환 배열은 Rust 할당기로 할당해 복사 없이 `Vec`로 넘긴다.
+- 회귀(`tests/run_all.py --backend both`) 102/102
+  - 거부 24, 그리고 뒷단마다 examples 10, 런타임 29.
+  - 새 시험 r24·r25: 평가 순서. r26~r29: 배열 해제 경로. 해제 경로 시험은 runtime.c `-DVOW_COUNT_ALLOCS`로 할당 수와 해제 수가 같은지 본다.
+- IR의 증명 사실
+  - 증명 모드 본체: 산술은 `add/sub/mul nsw`, 배열 접근은 `getelementptr inbounds`, 나눗셈은 `udiv/urem`(검증기가 정의역을 증명함).
+  - 배열 인자: `noalias nocapture readonly`. 근거는 check.py 소유 규칙이다(인자 수정·저장·반환 금지).
+  - 안전 모드 본체에는 `nsw`가 없다(시험으로 확인).
+- bench vow_agg `--trust-callers`: 두 뒷단 모두 10/10.
+  - 속도는 같은 실행 파일 안의 Rust 참조와 비교했다. 실행마다 참조 시간이 흔들려서다.
+  - 같음: p01·p02·p05·p06·p07·p10, p08(0초기화 할당으로 고친 뒤 0.20ms 대 0.20ms).
+  - LLVM이 더 빠름: p03(참조 대비 1.17배, Rust판 1.48배), p09(0.79배, Rust판 1.0배).
+  - **LLVM이 더 느림: p04 4~5%.** 두 번 쟀다. Rust판 33.4~33.5ms, LLVM판 34.9~35.3ms. 백만 번 호출하는 문제다. Rust 드라이버가 FFI 경계 너머의 함수를 인라인하지 못해서라고 추정하고, 확인하지 않았다. M1 속도 기준(오차 안 또는 더 빠름)을 이 문제 하나가 못 채운다.
+- 변이 시험(`bench/mutants5_llvm.json`, 감사 고침 전 빌드)
+  - 검증기 판정 81개가 모두 Rust판(mutants4)과 같다. 79/79 거부, 오탐 1/4.
+  - 시험 결과가 다른 것은 4개이고, Rust판의 시간 초과가 LLVM판에서 `wrong`이 됐다. p01·p05·p09의 `i = i + 1`→`i = i`, p04의 `lo < hi`→`lo <= hi`다.
+  - p01 하나를 재현했다. 끝나지 않는 루프에서 누적값이 넘쳐 `overflow in +`(101)로 멈춘다. LLVM판이 120초 제한 안에 그 지점에 닿는 것으로 본다. Rust판을 끝까지 돌려 같은 오류가 나는지는 확인하지 않았다.
+  - 차이가 나는 까닭이 하나 더 있다. LLVM판 panic은 C `exit(101)`이라 프로세스 전체가 끝나지만, Rust판은 `catch_unwind`로 다음 입력을 계속 돌린다. 둘 다 "통과 아님"이라 판정은 같다.
+- 감사(Claude Opus) 필수 1건
+  - 증명 모드 `a[i] = v`에서 정본은 v를 먼저 평가하는데, LLVM판은 i를 먼저 평가했다. `! io` 함수를 식 안에서 부르면 출력 순서가 달라진다(정본 2,1,2, LLVM 1,2,2). 직접 재현하고 고쳤다.
+  - 같이 고친 권고: panic 전에 Rust stdout 비우기, 0초기화 할당, 해제 경로 실행 시험, IR 검사를 본체 함수로 좁히기, 내부 오류는 exit 3·변이 시험에서 crash로 분류, CPU 옵션을 아키텍처별로.
+- 고친 뒤 확인(Claude Opus): 필수 0.
+  - noalias·readonly 속성은 건전하다고 판정했다.
+  - 남은 권고:
+    - 증명 모드 nsw 검사를 명령어 단위로 엄격하게.
+    - 해제 시험 보강: 증명 모드판, while 조건·return 식·인덱스 대입 안의 임시, 길이 0 배열.
+    - 누수와 이중 해제가 같이 생기면 수가 상쇄돼 놓친다.
+- 남은 것
+  - p04 FFI 경계 비용(rustc·clang 사이 LTO나 호출 규약 손질).
+  - 감사 고침 뒤 변이 시험을 LLVM판으로 다시 돌리기.
+  - Windows·Linux 연결 시험. M1 산출물은 macOS arm64 개발용이다.

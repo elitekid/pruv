@@ -7,6 +7,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "har
 import run as H
 
 SRC = sys.argv[1]; OUT = sys.argv[2]
+BACKEND = "rust"
+if "--backend" in sys.argv:
+    _bi = sys.argv.index("--backend")
+    BACKEND = sys.argv[_bi + 1] if _bi + 1 < len(sys.argv) else ""
+    if BACKEND not in ("rust", "llvm"):
+        print("usage: mutate.py <src> <out> [--backend rust|llvm]")
+        sys.exit(2)
+LLVM = BACKEND == "llvm"
 OPS = [(r"<=", "<"), (r"(?<![<=!>])<(?!=)", "<="), (r">=", ">"), (r"(?<![-=>])>(?!=)", ">="),
        (r"==", "!="), (r"!=", "=="), (r"\+ 1\b", "+ 2"), (r"\+ 1\b", ""), (r"- 1\b", "+ 1"), (r"- 1\b", ""),
        (r"(?<=[\w)\]] )\+(?= )", "-"), (r"(?<=[\w)\]] )-(?= )", "+"), (r"= 0;", "= 1;"), (r"= 1;", "= 0;"),
@@ -31,18 +39,24 @@ def one(job):
     pid, ln, old, new, text = job
     d = tempfile.mkdtemp(prefix="mut_")
     vp = os.path.join(d, pid + ".vow"); rs = os.path.join(d, pid + ".rs")
+    ll = os.path.join(d, pid + ".ll")
     open(vp, "w").write(text)
-    v = subprocess.run([H.PY, H.VOWC, vp, "-o", rs], capture_output=True, text=True)
+    be = ["-o", ll, "--backend", "llvm", "--rust-bindings", rs] if LLVM else ["-o", rs]
+    v = subprocess.run([H.PY, H.VOWC, vp] + be, capture_output=True, text=True)
     errs = [json.loads(l) for l in v.stdout.splitlines() if l.startswith("{")]
     vow_ok = v.returncode == 0
     stage = None if vow_ok else errs[0].get("stage", str(errs[0])) if errs else "crash"
-    n = subprocess.run([H.PY, H.VOWC, vp, "-o", rs, "--no-verify"], capture_output=True, text=True)
-    if n.returncode != 0:
+    n = subprocess.run([H.PY, H.VOWC, vp] + be + ["--no-verify"], capture_output=True, text=True)
+    if n.returncode == 3:
+        tests = "crash"
+    elif n.returncode != 0:
         tests = "not_compilable"
     else:
-        r = H.build_and_run(rs, pid, d, noperf=True)
+        r = H.build_and_run(rs, pid, d, noperf=True, llvm_path=ll if LLVM else None)
         tests = "pass" if r["status"] == "ok" else r["status"]
-    return {"pid": pid, "line": ln, "from": old, "to": new, "vow": "accepted" if vow_ok else "rejected",
+    vow_crash = (not vow_ok) and (stage in ("internal", "crash") or v.returncode == 3)
+    return {"pid": pid, "line": ln, "from": old, "to": new,
+            "vow": "accepted" if vow_ok else ("crash" if vow_crash else "rejected"),
             "vow_stage": stage, "vow_code": (errs[0].get("code") if errs else ("crash:" + v.stderr.strip().splitlines()[-1][:150] if v.stderr.strip() else None)), "tests": tests,
             "first_failure": None}
 
