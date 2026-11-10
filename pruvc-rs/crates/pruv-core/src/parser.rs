@@ -493,7 +493,11 @@ impl Parser {
         if self.at("else", 0) {
             self.bump();
             if self.at("if", 0) {
-                els = vec![Stmt::If(self.if_()?)];
+                // else if 사슬도 깊이로 센다(고친 뒤 확인: 셈 밖이라 100만 개에서 스택 넘침)
+                self.enter(1)?;
+                let r = self.if_();
+                self.leave(1);
+                els = vec![Stmt::If(r?)];
             } else {
                 els = self.block()?;
             }

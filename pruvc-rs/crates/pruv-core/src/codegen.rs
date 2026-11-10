@@ -181,14 +181,19 @@ fn k_field_index(tt: &TypeTable, ty: &str, name: &str, variant: Option<&str>) ->
         .ok_or_else(|| repr_str(name))
 }
 
-/// `{f.name: f.value for f in e.fields}[name]` (중복이면 뒤 것이 이김, 없으면 KeyError)
-fn init_value<'a>(fields: &'a [FieldInit], name: &str) -> R<&'a Expr> {
-    fields
-        .iter()
-        .rev()
-        .find(|f| f.name == name)
-        .map(|f| &f.value)
-        .ok_or_else(|| repr_str(name))
+/// `{f.name: f.value for f in e.fields}` 를 리터럴마다 한 번 만든다(중복이면 뒤 것이 이김 = dict).
+/// 감사: 필드마다 뒤에서 훑으면 필드 수의 제곱이었다.
+fn init_map(fields: &[FieldInit]) -> std::collections::HashMap<&str, &Expr> {
+    let mut m = std::collections::HashMap::new();
+    for f in fields {
+        m.insert(f.name.as_str(), &f.value);
+    }
+    m
+}
+
+/// init_map 조회(없으면 Python KeyError 문장)
+fn init_value<'a>(m: &std::collections::HashMap<&str, &'a Expr>, name: &str) -> R<&'a Expr> {
+    m.get(name).copied().ok_or_else(|| repr_str(name))
 }
 
 fn join_map<T>(xs: &[T], sep: &str, f: impl Fn(&T) -> String) -> String {
@@ -469,9 +474,10 @@ impl<'a> Gen<'a> {
             Expr::StructLit(x) => {
                 // 선언 순서로 평가(Rust 는 리터럴 필드를 쓰인 순서로 평가)
                 let fs: Vec<FieldDecl> = k_fields(&self.table, &x.name, None)?.to_vec();
+                let vals = init_map(&x.fields);
                 let mut parts: Vec<String> = Vec::new();
                 for f in &fs {
-                    let v = init_value(&x.fields, &f.name)?;
+                    let v = init_value(&vals, &f.name)?;
                     parts.push(format!("{}: {}", f.name, self.c(v)?));
                 }
                 let body = parts.join(", ");
@@ -814,9 +820,10 @@ impl<'a> Gen<'a> {
                 if fs.is_empty() {
                     return Ok(format!("({} {{}})", x.name));
                 }
+                let vals = init_map(&x.fields);
                 let mut parts: Vec<String> = Vec::new();
                 for f in fs {
-                    let v = init_value(&x.fields, &f.name)?;
+                    let v = init_value(&vals, &f.name)?;
                     parts.push(format!("{}: {}", f.name, self.e(v)?));
                 }
                 Ok(format!("({} {{ {} }})", x.name, parts.join(", ")))
