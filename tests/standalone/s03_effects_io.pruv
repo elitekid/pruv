@@ -1,0 +1,21 @@
+// flags: default
+// expect: run
+fn say(x: i64) -> () ! io
+  requires 0 <= x && x <= 10000
+{
+  print(x);
+  print(x + 1);
+}
+
+fn say_twice(x: i64) -> () ! io
+  requires 0 <= x && x <= 1000
+{
+  say(x);
+  say(x * 2);
+}
+
+fn main() -> () ! io {
+  say_twice(5);
+  say_twice(0);
+  say_twice(1000);
+}

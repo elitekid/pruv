@@ -1,0 +1,24 @@
+// flags: default | --no-verify
+// expect: run
+fn safe_div(a: i64, b: i64) -> Option<i64> {
+  if b > 0 && a >= 0 {
+    return Some(a / b);
+  }
+  return None;
+}
+
+fn show(o: Option<i64>) -> () ! io {
+  match o {
+    Some(v) => { print(v); }
+    None => { print(-1); }
+  }
+}
+
+fn main() -> () ! io {
+  show(safe_div(17, 5));
+  show(safe_div(17, 0));
+  show(safe_div(-3, 2));
+  show(safe_div(0, 9));
+  show(None);
+  show(Some(77));
+}

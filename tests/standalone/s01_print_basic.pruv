@@ -1,0 +1,11 @@
+// flags: default | --no-verify
+// expect: run
+fn main() -> () ! io {
+  print(0);
+  print(42);
+  print(-5);
+  print(true);
+  print(false);
+  print(1 == 1);
+  print(3 < 2);
+}

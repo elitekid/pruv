@@ -1,0 +1,33 @@
+// flags: default | --no-verify
+// expect: run
+fn count_pos(a: [i64]) -> i64
+  ensures 0 <= result && result <= len(a)
+{
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant 0 <= c && c <= i
+    decreases len(a) - i
+  {
+    if a[i] > 0 {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  return c;
+}
+
+fn main() -> () ! io, alloc {
+  let mut a: [i64] = alloc(10, 5);
+  a[3] = 0 - 1;
+  a[7] = 0;
+  let mut b: [i64] = copy(a);
+  b[0] = -100;
+  b[1] = 0;
+  print(count_pos(a));
+  print(count_pos(b));
+  print(len(b));
+  print(a[0]);
+  print(b[0]);
+}

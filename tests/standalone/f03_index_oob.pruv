@@ -1,0 +1,9 @@
+// flags: --no-verify
+// expect: run
+fn main() -> () ! io, alloc {
+  let a: [i64] = alloc(3, 4);
+  print(a[2]);
+  let i: i64 = 3;
+  print(a[i]);
+  print(2);
+}

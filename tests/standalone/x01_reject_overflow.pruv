@@ -1,0 +1,9 @@
+// flags: default
+// expect: reject
+fn inc(x: i64) -> i64 {
+  return x + 1;
+}
+
+fn main() -> () ! io {
+  print(inc(1));
+}

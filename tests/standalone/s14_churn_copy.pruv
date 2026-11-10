@@ -1,0 +1,27 @@
+// flags: default | --no-verify
+// expect: run
+fn churn_copy(base: [i64], n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1_000_000
+  requires len(base) == 16
+  ensures result == 16 * n
+{
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant total == 16 * i
+    decreases n - i
+  {
+    let mut c: [i64] = copy(base);
+    c[15] = i;
+    total = total + len(c);
+    i = i + 1;
+  }
+  return total;
+}
+
+fn main() -> () ! io, alloc {
+  let b: [i64] = alloc(16, 3);
+  print(churn_copy(b, 250_000));
+  print(b[15]);
+}

@@ -1,0 +1,27 @@
+// flags: default | --no-verify
+// expect: run
+fn checked(x: i64) -> Result<i64>
+  requires -1000 <= x && x <= 1000
+  ensures x < 0 ==> !is_ok(result)
+  ensures x >= 0 ==> (is_ok(result) && ok_val(result) == 2 * x)
+{
+  if x < 0 {
+    return Err(7);
+  }
+  return Ok(x * 2);
+}
+
+fn report(r: Result<i64>) -> () ! io {
+  match r {
+    Ok(v) => { print(v); }
+    Err(c) => { print(c); }
+  }
+}
+
+fn main() -> () ! io {
+  report(checked(21));
+  report(checked(-4));
+  report(checked(0));
+  report(Ok(5));
+  report(Err(3));
+}

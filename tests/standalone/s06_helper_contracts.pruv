@@ -1,0 +1,24 @@
+// flags: default | --no-verify | --trust-callers | --contract-budget 1000
+// expect: run
+fn add_small(a: i64, b: i64) -> i64
+  requires 0 <= a && a <= 1_000_000
+  requires 0 <= b && b <= 1_000_000
+  ensures result == a + b
+{
+  return a + b;
+}
+
+fn mid(a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= 1_000_000
+  ensures a <= result && result <= b
+{
+  return a + (b - a) / 2;
+}
+
+fn main() -> () ! io {
+  print(add_small(3, 4));
+  print(add_small(1_000_000, 1_000_000));
+  print(mid(10, 21));
+  print(mid(5, 5));
+  print(mid(0, 1_000_000));
+}

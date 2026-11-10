@@ -1,0 +1,8 @@
+// flags: default | --no-verify
+// expect: run
+// outdir: 한글 상위/두 번째 폴더 (x)/out dir
+// srcdir: 소스 폴더 c d
+fn main() -> () ! io {
+  print(123);
+  print(true);
+}

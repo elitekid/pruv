@@ -1,0 +1,8 @@
+// flags: --no-verify
+// expect: run
+fn main() -> () ! io {
+  print(1);
+  let z: i64 = 0;
+  print(10 / z);
+  print(2);
+}

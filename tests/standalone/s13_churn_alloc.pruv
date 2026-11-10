@@ -1,0 +1,25 @@
+// flags: default | --no-verify
+// expect: run
+fn churn(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1_000_000
+  ensures result == 8 * n
+{
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant total == 8 * i
+    decreases n - i
+  {
+    let mut a: [i64] = alloc(8, 1);
+    a[3] = i;
+    total = total + len(a);
+    i = i + 1;
+  }
+  return total;
+}
+
+fn main() -> () ! io, alloc {
+  print(churn(300_000));
+  print(churn(0));
+}

@@ -1,0 +1,9 @@
+// flags: default
+// expect: run
+// outdir: 출력 폴더 a b
+fn main() -> () ! io, alloc {
+  let mut a: [i64] = alloc(4, 2);
+  a[1] = 40;
+  print(a[0] + a[1]);
+  print(len(a));
+}

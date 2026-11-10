@@ -1,0 +1,32 @@
+// flags: default | --no-verify
+// expect: run
+fn twice_sum(n: i64) -> i64
+  requires 0 <= n && n <= 1_000_000
+  ensures result == 2 * n
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant s == 2 * i
+    decreases n - i
+  {
+    s = s + 2;
+    i = i + 1;
+  }
+  return s;
+}
+
+fn main() -> () ! io {
+  print(twice_sum(0));
+  print(twice_sum(1));
+  print(twice_sum(999_999));
+  let mut k: i64 = 5;
+  while k > 0
+    invariant 0 <= k && k <= 5
+    decreases k
+  {
+    print(k);
+    k = k - 1;
+  }
+}

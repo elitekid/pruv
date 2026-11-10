@@ -1,0 +1,22 @@
+// flags: default | --no-verify | --trust-callers
+// expect: run
+fn double(x: i64) -> i64
+  requires -1000 <= x && x <= 1000
+  ensures result == 2 * x
+{
+  return x * 2;
+}
+
+fn quad(x: i64) -> i64
+  requires -500 <= x && x <= 500
+  ensures result == 4 * x
+{
+  return double(double(x));
+}
+
+fn main() -> () ! io {
+  print(quad(7));
+  print(quad(-500));
+  print(quad(500));
+  print(double(quad(250)));
+}

@@ -1,0 +1,17 @@
+// flags: --no-verify
+// expect: run
+// negative dividend panics in safe mode; the loop multiplies until i64 overflow first
+fn main() -> () ! io {
+  let mut x: i64 = 3;
+  let mut i: i64 = 0;
+  while i < 100
+    invariant 0 <= i && i <= 100
+    decreases 100 - i
+  {
+    print(x);
+    x = x * x;
+    i = i + 1;
+  }
+  let n: i64 = 0 - 7;
+  print(n / 2);
+}

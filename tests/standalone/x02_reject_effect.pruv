@@ -1,0 +1,10 @@
+// flags: default | --no-verify
+// expect: reject
+fn quiet(x: i64) -> i64 {
+  print(x);
+  return x;
+}
+
+fn main() -> () ! io {
+  print(quiet(1));
+}

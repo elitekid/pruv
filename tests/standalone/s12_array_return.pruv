@@ -1,0 +1,29 @@
+// flags: default | --no-verify
+// expect: run
+fn make_range(n: i64) -> [i64] ! alloc
+  requires 0 <= n && n <= 1_000
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k] == k
+{
+  let mut a: [i64] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(a) == n
+    invariant forall k in 0..i: a[k] == k
+    decreases n - i
+  {
+    a[i] = i;
+    i = i + 1;
+  }
+  return a;
+}
+
+fn main() -> () ! io, alloc {
+  let a: [i64] = make_range(6);
+  let e: [i64] = make_range(0);
+  print(len(a));
+  print(a[0]);
+  print(a[5]);
+  print(len(e));
+}

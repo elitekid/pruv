@@ -10,12 +10,18 @@ build = "build.rs"
 name = "pruvc"
 path = "src/lib.rs"
 
-# src/main.rs (the real CLI) belongs to bundle I; only the dev tool exists in 0C.
+# 실제 CLI(M3 5단계)와 개발용 도구.
+[[bin]]
+name = "pruvc"
+path = "src/main.rs"
+
 [[bin]]
 name = "pruvc-ir-tool"
 path = "src/bin/pruvc-ir-tool.rs"
 
 [dependencies]
+pruv-core = { path = "../pruv-core" }
+pruv-proof = { path = "../pruv-proof" }
 llvm-sys = { version = "=221.1.2", features = ["force-static"] }
 tempfile = "=3.27.0"
 

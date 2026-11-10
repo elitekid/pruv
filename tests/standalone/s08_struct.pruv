@@ -1,0 +1,35 @@
+// flags: default | --no-verify
+// expect: run
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+struct Box {
+  origin: Point,
+  w: i64,
+  ok: bool,
+}
+
+fn manhattan(p: Point) -> i64
+  requires 0 <= p.x && p.x <= 1000
+  requires 0 <= p.y && p.y <= 1000
+  ensures result == p.x + p.y
+{
+  return p.x + p.y;
+}
+
+fn main() -> () ! io {
+  let mut p: Point = Point { x: 3, y: 4 };
+  let q: Point = p;
+  p.x = 10;
+  print(manhattan(p));
+  print(manhattan(q));
+  let mut b: Box = Box { origin: q, w: 7, ok: true };
+  b.origin.y = 500;
+  b.ok = false;
+  print(b.origin.x);
+  print(b.origin.y);
+  print(b.w);
+  print(b.ok);
+}

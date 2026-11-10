@@ -1,0 +1,15 @@
+// flags: default | --no-verify
+// expect: run
+fn main() -> () ! io, alloc {
+  let mut a: [i64] = alloc(5, 0);
+  a[0] = 10;
+  a[4] = -3;
+  a[2] = a[0] + a[4];
+  print(len(a));
+  print(a[0]);
+  print(a[1]);
+  print(a[2]);
+  print(a[4]);
+  let e: [i64] = alloc(0, 9);
+  print(len(e));
+}

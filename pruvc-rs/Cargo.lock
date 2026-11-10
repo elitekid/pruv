@@ -164,6 +164,8 @@ version = "0.0.1"
 dependencies = [
  "cc",
  "llvm-sys",
+ "pruv-core",
+ "pruv-proof",
  "tempfile",
 ]
 

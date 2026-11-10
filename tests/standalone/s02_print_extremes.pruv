@@ -1,0 +1,12 @@
+// flags: default | --no-verify
+// expect: run
+fn main() -> () ! io {
+  let big: i64 = 9223372036854775807;
+  let small: i64 = -9223372036854775807 - 1;
+  print(big);
+  print(small);
+  print(big - 1);
+  print(small + 1);
+  print(-big);
+  print(1_000_000_007);
+}

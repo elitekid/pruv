@@ -1,0 +1,13 @@
+// flags: --no-verify
+// expect: run
+fn positive(x: i64) -> i64
+  requires x > 0
+{
+  return x;
+}
+
+fn main() -> () ! io {
+  print(positive(5));
+  print(positive(0));
+  print(9);
+}

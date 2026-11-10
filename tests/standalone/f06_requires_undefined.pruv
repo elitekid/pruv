@@ -1,0 +1,14 @@
+// flags: --no-verify
+// expect: run
+fn at(a: [i64], i: i64) -> i64
+  requires a[i] > 0
+{
+  return a[0];
+}
+
+fn main() -> () ! io, alloc {
+  let a: [i64] = alloc(2, 1);
+  print(at(a, 1));
+  print(at(a, 5));
+  print(9);
+}
