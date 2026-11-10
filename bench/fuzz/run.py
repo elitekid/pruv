@@ -101,9 +101,62 @@ def rust_int(v):
     return "%di64" % v
 
 
+def deep_copy_arg(v):
+    """인자 복사: 배열(list)과 모든 dict(Option/Result, 구조체, 열거형)를 재귀로 복사한다."""
+    if isinstance(v, list):
+        return list(v)
+    if isinstance(v, dict):
+        return dict((k, deep_copy_arg(x)) for k, x in v.items())
+    return v
+
+
+def rust_option_result(ty, v):
+    """Option/Result dict({"tag": "Some", "v": 3} 등) -> Rust 리터럴, black_box 로 감싸 상수 접힘을 막는다."""
+    tag = v.get("tag") if isinstance(v, dict) else None
+    if ty == "Option<i64>":
+        if tag == "None":
+            lit = "None"
+        elif tag == "Some":
+            lit = "Some(%s)" % rust_int(v["v"])
+        else:
+            raise ValueError("Option<i64> 인자 형식이 아님: %r" % (v,))
+        return "std::hint::black_box::<Option<i64>>(%s)" % lit
+    if tag not in ("Ok", "Err"):
+        raise ValueError("Result<i64> 인자 형식이 아님: %r" % (v,))
+    return "std::hint::black_box::<Result<i64, i64>>(%s(%s))" % (tag, rust_int(v["v"]))
+
+
+def rust_value(mod, v):
+    """값 dict 를 Rust 식으로(재귀). 구조체/열거형 경로는 `<mod>::` 접두어(Rust·LLVM 모두 생성 모듈 최상단에
+    pub 타입이 있다: vowc/codegen.py emit_public_types, llvmgen 도 같은 함수를 쓴다)."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return rust_int(v)
+    if isinstance(v, dict):
+        if "struct" in v:
+            if not v["fields"]:
+                return "%s::%s {}" % (mod, v["struct"])
+            return "%s::%s { %s }" % (mod, v["struct"], ", ".join(
+                "%s: %s" % (f, rust_value(mod, x)) for f, x in v["fields"].items()))
+        if "enum" in v:
+            if not v["fields"]:
+                return "%s::%s::%s" % (mod, v["enum"], v["variant"])
+            return "%s::%s::%s(%s)" % (mod, v["enum"], v["variant"],
+                                       ", ".join(rust_value(mod, x) for x in v["fields"].values()))
+        tag = v.get("tag")
+        if tag == "None":
+            return "None"
+        if tag in ("Some", "Ok", "Err"):
+            return "%s(%s)" % (tag, rust_value(mod, v["v"]))
+    raise ValueError("값 형식을 모름: %r" % (v,))
+
+
 def batch_driver_source(specs):
     """specs: [(모듈 이름, 생성된 .rs 절대 경로, params, inputs, 시작 id)] -> main.rs 문자열.
-    argv[1] = 평탄한 실행 id. 각 (프로그램, 모드, 입력)에 id가 하나씩 배정된다."""
+    argv[1] = 평탄한 실행 id. 각 (프로그램, 모드, 입력)에 id가 하나씩 배정된다.
+    params 타입 문자열: "i64", "bool", "array", "Option<i64>", "Result<i64>", 그 밖은 사용자 타입 이름
+    (구조체/열거형 값 dict 를 `<모듈>::Point { .. }` 식으로 만든다). 출력은 모두 `{:?}`."""
     L = ['#![allow(dead_code, unused_imports)]']
     for modname, gen_rs, params, inputs, start in specs:
         L.append('#[path = "%s"] mod %s;' % (gen_rs, modname))
@@ -118,23 +171,31 @@ def batch_driver_source(specs):
                     parts.append("&a%d" % j)
                 elif ty == "bool":
                     parts.append("std::hint::black_box(%s)" % ("true" if v else "false"))
-                else:
+                elif ty in ("Option<i64>", "Result<i64>"):
+                    parts.append(rust_option_result(ty, v))
+                elif ty == "i64":
                     parts.append("std::hint::black_box(%s)" % rust_int(v))
-            L.append('        %d => { %s println!("{}", %s::f(%s)); }'
+                elif isinstance(v, dict) and ("struct" in v or "enum" in v):
+                    parts.append("std::hint::black_box(%s)" % rust_value(modname, v))
+                else:
+                    raise ValueError("지원하지 않는 매개변수 타입: %r" % (ty,))
+            L.append('        %d => { %s println!("{:?}", %s::f(%s)); }'
                      % (start + idx, " ".join(decl), modname, ", ".join(parts)))
     L += ["        _ => {}", "    }", "}"]
     return "\n".join(L) + "\n"
 
 
 def signature_from_src(src):
-    m = re.search(r"fn\s+f\s*\(([^)]*)\)\s*->\s*(\w+)", src)
+    # 반환형: i64 / bool / [i64] / () / Option<i64> / Result<i64> / 사용자 타입 (꺾쇠·대괄호 허용)
+    m = re.search(r"fn\s+f\s*\(([^)]*)\)\s*->\s*(\[\s*i64\s*\]|\(\s*\)|\w+(?:\s*<[^<>]*>)?)", src)
     if not m:
         raise ValueError("fn f(...) -> T 시그니처를 찾지 못함")
     params = []
     for p in [s.strip() for s in m.group(1).split(",") if s.strip()]:
         name, ty = [t.strip() for t in p.split(":", 1)]
+        ty = re.sub(r"\s+", "", ty)
         params.append([name, "array" if ty.startswith("[") else ty])
-    return params, m.group(2)
+    return params, re.sub(r"\s+", "", m.group(2))
 
 
 # ---------------------------------------------------------------- 1~2단계: 생성 + 검증
@@ -200,28 +261,36 @@ def phase_a(case, work):
 
 def safe_check(prog, args):
     try:
-        return oracle.check_requires(prog, "f", [list(a) if isinstance(a, list) else a for a in args])
+        return oracle.check_requires(prog, "f", [deep_copy_arg(a) for a in args])
     except Exception:
         return "error"
 
 
 def choose_inputs(rec, args, fixed=None):
     prog = rec["prog"]
+    rec["input_errors"] = 0
     if fixed is not None:
         inputs = fixed
     else:
         rng = random.Random("%s:%s:inputs" % (args.seed, rec["name"]))
         cands = generate.candidate_inputs(rec["case"], rng, 300)
         ok_l, bad_l, seen = [], [], set()
+        n_err, n_cand = 0, 0
         for a in cands:
-            key = json.dumps(a)
+            key = json.dumps(a, sort_keys=True)   # Option/Result dict 도 같은 키
             if key in seen:
                 continue
             seen.add(key)
+            n_cand += 1
             st = safe_check(prog, a)
             if st == "error":
+                n_err += 1      # 조용히 버리지 않고 센다
                 continue
             (ok_l if st == "ok" else bad_l).append(a)
+        rec["input_errors"] = n_err
+        if n_cand and n_err == n_cand:
+            rec["failures"].append({"kind": "harness_error",
+                                    "detail": "입력 후보 %d개 전부 requires 검사에서 예외(error)" % n_cand})
         n_ok = max(1, args.inputs * 3 // 4)
         n_bad = max(0, args.inputs - n_ok)
         sel_ok, sel_bad = ok_l[:n_ok], bad_l[:n_bad]
@@ -230,8 +299,12 @@ def choose_inputs(rec, args, fixed=None):
         elif len(sel_bad) < n_bad:
             sel_ok = ok_l[:n_ok + (n_bad - len(sel_bad))]
         inputs = sel_ok + sel_bad
+        if not inputs and not any(f.get("kind") == "harness_error" for f in rec["failures"]):
+            rec["failures"].append({"kind": "harness_error", "detail": "고른 입력이 0개 (후보 %d개, error %d개)"
+                                    % (n_cand, n_err)})
     rec["inputs"] = inputs
     rec["req"] = [safe_check(prog, a) for a in inputs]
+    rec["input_errors"] += sum(1 for r in rec["req"] if r == "error")
     rec["oracle_safe"] = [oracle_run(prog, a, "safe") for a in inputs]
     if rec["status"] == "verified":
         rec["oracle_proof"] = [oracle_run(prog, a, "proof") for a in inputs]
@@ -241,7 +314,7 @@ def choose_inputs(rec, args, fixed=None):
 def oracle_run(prog, a, mode):
     """오라클 한 번 실행. mode 인자를 모르는 옛 오라클이면 mode 없이 부른다."""
     def fresh():
-        return [list(v) if isinstance(v, list) else v for v in a]
+        return [deep_copy_arg(v) for v in a]
     try:
         try:
             return oracle.run(prog, "f", fresh(), mode=mode)
@@ -804,6 +877,7 @@ def main():
         inputs_run = 0
         outcome_counts = {}
         incomplete_total = 0
+        input_errors_total = 0
         no_sat = []
         for rec in progs:
             if "runs" in rec:
@@ -815,6 +889,7 @@ def main():
             if "req" in rec and not any(r == "ok" for r in rec["req"]):
                 no_sat.append(rec["name"])
             inputs_run += len(rec.get("inputs", []))
+            input_errors_total += rec.get("input_errors", 0)
             if "runs" in rec:
                 for k, o in enumerate(rec.get("oracle", [])):
                     key = "%s/req_%s/%s" % (rec["status"], rec["req"][k], o.get("kind"))
@@ -828,7 +903,7 @@ def main():
             "oracle_unsupported": counts["oracle_unsupported"], "oracle_parse_error": counts["oracle_parse_error"],
             "failed_in_phase_a": counts["failed_in_phase_a"],
             "verified": counts["verified"], "verified_used": len(verified), "programs_short": programs_short,
-            "incomplete": incomplete_total,
+            "incomplete": incomplete_total, "input_errors": input_errors_total,
             "no_sat_inputs": {"count": len(no_sat), "names": no_sat[:20]},
             "rejected": counts["rejected"],
             "rejected_by_code": rej_codes, "rejected_built_safe_modes": counts["rejected_built"],

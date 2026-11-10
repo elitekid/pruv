@@ -189,3 +189,21 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 | 감사(Claude opus) | 1묶음: 필수 1(기본 예산 고정 약해짐)·권고 5 → 고정·Ctrl-C 취소·범위 assert 반영, 확인 감사 필수 0. 2묶음: 필수 0, 권고 4 중 순서 시험 보강만 반영. 퍼저는 하위 대화에서 감사 2회 |
 
 - 남김: 퍼저가 뒷단마다 vowc를 따로 불러 LLVM 증명 빌드가 검증을 한 번 더 돈다(퍼저 속도 문제, 컴파일러 옵션이 필요해 미룸). 생성기는 아직 배열 여러 개·배열 반환·구조체·열거형·Option/Result를 만들지 않는다. 다음 퍼징은 생성기 범위를 넓히는 쪽.
+
+## 11. 퍼징 생성기 범위 넓히기 (2026-11-10)
+1. **오라클** (`bench/fuzz/oracle.py`, vowc 미사용 유지): 구조체·열거형 선언·리터럴·필드 읽기/대입(중첩), `match`(Option·Result·열거형), `Some/None/Ok/Err`, 배열 반환·배열 지역 재대입, 계약 전용 `is_some/some_val/is_ok/ok_val/err_val/is_variant/variant_field`와 구조체·열거형·Option `==`. 정의역 밖(`some_val(None)`, 다른 변이의 `variant_field` 등)은 기존 정의역 위반과 같은 경로(requires는 `requires undefined`). 값은 복사 의미. `format_value`는 Rust `{:?}` 모양(구조체 `Point { x: 1, y: -2 }`, 열거형 `Hit(Point { .. }, true)`).
+2. **하네스** (`run.py`): 드라이버가 Option·Result·구조체·열거형 인자를 Rust 식으로 만들고 반환은 모두 `{:?}`로 찍는다. requires 검사에서 예외가 난 입력 후보를 세어(`input_errors`) 전부 예외거나 입력 0개면 `harness_error`.
+3. **생성기** (`generate.py`) 새 틀: `twoarr`(배열 2개), `arrret`(`-> [i64]`, `copy`·`alloc`·보조 함수 결과로 재대입), `option`(Option/Result 반환, 보조 함수 결과 `match`), `optparam`(Option/Result 매개변수, 가드 있는/없는 `some_val`), `struct`(f 경계에서 구조체·열거형을 받고 돌려주는 시나리오 70%, requires 안 구조체 리터럴·열거형·Option 비교, `tap(v) ! io`로 필드·인자 평가 순서·match 대상 단일 평가·두 필드 오버플로 순서 관측, 빈 구조체·Result 필드·열거형 필드).
+4. **결과**: 컴파일러 결함은 찾지 못했다. 오라클의 구조체 출력을 일부러 틀리게 하면 `oracle_mismatch` 84건이 잡혀 비교는 살아 있다.
+
+| 확인 | 결과 |
+|---|---|
+| 퍼징 시드 51 (새 틀 1차) | 통과 109, 입력 1,028, 18초, 실패 0 |
+| 퍼징 시드 52 | 통과 809, 입력 6,586, 132초, 실패 0 |
+| 퍼징 시드 54 (f 경계 구조체 후보 128) | 통과 808, 입력 6,610, 145초, 실패 0 |
+| 퍼징 시드 56 (감사 반영 뒤) | 통과 805, 입력 6,550, 154초, 실패 0, `input_errors` 0 |
+| 회귀 `run_all --backend both` | 363/363, 108초(다른 작업 부하) |
+| 감사(Claude opus) | 오라클·하네스 거짓 음성 경로 없음. 필수 2(requires에 사용자 타입 비교 없음, 새 틀에 io 없음 — 생성기 범위 구멍)·권고 6 중 5 반영(오라클 인자 잎 검사는 rustc 빌드 오류로 드러나 남김). 고친 뒤 확인(Claude opus): 필수 0, 권고 7 중 늘 거절되던 두 변형(option_tap arg, tmatch Hit 전용)만 고침 → 표본 14/14 검증 통과, 시드 57 통과 212 실패 0(38초) |
+
+- 컴파일러는 바꾸지 않아 bench 성능·변이·g1은 돌리지 않았다.
+- 남김: 퍼저가 뒷단마다 vowc를 따로 불러 LLVM 증명 빌드가 검증을 한 번 더 돈다. requires 비교의 i128 초과 입력은 경계 requires 때문에 드물다. 일부 비교 requires(e2·qval·항상 참인 구조체 `==`·`Some(x)`)는 입력 힌트가 위반 값을 잘 못 만든다(확인 감사 권고, 남김).
