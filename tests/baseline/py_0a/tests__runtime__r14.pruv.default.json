@@ -1,0 +1,137 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "2",
+       "value": {
+        "col": "10",
+        "kind": "Unary",
+        "line": "2",
+        "op": "-",
+        "operand": {
+         "col": "11",
+         "kind": "Var",
+         "line": "2",
+         "name": "x",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "neg",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/r14.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "2",
+       "value": {
+        "col": "10",
+        "kind": "Unary",
+        "line": "2",
+        "op": "-",
+        "operand": {
+         "col": "11",
+         "kind": "Var",
+         "line": "2",
+         "name": "x",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "neg",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "overflow",
+    "col": 10,
+    "counterexample": {
+     "x": -9223372036854775808
+    },
+    "fix": "bound the operands with requires (element ranges, len(a) <= N) and loop invariants on accumulators",
+    "line": 2,
+    "message": "cannot prove no overflow in unary - in neg",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (not (and (>= (- x!1) (- 9223372036854775808)) (<= (- x!1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 10,
+    "fn": "neg",
+    "line": 2,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

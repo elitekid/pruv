@@ -7,3 +7,4 @@ __pycache__/
 /out.json
 target/
 bench/fuzz/out/
+tests/_diff_fail/

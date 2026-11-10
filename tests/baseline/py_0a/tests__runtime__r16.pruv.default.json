@@ -1,0 +1,159 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "2",
+       "value": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "2",
+          "name": "n",
+          "ty": "i64"
+         },
+         {
+          "col": "19",
+          "kind": "IntLit",
+          "line": "2",
+          "ty": "i64",
+          "value": "0"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "2",
+        "name": "alloc",
+        "ty": "array"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "array"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/r16.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "2",
+       "value": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "2",
+          "name": "n",
+          "ty": null
+         },
+         {
+          "col": "19",
+          "kind": "IntLit",
+          "line": "2",
+          "ty": null,
+          "value": "0"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "2",
+        "name": "alloc",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "array"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "alloc_negative",
+    "col": 10,
+    "counterexample": {
+     "n": 4611686018427387904
+    },
+    "fix": "prove 0 <= length <= 2^40",
+    "line": 2,
+    "message": "cannot prove alloc length in 0..2^40 in mk",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (not (and (>= n!1 0) (<= n!1 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 10,
+    "fn": "mk",
+    "line": 2,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

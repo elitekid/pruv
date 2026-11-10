@@ -1,0 +1,32 @@
+fn fill(n: i64) -> [i64] ! alloc
+  requires n >= 0 && n <= 1_000
+  ensures len(result) == n
+{
+  let mut out: [i64] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(out) == n
+    decreases n - i
+  {
+    out[i] = i;
+    i = i + 1;
+  }
+  return out;
+}
+
+fn fill_bad(n: i64) -> [i64] ! alloc
+  requires n >= 1 && n <= 1_000
+{
+  let mut out: [i64] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(out) == n
+    decreases n - i
+  {
+    out[i + 1] = i;
+    i = i + 1;
+  }
+  return out;
+}

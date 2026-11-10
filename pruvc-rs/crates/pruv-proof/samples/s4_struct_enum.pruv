@@ -1,0 +1,38 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+enum Shape {
+  Empty,
+  Circle(r: i64),
+  Rect(p: Point, w: i64),
+}
+
+fn area(s: Shape) -> i64
+  requires is_variant(s, Shape::Circle) ==> (variant_field(s, Shape::Circle, r) >= 0 && variant_field(s, Shape::Circle, r) <= 1_000)
+  ensures result >= 0
+{
+  match s {
+    Shape::Empty => { return 0; }
+    Shape::Circle(r) => { return r + 1; }
+    Shape::Rect(p, w) => { return w; }
+  }
+}
+
+fn walk(p: Point, n: i64) -> Point
+  requires n >= 0 && n <= 1_000
+  ensures result.y == p.y
+{
+  let mut q: Point = p;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant q.y == p.y
+    decreases n - i
+  {
+    q.x = q.x + 1;
+    i = i + 1;
+  }
+  return q;
+}

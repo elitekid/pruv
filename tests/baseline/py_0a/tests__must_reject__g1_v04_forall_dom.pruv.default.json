@@ -1,0 +1,448 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": "i64",
+        "value": "1"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "2",
+     "name": "need",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "body": {
+        "col": "37",
+        "kind": "Binary",
+        "left": {
+         "col": "32",
+         "kind": "Binary",
+         "left": {
+          "col": "30",
+          "kind": "Var",
+          "line": "3",
+          "name": "k",
+          "ty": "i64"
+         },
+         "line": "3",
+         "op": "==",
+         "right": {
+          "col": "35",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool"
+        },
+        "line": "3",
+        "op": "||",
+        "right": {
+         "col": "76",
+         "kind": "Binary",
+         "left": {
+          "col": "40",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "3",
+          "ty": "i64",
+          "value": {
+           "col": "54",
+           "kind": "Var",
+           "line": "3",
+           "name": "e",
+           "ty": "Event"
+          },
+          "variant": "Hit"
+         },
+         "line": "3",
+         "op": ">",
+         "right": {
+          "col": "78",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool"
+        },
+        "ty": "bool"
+       },
+       "col": "12",
+       "hi": {
+        "col": "27",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": "i64",
+        "value": "2"
+       },
+       "kind": "forall",
+       "line": "3",
+       "lo": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool",
+       "var": "k"
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "22",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "args": [
+         {
+          "args": [],
+          "col": "34",
+          "enum_name": "Event",
+          "kind": "EnumCtor",
+          "line": "5",
+          "ty": "Event",
+          "variant": "Empty"
+         }
+        ],
+        "col": "29",
+        "kind": "Call",
+        "line": "5",
+        "name": "need",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "5",
+     "name": "caller",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "14",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Empty"
+      },
+      {
+       "col": "21",
+       "fields": [
+        {
+         "col": "25",
+         "kind": "FieldDecl",
+         "line": "1",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "Event"
+    }
+   ],
+   "order": [
+    "Event"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_v04_forall_dom.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": null,
+        "value": "1"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "2",
+     "name": "need",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "body": {
+        "col": "37",
+        "kind": "Binary",
+        "left": {
+         "col": "32",
+         "kind": "Binary",
+         "left": {
+          "col": "30",
+          "kind": "Var",
+          "line": "3",
+          "name": "k",
+          "ty": null
+         },
+         "line": "3",
+         "op": "==",
+         "right": {
+          "col": "35",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null
+        },
+        "line": "3",
+        "op": "||",
+        "right": {
+         "col": "76",
+         "kind": "Binary",
+         "left": {
+          "col": "40",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "3",
+          "ty": null,
+          "value": {
+           "col": "54",
+           "kind": "Var",
+           "line": "3",
+           "name": "e",
+           "ty": null
+          },
+          "variant": "Hit"
+         },
+         "line": "3",
+         "op": ">",
+         "right": {
+          "col": "78",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null
+        },
+        "ty": null
+       },
+       "col": "12",
+       "hi": {
+        "col": "27",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": null,
+        "value": "2"
+       },
+       "kind": "forall",
+       "line": "3",
+       "lo": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null,
+       "var": "k"
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "22",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "args": [
+         {
+          "args": [],
+          "col": "34",
+          "enum_name": "Event",
+          "kind": "EnumCtor",
+          "line": "5",
+          "ty": null,
+          "variant": "Empty"
+         }
+        ],
+        "col": "29",
+        "kind": "Call",
+        "line": "5",
+        "name": "need",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "5",
+     "name": "caller",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "14",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Empty"
+      },
+      {
+       "col": "21",
+       "fields": [
+        {
+         "col": "25",
+         "kind": "FieldDecl",
+         "line": "1",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "variant_domain",
+    "col": 12,
+    "counterexample": {
+     "e": "Event::Empty"
+    },
+    "fix": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
+    "line": 3,
+    "message": "cannot prove variant_field lookups in requires (line 3) are defined in need",
+    "stage": "verify"
+   },
+   {
+    "code": "call_requires",
+    "col": 29,
+    "counterexample": {},
+    "fix": "make the callee's requires hold before the call",
+    "line": 5,
+    "message": "cannot prove precondition of need (line 3) in caller",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (let ((a!1 (forall ((k!dk2 Int))\n             (let ((a!1 (forall ((k!dj2 Int))\n                          (=> (and (<= 0 k!dj2) (< k!dj2 k!dk2))\n                              (or (= 0 k!dj2)\n                                  (< 0 (|m1t0!Event::Hit.value| e!1)))))))\n               (=> (and (<= 0 k!dk2) (> 2 k!dk2) a!1)\n                   (=> (not (= 0 k!dk2)) ((_ is |m1t0!Event::Hit|) e!1)))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "variant_domain",
+    "col": 12,
+    "fn": "need",
+    "line": 3,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(assert (let ((a!1 (forall ((k!q1 Int))\n             (=> (and (<= 0 k!q1) (> 2 k!q1))\n                 (or (= 0 k!q1)\n                     (< 0 (|m1t0!Event::Hit.value| |m1t0!Event::Empty|)))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 29,
+    "fn": "caller",
+    "line": 5,
+    "seq": 1
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

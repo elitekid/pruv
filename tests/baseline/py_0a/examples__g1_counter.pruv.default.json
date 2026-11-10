@@ -1,0 +1,1849 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "14",
+       "mutable": true,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "fields": [
+         {
+          "col": "30",
+          "kind": "FieldInit",
+          "line": "14",
+          "name": "x",
+          "value": {
+           "col": "33",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": "i64",
+           "value": "0"
+          }
+         },
+         {
+          "col": "36",
+          "kind": "FieldInit",
+          "line": "14",
+          "name": "y",
+          "value": {
+           "col": "39",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": "i64",
+           "value": "7"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "14",
+        "name": "Point",
+        "ty": "Point"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "15",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "15",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "fields": [
+          "x"
+         ],
+         "kind": "FieldAssign",
+         "line": "21",
+         "name": "p",
+         "value": {
+          "col": "11",
+          "kind": "IntLit",
+          "line": "21",
+          "ty": "i64",
+          "value": "1"
+         }
+        },
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "22",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "22",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "22",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "22",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "16",
+         "name": "i",
+         "ty": "i64"
+        },
+        "line": "16",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "16",
+         "ty": "i64",
+         "value": "1"
+        },
+        "ty": "bool"
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "19",
+         "ty": "i64",
+         "value": "1"
+        },
+        "line": "19",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "19",
+         "name": "i",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "17",
+           "ty": "i64",
+           "value": "0"
+          },
+          "line": "17",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "17",
+           "name": "i",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "line": "17",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "17",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "17",
+          "op": "<=",
+          "right": {
+           "col": "30",
+           "kind": "IntLit",
+           "line": "17",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        },
+        {
+         "col": "19",
+         "kind": "Binary",
+         "left": {
+          "base": {
+           "col": "15",
+           "kind": "Var",
+           "line": "18",
+           "name": "p",
+           "ty": "Point"
+          },
+          "col": "15",
+          "field": "y",
+          "kind": "FieldAccess",
+          "line": "18",
+          "ty": "i64"
+         },
+         "line": "18",
+         "op": "==",
+         "right": {
+          "col": "22",
+          "kind": "IntLit",
+          "line": "18",
+          "ty": "i64",
+          "value": "7"
+         },
+         "ty": "bool"
+        }
+       ],
+       "kind": "While",
+       "line": "16"
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "10",
+          "kind": "Var",
+          "line": "24",
+          "name": "p",
+          "ty": "Point"
+         },
+         "col": "10",
+         "field": "y",
+         "kind": "FieldAccess",
+         "line": "24",
+         "ty": "i64"
+        },
+        "line": "24",
+        "op": "==",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "24",
+         "ty": "i64",
+         "value": "7"
+        },
+        "ty": "bool"
+       },
+       "kind": "Assert",
+       "line": "24"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "13",
+     "name": "kept",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "31",
+       "mutable": true,
+       "name": "c",
+       "type": "Counter",
+       "value": {
+        "col": "24",
+        "fields": [
+         {
+          "col": "34",
+          "kind": "FieldInit",
+          "line": "31",
+          "name": "count",
+          "value": {
+           "col": "41",
+           "kind": "IntLit",
+           "line": "31",
+           "ty": "i64",
+           "value": "0"
+          }
+         },
+         {
+          "col": "44",
+          "kind": "FieldInit",
+          "line": "31",
+          "name": "limit",
+          "value": {
+           "col": "51",
+           "kind": "Var",
+           "line": "31",
+           "name": "n",
+           "ty": "i64"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "31",
+        "name": "Counter",
+        "ty": "Counter"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "fields": [
+          "count"
+         ],
+         "kind": "FieldAssign",
+         "line": "37",
+         "name": "c",
+         "value": {
+          "col": "23",
+          "kind": "Binary",
+          "left": {
+           "base": {
+            "col": "15",
+            "kind": "Var",
+            "line": "37",
+            "name": "c",
+            "ty": "Counter"
+           },
+           "col": "15",
+           "field": "count",
+           "kind": "FieldAccess",
+           "line": "37",
+           "ty": "i64"
+          },
+          "line": "37",
+          "op": "+",
+          "right": {
+           "col": "25",
+           "kind": "IntLit",
+           "line": "37",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "9",
+          "kind": "Var",
+          "line": "32",
+          "name": "c",
+          "ty": "Counter"
+         },
+         "col": "9",
+         "field": "count",
+         "kind": "FieldAccess",
+         "line": "32",
+         "ty": "i64"
+        },
+        "line": "32",
+        "op": "<",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "32",
+         "name": "n",
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "Var",
+         "line": "35",
+         "name": "n",
+         "ty": "i64"
+        },
+        "line": "35",
+        "op": "-",
+        "right": {
+         "base": {
+          "col": "19",
+          "kind": "Var",
+          "line": "35",
+          "name": "c",
+          "ty": "Counter"
+         },
+         "col": "19",
+         "field": "count",
+         "kind": "FieldAccess",
+         "line": "35",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       },
+       "invariants": [
+        {
+         "col": "28",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "33",
+           "ty": "i64",
+           "value": "0"
+          },
+          "line": "33",
+          "op": "<=",
+          "right": {
+           "base": {
+            "col": "20",
+            "kind": "Var",
+            "line": "33",
+            "name": "c",
+            "ty": "Counter"
+           },
+           "col": "20",
+           "field": "count",
+           "kind": "FieldAccess",
+           "line": "33",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "line": "33",
+         "op": "&&",
+         "right": {
+          "col": "39",
+          "kind": "Binary",
+          "left": {
+           "base": {
+            "col": "31",
+            "kind": "Var",
+            "line": "33",
+            "name": "c",
+            "ty": "Counter"
+           },
+           "col": "31",
+           "field": "count",
+           "kind": "FieldAccess",
+           "line": "33",
+           "ty": "i64"
+          },
+          "line": "33",
+          "op": "<=",
+          "right": {
+           "col": "42",
+           "kind": "Var",
+           "line": "33",
+           "name": "n",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        },
+        {
+         "col": "23",
+         "kind": "Binary",
+         "left": {
+          "base": {
+           "col": "15",
+           "kind": "Var",
+           "line": "34",
+           "name": "c",
+           "ty": "Counter"
+          },
+          "col": "15",
+          "field": "limit",
+          "kind": "FieldAccess",
+          "line": "34",
+          "ty": "i64"
+         },
+         "line": "34",
+         "op": "==",
+         "right": {
+          "col": "26",
+          "kind": "Var",
+          "line": "34",
+          "name": "n",
+          "ty": "i64"
+         },
+         "ty": "bool"
+        }
+       ],
+       "kind": "While",
+       "line": "32"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "39",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "39",
+        "name": "c",
+        "ty": "Counter"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "29",
+       "kind": "Binary",
+       "left": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "11",
+          "kind": "Var",
+          "line": "29",
+          "name": "result",
+          "ty": "Counter"
+         },
+         "col": "11",
+         "field": "count",
+         "kind": "FieldAccess",
+         "line": "29",
+         "ty": "i64"
+        },
+        "line": "29",
+        "op": "==",
+        "right": {
+         "col": "27",
+         "kind": "Var",
+         "line": "29",
+         "name": "n",
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "line": "29",
+       "op": "&&",
+       "right": {
+        "col": "45",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "32",
+          "kind": "Var",
+          "line": "29",
+          "name": "result",
+          "ty": "Counter"
+         },
+         "col": "32",
+         "field": "limit",
+         "kind": "FieldAccess",
+         "line": "29",
+         "ty": "i64"
+        },
+        "line": "29",
+        "op": "==",
+        "right": {
+         "col": "48",
+         "kind": "Var",
+         "line": "29",
+         "name": "n",
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "27",
+     "name": "count_to",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "28",
+         "ty": "i64",
+         "value": "0"
+        },
+        "line": "28",
+        "op": "<=",
+        "right": {
+         "col": "17",
+         "kind": "Var",
+         "line": "28",
+         "name": "n",
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "line": "28",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "28",
+         "name": "n",
+         "ty": "i64"
+        },
+        "line": "28",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "28",
+         "ty": "i64",
+         "value": "1000000"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "Counter"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [],
+        "col": "3",
+        "kind": "Call",
+        "line": "43",
+        "name": "kept",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "43"
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "44",
+       "mutable": false,
+       "name": "c",
+       "type": "Counter",
+       "value": {
+        "args": [
+         {
+          "col": "29",
+          "kind": "IntLit",
+          "line": "44",
+          "ty": "i64",
+          "value": "10"
+         }
+        ],
+        "col": "20",
+        "kind": "Call",
+        "line": "44",
+        "name": "count_to",
+        "ty": "Counter"
+       }
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "col": "9",
+           "kind": "Var",
+           "line": "45",
+           "name": "c",
+           "ty": "Counter"
+          },
+          "col": "9",
+          "field": "count",
+          "kind": "FieldAccess",
+          "line": "45",
+          "ty": "i64"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "45",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "45"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "42",
+     "name": "main",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "7",
+       "name": "count",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "8",
+       "name": "limit",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "6",
+     "name": "Counter"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    },
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Counter"
+    }
+   ],
+   "order": [
+    "Point",
+    "Counter"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "examples/g1_counter.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "14",
+       "mutable": true,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "fields": [
+         {
+          "col": "30",
+          "kind": "FieldInit",
+          "line": "14",
+          "name": "x",
+          "value": {
+           "col": "33",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": null,
+           "value": "0"
+          }
+         },
+         {
+          "col": "36",
+          "kind": "FieldInit",
+          "line": "14",
+          "name": "y",
+          "value": {
+           "col": "39",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": null,
+           "value": "7"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "14",
+        "name": "Point",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "15",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "15",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "fields": [
+          "x"
+         ],
+         "kind": "FieldAssign",
+         "line": "21",
+         "name": "p",
+         "value": {
+          "col": "11",
+          "kind": "IntLit",
+          "line": "21",
+          "ty": null,
+          "value": "1"
+         }
+        },
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "22",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "22",
+           "name": "i",
+           "ty": null
+          },
+          "line": "22",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "22",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "16",
+         "name": "i",
+         "ty": null
+        },
+        "line": "16",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "16",
+         "ty": null,
+         "value": "1"
+        },
+        "ty": null
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "19",
+         "ty": null,
+         "value": "1"
+        },
+        "line": "19",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "19",
+         "name": "i",
+         "ty": null
+        },
+        "ty": null
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "17",
+           "ty": null,
+           "value": "0"
+          },
+          "line": "17",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "17",
+           "name": "i",
+           "ty": null
+          },
+          "ty": null
+         },
+         "line": "17",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "17",
+           "name": "i",
+           "ty": null
+          },
+          "line": "17",
+          "op": "<=",
+          "right": {
+           "col": "30",
+           "kind": "IntLit",
+           "line": "17",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         },
+         "ty": null
+        },
+        {
+         "col": "19",
+         "kind": "Binary",
+         "left": {
+          "base": {
+           "col": "15",
+           "kind": "Var",
+           "line": "18",
+           "name": "p",
+           "ty": null
+          },
+          "col": "15",
+          "field": "y",
+          "kind": "FieldAccess",
+          "line": "18",
+          "ty": null
+         },
+         "line": "18",
+         "op": "==",
+         "right": {
+          "col": "22",
+          "kind": "IntLit",
+          "line": "18",
+          "ty": null,
+          "value": "7"
+         },
+         "ty": null
+        }
+       ],
+       "kind": "While",
+       "line": "16"
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "10",
+          "kind": "Var",
+          "line": "24",
+          "name": "p",
+          "ty": null
+         },
+         "col": "10",
+         "field": "y",
+         "kind": "FieldAccess",
+         "line": "24",
+         "ty": null
+        },
+        "line": "24",
+        "op": "==",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "24",
+         "ty": null,
+         "value": "7"
+        },
+        "ty": null
+       },
+       "kind": "Assert",
+       "line": "24"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "13",
+     "name": "kept",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "31",
+       "mutable": true,
+       "name": "c",
+       "type": "Counter",
+       "value": {
+        "col": "24",
+        "fields": [
+         {
+          "col": "34",
+          "kind": "FieldInit",
+          "line": "31",
+          "name": "count",
+          "value": {
+           "col": "41",
+           "kind": "IntLit",
+           "line": "31",
+           "ty": null,
+           "value": "0"
+          }
+         },
+         {
+          "col": "44",
+          "kind": "FieldInit",
+          "line": "31",
+          "name": "limit",
+          "value": {
+           "col": "51",
+           "kind": "Var",
+           "line": "31",
+           "name": "n",
+           "ty": null
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "31",
+        "name": "Counter",
+        "ty": null
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "fields": [
+          "count"
+         ],
+         "kind": "FieldAssign",
+         "line": "37",
+         "name": "c",
+         "value": {
+          "col": "23",
+          "kind": "Binary",
+          "left": {
+           "base": {
+            "col": "15",
+            "kind": "Var",
+            "line": "37",
+            "name": "c",
+            "ty": null
+           },
+           "col": "15",
+           "field": "count",
+           "kind": "FieldAccess",
+           "line": "37",
+           "ty": null
+          },
+          "line": "37",
+          "op": "+",
+          "right": {
+           "col": "25",
+           "kind": "IntLit",
+           "line": "37",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "9",
+          "kind": "Var",
+          "line": "32",
+          "name": "c",
+          "ty": null
+         },
+         "col": "9",
+         "field": "count",
+         "kind": "FieldAccess",
+         "line": "32",
+         "ty": null
+        },
+        "line": "32",
+        "op": "<",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "32",
+         "name": "n",
+         "ty": null
+        },
+        "ty": null
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "Var",
+         "line": "35",
+         "name": "n",
+         "ty": null
+        },
+        "line": "35",
+        "op": "-",
+        "right": {
+         "base": {
+          "col": "19",
+          "kind": "Var",
+          "line": "35",
+          "name": "c",
+          "ty": null
+         },
+         "col": "19",
+         "field": "count",
+         "kind": "FieldAccess",
+         "line": "35",
+         "ty": null
+        },
+        "ty": null
+       },
+       "invariants": [
+        {
+         "col": "28",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "33",
+           "ty": null,
+           "value": "0"
+          },
+          "line": "33",
+          "op": "<=",
+          "right": {
+           "base": {
+            "col": "20",
+            "kind": "Var",
+            "line": "33",
+            "name": "c",
+            "ty": null
+           },
+           "col": "20",
+           "field": "count",
+           "kind": "FieldAccess",
+           "line": "33",
+           "ty": null
+          },
+          "ty": null
+         },
+         "line": "33",
+         "op": "&&",
+         "right": {
+          "col": "39",
+          "kind": "Binary",
+          "left": {
+           "base": {
+            "col": "31",
+            "kind": "Var",
+            "line": "33",
+            "name": "c",
+            "ty": null
+           },
+           "col": "31",
+           "field": "count",
+           "kind": "FieldAccess",
+           "line": "33",
+           "ty": null
+          },
+          "line": "33",
+          "op": "<=",
+          "right": {
+           "col": "42",
+           "kind": "Var",
+           "line": "33",
+           "name": "n",
+           "ty": null
+          },
+          "ty": null
+         },
+         "ty": null
+        },
+        {
+         "col": "23",
+         "kind": "Binary",
+         "left": {
+          "base": {
+           "col": "15",
+           "kind": "Var",
+           "line": "34",
+           "name": "c",
+           "ty": null
+          },
+          "col": "15",
+          "field": "limit",
+          "kind": "FieldAccess",
+          "line": "34",
+          "ty": null
+         },
+         "line": "34",
+         "op": "==",
+         "right": {
+          "col": "26",
+          "kind": "Var",
+          "line": "34",
+          "name": "n",
+          "ty": null
+         },
+         "ty": null
+        }
+       ],
+       "kind": "While",
+       "line": "32"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "39",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "39",
+        "name": "c",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "29",
+       "kind": "Binary",
+       "left": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "11",
+          "kind": "Var",
+          "line": "29",
+          "name": "result",
+          "ty": null
+         },
+         "col": "11",
+         "field": "count",
+         "kind": "FieldAccess",
+         "line": "29",
+         "ty": null
+        },
+        "line": "29",
+        "op": "==",
+        "right": {
+         "col": "27",
+         "kind": "Var",
+         "line": "29",
+         "name": "n",
+         "ty": null
+        },
+        "ty": null
+       },
+       "line": "29",
+       "op": "&&",
+       "right": {
+        "col": "45",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "32",
+          "kind": "Var",
+          "line": "29",
+          "name": "result",
+          "ty": null
+         },
+         "col": "32",
+         "field": "limit",
+         "kind": "FieldAccess",
+         "line": "29",
+         "ty": null
+        },
+        "line": "29",
+        "op": "==",
+        "right": {
+         "col": "48",
+         "kind": "Var",
+         "line": "29",
+         "name": "n",
+         "ty": null
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "27",
+     "name": "count_to",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "28",
+         "ty": null,
+         "value": "0"
+        },
+        "line": "28",
+        "op": "<=",
+        "right": {
+         "col": "17",
+         "kind": "Var",
+         "line": "28",
+         "name": "n",
+         "ty": null
+        },
+        "ty": null
+       },
+       "line": "28",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "28",
+         "name": "n",
+         "ty": null
+        },
+        "line": "28",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "28",
+         "ty": null,
+         "value": "1000000"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "Counter"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [],
+        "col": "3",
+        "kind": "Call",
+        "line": "43",
+        "name": "kept",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "43"
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "44",
+       "mutable": false,
+       "name": "c",
+       "type": "Counter",
+       "value": {
+        "args": [
+         {
+          "col": "29",
+          "kind": "IntLit",
+          "line": "44",
+          "ty": null,
+          "value": "10"
+         }
+        ],
+        "col": "20",
+        "kind": "Call",
+        "line": "44",
+        "name": "count_to",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "col": "9",
+           "kind": "Var",
+           "line": "45",
+           "name": "c",
+           "ty": null
+          },
+          "col": "9",
+          "field": "count",
+          "kind": "FieldAccess",
+          "line": "45",
+          "ty": null
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "45",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "45"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "42",
+     "name": "main",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "7",
+       "name": "count",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "8",
+       "name": "limit",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "6",
+     "name": "Counter"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (<= 0 0) (<= 0 1))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 22,
+    "fn": "kept",
+    "line": 17,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(assert (not (= 7 (m1t0!Point.y (m1t0!Point 0 7)))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 19,
+    "fn": "kept",
+    "line": 18,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (= 7 (m1t0!Point.y p!h1)))\n(assert (> 1 i!1))\n(assert (not (>= (- 1 i!1) 0)))\n"
+     }
+    ],
+    "code": "decreases_nonneg",
+    "col": 17,
+    "fn": "kept",
+    "line": 19,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (= 7 (m1t0!Point.y p!h1)))\n(assert (> 1 i!1))\n(assert (not (and (>= (+ i!1 1) (- 9223372036854775808))\n          (<= (+ i!1 1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "kept",
+    "line": 22,
+    "seq": 3
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (= 7 (m1t0!Point.y p!h1)))\n(assert (> 1 i!1))\n(assert (not (and (<= 0 (+ i!1 1)) (>= 1 (+ i!1 1)))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 22,
+    "fn": "kept",
+    "line": 17,
+    "seq": 4
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (= 7 (m1t0!Point.y p!h1)))\n(assert (> 1 i!1))\n(assert (let ((a!1 (= 7 (m1t0!Point.y (m1t0!Point 1 (m1t0!Point.y p!h1))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 19,
+    "fn": "kept",
+    "line": 18,
+    "seq": 5
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (= 7 (m1t0!Point.y p!h1)))\n(assert (> 1 i!1))\n(assert (not (< (- 1 (+ i!1 1)) (- 1 i!1))))\n"
+     }
+    ],
+    "code": "decreases_decrease",
+    "col": 17,
+    "fn": "kept",
+    "line": 19,
+    "seq": 6
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!3 () Int)\n(declare-fun p!h3 () m1t0!Point)\n(assert (and (>= i!3 (- 9223372036854775808)) (<= i!3 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h3) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h3) 9223372036854775807)\n     (>= (m1t0!Point.y p!h3) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h3) 9223372036854775807)))\n(assert (and (<= 0 i!3) (>= 1 i!3)))\n(assert (= 7 (m1t0!Point.y p!h3)))\n(assert (not (> 1 i!3)))\n(assert (not (= 7 (m1t0!Point.y p!h3))))\n"
+     }
+    ],
+    "code": "assert",
+    "col": 3,
+    "fn": "kept",
+    "line": 24,
+    "seq": 7
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (let ((a!1 (and (<= 0 (m1t1!Counter.count (m1t1!Counter 0 n!1)))\n                (<= (m1t1!Counter.count (m1t1!Counter 0 n!1)) n!1))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 28,
+    "fn": "count_to",
+    "line": 33,
+    "seq": 8
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (not (= (m1t1!Counter.limit (m1t1!Counter 0 n!1)) n!1)))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 23,
+    "fn": "count_to",
+    "line": 34,
+    "seq": 9
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(declare-fun c!h1 () m1t1!Counter)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (and (>= (m1t1!Counter.count c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.count c!h1) 9223372036854775807)\n     (>= (m1t1!Counter.limit c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.limit c!h1) 9223372036854775807)))\n(assert (and (<= 0 (m1t1!Counter.count c!h1)) (<= (m1t1!Counter.count c!h1) n!1)))\n(assert (= (m1t1!Counter.limit c!h1) n!1))\n(assert (< (m1t1!Counter.count c!h1) n!1))\n(assert (not (>= (- n!1 (m1t1!Counter.count c!h1)) 0)))\n"
+     }
+    ],
+    "code": "decreases_nonneg",
+    "col": 17,
+    "fn": "count_to",
+    "line": 35,
+    "seq": 10
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(declare-fun c!h1 () m1t1!Counter)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (and (>= (m1t1!Counter.count c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.count c!h1) 9223372036854775807)\n     (>= (m1t1!Counter.limit c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.limit c!h1) 9223372036854775807)))\n(assert (and (<= 0 (m1t1!Counter.count c!h1)) (<= (m1t1!Counter.count c!h1) n!1)))\n(assert (= (m1t1!Counter.limit c!h1) n!1))\n(assert (< (m1t1!Counter.count c!h1) n!1))\n(assert (let ((a!1 (and (>= (+ (m1t1!Counter.count c!h1) 1) (- 9223372036854775808))\n                (<= (+ (m1t1!Counter.count c!h1) 1) 9223372036854775807))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 23,
+    "fn": "count_to",
+    "line": 37,
+    "seq": 11
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(declare-fun c!h1 () m1t1!Counter)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (and (>= (m1t1!Counter.count c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.count c!h1) 9223372036854775807)\n     (>= (m1t1!Counter.limit c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.limit c!h1) 9223372036854775807)))\n(assert (and (<= 0 (m1t1!Counter.count c!h1)) (<= (m1t1!Counter.count c!h1) n!1)))\n(assert (= (m1t1!Counter.limit c!h1) n!1))\n(assert (< (m1t1!Counter.count c!h1) n!1))\n(assert (let ((a!1 (m1t1!Counter.count\n             (m1t1!Counter (+ (m1t1!Counter.count c!h1) 1)\n                           (m1t1!Counter.limit c!h1)))))\n  (not (and (<= 0 a!1) (<= a!1 n!1)))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 28,
+    "fn": "count_to",
+    "line": 33,
+    "seq": 12
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(declare-fun c!h1 () m1t1!Counter)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (and (>= (m1t1!Counter.count c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.count c!h1) 9223372036854775807)\n     (>= (m1t1!Counter.limit c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.limit c!h1) 9223372036854775807)))\n(assert (and (<= 0 (m1t1!Counter.count c!h1)) (<= (m1t1!Counter.count c!h1) n!1)))\n(assert (= (m1t1!Counter.limit c!h1) n!1))\n(assert (< (m1t1!Counter.count c!h1) n!1))\n(assert (let ((a!1 (m1t1!Counter.limit\n             (m1t1!Counter (+ (m1t1!Counter.count c!h1) 1)\n                           (m1t1!Counter.limit c!h1)))))\n  (not (= a!1 n!1))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 23,
+    "fn": "count_to",
+    "line": 34,
+    "seq": 13
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(declare-fun c!h1 () m1t1!Counter)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (and (>= (m1t1!Counter.count c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.count c!h1) 9223372036854775807)\n     (>= (m1t1!Counter.limit c!h1) (- 9223372036854775808))\n     (<= (m1t1!Counter.limit c!h1) 9223372036854775807)))\n(assert (and (<= 0 (m1t1!Counter.count c!h1)) (<= (m1t1!Counter.count c!h1) n!1)))\n(assert (= (m1t1!Counter.limit c!h1) n!1))\n(assert (< (m1t1!Counter.count c!h1) n!1))\n(assert (let ((a!1 (m1t1!Counter.count\n             (m1t1!Counter (+ (m1t1!Counter.count c!h1) 1)\n                           (m1t1!Counter.limit c!h1)))))\n  (not (< (- n!1 a!1) (- n!1 (m1t1!Counter.count c!h1))))))\n"
+     }
+    ],
+    "code": "decreases_decrease",
+    "col": 17,
+    "fn": "count_to",
+    "line": 35,
+    "seq": 14
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!Counter 0)) (((m1t1!Counter (m1t1!Counter.count Int) (m1t1!Counter.limit Int)))))\n(declare-fun n!1 () Int)\n(declare-fun c!h2 () m1t1!Counter)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (and (<= 0 n!1) (>= 1000000 n!1)))\n(assert (and (>= (m1t1!Counter.count c!h2) (- 9223372036854775808))\n     (<= (m1t1!Counter.count c!h2) 9223372036854775807)\n     (>= (m1t1!Counter.limit c!h2) (- 9223372036854775808))\n     (<= (m1t1!Counter.limit c!h2) 9223372036854775807)))\n(assert (and (<= 0 (m1t1!Counter.count c!h2)) (<= (m1t1!Counter.count c!h2) n!1)))\n(assert (= (m1t1!Counter.limit c!h2) n!1))\n(assert (not (< (m1t1!Counter.count c!h2) n!1)))\n(assert (not (and (= (m1t1!Counter.count c!h2) n!1) (= (m1t1!Counter.limit c!h2) n!1))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "count_to",
+    "line": 39,
+    "seq": 15
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (<= 0 10) (<= 10 1000000))))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 20,
+    "fn": "main",
+    "line": 44,
+    "seq": 16
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

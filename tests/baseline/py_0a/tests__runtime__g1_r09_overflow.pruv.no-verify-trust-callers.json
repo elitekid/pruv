@@ -1,0 +1,270 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": true,
+       "name": "q",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "kind": "Var",
+        "line": "7",
+        "name": "p",
+        "ty": "Point"
+       }
+      },
+      {
+       "col": "3",
+       "fields": [
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "8",
+       "name": "q",
+       "value": {
+        "col": "13",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "9",
+          "kind": "Var",
+          "line": "8",
+          "name": "q",
+          "ty": "Point"
+         },
+         "col": "9",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "8",
+         "ty": "i64"
+        },
+        "line": "8",
+        "op": "+",
+        "right": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": "i64",
+         "value": "1"
+        },
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "base": {
+         "col": "10",
+         "kind": "Var",
+         "line": "9",
+         "name": "q",
+         "ty": "Point"
+        },
+        "col": "10",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "9",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "bump",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    }
+   ],
+   "order": [
+    "Point"
+   ]
+  }
+ },
+ "flags": [
+  "--no-verify",
+  "--trust-callers"
+ ],
+ "input": "tests/runtime/g1_r09_overflow.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": true,
+       "name": "q",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "kind": "Var",
+        "line": "7",
+        "name": "p",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "fields": [
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "8",
+       "name": "q",
+       "value": {
+        "col": "13",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "9",
+          "kind": "Var",
+          "line": "8",
+          "name": "q",
+          "ty": null
+         },
+         "col": "9",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "8",
+         "ty": null
+        },
+        "line": "8",
+        "op": "+",
+        "right": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": null,
+         "value": "1"
+        },
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "base": {
+         "col": "10",
+         "kind": "Var",
+         "line": "9",
+         "name": "q",
+         "ty": null
+        },
+        "col": "10",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "9",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "bump",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

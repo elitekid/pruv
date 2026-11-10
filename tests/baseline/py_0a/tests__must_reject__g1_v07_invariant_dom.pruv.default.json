@@ -1,0 +1,513 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "3",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "8",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "8",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "8",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "8",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "4",
+         "name": "i",
+         "ty": "i64"
+        },
+        "line": "4",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "4",
+         "ty": "i64",
+         "value": "1"
+        },
+        "ty": "bool"
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "6",
+         "ty": "i64",
+         "value": "1"
+        },
+        "line": "6",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "6",
+         "name": "i",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       },
+       "invariants": [
+        {
+         "col": "51",
+         "kind": "Binary",
+         "left": {
+          "col": "15",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "5",
+          "ty": "i64",
+          "value": {
+           "col": "29",
+           "kind": "Var",
+           "line": "5",
+           "name": "e",
+           "ty": "Event"
+          },
+          "variant": "Hit"
+         },
+         "line": "5",
+         "op": "==",
+         "right": {
+          "col": "54",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "5",
+          "ty": "i64",
+          "value": {
+           "col": "68",
+           "kind": "Var",
+           "line": "5",
+           "name": "e",
+           "ty": "Event"
+          },
+          "variant": "Hit"
+         },
+         "ty": "bool"
+        }
+       ],
+       "kind": "While",
+       "line": "4"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "2",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "14",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Empty"
+      },
+      {
+       "col": "21",
+       "fields": [
+        {
+         "col": "25",
+         "kind": "FieldDecl",
+         "line": "1",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "Event"
+    }
+   ],
+   "order": [
+    "Event"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_v07_invariant_dom.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "3",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "8",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "8",
+           "name": "i",
+           "ty": null
+          },
+          "line": "8",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "8",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "4",
+         "name": "i",
+         "ty": null
+        },
+        "line": "4",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "4",
+         "ty": null,
+         "value": "1"
+        },
+        "ty": null
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "6",
+         "ty": null,
+         "value": "1"
+        },
+        "line": "6",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "6",
+         "name": "i",
+         "ty": null
+        },
+        "ty": null
+       },
+       "invariants": [
+        {
+         "col": "51",
+         "kind": "Binary",
+         "left": {
+          "col": "15",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "5",
+          "ty": null,
+          "value": {
+           "col": "29",
+           "kind": "Var",
+           "line": "5",
+           "name": "e",
+           "ty": null
+          },
+          "variant": "Hit"
+         },
+         "line": "5",
+         "op": "==",
+         "right": {
+          "col": "54",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "5",
+          "ty": null,
+          "value": {
+           "col": "68",
+           "kind": "Var",
+           "line": "5",
+           "name": "e",
+           "ty": null
+          },
+          "variant": "Hit"
+         },
+         "ty": null
+        }
+       ],
+       "kind": "While",
+       "line": "4"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "2",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "14",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Empty"
+      },
+      {
+       "col": "21",
+       "fields": [
+        {
+         "col": "25",
+         "kind": "FieldDecl",
+         "line": "1",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "1",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "variant_domain",
+    "col": 51,
+    "counterexample": {
+     "e": "Event::Empty",
+     "i": 0
+    },
+    "fix": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
+    "line": 5,
+    "message": "cannot prove variant_field lookups in loop invariant (entry) are defined in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (not (and ((_ is |m1t0!Event::Hit|) e!1) ((_ is |m1t0!Event::Hit|) e!1))))\n"
+     }
+    ],
+    "code": "variant_domain",
+    "col": 51,
+    "fn": "f",
+    "line": 5,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (not (= (|m1t0!Event::Hit.value| e!1) (|m1t0!Event::Hit.value| e!1))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 51,
+    "fn": "f",
+    "line": 5,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(declare-fun i!2 () Int)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and ((_ is |m1t0!Event::Hit|) e!1) ((_ is |m1t0!Event::Hit|) e!1)))\n(assert (= (|m1t0!Event::Hit.value| e!1) (|m1t0!Event::Hit.value| e!1)))\n(assert (> 1 i!2))\n(assert (not (>= (- 1 i!2) 0)))\n"
+     }
+    ],
+    "code": "decreases_nonneg",
+    "col": 17,
+    "fn": "f",
+    "line": 6,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(declare-fun i!2 () Int)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and ((_ is |m1t0!Event::Hit|) e!1) ((_ is |m1t0!Event::Hit|) e!1)))\n(assert (= (|m1t0!Event::Hit.value| e!1) (|m1t0!Event::Hit.value| e!1)))\n(assert (> 1 i!2))\n(assert (not (and (>= (+ i!2 1) (- 9223372036854775808))\n          (<= (+ i!2 1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "f",
+    "line": 8,
+    "seq": 3
+   },
+   {
+    "attempts": [],
+    "code": "variant_domain",
+    "col": 51,
+    "fn": "f",
+    "line": 5,
+    "seq": 4,
+    "skipped": true
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(declare-fun i!2 () Int)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and ((_ is |m1t0!Event::Hit|) e!1) ((_ is |m1t0!Event::Hit|) e!1)))\n(assert (= (|m1t0!Event::Hit.value| e!1) (|m1t0!Event::Hit.value| e!1)))\n(assert (> 1 i!2))\n(assert (not (= (|m1t0!Event::Hit.value| e!1) (|m1t0!Event::Hit.value| e!1))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 51,
+    "fn": "f",
+    "line": 5,
+    "seq": 5
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(declare-fun i!2 () Int)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and ((_ is |m1t0!Event::Hit|) e!1) ((_ is |m1t0!Event::Hit|) e!1)))\n(assert (= (|m1t0!Event::Hit.value| e!1) (|m1t0!Event::Hit.value| e!1)))\n(assert (> 1 i!2))\n(assert (not (< (- 1 (+ i!2 1)) (- 1 i!2))))\n"
+     }
+    ],
+    "code": "decreases_decrease",
+    "col": 17,
+    "fn": "f",
+    "line": 6,
+    "seq": 6
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

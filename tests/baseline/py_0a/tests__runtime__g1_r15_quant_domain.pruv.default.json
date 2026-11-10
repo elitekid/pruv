@@ -1,0 +1,635 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "BoolLit",
+          "line": "9",
+          "ty": "bool",
+          "value": true
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "9",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "9"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "any_ok",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "body": {
+        "col": "37",
+        "kind": "Binary",
+        "left": {
+         "col": "32",
+         "kind": "Binary",
+         "left": {
+          "col": "30",
+          "kind": "Var",
+          "line": "7",
+          "name": "k",
+          "ty": "i64"
+         },
+         "line": "7",
+         "op": "==",
+         "right": {
+          "col": "35",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool"
+        },
+        "line": "7",
+        "op": "||",
+        "right": {
+         "col": "76",
+         "kind": "Binary",
+         "left": {
+          "col": "40",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "7",
+          "ty": "i64",
+          "value": {
+           "col": "54",
+           "kind": "Var",
+           "line": "7",
+           "name": "e",
+           "ty": "Event"
+          },
+          "variant": "Hit"
+         },
+         "line": "7",
+         "op": ">",
+         "right": {
+          "col": "78",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool"
+        },
+        "ty": "bool"
+       },
+       "col": "12",
+       "hi": {
+        "col": "27",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "2"
+       },
+       "kind": "exists",
+       "line": "7",
+       "lo": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool",
+       "var": "k"
+      }
+     ],
+     "ret": "unit"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "BoolLit",
+          "line": "15",
+          "ty": "bool",
+          "value": true
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "15",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "15"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "not_all",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "col": "12",
+       "kind": "Unary",
+       "line": "13",
+       "op": "!",
+       "operand": {
+        "body": {
+         "col": "38",
+         "kind": "Binary",
+         "left": {
+          "col": "34",
+          "kind": "Binary",
+          "left": {
+           "col": "32",
+           "kind": "Var",
+           "line": "13",
+           "name": "k",
+           "ty": "i64"
+          },
+          "line": "13",
+          "op": ">",
+          "right": {
+           "col": "36",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": "i64",
+           "value": "0"
+          },
+          "ty": "bool"
+         },
+         "line": "13",
+         "op": "&&",
+         "right": {
+          "col": "77",
+          "kind": "Binary",
+          "left": {
+           "col": "41",
+           "enum_name": "Event",
+           "field": "value",
+           "kind": "VariantField",
+           "line": "13",
+           "ty": "i64",
+           "value": {
+            "col": "55",
+            "kind": "Var",
+            "line": "13",
+            "name": "e",
+            "ty": "Event"
+           },
+           "variant": "Hit"
+          },
+          "line": "13",
+          "op": ">",
+          "right": {
+           "col": "79",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": "i64",
+           "value": "0"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        },
+        "col": "14",
+        "hi": {
+         "col": "29",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": "i64",
+         "value": "2"
+        },
+        "kind": "forall",
+        "line": "13",
+        "lo": {
+         "col": "26",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool",
+        "var": "k"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "Event"
+    }
+   ],
+   "order": [
+    "Event"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/g1_r15_quant_domain.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "BoolLit",
+          "line": "9",
+          "ty": null,
+          "value": true
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "9",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "9"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "any_ok",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "body": {
+        "col": "37",
+        "kind": "Binary",
+        "left": {
+         "col": "32",
+         "kind": "Binary",
+         "left": {
+          "col": "30",
+          "kind": "Var",
+          "line": "7",
+          "name": "k",
+          "ty": null
+         },
+         "line": "7",
+         "op": "==",
+         "right": {
+          "col": "35",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null
+        },
+        "line": "7",
+        "op": "||",
+        "right": {
+         "col": "76",
+         "kind": "Binary",
+         "left": {
+          "col": "40",
+          "enum_name": "Event",
+          "field": "value",
+          "kind": "VariantField",
+          "line": "7",
+          "ty": null,
+          "value": {
+           "col": "54",
+           "kind": "Var",
+           "line": "7",
+           "name": "e",
+           "ty": null
+          },
+          "variant": "Hit"
+         },
+         "line": "7",
+         "op": ">",
+         "right": {
+          "col": "78",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null
+        },
+        "ty": null
+       },
+       "col": "12",
+       "hi": {
+        "col": "27",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "2"
+       },
+       "kind": "exists",
+       "line": "7",
+       "lo": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null,
+       "var": "k"
+      }
+     ],
+     "ret": "unit"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "BoolLit",
+          "line": "15",
+          "ty": null,
+          "value": true
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "15",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "15"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "not_all",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "col": "12",
+       "kind": "Unary",
+       "line": "13",
+       "op": "!",
+       "operand": {
+        "body": {
+         "col": "38",
+         "kind": "Binary",
+         "left": {
+          "col": "34",
+          "kind": "Binary",
+          "left": {
+           "col": "32",
+           "kind": "Var",
+           "line": "13",
+           "name": "k",
+           "ty": null
+          },
+          "line": "13",
+          "op": ">",
+          "right": {
+           "col": "36",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": null,
+           "value": "0"
+          },
+          "ty": null
+         },
+         "line": "13",
+         "op": "&&",
+         "right": {
+          "col": "77",
+          "kind": "Binary",
+          "left": {
+           "col": "41",
+           "enum_name": "Event",
+           "field": "value",
+           "kind": "VariantField",
+           "line": "13",
+           "ty": null,
+           "value": {
+            "col": "55",
+            "kind": "Var",
+            "line": "13",
+            "name": "e",
+            "ty": null
+           },
+           "variant": "Hit"
+          },
+          "line": "13",
+          "op": ">",
+          "right": {
+           "col": "79",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": null,
+           "value": "0"
+          },
+          "ty": null
+         },
+         "ty": null
+        },
+        "col": "14",
+        "hi": {
+         "col": "29",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": null,
+         "value": "2"
+        },
+        "kind": "forall",
+        "line": "13",
+        "lo": {
+         "col": "26",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null,
+        "var": "k"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (let ((a!1 (forall ((k!dk2 Int))\n             (let ((a!1 (forall ((k!dj2 Int))\n                          (let ((a!1 (not (or (= 0 k!dj2)\n                                              (< 0\n                                                 (|m1t0!Event::Hit.value| e!1))))))\n                            (=> (and (<= 0 k!dj2) (< k!dj2 k!dk2)) a!1)))))\n               (=> (and (<= 0 k!dk2) (> 2 k!dk2) a!1)\n                   (=> (not (= 0 k!dk2)) ((_ is |m1t0!Event::Hit|) e!1)))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "variant_domain",
+    "col": 12,
+    "fn": "any_ok",
+    "line": 7,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (let ((a!1 (forall ((k!dk2 Int))\n             (let ((a!1 (forall ((k!dj2 Int))\n                          (=> (and (<= 0 k!dj2) (< k!dj2 k!dk2))\n                              (and (< 0 k!dj2)\n                                   (< 0 (|m1t0!Event::Hit.value| e!1)))))))\n               (=> (and (<= 0 k!dk2) (> 2 k!dk2) a!1)\n                   (=> (< 0 k!dk2) ((_ is |m1t0!Event::Hit|) e!1)))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "variant_domain",
+    "col": 12,
+    "fn": "not_all",
+    "line": 13,
+    "seq": 1
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

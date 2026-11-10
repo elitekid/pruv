@@ -1,0 +1,8 @@
+fn bounds(n: i64) -> i64
+  requires n >= 1 && n <= 100
+  ensures max(k in 0..n: k) >= 0
+  ensures count(k in 0..n: k >= 0) <= n
+  ensures min(k in 0..n: k) >= 1
+{
+  return n;
+}

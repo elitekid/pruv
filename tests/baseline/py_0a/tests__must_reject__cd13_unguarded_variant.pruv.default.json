@@ -1,0 +1,255 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": "i64",
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "col": "48",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "enum_name": "Event",
+        "field": "value",
+        "kind": "VariantField",
+        "line": "7",
+        "ty": "i64",
+        "value": {
+         "col": "26",
+         "kind": "Var",
+         "line": "7",
+         "name": "e",
+         "ty": "Event"
+        },
+        "variant": "Hit"
+       },
+       "line": "7",
+       "op": ">",
+       "right": {
+        "col": "50",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "Event"
+    }
+   ],
+   "order": [
+    "Event"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/cd13_unguarded_variant.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "col": "48",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "enum_name": "Event",
+        "field": "value",
+        "kind": "VariantField",
+        "line": "7",
+        "ty": null,
+        "value": {
+         "col": "26",
+         "kind": "Var",
+         "line": "7",
+         "name": "e",
+         "ty": null
+        },
+        "variant": "Hit"
+       },
+       "line": "7",
+       "op": ">",
+       "right": {
+        "col": "50",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "variant_domain",
+    "col": 48,
+    "counterexample": {
+     "e": "Event::Empty"
+    },
+    "fix": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
+    "line": 7,
+    "message": "cannot prove variant_field lookups in requires (line 7) are defined in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Event 0)) (((|m1t0!Event::Empty|) (|m1t0!Event::Hit| (|m1t0!Event::Hit.value| Int)))))\n(declare-fun e!1 () m1t0!Event)\n(assert (=> ((_ is |m1t0!Event::Hit|) e!1)\n    (and (>= (|m1t0!Event::Hit.value| e!1) (- 9223372036854775808))\n         (<= (|m1t0!Event::Hit.value| e!1) 9223372036854775807))))\n(assert (not ((_ is |m1t0!Event::Hit|) e!1)))\n"
+     }
+    ],
+    "code": "variant_domain",
+    "col": 48,
+    "fn": "f",
+    "line": 7,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

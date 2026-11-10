@@ -1,0 +1,195 @@
+{
+ "check": {
+  "error": {
+   "code": "eq_type",
+   "col": 14,
+   "fix": "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]",
+   "line": 2,
+   "message": "arrays cannot be compared with ==",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/t19_array_eq.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "3",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "3",
+         "name": "a",
+         "ty": null
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "100"
+        },
+        "kind": "Index",
+        "line": "3",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      },
+      {
+       "kind": "Param",
+       "name": "b",
+       "type": "array"
+      }
+     ],
+     "requires": [
+      {
+       "col": "14",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Var",
+        "line": "2",
+        "name": "a",
+        "ty": null
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "col": "17",
+        "kind": "Var",
+        "line": "2",
+        "name": "b",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "6",
+       "mutable": false,
+       "name": "x",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "24",
+          "kind": "IntLit",
+          "line": "6",
+          "ty": null,
+          "value": "0"
+         },
+         {
+          "col": "27",
+          "kind": "IntLit",
+          "line": "6",
+          "ty": null,
+          "value": "0"
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "6",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "11",
+            "kind": "Var",
+            "line": "7",
+            "name": "x",
+            "ty": null
+           },
+           {
+            "col": "14",
+            "kind": "Var",
+            "line": "7",
+            "name": "x",
+            "ty": null
+           }
+          ],
+          "col": "9",
+          "kind": "Call",
+          "line": "7",
+          "name": "f",
+          "ty": null
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "7",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "7"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "5",
+     "name": "main",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "eq_type",
+    "col": 14,
+    "fix": "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]",
+    "line": 2,
+    "message": "arrays cannot be compared with ==",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

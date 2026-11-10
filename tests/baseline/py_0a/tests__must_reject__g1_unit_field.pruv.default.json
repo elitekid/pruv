@@ -1,0 +1,55 @@
+{
+ "check": {
+  "error": {
+   "code": "field_type",
+   "col": 3,
+   "fix": "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum",
+   "line": 2,
+   "message": "field item cannot have type ()",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_unit_field.pruv",
+ "parse": {
+  "program": {
+   "functions": [],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "item",
+       "type": "unit"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Boxed"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "field_type",
+    "col": 3,
+    "fix": "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum",
+    "line": 2,
+    "message": "field item cannot have type ()",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

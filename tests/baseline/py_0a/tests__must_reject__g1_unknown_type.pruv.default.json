@@ -1,0 +1,55 @@
+{
+ "check": {
+  "error": {
+   "code": "unknown_type",
+   "col": 3,
+   "fix": "declare it with `struct Missing { ... }` or `enum Missing { ... }`",
+   "line": 2,
+   "message": "unknown type Missing",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_unknown_type.pruv",
+ "parse": {
+  "program": {
+   "functions": [],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "item",
+       "type": "Missing"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Holder"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "unknown_type",
+    "col": 3,
+    "fix": "declare it with `struct Missing { ... }` or `enum Missing { ... }`",
+    "line": 2,
+    "message": "unknown type Missing",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

@@ -1,0 +1,691 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "2",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "8",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "8",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "8",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "8",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "3",
+         "name": "i",
+         "ty": "i64"
+        },
+        "line": "3",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": "i64",
+         "value": "3"
+        },
+        "ty": "bool"
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "6",
+         "ty": "i64",
+         "value": "3"
+        },
+        "line": "6",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "6",
+         "name": "i",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "4",
+           "ty": "i64",
+           "value": "0"
+          },
+          "line": "4",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "4",
+           "name": "i",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "line": "4",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "4",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "4",
+          "op": "<=",
+          "right": {
+           "col": "30",
+           "kind": "IntLit",
+           "line": "4",
+           "ty": "i64",
+           "value": "3"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        },
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "Var",
+           "line": "5",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "5",
+          "op": "==",
+          "right": {
+           "col": "20",
+           "kind": "IntLit",
+           "line": "5",
+           "ty": "i64",
+           "value": "0"
+          },
+          "ty": "bool"
+         },
+         "line": "5",
+         "op": "||",
+         "right": {
+          "col": "34",
+          "kind": "Binary",
+          "left": {
+           "array": {
+            "col": "25",
+            "kind": "Var",
+            "line": "5",
+            "name": "a",
+            "ty": "array"
+           },
+           "col": "26",
+           "index": {
+            "col": "29",
+            "kind": "Binary",
+            "left": {
+             "col": "27",
+             "kind": "Var",
+             "line": "5",
+             "name": "i",
+             "ty": "i64"
+            },
+            "line": "5",
+            "op": "-",
+            "right": {
+             "col": "31",
+             "kind": "IntLit",
+             "line": "5",
+             "ty": "i64",
+             "value": "1"
+            },
+            "ty": "i64"
+           },
+           "kind": "Index",
+           "line": "5",
+           "ty": "i64"
+          },
+          "line": "5",
+          "op": "==",
+          "right": {
+           "array": {
+            "col": "37",
+            "kind": "Var",
+            "line": "5",
+            "name": "a",
+            "ty": "array"
+           },
+           "col": "38",
+           "index": {
+            "col": "41",
+            "kind": "Binary",
+            "left": {
+             "col": "39",
+             "kind": "Var",
+             "line": "5",
+             "name": "i",
+             "ty": "i64"
+            },
+            "line": "5",
+            "op": "-",
+            "right": {
+             "col": "43",
+             "kind": "IntLit",
+             "line": "5",
+             "ty": "i64",
+             "value": "1"
+            },
+            "ty": "i64"
+           },
+           "kind": "Index",
+           "line": "5",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        }
+       ],
+       "kind": "While",
+       "line": "3"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/cd09_invariant_preserved.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "2",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "8",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "8",
+           "name": "i",
+           "ty": null
+          },
+          "line": "8",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "8",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "3",
+         "name": "i",
+         "ty": null
+        },
+        "line": "3",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "3"
+        },
+        "ty": null
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "6",
+         "ty": null,
+         "value": "3"
+        },
+        "line": "6",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "6",
+         "name": "i",
+         "ty": null
+        },
+        "ty": null
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "4",
+           "ty": null,
+           "value": "0"
+          },
+          "line": "4",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "4",
+           "name": "i",
+           "ty": null
+          },
+          "ty": null
+         },
+         "line": "4",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "4",
+           "name": "i",
+           "ty": null
+          },
+          "line": "4",
+          "op": "<=",
+          "right": {
+           "col": "30",
+           "kind": "IntLit",
+           "line": "4",
+           "ty": null,
+           "value": "3"
+          },
+          "ty": null
+         },
+         "ty": null
+        },
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "Var",
+           "line": "5",
+           "name": "i",
+           "ty": null
+          },
+          "line": "5",
+          "op": "==",
+          "right": {
+           "col": "20",
+           "kind": "IntLit",
+           "line": "5",
+           "ty": null,
+           "value": "0"
+          },
+          "ty": null
+         },
+         "line": "5",
+         "op": "||",
+         "right": {
+          "col": "34",
+          "kind": "Binary",
+          "left": {
+           "array": {
+            "col": "25",
+            "kind": "Var",
+            "line": "5",
+            "name": "a",
+            "ty": null
+           },
+           "col": "26",
+           "index": {
+            "col": "29",
+            "kind": "Binary",
+            "left": {
+             "col": "27",
+             "kind": "Var",
+             "line": "5",
+             "name": "i",
+             "ty": null
+            },
+            "line": "5",
+            "op": "-",
+            "right": {
+             "col": "31",
+             "kind": "IntLit",
+             "line": "5",
+             "ty": null,
+             "value": "1"
+            },
+            "ty": null
+           },
+           "kind": "Index",
+           "line": "5",
+           "ty": null
+          },
+          "line": "5",
+          "op": "==",
+          "right": {
+           "array": {
+            "col": "37",
+            "kind": "Var",
+            "line": "5",
+            "name": "a",
+            "ty": null
+           },
+           "col": "38",
+           "index": {
+            "col": "41",
+            "kind": "Binary",
+            "left": {
+             "col": "39",
+             "kind": "Var",
+             "line": "5",
+             "name": "i",
+             "ty": null
+            },
+            "line": "5",
+            "op": "-",
+            "right": {
+             "col": "43",
+             "kind": "IntLit",
+             "line": "5",
+             "ty": null,
+             "value": "1"
+            },
+            "ty": null
+           },
+           "kind": "Index",
+           "line": "5",
+           "ty": null
+          },
+          "ty": null
+         },
+         "ty": null
+        }
+       ],
+       "kind": "While",
+       "line": "3"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "contract_domain",
+    "col": 22,
+    "counterexample": {
+     "a": {
+      "first": [],
+      "len": 0
+     },
+     "i": 1
+    },
+    "fix": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
+    "line": 5,
+    "message": "cannot prove partial operations (index, /, %, some_val/ok_val/err_val, max/min) in loop invariant (preserved) are defined in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (not (and (<= 0 0) (<= 0 3))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 22,
+    "fn": "f",
+    "line": 4,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (let ((a!1 (or (= 0 0) (= (select a!1 (- 0 1)) (select a!1 (- 0 1))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 22,
+    "fn": "f",
+    "line": 5,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun i!2 () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and (<= 0 i!2) (>= 3 i!2)))\n(assert (or (= 0 i!2) (= (select a!1 (- i!2 1)) (select a!1 (- i!2 1)))))\n(assert (> 3 i!2))\n(assert (not (>= (- 3 i!2) 0)))\n"
+     }
+    ],
+    "code": "decreases_nonneg",
+    "col": 17,
+    "fn": "f",
+    "line": 6,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun i!2 () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and (<= 0 i!2) (>= 3 i!2)))\n(assert (or (= 0 i!2) (= (select a!1 (- i!2 1)) (select a!1 (- i!2 1)))))\n(assert (> 3 i!2))\n(assert (not (and (>= (+ i!2 1) (- 9223372036854775808))\n          (<= (+ i!2 1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "f",
+    "line": 8,
+    "seq": 3
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun i!2 () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and (<= 0 i!2) (>= 3 i!2)))\n(assert (or (= 0 i!2) (= (select a!1 (- i!2 1)) (select a!1 (- i!2 1)))))\n(assert (> 3 i!2))\n(assert (not (and (<= 0 (+ i!2 1)) (>= 3 (+ i!2 1)))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 22,
+    "fn": "f",
+    "line": 4,
+    "seq": 4
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun i!2 () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and (<= 0 i!2) (>= 3 i!2)))\n(assert (or (= 0 i!2) (= (select a!1 (- i!2 1)) (select a!1 (- i!2 1)))))\n(assert (> 3 i!2))\n(assert (and (<= 0 (+ i!2 1)) (>= 3 (+ i!2 1))))\n(assert (let ((a!1 (and (>= (- (+ i!2 1) 1) 0) (< (- (+ i!2 1) 1) a!1.len))))\n(let ((a!2 (=> (not (= 0 (+ i!2 1))) (and a!1 a!1))))\n  (not a!2))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 22,
+    "fn": "f",
+    "line": 5,
+    "seq": 5
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun i!2 () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and (<= 0 i!2) (>= 3 i!2)))\n(assert (or (= 0 i!2) (= (select a!1 (- i!2 1)) (select a!1 (- i!2 1)))))\n(assert (> 3 i!2))\n(assert (let ((a!1 (= (select a!1 (- (+ i!2 1) 1)) (select a!1 (- (+ i!2 1) 1)))))\n  (not (or (= 0 (+ i!2 1)) a!1))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 22,
+    "fn": "f",
+    "line": 5,
+    "seq": 6
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun i!2 () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (and (<= 0 i!2) (>= 3 i!2)))\n(assert (or (= 0 i!2) (= (select a!1 (- i!2 1)) (select a!1 (- i!2 1)))))\n(assert (> 3 i!2))\n(assert (not (< (- 3 (+ i!2 1)) (- 3 i!2))))\n"
+     }
+    ],
+    "code": "decreases_decrease",
+    "col": 17,
+    "fn": "f",
+    "line": 6,
+    "seq": 7
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

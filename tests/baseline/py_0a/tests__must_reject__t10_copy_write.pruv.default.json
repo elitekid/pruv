@@ -1,0 +1,328 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "4",
+       "mutable": true,
+       "name": "b",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "27",
+          "kind": "Var",
+          "line": "4",
+          "name": "a",
+          "ty": "array"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "4",
+        "name": "copy",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "index": {
+        "col": "5",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": "i64",
+        "value": "1"
+       },
+       "kind": "IndexAssign",
+       "line": "5",
+       "name": "b",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": "i64",
+        "value": "5"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "6",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "6",
+         "name": "b",
+         "ty": "array"
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "6",
+         "ty": "i64",
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "6",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": "array"
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "len",
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "col": "22",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "1"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/t10_copy_write.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "4",
+       "mutable": true,
+       "name": "b",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "27",
+          "kind": "Var",
+          "line": "4",
+          "name": "a",
+          "ty": null
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "4",
+        "name": "copy",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "index": {
+        "col": "5",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": null,
+        "value": "1"
+       },
+       "kind": "IndexAssign",
+       "line": "5",
+       "name": "b",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": null,
+        "value": "5"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "6",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "6",
+         "name": "b",
+         "ty": null
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "6",
+         "ty": null,
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "6",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": null
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "len",
+        "ty": null
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "col": "22",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "1"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "index_oob",
+    "col": 3,
+    "counterexample": {
+     "a": {
+      "first": [
+       0
+      ],
+      "len": 1
+     },
+     "b": {
+      "first": [
+       0
+      ],
+      "len": 1
+     }
+    },
+    "fix": "add a requires/invariant/if that bounds the index, e.g. `invariant 0 <= i && i <= len(a)`",
+    "line": 5,
+    "message": "cannot prove index in bounds for b[...] = in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (= 1 a!1.len))\n(assert (not (and (>= 1 0) (< 1 a!1.len))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 3,
+    "fn": "f",
+    "line": 5,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (= 1 a!1.len))\n(assert (not (and (>= 0 0) (< 0 a!1.len))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 11,
+    "fn": "f",
+    "line": 6,
+    "seq": 1
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

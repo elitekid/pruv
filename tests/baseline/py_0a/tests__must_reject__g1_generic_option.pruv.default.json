@@ -1,0 +1,42 @@
+{
+ "check": {
+  "error": {
+   "code": "unsupported_type",
+   "col": 16,
+   "fix": "arrays hold i64 and Option/Result hold i64; user types can only be used directly",
+   "line": 6,
+   "message": "Option<Point> is not supported",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_generic_option.pruv",
+ "parse": {
+  "error": {
+   "code": "unsupported_type",
+   "col": 16,
+   "fix": "arrays hold i64 and Option/Result hold i64; user types can only be used directly",
+   "line": 6,
+   "message": "Option<Point> is not supported",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "unsupported_type",
+    "col": 16,
+    "fix": "arrays hold i64 and Option/Result hold i64; user types can only be used directly",
+    "line": 6,
+    "message": "Option<Point> is not supported",
+    "stage": "parse"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

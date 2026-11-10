@@ -1,0 +1,380 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": false,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "18",
+        "fields": [
+         {
+          "col": "26",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "29",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "1"
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "35",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "2"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": "Point"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "8",
+       "mutable": true,
+       "name": "q",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "kind": "Var",
+        "line": "8",
+        "name": "p",
+        "ty": "Point"
+       }
+      },
+      {
+       "col": "3",
+       "fields": [
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "9",
+       "name": "q",
+       "value": {
+        "col": "9",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": "i64",
+        "value": "9"
+       }
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "col": "9",
+           "kind": "Var",
+           "line": "10",
+           "name": "p",
+           "ty": "Point"
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "10",
+          "ty": "i64"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "10",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "10"
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "col": "9",
+           "kind": "Var",
+           "line": "11",
+           "name": "q",
+           "ty": "Point"
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "11",
+          "ty": "i64"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "11",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "11"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    }
+   ],
+   "order": [
+    "Point"
+   ]
+  }
+ },
+ "flags": [
+  "--trust-callers"
+ ],
+ "input": "tests/runtime/g1_r01_copy.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": false,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "18",
+        "fields": [
+         {
+          "col": "26",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "29",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "1"
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "35",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "2"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "8",
+       "mutable": true,
+       "name": "q",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "kind": "Var",
+        "line": "8",
+        "name": "p",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "fields": [
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "9",
+       "name": "q",
+       "value": {
+        "col": "9",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": null,
+        "value": "9"
+       }
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "col": "9",
+           "kind": "Var",
+           "line": "10",
+           "name": "p",
+           "ty": null
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "10",
+          "ty": null
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "10",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "10"
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "col": "9",
+           "kind": "Var",
+           "line": "11",
+           "name": "q",
+           "ty": null
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "11",
+          "ty": null
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "11",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "11"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

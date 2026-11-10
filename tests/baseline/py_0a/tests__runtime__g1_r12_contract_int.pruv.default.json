@@ -1,0 +1,412 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "BoolLit",
+          "line": "9",
+          "ty": "bool",
+          "value": true
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "9",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "9"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [
+      {
+       "col": "39",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "fields": [
+         {
+          "col": "20",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "27",
+           "kind": "Binary",
+           "left": {
+            "base": {
+             "col": "23",
+             "kind": "Var",
+             "line": "7",
+             "name": "p",
+             "ty": "Point"
+            },
+            "col": "23",
+            "field": "x",
+            "kind": "FieldAccess",
+            "line": "7",
+            "ty": "i64"
+           },
+           "line": "7",
+           "op": "+",
+           "right": {
+            "col": "29",
+            "kind": "IntLit",
+            "line": "7",
+            "ty": "i64",
+            "value": "1"
+           },
+           "ty": "i64"
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "35",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "0"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": "Point"
+       },
+       "line": "7",
+       "op": "==",
+       "right": {
+        "col": "42",
+        "fields": [
+         {
+          "col": "50",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "57",
+           "kind": "Binary",
+           "left": {
+            "base": {
+             "col": "53",
+             "kind": "Var",
+             "line": "7",
+             "name": "p",
+             "ty": "Point"
+            },
+            "col": "53",
+            "field": "x",
+            "kind": "FieldAccess",
+            "line": "7",
+            "ty": "i64"
+           },
+           "line": "7",
+           "op": "+",
+           "right": {
+            "col": "59",
+            "kind": "IntLit",
+            "line": "7",
+            "ty": "i64",
+            "value": "1"
+           },
+           "ty": "i64"
+          }
+         },
+         {
+          "col": "62",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "65",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "0"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": "Point"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    }
+   ],
+   "order": [
+    "Point"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/g1_r12_contract_int.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "BoolLit",
+          "line": "9",
+          "ty": null,
+          "value": true
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "9",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "9"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [
+      {
+       "col": "39",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "fields": [
+         {
+          "col": "20",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "27",
+           "kind": "Binary",
+           "left": {
+            "base": {
+             "col": "23",
+             "kind": "Var",
+             "line": "7",
+             "name": "p",
+             "ty": null
+            },
+            "col": "23",
+            "field": "x",
+            "kind": "FieldAccess",
+            "line": "7",
+            "ty": null
+           },
+           "line": "7",
+           "op": "+",
+           "right": {
+            "col": "29",
+            "kind": "IntLit",
+            "line": "7",
+            "ty": null,
+            "value": "1"
+           },
+           "ty": null
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "35",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "0"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": null
+       },
+       "line": "7",
+       "op": "==",
+       "right": {
+        "col": "42",
+        "fields": [
+         {
+          "col": "50",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "57",
+           "kind": "Binary",
+           "left": {
+            "base": {
+             "col": "53",
+             "kind": "Var",
+             "line": "7",
+             "name": "p",
+             "ty": null
+            },
+            "col": "53",
+            "field": "x",
+            "kind": "FieldAccess",
+            "line": "7",
+            "ty": null
+           },
+           "line": "7",
+           "op": "+",
+           "right": {
+            "col": "59",
+            "kind": "IntLit",
+            "line": "7",
+            "ty": null,
+            "value": "1"
+           },
+           "ty": null
+          }
+         },
+         {
+          "col": "62",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "65",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "0"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

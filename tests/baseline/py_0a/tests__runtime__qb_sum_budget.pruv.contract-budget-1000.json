@@ -1,0 +1,227 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "5",
+        "name": "n",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "14",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Var",
+        "line": "2",
+        "name": "n",
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": ">=",
+       "right": {
+        "col": "17",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      },
+      {
+       "col": "30",
+       "kind": "Binary",
+       "left": {
+        "body": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": "i64",
+         "value": "0"
+        },
+        "col": "12",
+        "hi": {
+         "col": "24",
+         "kind": "Var",
+         "line": "3",
+         "name": "n",
+         "ty": "i64"
+        },
+        "kind": "sum",
+        "line": "3",
+        "lo": {
+         "col": "21",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "i64",
+        "var": "k"
+       },
+       "line": "3",
+       "op": "==",
+       "right": {
+        "col": "33",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [
+  "--contract-budget",
+  "1000"
+ ],
+ "input": "tests/runtime/qb_sum_budget.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "5",
+        "name": "n",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "14",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Var",
+        "line": "2",
+        "name": "n",
+        "ty": null
+       },
+       "line": "2",
+       "op": ">=",
+       "right": {
+        "col": "17",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      },
+      {
+       "col": "30",
+       "kind": "Binary",
+       "left": {
+        "body": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "0"
+        },
+        "col": "12",
+        "hi": {
+         "col": "24",
+         "kind": "Var",
+         "line": "3",
+         "name": "n",
+         "ty": null
+        },
+        "kind": "sum",
+        "line": "3",
+        "lo": {
+         "col": "21",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null,
+        "var": "k"
+       },
+       "line": "3",
+       "op": "==",
+       "right": {
+        "col": "33",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

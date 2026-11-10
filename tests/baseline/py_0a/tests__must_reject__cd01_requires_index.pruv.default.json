@@ -1,0 +1,207 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": "i64",
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      },
+      {
+       "kind": "Param",
+       "name": "i",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "17",
+       "kind": "Binary",
+       "left": {
+        "array": {
+         "col": "12",
+         "kind": "Var",
+         "line": "2",
+         "name": "a",
+         "ty": "array"
+        },
+        "col": "13",
+        "index": {
+         "col": "14",
+         "kind": "Var",
+         "line": "2",
+         "name": "i",
+         "ty": "i64"
+        },
+        "kind": "Index",
+        "line": "2",
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/cd01_requires_index.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      },
+      {
+       "kind": "Param",
+       "name": "i",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "17",
+       "kind": "Binary",
+       "left": {
+        "array": {
+         "col": "12",
+         "kind": "Var",
+         "line": "2",
+         "name": "a",
+         "ty": null
+        },
+        "col": "13",
+        "index": {
+         "col": "14",
+         "kind": "Var",
+         "line": "2",
+         "name": "i",
+         "ty": null
+        },
+        "kind": "Index",
+        "line": "2",
+        "ty": null
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "contract_domain",
+    "col": 17,
+    "counterexample": {
+     "a": {
+      "first": [],
+      "len": 0
+     },
+     "i": -1
+    },
+    "fix": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
+    "line": 2,
+    "message": "cannot prove partial operations (index, /, %, some_val/ok_val/err_val, max/min) in requires (line 2) are defined in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun i!2 () Int)\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (and (>= i!2 (- 9223372036854775808)) (<= i!2 9223372036854775807)))\n(assert (not (and (>= i!2 0) (< i!2 a!1.len))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 17,
+    "fn": "f",
+    "line": 2,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

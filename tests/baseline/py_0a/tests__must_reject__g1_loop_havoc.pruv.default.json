@@ -1,0 +1,680 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": true,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "fields": [
+         {
+          "col": "30",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "33",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "0"
+          }
+         },
+         {
+          "col": "36",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "39",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "7"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": "Point"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "8",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "8",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "fields": [
+          "x"
+         ],
+         "kind": "FieldAssign",
+         "line": "13",
+         "name": "p",
+         "value": {
+          "col": "11",
+          "kind": "IntLit",
+          "line": "13",
+          "ty": "i64",
+          "value": "1"
+         }
+        },
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "14",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "14",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "14",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "9",
+         "name": "i",
+         "ty": "i64"
+        },
+        "line": "9",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "9",
+         "ty": "i64",
+         "value": "1"
+        },
+        "ty": "bool"
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "11",
+         "ty": "i64",
+         "value": "1"
+        },
+        "line": "11",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "11",
+         "name": "i",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "10",
+           "ty": "i64",
+           "value": "0"
+          },
+          "line": "10",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "10",
+           "name": "i",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "line": "10",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "10",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "10",
+          "op": "<=",
+          "right": {
+           "col": "30",
+           "kind": "IntLit",
+           "line": "10",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        }
+       ],
+       "kind": "While",
+       "line": "9"
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "10",
+          "kind": "Var",
+          "line": "16",
+          "name": "p",
+          "ty": "Point"
+         },
+         "col": "10",
+         "field": "y",
+         "kind": "FieldAccess",
+         "line": "16",
+         "ty": "i64"
+        },
+        "line": "16",
+        "op": "==",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "16",
+         "ty": "i64",
+         "value": "7"
+        },
+        "ty": "bool"
+       },
+       "kind": "Assert",
+       "line": "16"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "lost",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    }
+   ],
+   "order": [
+    "Point"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_loop_havoc.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": true,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "22",
+        "fields": [
+         {
+          "col": "30",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "x",
+          "value": {
+           "col": "33",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "0"
+          }
+         },
+         {
+          "col": "36",
+          "kind": "FieldInit",
+          "line": "7",
+          "name": "y",
+          "value": {
+           "col": "39",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "7"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "7",
+        "name": "Point",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "8",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "8",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "fields": [
+          "x"
+         ],
+         "kind": "FieldAssign",
+         "line": "13",
+         "name": "p",
+         "value": {
+          "col": "11",
+          "kind": "IntLit",
+          "line": "13",
+          "ty": null,
+          "value": "1"
+         }
+        },
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "14",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "14",
+           "name": "i",
+           "ty": null
+          },
+          "line": "14",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "9",
+         "name": "i",
+         "ty": null
+        },
+        "line": "9",
+        "op": "<",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "9",
+         "ty": null,
+         "value": "1"
+        },
+        "ty": null
+       },
+       "decreases": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "11",
+         "ty": null,
+         "value": "1"
+        },
+        "line": "11",
+        "op": "-",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "11",
+         "name": "i",
+         "ty": null
+        },
+        "ty": null
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "10",
+           "ty": null,
+           "value": "0"
+          },
+          "line": "10",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "10",
+           "name": "i",
+           "ty": null
+          },
+          "ty": null
+         },
+         "line": "10",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "10",
+           "name": "i",
+           "ty": null
+          },
+          "line": "10",
+          "op": "<=",
+          "right": {
+           "col": "30",
+           "kind": "IntLit",
+           "line": "10",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         },
+         "ty": null
+        }
+       ],
+       "kind": "While",
+       "line": "9"
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "10",
+          "kind": "Var",
+          "line": "16",
+          "name": "p",
+          "ty": null
+         },
+         "col": "10",
+         "field": "y",
+         "kind": "FieldAccess",
+         "line": "16",
+         "ty": null
+        },
+        "line": "16",
+        "op": "==",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "16",
+         "ty": null,
+         "value": "7"
+        },
+        "ty": null
+       },
+       "kind": "Assert",
+       "line": "16"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "lost",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "assert",
+    "col": 3,
+    "counterexample": {
+     "i": 1,
+     "p": "Point { x: 0, y: -9223372036854754570 }"
+    },
+    "fix": "strengthen invariants or fix the code",
+    "line": 16,
+    "message": "cannot prove assertion in lost",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (<= 0 0) (<= 0 1))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 22,
+    "fn": "lost",
+    "line": 10,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (> 1 i!1))\n(assert (not (>= (- 1 i!1) 0)))\n"
+     }
+    ],
+    "code": "decreases_nonneg",
+    "col": 17,
+    "fn": "lost",
+    "line": 11,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (> 1 i!1))\n(assert (not (and (>= (+ i!1 1) (- 9223372036854775808))\n          (<= (+ i!1 1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "lost",
+    "line": 14,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (> 1 i!1))\n(assert (not (and (<= 0 (+ i!1 1)) (>= 1 (+ i!1 1)))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 22,
+    "fn": "lost",
+    "line": 10,
+    "seq": 3
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!1 () Int)\n(declare-fun p!h1 () m1t0!Point)\n(assert (and (>= i!1 (- 9223372036854775808)) (<= i!1 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h1) 9223372036854775807)\n     (>= (m1t0!Point.y p!h1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h1) 9223372036854775807)))\n(assert (and (<= 0 i!1) (>= 1 i!1)))\n(assert (> 1 i!1))\n(assert (not (< (- 1 (+ i!1 1)) (- 1 i!1))))\n"
+     }
+    ],
+    "code": "decreases_decrease",
+    "col": 17,
+    "fn": "lost",
+    "line": 11,
+    "seq": 4
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun i!3 () Int)\n(declare-fun p!h3 () m1t0!Point)\n(assert (and (>= i!3 (- 9223372036854775808)) (<= i!3 9223372036854775807)))\n(assert (and (>= (m1t0!Point.x p!h3) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!h3) 9223372036854775807)\n     (>= (m1t0!Point.y p!h3) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!h3) 9223372036854775807)))\n(assert (and (<= 0 i!3) (>= 1 i!3)))\n(assert (not (> 1 i!3)))\n(assert (not (= 7 (m1t0!Point.y p!h3))))\n"
+     }
+    ],
+    "code": "assert",
+    "col": 3,
+    "fn": "lost",
+    "line": 16,
+    "seq": 5
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

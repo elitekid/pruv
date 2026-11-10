@@ -1,0 +1,62 @@
+{
+ "check": {
+  "error": {
+   "code": "dup_field",
+   "col": 3,
+   "fix": "",
+   "line": 3,
+   "message": "field x defined twice in struct Point",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_duplicate_field.pruv",
+ "parse": {
+  "program": {
+   "functions": [],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "dup_field",
+    "col": 3,
+    "fix": "",
+    "line": 3,
+    "message": "field x defined twice in struct Point",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

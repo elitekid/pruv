@@ -1,0 +1,680 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "10",
+       "value": {
+        "col": "10",
+        "fields": [
+         {
+          "col": "18",
+          "kind": "FieldInit",
+          "line": "10",
+          "name": "x",
+          "value": {
+           "col": "21",
+           "kind": "Var",
+           "line": "10",
+           "name": "n",
+           "ty": "i64"
+          }
+         },
+         {
+          "col": "24",
+          "kind": "FieldInit",
+          "line": "10",
+          "name": "y",
+          "value": {
+           "col": "27",
+           "kind": "IntLit",
+           "line": "10",
+           "ty": "i64",
+           "value": "0"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "10",
+        "name": "Point",
+        "ty": "Point"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "13",
+        "kind": "Binary",
+        "left": {
+         "col": "11",
+         "kind": "Var",
+         "line": "8",
+         "name": "n",
+         "ty": "i64"
+        },
+        "line": "8",
+        "op": ">=",
+        "right": {
+         "col": "16",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "line": "8",
+       "op": "&&",
+       "right": {
+        "col": "30",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "21",
+          "kind": "Var",
+          "line": "8",
+          "name": "result",
+          "ty": "Point"
+         },
+         "col": "21",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "8",
+         "ty": "i64"
+        },
+        "line": "8",
+        "op": "==",
+        "right": {
+         "col": "33",
+         "kind": "Var",
+         "line": "8",
+         "name": "n",
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "6",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "14",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Var",
+        "line": "7",
+        "name": "n",
+        "ty": "i64"
+       },
+       "line": "7",
+       "op": ">=",
+       "right": {
+        "col": "17",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "Point"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "14",
+       "mutable": false,
+       "name": "ok",
+       "type": "bool",
+       "value": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "20",
+         "kind": "Binary",
+         "left": {
+          "col": "18",
+          "kind": "Var",
+          "line": "14",
+          "name": "n",
+          "ty": "i64"
+         },
+         "line": "14",
+         "op": ">",
+         "right": {
+          "col": "22",
+          "kind": "IntLit",
+          "line": "14",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool"
+        },
+        "line": "14",
+        "op": "&&",
+        "right": {
+         "col": "35",
+         "kind": "Binary",
+         "left": {
+          "base": {
+           "args": [
+            {
+             "col": "30",
+             "kind": "Var",
+             "line": "14",
+             "name": "n",
+             "ty": "i64"
+            }
+           ],
+           "col": "27",
+           "kind": "Call",
+           "line": "14",
+           "name": "mk",
+           "ty": "Point"
+          },
+          "col": "27",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "14",
+          "ty": "i64"
+         },
+         "line": "14",
+         "op": "==",
+         "right": {
+          "col": "38",
+          "kind": "Var",
+          "line": "14",
+          "name": "n",
+          "ty": "i64"
+         },
+         "ty": "bool"
+        },
+        "ty": "bool"
+       }
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "12",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "Var",
+         "line": "15",
+         "name": "n",
+         "ty": "i64"
+        },
+        "line": "15",
+        "op": ">=",
+        "right": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "15",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "kind": "Assert",
+       "line": "15"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "16",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "16",
+        "name": "n",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "13",
+     "name": "bad",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    }
+   ],
+   "order": [
+    "Point"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_shortcircuit_ensures.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "10",
+       "value": {
+        "col": "10",
+        "fields": [
+         {
+          "col": "18",
+          "kind": "FieldInit",
+          "line": "10",
+          "name": "x",
+          "value": {
+           "col": "21",
+           "kind": "Var",
+           "line": "10",
+           "name": "n",
+           "ty": null
+          }
+         },
+         {
+          "col": "24",
+          "kind": "FieldInit",
+          "line": "10",
+          "name": "y",
+          "value": {
+           "col": "27",
+           "kind": "IntLit",
+           "line": "10",
+           "ty": null,
+           "value": "0"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "10",
+        "name": "Point",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "13",
+        "kind": "Binary",
+        "left": {
+         "col": "11",
+         "kind": "Var",
+         "line": "8",
+         "name": "n",
+         "ty": null
+        },
+        "line": "8",
+        "op": ">=",
+        "right": {
+         "col": "16",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "line": "8",
+       "op": "&&",
+       "right": {
+        "col": "30",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "21",
+          "kind": "Var",
+          "line": "8",
+          "name": "result",
+          "ty": null
+         },
+         "col": "21",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "8",
+         "ty": null
+        },
+        "line": "8",
+        "op": "==",
+        "right": {
+         "col": "33",
+         "kind": "Var",
+         "line": "8",
+         "name": "n",
+         "ty": null
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "6",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "14",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Var",
+        "line": "7",
+        "name": "n",
+        "ty": null
+       },
+       "line": "7",
+       "op": ">=",
+       "right": {
+        "col": "17",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "Point"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "14",
+       "mutable": false,
+       "name": "ok",
+       "type": "bool",
+       "value": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "20",
+         "kind": "Binary",
+         "left": {
+          "col": "18",
+          "kind": "Var",
+          "line": "14",
+          "name": "n",
+          "ty": null
+         },
+         "line": "14",
+         "op": ">",
+         "right": {
+          "col": "22",
+          "kind": "IntLit",
+          "line": "14",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null
+        },
+        "line": "14",
+        "op": "&&",
+        "right": {
+         "col": "35",
+         "kind": "Binary",
+         "left": {
+          "base": {
+           "args": [
+            {
+             "col": "30",
+             "kind": "Var",
+             "line": "14",
+             "name": "n",
+             "ty": null
+            }
+           ],
+           "col": "27",
+           "kind": "Call",
+           "line": "14",
+           "name": "mk",
+           "ty": null
+          },
+          "col": "27",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "14",
+          "ty": null
+         },
+         "line": "14",
+         "op": "==",
+         "right": {
+          "col": "38",
+          "kind": "Var",
+          "line": "14",
+          "name": "n",
+          "ty": null
+         },
+         "ty": null
+        },
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "12",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "Var",
+         "line": "15",
+         "name": "n",
+         "ty": null
+        },
+        "line": "15",
+        "op": ">=",
+        "right": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "15",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "kind": "Assert",
+       "line": "15"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "16",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "16",
+        "name": "n",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "13",
+     "name": "bad",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "assert",
+    "col": 3,
+    "counterexample": {
+     "n": -1,
+     "ok": false
+    },
+    "fix": "strengthen invariants or fix the code",
+    "line": 15,
+    "message": "cannot prove assertion in bad",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (<= 0 n!1))\n(assert (let ((a!1 (and (<= 0 n!1) (= (m1t0!Point.x (m1t0!Point n!1 0)) n!1))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "mk",
+    "line": 10,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (< 0 n!1))\n(assert (not (<= 0 n!1)))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 27,
+    "fn": "bad",
+    "line": 14,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun n!1 () Int)\n(declare-fun ret_mk!2 () m1t0!Point)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (=> (and (< 0 n!1))\n    (and (>= (m1t0!Point.x ret_mk!2) (- 9223372036854775808))\n         (<= (m1t0!Point.x ret_mk!2) 9223372036854775807)\n         (>= (m1t0!Point.y ret_mk!2) (- 9223372036854775808))\n         (<= (m1t0!Point.y ret_mk!2) 9223372036854775807))))\n(assert (=> (and (< 0 n!1)) (and (<= 0 n!1) (= (m1t0!Point.x ret_mk!2) n!1))))\n(assert (not (<= 0 n!1)))\n"
+     }
+    ],
+    "code": "assert",
+    "col": 3,
+    "fn": "bad",
+    "line": 15,
+    "seq": 2
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

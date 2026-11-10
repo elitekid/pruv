@@ -4,6 +4,7 @@
     python bench/fuzz/run.py [--seed 1] [--programs 100] [--inputs 8] [--max-candidates 400]
                              [--rejected-sample 30] [--jobs N] [--batch 25] [--out DIR] [--keep-work]
     python bench/fuzz/run.py --replay DIR_OR_PRUVFILE
+    (모든 형태에 [--compiler py|rs] [--compiler-path PATH] 사용 가능, tests/compiler_driver.py; 기본 py)
 
 약속: 검증기가 받아들인 프로그램(pruvc 기본 모드 exit 0)은 requires를 만족하는 모든 입력에서
 범위 밖 인덱스/오버플로 없이 ensures가 성립하고 출력이 오라클과 같다. 모드마다 자기 오라클과 비교한다
@@ -38,11 +39,12 @@ import generate  # noqa: E402
 import oracle  # noqa: E402
 
 CPU_FLAG = "-mcpu=native" if platform.machine().lower() in ("arm64", "aarch64") else "-march=native"
-VENV_PY = os.path.join(ROOT, ".venv/bin/python")
-PY = VENV_PY if os.path.exists(VENV_PY) else sys.executable
+sys.path.append(os.path.join(ROOT, "tests"))
+import compiler_driver as CD  # noqa: E402
+
+DRIVER = None  # compiler under test (--compiler/--compiler-path); set in main(), None -> py
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 CLANG = shutil.which("clang") or "/usr/bin/clang"
-PRUVC = os.path.join(ROOT, "pruvc/pruvc.py")
 RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 
 I64_MIN = -(1 << 63)
@@ -75,6 +77,13 @@ def parse_diags(text):
             if isinstance(d, dict):
                 out.append(d)
     return out
+
+
+def driver():
+    global DRIVER
+    if DRIVER is None:
+        DRIVER = CD.default_driver()
+    return DRIVER
 
 
 def write(path, text):
@@ -233,7 +242,7 @@ def phase_a(case, work):
 
     sll, srs = llvm_paths["llvm-safe"]
     clear_outputs([rec["nv_rs"], sll, srs])
-    rc, so, se = run_cmd([PY, PRUVC, pruv, "-o", rec["nv_rs"], "--no-verify", "--also-llvm", sll, srs], 120)
+    rc, so, se = run_cmd(driver().argv(pruv, rec["nv_rs"], ["--no-verify", "--also-llvm", sll, srs], "rust"), 120)
     if rc == 0:
         rec["llvm_files"]["llvm-safe"] = (sll, srs)
     rec["logs"]["no-verify"] = "exit %d\n%s%s" % (rc, so, se)
@@ -260,7 +269,7 @@ def phase_a(case, work):
         return rec
     pll, prs = llvm_paths["llvm-proof"]
     clear_outputs([rec["ver_rs"], pll, prs])
-    rc, so, se = run_cmd([PY, PRUVC, pruv, "-o", rec["ver_rs"], "--also-llvm", pll, prs], 120)
+    rc, so, se = run_cmd(driver().argv(pruv, rec["ver_rs"], ["--also-llvm", pll, prs], "rust"), 120)
     rec["logs"]["verify"] = "exit %d\n%s%s" % (rc, so, se)
     if rc == 0:
         rec["status"] = "verified"
@@ -748,7 +757,7 @@ def replay(path, args):
     params, ret = signature_from_src(src)
     case = {"name": "replay_" + os.path.splitext(os.path.basename(pruv))[0], "src": src, "entry": "f",
             "params": params, "ret": ret, "input_hints": {}}
-    work = tempfile.mkdtemp(prefix="pruvfuzz_replay_")
+    work = tempfile.mkdtemp(prefix="pruvfuzz_replay_%s_" % driver().name)
     try:
         rt_o = build_runtime(work)
         rec = phase_a(case, work)
@@ -792,13 +801,17 @@ def main():
                     help="쉼표로 구분한 이미 보고한 결함 id (예: fz01). 생성기가 그 형태를 만들지 않는다")
     ap.add_argument("--keep-work", action="store_true")
     ap.add_argument("--replay", default=None)
+    CD.add_args(ap)
     args = ap.parse_args()
+    global DRIVER
+    DRIVER = CD.from_args(args)
     generate.AVOID.update(x.strip() for x in args.avoid_known.split(",") if x.strip())
     if args.replay:
         return replay(args.replay, args)
-    out_dir = args.out or os.path.join(HERE, "out", str(args.seed))
+    # 컴파일러별 결과·작업 폴더: py 의 기본 경로(out/<seed>)는 그대로, rs 는 out/<seed>_rs
+    out_dir = args.out or os.path.join(HERE, "out", str(args.seed) + ("" if DRIVER.name == "py" else "_" + DRIVER.name))
     os.makedirs(out_dir, exist_ok=True)
-    work = tempfile.mkdtemp(prefix="pruvfuzz_")
+    work = tempfile.mkdtemp(prefix="pruvfuzz_%s_" % DRIVER.name)
     t0 = time.time()
     counts = {"candidates": 0, "generator_invalid": 0, "oracle_unsupported": 0, "oracle_parse_error": 0,
               "verified": 0, "rejected": 0, "rejected_built": 0, "failed_in_phase_a": 0}

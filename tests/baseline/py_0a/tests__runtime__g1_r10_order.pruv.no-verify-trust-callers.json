@@ -1,0 +1,854 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "9",
+          "ty": "i64",
+          "value": "1"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "9",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "9"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "10",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "10",
+        "ty": "i64",
+        "value": "10"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "7",
+        "name": "result",
+        "ty": "i64"
+       },
+       "line": "7",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "10"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "6",
+     "name": "one",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "16",
+          "ty": "i64",
+          "value": "2"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "16",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "16"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "17",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "17",
+        "ty": "i64",
+        "value": "20"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "14",
+        "name": "result",
+        "ty": "i64"
+       },
+       "line": "14",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "IntLit",
+        "line": "14",
+        "ty": "i64",
+        "value": "20"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "13",
+     "name": "two",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "23",
+          "ty": "i64",
+          "value": "3"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "23",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "23"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "24",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "24",
+        "name": "e",
+        "ty": "Event"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "21",
+        "name": "result",
+        "ty": "Event"
+       },
+       "line": "21",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "Var",
+        "line": "21",
+        "name": "e",
+        "ty": "Event"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "20",
+     "name": "pick",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "Event"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "28",
+       "mutable": false,
+       "name": "e",
+       "type": "Event",
+       "value": {
+        "args": [
+         {
+          "args": [],
+          "col": "29",
+          "kind": "Call",
+          "line": "28",
+          "name": "one",
+          "ty": "i64"
+         },
+         {
+          "args": [],
+          "col": "36",
+          "kind": "Call",
+          "line": "28",
+          "name": "two",
+          "ty": "i64"
+         }
+        ],
+        "col": "18",
+        "enum_name": "Event",
+        "kind": "EnumCtor",
+        "line": "28",
+        "ty": "Event",
+        "variant": "Hit"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "23",
+           "expr": {
+            "args": [
+             {
+              "col": "29",
+              "kind": "IntLit",
+              "line": "30",
+              "ty": "i64",
+              "value": "0"
+             }
+            ],
+            "col": "23",
+            "kind": "Call",
+            "line": "30",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "30"
+          }
+         ],
+         "col": "5",
+         "ctor": "Empty",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "30"
+        },
+        {
+         "binders": [
+          "a",
+          "b"
+         ],
+         "body": [
+          {
+           "col": "27",
+           "expr": {
+            "args": [
+             {
+              "col": "35",
+              "kind": "Binary",
+              "left": {
+               "col": "33",
+               "kind": "Var",
+               "line": "31",
+               "name": "a",
+               "ty": "i64"
+              },
+              "line": "31",
+              "op": "+",
+              "right": {
+               "col": "37",
+               "kind": "Var",
+               "line": "31",
+               "name": "b",
+               "ty": "i64"
+              },
+              "ty": "i64"
+             }
+            ],
+            "col": "27",
+            "kind": "Call",
+            "line": "31",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "31"
+          }
+         ],
+         "col": "5",
+         "ctor": "Hit",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "31"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "29",
+       "scrutinee": {
+        "args": [
+         {
+          "col": "14",
+          "kind": "Var",
+          "line": "29",
+          "name": "e",
+          "ty": "Event"
+         }
+        ],
+        "col": "9",
+        "kind": "Call",
+        "line": "29",
+        "name": "pick",
+        "ty": "Event"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "27",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "a",
+         "type": "i64"
+        },
+        {
+         "col": "15",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "b",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "Event"
+    }
+   ],
+   "order": [
+    "Event"
+   ]
+  }
+ },
+ "flags": [
+  "--no-verify",
+  "--trust-callers"
+ ],
+ "input": "tests/runtime/g1_r10_order.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "9",
+          "ty": null,
+          "value": "1"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "9",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "9"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "10",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "10",
+        "ty": null,
+        "value": "10"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "7",
+        "name": "result",
+        "ty": null
+       },
+       "line": "7",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "10"
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "6",
+     "name": "one",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "16",
+          "ty": null,
+          "value": "2"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "16",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "16"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "17",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "17",
+        "ty": null,
+        "value": "20"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "14",
+        "name": "result",
+        "ty": null
+       },
+       "line": "14",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "IntLit",
+        "line": "14",
+        "ty": null,
+        "value": "20"
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "13",
+     "name": "two",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "23",
+          "ty": null,
+          "value": "3"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "23",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "23"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "24",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "24",
+        "name": "e",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "21",
+        "name": "result",
+        "ty": null
+       },
+       "line": "21",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "Var",
+        "line": "21",
+        "name": "e",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "20",
+     "name": "pick",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "Event"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "28",
+       "mutable": false,
+       "name": "e",
+       "type": "Event",
+       "value": {
+        "args": [
+         {
+          "args": [],
+          "col": "29",
+          "kind": "Call",
+          "line": "28",
+          "name": "one",
+          "ty": null
+         },
+         {
+          "args": [],
+          "col": "36",
+          "kind": "Call",
+          "line": "28",
+          "name": "two",
+          "ty": null
+         }
+        ],
+        "col": "18",
+        "enum_name": "Event",
+        "kind": "EnumCtor",
+        "line": "28",
+        "ty": null,
+        "variant": "Hit"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "23",
+           "expr": {
+            "args": [
+             {
+              "col": "29",
+              "kind": "IntLit",
+              "line": "30",
+              "ty": null,
+              "value": "0"
+             }
+            ],
+            "col": "23",
+            "kind": "Call",
+            "line": "30",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "30"
+          }
+         ],
+         "col": "5",
+         "ctor": "Empty",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "30"
+        },
+        {
+         "binders": [
+          "a",
+          "b"
+         ],
+         "body": [
+          {
+           "col": "27",
+           "expr": {
+            "args": [
+             {
+              "col": "35",
+              "kind": "Binary",
+              "left": {
+               "col": "33",
+               "kind": "Var",
+               "line": "31",
+               "name": "a",
+               "ty": null
+              },
+              "line": "31",
+              "op": "+",
+              "right": {
+               "col": "37",
+               "kind": "Var",
+               "line": "31",
+               "name": "b",
+               "ty": null
+              },
+              "ty": null
+             }
+            ],
+            "col": "27",
+            "kind": "Call",
+            "line": "31",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "31"
+          }
+         ],
+         "col": "5",
+         "ctor": "Hit",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "31"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "29",
+       "scrutinee": {
+        "args": [
+         {
+          "col": "14",
+          "kind": "Var",
+          "line": "29",
+          "name": "e",
+          "ty": null
+         }
+        ],
+        "col": "9",
+        "kind": "Call",
+        "line": "29",
+        "name": "pick",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "27",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "a",
+         "type": "i64"
+        },
+        {
+         "col": "15",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "b",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

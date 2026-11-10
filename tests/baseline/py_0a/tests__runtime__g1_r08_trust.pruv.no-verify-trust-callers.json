@@ -1,0 +1,210 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": "i64",
+        "value": "7"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "positive",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [
+      {
+       "col": "16",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "col": "12",
+         "kind": "Var",
+         "line": "7",
+         "name": "p",
+         "ty": "Point"
+        },
+        "col": "12",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "7",
+        "ty": "i64"
+       },
+       "line": "7",
+       "op": ">",
+       "right": {
+        "col": "18",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    }
+   ],
+   "order": [
+    "Point"
+   ]
+  }
+ },
+ "flags": [
+  "--no-verify",
+  "--trust-callers"
+ ],
+ "input": "tests/runtime/g1_r08_trust.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": null,
+        "value": "7"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "positive",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [
+      {
+       "col": "16",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "col": "12",
+         "kind": "Var",
+         "line": "7",
+         "name": "p",
+         "ty": null
+        },
+        "col": "12",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "7",
+        "ty": null
+       },
+       "line": "7",
+       "op": ">",
+       "right": {
+        "col": "18",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

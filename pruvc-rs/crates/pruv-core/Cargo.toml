@@ -1,0 +1,9 @@
+[package]
+name = "pruv-core"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Pruv 앞단(AST·lexer·parser·check)과 출력 공통부. 0B 시점에는 빈 골격."
+
+# 의존 없음 (M3_C4_SPEC 2절: indexmap/serde 는 AST 이식 때 정확 버전으로 추가).
+[dependencies]

@@ -1,0 +1,189 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "41",
+       "expr": {
+        "args": [
+         {
+          "col": "47",
+          "kind": "Var",
+          "line": "1",
+          "name": "x",
+          "ty": "i64"
+         }
+        ],
+        "col": "41",
+        "kind": "Call",
+        "line": "1",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "1"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "35",
+       "kind": "Binary",
+       "left": {
+        "col": "33",
+        "kind": "Var",
+        "line": "1",
+        "name": "x",
+        "ty": "i64"
+       },
+       "line": "1",
+       "op": ">",
+       "right": {
+        "col": "37",
+        "kind": "IntLit",
+        "line": "1",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/t09_unit_ensures.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "41",
+       "expr": {
+        "args": [
+         {
+          "col": "47",
+          "kind": "Var",
+          "line": "1",
+          "name": "x",
+          "ty": null
+         }
+        ],
+        "col": "41",
+        "kind": "Call",
+        "line": "1",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "1"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "35",
+       "kind": "Binary",
+       "left": {
+        "col": "33",
+        "kind": "Var",
+        "line": "1",
+        "name": "x",
+        "ty": null
+       },
+       "line": "1",
+       "op": ">",
+       "right": {
+        "col": "37",
+        "kind": "IntLit",
+        "line": "1",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "ensures",
+    "col": 1,
+    "counterexample": {
+     "x": -6882980853002207233
+    },
+    "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+    "line": 1,
+    "message": "cannot prove postcondition (line 1) in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (not (< 0 x!1)))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 1,
+    "fn": "f",
+    "line": 1,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

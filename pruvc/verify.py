@@ -683,7 +683,7 @@ class FnVerifier:
 
     def havoc(s, st, names):
         h = st.fork()
-        for n in names:
+        for n in sorted(names):
             if n not in h.env:
                 continue
             old = h.env[n]

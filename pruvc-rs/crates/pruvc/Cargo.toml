@@ -1,0 +1,23 @@
+[package]
+name = "pruvc"
+version = "0.0.1"
+edition = "2021"
+description = "Pruv compiler (Rust port): LLVM object/link layer and dev-only pruvc-ir-tool"
+autobins = false
+build = "build.rs"
+
+[lib]
+name = "pruvc"
+path = "src/lib.rs"
+
+# src/main.rs (the real CLI) belongs to bundle I; only the dev tool exists in 0C.
+[[bin]]
+name = "pruvc-ir-tool"
+path = "src/bin/pruvc-ir-tool.rs"
+
+[dependencies]
+llvm-sys = { version = "=221.1.2", features = ["force-static"] }
+tempfile = "=3.27.0"
+
+[build-dependencies]
+cc = "=1.11.1"

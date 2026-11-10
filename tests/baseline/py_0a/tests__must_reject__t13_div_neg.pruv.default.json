@@ -1,0 +1,251 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "48",
+       "kind": "Return",
+       "line": "1",
+       "value": {
+        "col": "58",
+        "kind": "Binary",
+        "left": {
+         "col": "55",
+         "kind": "IntLit",
+         "line": "1",
+         "ty": "i64",
+         "value": "10"
+        },
+        "line": "1",
+        "op": "%",
+        "right": {
+         "col": "60",
+         "kind": "Var",
+         "line": "1",
+         "name": "x",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "37",
+       "kind": "Binary",
+       "left": {
+        "col": "32",
+        "kind": "Binary",
+        "left": {
+         "col": "30",
+         "kind": "Var",
+         "line": "1",
+         "name": "x",
+         "ty": "i64"
+        },
+        "line": "1",
+        "op": ">",
+        "right": {
+         "col": "34",
+         "kind": "IntLit",
+         "line": "1",
+         "ty": "i64",
+         "value": "-5"
+        },
+        "ty": "bool"
+       },
+       "line": "1",
+       "op": "&&",
+       "right": {
+        "col": "42",
+        "kind": "Binary",
+        "left": {
+         "col": "40",
+         "kind": "Var",
+         "line": "1",
+         "name": "x",
+         "ty": "i64"
+        },
+        "line": "1",
+        "op": "<",
+        "right": {
+         "col": "44",
+         "kind": "IntLit",
+         "line": "1",
+         "ty": "i64",
+         "value": "5"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/t13_div_neg.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "48",
+       "kind": "Return",
+       "line": "1",
+       "value": {
+        "col": "58",
+        "kind": "Binary",
+        "left": {
+         "col": "55",
+         "kind": "IntLit",
+         "line": "1",
+         "ty": null,
+         "value": "10"
+        },
+        "line": "1",
+        "op": "%",
+        "right": {
+         "col": "60",
+         "kind": "Var",
+         "line": "1",
+         "name": "x",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "37",
+       "kind": "Binary",
+       "left": {
+        "col": "32",
+        "kind": "Binary",
+        "left": {
+         "col": "30",
+         "kind": "Var",
+         "line": "1",
+         "name": "x",
+         "ty": null
+        },
+        "line": "1",
+        "op": ">",
+        "right": {
+         "col": "34",
+         "kind": "IntLit",
+         "line": "1",
+         "ty": null,
+         "value": "-5"
+        },
+        "ty": null
+       },
+       "line": "1",
+       "op": "&&",
+       "right": {
+        "col": "42",
+        "kind": "Binary",
+        "left": {
+         "col": "40",
+         "kind": "Var",
+         "line": "1",
+         "name": "x",
+         "ty": null
+        },
+        "line": "1",
+        "op": "<",
+        "right": {
+         "col": "44",
+         "kind": "IntLit",
+         "line": "1",
+         "ty": null,
+         "value": "5"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "div",
+    "col": 58,
+    "counterexample": {
+     "x": -4
+    },
+    "fix": "prove divisor > 0 and dividend >= 0 (add an if or requires)",
+    "line": 1,
+    "message": "cannot prove divisor > 0 and dividend >= 0 in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (and (< (- 5) x!1) (> 5 x!1)))\n(assert (not (and (> x!1 0) (>= 10 0))))\n"
+     }
+    ],
+    "code": "div",
+    "col": 58,
+    "fn": "f",
+    "line": 1,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

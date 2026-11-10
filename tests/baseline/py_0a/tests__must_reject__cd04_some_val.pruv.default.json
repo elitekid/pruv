@@ -1,0 +1,185 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": "i64",
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "o",
+       "type": "option"
+      }
+     ],
+     "requires": [
+      {
+       "col": "24",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "21",
+          "kind": "Var",
+          "line": "2",
+          "name": "o",
+          "ty": "option"
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "some_val",
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": ">",
+       "right": {
+        "col": "26",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/cd04_some_val.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "o",
+       "type": "option"
+      }
+     ],
+     "requires": [
+      {
+       "col": "24",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "21",
+          "kind": "Var",
+          "line": "2",
+          "name": "o",
+          "ty": null
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "some_val",
+        "ty": null
+       },
+       "line": "2",
+       "op": ">",
+       "right": {
+        "col": "26",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "contract_domain",
+    "col": 24,
+    "counterexample": {
+     "o": "none"
+    },
+    "fix": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
+    "line": 2,
+    "message": "cannot prove partial operations (index, /, %, some_val/ok_val/err_val, max/min) in requires (line 2) are defined in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((Opt 0)) (((some (sval Int)) (none))))\n(declare-fun o!1 () Opt)\n(assert (=> ((_ is some) o!1)\n    (and (>= (sval o!1) (- 9223372036854775808))\n         (<= (sval o!1) 9223372036854775807))))\n(assert (not ((_ is some) o!1)))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 24,
+    "fn": "f",
+    "line": 2,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

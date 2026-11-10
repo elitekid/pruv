@@ -1,0 +1,1069 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "fields": [
+         {
+          "col": "20",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "a",
+          "value": {
+           "arg": {
+            "col": "28",
+            "kind": "IntLit",
+            "line": "9",
+            "ty": "i64",
+            "value": "5"
+           },
+           "col": "23",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "Some",
+           "ty": "option"
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "b",
+          "value": {
+           "arg": null,
+           "col": "35",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "None",
+           "ty": "option"
+          }
+         },
+         {
+          "col": "41",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "c",
+          "value": {
+           "arg": {
+            "col": "47",
+            "kind": "IntLit",
+            "line": "9",
+            "ty": "i64",
+            "value": "6"
+           },
+           "col": "44",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "Ok",
+           "ty": "result"
+          }
+         },
+         {
+          "col": "51",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "d",
+          "value": {
+           "arg": {
+            "col": "58",
+            "kind": "IntLit",
+            "line": "9",
+            "ty": "i64",
+            "value": "7"
+           },
+           "col": "54",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "Err",
+           "ty": "result"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "9",
+        "name": "Wrapped",
+        "ty": "Wrapped"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "8",
+     "name": "make",
+     "params": [],
+     "requires": [],
+     "ret": "Wrapped"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "13",
+       "mutable": false,
+       "name": "w",
+       "type": "Wrapped",
+       "value": {
+        "args": [],
+        "col": "20",
+        "kind": "Call",
+        "line": "13",
+        "name": "make",
+        "ty": "Wrapped"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "18",
+           "expr": {
+            "args": [
+             {
+              "col": "24",
+              "kind": "Var",
+              "line": "15",
+              "name": "v",
+              "ty": "i64"
+             }
+            ],
+            "col": "18",
+            "kind": "Call",
+            "line": "15",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "15"
+          }
+         ],
+         "col": "5",
+         "ctor": "Some",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "15"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "expr": {
+            "args": [
+             {
+              "col": "21",
+              "kind": "IntLit",
+              "line": "16",
+              "ty": "i64",
+              "value": "-1"
+             }
+            ],
+            "col": "15",
+            "kind": "Call",
+            "line": "16",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "16"
+          }
+         ],
+         "col": "5",
+         "ctor": "None",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "16"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "14",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "14",
+         "name": "w",
+         "ty": "Wrapped"
+        },
+        "col": "9",
+        "field": "a",
+        "kind": "FieldAccess",
+        "line": "14",
+        "ty": "option"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "18",
+           "expr": {
+            "args": [
+             {
+              "col": "24",
+              "kind": "IntLit",
+              "line": "19",
+              "ty": "i64",
+              "value": "-1"
+             }
+            ],
+            "col": "18",
+            "kind": "Call",
+            "line": "19",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "19"
+          }
+         ],
+         "col": "5",
+         "ctor": "Some",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "19"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "expr": {
+            "args": [
+             {
+              "col": "21",
+              "kind": "IntLit",
+              "line": "20",
+              "ty": "i64",
+              "value": "0"
+             }
+            ],
+            "col": "15",
+            "kind": "Call",
+            "line": "20",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "20"
+          }
+         ],
+         "col": "5",
+         "ctor": "None",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "20"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "18",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "18",
+         "name": "w",
+         "ty": "Wrapped"
+        },
+        "col": "9",
+        "field": "b",
+        "kind": "FieldAccess",
+        "line": "18",
+        "ty": "option"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "16",
+           "expr": {
+            "args": [
+             {
+              "col": "22",
+              "kind": "Var",
+              "line": "23",
+              "name": "v",
+              "ty": "i64"
+             }
+            ],
+            "col": "16",
+            "kind": "Call",
+            "line": "23",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "23"
+          }
+         ],
+         "col": "5",
+         "ctor": "Ok",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "23"
+        },
+        {
+         "binders": [
+          "e"
+         ],
+         "body": [
+          {
+           "col": "17",
+           "expr": {
+            "args": [
+             {
+              "col": "23",
+              "kind": "IntLit",
+              "line": "24",
+              "ty": "i64",
+              "value": "-1"
+             }
+            ],
+            "col": "17",
+            "kind": "Call",
+            "line": "24",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "24"
+          }
+         ],
+         "col": "5",
+         "ctor": "Err",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "24"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "22",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "22",
+         "name": "w",
+         "ty": "Wrapped"
+        },
+        "col": "9",
+        "field": "c",
+        "kind": "FieldAccess",
+        "line": "22",
+        "ty": "result"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "16",
+           "expr": {
+            "args": [
+             {
+              "col": "22",
+              "kind": "IntLit",
+              "line": "27",
+              "ty": "i64",
+              "value": "-1"
+             }
+            ],
+            "col": "16",
+            "kind": "Call",
+            "line": "27",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "27"
+          }
+         ],
+         "col": "5",
+         "ctor": "Ok",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "27"
+        },
+        {
+         "binders": [
+          "e"
+         ],
+         "body": [
+          {
+           "col": "17",
+           "expr": {
+            "args": [
+             {
+              "col": "23",
+              "kind": "Var",
+              "line": "28",
+              "name": "e",
+              "ty": "i64"
+             }
+            ],
+            "col": "17",
+            "kind": "Call",
+            "line": "28",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "28"
+          }
+         ],
+         "col": "5",
+         "ctor": "Err",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "28"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "26",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "26",
+         "name": "w",
+         "ty": "Wrapped"
+        },
+        "col": "9",
+        "field": "d",
+        "kind": "FieldAccess",
+        "line": "26",
+        "ty": "result"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "a",
+       "type": "option"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "b",
+       "type": "option"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "4",
+       "name": "c",
+       "type": "result"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "5",
+       "name": "d",
+       "type": "result"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Wrapped"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Wrapped"
+    }
+   ],
+   "order": [
+    "Wrapped"
+   ]
+  }
+ },
+ "flags": [
+  "--no-verify"
+ ],
+ "input": "tests/runtime/g1_r04_wrapped.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "fields": [
+         {
+          "col": "20",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "a",
+          "value": {
+           "arg": {
+            "col": "28",
+            "kind": "IntLit",
+            "line": "9",
+            "ty": null,
+            "value": "5"
+           },
+           "col": "23",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "Some",
+           "ty": null
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "b",
+          "value": {
+           "arg": null,
+           "col": "35",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "None",
+           "ty": null
+          }
+         },
+         {
+          "col": "41",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "c",
+          "value": {
+           "arg": {
+            "col": "47",
+            "kind": "IntLit",
+            "line": "9",
+            "ty": null,
+            "value": "6"
+           },
+           "col": "44",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "Ok",
+           "ty": null
+          }
+         },
+         {
+          "col": "51",
+          "kind": "FieldInit",
+          "line": "9",
+          "name": "d",
+          "value": {
+           "arg": {
+            "col": "58",
+            "kind": "IntLit",
+            "line": "9",
+            "ty": null,
+            "value": "7"
+           },
+           "col": "54",
+           "kind": "Ctor",
+           "line": "9",
+           "name": "Err",
+           "ty": null
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "9",
+        "name": "Wrapped",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "8",
+     "name": "make",
+     "params": [],
+     "requires": [],
+     "ret": "Wrapped"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "13",
+       "mutable": false,
+       "name": "w",
+       "type": "Wrapped",
+       "value": {
+        "args": [],
+        "col": "20",
+        "kind": "Call",
+        "line": "13",
+        "name": "make",
+        "ty": null
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "18",
+           "expr": {
+            "args": [
+             {
+              "col": "24",
+              "kind": "Var",
+              "line": "15",
+              "name": "v",
+              "ty": null
+             }
+            ],
+            "col": "18",
+            "kind": "Call",
+            "line": "15",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "15"
+          }
+         ],
+         "col": "5",
+         "ctor": "Some",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "15"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "expr": {
+            "args": [
+             {
+              "col": "21",
+              "kind": "IntLit",
+              "line": "16",
+              "ty": null,
+              "value": "-1"
+             }
+            ],
+            "col": "15",
+            "kind": "Call",
+            "line": "16",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "16"
+          }
+         ],
+         "col": "5",
+         "ctor": "None",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "16"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "14",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "14",
+         "name": "w",
+         "ty": null
+        },
+        "col": "9",
+        "field": "a",
+        "kind": "FieldAccess",
+        "line": "14",
+        "ty": null
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "18",
+           "expr": {
+            "args": [
+             {
+              "col": "24",
+              "kind": "IntLit",
+              "line": "19",
+              "ty": null,
+              "value": "-1"
+             }
+            ],
+            "col": "18",
+            "kind": "Call",
+            "line": "19",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "19"
+          }
+         ],
+         "col": "5",
+         "ctor": "Some",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "19"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "expr": {
+            "args": [
+             {
+              "col": "21",
+              "kind": "IntLit",
+              "line": "20",
+              "ty": null,
+              "value": "0"
+             }
+            ],
+            "col": "15",
+            "kind": "Call",
+            "line": "20",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "20"
+          }
+         ],
+         "col": "5",
+         "ctor": "None",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "20"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "18",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "18",
+         "name": "w",
+         "ty": null
+        },
+        "col": "9",
+        "field": "b",
+        "kind": "FieldAccess",
+        "line": "18",
+        "ty": null
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "16",
+           "expr": {
+            "args": [
+             {
+              "col": "22",
+              "kind": "Var",
+              "line": "23",
+              "name": "v",
+              "ty": null
+             }
+            ],
+            "col": "16",
+            "kind": "Call",
+            "line": "23",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "23"
+          }
+         ],
+         "col": "5",
+         "ctor": "Ok",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "23"
+        },
+        {
+         "binders": [
+          "e"
+         ],
+         "body": [
+          {
+           "col": "17",
+           "expr": {
+            "args": [
+             {
+              "col": "23",
+              "kind": "IntLit",
+              "line": "24",
+              "ty": null,
+              "value": "-1"
+             }
+            ],
+            "col": "17",
+            "kind": "Call",
+            "line": "24",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "24"
+          }
+         ],
+         "col": "5",
+         "ctor": "Err",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "24"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "22",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "22",
+         "name": "w",
+         "ty": null
+        },
+        "col": "9",
+        "field": "c",
+        "kind": "FieldAccess",
+        "line": "22",
+        "ty": null
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "16",
+           "expr": {
+            "args": [
+             {
+              "col": "22",
+              "kind": "IntLit",
+              "line": "27",
+              "ty": null,
+              "value": "-1"
+             }
+            ],
+            "col": "16",
+            "kind": "Call",
+            "line": "27",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "27"
+          }
+         ],
+         "col": "5",
+         "ctor": "Ok",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "27"
+        },
+        {
+         "binders": [
+          "e"
+         ],
+         "body": [
+          {
+           "col": "17",
+           "expr": {
+            "args": [
+             {
+              "col": "23",
+              "kind": "Var",
+              "line": "28",
+              "name": "e",
+              "ty": null
+             }
+            ],
+            "col": "17",
+            "kind": "Call",
+            "line": "28",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "28"
+          }
+         ],
+         "col": "5",
+         "ctor": "Err",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "28"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "26",
+       "scrutinee": {
+        "base": {
+         "col": "9",
+         "kind": "Var",
+         "line": "26",
+         "name": "w",
+         "ty": null
+        },
+        "col": "9",
+        "field": "d",
+        "kind": "FieldAccess",
+        "line": "26",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "a",
+       "type": "option"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "b",
+       "type": "option"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "4",
+       "name": "c",
+       "type": "result"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "5",
+       "name": "d",
+       "type": "result"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Wrapped"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

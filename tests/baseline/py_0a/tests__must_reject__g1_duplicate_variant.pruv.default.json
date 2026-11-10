@@ -1,0 +1,70 @@
+{
+ "check": {
+  "error": {
+   "code": "dup_variant",
+   "col": 3,
+   "fix": "",
+   "line": 3,
+   "message": "variant Hit defined twice in enum Event",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_duplicate_variant.pruv",
+ "parse": {
+  "program": {
+   "functions": [],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Hit"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "dup_variant",
+    "col": 3,
+    "fix": "",
+    "line": 3,
+    "message": "variant Hit defined twice in enum Event",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

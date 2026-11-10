@@ -1,0 +1,42 @@
+{
+ "check": {
+  "error": {
+   "code": "reserved_name",
+   "col": 11,
+   "fix": "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
+   "line": 2,
+   "message": "name 'pruv_i' is reserved for the compiler",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/t22_reserved_local.pruv",
+ "parse": {
+  "error": {
+   "code": "reserved_name",
+   "col": 11,
+   "fix": "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
+   "line": 2,
+   "message": "name 'pruv_i' is reserved for the compiler",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "reserved_name",
+    "col": 11,
+    "fix": "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
+    "line": 2,
+    "message": "name 'pruv_i' is reserved for the compiler",
+    "stage": "parse"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

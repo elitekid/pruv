@@ -5,8 +5,17 @@ import json, os, shutil, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
-PY = os.path.join(ROOT, ".venv/bin/python")
-PRUVC = os.path.join(ROOT, "pruvc/pruvc.py")
+sys.path.append(os.path.join(ROOT, "tests"))
+import compiler_driver as CD  # noqa: E402
+
+DRIVER = None  # compiler_driver.Driver; set by main() or by an importer such as bench/mutate.py (None -> py)
+
+
+def get_driver():
+    global DRIVER
+    if DRIVER is None:
+        DRIVER = CD.default_driver()
+    return DRIVER
 
 E = "1_000_000_000"
 # name: (fn, gen(rng, n) -> tuple expr, call template with F, perf body with F (uses input t))
@@ -164,6 +173,8 @@ def build_and_run(sol_path, pid, workdir, noperf=False, llvm_path=None):
 
 
 def main():
+    global DRIVER
+    DRIVER = CD.from_argv(sys.argv)  # --compiler py|rs / --compiler-path PATH, removed from sys.argv
     sdir, outp = os.path.abspath(sys.argv[1]), sys.argv[2]
     pruv = "--pruv" in sys.argv
     backend = "rust"
@@ -171,7 +182,7 @@ def main():
         bi = sys.argv.index("--backend")
         backend = sys.argv[bi + 1] if bi + 1 < len(sys.argv) else ""
         if backend not in ("rust", "llvm"):
-            print("usage: run.py <solutions_dir> <out.json> [--pruv] [--backend rust|llvm] [--no-verify] [--trust-callers] [pNN ...]")
+            print("usage: run.py <solutions_dir> <out.json> [--pruv] [--backend rust|llvm] [--no-verify] [--trust-callers] [--compiler py|rs] [--compiler-path PATH] [pNN ...]")
             sys.exit(2)
         if backend == "llvm" and not pruv:
             print("--backend llvm requires --pruv")
@@ -190,14 +201,17 @@ def main():
             rs = os.path.join(work, pid + "_gen.rs")
             flags = [f for f in ("--no-verify", "--trust-callers") if f in sys.argv]
             ll = None
+            drv = get_driver()
             if llvm:
                 ll = os.path.join(work, pid + "_gen.ll")
-                cmd = [PY, PRUVC, src, "-o", ll, "--backend", "llvm", "--rust-bindings", rs] + flags
+                cmd = drv.argv(src, ll, ["--rust-bindings", rs] + flags, "llvm")
             else:
-                cmd = [PY, PRUVC, src, "-o", rs] + flags
-            c = subprocess.run(cmd, capture_output=True, text=True)
+                cmd = drv.argv(src, rs, flags, "rust")
+            c = drv.run(cmd, timeout=None)  # same as before: no timeout
             if c.returncode != 0:
                 res[pid] = {"status": "pruv_error", "pruv_errors": [json.loads(l) for l in c.stdout.splitlines() if l.startswith("{")]}
+                if c.kind == "crash":  # exit 3 / signal / spawn failure: not a language rejection
+                    res[pid]["compiler_crash"] = {"exit": c.returncode, "stderr": c.stderr[-300:]}
                 continue
             src = rs
         res[pid] = build_and_run(src, pid, work, llvm_path=ll if pruv else None)

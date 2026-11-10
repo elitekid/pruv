@@ -1,0 +1,486 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "13",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "13",
+        "name": "e",
+        "ty": "Event"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "echo",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "Event"
+    },
+    {
+     "body": [
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "23",
+           "kind": "Return",
+           "line": "18",
+           "value": {
+            "col": "30",
+            "kind": "IntLit",
+            "line": "18",
+            "ty": "i64",
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Empty",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "18"
+        },
+        {
+         "binders": [
+          "p",
+          "accepted"
+         ],
+         "body": [
+          {
+           "col": "34",
+           "kind": "Return",
+           "line": "19",
+           "value": {
+            "base": {
+             "col": "41",
+             "kind": "Var",
+             "line": "19",
+             "name": "p",
+             "ty": "Point"
+            },
+            "col": "41",
+            "field": "x",
+            "kind": "FieldAccess",
+            "line": "19",
+            "ty": "i64"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Hit",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "19"
+        },
+        {
+         "binders": [
+          "code"
+         ],
+         "body": [
+          {
+           "col": "30",
+           "kind": "Return",
+           "line": "20",
+           "value": {
+            "col": "37",
+            "kind": "Var",
+            "line": "20",
+            "name": "code",
+            "ty": "i64"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Failed",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "20"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "17",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "17",
+        "name": "e",
+        "ty": "Event"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "16",
+     "name": "score",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "6",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "7",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "8",
+         "name": "point",
+         "type": "Point"
+        },
+        {
+         "col": "21",
+         "kind": "FieldDecl",
+         "line": "8",
+         "name": "accepted",
+         "type": "bool"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "8",
+       "name": "Hit"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "10",
+         "kind": "FieldDecl",
+         "line": "9",
+         "name": "code",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "9",
+       "name": "Failed"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    },
+    {
+     "deps": [
+      "Point"
+     ],
+     "kind": "enum",
+     "name": "Event"
+    }
+   ],
+   "order": [
+    "Point",
+    "Event"
+   ]
+  }
+ },
+ "flags": [
+  "--trust-callers"
+ ],
+ "input": "tests/runtime/g1_r03_variants.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "13",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "13",
+        "name": "e",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "echo",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "Event"
+    },
+    {
+     "body": [
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "23",
+           "kind": "Return",
+           "line": "18",
+           "value": {
+            "col": "30",
+            "kind": "IntLit",
+            "line": "18",
+            "ty": null,
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Empty",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "18"
+        },
+        {
+         "binders": [
+          "p",
+          "accepted"
+         ],
+         "body": [
+          {
+           "col": "34",
+           "kind": "Return",
+           "line": "19",
+           "value": {
+            "base": {
+             "col": "41",
+             "kind": "Var",
+             "line": "19",
+             "name": "p",
+             "ty": null
+            },
+            "col": "41",
+            "field": "x",
+            "kind": "FieldAccess",
+            "line": "19",
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Hit",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "19"
+        },
+        {
+         "binders": [
+          "code"
+         ],
+         "body": [
+          {
+           "col": "30",
+           "kind": "Return",
+           "line": "20",
+           "value": {
+            "col": "37",
+            "kind": "Var",
+            "line": "20",
+            "name": "code",
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Failed",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "20"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "17",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "17",
+        "name": "e",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "16",
+     "name": "score",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "6",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "7",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "8",
+         "name": "point",
+         "type": "Point"
+        },
+        {
+         "col": "21",
+         "kind": "FieldDecl",
+         "line": "8",
+         "name": "accepted",
+         "type": "bool"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "8",
+       "name": "Hit"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "10",
+         "kind": "FieldDecl",
+         "line": "9",
+         "name": "code",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "9",
+       "name": "Failed"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

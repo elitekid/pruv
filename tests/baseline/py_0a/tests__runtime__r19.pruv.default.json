@@ -1,0 +1,255 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "5",
+        "name": "x",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "3",
+        "name": "result",
+        "ty": "i64"
+       },
+       "line": "3",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "Var",
+        "line": "3",
+        "name": "x",
+        "ty": "i64"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "24",
+       "kind": "Binary",
+       "left": {
+        "col": "20",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "Binary",
+         "left": {
+          "col": "13",
+          "kind": "Var",
+          "line": "2",
+          "name": "x",
+          "ty": "i64"
+         },
+         "line": "2",
+         "op": "-",
+         "right": {
+          "col": "17",
+          "kind": "IntLit",
+          "line": "2",
+          "ty": "i64",
+          "value": "7"
+         },
+         "ty": "i64"
+        },
+        "line": "2",
+        "op": "/",
+        "right": {
+         "col": "22",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "2"
+        },
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "col": "27",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "-4"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/r19.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "5",
+        "name": "x",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "3",
+        "name": "result",
+        "ty": null
+       },
+       "line": "3",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "Var",
+        "line": "3",
+        "name": "x",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "24",
+       "kind": "Binary",
+       "left": {
+        "col": "20",
+        "kind": "Binary",
+        "left": {
+         "col": "15",
+         "kind": "Binary",
+         "left": {
+          "col": "13",
+          "kind": "Var",
+          "line": "2",
+          "name": "x",
+          "ty": null
+         },
+         "line": "2",
+         "op": "-",
+         "right": {
+          "col": "17",
+          "kind": "IntLit",
+          "line": "2",
+          "ty": null,
+          "value": "7"
+         },
+         "ty": null
+        },
+        "line": "2",
+        "op": "/",
+        "right": {
+         "col": "22",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "2"
+        },
+        "ty": null
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "col": "27",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "-4"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (= (- 4) (div (- x!1 7) 2)))\n(assert (not (= x!1 x!1)))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "f",
+    "line": 5,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

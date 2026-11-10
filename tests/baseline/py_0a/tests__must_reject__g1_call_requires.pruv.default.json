@@ -1,0 +1,445 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "IntLit",
+         "line": "9",
+         "ty": "i64",
+         "value": "100"
+        },
+        "line": "9",
+        "op": "/",
+        "right": {
+         "base": {
+          "col": "16",
+          "kind": "Var",
+          "line": "9",
+          "name": "p",
+          "ty": "Point"
+         },
+         "col": "16",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "9",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "positive",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [
+      {
+       "col": "16",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "col": "12",
+         "kind": "Var",
+         "line": "7",
+         "name": "p",
+         "ty": "Point"
+        },
+        "col": "12",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "7",
+        "ty": "i64"
+       },
+       "line": "7",
+       "op": ">",
+       "right": {
+        "col": "18",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "13",
+       "mutable": false,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "18",
+        "fields": [
+         {
+          "col": "26",
+          "kind": "FieldInit",
+          "line": "13",
+          "name": "x",
+          "value": {
+           "col": "29",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": "i64",
+           "value": "0"
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "13",
+          "name": "y",
+          "value": {
+           "col": "35",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": "i64",
+           "value": "5"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "13",
+        "name": "Point",
+        "ty": "Point"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "14",
+       "value": {
+        "args": [
+         {
+          "col": "19",
+          "kind": "Var",
+          "line": "14",
+          "name": "p",
+          "ty": "Point"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "14",
+        "name": "positive",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "f",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    }
+   ],
+   "order": [
+    "Point"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_call_requires.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "IntLit",
+         "line": "9",
+         "ty": null,
+         "value": "100"
+        },
+        "line": "9",
+        "op": "/",
+        "right": {
+         "base": {
+          "col": "16",
+          "kind": "Var",
+          "line": "9",
+          "name": "p",
+          "ty": null
+         },
+         "col": "16",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "9",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "positive",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [
+      {
+       "col": "16",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "col": "12",
+         "kind": "Var",
+         "line": "7",
+         "name": "p",
+         "ty": null
+        },
+        "col": "12",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "7",
+        "ty": null
+       },
+       "line": "7",
+       "op": ">",
+       "right": {
+        "col": "18",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "13",
+       "mutable": false,
+       "name": "p",
+       "type": "Point",
+       "value": {
+        "col": "18",
+        "fields": [
+         {
+          "col": "26",
+          "kind": "FieldInit",
+          "line": "13",
+          "name": "x",
+          "value": {
+           "col": "29",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": null,
+           "value": "0"
+          }
+         },
+         {
+          "col": "32",
+          "kind": "FieldInit",
+          "line": "13",
+          "name": "y",
+          "value": {
+           "col": "35",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": null,
+           "value": "5"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "13",
+        "name": "Point",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "14",
+       "value": {
+        "args": [
+         {
+          "col": "19",
+          "kind": "Var",
+          "line": "14",
+          "name": "p",
+          "ty": null
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "14",
+        "name": "positive",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "f",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "call_requires",
+    "col": 10,
+    "counterexample": {
+     "p": "Point { x: 0, y: 5 }"
+    },
+    "fix": "make the callee's requires hold before the call",
+    "line": 14,
+    "message": "cannot prove precondition of positive (line 7) in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-fun p!1 () m1t0!Point)\n(assert (and (>= (m1t0!Point.x p!1) (- 9223372036854775808))\n     (<= (m1t0!Point.x p!1) 9223372036854775807)\n     (>= (m1t0!Point.y p!1) (- 9223372036854775808))\n     (<= (m1t0!Point.y p!1) 9223372036854775807)))\n(assert (< 0 (m1t0!Point.x p!1)))\n(assert (not (and (> (m1t0!Point.x p!1) 0) (>= 100 0))))\n"
+     }
+    ],
+    "code": "div",
+    "col": 14,
+    "fn": "positive",
+    "line": 9,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(assert (not (< 0 (m1t0!Point.x (m1t0!Point 0 5)))))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 10,
+    "fn": "f",
+    "line": 14,
+    "seq": 1
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

@@ -1,0 +1,42 @@
+{
+ "check": {
+  "error": {
+   "code": "syntax",
+   "col": 38,
+   "fix": "write `Event::Empty` for a variant without fields, or pass its fields as arguments",
+   "line": 2,
+   "message": "empty parentheses after a variant",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_ctor_empty_parens.pruv",
+ "parse": {
+  "error": {
+   "code": "syntax",
+   "col": 38,
+   "fix": "write `Event::Empty` for a variant without fields, or pass its fields as arguments",
+   "line": 2,
+   "message": "empty parentheses after a variant",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "syntax",
+    "col": 38,
+    "fix": "write `Event::Empty` for a variant without fields, or pass its fields as arguments",
+    "line": 2,
+    "message": "empty parentheses after a variant",
+    "stage": "parse"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

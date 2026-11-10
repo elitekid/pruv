@@ -1,0 +1,617 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "9",
+        "name": "m",
+        "ty": "Marker"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "8",
+     "name": "pass",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "m",
+       "type": "Marker"
+      }
+     ],
+     "requires": [],
+     "ret": "Marker"
+    },
+    {
+     "body": [
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "20",
+           "kind": "Return",
+           "line": "14",
+           "value": {
+            "args": [],
+            "col": "27",
+            "enum_name": "Mode",
+            "kind": "EnumCtor",
+            "line": "14",
+            "ty": "Mode",
+            "variant": "On"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Off",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "14"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "19",
+           "kind": "Return",
+           "line": "15",
+           "value": {
+            "args": [],
+            "col": "26",
+            "enum_name": "Mode",
+            "kind": "EnumCtor",
+            "line": "15",
+            "ty": "Mode",
+            "variant": "Off"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "On",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "15"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "13",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "13",
+        "name": "m",
+        "ty": "Mode"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "flip",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "m",
+       "type": "Mode"
+      }
+     ],
+     "requires": [],
+     "ret": "Mode"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "20",
+       "mutable": false,
+       "name": "m",
+       "type": "Marker",
+       "value": {
+        "args": [
+         {
+          "col": "24",
+          "fields": [],
+          "kind": "StructLit",
+          "line": "20",
+          "name": "Marker",
+          "ty": "Marker"
+         }
+        ],
+        "col": "19",
+        "kind": "Call",
+        "line": "20",
+        "name": "pass",
+        "ty": "Marker"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "21",
+       "mutable": false,
+       "name": "k",
+       "type": "Mode",
+       "value": {
+        "args": [
+         {
+          "args": [],
+          "col": "22",
+          "enum_name": "Mode",
+          "kind": "EnumCtor",
+          "line": "21",
+          "ty": "Mode",
+          "variant": "Off"
+         }
+        ],
+        "col": "17",
+        "kind": "Call",
+        "line": "21",
+        "name": "flip",
+        "ty": "Mode"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "20",
+           "expr": {
+            "args": [
+             {
+              "col": "26",
+              "kind": "IntLit",
+              "line": "23",
+              "ty": "i64",
+              "value": "0"
+             }
+            ],
+            "col": "20",
+            "kind": "Call",
+            "line": "23",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "23"
+          }
+         ],
+         "col": "5",
+         "ctor": "Off",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "23"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "19",
+           "expr": {
+            "args": [
+             {
+              "col": "25",
+              "kind": "IntLit",
+              "line": "24",
+              "ty": "i64",
+              "value": "1"
+             }
+            ],
+            "col": "19",
+            "kind": "Call",
+            "line": "24",
+            "name": "print",
+            "ty": "unit"
+           },
+           "kind": "ExprStmt",
+           "line": "24"
+          }
+         ],
+         "col": "5",
+         "ctor": "On",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "24"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "22",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "22",
+        "name": "k",
+        "ty": "Mode"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "19",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Marker"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "3",
+     "name": "Mode",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "4",
+       "name": "Off"
+      },
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "5",
+       "name": "On"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Marker"
+    },
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "Mode"
+    }
+   ],
+   "order": [
+    "Marker",
+    "Mode"
+   ]
+  }
+ },
+ "flags": [
+  "--no-verify"
+ ],
+ "input": "tests/runtime/g1_r13_empty.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "9",
+        "name": "m",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "8",
+     "name": "pass",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "m",
+       "type": "Marker"
+      }
+     ],
+     "requires": [],
+     "ret": "Marker"
+    },
+    {
+     "body": [
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "20",
+           "kind": "Return",
+           "line": "14",
+           "value": {
+            "args": [],
+            "col": "27",
+            "enum_name": "Mode",
+            "kind": "EnumCtor",
+            "line": "14",
+            "ty": null,
+            "variant": "On"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Off",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "14"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "19",
+           "kind": "Return",
+           "line": "15",
+           "value": {
+            "args": [],
+            "col": "26",
+            "enum_name": "Mode",
+            "kind": "EnumCtor",
+            "line": "15",
+            "ty": null,
+            "variant": "Off"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "On",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "15"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "13",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "13",
+        "name": "m",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "12",
+     "name": "flip",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "m",
+       "type": "Mode"
+      }
+     ],
+     "requires": [],
+     "ret": "Mode"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "20",
+       "mutable": false,
+       "name": "m",
+       "type": "Marker",
+       "value": {
+        "args": [
+         {
+          "col": "24",
+          "fields": [],
+          "kind": "StructLit",
+          "line": "20",
+          "name": "Marker",
+          "ty": null
+         }
+        ],
+        "col": "19",
+        "kind": "Call",
+        "line": "20",
+        "name": "pass",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "21",
+       "mutable": false,
+       "name": "k",
+       "type": "Mode",
+       "value": {
+        "args": [
+         {
+          "args": [],
+          "col": "22",
+          "enum_name": "Mode",
+          "kind": "EnumCtor",
+          "line": "21",
+          "ty": null,
+          "variant": "Off"
+         }
+        ],
+        "col": "17",
+        "kind": "Call",
+        "line": "21",
+        "name": "flip",
+        "ty": null
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "20",
+           "expr": {
+            "args": [
+             {
+              "col": "26",
+              "kind": "IntLit",
+              "line": "23",
+              "ty": null,
+              "value": "0"
+             }
+            ],
+            "col": "20",
+            "kind": "Call",
+            "line": "23",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "23"
+          }
+         ],
+         "col": "5",
+         "ctor": "Off",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "23"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "19",
+           "expr": {
+            "args": [
+             {
+              "col": "25",
+              "kind": "IntLit",
+              "line": "24",
+              "ty": null,
+              "value": "1"
+             }
+            ],
+            "col": "19",
+            "kind": "Call",
+            "line": "24",
+            "name": "print",
+            "ty": null
+           },
+           "kind": "ExprStmt",
+           "line": "24"
+          }
+         ],
+         "col": "5",
+         "ctor": "On",
+         "enum_name": "Mode",
+         "kind": "MatchArm",
+         "line": "24"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "22",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "22",
+        "name": "k",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "19",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Marker"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "3",
+     "name": "Mode",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "4",
+       "name": "Off"
+      },
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "5",
+       "name": "On"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

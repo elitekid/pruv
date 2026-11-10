@@ -1,0 +1,47 @@
+{
+ "check": {
+  "error": {
+   "code": "empty_enum",
+   "col": 1,
+   "fix": "add at least one variant",
+   "line": 1,
+   "message": "enum Nothing has no variants",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_empty_enum.pruv",
+ "parse": {
+  "program": {
+   "functions": [],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Nothing",
+     "variants": []
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "empty_enum",
+    "col": 1,
+    "fix": "add at least one variant",
+    "line": 1,
+    "message": "enum Nothing has no variants",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

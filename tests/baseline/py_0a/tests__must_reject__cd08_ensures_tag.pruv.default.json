@@ -1,0 +1,329 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "cond": {
+        "col": "8",
+        "kind": "Binary",
+        "left": {
+         "col": "6",
+         "kind": "Var",
+         "line": "4",
+         "name": "x",
+         "ty": "i64"
+        },
+        "line": "4",
+        "op": ">",
+        "right": {
+         "col": "10",
+         "kind": "IntLit",
+         "line": "4",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "els": [],
+       "kind": "If",
+       "line": "4",
+       "then": [
+        {
+         "col": "5",
+         "kind": "Return",
+         "line": "5",
+         "value": {
+          "arg": {
+           "col": "17",
+           "kind": "Var",
+           "line": "5",
+           "name": "x",
+           "ty": "i64"
+          },
+          "col": "12",
+          "kind": "Ctor",
+          "line": "5",
+          "name": "Some",
+          "ty": "option"
+         }
+        }
+       ]
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "7",
+       "value": {
+        "arg": null,
+        "col": "10",
+        "kind": "Ctor",
+        "line": "7",
+        "name": "None",
+        "ty": "option"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "28",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "20",
+          "kind": "Var",
+          "line": "2",
+          "name": "result",
+          "ty": "option"
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "2",
+        "name": "some_val",
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "args": [
+         {
+          "col": "40",
+          "kind": "Var",
+          "line": "2",
+          "name": "result",
+          "ty": "option"
+         }
+        ],
+        "col": "31",
+        "kind": "Call",
+        "line": "2",
+        "name": "some_val",
+        "ty": "i64"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "option"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/cd08_ensures_tag.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "cond": {
+        "col": "8",
+        "kind": "Binary",
+        "left": {
+         "col": "6",
+         "kind": "Var",
+         "line": "4",
+         "name": "x",
+         "ty": null
+        },
+        "line": "4",
+        "op": ">",
+        "right": {
+         "col": "10",
+         "kind": "IntLit",
+         "line": "4",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "els": [],
+       "kind": "If",
+       "line": "4",
+       "then": [
+        {
+         "col": "5",
+         "kind": "Return",
+         "line": "5",
+         "value": {
+          "arg": {
+           "col": "17",
+           "kind": "Var",
+           "line": "5",
+           "name": "x",
+           "ty": null
+          },
+          "col": "12",
+          "kind": "Ctor",
+          "line": "5",
+          "name": "Some",
+          "ty": null
+         }
+        }
+       ]
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "7",
+       "value": {
+        "arg": null,
+        "col": "10",
+        "kind": "Ctor",
+        "line": "7",
+        "name": "None",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "28",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "20",
+          "kind": "Var",
+          "line": "2",
+          "name": "result",
+          "ty": null
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "2",
+        "name": "some_val",
+        "ty": null
+       },
+       "line": "2",
+       "op": "==",
+       "right": {
+        "args": [
+         {
+          "col": "40",
+          "kind": "Var",
+          "line": "2",
+          "name": "result",
+          "ty": null
+         }
+        ],
+        "col": "31",
+        "kind": "Call",
+        "line": "2",
+        "name": "some_val",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "option"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "contract_domain",
+    "col": 3,
+    "counterexample": {
+     "x": -6882980853002207233
+    },
+    "fix": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
+    "line": 7,
+    "message": "cannot prove partial operations (index, /, %, some_val/ok_val/err_val, max/min) in postcondition (line 2) are defined in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((Opt 0)) (((some (sval Int)) (none))))\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (< 0 x!1))\n(assert (not (= (sval (some x!1)) (sval (some x!1)))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 5,
+    "fn": "f",
+    "line": 5,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((Opt 0)) (((some (sval Int)) (none))))\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (not (< 0 x!1)))\n(assert (not (and ((_ is some) none) ((_ is some) none))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 3,
+    "fn": "f",
+    "line": 7,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((Opt 0)) (((some (sval Int)) (none))))\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (not (< 0 x!1)))\n(assert (not (= (sval none) (sval none))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "f",
+    "line": 7,
+    "seq": 2
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

@@ -1,0 +1,117 @@
+{
+ "check": {
+  "error": {
+   "code": "immutable",
+   "col": 3,
+   "fix": "parameters are immutable; copy into a `let mut` local",
+   "line": 7,
+   "message": "p is not mutable",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_param_write.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "fields": [
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "7",
+       "name": "p",
+       "value": {
+        "col": "9",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "1"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "8",
+       "value": {
+        "base": {
+         "col": "10",
+         "kind": "Var",
+         "line": "8",
+         "name": "p",
+         "ty": null
+        },
+        "col": "10",
+        "field": "y",
+        "kind": "FieldAccess",
+        "line": "8",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "immutable",
+    "col": 3,
+    "fix": "parameters are immutable; copy into a `let mut` local",
+    "line": 7,
+    "message": "p is not mutable",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

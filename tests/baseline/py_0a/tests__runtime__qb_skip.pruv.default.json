@@ -1,0 +1,238 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "4",
+        "name": "n",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "2",
+         "name": "n",
+         "ty": "i64"
+        },
+        "line": "2",
+        "op": ">",
+        "right": {
+         "col": "16",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "line": "2",
+       "op": "||",
+       "right": {
+        "body": {
+         "col": "50",
+         "kind": "Binary",
+         "left": {
+          "col": "48",
+          "kind": "Var",
+          "line": "2",
+          "name": "i",
+          "ty": "i64"
+         },
+         "line": "2",
+         "op": ">=",
+         "right": {
+          "col": "53",
+          "kind": "IntLit",
+          "line": "2",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool"
+        },
+        "col": "21",
+        "hi": {
+         "col": "36",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "4000000000"
+        },
+        "kind": "forall",
+        "line": "2",
+        "lo": {
+         "col": "33",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool",
+        "var": "i"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/qb_skip.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "4",
+        "name": "n",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "2",
+         "name": "n",
+         "ty": null
+        },
+        "line": "2",
+        "op": ">",
+        "right": {
+         "col": "16",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "line": "2",
+       "op": "||",
+       "right": {
+        "body": {
+         "col": "50",
+         "kind": "Binary",
+         "left": {
+          "col": "48",
+          "kind": "Var",
+          "line": "2",
+          "name": "i",
+          "ty": null
+         },
+         "line": "2",
+         "op": ">=",
+         "right": {
+          "col": "53",
+          "kind": "IntLit",
+          "line": "2",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null
+        },
+        "col": "21",
+        "hi": {
+         "col": "36",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "4000000000"
+        },
+        "kind": "forall",
+        "line": "2",
+        "lo": {
+         "col": "33",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null,
+        "var": "i"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

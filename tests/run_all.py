@@ -1,5 +1,10 @@
 """Run all regression tests.
 python tests/run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both]
+                        [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
+
+--compiler/--compiler-path pick the compiler under test (tests/compiler_driver.py; default py).
+--ir-tool PATH: make .ll objects with `PATH obj IN.ll -o OUT.o -mcpu=native` and the runtime object with
+`PATH runtime -o OUT.o --variant rust [--count-allocs]` instead of clang (default: clang as before).
 
 Every test case is an independent job (name, ok, detail) run in a thread pool
 (os.cpu_count() workers); results are printed in the fixed original order as soon
@@ -26,52 +31,78 @@ def body_functions(text):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-VENV_PY = os.path.join(ROOT, ".venv/bin/python")
-PY = VENV_PY if os.path.exists(VENV_PY) else sys.executable
+sys.path.append(HERE)
+import compiler_driver as CD  # noqa: E402
+
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 CLANG = shutil.which("clang") or "/usr/bin/clang"
-PRUVC = os.path.join(ROOT, "pruvc/pruvc.py")
 RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 
+DRIVER = None    # compiler_driver.Driver, set in main() (--compiler/--compiler-path)
+IR_TOOL = None   # --ir-tool PATH: pruvc-ir-tool for .ll -> object and runtime object (None: clang)
 WORK = None  # temp dir, set in main()
 _rt_cache = {}  # count_allocs -> (object path or None, error or None)
 _rt_lock = threading.Lock()
 
 
-def pruvc(src, out, flags=()):
-    return subprocess.run([PY, PRUVC, src, "-o", out] + list(flags), capture_output=True, text=True, timeout=300)
+def _driver():
+    global DRIVER
+    if DRIVER is None:
+        DRIVER = CD.default_driver()
+    return DRIVER
+
+
+def pruvc(src, out, flags=(), backend="rust"):
+    """Always passes --backend explicitly (pruvc.py default is rust, so this equals the old omitted form)."""
+    d = _driver()
+    return d.run(d.argv(src, out, flags, backend), timeout=300).raise_if_timeout()
 
 
 def pruvc_llvm(src, ll, rs, flags=()):
     """LLVM backend: writes IR to ll and Rust bindings to rs."""
-    return pruvc(src, ll, ["--backend", "llvm", "--rust-bindings", rs] + list(flags))
+    return pruvc(src, ll, ["--rust-bindings", rs] + list(flags), "llvm")
 
 
 def runtime_object(count_allocs):
-    """runtime.c object for the variant, compiled once (thread-safe). Returns (path, error)."""
+    """runtime.c object for the variant, compiled once (thread-safe). Returns (path, error).
+    With --ir-tool: `IR_TOOL runtime -o OUT.o --variant rust [--count-allocs]`; else clang."""
     with _rt_lock:
         if count_allocs not in _rt_cache:
             rt_o = os.path.join(WORK, "runtime%s.o" % ("_count" if count_allocs else ""))
-            extra = ["-DPRUV_COUNT_ALLOCS"] if count_allocs else []
+            if IR_TOOL:
+                cmd = [IR_TOOL, "runtime", "-o", rt_o, "--variant", "rust"] + (["--count-allocs"] if count_allocs else [])
+                label = "pruvc-ir-tool (runtime)"
+            else:
+                extra = ["-DPRUV_COUNT_ALLOCS"] if count_allocs else []
+                cmd = [CLANG, "-O2", CPU_FLAG, "-std=c11", "-DPRUV_RUST_ALLOCATOR"] + extra + ["-c", RUNTIME_C, "-o", rt_o]
+                label = "clang (runtime.c)"
             try:
-                c = subprocess.run([CLANG, "-O2", CPU_FLAG, "-std=c11", "-DPRUV_RUST_ALLOCATOR"] + extra + ["-c", RUNTIME_C, "-o", rt_o],
-                                   capture_output=True, text=True, timeout=300)
+                c = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
                 if c.returncode != 0:
-                    _rt_cache[count_allocs] = (None, "clang (runtime.c): " + c.stderr[-400:])
+                    _rt_cache[count_allocs] = (None, label + ": " + (c.stderr or c.stdout)[-400:])
                 else:
                     _rt_cache[count_allocs] = (rt_o, None)
             except subprocess.TimeoutExpired:
-                _rt_cache[count_allocs] = (None, "clang (runtime.c): timeout")
+                _rt_cache[count_allocs] = (None, label + ": timeout")
+            except OSError as e:
+                _rt_cache[count_allocs] = (None, label + ": cannot execute: %s" % e)
         return _rt_cache[count_allocs]
 
 
 def llvm_objects(ll, stem, work, count_allocs=False):
-    """clang gen.ll to an object in work; runtime.c object is shared. Returns (rustc link args, error or None)."""
+    """gen.ll to an object in work (clang, or `IR_TOOL obj IN.ll -o OUT.o -mcpu=native` with --ir-tool);
+    runtime object is shared. Returns (rustc link args, error or None)."""
     gen_o = os.path.join(work, stem + "_gen.o")
-    c = subprocess.run([CLANG, "-O2", CPU_FLAG, "-Wno-override-module", "-c", ll, "-o", gen_o],
-                       capture_output=True, text=True, timeout=300)
+    if IR_TOOL:
+        cmd, label = [IR_TOOL, "obj", ll, "-o", gen_o, "-mcpu=native"], "pruvc-ir-tool (gen.ll)"
+    else:
+        cmd, label = [CLANG, "-O2", CPU_FLAG, "-Wno-override-module", "-c", ll, "-o", gen_o], "clang (gen.ll)"
+    try:
+        c = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except OSError as e:
+        return [], label + ": cannot execute: %s" % e
     if c.returncode != 0:
-        return [], "clang (gen.ll): " + c.stderr[-400:]
+        return [], label + ": " + (c.stderr or c.stdout)[-400:]
     rt_o, err = runtime_object(count_allocs)
     if err:
         return [], err
@@ -305,11 +336,26 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = "usage: run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both]"
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both] "
+         "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]")
 
 
 def main():
-    global WORK
+    global WORK, DRIVER, IR_TOOL
+    argv = sys.argv
+    DRIVER = CD.from_argv(argv)  # removes --compiler/--compiler-path from sys.argv in place
+    if "--ir-tool" in argv:
+        i = argv.index("--ir-tool")
+        tool = argv[i + 1] if i + 1 < len(argv) else None
+        if not tool:
+            print(USAGE)
+            return 2
+        tool = os.path.abspath(tool)
+        if not (os.path.isfile(tool) and os.access(tool, os.X_OK)):
+            print("--ir-tool: not an executable file: %s" % tool)
+            return 2
+        IR_TOOL = tool
+        del argv[i:i + 2]
     only = None
     if "--only" in sys.argv:
         i = sys.argv.index("--only")
@@ -352,6 +398,8 @@ def main():
                 raise
     finally:
         shutil.rmtree(WORK, ignore_errors=True)
+    print("compiler: %s" % DRIVER.name)
+    print("object path: %s" % ("pruvc-ir-tool (%s)" % IR_TOOL if IR_TOOL else "clang"))
     print("TOTAL %d/%d" % (passed, total))
     return 0 if passed == total else 1
 

@@ -1,0 +1,212 @@
+{
+ "check": {
+  "error": {
+   "code": "immutable",
+   "col": 3,
+   "fix": "declare it with `let mut`",
+   "line": 13,
+   "message": "fr is not mutable",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_nested_immutable.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "12",
+       "mutable": false,
+       "name": "fr",
+       "type": "Frame",
+       "value": {
+        "col": "19",
+        "fields": [
+         {
+          "col": "27",
+          "kind": "FieldInit",
+          "line": "12",
+          "name": "origin",
+          "value": {
+           "col": "35",
+           "fields": [
+            {
+             "col": "43",
+             "kind": "FieldInit",
+             "line": "12",
+             "name": "x",
+             "value": {
+              "col": "46",
+              "kind": "IntLit",
+              "line": "12",
+              "ty": null,
+              "value": "0"
+             }
+            },
+            {
+             "col": "49",
+             "kind": "FieldInit",
+             "line": "12",
+             "name": "y",
+             "value": {
+              "col": "52",
+              "kind": "IntLit",
+              "line": "12",
+              "ty": null,
+              "value": "0"
+             }
+            }
+           ],
+           "kind": "StructLit",
+           "line": "12",
+           "name": "Point",
+           "ty": null
+          }
+         },
+         {
+          "col": "57",
+          "kind": "FieldInit",
+          "line": "12",
+          "name": "visible",
+          "value": {
+           "col": "66",
+           "kind": "BoolLit",
+           "line": "12",
+           "ty": null,
+           "value": true
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "12",
+        "name": "Frame",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "fields": [
+        "origin",
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "13",
+       "name": "fr",
+       "value": {
+        "col": "17",
+        "kind": "IntLit",
+        "line": "13",
+        "ty": null,
+        "value": "1"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "14",
+       "value": {
+        "base": {
+         "base": {
+          "col": "10",
+          "kind": "Var",
+          "line": "14",
+          "name": "fr",
+          "ty": null
+         },
+         "col": "10",
+         "field": "origin",
+         "kind": "FieldAccess",
+         "line": "14",
+         "ty": null
+        },
+        "col": "10",
+        "field": "y",
+        "kind": "FieldAccess",
+        "line": "14",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "11",
+     "name": "f",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "7",
+       "name": "origin",
+       "type": "Point"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "8",
+       "name": "visible",
+       "type": "bool"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "6",
+     "name": "Frame"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "immutable",
+    "col": 3,
+    "fix": "declare it with `let mut`",
+    "line": 13,
+    "message": "fr is not mutable",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

@@ -1,0 +1,215 @@
+{
+ "check": {
+  "error": {
+   "code": "match_arity",
+   "col": 5,
+   "fix": "bind every field, in declaration order",
+   "line": 15,
+   "message": "Event::Hit has 2 field(s), the pattern binds 1",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_match_arity.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "12",
+       "mutable": true,
+       "name": "r",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "12",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "23",
+           "kind": "Assign",
+           "line": "14",
+           "name": "r",
+           "value": {
+            "col": "27",
+            "kind": "IntLit",
+            "line": "14",
+            "ty": null,
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Empty",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "14"
+        },
+        {
+         "binders": [
+          "p"
+         ],
+         "body": [
+          {
+           "col": "24",
+           "kind": "Assign",
+           "line": "15",
+           "name": "r",
+           "value": {
+            "base": {
+             "col": "28",
+             "kind": "Var",
+             "line": "15",
+             "name": "p",
+             "ty": null
+            },
+            "col": "28",
+            "field": "x",
+            "kind": "FieldAccess",
+            "line": "15",
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Hit",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "15"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "13",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "13",
+        "name": "e",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "17",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "17",
+        "name": "r",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "11",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "6",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "7",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "8",
+         "name": "point",
+         "type": "Point"
+        },
+        {
+         "col": "21",
+         "kind": "FieldDecl",
+         "line": "8",
+         "name": "accepted",
+         "type": "bool"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "8",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "match_arity",
+    "col": 5,
+    "fix": "bind every field, in declaration order",
+    "line": 15,
+    "message": "Event::Hit has 2 field(s), the pattern binds 1",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

@@ -1,0 +1,286 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": "i64",
+        "value": "7"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "col": "39",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Unary",
+        "line": "7",
+        "op": "!",
+        "operand": {
+         "col": "13",
+         "enum_name": "Event",
+         "kind": "IsVariant",
+         "line": "7",
+         "ty": "bool",
+         "value": {
+          "col": "24",
+          "kind": "Var",
+          "line": "7",
+          "name": "e",
+          "ty": "Event"
+         },
+         "variant": "Hit"
+        },
+        "ty": "bool"
+       },
+       "line": "7",
+       "op": "||",
+       "right": {
+        "col": "78",
+        "kind": "Binary",
+        "left": {
+         "col": "42",
+         "enum_name": "Event",
+         "field": "value",
+         "kind": "VariantField",
+         "line": "7",
+         "ty": "i64",
+         "value": {
+          "col": "56",
+          "kind": "Var",
+          "line": "7",
+          "name": "e",
+          "ty": "Event"
+         },
+         "variant": "Hit"
+        },
+        "line": "7",
+        "op": ">",
+        "right": {
+         "col": "80",
+         "kind": "IntLit",
+         "line": "7",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "Event"
+    }
+   ],
+   "order": [
+    "Event"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/g1_r07_guarded.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": null,
+        "value": "7"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [
+      {
+       "col": "39",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Unary",
+        "line": "7",
+        "op": "!",
+        "operand": {
+         "col": "13",
+         "enum_name": "Event",
+         "kind": "IsVariant",
+         "line": "7",
+         "ty": null,
+         "value": {
+          "col": "24",
+          "kind": "Var",
+          "line": "7",
+          "name": "e",
+          "ty": null
+         },
+         "variant": "Hit"
+        },
+        "ty": null
+       },
+       "line": "7",
+       "op": "||",
+       "right": {
+        "col": "78",
+        "kind": "Binary",
+        "left": {
+         "col": "42",
+         "enum_name": "Event",
+         "field": "value",
+         "kind": "VariantField",
+         "line": "7",
+         "ty": null,
+         "value": {
+          "col": "56",
+          "kind": "Var",
+          "line": "7",
+          "name": "e",
+          "ty": null
+         },
+         "variant": "Hit"
+        },
+        "line": "7",
+        "op": ">",
+        "right": {
+         "col": "80",
+         "kind": "IntLit",
+         "line": "7",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

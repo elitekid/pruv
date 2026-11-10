@@ -1,0 +1,227 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": "i64",
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "mx",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [
+      {
+       "col": "38",
+       "kind": "Binary",
+       "left": {
+        "body": {
+         "array": {
+          "col": "32",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": "array"
+         },
+         "col": "33",
+         "index": {
+          "col": "34",
+          "kind": "Var",
+          "line": "2",
+          "name": "k",
+          "ty": "i64"
+         },
+         "kind": "Index",
+         "line": "2",
+         "ty": "i64"
+        },
+        "col": "12",
+        "hi": {
+         "args": [
+          {
+           "col": "28",
+           "kind": "Var",
+           "line": "2",
+           "name": "a",
+           "ty": "array"
+          }
+         ],
+         "col": "24",
+         "kind": "Call",
+         "line": "2",
+         "name": "len",
+         "ty": "i64"
+        },
+        "kind": "max",
+        "line": "2",
+        "lo": {
+         "col": "21",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "i64",
+        "var": "k"
+       },
+       "line": "2",
+       "op": "<=",
+       "right": {
+        "col": "41",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "100"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [
+  "--no-verify"
+ ],
+ "input": "tests/runtime/r20.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "mx",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [
+      {
+       "col": "38",
+       "kind": "Binary",
+       "left": {
+        "body": {
+         "array": {
+          "col": "32",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": null
+         },
+         "col": "33",
+         "index": {
+          "col": "34",
+          "kind": "Var",
+          "line": "2",
+          "name": "k",
+          "ty": null
+         },
+         "kind": "Index",
+         "line": "2",
+         "ty": null
+        },
+        "col": "12",
+        "hi": {
+         "args": [
+          {
+           "col": "28",
+           "kind": "Var",
+           "line": "2",
+           "name": "a",
+           "ty": null
+          }
+         ],
+         "col": "24",
+         "kind": "Call",
+         "line": "2",
+         "name": "len",
+         "ty": null
+        },
+        "kind": "max",
+        "line": "2",
+        "lo": {
+         "col": "21",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null,
+        "var": "k"
+       },
+       "line": "2",
+       "op": "<=",
+       "right": {
+        "col": "41",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "100"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

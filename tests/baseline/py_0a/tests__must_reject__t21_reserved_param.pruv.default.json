@@ -1,0 +1,42 @@
+{
+ "check": {
+  "error": {
+   "code": "reserved_name",
+   "col": 6,
+   "fix": "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
+   "line": 1,
+   "message": "name 'pruv_k1' is reserved for the compiler",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/t21_reserved_param.pruv",
+ "parse": {
+  "error": {
+   "code": "reserved_name",
+   "col": 6,
+   "fix": "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
+   "line": 1,
+   "message": "name 'pruv_k1' is reserved for the compiler",
+   "stage": "parse"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "reserved_name",
+    "col": 6,
+    "fix": "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
+    "line": 1,
+    "message": "name 'pruv_k1' is reserved for the compiler",
+    "stage": "parse"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

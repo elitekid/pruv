@@ -1,0 +1,585 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "4",
+          "name": "n",
+          "ty": "i64"
+         },
+         {
+          "col": "19",
+          "kind": "IntLit",
+          "line": "4",
+          "ty": "i64",
+          "value": "0"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "4",
+        "name": "alloc",
+        "ty": "array"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "15",
+          "kind": "Var",
+          "line": "3",
+          "name": "result",
+          "ty": "array"
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "3",
+        "name": "len",
+        "ty": "i64"
+       },
+       "line": "3",
+       "op": "==",
+       "right": {
+        "col": "26",
+        "kind": "Var",
+        "line": "3",
+        "name": "n",
+        "ty": "i64"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "14",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Var",
+        "line": "2",
+        "name": "n",
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": ">=",
+       "right": {
+        "col": "17",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "array"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": false,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "35",
+          "kind": "Binary",
+          "left": {
+           "col": "21",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "2199023255552"
+          },
+          "line": "7",
+          "op": "*",
+          "right": {
+           "col": "37",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": "i64",
+           "value": "2"
+          },
+          "ty": "i64"
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "7",
+        "name": "mk",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "12",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": "i64",
+         "value": "1"
+        },
+        "line": "8",
+        "op": "==",
+        "right": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": "i64",
+         "value": "2"
+        },
+        "ty": "bool"
+       },
+       "kind": "Assert",
+       "line": "8"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "9",
+         "name": "a",
+         "ty": "array"
+        },
+        "col": "11",
+        "index": {
+         "col": "26",
+         "kind": "Binary",
+         "left": {
+          "col": "12",
+          "kind": "IntLit",
+          "line": "9",
+          "ty": "i64",
+          "value": "4398046511104"
+         },
+         "line": "9",
+         "op": "*",
+         "right": {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "9",
+          "ty": "i64",
+          "value": "2"
+         },
+         "ty": "i64"
+        },
+        "kind": "Index",
+        "line": "9",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "g",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/t20_alloc_huge.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "4",
+          "name": "n",
+          "ty": null
+         },
+         {
+          "col": "19",
+          "kind": "IntLit",
+          "line": "4",
+          "ty": null,
+          "value": "0"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "4",
+        "name": "alloc",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "15",
+          "kind": "Var",
+          "line": "3",
+          "name": "result",
+          "ty": null
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "3",
+        "name": "len",
+        "ty": null
+       },
+       "line": "3",
+       "op": "==",
+       "right": {
+        "col": "26",
+        "kind": "Var",
+        "line": "3",
+        "name": "n",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "14",
+       "kind": "Binary",
+       "left": {
+        "col": "12",
+        "kind": "Var",
+        "line": "2",
+        "name": "n",
+        "ty": null
+       },
+       "line": "2",
+       "op": ">=",
+       "right": {
+        "col": "17",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "ret": "array"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": false,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "35",
+          "kind": "Binary",
+          "left": {
+           "col": "21",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "2199023255552"
+          },
+          "line": "7",
+          "op": "*",
+          "right": {
+           "col": "37",
+           "kind": "IntLit",
+           "line": "7",
+           "ty": null,
+           "value": "2"
+          },
+          "ty": null
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "7",
+        "name": "mk",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "cond": {
+        "col": "12",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": null,
+         "value": "1"
+        },
+        "line": "8",
+        "op": "==",
+        "right": {
+         "col": "15",
+         "kind": "IntLit",
+         "line": "8",
+         "ty": null,
+         "value": "2"
+        },
+        "ty": null
+       },
+       "kind": "Assert",
+       "line": "8"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "9",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "9",
+         "name": "a",
+         "ty": null
+        },
+        "col": "11",
+        "index": {
+         "col": "26",
+         "kind": "Binary",
+         "left": {
+          "col": "12",
+          "kind": "IntLit",
+          "line": "9",
+          "ty": null,
+          "value": "4398046511104"
+         },
+         "line": "9",
+         "op": "*",
+         "right": {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "9",
+          "ty": null,
+          "value": "2"
+         },
+         "ty": null
+        },
+        "kind": "Index",
+        "line": "9",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "g",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "alloc_negative",
+    "col": 10,
+    "counterexample": {
+     "n": 70785762836788
+    },
+    "fix": "prove 0 <= length <= 2^40",
+    "line": 4,
+    "message": "cannot prove alloc length in 0..2^40 in mk",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (<= 0 n!1))\n(assert (not (and (>= n!1 0) (<= n!1 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 10,
+    "fn": "mk",
+    "line": 4,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (<= 0 n!1))\n(assert (not (= n!1 n!1)))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "mk",
+    "line": 4,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (>= (* 2199023255552 2) (- 9223372036854775808))\n          (<= (* 2199023255552 2) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 35,
+    "fn": "g",
+    "line": 7,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (<= 0 (* 2199023255552 2))))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 18,
+    "fn": "g",
+    "line": 7,
+    "seq": 3
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_mk!1.len () Int)\n(assert (and (>= ret_mk!1.len 0) (<= ret_mk!1.len 1099511627776)))\n(assert (= ret_mk!1.len (* 2199023255552 2)))\n(assert (not (= 1 2)))\n"
+     }
+    ],
+    "code": "assert",
+    "col": 3,
+    "fn": "g",
+    "line": 8,
+    "seq": 4
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_mk!1.len () Int)\n(assert (and (>= ret_mk!1.len 0) (<= ret_mk!1.len 1099511627776)))\n(assert (= ret_mk!1.len (* 2199023255552 2)))\n(assert (= 1 2))\n(assert (not (and (>= (* 4398046511104 2) (- 9223372036854775808))\n          (<= (* 4398046511104 2) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 26,
+    "fn": "g",
+    "line": 9,
+    "seq": 5
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_mk!1.len () Int)\n(assert (and (>= ret_mk!1.len 0) (<= ret_mk!1.len 1099511627776)))\n(assert (= ret_mk!1.len (* 2199023255552 2)))\n(assert (= 1 2))\n(assert (not (and (>= (* 4398046511104 2) 0) (< (* 4398046511104 2) ret_mk!1.len))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 11,
+    "fn": "g",
+    "line": 9,
+    "seq": 6
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

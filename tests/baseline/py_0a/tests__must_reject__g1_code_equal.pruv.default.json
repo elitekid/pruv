@@ -1,0 +1,113 @@
+{
+ "check": {
+  "error": {
+   "code": "eq_type",
+   "col": 12,
+   "fix": "use match",
+   "line": 7,
+   "message": "== only compares i64 or bool in code",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_code_equal.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "7",
+       "value": {
+        "col": "12",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "Var",
+         "line": "7",
+         "name": "p",
+         "ty": null
+        },
+        "line": "7",
+        "op": "==",
+        "right": {
+         "col": "15",
+         "kind": "Var",
+         "line": "7",
+         "name": "q",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "same",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "p",
+       "type": "Point"
+      },
+      {
+       "kind": "Param",
+       "name": "q",
+       "type": "Point"
+      }
+     ],
+     "requires": [],
+     "ret": "bool"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "eq_type",
+    "col": 12,
+    "fix": "use match",
+    "line": 7,
+    "message": "== only compares i64 or bool in code",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

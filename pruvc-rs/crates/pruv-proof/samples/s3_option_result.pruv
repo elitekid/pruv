@@ -1,0 +1,28 @@
+fn safe_div(a: i64, b: i64) -> Result<i64>
+  requires a >= 0 && a <= 1_000_000
+  requires b >= 0 && b <= 1_000_000
+  ensures is_ok(result) ==> b > 0
+{
+  if b == 0 {
+    return Err(1);
+  }
+  return Ok(a / b);
+}
+
+fn first_pos(x: i64, y: i64) -> Option<i64>
+  ensures is_some(result) ==> x > 0
+{
+  if x > 0 {
+    return Some(x);
+  }
+  return Some(y);
+}
+
+fn unwrap_or(o: Option<i64>, d: i64) -> i64
+  ensures !is_some(o) ==> result == d
+{
+  match o {
+    Some(x) => { return x; }
+    None => { return d; }
+  }
+}

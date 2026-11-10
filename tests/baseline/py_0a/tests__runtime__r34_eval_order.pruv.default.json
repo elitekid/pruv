@@ -1,0 +1,3251 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "Var",
+          "line": "18",
+          "name": "x",
+          "ty": "i64"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "18",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "18"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "19",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "19",
+        "name": "x",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "16",
+        "name": "result",
+        "ty": "i64"
+       },
+       "line": "16",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "Var",
+        "line": "16",
+        "name": "x",
+        "ty": "i64"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "15",
+     "name": "p",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "26",
+       "value": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Binary",
+         "left": {
+          "col": "10",
+          "kind": "Var",
+          "line": "26",
+          "name": "a",
+          "ty": "i64"
+         },
+         "line": "26",
+         "op": "*",
+         "right": {
+          "col": "14",
+          "kind": "IntLit",
+          "line": "26",
+          "ty": "i64",
+          "value": "10"
+         },
+         "ty": "i64"
+        },
+        "line": "26",
+        "op": "+",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "26",
+         "name": "b",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "22",
+     "name": "h",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "i64"
+      },
+      {
+       "kind": "Param",
+       "name": "b",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "23",
+         "name": "a",
+         "ty": "i64"
+        },
+        "line": "23",
+        "op": ">=",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "23",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "line": "23",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "23",
+         "name": "a",
+         "ty": "i64"
+        },
+        "line": "23",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "23",
+         "ty": "i64",
+         "value": "100"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      },
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "24",
+         "name": "b",
+         "ty": "i64"
+        },
+        "line": "24",
+        "op": ">=",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "24",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "line": "24",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "24",
+         "name": "b",
+         "ty": "i64"
+        },
+        "line": "24",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "24",
+         "ty": "i64",
+         "value": "100"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "30",
+       "value": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "IntLit",
+          "line": "30",
+          "ty": "i64",
+          "value": "2"
+         },
+         {
+          "col": "19",
+          "kind": "Var",
+          "line": "30",
+          "name": "n",
+          "ty": "i64"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "30",
+        "name": "alloc",
+        "ty": "array"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "29",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "array"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "34",
+       "value": {
+        "col": "15",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "12",
+           "kind": "IntLit",
+           "line": "34",
+           "ty": "i64",
+           "value": "1"
+          }
+         ],
+         "col": "10",
+         "kind": "Call",
+         "line": "34",
+         "name": "p",
+         "ty": "i64"
+        },
+        "line": "34",
+        "op": "+",
+        "right": {
+         "args": [
+          {
+           "col": "19",
+           "kind": "IntLit",
+           "line": "34",
+           "ty": "i64",
+           "value": "2"
+          }
+         ],
+         "col": "17",
+         "kind": "Call",
+         "line": "34",
+         "name": "p",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "33",
+     "name": "t_bin",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "38",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "14",
+            "kind": "IntLit",
+            "line": "38",
+            "ty": "i64",
+            "value": "3"
+           }
+          ],
+          "col": "12",
+          "kind": "Call",
+          "line": "38",
+          "name": "p",
+          "ty": "i64"
+         },
+         {
+          "args": [
+           {
+            "col": "20",
+            "kind": "IntLit",
+            "line": "38",
+            "ty": "i64",
+            "value": "4"
+           }
+          ],
+          "col": "18",
+          "kind": "Call",
+          "line": "38",
+          "name": "p",
+          "ty": "i64"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "38",
+        "name": "h",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "37",
+     "name": "t_call",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "42",
+       "mutable": false,
+       "name": "s",
+       "type": "S",
+       "value": {
+        "col": "14",
+        "fields": [
+         {
+          "col": "18",
+          "kind": "FieldInit",
+          "line": "42",
+          "name": "x",
+          "value": {
+           "args": [
+            {
+             "col": "23",
+             "kind": "IntLit",
+             "line": "42",
+             "ty": "i64",
+             "value": "5"
+            }
+           ],
+           "col": "21",
+           "kind": "Call",
+           "line": "42",
+           "name": "p",
+           "ty": "i64"
+          }
+         },
+         {
+          "col": "27",
+          "kind": "FieldInit",
+          "line": "42",
+          "name": "y",
+          "value": {
+           "args": [
+            {
+             "col": "32",
+             "kind": "IntLit",
+             "line": "42",
+             "ty": "i64",
+             "value": "6"
+            }
+           ],
+           "col": "30",
+           "kind": "Call",
+           "line": "42",
+           "name": "p",
+           "ty": "i64"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "42",
+        "name": "S",
+        "ty": "S"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "43",
+       "value": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "10",
+          "kind": "Var",
+          "line": "43",
+          "name": "s",
+          "ty": "S"
+         },
+         "col": "10",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "43",
+         "ty": "i64"
+        },
+        "line": "43",
+        "op": "+",
+        "right": {
+         "base": {
+          "col": "16",
+          "kind": "Var",
+          "line": "43",
+          "name": "s",
+          "ty": "S"
+         },
+         "col": "16",
+         "field": "y",
+         "kind": "FieldAccess",
+         "line": "43",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "41",
+     "name": "t_struct",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "47",
+       "mutable": false,
+       "name": "e",
+       "type": "E",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "21",
+            "kind": "IntLit",
+            "line": "47",
+            "ty": "i64",
+            "value": "7"
+           }
+          ],
+          "col": "19",
+          "kind": "Call",
+          "line": "47",
+          "name": "p",
+          "ty": "i64"
+         },
+         {
+          "args": [
+           {
+            "col": "27",
+            "kind": "IntLit",
+            "line": "47",
+            "ty": "i64",
+            "value": "8"
+           }
+          ],
+          "col": "25",
+          "kind": "Call",
+          "line": "47",
+          "name": "p",
+          "ty": "i64"
+         }
+        ],
+        "col": "14",
+        "enum_name": "E",
+        "kind": "EnumCtor",
+        "line": "47",
+        "ty": "E",
+        "variant": "V"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "48",
+       "mutable": true,
+       "name": "r",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "48",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "kind": "Assign",
+           "line": "50",
+           "name": "r",
+           "value": {
+            "col": "19",
+            "kind": "IntLit",
+            "line": "50",
+            "ty": "i64",
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "N",
+         "enum_name": "E",
+         "kind": "MatchArm",
+         "line": "50"
+        },
+        {
+         "binders": [
+          "a",
+          "b"
+         ],
+         "body": [
+          {
+           "col": "21",
+           "kind": "Assign",
+           "line": "51",
+           "name": "r",
+           "value": {
+            "col": "27",
+            "kind": "Binary",
+            "left": {
+             "col": "25",
+             "kind": "Var",
+             "line": "51",
+             "name": "a",
+             "ty": "i64"
+            },
+            "line": "51",
+            "op": "+",
+            "right": {
+             "col": "29",
+             "kind": "Var",
+             "line": "51",
+             "name": "b",
+             "ty": "i64"
+            },
+            "ty": "i64"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "V",
+         "enum_name": "E",
+         "kind": "MatchArm",
+         "line": "51"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "49",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "49",
+        "name": "e",
+        "ty": "E"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "53",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "53",
+        "name": "r",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "46",
+     "name": "t_enum",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "57",
+       "mutable": false,
+       "name": "o",
+       "type": "option",
+       "value": {
+        "arg": {
+         "args": [
+          {
+           "col": "31",
+           "kind": "IntLit",
+           "line": "57",
+           "ty": "i64",
+           "value": "9"
+          }
+         ],
+         "col": "29",
+         "kind": "Call",
+         "line": "57",
+         "name": "p",
+         "ty": "i64"
+        },
+        "col": "24",
+        "kind": "Ctor",
+        "line": "57",
+        "name": "Some",
+        "ty": "option"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "58",
+       "mutable": true,
+       "name": "r",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "58",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "18",
+           "kind": "Assign",
+           "line": "60",
+           "name": "r",
+           "value": {
+            "col": "22",
+            "kind": "Var",
+            "line": "60",
+            "name": "v",
+            "ty": "i64"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Some",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "60"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "kind": "Assign",
+           "line": "61",
+           "name": "r",
+           "value": {
+            "col": "19",
+            "kind": "IntLit",
+            "line": "61",
+            "ty": "i64",
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "None",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "61"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "59",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "59",
+        "name": "o",
+        "ty": "option"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "63",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "63",
+        "name": "r",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "56",
+     "name": "t_some",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "67",
+       "mutable": false,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "26",
+            "kind": "IntLit",
+            "line": "67",
+            "ty": "i64",
+            "value": "2"
+           }
+          ],
+          "col": "24",
+          "kind": "Call",
+          "line": "67",
+          "name": "p",
+          "ty": "i64"
+         },
+         {
+          "args": [
+           {
+            "col": "32",
+            "kind": "IntLit",
+            "line": "67",
+            "ty": "i64",
+            "value": "11"
+           }
+          ],
+          "col": "30",
+          "kind": "Call",
+          "line": "67",
+          "name": "p",
+          "ty": "i64"
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "67",
+        "name": "alloc",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "68",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "68",
+         "name": "a",
+         "ty": "array"
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "68",
+         "ty": "i64",
+         "value": "1"
+        },
+        "kind": "Index",
+        "line": "68",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "66",
+     "name": "t_alloc",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "72",
+       "mutable": false,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "24",
+          "kind": "IntLit",
+          "line": "72",
+          "ty": "i64",
+          "value": "2"
+         },
+         {
+          "col": "27",
+          "kind": "IntLit",
+          "line": "72",
+          "ty": "i64",
+          "value": "4"
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "72",
+        "name": "alloc",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "73",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "73",
+         "name": "a",
+         "ty": "array"
+        },
+        "col": "11",
+        "index": {
+         "col": "18",
+         "kind": "Binary",
+         "left": {
+          "args": [
+           {
+            "col": "14",
+            "kind": "IntLit",
+            "line": "73",
+            "ty": "i64",
+            "value": "12"
+           }
+          ],
+          "col": "12",
+          "kind": "Call",
+          "line": "73",
+          "name": "p",
+          "ty": "i64"
+         },
+         "line": "73",
+         "op": "-",
+         "right": {
+          "col": "20",
+          "kind": "IntLit",
+          "line": "73",
+          "ty": "i64",
+          "value": "12"
+         },
+         "ty": "i64"
+        },
+        "kind": "Index",
+        "line": "73",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "71",
+     "name": "t_index_read",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "77",
+       "mutable": true,
+       "name": "b",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "77",
+          "ty": "i64",
+          "value": "2"
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "77",
+          "ty": "i64",
+          "value": "0"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "77",
+        "name": "alloc",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "index": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "7",
+           "kind": "IntLit",
+           "line": "78",
+           "ty": "i64",
+           "value": "13"
+          }
+         ],
+         "col": "5",
+         "kind": "Call",
+         "line": "78",
+         "name": "p",
+         "ty": "i64"
+        },
+        "line": "78",
+        "op": "-",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "78",
+         "ty": "i64",
+         "value": "13"
+        },
+        "ty": "i64"
+       },
+       "kind": "IndexAssign",
+       "line": "78",
+       "name": "b",
+       "value": {
+        "args": [
+         {
+          "col": "21",
+          "kind": "IntLit",
+          "line": "78",
+          "ty": "i64",
+          "value": "14"
+         }
+        ],
+        "col": "19",
+        "kind": "Call",
+        "line": "78",
+        "name": "p",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "79",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "79",
+         "name": "b",
+         "ty": "array"
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "79",
+         "ty": "i64",
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "79",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "76",
+     "name": "t_index_assign",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "83",
+       "mutable": true,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "83",
+          "ty": "i64",
+          "value": "2"
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "83",
+          "ty": "i64",
+          "value": "0"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "83",
+        "name": "alloc",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Assign",
+       "line": "84",
+       "name": "a",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "12",
+            "kind": "IntLit",
+            "line": "84",
+            "ty": "i64",
+            "value": "15"
+           }
+          ],
+          "col": "10",
+          "kind": "Call",
+          "line": "84",
+          "name": "p",
+          "ty": "i64"
+         }
+        ],
+        "col": "7",
+        "kind": "Call",
+        "line": "84",
+        "name": "mk",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "85",
+       "value": {
+        "args": [
+         {
+          "col": "14",
+          "kind": "Var",
+          "line": "85",
+          "name": "a",
+          "ty": "array"
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "85",
+        "name": "len",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "82",
+     "name": "t_reassign",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "89",
+       "mutable": false,
+       "name": "a",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "89",
+        "name": "t_bin",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "90",
+       "mutable": false,
+       "name": "b",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "90",
+        "name": "t_call",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "91",
+       "mutable": false,
+       "name": "c",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "91",
+        "name": "t_struct",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "92",
+       "mutable": false,
+       "name": "d",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "92",
+        "name": "t_enum",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "93",
+       "mutable": false,
+       "name": "e",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "93",
+        "name": "t_some",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "94",
+       "mutable": false,
+       "name": "f",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "94",
+        "name": "t_alloc",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "95",
+       "mutable": false,
+       "name": "g",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "95",
+        "name": "t_index_read",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "96",
+       "mutable": false,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "96",
+        "name": "t_index_assign",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "97",
+       "mutable": false,
+       "name": "j",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "97",
+        "name": "t_reassign",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "98",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "98",
+        "name": "j",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "88",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "6",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "7",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "5",
+     "name": "S"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "10",
+     "name": "E",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "11",
+       "name": "N"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "5",
+         "kind": "FieldDecl",
+         "line": "12",
+         "name": "a",
+         "type": "i64"
+        },
+        {
+         "col": "13",
+         "kind": "FieldDecl",
+         "line": "12",
+         "name": "b",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "12",
+       "name": "V"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "S"
+    },
+    {
+     "deps": [],
+     "kind": "enum",
+     "name": "E"
+    }
+   ],
+   "order": [
+    "S",
+    "E"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/r34_eval_order.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "Var",
+          "line": "18",
+          "name": "x",
+          "ty": null
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "18",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "18"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "19",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "19",
+        "name": "x",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "16",
+        "name": "result",
+        "ty": null
+       },
+       "line": "16",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "Var",
+        "line": "16",
+        "name": "x",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "15",
+     "name": "p",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "26",
+       "value": {
+        "col": "17",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Binary",
+         "left": {
+          "col": "10",
+          "kind": "Var",
+          "line": "26",
+          "name": "a",
+          "ty": null
+         },
+         "line": "26",
+         "op": "*",
+         "right": {
+          "col": "14",
+          "kind": "IntLit",
+          "line": "26",
+          "ty": null,
+          "value": "10"
+         },
+         "ty": null
+        },
+        "line": "26",
+        "op": "+",
+        "right": {
+         "col": "19",
+         "kind": "Var",
+         "line": "26",
+         "name": "b",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "22",
+     "name": "h",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "i64"
+      },
+      {
+       "kind": "Param",
+       "name": "b",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "23",
+         "name": "a",
+         "ty": null
+        },
+        "line": "23",
+        "op": ">=",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "23",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "line": "23",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "23",
+         "name": "a",
+         "ty": null
+        },
+        "line": "23",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "23",
+         "ty": null,
+         "value": "100"
+        },
+        "ty": null
+       },
+       "ty": null
+      },
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "24",
+         "name": "b",
+         "ty": null
+        },
+        "line": "24",
+        "op": ">=",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "24",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "line": "24",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "24",
+         "name": "b",
+         "ty": null
+        },
+        "line": "24",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "24",
+         "ty": null,
+         "value": "100"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "30",
+       "value": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "IntLit",
+          "line": "30",
+          "ty": null,
+          "value": "2"
+         },
+         {
+          "col": "19",
+          "kind": "Var",
+          "line": "30",
+          "name": "n",
+          "ty": null
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "30",
+        "name": "alloc",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "29",
+     "name": "mk",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "array"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "34",
+       "value": {
+        "col": "15",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "12",
+           "kind": "IntLit",
+           "line": "34",
+           "ty": null,
+           "value": "1"
+          }
+         ],
+         "col": "10",
+         "kind": "Call",
+         "line": "34",
+         "name": "p",
+         "ty": null
+        },
+        "line": "34",
+        "op": "+",
+        "right": {
+         "args": [
+          {
+           "col": "19",
+           "kind": "IntLit",
+           "line": "34",
+           "ty": null,
+           "value": "2"
+          }
+         ],
+         "col": "17",
+         "kind": "Call",
+         "line": "34",
+         "name": "p",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "33",
+     "name": "t_bin",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "38",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "14",
+            "kind": "IntLit",
+            "line": "38",
+            "ty": null,
+            "value": "3"
+           }
+          ],
+          "col": "12",
+          "kind": "Call",
+          "line": "38",
+          "name": "p",
+          "ty": null
+         },
+         {
+          "args": [
+           {
+            "col": "20",
+            "kind": "IntLit",
+            "line": "38",
+            "ty": null,
+            "value": "4"
+           }
+          ],
+          "col": "18",
+          "kind": "Call",
+          "line": "38",
+          "name": "p",
+          "ty": null
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "38",
+        "name": "h",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "37",
+     "name": "t_call",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "42",
+       "mutable": false,
+       "name": "s",
+       "type": "S",
+       "value": {
+        "col": "14",
+        "fields": [
+         {
+          "col": "18",
+          "kind": "FieldInit",
+          "line": "42",
+          "name": "x",
+          "value": {
+           "args": [
+            {
+             "col": "23",
+             "kind": "IntLit",
+             "line": "42",
+             "ty": null,
+             "value": "5"
+            }
+           ],
+           "col": "21",
+           "kind": "Call",
+           "line": "42",
+           "name": "p",
+           "ty": null
+          }
+         },
+         {
+          "col": "27",
+          "kind": "FieldInit",
+          "line": "42",
+          "name": "y",
+          "value": {
+           "args": [
+            {
+             "col": "32",
+             "kind": "IntLit",
+             "line": "42",
+             "ty": null,
+             "value": "6"
+            }
+           ],
+           "col": "30",
+           "kind": "Call",
+           "line": "42",
+           "name": "p",
+           "ty": null
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "42",
+        "name": "S",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "43",
+       "value": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "col": "10",
+          "kind": "Var",
+          "line": "43",
+          "name": "s",
+          "ty": null
+         },
+         "col": "10",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "43",
+         "ty": null
+        },
+        "line": "43",
+        "op": "+",
+        "right": {
+         "base": {
+          "col": "16",
+          "kind": "Var",
+          "line": "43",
+          "name": "s",
+          "ty": null
+         },
+         "col": "16",
+         "field": "y",
+         "kind": "FieldAccess",
+         "line": "43",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "41",
+     "name": "t_struct",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "47",
+       "mutable": false,
+       "name": "e",
+       "type": "E",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "21",
+            "kind": "IntLit",
+            "line": "47",
+            "ty": null,
+            "value": "7"
+           }
+          ],
+          "col": "19",
+          "kind": "Call",
+          "line": "47",
+          "name": "p",
+          "ty": null
+         },
+         {
+          "args": [
+           {
+            "col": "27",
+            "kind": "IntLit",
+            "line": "47",
+            "ty": null,
+            "value": "8"
+           }
+          ],
+          "col": "25",
+          "kind": "Call",
+          "line": "47",
+          "name": "p",
+          "ty": null
+         }
+        ],
+        "col": "14",
+        "enum_name": "E",
+        "kind": "EnumCtor",
+        "line": "47",
+        "ty": null,
+        "variant": "V"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "48",
+       "mutable": true,
+       "name": "r",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "48",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "kind": "Assign",
+           "line": "50",
+           "name": "r",
+           "value": {
+            "col": "19",
+            "kind": "IntLit",
+            "line": "50",
+            "ty": null,
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "N",
+         "enum_name": "E",
+         "kind": "MatchArm",
+         "line": "50"
+        },
+        {
+         "binders": [
+          "a",
+          "b"
+         ],
+         "body": [
+          {
+           "col": "21",
+           "kind": "Assign",
+           "line": "51",
+           "name": "r",
+           "value": {
+            "col": "27",
+            "kind": "Binary",
+            "left": {
+             "col": "25",
+             "kind": "Var",
+             "line": "51",
+             "name": "a",
+             "ty": null
+            },
+            "line": "51",
+            "op": "+",
+            "right": {
+             "col": "29",
+             "kind": "Var",
+             "line": "51",
+             "name": "b",
+             "ty": null
+            },
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "V",
+         "enum_name": "E",
+         "kind": "MatchArm",
+         "line": "51"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "49",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "49",
+        "name": "e",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "53",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "53",
+        "name": "r",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "46",
+     "name": "t_enum",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "57",
+       "mutable": false,
+       "name": "o",
+       "type": "option",
+       "value": {
+        "arg": {
+         "args": [
+          {
+           "col": "31",
+           "kind": "IntLit",
+           "line": "57",
+           "ty": null,
+           "value": "9"
+          }
+         ],
+         "col": "29",
+         "kind": "Call",
+         "line": "57",
+         "name": "p",
+         "ty": null
+        },
+        "col": "24",
+        "kind": "Ctor",
+        "line": "57",
+        "name": "Some",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "58",
+       "mutable": true,
+       "name": "r",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "58",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [
+          "v"
+         ],
+         "body": [
+          {
+           "col": "18",
+           "kind": "Assign",
+           "line": "60",
+           "name": "r",
+           "value": {
+            "col": "22",
+            "kind": "Var",
+            "line": "60",
+            "name": "v",
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Some",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "60"
+        },
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "15",
+           "kind": "Assign",
+           "line": "61",
+           "name": "r",
+           "value": {
+            "col": "19",
+            "kind": "IntLit",
+            "line": "61",
+            "ty": null,
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "None",
+         "enum_name": null,
+         "kind": "MatchArm",
+         "line": "61"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "59",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "59",
+        "name": "o",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "63",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "63",
+        "name": "r",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "56",
+     "name": "t_some",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "67",
+       "mutable": false,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "26",
+            "kind": "IntLit",
+            "line": "67",
+            "ty": null,
+            "value": "2"
+           }
+          ],
+          "col": "24",
+          "kind": "Call",
+          "line": "67",
+          "name": "p",
+          "ty": null
+         },
+         {
+          "args": [
+           {
+            "col": "32",
+            "kind": "IntLit",
+            "line": "67",
+            "ty": null,
+            "value": "11"
+           }
+          ],
+          "col": "30",
+          "kind": "Call",
+          "line": "67",
+          "name": "p",
+          "ty": null
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "67",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "68",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "68",
+         "name": "a",
+         "ty": null
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "68",
+         "ty": null,
+         "value": "1"
+        },
+        "kind": "Index",
+        "line": "68",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "66",
+     "name": "t_alloc",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "72",
+       "mutable": false,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "24",
+          "kind": "IntLit",
+          "line": "72",
+          "ty": null,
+          "value": "2"
+         },
+         {
+          "col": "27",
+          "kind": "IntLit",
+          "line": "72",
+          "ty": null,
+          "value": "4"
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "72",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "73",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "73",
+         "name": "a",
+         "ty": null
+        },
+        "col": "11",
+        "index": {
+         "col": "18",
+         "kind": "Binary",
+         "left": {
+          "args": [
+           {
+            "col": "14",
+            "kind": "IntLit",
+            "line": "73",
+            "ty": null,
+            "value": "12"
+           }
+          ],
+          "col": "12",
+          "kind": "Call",
+          "line": "73",
+          "name": "p",
+          "ty": null
+         },
+         "line": "73",
+         "op": "-",
+         "right": {
+          "col": "20",
+          "kind": "IntLit",
+          "line": "73",
+          "ty": null,
+          "value": "12"
+         },
+         "ty": null
+        },
+        "kind": "Index",
+        "line": "73",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "71",
+     "name": "t_index_read",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "77",
+       "mutable": true,
+       "name": "b",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "77",
+          "ty": null,
+          "value": "2"
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "77",
+          "ty": null,
+          "value": "0"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "77",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "index": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "7",
+           "kind": "IntLit",
+           "line": "78",
+           "ty": null,
+           "value": "13"
+          }
+         ],
+         "col": "5",
+         "kind": "Call",
+         "line": "78",
+         "name": "p",
+         "ty": null
+        },
+        "line": "78",
+        "op": "-",
+        "right": {
+         "col": "13",
+         "kind": "IntLit",
+         "line": "78",
+         "ty": null,
+         "value": "13"
+        },
+        "ty": null
+       },
+       "kind": "IndexAssign",
+       "line": "78",
+       "name": "b",
+       "value": {
+        "args": [
+         {
+          "col": "21",
+          "kind": "IntLit",
+          "line": "78",
+          "ty": null,
+          "value": "14"
+         }
+        ],
+        "col": "19",
+        "kind": "Call",
+        "line": "78",
+        "name": "p",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "79",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "79",
+         "name": "b",
+         "ty": null
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "79",
+         "ty": null,
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "79",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "76",
+     "name": "t_index_assign",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "83",
+       "mutable": true,
+       "name": "a",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "83",
+          "ty": null,
+          "value": "2"
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "83",
+          "ty": null,
+          "value": "0"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "83",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Assign",
+       "line": "84",
+       "name": "a",
+       "value": {
+        "args": [
+         {
+          "args": [
+           {
+            "col": "12",
+            "kind": "IntLit",
+            "line": "84",
+            "ty": null,
+            "value": "15"
+           }
+          ],
+          "col": "10",
+          "kind": "Call",
+          "line": "84",
+          "name": "p",
+          "ty": null
+         }
+        ],
+        "col": "7",
+        "kind": "Call",
+        "line": "84",
+        "name": "mk",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "85",
+       "value": {
+        "args": [
+         {
+          "col": "14",
+          "kind": "Var",
+          "line": "85",
+          "name": "a",
+          "ty": null
+         }
+        ],
+        "col": "10",
+        "kind": "Call",
+        "line": "85",
+        "name": "len",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "82",
+     "name": "t_reassign",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "89",
+       "mutable": false,
+       "name": "a",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "89",
+        "name": "t_bin",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "90",
+       "mutable": false,
+       "name": "b",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "90",
+        "name": "t_call",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "91",
+       "mutable": false,
+       "name": "c",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "91",
+        "name": "t_struct",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "92",
+       "mutable": false,
+       "name": "d",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "92",
+        "name": "t_enum",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "93",
+       "mutable": false,
+       "name": "e",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "93",
+        "name": "t_some",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "94",
+       "mutable": false,
+       "name": "f",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "94",
+        "name": "t_alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "95",
+       "mutable": false,
+       "name": "g",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "95",
+        "name": "t_index_read",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "96",
+       "mutable": false,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "96",
+        "name": "t_index_assign",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "97",
+       "mutable": false,
+       "name": "j",
+       "type": "i64",
+       "value": {
+        "args": [],
+        "col": "16",
+        "kind": "Call",
+        "line": "97",
+        "name": "t_reassign",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "98",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "98",
+        "name": "j",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "88",
+     "name": "run",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "6",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "7",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "5",
+     "name": "S"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "10",
+     "name": "E",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "11",
+       "name": "N"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "5",
+         "kind": "FieldDecl",
+         "line": "12",
+         "name": "a",
+         "type": "i64"
+        },
+        {
+         "col": "13",
+         "kind": "FieldDecl",
+         "line": "12",
+         "name": "b",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "12",
+       "name": "V"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (not (= x!1 x!1)))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "p",
+    "line": 19,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1 () Int)\n(declare-fun b!2 () Int)\n(assert (and (>= a!1 (- 9223372036854775808)) (<= a!1 9223372036854775807)))\n(assert (and (>= b!2 (- 9223372036854775808)) (<= b!2 9223372036854775807)))\n(assert (and (<= 0 a!1) (>= 100 a!1)))\n(assert (and (<= 0 b!2) (>= 100 b!2)))\n(assert (not (and (>= (* a!1 10) (- 9223372036854775808))\n          (<= (* a!1 10) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 12,
+    "fn": "h",
+    "line": 26,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1 () Int)\n(declare-fun b!2 () Int)\n(assert (and (>= a!1 (- 9223372036854775808)) (<= a!1 9223372036854775807)))\n(assert (and (>= b!2 (- 9223372036854775808)) (<= b!2 9223372036854775807)))\n(assert (and (<= 0 a!1) (>= 100 a!1)))\n(assert (and (<= 0 b!2) (>= 100 b!2)))\n(assert (let ((a!1 (and (>= (+ (* a!1 10) b!2) (- 9223372036854775808))\n                (<= (+ (* a!1 10) b!2) 9223372036854775807))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 17,
+    "fn": "h",
+    "line": 26,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun n!1 () Int)\n(assert (and (>= n!1 (- 9223372036854775808)) (<= n!1 9223372036854775807)))\n(assert (not (and (>= 2 0) (<= 2 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 10,
+    "fn": "mk",
+    "line": 30,
+    "seq": 3
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!1 () Int)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!1 (- 9223372036854775808)) (<= ret_p!1 9223372036854775807)))\n(assert (= 1 ret_p!1))\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 2 ret_p!2))\n(assert (not (and (>= (+ ret_p!1 ret_p!2) (- 9223372036854775808))\n          (<= (+ ret_p!1 ret_p!2) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 15,
+    "fn": "t_bin",
+    "line": 34,
+    "seq": 4
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!1 () Int)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!1 (- 9223372036854775808)) (<= ret_p!1 9223372036854775807)))\n(assert (= 3 ret_p!1))\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 4 ret_p!2))\n(assert (not (and (<= 0 ret_p!1) (>= 100 ret_p!1))))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 10,
+    "fn": "t_call",
+    "line": 38,
+    "seq": 5
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!1 () Int)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!1 (- 9223372036854775808)) (<= ret_p!1 9223372036854775807)))\n(assert (= 3 ret_p!1))\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 4 ret_p!2))\n(assert (not (and (<= 0 ret_p!2) (>= 100 ret_p!2))))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 10,
+    "fn": "t_call",
+    "line": 38,
+    "seq": 6
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!S 0)) (((m1t0!S (m1t0!S.x Int) (m1t0!S.y Int)))))\n(declare-fun ret_p!1 () Int)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!1 (- 9223372036854775808)) (<= ret_p!1 9223372036854775807)))\n(assert (= 5 ret_p!1))\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 6 ret_p!2))\n(assert (let ((a!1 (>= (+ (m1t0!S.x (m1t0!S ret_p!1 ret_p!2))\n                  (m1t0!S.y (m1t0!S ret_p!1 ret_p!2)))\n               (- 9223372036854775808)))\n      (a!2 (<= (+ (m1t0!S.x (m1t0!S ret_p!1 ret_p!2))\n                  (m1t0!S.y (m1t0!S ret_p!1 ret_p!2)))\n               9223372036854775807)))\n  (not (and a!1 a!2))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 14,
+    "fn": "t_struct",
+    "line": 43,
+    "seq": 7
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t1!E 0)) (((|m1t1!E::N|) (|m1t1!E::V| (|m1t1!E::V.a| Int) (|m1t1!E::V.b| Int)))))\n(declare-fun ret_p!1 () Int)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!1 (- 9223372036854775808)) (<= ret_p!1 9223372036854775807)))\n(assert (= 7 ret_p!1))\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 8 ret_p!2))\n(assert ((_ is |m1t1!E::V|) (|m1t1!E::V| ret_p!1 ret_p!2)))\n(assert (and (>= (|m1t1!E::V.a| (|m1t1!E::V| ret_p!1 ret_p!2)) (- 9223372036854775808))\n     (<= (|m1t1!E::V.a| (|m1t1!E::V| ret_p!1 ret_p!2)) 9223372036854775807)))\n(assert (and (>= (|m1t1!E::V.b| (|m1t1!E::V| ret_p!1 ret_p!2)) (- 9223372036854775808))\n     (<= (|m1t1!E::V.b| (|m1t1!E::V| ret_p!1 ret_p!2)) 9223372036854775807)))\n(assert (let ((a!1 (>= (+ (|m1t1!E::V.a| (|m1t1!E::V| ret_p!1 ret_p!2))\n                  (|m1t1!E::V.b| (|m1t1!E::V| ret_p!1 ret_p!2)))\n               (- 9223372036854775808)))\n      (a!2 (<= (+ (|m1t1!E::V.a| (|m1t1!E::V| ret_p!1 ret_p!2))\n                  (|m1t1!E::V.b| (|m1t1!E::V| ret_p!1 ret_p!2)))\n               9223372036854775807)))\n  (not (and a!1 a!2))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 27,
+    "fn": "t_enum",
+    "line": 51,
+    "seq": 8
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!1 () Int)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!1 (- 9223372036854775808)) (<= ret_p!1 9223372036854775807)))\n(assert (= 2 ret_p!1))\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 11 ret_p!2))\n(assert (not (and (>= ret_p!1 0) (<= ret_p!1 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 18,
+    "fn": "t_alloc",
+    "line": 67,
+    "seq": 9
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!1 () Int)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!1 (- 9223372036854775808)) (<= ret_p!1 9223372036854775807)))\n(assert (= 2 ret_p!1))\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 11 ret_p!2))\n(assert (not (and (>= 1 0) (< 1 ret_p!1))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 11,
+    "fn": "t_alloc",
+    "line": 68,
+    "seq": 10
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (>= 2 0) (<= 2 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 18,
+    "fn": "t_index_read",
+    "line": 72,
+    "seq": 11
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 12 ret_p!2))\n(assert (not (and (>= (- ret_p!2 12) (- 9223372036854775808))\n          (<= (- ret_p!2 12) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 18,
+    "fn": "t_index_read",
+    "line": 73,
+    "seq": 12
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 12 ret_p!2))\n(assert (not (and (>= (- ret_p!2 12) 0) (> 2 (- ret_p!2 12)))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 11,
+    "fn": "t_index_read",
+    "line": 73,
+    "seq": 13
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (>= 2 0) (<= 2 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 22,
+    "fn": "t_index_assign",
+    "line": 77,
+    "seq": 14
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!2 () Int)\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 13 ret_p!2))\n(assert (not (and (>= (- ret_p!2 13) (- 9223372036854775808))\n          (<= (- ret_p!2 13) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "t_index_assign",
+    "line": 78,
+    "seq": 15
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!2 () Int)\n(declare-fun ret_p!3 () Int)\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 13 ret_p!2))\n(assert (and (>= ret_p!3 (- 9223372036854775808)) (<= ret_p!3 9223372036854775807)))\n(assert (= 14 ret_p!3))\n(assert (not (and (>= (- ret_p!2 13) 0) (> 2 (- ret_p!2 13)))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 3,
+    "fn": "t_index_assign",
+    "line": 78,
+    "seq": 16
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun ret_p!2 () Int)\n(declare-fun ret_p!3 () Int)\n(assert (and (>= ret_p!2 (- 9223372036854775808)) (<= ret_p!2 9223372036854775807)))\n(assert (= 13 ret_p!2))\n(assert (and (>= ret_p!3 (- 9223372036854775808)) (<= ret_p!3 9223372036854775807)))\n(assert (= 14 ret_p!3))\n(assert (not (and (>= 0 0) (< 0 2))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 11,
+    "fn": "t_index_assign",
+    "line": 79,
+    "seq": 17
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (>= 2 0) (<= 2 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 22,
+    "fn": "t_reassign",
+    "line": 83,
+    "seq": 18
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

@@ -8,6 +8,7 @@ b. must-reject programs (tests/must_reject/*.pruv and examples/bad_index.pruv): 
 c. usage errors exit 2 and write no output file.
 d. fuzz-shaped programs (generate.generate_case(56, i), i < 40) x {default, --no-verify}:
    exit 0 -> three files byte-identical; exit 1 -> also-llvm exits 1, same stdout, no files.
+e. --backend omitted == explicit --backend rust (one case: same stdout and output bytes).
 Prints each failure and a final line "cli_also_llvm: P/T passed"; exit 1 on any failure."""
 import concurrent.futures
 import glob
@@ -22,13 +23,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "bench", "fuzz"))
 import generate  # noqa: E402
-PRUVC = os.path.join(ROOT, "pruvc", "pruvc.py")
+sys.path.append(HERE)
+import compiler_driver as CD  # noqa: E402
 MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 OK_LINE = json.dumps({"ok": True})
+DRIVER = None  # set in main() from --compiler/--compiler-path (default py)
 
 
-def run(args):
-    return subprocess.run([sys.executable, PRUVC] + args, capture_output=True, text=True, timeout=300)
+def run(args, keep_default_backend=False):
+    """args[0] is the input file. --backend is always explicit (inserted as rust right after the
+    input when the caller gave none; pruvc.py's default is rust, so this changes nothing).
+    keep_default_backend=True leaves --backend out (only default_backend_case uses it)."""
+    args = list(args)
+    if "--backend" not in args and not keep_default_backend:
+        args[1:1] = ["--backend", "rust"]
+    d = DRIVER or CD.default_driver()
+    return d.run(d.argv_raw(args), timeout=300).raise_if_timeout()
 
 
 def read(p):
@@ -90,6 +100,25 @@ def reject_case(f, work):
         probs.append("files written: %s" % left)
     if diag_keys(r2.stdout) != diag_keys(r1.stdout):
         probs.append("diagnostics differ: %r vs %r" % (diag_keys(r2.stdout), diag_keys(r1.stdout)))
+    return not probs, "; ".join(probs)
+
+
+def default_backend_case(f, work):
+    """--backend omitted must behave as --backend rust: same stdout, exit code and output bytes."""
+    d = os.path.join(work, "defbackend")
+    os.makedirs(d)
+    P = lambda n: os.path.join(d, n)
+    r1 = run([f, "-o", P("explicit.rs"), "--backend", "rust"])
+    r2 = run([f, "-o", P("omitted.rs")], keep_default_backend=True)
+    probs = []
+    for n, r in (("explicit", r1), ("omitted", r2)):
+        if r.returncode != 0:
+            probs.append("%s run exit %d %s" % (n, r.returncode, r.stdout + r.stderr))
+    if not probs:
+        if read(P("omitted.rs")) != read(P("explicit.rs")):
+            probs.append("omitted.rs != explicit.rs")
+        if r2.stdout != r1.stdout:
+            probs.append("stdout %r vs %r" % (r2.stdout, r1.stdout))
     return not probs, "; ".join(probs)
 
 
@@ -155,6 +184,11 @@ def fuzz_case(i, mode, flags, work):
 
 
 def main():
+    global DRIVER
+    DRIVER = CD.from_argv(sys.argv)  # --compiler py|rs, --compiler-path PATH (removed from sys.argv)
+    if len(sys.argv) > 1:
+        print("usage: cli_also_llvm.py [--compiler py|rs] [--compiler-path PATH]")
+        return 2
     work = tempfile.mkdtemp(prefix="cli_also_llvm_")
     jobs = []
     try:
@@ -180,6 +214,11 @@ def main():
         ]
         for tag, fn in usage:
             jobs.append(("usage/" + tag, lambda fn=fn, tag=tag: usage_case(fn, work, tag.replace(" ", "_"))))
+
+        accepted = [f for f in examples if os.path.basename(f) != "bad_index.pruv"]
+        if accepted:
+            jobs.append(("default_backend/omitted == explicit rust",
+                         lambda f=accepted[0]: default_backend_case(f, work)))
 
         for i in range(40):
             for mode, flags in MODES[:2]:

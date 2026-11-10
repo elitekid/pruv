@@ -260,3 +260,29 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - 검증: `run_all --backend both` 363/363(82초), `cli_also_llvm` 185/185(8초), 퍼저 seed 1110 30개 실패 0(8초). 생성 코드는 기호 이름과 오류 문구만 바뀌고 의미는 같아 bench 성능·변이 전체·g1은 돌리지 않았다.
 - 감사(Claude opus): 필수 1건 — `bench/mutate.py`가 확장자를 앞 4글자로 떼어 `.pruv`에서 문제 번호가 `p01.`이 되어 변이 시험이 멈춤(시험이 안 덮는 경로) → `os.path.splitext`로 고치고 p02 하나로 실행해 확인(변이 7개 정상, 122초). 권고 반영: `solve/` 입력 사본 본문 되돌림, BLUEPRINT 43행 "당시 이름" 표기, 코드 블록 정렬, 이 절의 키·보존 목록 보완.
 - 주의: 새 결과 JSON의 키가 `pruv_*`라 옛 결과 JSON(`vow`·`vow_*`)과 직접 비교하는 스크립트를 쓰면 키를 맞춰야 한다.
+
+## 15. M3 = C4 첫 구현 묶음 0A~0D+T (2026-11-11)
+설계 `docs/M3_C4_SPEC.md` 4·5·6·7절의 첫 묶음. Python 정본은 0A의 두 줄만 바꿨다. 이 맥(arm64 10코어, Homebrew llvm@22 22.1.8, rustc 1.99.1)에서만 확인했다.
+
+| 묶음 | 산출물 | 확인 결과 |
+|---|---|---|
+| 0A 결정성·기준 | `check.py:134` 호출 그래프·`verify.py:686` havoc 순회만 이름순 정렬(선언 순서 그대로), `tests/diff_py_adapter.py`(parse AST v1·check·trace·snapshot·seeds), 기준 스냅샷 `tests/baseline/py_0a/`(입력 220, manifest `cfbeae2f…`, z3 5.3.3.0) | hash seed 0·1·2·random: 고치기 전 220 중 24 다름(모두 SMT 순서), 고친 뒤 0. 고치기 전후 seed 0: 진단·판정 220 모두 같고 SMT 질의 순서만 16개 바뀜. 증명 시간·반례·재귀 첫 경로 변화 없음 |
+| 0B 잠금·z3 시제품 | `pruvc-rs/` workspace(pruv-core·pruv-proof·pruvc), `Cargo.lock`, `rust-toolchain.toml` 1.99.1, `ci/m3/`(README·check_deps.sh·compare_spike.py), 표본 6개 | 의무 58개(집계 보조정리·재시도, Opt/Res, 사용자 struct/enum, havoc, 배열, 중첩 양화+patterns) 첫 시도·재시도 SMT-LIB 텍스트와 판정이 Python과 글자 단위로 모두 같음. `cargo build --release --locked` 성공, `cargo tree -d` 중복 없음 |
+| 0C 객체·링크 도구 | `pruvc-ir-tool`(obj·runtime·link·undef), runtime.c 4변형 build.rs 내장 | `run_all --backend llvm --ir-tool` 222/222(clang 없이 객체화). i128 표본 출력 일치, 미해결 보조 기호 `__divti3`·`__modti3`는 macOS libSystem이 공급. 한글·공백 경로 링크 됨. 객체 최소 OS 11.0 고정 |
+| 0D Windows sret 표본 | `tests/abi/`(대상별 wrapper .ll 5개, C 기준 ref.c, Rust extern 드라이버, check_abi.py) | 5/5: COFF x86-64 객체(llc·ir-tool 두 경로), verify, clang C 기준 서명(sret 첫 인자·align 8·void) 일치. **Windows 실행 ABI는 미확인(Windows CI 몫)** |
+| T 차분 장치 | `tests/compiler_driver.py`, `tests/diff_compilers.py`(`--replay`), 기존 장치 5개에 `--compiler py\|rs`·`--compiler-path`, run_all `--ir-tool` | py 대 py 468 same. 미구현 응답은 통과로 세지 않고 종료 코드 3(`--allow-unimplemented`면 0). 실패 사례 저장·`--replay` 재현 확인 |
+
+| 의존(정확 잠금) | 값 |
+|---|---|
+| z3 / z3-src / z3-sys | `=0.22.0` vendored / `=503.3.0` / `=0.14.1` (실행 버전 5.3.3.0) |
+| llvm-sys / cc / tempfile / serde_json | `=221.1.2` force-static / `=1.11.1` / `=3.27.0` / `=1.0.154` |
+| 빌드 | z3 cold 약 280초(첫 빌드가 컴파일 오류로 끝난 시점 기준, 오류 없는 cold 재측정 안 함), 코드만 바꾼 다시 빌드 수 초 |
+| 크기(strip) | pruv-proof-spike 21MB, pruvc-ir-tool 37MB |
+| 동적 의존 | spike: libc++·libSystem만(check_deps 통과). ir-tool: Homebrew `libzstd` → check_deps 실패(개발 LLVM 탓, 배포 LLVM 직접 빌드에서 뗄 일) |
+
+- 0B에서 찾은 이식 함정(실제 검증기 이식에서 지킬 것): (1) z3py는 파이썬 반사 비교 규칙 때문에 `x >= IntVal(0)`을 `(<= 0 x)`로 낸다(오른쪽이 수 리터럴이면 반사 메서드). 파이썬 정수와의 비교(`in_range`, `nv.n >= 0` 등)는 뒤집지 않는다 → Rust `Ast::ge`는 반사 규칙, `*_i`는 그대로. (2) 출력 모드는 `Z3_PRINT_SMTLIB2_COMPLIANT`=2(작업자가 넣은 3은 범위 밖 enum transmute라 UB였고 식 출력이 빈 문자열이 되어 보조정리 중복 키가 모두 같아졌음). (3) z3py는 양화 qid/skid에 null 기호를 넘기는데 z3-sys 0.14.1은 이 인자를 NonNull로 묶어 같은 C 함수를 null 허용 서명으로 따로 선언. (4) z3 기본 오류 처리기는 stdout에 쓰고 exit(1) → 언어 거부와 구별되지 않아 abort 처리기로 바꿈.
+- 0C에서 고친 것: LLVM 함수 이름 오타, macOS에서 SDK를 안 넘겨 `-lSystem` 링크 실패(`PRUVC_SYSROOT` 또는 `xcrun --show-sdk-path`).
+- 검증(고친 뒤 마지막 실행): `run_all --backend both` 363/363, `cli_also_llvm` 186/186(`--backend` 생략 사례 1건 추가), 퍼저 seed 1111 30개 실패 0(13초), 변이 LLVM 81개(목록 83, 같은 줄 중복 2) `mutants8_m0_llvm.json`과 판정·단계·코드·시험 결과 모두 같음(287초, 결과 `bench/mutants9_0a_llvm.json`). 퍼저·변이는 감사 고침 전 실행이며 고침은 mutate의 시간 제한 되돌림·주석뿐이라 다시 돌리지 않았다.
+- 감사(Claude): 필수 5건 — mutate에 생긴 300초 제한(되돌림), mutate crash 정의 확대(유지·기록), diff_compilers가 미구현만 있을 때 종료 코드 0(→3), ir-tool 호스트 triple이 LLVM 기본값이라 최소 OS가 빌드 머신을 따름(→대상 표 triple), check_deps가 Intel Homebrew 경로를 놓침(→추가). 권고 반영: z3 오류 처리기, Datatype 출력 배열 null 검사, Rust havoc 내부 정렬, 반례 값 차이는 diff로 세지 않음, Linux `--sysroot=`, xcrun 결과 캐시, 임시 폴더 정리.
+- 고친 뒤 확인(Claude): 필수 5건 모두 해결, 새 필수 없음. 권고 4건 중 mutate crash 정의 문구를 실제 정의에 맞추고, diff_compilers 미구현 판별에서 경로에도 걸리는 `todo`를 뺌(`--allow-unimplemented` 때 거짓 통과 가능성). 나머지(실행 파일 이름 치환이 한쪽에만 적용돼 거짓 실패 가능, check_deps 모서리 사례)는 남김.
+- 남은 일: Linux·Windows·macOS x64에서 빌드·i128 보조 기호·정적 의존 확인, Windows 실행 ABI(CI), 배포 LLVM 정적 직접 빌드, ir-tool을 bench 하니스·퍼저 객체화에도 연결, 오류 없는 z3 cold 빌드 시간 재측정. 다음 단계는 1 파서 이식.

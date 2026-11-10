@@ -1,0 +1,194 @@
+{
+ "check": {
+  "error": {
+   "code": "match_arms",
+   "col": 3,
+   "fix": "",
+   "line": 9,
+   "message": "match is missing arm(s): Event::Failed",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_match_missing.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "8",
+       "mutable": true,
+       "name": "r",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "8",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "23",
+           "kind": "Assign",
+           "line": "10",
+           "name": "r",
+           "value": {
+            "col": "27",
+            "kind": "IntLit",
+            "line": "10",
+            "ty": null,
+            "value": "0"
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Empty",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "10"
+        },
+        {
+         "binders": [
+          "value"
+         ],
+         "body": [
+          {
+           "col": "28",
+           "kind": "Assign",
+           "line": "11",
+           "name": "r",
+           "value": {
+            "col": "32",
+            "kind": "Var",
+            "line": "11",
+            "name": "value",
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Hit",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "11"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "9",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "9",
+        "name": "e",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "13",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "13",
+        "name": "r",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "7",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "7",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "value",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Hit"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "10",
+         "kind": "FieldDecl",
+         "line": "4",
+         "name": "code",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "4",
+       "name": "Failed"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "match_arms",
+    "col": 3,
+    "fix": "",
+    "line": 9,
+    "message": "match is missing arm(s): Event::Failed",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

@@ -1,0 +1,141 @@
+{
+ "check": {
+  "error": {
+   "code": "unused_value",
+   "col": 3,
+   "fix": "bind it with `let` or `match` it",
+   "line": 10,
+   "message": "value of type Wrapper is dropped",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_unused_wrapper.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "6",
+       "value": {
+        "col": "10",
+        "fields": [
+         {
+          "col": "20",
+          "kind": "FieldInit",
+          "line": "6",
+          "name": "hint",
+          "value": {
+           "arg": {
+            "col": "31",
+            "kind": "IntLit",
+            "line": "6",
+            "ty": null,
+            "value": "1"
+           },
+           "col": "26",
+           "kind": "Ctor",
+           "line": "6",
+           "name": "Some",
+           "ty": null
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "6",
+        "name": "Wrapper",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "5",
+     "name": "make",
+     "params": [],
+     "requires": [],
+     "ret": "Wrapper"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [],
+        "col": "3",
+        "kind": "Call",
+        "line": "10",
+        "name": "make",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "10"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "11",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "11",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "9",
+     "name": "f",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "hint",
+       "type": "option"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Wrapper"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "unused_value",
+    "col": 3,
+    "fix": "bind it with `let` or `match` it",
+    "line": 10,
+    "message": "value of type Wrapper is dropped",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

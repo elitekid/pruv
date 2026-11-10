@@ -1,0 +1,1397 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "19",
+       "mutable": true,
+       "name": "g",
+       "type": "Frame",
+       "value": {
+        "col": "22",
+        "kind": "Var",
+        "line": "19",
+        "name": "f",
+        "ty": "Frame"
+       }
+      },
+      {
+       "col": "3",
+       "fields": [
+        "origin",
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "20",
+       "name": "g",
+       "value": {
+        "col": "27",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "16",
+           "kind": "Var",
+           "line": "20",
+           "name": "g",
+           "ty": "Frame"
+          },
+          "col": "16",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "20",
+          "ty": "Point"
+         },
+         "col": "16",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "20",
+         "ty": "i64"
+        },
+        "line": "20",
+        "op": "+",
+        "right": {
+         "col": "29",
+         "kind": "Var",
+         "line": "20",
+         "name": "dx",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "21",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "21",
+        "name": "g",
+        "ty": "Frame"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "27",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "base": {
+          "col": "11",
+          "kind": "Var",
+          "line": "15",
+          "name": "result",
+          "ty": "Frame"
+         },
+         "col": "11",
+         "field": "origin",
+         "kind": "FieldAccess",
+         "line": "15",
+         "ty": "Point"
+        },
+        "col": "11",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "15",
+        "ty": "i64"
+       },
+       "line": "15",
+       "op": "==",
+       "right": {
+        "col": "41",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "30",
+           "kind": "Var",
+           "line": "15",
+           "name": "f",
+           "ty": "Frame"
+          },
+          "col": "30",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "15",
+          "ty": "Point"
+         },
+         "col": "30",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "15",
+         "ty": "i64"
+        },
+        "line": "15",
+        "op": "+",
+        "right": {
+         "col": "43",
+         "kind": "Var",
+         "line": "15",
+         "name": "dx",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       },
+       "ty": "bool"
+      },
+      {
+       "col": "27",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "base": {
+          "col": "11",
+          "kind": "Var",
+          "line": "16",
+          "name": "result",
+          "ty": "Frame"
+         },
+         "col": "11",
+         "field": "origin",
+         "kind": "FieldAccess",
+         "line": "16",
+         "ty": "Point"
+        },
+        "col": "11",
+        "field": "y",
+        "kind": "FieldAccess",
+        "line": "16",
+        "ty": "i64"
+       },
+       "line": "16",
+       "op": "==",
+       "right": {
+        "base": {
+         "base": {
+          "col": "30",
+          "kind": "Var",
+          "line": "16",
+          "name": "f",
+          "ty": "Frame"
+         },
+         "col": "30",
+         "field": "origin",
+         "kind": "FieldAccess",
+         "line": "16",
+         "ty": "Point"
+        },
+        "col": "30",
+        "field": "y",
+        "kind": "FieldAccess",
+        "line": "16",
+        "ty": "i64"
+       },
+       "ty": "bool"
+      },
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "col": "11",
+         "kind": "Var",
+         "line": "17",
+         "name": "result",
+         "ty": "Frame"
+        },
+        "col": "11",
+        "field": "size",
+        "kind": "FieldAccess",
+        "line": "17",
+        "ty": "Point"
+       },
+       "line": "17",
+       "op": "==",
+       "right": {
+        "base": {
+         "col": "26",
+         "kind": "Var",
+         "line": "17",
+         "name": "f",
+         "ty": "Frame"
+        },
+        "col": "26",
+        "field": "size",
+        "kind": "FieldAccess",
+        "line": "17",
+        "ty": "Point"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "12",
+     "name": "shift",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "f",
+       "type": "Frame"
+      },
+      {
+       "kind": "Param",
+       "name": "dx",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "37",
+       "kind": "Binary",
+       "left": {
+        "col": "23",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "12",
+           "kind": "Var",
+           "line": "13",
+           "name": "f",
+           "ty": "Frame"
+          },
+          "col": "12",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "13",
+          "ty": "Point"
+         },
+         "col": "12",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "13",
+         "ty": "i64"
+        },
+        "line": "13",
+        "op": ">=",
+        "right": {
+         "col": "26",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": "i64",
+         "value": "-1000000"
+        },
+        "ty": "bool"
+       },
+       "line": "13",
+       "op": "&&",
+       "right": {
+        "col": "51",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "40",
+           "kind": "Var",
+           "line": "13",
+           "name": "f",
+           "ty": "Frame"
+          },
+          "col": "40",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "13",
+          "ty": "Point"
+         },
+         "col": "40",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "13",
+         "ty": "i64"
+        },
+        "line": "13",
+        "op": "<=",
+        "right": {
+         "col": "54",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": "i64",
+         "value": "1000000"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      },
+      {
+       "col": "29",
+       "kind": "Binary",
+       "left": {
+        "col": "15",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "14",
+         "name": "dx",
+         "ty": "i64"
+        },
+        "line": "14",
+        "op": ">=",
+        "right": {
+         "col": "18",
+         "kind": "IntLit",
+         "line": "14",
+         "ty": "i64",
+         "value": "-1000000"
+        },
+        "ty": "bool"
+       },
+       "line": "14",
+       "op": "&&",
+       "right": {
+        "col": "35",
+        "kind": "Binary",
+        "left": {
+         "col": "32",
+         "kind": "Var",
+         "line": "14",
+         "name": "dx",
+         "ty": "i64"
+        },
+        "line": "14",
+        "op": "<=",
+        "right": {
+         "col": "38",
+         "kind": "IntLit",
+         "line": "14",
+         "ty": "i64",
+         "value": "1000000"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "Frame"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "25",
+       "mutable": false,
+       "name": "f",
+       "type": "Frame",
+       "value": {
+        "col": "18",
+        "fields": [
+         {
+          "col": "26",
+          "kind": "FieldInit",
+          "line": "25",
+          "name": "origin",
+          "value": {
+           "col": "34",
+           "fields": [
+            {
+             "col": "42",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "x",
+             "value": {
+              "col": "45",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": "i64",
+              "value": "3"
+             }
+            },
+            {
+             "col": "48",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "y",
+             "value": {
+              "col": "51",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": "i64",
+              "value": "4"
+             }
+            }
+           ],
+           "kind": "StructLit",
+           "line": "25",
+           "name": "Point",
+           "ty": "Point"
+          }
+         },
+         {
+          "col": "56",
+          "kind": "FieldInit",
+          "line": "25",
+          "name": "size",
+          "value": {
+           "col": "62",
+           "fields": [
+            {
+             "col": "70",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "x",
+             "value": {
+              "col": "73",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": "i64",
+              "value": "10"
+             }
+            },
+            {
+             "col": "77",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "y",
+             "value": {
+              "col": "80",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": "i64",
+              "value": "20"
+             }
+            }
+           ],
+           "kind": "StructLit",
+           "line": "25",
+           "name": "Point",
+           "ty": "Point"
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "25",
+        "name": "Frame",
+        "ty": "Frame"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "26",
+       "mutable": false,
+       "name": "g",
+       "type": "Frame",
+       "value": {
+        "args": [
+         {
+          "col": "24",
+          "kind": "Var",
+          "line": "26",
+          "name": "f",
+          "ty": "Frame"
+         },
+         {
+          "col": "27",
+          "kind": "IntLit",
+          "line": "26",
+          "ty": "i64",
+          "value": "5"
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "26",
+        "name": "shift",
+        "ty": "Frame"
+       }
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "base": {
+            "col": "9",
+            "kind": "Var",
+            "line": "27",
+            "name": "f",
+            "ty": "Frame"
+           },
+           "col": "9",
+           "field": "origin",
+           "kind": "FieldAccess",
+           "line": "27",
+           "ty": "Point"
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "27",
+          "ty": "i64"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "27",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "27"
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "base": {
+            "col": "9",
+            "kind": "Var",
+            "line": "28",
+            "name": "g",
+            "ty": "Frame"
+           },
+           "col": "9",
+           "field": "origin",
+           "kind": "FieldAccess",
+           "line": "28",
+           "ty": "Point"
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "28",
+          "ty": "i64"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "28",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "28"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "24",
+     "name": "main",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "7",
+       "name": "origin",
+       "type": "Point"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "8",
+       "name": "size",
+       "type": "Point"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "6",
+     "name": "Frame"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [
+    {
+     "deps": [],
+     "kind": "struct",
+     "name": "Point"
+    },
+    {
+     "deps": [
+      "Point"
+     ],
+     "kind": "struct",
+     "name": "Frame"
+    }
+   ],
+   "order": [
+    "Point",
+    "Frame"
+   ]
+  }
+ },
+ "flags": [],
+ "input": "examples/g1_point.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "19",
+       "mutable": true,
+       "name": "g",
+       "type": "Frame",
+       "value": {
+        "col": "22",
+        "kind": "Var",
+        "line": "19",
+        "name": "f",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "fields": [
+        "origin",
+        "x"
+       ],
+       "kind": "FieldAssign",
+       "line": "20",
+       "name": "g",
+       "value": {
+        "col": "27",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "16",
+           "kind": "Var",
+           "line": "20",
+           "name": "g",
+           "ty": null
+          },
+          "col": "16",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "20",
+          "ty": null
+         },
+         "col": "16",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "20",
+         "ty": null
+        },
+        "line": "20",
+        "op": "+",
+        "right": {
+         "col": "29",
+         "kind": "Var",
+         "line": "20",
+         "name": "dx",
+         "ty": null
+        },
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "21",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "21",
+        "name": "g",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "27",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "base": {
+          "col": "11",
+          "kind": "Var",
+          "line": "15",
+          "name": "result",
+          "ty": null
+         },
+         "col": "11",
+         "field": "origin",
+         "kind": "FieldAccess",
+         "line": "15",
+         "ty": null
+        },
+        "col": "11",
+        "field": "x",
+        "kind": "FieldAccess",
+        "line": "15",
+        "ty": null
+       },
+       "line": "15",
+       "op": "==",
+       "right": {
+        "col": "41",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "30",
+           "kind": "Var",
+           "line": "15",
+           "name": "f",
+           "ty": null
+          },
+          "col": "30",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "15",
+          "ty": null
+         },
+         "col": "30",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "15",
+         "ty": null
+        },
+        "line": "15",
+        "op": "+",
+        "right": {
+         "col": "43",
+         "kind": "Var",
+         "line": "15",
+         "name": "dx",
+         "ty": null
+        },
+        "ty": null
+       },
+       "ty": null
+      },
+      {
+       "col": "27",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "base": {
+          "col": "11",
+          "kind": "Var",
+          "line": "16",
+          "name": "result",
+          "ty": null
+         },
+         "col": "11",
+         "field": "origin",
+         "kind": "FieldAccess",
+         "line": "16",
+         "ty": null
+        },
+        "col": "11",
+        "field": "y",
+        "kind": "FieldAccess",
+        "line": "16",
+        "ty": null
+       },
+       "line": "16",
+       "op": "==",
+       "right": {
+        "base": {
+         "base": {
+          "col": "30",
+          "kind": "Var",
+          "line": "16",
+          "name": "f",
+          "ty": null
+         },
+         "col": "30",
+         "field": "origin",
+         "kind": "FieldAccess",
+         "line": "16",
+         "ty": null
+        },
+        "col": "30",
+        "field": "y",
+        "kind": "FieldAccess",
+        "line": "16",
+        "ty": null
+       },
+       "ty": null
+      },
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "base": {
+         "col": "11",
+         "kind": "Var",
+         "line": "17",
+         "name": "result",
+         "ty": null
+        },
+        "col": "11",
+        "field": "size",
+        "kind": "FieldAccess",
+        "line": "17",
+        "ty": null
+       },
+       "line": "17",
+       "op": "==",
+       "right": {
+        "base": {
+         "col": "26",
+         "kind": "Var",
+         "line": "17",
+         "name": "f",
+         "ty": null
+        },
+        "col": "26",
+        "field": "size",
+        "kind": "FieldAccess",
+        "line": "17",
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "12",
+     "name": "shift",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "f",
+       "type": "Frame"
+      },
+      {
+       "kind": "Param",
+       "name": "dx",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "37",
+       "kind": "Binary",
+       "left": {
+        "col": "23",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "12",
+           "kind": "Var",
+           "line": "13",
+           "name": "f",
+           "ty": null
+          },
+          "col": "12",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "13",
+          "ty": null
+         },
+         "col": "12",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "13",
+         "ty": null
+        },
+        "line": "13",
+        "op": ">=",
+        "right": {
+         "col": "26",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": null,
+         "value": "-1000000"
+        },
+        "ty": null
+       },
+       "line": "13",
+       "op": "&&",
+       "right": {
+        "col": "51",
+        "kind": "Binary",
+        "left": {
+         "base": {
+          "base": {
+           "col": "40",
+           "kind": "Var",
+           "line": "13",
+           "name": "f",
+           "ty": null
+          },
+          "col": "40",
+          "field": "origin",
+          "kind": "FieldAccess",
+          "line": "13",
+          "ty": null
+         },
+         "col": "40",
+         "field": "x",
+         "kind": "FieldAccess",
+         "line": "13",
+         "ty": null
+        },
+        "line": "13",
+        "op": "<=",
+        "right": {
+         "col": "54",
+         "kind": "IntLit",
+         "line": "13",
+         "ty": null,
+         "value": "1000000"
+        },
+        "ty": null
+       },
+       "ty": null
+      },
+      {
+       "col": "29",
+       "kind": "Binary",
+       "left": {
+        "col": "15",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "14",
+         "name": "dx",
+         "ty": null
+        },
+        "line": "14",
+        "op": ">=",
+        "right": {
+         "col": "18",
+         "kind": "IntLit",
+         "line": "14",
+         "ty": null,
+         "value": "-1000000"
+        },
+        "ty": null
+       },
+       "line": "14",
+       "op": "&&",
+       "right": {
+        "col": "35",
+        "kind": "Binary",
+        "left": {
+         "col": "32",
+         "kind": "Var",
+         "line": "14",
+         "name": "dx",
+         "ty": null
+        },
+        "line": "14",
+        "op": "<=",
+        "right": {
+         "col": "38",
+         "kind": "IntLit",
+         "line": "14",
+         "ty": null,
+         "value": "1000000"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "Frame"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "25",
+       "mutable": false,
+       "name": "f",
+       "type": "Frame",
+       "value": {
+        "col": "18",
+        "fields": [
+         {
+          "col": "26",
+          "kind": "FieldInit",
+          "line": "25",
+          "name": "origin",
+          "value": {
+           "col": "34",
+           "fields": [
+            {
+             "col": "42",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "x",
+             "value": {
+              "col": "45",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": null,
+              "value": "3"
+             }
+            },
+            {
+             "col": "48",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "y",
+             "value": {
+              "col": "51",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": null,
+              "value": "4"
+             }
+            }
+           ],
+           "kind": "StructLit",
+           "line": "25",
+           "name": "Point",
+           "ty": null
+          }
+         },
+         {
+          "col": "56",
+          "kind": "FieldInit",
+          "line": "25",
+          "name": "size",
+          "value": {
+           "col": "62",
+           "fields": [
+            {
+             "col": "70",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "x",
+             "value": {
+              "col": "73",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": null,
+              "value": "10"
+             }
+            },
+            {
+             "col": "77",
+             "kind": "FieldInit",
+             "line": "25",
+             "name": "y",
+             "value": {
+              "col": "80",
+              "kind": "IntLit",
+              "line": "25",
+              "ty": null,
+              "value": "20"
+             }
+            }
+           ],
+           "kind": "StructLit",
+           "line": "25",
+           "name": "Point",
+           "ty": null
+          }
+         }
+        ],
+        "kind": "StructLit",
+        "line": "25",
+        "name": "Frame",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "26",
+       "mutable": false,
+       "name": "g",
+       "type": "Frame",
+       "value": {
+        "args": [
+         {
+          "col": "24",
+          "kind": "Var",
+          "line": "26",
+          "name": "f",
+          "ty": null
+         },
+         {
+          "col": "27",
+          "kind": "IntLit",
+          "line": "26",
+          "ty": null,
+          "value": "5"
+         }
+        ],
+        "col": "18",
+        "kind": "Call",
+        "line": "26",
+        "name": "shift",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "base": {
+            "col": "9",
+            "kind": "Var",
+            "line": "27",
+            "name": "f",
+            "ty": null
+           },
+           "col": "9",
+           "field": "origin",
+           "kind": "FieldAccess",
+           "line": "27",
+           "ty": null
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "27",
+          "ty": null
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "27",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "27"
+      },
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "base": {
+           "base": {
+            "col": "9",
+            "kind": "Var",
+            "line": "28",
+            "name": "g",
+            "ty": null
+           },
+           "col": "9",
+           "field": "origin",
+           "kind": "FieldAccess",
+           "line": "28",
+           "ty": null
+          },
+          "col": "9",
+          "field": "x",
+          "kind": "FieldAccess",
+          "line": "28",
+          "ty": null
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "28",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "28"
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "24",
+     "name": "main",
+     "params": [],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "3",
+       "name": "y",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Point"
+    },
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "7",
+       "name": "origin",
+       "type": "Point"
+      },
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "8",
+       "name": "size",
+       "type": "Point"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "6",
+     "name": "Frame"
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-datatypes ((m1t1!Frame 0)) (((m1t1!Frame (m1t1!Frame.origin m1t0!Point) (m1t1!Frame.size m1t0!Point)))))\n(declare-fun f!1 () m1t1!Frame)\n(declare-fun dx!2 () Int)\n(assert (and (>= (m1t0!Point.x (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.x (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.size f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.size f!1)) 9223372036854775807)))\n(assert (and (>= dx!2 (- 9223372036854775808)) (<= dx!2 9223372036854775807)))\n(assert (and (<= (- 1000000) (m1t0!Point.x (m1t1!Frame.origin f!1)))\n     (>= 1000000 (m1t0!Point.x (m1t1!Frame.origin f!1)))))\n(assert (and (<= (- 1000000) dx!2) (>= 1000000 dx!2)))\n(assert (let ((a!1 (>= (+ (m1t0!Point.x (m1t1!Frame.origin f!1)) dx!2)\n               (- 9223372036854775808)))\n      (a!2 (<= (+ (m1t0!Point.x (m1t1!Frame.origin f!1)) dx!2)\n               9223372036854775807)))\n  (not (and a!1 a!2))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 27,
+    "fn": "shift",
+    "line": 20,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-datatypes ((m1t1!Frame 0)) (((m1t1!Frame (m1t1!Frame.origin m1t0!Point) (m1t1!Frame.size m1t0!Point)))))\n(declare-fun f!1 () m1t1!Frame)\n(declare-fun dx!2 () Int)\n(assert (and (>= (m1t0!Point.x (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.x (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.size f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.size f!1)) 9223372036854775807)))\n(assert (and (>= dx!2 (- 9223372036854775808)) (<= dx!2 9223372036854775807)))\n(assert (and (<= (- 1000000) (m1t0!Point.x (m1t1!Frame.origin f!1)))\n     (>= 1000000 (m1t0!Point.x (m1t1!Frame.origin f!1)))))\n(assert (and (<= (- 1000000) dx!2) (>= 1000000 dx!2)))\n(assert (let ((a!1 (m1t0!Point (+ (m1t0!Point.x (m1t1!Frame.origin f!1)) dx!2)\n                       (m1t0!Point.y (m1t1!Frame.origin f!1)))))\n(let ((a!2 (m1t0!Point.x (m1t1!Frame.origin\n                           (m1t1!Frame a!1 (m1t1!Frame.size f!1))))))\n(let ((a!3 (= a!2 (+ (m1t0!Point.x (m1t1!Frame.origin f!1)) dx!2))))\n  (not a!3)))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "shift",
+    "line": 21,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-datatypes ((m1t1!Frame 0)) (((m1t1!Frame (m1t1!Frame.origin m1t0!Point) (m1t1!Frame.size m1t0!Point)))))\n(declare-fun f!1 () m1t1!Frame)\n(declare-fun dx!2 () Int)\n(assert (and (>= (m1t0!Point.x (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.x (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.size f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.size f!1)) 9223372036854775807)))\n(assert (and (>= dx!2 (- 9223372036854775808)) (<= dx!2 9223372036854775807)))\n(assert (and (<= (- 1000000) (m1t0!Point.x (m1t1!Frame.origin f!1)))\n     (>= 1000000 (m1t0!Point.x (m1t1!Frame.origin f!1)))))\n(assert (and (<= (- 1000000) dx!2) (>= 1000000 dx!2)))\n(assert (let ((a!1 (m1t0!Point (+ (m1t0!Point.x (m1t1!Frame.origin f!1)) dx!2)\n                       (m1t0!Point.y (m1t1!Frame.origin f!1)))))\n(let ((a!2 (m1t0!Point.y (m1t1!Frame.origin\n                           (m1t1!Frame a!1 (m1t1!Frame.size f!1))))))\n  (not (= a!2 (m1t0!Point.y (m1t1!Frame.origin f!1)))))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "shift",
+    "line": 21,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-datatypes ((m1t1!Frame 0)) (((m1t1!Frame (m1t1!Frame.origin m1t0!Point) (m1t1!Frame.size m1t0!Point)))))\n(declare-fun f!1 () m1t1!Frame)\n(declare-fun dx!2 () Int)\n(assert (and (>= (m1t0!Point.x (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.origin f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.origin f!1)) 9223372036854775807)\n     (>= (m1t0!Point.x (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.x (m1t1!Frame.size f!1)) 9223372036854775807)\n     (>= (m1t0!Point.y (m1t1!Frame.size f!1)) (- 9223372036854775808))\n     (<= (m1t0!Point.y (m1t1!Frame.size f!1)) 9223372036854775807)))\n(assert (and (>= dx!2 (- 9223372036854775808)) (<= dx!2 9223372036854775807)))\n(assert (and (<= (- 1000000) (m1t0!Point.x (m1t1!Frame.origin f!1)))\n     (>= 1000000 (m1t0!Point.x (m1t1!Frame.origin f!1)))))\n(assert (and (<= (- 1000000) dx!2) (>= 1000000 dx!2)))\n(assert (let ((a!1 (m1t0!Point (+ (m1t0!Point.x (m1t1!Frame.origin f!1)) dx!2)\n                       (m1t0!Point.y (m1t1!Frame.origin f!1)))))\n(let ((a!2 (= (m1t1!Frame.size (m1t1!Frame a!1 (m1t1!Frame.size f!1)))\n              (m1t1!Frame.size f!1))))\n  (not a!2))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "shift",
+    "line": 21,
+    "seq": 3
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-datatypes ((m1t0!Point 0)) (((m1t0!Point (m1t0!Point.x Int) (m1t0!Point.y Int)))))\n(declare-datatypes ((m1t1!Frame 0)) (((m1t1!Frame (m1t1!Frame.origin m1t0!Point) (m1t1!Frame.size m1t0!Point)))))\n(assert (let ((a!1 (m1t0!Point.x (m1t1!Frame.origin\n                           (m1t1!Frame (m1t0!Point 3 4) (m1t0!Point 10 20))))))\n  (not (and (<= (- 1000000) a!1) (>= 1000000 a!1)))))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 18,
+    "fn": "main",
+    "line": 26,
+    "seq": 4
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(assert (not (and (>= 5 (- 1000000)) (<= 5 1000000))))\n"
+     }
+    ],
+    "code": "call_requires",
+    "col": 18,
+    "fn": "main",
+    "line": 26,
+    "seq": 5
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

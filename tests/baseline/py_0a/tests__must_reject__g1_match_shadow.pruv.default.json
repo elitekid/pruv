@@ -1,0 +1,184 @@
+{
+ "check": {
+  "error": {
+   "code": "shadow",
+   "col": 5,
+   "fix": "use a new name",
+   "line": 10,
+   "message": "code is already defined",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_match_shadow.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": true,
+       "name": "r",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "arms": [
+        {
+         "binders": [],
+         "body": [
+          {
+           "col": "23",
+           "kind": "Assign",
+           "line": "9",
+           "name": "r",
+           "value": {
+            "col": "27",
+            "kind": "Var",
+            "line": "9",
+            "name": "code",
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Empty",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "9"
+        },
+        {
+         "binders": [
+          "code"
+         ],
+         "body": [
+          {
+           "col": "30",
+           "kind": "Assign",
+           "line": "10",
+           "name": "r",
+           "value": {
+            "col": "34",
+            "kind": "Var",
+            "line": "10",
+            "name": "code",
+            "ty": null
+           }
+          }
+         ],
+         "col": "5",
+         "ctor": "Failed",
+         "enum_name": "Event",
+         "kind": "MatchArm",
+         "line": "10"
+        }
+       ],
+       "col": "3",
+       "kind": "Match",
+       "line": "8",
+       "scrutinee": {
+        "col": "9",
+        "kind": "Var",
+        "line": "8",
+        "name": "e",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "12",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "12",
+        "name": "r",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "6",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "e",
+       "type": "Event"
+      },
+      {
+       "kind": "Param",
+       "name": "code",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "1",
+     "name": "Event",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "2",
+       "name": "Empty"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "10",
+         "kind": "FieldDecl",
+         "line": "3",
+         "name": "code",
+         "type": "i64"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "3",
+       "name": "Failed"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "shadow",
+    "col": 5,
+    "fix": "use a new name",
+    "line": 10,
+    "message": "code is already defined",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

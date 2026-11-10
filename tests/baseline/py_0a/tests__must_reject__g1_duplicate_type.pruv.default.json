@@ -1,0 +1,77 @@
+{
+ "check": {
+  "error": {
+   "code": "dup_type",
+   "col": 1,
+   "fix": "",
+   "line": 5,
+   "message": "type Thing defined twice",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_duplicate_type.pruv",
+ "parse": {
+  "program": {
+   "functions": [],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Thing"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "5",
+     "name": "Thing",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "6",
+       "name": "A"
+      },
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "7",
+       "name": "B"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "dup_type",
+    "col": 1,
+    "fix": "",
+    "line": 5,
+    "message": "type Thing defined twice",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

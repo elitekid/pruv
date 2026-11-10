@@ -131,7 +131,7 @@ class Checker:
             if state.get(n) == 2:
                 return
             state[n] = 1
-            for c in s.calls.get(n, ()):
+            for c in sorted(s.calls.get(n, ())):
                 visit(c, path + [n])
             state[n] = 2
         for n in s.funcs:

@@ -1,0 +1,9 @@
+fn grid(n: i64) -> i64
+  requires n >= 0 && n <= 100
+  requires forall i in 0..n: i >= 0 && i < n
+  ensures forall i in 0..n: forall j in i + 1..n: i < j
+  ensures exists i in 0..n + 1: i == n
+  ensures forall i in 0..n: count(j in 0..i: j < i) <= i
+{
+  return n;
+}

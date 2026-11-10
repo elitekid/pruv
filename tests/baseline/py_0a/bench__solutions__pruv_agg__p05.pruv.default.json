@@ -1,0 +1,2471 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "8",
+       "mutable": true,
+       "name": "out",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "37",
+          "kind": "Binary",
+          "left": {
+           "args": [
+            {
+             "col": "34",
+             "kind": "Var",
+             "line": "8",
+             "name": "a",
+             "ty": "array"
+            }
+           ],
+           "col": "30",
+           "kind": "Call",
+           "line": "8",
+           "name": "len",
+           "ty": "i64"
+          },
+          "line": "8",
+          "op": "+",
+          "right": {
+           "col": "39",
+           "kind": "IntLit",
+           "line": "8",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         },
+         {
+          "col": "42",
+          "kind": "IntLit",
+          "line": "8",
+          "ty": "i64",
+          "value": "0"
+         }
+        ],
+        "col": "24",
+        "kind": "Call",
+        "line": "8",
+        "name": "alloc",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "9",
+       "mutable": true,
+       "name": "s",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "10",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "10",
+        "ty": "i64",
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "20",
+         "name": "s",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "20",
+           "name": "s",
+           "ty": "i64"
+          },
+          "line": "20",
+          "op": "+",
+          "right": {
+           "array": {
+            "col": "13",
+            "kind": "Var",
+            "line": "20",
+            "name": "a",
+            "ty": "array"
+           },
+           "col": "14",
+           "index": {
+            "col": "15",
+            "kind": "Var",
+            "line": "20",
+            "name": "i",
+            "ty": "i64"
+           },
+           "kind": "Index",
+           "line": "20",
+           "ty": "i64"
+          },
+          "ty": "i64"
+         }
+        },
+        {
+         "col": "5",
+         "index": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "21",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "21",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "21",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         },
+         "kind": "IndexAssign",
+         "line": "21",
+         "name": "out",
+         "value": {
+          "col": "18",
+          "kind": "Var",
+          "line": "21",
+          "name": "s",
+          "ty": "i64"
+         }
+        },
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "22",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "22",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "22",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "22",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "11",
+         "name": "i",
+         "ty": "i64"
+        },
+        "line": "11",
+        "op": "<",
+        "right": {
+         "args": [
+          {
+           "col": "17",
+           "kind": "Var",
+           "line": "11",
+           "name": "a",
+           "ty": "array"
+          }
+         ],
+         "col": "13",
+         "kind": "Call",
+         "line": "11",
+         "name": "len",
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "decreases": {
+        "col": "22",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "19",
+           "kind": "Var",
+           "line": "18",
+           "name": "a",
+           "ty": "array"
+          }
+         ],
+         "col": "15",
+         "kind": "Call",
+         "line": "18",
+         "name": "len",
+         "ty": "i64"
+        },
+        "line": "18",
+        "op": "-",
+        "right": {
+         "col": "24",
+         "kind": "Var",
+         "line": "18",
+         "name": "i",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "12",
+           "ty": "i64",
+           "value": "0"
+          },
+          "line": "12",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "12",
+           "name": "i",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "line": "12",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "12",
+           "name": "i",
+           "ty": "i64"
+          },
+          "line": "12",
+          "op": "<=",
+          "right": {
+           "args": [
+            {
+             "col": "34",
+             "kind": "Var",
+             "line": "12",
+             "name": "a",
+             "ty": "array"
+            }
+           ],
+           "col": "30",
+           "kind": "Call",
+           "line": "12",
+           "name": "len",
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        },
+        {
+         "col": "24",
+         "kind": "Binary",
+         "left": {
+          "args": [
+           {
+            "col": "19",
+            "kind": "Var",
+            "line": "13",
+            "name": "out",
+            "ty": "array"
+           }
+          ],
+          "col": "15",
+          "kind": "Call",
+          "line": "13",
+          "name": "len",
+          "ty": "i64"
+         },
+         "line": "13",
+         "op": "==",
+         "right": {
+          "col": "34",
+          "kind": "Binary",
+          "left": {
+           "args": [
+            {
+             "col": "31",
+             "kind": "Var",
+             "line": "13",
+             "name": "a",
+             "ty": "array"
+            }
+           ],
+           "col": "27",
+           "kind": "Call",
+           "line": "13",
+           "name": "len",
+           "ty": "i64"
+          },
+          "line": "13",
+          "op": "+",
+          "right": {
+           "col": "36",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         },
+         "ty": "bool"
+        },
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "15",
+           "kind": "Var",
+           "line": "14",
+           "name": "out",
+           "ty": "array"
+          },
+          "col": "18",
+          "index": {
+           "col": "19",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": "i64",
+           "value": "0"
+          },
+          "kind": "Index",
+          "line": "14",
+          "ty": "i64"
+         },
+         "line": "14",
+         "op": "==",
+         "right": {
+          "col": "25",
+          "kind": "IntLit",
+          "line": "14",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool"
+        },
+        {
+         "col": "17",
+         "kind": "Binary",
+         "left": {
+          "col": "15",
+          "kind": "Var",
+          "line": "15",
+          "name": "s",
+          "ty": "i64"
+         },
+         "line": "15",
+         "op": "==",
+         "right": {
+          "array": {
+           "col": "20",
+           "kind": "Var",
+           "line": "15",
+           "name": "out",
+           "ty": "array"
+          },
+          "col": "23",
+          "index": {
+           "col": "24",
+           "kind": "Var",
+           "line": "15",
+           "name": "i",
+           "ty": "i64"
+          },
+          "kind": "Index",
+          "line": "15",
+          "ty": "i64"
+         },
+         "ty": "bool"
+        },
+        {
+         "body": {
+          "col": "44",
+          "kind": "Binary",
+          "left": {
+           "array": {
+            "col": "33",
+            "kind": "Var",
+            "line": "16",
+            "name": "out",
+            "ty": "array"
+           },
+           "col": "36",
+           "index": {
+            "col": "39",
+            "kind": "Binary",
+            "left": {
+             "col": "37",
+             "kind": "Var",
+             "line": "16",
+             "name": "k",
+             "ty": "i64"
+            },
+            "line": "16",
+            "op": "+",
+            "right": {
+             "col": "41",
+             "kind": "IntLit",
+             "line": "16",
+             "ty": "i64",
+             "value": "1"
+            },
+            "ty": "i64"
+           },
+           "kind": "Index",
+           "line": "16",
+           "ty": "i64"
+          },
+          "line": "16",
+          "op": "==",
+          "right": {
+           "col": "54",
+           "kind": "Binary",
+           "left": {
+            "array": {
+             "col": "47",
+             "kind": "Var",
+             "line": "16",
+             "name": "out",
+             "ty": "array"
+            },
+            "col": "50",
+            "index": {
+             "col": "51",
+             "kind": "Var",
+             "line": "16",
+             "name": "k",
+             "ty": "i64"
+            },
+            "kind": "Index",
+            "line": "16",
+            "ty": "i64"
+           },
+           "line": "16",
+           "op": "+",
+           "right": {
+            "array": {
+             "col": "56",
+             "kind": "Var",
+             "line": "16",
+             "name": "a",
+             "ty": "array"
+            },
+            "col": "57",
+            "index": {
+             "col": "58",
+             "kind": "Var",
+             "line": "16",
+             "name": "k",
+             "ty": "i64"
+            },
+            "kind": "Index",
+            "line": "16",
+            "ty": "i64"
+           },
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "col": "15",
+         "hi": {
+          "col": "30",
+          "kind": "Var",
+          "line": "16",
+          "name": "i",
+          "ty": "i64"
+         },
+         "kind": "forall",
+         "line": "16",
+         "lo": {
+          "col": "27",
+          "kind": "IntLit",
+          "line": "16",
+          "ty": "i64",
+          "value": "0"
+         },
+         "ty": "bool",
+         "var": "k"
+        },
+        {
+         "col": "39",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "Var",
+           "line": "17",
+           "name": "s",
+           "ty": "i64"
+          },
+          "line": "17",
+          "op": ">=",
+          "right": {
+           "col": "35",
+           "kind": "Binary",
+           "left": {
+            "col": "20",
+            "kind": "IntLit",
+            "line": "17",
+            "ty": "i64",
+            "value": "-1000000000"
+           },
+           "line": "17",
+           "op": "*",
+           "right": {
+            "col": "37",
+            "kind": "Var",
+            "line": "17",
+            "name": "i",
+            "ty": "i64"
+           },
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "line": "17",
+         "op": "&&",
+         "right": {
+          "col": "44",
+          "kind": "Binary",
+          "left": {
+           "col": "42",
+           "kind": "Var",
+           "line": "17",
+           "name": "s",
+           "ty": "i64"
+          },
+          "line": "17",
+          "op": "<=",
+          "right": {
+           "col": "61",
+           "kind": "Binary",
+           "left": {
+            "col": "47",
+            "kind": "IntLit",
+            "line": "17",
+            "ty": "i64",
+            "value": "1000000000"
+           },
+           "line": "17",
+           "op": "*",
+           "right": {
+            "col": "63",
+            "kind": "Var",
+            "line": "17",
+            "name": "i",
+            "ty": "i64"
+           },
+           "ty": "i64"
+          },
+          "ty": "bool"
+         },
+         "ty": "bool"
+        }
+       ],
+       "kind": "While",
+       "line": "11"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "24",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "24",
+        "name": "out",
+        "ty": "array"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "15",
+          "kind": "Var",
+          "line": "4",
+          "name": "result",
+          "ty": "array"
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "4",
+        "name": "len",
+        "ty": "i64"
+       },
+       "line": "4",
+       "op": "==",
+       "right": {
+        "col": "33",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "30",
+           "kind": "Var",
+           "line": "4",
+           "name": "a",
+           "ty": "array"
+          }
+         ],
+         "col": "26",
+         "kind": "Call",
+         "line": "4",
+         "name": "len",
+         "ty": "i64"
+        },
+        "line": "4",
+        "op": "+",
+        "right": {
+         "col": "35",
+         "kind": "IntLit",
+         "line": "4",
+         "ty": "i64",
+         "value": "1"
+        },
+        "ty": "i64"
+       },
+       "ty": "bool"
+      },
+      {
+       "col": "21",
+       "kind": "Binary",
+       "left": {
+        "array": {
+         "col": "11",
+         "kind": "Var",
+         "line": "5",
+         "name": "result",
+         "ty": "array"
+        },
+        "col": "17",
+        "index": {
+         "col": "18",
+         "kind": "IntLit",
+         "line": "5",
+         "ty": "i64",
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "5",
+        "ty": "i64"
+       },
+       "line": "5",
+       "op": "==",
+       "right": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      },
+      {
+       "body": {
+        "col": "48",
+        "kind": "Binary",
+        "left": {
+         "array": {
+          "col": "34",
+          "kind": "Var",
+          "line": "6",
+          "name": "result",
+          "ty": "array"
+         },
+         "col": "40",
+         "index": {
+          "col": "43",
+          "kind": "Binary",
+          "left": {
+           "col": "41",
+           "kind": "Var",
+           "line": "6",
+           "name": "k",
+           "ty": "i64"
+          },
+          "line": "6",
+          "op": "+",
+          "right": {
+           "col": "45",
+           "kind": "IntLit",
+           "line": "6",
+           "ty": "i64",
+           "value": "1"
+          },
+          "ty": "i64"
+         },
+         "kind": "Index",
+         "line": "6",
+         "ty": "i64"
+        },
+        "line": "6",
+        "op": "==",
+        "right": {
+         "col": "61",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "51",
+           "kind": "Var",
+           "line": "6",
+           "name": "result",
+           "ty": "array"
+          },
+          "col": "57",
+          "index": {
+           "col": "58",
+           "kind": "Var",
+           "line": "6",
+           "name": "k",
+           "ty": "i64"
+          },
+          "kind": "Index",
+          "line": "6",
+          "ty": "i64"
+         },
+         "line": "6",
+         "op": "+",
+         "right": {
+          "array": {
+           "col": "63",
+           "kind": "Var",
+           "line": "6",
+           "name": "a",
+           "ty": "array"
+          },
+          "col": "64",
+          "index": {
+           "col": "65",
+           "kind": "Var",
+           "line": "6",
+           "name": "k",
+           "ty": "i64"
+          },
+          "kind": "Index",
+          "line": "6",
+          "ty": "i64"
+         },
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "col": "11",
+       "hi": {
+        "args": [
+         {
+          "col": "30",
+          "kind": "Var",
+          "line": "6",
+          "name": "a",
+          "ty": "array"
+         }
+        ],
+        "col": "26",
+        "kind": "Call",
+        "line": "6",
+        "name": "len",
+        "ty": "i64"
+       },
+       "kind": "forall",
+       "line": "6",
+       "lo": {
+        "col": "23",
+        "kind": "IntLit",
+        "line": "6",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool",
+       "var": "k"
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "prefix_sums",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": "array"
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "len",
+        "ty": "i64"
+       },
+       "line": "2",
+       "op": "<=",
+       "right": {
+        "col": "22",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": "i64",
+        "value": "1000000"
+       },
+       "ty": "bool"
+      },
+      {
+       "body": {
+        "col": "58",
+        "kind": "Binary",
+        "left": {
+         "col": "40",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "35",
+           "kind": "Var",
+           "line": "3",
+           "name": "a",
+           "ty": "array"
+          },
+          "col": "36",
+          "index": {
+           "col": "37",
+           "kind": "Var",
+           "line": "3",
+           "name": "k",
+           "ty": "i64"
+          },
+          "kind": "Index",
+          "line": "3",
+          "ty": "i64"
+         },
+         "line": "3",
+         "op": ">=",
+         "right": {
+          "col": "43",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": "i64",
+          "value": "-1000000000"
+         },
+         "ty": "bool"
+        },
+        "line": "3",
+        "op": "&&",
+        "right": {
+         "col": "66",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "61",
+           "kind": "Var",
+           "line": "3",
+           "name": "a",
+           "ty": "array"
+          },
+          "col": "62",
+          "index": {
+           "col": "63",
+           "kind": "Var",
+           "line": "3",
+           "name": "k",
+           "ty": "i64"
+          },
+          "kind": "Index",
+          "line": "3",
+          "ty": "i64"
+         },
+         "line": "3",
+         "op": "<=",
+         "right": {
+          "col": "69",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": "i64",
+          "value": "1000000000"
+         },
+         "ty": "bool"
+        },
+        "ty": "bool"
+       },
+       "col": "12",
+       "hi": {
+        "args": [
+         {
+          "col": "31",
+          "kind": "Var",
+          "line": "3",
+          "name": "a",
+          "ty": "array"
+         }
+        ],
+        "col": "27",
+        "kind": "Call",
+        "line": "3",
+        "name": "len",
+        "ty": "i64"
+       },
+       "kind": "forall",
+       "line": "3",
+       "lo": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool",
+       "var": "k"
+      }
+     ],
+     "ret": "array"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "bench/solutions/pruv_agg/p05.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "8",
+       "mutable": true,
+       "name": "out",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "37",
+          "kind": "Binary",
+          "left": {
+           "args": [
+            {
+             "col": "34",
+             "kind": "Var",
+             "line": "8",
+             "name": "a",
+             "ty": null
+            }
+           ],
+           "col": "30",
+           "kind": "Call",
+           "line": "8",
+           "name": "len",
+           "ty": null
+          },
+          "line": "8",
+          "op": "+",
+          "right": {
+           "col": "39",
+           "kind": "IntLit",
+           "line": "8",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         },
+         {
+          "col": "42",
+          "kind": "IntLit",
+          "line": "8",
+          "ty": null,
+          "value": "0"
+         }
+        ],
+        "col": "24",
+        "kind": "Call",
+        "line": "8",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "9",
+       "mutable": true,
+       "name": "s",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "9",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "10",
+       "mutable": true,
+       "name": "i",
+       "type": "i64",
+       "value": {
+        "col": "20",
+        "kind": "IntLit",
+        "line": "10",
+        "ty": null,
+        "value": "0"
+       }
+      },
+      {
+       "body": [
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "20",
+         "name": "s",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "20",
+           "name": "s",
+           "ty": null
+          },
+          "line": "20",
+          "op": "+",
+          "right": {
+           "array": {
+            "col": "13",
+            "kind": "Var",
+            "line": "20",
+            "name": "a",
+            "ty": null
+           },
+           "col": "14",
+           "index": {
+            "col": "15",
+            "kind": "Var",
+            "line": "20",
+            "name": "i",
+            "ty": null
+           },
+           "kind": "Index",
+           "line": "20",
+           "ty": null
+          },
+          "ty": null
+         }
+        },
+        {
+         "col": "5",
+         "index": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "21",
+           "name": "i",
+           "ty": null
+          },
+          "line": "21",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "21",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         },
+         "kind": "IndexAssign",
+         "line": "21",
+         "name": "out",
+         "value": {
+          "col": "18",
+          "kind": "Var",
+          "line": "21",
+          "name": "s",
+          "ty": null
+         }
+        },
+        {
+         "col": "5",
+         "kind": "Assign",
+         "line": "22",
+         "name": "i",
+         "value": {
+          "col": "11",
+          "kind": "Binary",
+          "left": {
+           "col": "9",
+           "kind": "Var",
+           "line": "22",
+           "name": "i",
+           "ty": null
+          },
+          "line": "22",
+          "op": "+",
+          "right": {
+           "col": "13",
+           "kind": "IntLit",
+           "line": "22",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         }
+        }
+       ],
+       "col": "3",
+       "cond": {
+        "col": "11",
+        "kind": "Binary",
+        "left": {
+         "col": "9",
+         "kind": "Var",
+         "line": "11",
+         "name": "i",
+         "ty": null
+        },
+        "line": "11",
+        "op": "<",
+        "right": {
+         "args": [
+          {
+           "col": "17",
+           "kind": "Var",
+           "line": "11",
+           "name": "a",
+           "ty": null
+          }
+         ],
+         "col": "13",
+         "kind": "Call",
+         "line": "11",
+         "name": "len",
+         "ty": null
+        },
+        "ty": null
+       },
+       "decreases": {
+        "col": "22",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "19",
+           "kind": "Var",
+           "line": "18",
+           "name": "a",
+           "ty": null
+          }
+         ],
+         "col": "15",
+         "kind": "Call",
+         "line": "18",
+         "name": "len",
+         "ty": null
+        },
+        "line": "18",
+        "op": "-",
+        "right": {
+         "col": "24",
+         "kind": "Var",
+         "line": "18",
+         "name": "i",
+         "ty": null
+        },
+        "ty": null
+       },
+       "invariants": [
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "IntLit",
+           "line": "12",
+           "ty": null,
+           "value": "0"
+          },
+          "line": "12",
+          "op": "<=",
+          "right": {
+           "col": "20",
+           "kind": "Var",
+           "line": "12",
+           "name": "i",
+           "ty": null
+          },
+          "ty": null
+         },
+         "line": "12",
+         "op": "&&",
+         "right": {
+          "col": "27",
+          "kind": "Binary",
+          "left": {
+           "col": "25",
+           "kind": "Var",
+           "line": "12",
+           "name": "i",
+           "ty": null
+          },
+          "line": "12",
+          "op": "<=",
+          "right": {
+           "args": [
+            {
+             "col": "34",
+             "kind": "Var",
+             "line": "12",
+             "name": "a",
+             "ty": null
+            }
+           ],
+           "col": "30",
+           "kind": "Call",
+           "line": "12",
+           "name": "len",
+           "ty": null
+          },
+          "ty": null
+         },
+         "ty": null
+        },
+        {
+         "col": "24",
+         "kind": "Binary",
+         "left": {
+          "args": [
+           {
+            "col": "19",
+            "kind": "Var",
+            "line": "13",
+            "name": "out",
+            "ty": null
+           }
+          ],
+          "col": "15",
+          "kind": "Call",
+          "line": "13",
+          "name": "len",
+          "ty": null
+         },
+         "line": "13",
+         "op": "==",
+         "right": {
+          "col": "34",
+          "kind": "Binary",
+          "left": {
+           "args": [
+            {
+             "col": "31",
+             "kind": "Var",
+             "line": "13",
+             "name": "a",
+             "ty": null
+            }
+           ],
+           "col": "27",
+           "kind": "Call",
+           "line": "13",
+           "name": "len",
+           "ty": null
+          },
+          "line": "13",
+          "op": "+",
+          "right": {
+           "col": "36",
+           "kind": "IntLit",
+           "line": "13",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         },
+         "ty": null
+        },
+        {
+         "col": "22",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "15",
+           "kind": "Var",
+           "line": "14",
+           "name": "out",
+           "ty": null
+          },
+          "col": "18",
+          "index": {
+           "col": "19",
+           "kind": "IntLit",
+           "line": "14",
+           "ty": null,
+           "value": "0"
+          },
+          "kind": "Index",
+          "line": "14",
+          "ty": null
+         },
+         "line": "14",
+         "op": "==",
+         "right": {
+          "col": "25",
+          "kind": "IntLit",
+          "line": "14",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null
+        },
+        {
+         "col": "17",
+         "kind": "Binary",
+         "left": {
+          "col": "15",
+          "kind": "Var",
+          "line": "15",
+          "name": "s",
+          "ty": null
+         },
+         "line": "15",
+         "op": "==",
+         "right": {
+          "array": {
+           "col": "20",
+           "kind": "Var",
+           "line": "15",
+           "name": "out",
+           "ty": null
+          },
+          "col": "23",
+          "index": {
+           "col": "24",
+           "kind": "Var",
+           "line": "15",
+           "name": "i",
+           "ty": null
+          },
+          "kind": "Index",
+          "line": "15",
+          "ty": null
+         },
+         "ty": null
+        },
+        {
+         "body": {
+          "col": "44",
+          "kind": "Binary",
+          "left": {
+           "array": {
+            "col": "33",
+            "kind": "Var",
+            "line": "16",
+            "name": "out",
+            "ty": null
+           },
+           "col": "36",
+           "index": {
+            "col": "39",
+            "kind": "Binary",
+            "left": {
+             "col": "37",
+             "kind": "Var",
+             "line": "16",
+             "name": "k",
+             "ty": null
+            },
+            "line": "16",
+            "op": "+",
+            "right": {
+             "col": "41",
+             "kind": "IntLit",
+             "line": "16",
+             "ty": null,
+             "value": "1"
+            },
+            "ty": null
+           },
+           "kind": "Index",
+           "line": "16",
+           "ty": null
+          },
+          "line": "16",
+          "op": "==",
+          "right": {
+           "col": "54",
+           "kind": "Binary",
+           "left": {
+            "array": {
+             "col": "47",
+             "kind": "Var",
+             "line": "16",
+             "name": "out",
+             "ty": null
+            },
+            "col": "50",
+            "index": {
+             "col": "51",
+             "kind": "Var",
+             "line": "16",
+             "name": "k",
+             "ty": null
+            },
+            "kind": "Index",
+            "line": "16",
+            "ty": null
+           },
+           "line": "16",
+           "op": "+",
+           "right": {
+            "array": {
+             "col": "56",
+             "kind": "Var",
+             "line": "16",
+             "name": "a",
+             "ty": null
+            },
+            "col": "57",
+            "index": {
+             "col": "58",
+             "kind": "Var",
+             "line": "16",
+             "name": "k",
+             "ty": null
+            },
+            "kind": "Index",
+            "line": "16",
+            "ty": null
+           },
+           "ty": null
+          },
+          "ty": null
+         },
+         "col": "15",
+         "hi": {
+          "col": "30",
+          "kind": "Var",
+          "line": "16",
+          "name": "i",
+          "ty": null
+         },
+         "kind": "forall",
+         "line": "16",
+         "lo": {
+          "col": "27",
+          "kind": "IntLit",
+          "line": "16",
+          "ty": null,
+          "value": "0"
+         },
+         "ty": null,
+         "var": "k"
+        },
+        {
+         "col": "39",
+         "kind": "Binary",
+         "left": {
+          "col": "17",
+          "kind": "Binary",
+          "left": {
+           "col": "15",
+           "kind": "Var",
+           "line": "17",
+           "name": "s",
+           "ty": null
+          },
+          "line": "17",
+          "op": ">=",
+          "right": {
+           "col": "35",
+           "kind": "Binary",
+           "left": {
+            "col": "20",
+            "kind": "IntLit",
+            "line": "17",
+            "ty": null,
+            "value": "-1000000000"
+           },
+           "line": "17",
+           "op": "*",
+           "right": {
+            "col": "37",
+            "kind": "Var",
+            "line": "17",
+            "name": "i",
+            "ty": null
+           },
+           "ty": null
+          },
+          "ty": null
+         },
+         "line": "17",
+         "op": "&&",
+         "right": {
+          "col": "44",
+          "kind": "Binary",
+          "left": {
+           "col": "42",
+           "kind": "Var",
+           "line": "17",
+           "name": "s",
+           "ty": null
+          },
+          "line": "17",
+          "op": "<=",
+          "right": {
+           "col": "61",
+           "kind": "Binary",
+           "left": {
+            "col": "47",
+            "kind": "IntLit",
+            "line": "17",
+            "ty": null,
+            "value": "1000000000"
+           },
+           "line": "17",
+           "op": "*",
+           "right": {
+            "col": "63",
+            "kind": "Var",
+            "line": "17",
+            "name": "i",
+            "ty": null
+           },
+           "ty": null
+          },
+          "ty": null
+         },
+         "ty": null
+        }
+       ],
+       "kind": "While",
+       "line": "11"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "24",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "24",
+        "name": "out",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "15",
+          "kind": "Var",
+          "line": "4",
+          "name": "result",
+          "ty": null
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "4",
+        "name": "len",
+        "ty": null
+       },
+       "line": "4",
+       "op": "==",
+       "right": {
+        "col": "33",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "30",
+           "kind": "Var",
+           "line": "4",
+           "name": "a",
+           "ty": null
+          }
+         ],
+         "col": "26",
+         "kind": "Call",
+         "line": "4",
+         "name": "len",
+         "ty": null
+        },
+        "line": "4",
+        "op": "+",
+        "right": {
+         "col": "35",
+         "kind": "IntLit",
+         "line": "4",
+         "ty": null,
+         "value": "1"
+        },
+        "ty": null
+       },
+       "ty": null
+      },
+      {
+       "col": "21",
+       "kind": "Binary",
+       "left": {
+        "array": {
+         "col": "11",
+         "kind": "Var",
+         "line": "5",
+         "name": "result",
+         "ty": null
+        },
+        "col": "17",
+        "index": {
+         "col": "18",
+         "kind": "IntLit",
+         "line": "5",
+         "ty": null,
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "5",
+        "ty": null
+       },
+       "line": "5",
+       "op": "==",
+       "right": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      },
+      {
+       "body": {
+        "col": "48",
+        "kind": "Binary",
+        "left": {
+         "array": {
+          "col": "34",
+          "kind": "Var",
+          "line": "6",
+          "name": "result",
+          "ty": null
+         },
+         "col": "40",
+         "index": {
+          "col": "43",
+          "kind": "Binary",
+          "left": {
+           "col": "41",
+           "kind": "Var",
+           "line": "6",
+           "name": "k",
+           "ty": null
+          },
+          "line": "6",
+          "op": "+",
+          "right": {
+           "col": "45",
+           "kind": "IntLit",
+           "line": "6",
+           "ty": null,
+           "value": "1"
+          },
+          "ty": null
+         },
+         "kind": "Index",
+         "line": "6",
+         "ty": null
+        },
+        "line": "6",
+        "op": "==",
+        "right": {
+         "col": "61",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "51",
+           "kind": "Var",
+           "line": "6",
+           "name": "result",
+           "ty": null
+          },
+          "col": "57",
+          "index": {
+           "col": "58",
+           "kind": "Var",
+           "line": "6",
+           "name": "k",
+           "ty": null
+          },
+          "kind": "Index",
+          "line": "6",
+          "ty": null
+         },
+         "line": "6",
+         "op": "+",
+         "right": {
+          "array": {
+           "col": "63",
+           "kind": "Var",
+           "line": "6",
+           "name": "a",
+           "ty": null
+          },
+          "col": "64",
+          "index": {
+           "col": "65",
+           "kind": "Var",
+           "line": "6",
+           "name": "k",
+           "ty": null
+          },
+          "kind": "Index",
+          "line": "6",
+          "ty": null
+         },
+         "ty": null
+        },
+        "ty": null
+       },
+       "col": "11",
+       "hi": {
+        "args": [
+         {
+          "col": "30",
+          "kind": "Var",
+          "line": "6",
+          "name": "a",
+          "ty": null
+         }
+        ],
+        "col": "26",
+        "kind": "Call",
+        "line": "6",
+        "name": "len",
+        "ty": null
+       },
+       "kind": "forall",
+       "line": "6",
+       "lo": {
+        "col": "23",
+        "kind": "IntLit",
+        "line": "6",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null,
+       "var": "k"
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "prefix_sums",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "16",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": null
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "len",
+        "ty": null
+       },
+       "line": "2",
+       "op": "<=",
+       "right": {
+        "col": "22",
+        "kind": "IntLit",
+        "line": "2",
+        "ty": null,
+        "value": "1000000"
+       },
+       "ty": null
+      },
+      {
+       "body": {
+        "col": "58",
+        "kind": "Binary",
+        "left": {
+         "col": "40",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "35",
+           "kind": "Var",
+           "line": "3",
+           "name": "a",
+           "ty": null
+          },
+          "col": "36",
+          "index": {
+           "col": "37",
+           "kind": "Var",
+           "line": "3",
+           "name": "k",
+           "ty": null
+          },
+          "kind": "Index",
+          "line": "3",
+          "ty": null
+         },
+         "line": "3",
+         "op": ">=",
+         "right": {
+          "col": "43",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": null,
+          "value": "-1000000000"
+         },
+         "ty": null
+        },
+        "line": "3",
+        "op": "&&",
+        "right": {
+         "col": "66",
+         "kind": "Binary",
+         "left": {
+          "array": {
+           "col": "61",
+           "kind": "Var",
+           "line": "3",
+           "name": "a",
+           "ty": null
+          },
+          "col": "62",
+          "index": {
+           "col": "63",
+           "kind": "Var",
+           "line": "3",
+           "name": "k",
+           "ty": null
+          },
+          "kind": "Index",
+          "line": "3",
+          "ty": null
+         },
+         "line": "3",
+         "op": "<=",
+         "right": {
+          "col": "69",
+          "kind": "IntLit",
+          "line": "3",
+          "ty": null,
+          "value": "1000000000"
+         },
+         "ty": null
+        },
+        "ty": null
+       },
+       "col": "12",
+       "hi": {
+        "args": [
+         {
+          "col": "31",
+          "kind": "Var",
+          "line": "3",
+          "name": "a",
+          "ty": null
+         }
+        ],
+        "col": "27",
+        "kind": "Call",
+        "line": "3",
+        "name": "len",
+        "ty": null
+       },
+       "kind": "forall",
+       "line": "3",
+       "lo": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "3",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null,
+       "var": "k"
+      }
+     ],
+     "ret": "array"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (let ((a!1 (forall ((k!dk2 Int))\n             (let ((a!1 (forall ((k!dj2 Int))\n                          (=> (and (<= 0 k!dj2) (< k!dj2 k!dk2))\n                              (and (<= (- 1000000000) (select a!1 k!dj2))\n                                   (>= 1000000000 (select a!1 k!dj2))))))\n                   (a!2 (and (and (>= k!dk2 0) (< k!dk2 a!1.len))\n                             (=> (<= (- 1000000000) (select a!1 k!dk2))\n                                 (and (>= k!dk2 0) (< k!dk2 a!1.len))))))\n               (=> (and (<= 0 k!dk2) (< k!dk2 a!1.len) a!1) a!2)))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 12,
+    "fn": "prefix_sums",
+    "line": 3,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (not (and (>= (+ a!1.len 1) (- 9223372036854775808))\n          (<= (+ a!1.len 1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 37,
+    "fn": "prefix_sums",
+    "line": 8,
+    "seq": 1
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (not (and (>= (+ a!1.len 1) 0) (<= (+ a!1.len 1) 1099511627776))))\n"
+     }
+    ],
+    "code": "alloc_negative",
+    "col": 24,
+    "fn": "prefix_sums",
+    "line": 8,
+    "seq": 2
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (not (and (<= 0 0) (<= 0 a!1.len))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 12,
+    "seq": 3
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (not (= (+ a!1.len 1) (+ a!1.len 1))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 24,
+    "fn": "prefix_sums",
+    "line": 13,
+    "seq": 4
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (<= 0 0) (<= 0 a!1.len)))\n(assert (= (+ a!1.len 1) (+ a!1.len 1)))\n(assert (not (and (>= 0 0) (< 0 (+ a!1.len 1)))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 14,
+    "seq": 5
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (not (= 0 (select ((as const (Array Int Int)) 0) 0))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 14,
+    "seq": 6
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (<= 0 0) (<= 0 a!1.len)))\n(assert (= (+ a!1.len 1) (+ a!1.len 1)))\n(assert (and (>= 0 0) (< 0 (+ a!1.len 1))))\n(assert (= 0 (select ((as const (Array Int Int)) 0) 0)))\n(assert (not (and (>= 0 0) (< 0 (+ a!1.len 1)))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 17,
+    "fn": "prefix_sums",
+    "line": 15,
+    "seq": 7
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (not (= 0 (select ((as const (Array Int Int)) 0) 0))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 17,
+    "fn": "prefix_sums",
+    "line": 15,
+    "seq": 8
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (let ((a!1 (forall ((k!q6 Int))\n             (let ((a!1 (= (select ((as const (Array Int Int)) 0) (+ k!q6 1))\n                           (+ (select ((as const (Array Int Int)) 0) k!q6)\n                              (select a!1 k!q6)))))\n               (=> (and (<= 0 k!q6) (> 0 k!q6)) a!1)))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 15,
+    "fn": "prefix_sums",
+    "line": 16,
+    "seq": 9
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (not (and (>= 0 (* (- 1000000000) 0)) (<= 0 (* 1000000000 0)))))\n"
+     }
+    ],
+    "code": "invariant_entry",
+    "col": 39,
+    "fn": "prefix_sums",
+    "line": 17,
+    "seq": 10
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (not (>= (- a!1.len i!7) 0)))\n"
+     }
+    ],
+    "code": "decreases_nonneg",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 18,
+    "seq": 11
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (not (and (>= i!7 0) (< i!7 a!1.len))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 14,
+    "fn": "prefix_sums",
+    "line": 20,
+    "seq": 12
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (let ((a!1 (and (>= (+ s!9 (select a!1 i!7)) (- 9223372036854775808))\n                (<= (+ s!9 (select a!1 i!7)) 9223372036854775807))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "prefix_sums",
+    "line": 20,
+    "seq": 13
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (not (and (>= (+ i!7 1) (- 9223372036854775808))\n          (<= (+ i!7 1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "prefix_sums",
+    "line": 21,
+    "seq": 14
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (not (and (>= (+ i!7 1) 0) (< (+ i!7 1) out!8.len))))\n"
+     }
+    ],
+    "code": "index_oob",
+    "col": 5,
+    "fn": "prefix_sums",
+    "line": 21,
+    "seq": 15
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (not (and (>= (+ i!7 1) (- 9223372036854775808))\n          (<= (+ i!7 1) 9223372036854775807))))\n"
+     }
+    ],
+    "code": "overflow",
+    "col": 11,
+    "fn": "prefix_sums",
+    "line": 22,
+    "seq": 16
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (not (and (<= 0 (+ i!7 1)) (<= (+ i!7 1) a!1.len))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 12,
+    "seq": 17
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (not (= out!8.len (+ a!1.len 1))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 24,
+    "fn": "prefix_sums",
+    "line": 13,
+    "seq": 18
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (and (<= 0 (+ i!7 1)) (<= (+ i!7 1) a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (not (and (>= 0 0) (< 0 out!8.len))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 14,
+    "seq": 19
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (let ((a!1 (select (store out!8 (+ i!7 1) (+ s!9 (select a!1 i!7))) 0)))\n  (not (= 0 a!1))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 14,
+    "seq": 20
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (and (<= 0 (+ i!7 1)) (<= (+ i!7 1) a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (and (>= 0 0) (< 0 out!8.len)))\n(assert (let ((a!1 (select (store out!8 (+ i!7 1) (+ s!9 (select a!1 i!7))) 0)))\n  (= 0 a!1)))\n(assert (not (and (>= (+ i!7 1) 0) (< (+ i!7 1) out!8.len))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 17,
+    "fn": "prefix_sums",
+    "line": 15,
+    "seq": 21
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (let ((a!1 (select (store out!8 (+ i!7 1) (+ s!9 (select a!1 i!7))) (+ i!7 1))))\n  (not (= (+ s!9 (select a!1 i!7)) a!1))))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 17,
+    "fn": "prefix_sums",
+    "line": 15,
+    "seq": 22
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (and (<= 0 (+ i!7 1)) (<= (+ i!7 1) a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (and (>= 0 0) (< 0 out!8.len)))\n(assert (let ((a!1 (select (store out!8 (+ i!7 1) (+ s!9 (select a!1 i!7))) 0)))\n  (= 0 a!1)))\n(assert (and (>= (+ i!7 1) 0) (< (+ i!7 1) out!8.len)))\n(assert (let ((a!1 (select (store out!8 (+ i!7 1) (+ s!9 (select a!1 i!7))) (+ i!7 1))))\n  (= (+ s!9 (select a!1 i!7)) a!1)))\n(assert (let ((a!1 (forall ((k!dk11 Int))\n             (let ((a!1 (forall ((k!dj11 Int))\n                          (let ((a!1 (store out!8\n                                            (+ i!7 1)\n                                            (+ s!9 (select a!1 i!7)))))\n                            (=> (and (<= 0 k!dj11) (< k!dj11 k!dk11))\n                                (= (select a!1 (+ k!dj11 1))\n                                   (+ (select a!1 k!dj11) (select a!1 k!dj11))))))))\n               (=> (and (<= 0 k!dk11) (< k!dk11 (+ i!7 1)) a!1)\n                   (and (>= (+ k!dk11 1) 0)\n                        (< (+ k!dk11 1) out!8.len)\n                        (>= k!dk11 0)\n                        (< k!dk11 out!8.len)\n                        (>= k!dk11 0)\n                        (< k!dk11 a!1.len)))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 15,
+    "fn": "prefix_sums",
+    "line": 16,
+    "seq": 23
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (let ((a!1 (forall ((k!q12 Int))\n             (let ((a!1 (store out!8 (+ i!7 1) (+ s!9 (select a!1 i!7)))))\n               (=> (and (<= 0 k!q12) (< k!q12 (+ i!7 1)))\n                   (= (select a!1 (+ k!q12 1))\n                      (+ (select a!1 k!q12) (select a!1 k!q12))))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 15,
+    "fn": "prefix_sums",
+    "line": 16,
+    "seq": 24
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (let ((a!1 (and (>= (+ s!9 (select a!1 i!7)) (* (- 1000000000) (+ i!7 1)))\n                (<= (+ s!9 (select a!1 i!7)) (* 1000000000 (+ i!7 1))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "invariant_preserved",
+    "col": 39,
+    "fn": "prefix_sums",
+    "line": 17,
+    "seq": 25
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!7 () Int)\n(declare-fun out!8.len () Int)\n(declare-fun s!9 () Int)\n(declare-fun out!8 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!7 (- 9223372036854775808)) (<= i!7 9223372036854775807)))\n(assert (and (>= out!8.len 0) (<= out!8.len 1099511627776)))\n(assert (and (>= s!9 (- 9223372036854775808)) (<= s!9 9223372036854775807)))\n(assert (and (<= 0 i!7) (<= i!7 a!1.len)))\n(assert (= out!8.len (+ a!1.len 1)))\n(assert (= 0 (select out!8 0)))\n(assert (= s!9 (select out!8 i!7)))\n(assert (forall ((k!q10 Int))\n  (=> (and (<= 0 k!q10) (< k!q10 i!7))\n      (= (select out!8 (+ k!q10 1)) (+ (select out!8 k!q10) (select a!1 k!q10))))))\n(assert (and (>= s!9 (* (- 1000000000) i!7)) (<= s!9 (* 1000000000 i!7))))\n(assert (< i!7 a!1.len))\n(assert (and (>= (select a!1 i!7) (- 9223372036854775808))\n     (<= (select a!1 i!7) 9223372036854775807)))\n(assert (not (< (- a!1.len (+ i!7 1)) (- a!1.len i!7))))\n"
+     }
+    ],
+    "code": "decreases_decrease",
+    "col": 22,
+    "fn": "prefix_sums",
+    "line": 18,
+    "seq": 26
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!13 () Int)\n(declare-fun out!14.len () Int)\n(declare-fun s!15 () Int)\n(declare-fun out!14 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!13 (- 9223372036854775808)) (<= i!13 9223372036854775807)))\n(assert (and (>= out!14.len 0) (<= out!14.len 1099511627776)))\n(assert (and (>= s!15 (- 9223372036854775808)) (<= s!15 9223372036854775807)))\n(assert (and (<= 0 i!13) (<= i!13 a!1.len)))\n(assert (= out!14.len (+ a!1.len 1)))\n(assert (= 0 (select out!14 0)))\n(assert (= s!15 (select out!14 i!13)))\n(assert (forall ((k!q16 Int))\n  (=> (and (<= 0 k!q16) (< k!q16 i!13))\n      (= (select out!14 (+ k!q16 1))\n         (+ (select out!14 k!q16) (select a!1 k!q16))))))\n(assert (and (>= s!15 (* (- 1000000000) i!13)) (<= s!15 (* 1000000000 i!13))))\n(assert (not (< i!13 a!1.len)))\n(assert (not (= out!14.len (+ a!1.len 1))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "prefix_sums",
+    "line": 24,
+    "seq": 27
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!13 () Int)\n(declare-fun out!14.len () Int)\n(declare-fun s!15 () Int)\n(declare-fun out!14 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!13 (- 9223372036854775808)) (<= i!13 9223372036854775807)))\n(assert (and (>= out!14.len 0) (<= out!14.len 1099511627776)))\n(assert (and (>= s!15 (- 9223372036854775808)) (<= s!15 9223372036854775807)))\n(assert (and (<= 0 i!13) (<= i!13 a!1.len)))\n(assert (= out!14.len (+ a!1.len 1)))\n(assert (= 0 (select out!14 0)))\n(assert (= s!15 (select out!14 i!13)))\n(assert (forall ((k!q16 Int))\n  (=> (and (<= 0 k!q16) (< k!q16 i!13))\n      (= (select out!14 (+ k!q16 1))\n         (+ (select out!14 k!q16) (select a!1 k!q16))))))\n(assert (and (>= s!15 (* (- 1000000000) i!13)) (<= s!15 (* 1000000000 i!13))))\n(assert (not (< i!13 a!1.len)))\n(assert (= out!14.len (+ a!1.len 1)))\n(assert (not (and (>= 0 0) (< 0 out!14.len))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 3,
+    "fn": "prefix_sums",
+    "line": 24,
+    "seq": 28
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!13 () Int)\n(declare-fun out!14.len () Int)\n(declare-fun s!15 () Int)\n(declare-fun out!14 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!13 (- 9223372036854775808)) (<= i!13 9223372036854775807)))\n(assert (and (>= out!14.len 0) (<= out!14.len 1099511627776)))\n(assert (and (>= s!15 (- 9223372036854775808)) (<= s!15 9223372036854775807)))\n(assert (and (<= 0 i!13) (<= i!13 a!1.len)))\n(assert (= out!14.len (+ a!1.len 1)))\n(assert (= 0 (select out!14 0)))\n(assert (= s!15 (select out!14 i!13)))\n(assert (forall ((k!q16 Int))\n  (=> (and (<= 0 k!q16) (< k!q16 i!13))\n      (= (select out!14 (+ k!q16 1))\n         (+ (select out!14 k!q16) (select a!1 k!q16))))))\n(assert (and (>= s!15 (* (- 1000000000) i!13)) (<= s!15 (* 1000000000 i!13))))\n(assert (not (< i!13 a!1.len)))\n(assert (not (= 0 (select out!14 0))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "prefix_sums",
+    "line": 24,
+    "seq": 29
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!13 () Int)\n(declare-fun out!14.len () Int)\n(declare-fun s!15 () Int)\n(declare-fun out!14 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!13 (- 9223372036854775808)) (<= i!13 9223372036854775807)))\n(assert (and (>= out!14.len 0) (<= out!14.len 1099511627776)))\n(assert (and (>= s!15 (- 9223372036854775808)) (<= s!15 9223372036854775807)))\n(assert (and (<= 0 i!13) (<= i!13 a!1.len)))\n(assert (= out!14.len (+ a!1.len 1)))\n(assert (= 0 (select out!14 0)))\n(assert (= s!15 (select out!14 i!13)))\n(assert (forall ((k!q16 Int))\n  (=> (and (<= 0 k!q16) (< k!q16 i!13))\n      (= (select out!14 (+ k!q16 1))\n         (+ (select out!14 k!q16) (select a!1 k!q16))))))\n(assert (and (>= s!15 (* (- 1000000000) i!13)) (<= s!15 (* 1000000000 i!13))))\n(assert (not (< i!13 a!1.len)))\n(assert (= out!14.len (+ a!1.len 1)))\n(assert (and (>= 0 0) (< 0 out!14.len)))\n(assert (= 0 (select out!14 0)))\n(assert (let ((a!1 (forall ((k!dk17 Int))\n             (let ((a!1 (forall ((k!dj17 Int))\n                          (=> (and (<= 0 k!dj17) (< k!dj17 k!dk17))\n                              (= (select out!14 (+ k!dj17 1))\n                                 (+ (select out!14 k!dj17) (select a!1 k!dj17)))))))\n               (=> (and (<= 0 k!dk17) (< k!dk17 a!1.len) a!1)\n                   (and (>= (+ k!dk17 1) 0)\n                        (< (+ k!dk17 1) out!14.len)\n                        (>= k!dk17 0)\n                        (< k!dk17 out!14.len)\n                        (>= k!dk17 0)\n                        (< k!dk17 a!1.len)))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 3,
+    "fn": "prefix_sums",
+    "line": 24,
+    "seq": 30
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "unsat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(declare-fun i!13 () Int)\n(declare-fun out!14.len () Int)\n(declare-fun s!15 () Int)\n(declare-fun out!14 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (>= 1000000 a!1.len))\n(assert (forall ((k!q3 Int))\n  (=> (and (<= 0 k!q3) (< k!q3 a!1.len))\n      (and (<= (- 1000000000) (select a!1 k!q3))\n           (>= 1000000000 (select a!1 k!q3))))))\n(assert (and (>= i!13 (- 9223372036854775808)) (<= i!13 9223372036854775807)))\n(assert (and (>= out!14.len 0) (<= out!14.len 1099511627776)))\n(assert (and (>= s!15 (- 9223372036854775808)) (<= s!15 9223372036854775807)))\n(assert (and (<= 0 i!13) (<= i!13 a!1.len)))\n(assert (= out!14.len (+ a!1.len 1)))\n(assert (= 0 (select out!14 0)))\n(assert (= s!15 (select out!14 i!13)))\n(assert (forall ((k!q16 Int))\n  (=> (and (<= 0 k!q16) (< k!q16 i!13))\n      (= (select out!14 (+ k!q16 1))\n         (+ (select out!14 k!q16) (select a!1 k!q16))))))\n(assert (and (>= s!15 (* (- 1000000000) i!13)) (<= s!15 (* 1000000000 i!13))))\n(assert (not (< i!13 a!1.len)))\n(assert (let ((a!1 (forall ((k!q18 Int))\n             (=> (and (<= 0 k!q18) (< k!q18 a!1.len))\n                 (= (select out!14 (+ k!q18 1))\n                    (+ (select out!14 k!q18) (select a!1 k!q18)))))))\n  (not a!1)))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "prefix_sums",
+    "line": 24,
+    "seq": 31
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

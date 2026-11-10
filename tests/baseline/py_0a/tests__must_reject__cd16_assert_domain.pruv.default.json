@@ -1,0 +1,235 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "cond": {
+        "col": "20",
+        "kind": "Binary",
+        "left": {
+         "array": {
+          "col": "10",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": "array"
+         },
+         "col": "11",
+         "index": {
+          "args": [
+           {
+            "col": "16",
+            "kind": "Var",
+            "line": "2",
+            "name": "a",
+            "ty": "array"
+           }
+          ],
+          "col": "12",
+          "kind": "Call",
+          "line": "2",
+          "name": "len",
+          "ty": "i64"
+         },
+         "kind": "Index",
+         "line": "2",
+         "ty": "i64"
+        },
+        "line": "2",
+        "op": "==",
+        "right": {
+         "col": "23",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "kind": "Assert",
+       "line": "2"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/cd16_assert_domain.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "cond": {
+        "col": "20",
+        "kind": "Binary",
+        "left": {
+         "array": {
+          "col": "10",
+          "kind": "Var",
+          "line": "2",
+          "name": "a",
+          "ty": null
+         },
+         "col": "11",
+         "index": {
+          "args": [
+           {
+            "col": "16",
+            "kind": "Var",
+            "line": "2",
+            "name": "a",
+            "ty": null
+           }
+          ],
+          "col": "12",
+          "kind": "Call",
+          "line": "2",
+          "name": "len",
+          "ty": null
+         },
+         "kind": "Index",
+         "line": "2",
+         "ty": null
+        },
+        "line": "2",
+        "op": "==",
+        "right": {
+         "col": "23",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "kind": "Assert",
+       "line": "2"
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [],
+     "ret": "unit"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "contract_domain",
+    "col": 3,
+    "counterexample": {
+     "a": {
+      "first": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "len": 1099511627776
+     }
+    },
+    "fix": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
+    "line": 2,
+    "message": "cannot prove partial operations (index, /, %, some_val/ok_val/err_val, max/min) in assertion are defined in f",
+    "stage": "verify"
+   },
+   {
+    "code": "assert",
+    "col": 3,
+    "counterexample": {
+     "a": {
+      "first": [],
+      "len": 0
+     }
+    },
+    "fix": "strengthen invariants or fix the code",
+    "line": 2,
+    "message": "cannot prove assertion in f",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (not (and (>= a!1.len 0) (< a!1.len a!1.len))))\n"
+     }
+    ],
+    "code": "contract_domain",
+    "col": 3,
+    "fn": "f",
+    "line": 2,
+    "seq": 0
+   },
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1.len () Int)\n(declare-fun a!1 () (Array Int Int))\n(assert (and (>= a!1.len 0) (<= a!1.len 1099511627776)))\n(assert (not (= 0 (select a!1 a!1.len))))\n"
+     }
+    ],
+    "code": "assert",
+    "col": 3,
+    "fn": "f",
+    "line": 2,
+    "seq": 1
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

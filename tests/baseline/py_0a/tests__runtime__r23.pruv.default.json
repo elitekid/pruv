@@ -1,0 +1,204 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": "i64",
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "o",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "option"
+      }
+     ],
+     "requires": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "20",
+          "kind": "Var",
+          "line": "2",
+          "name": "x",
+          "ty": "option"
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "is_some",
+        "ty": "bool"
+       },
+       "line": "2",
+       "op": "==>",
+       "right": {
+        "col": "39",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "36",
+           "kind": "Var",
+           "line": "2",
+           "name": "x",
+           "ty": "option"
+          }
+         ],
+         "col": "27",
+         "kind": "Call",
+         "line": "2",
+         "name": "some_val",
+         "ty": "i64"
+        },
+        "line": "2",
+        "op": ">=",
+        "right": {
+         "col": "42",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/r23.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "4",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "4",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "o",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "option"
+      }
+     ],
+     "requires": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "20",
+          "kind": "Var",
+          "line": "2",
+          "name": "x",
+          "ty": null
+         }
+        ],
+        "col": "12",
+        "kind": "Call",
+        "line": "2",
+        "name": "is_some",
+        "ty": null
+       },
+       "line": "2",
+       "op": "==>",
+       "right": {
+        "col": "39",
+        "kind": "Binary",
+        "left": {
+         "args": [
+          {
+           "col": "36",
+           "kind": "Var",
+           "line": "2",
+           "name": "x",
+           "ty": null
+          }
+         ],
+         "col": "27",
+         "kind": "Call",
+         "line": "2",
+         "name": "some_val",
+         "ty": null
+        },
+        "line": "2",
+        "op": ">=",
+        "right": {
+         "col": "42",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

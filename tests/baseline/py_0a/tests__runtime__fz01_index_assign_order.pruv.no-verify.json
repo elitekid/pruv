@@ -1,0 +1,459 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": "i64",
+          "value": "1"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "7",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "7"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "8",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "8",
+        "ty": "i64",
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "5",
+        "name": "result",
+        "ty": "i64"
+       },
+       "line": "5",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": "i64",
+        "value": "0"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "4",
+     "name": "ix",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "12",
+          "ty": "i64",
+          "value": "2"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "12",
+        "name": "print",
+        "ty": "unit"
+       },
+       "kind": "ExprStmt",
+       "line": "12"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "13",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "13",
+        "ty": "i64",
+        "value": "5"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "11",
+     "name": "val",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "17",
+       "mutable": true,
+       "name": "b",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "17",
+          "ty": "i64",
+          "value": "1"
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "17",
+          "ty": "i64",
+          "value": "0"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "17",
+        "name": "alloc",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "index": {
+        "args": [],
+        "col": "5",
+        "kind": "Call",
+        "line": "18",
+        "name": "ix",
+        "ty": "i64"
+       },
+       "kind": "IndexAssign",
+       "line": "18",
+       "name": "b",
+       "value": {
+        "args": [],
+        "col": "13",
+        "kind": "Call",
+        "line": "18",
+        "name": "val",
+        "ty": "i64"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "19",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "19",
+         "name": "b",
+         "ty": "array"
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "19",
+         "ty": "i64",
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "19",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "16",
+     "name": "f",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [
+  "--no-verify"
+ ],
+ "input": "tests/runtime/fz01_index_assign_order.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": null,
+          "value": "1"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "7",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "7"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "8",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "8",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [
+      {
+       "col": "18",
+       "kind": "Binary",
+       "left": {
+        "col": "11",
+        "kind": "Var",
+        "line": "5",
+        "name": "result",
+        "ty": null
+       },
+       "line": "5",
+       "op": "==",
+       "right": {
+        "col": "21",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": null,
+        "value": "0"
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "4",
+     "name": "ix",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "expr": {
+        "args": [
+         {
+          "col": "9",
+          "kind": "IntLit",
+          "line": "12",
+          "ty": null,
+          "value": "2"
+         }
+        ],
+        "col": "3",
+        "kind": "Call",
+        "line": "12",
+        "name": "print",
+        "ty": null
+       },
+       "kind": "ExprStmt",
+       "line": "12"
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "13",
+       "value": {
+        "col": "10",
+        "kind": "IntLit",
+        "line": "13",
+        "ty": null,
+        "value": "5"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "11",
+     "name": "val",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "17",
+       "mutable": true,
+       "name": "b",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "IntLit",
+          "line": "17",
+          "ty": null,
+          "value": "1"
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "17",
+          "ty": null,
+          "value": "0"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "17",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "index": {
+        "args": [],
+        "col": "5",
+        "kind": "Call",
+        "line": "18",
+        "name": "ix",
+        "ty": null
+       },
+       "kind": "IndexAssign",
+       "line": "18",
+       "name": "b",
+       "value": {
+        "args": [],
+        "col": "13",
+        "kind": "Call",
+        "line": "18",
+        "name": "val",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "19",
+       "value": {
+        "array": {
+         "col": "10",
+         "kind": "Var",
+         "line": "19",
+         "name": "b",
+         "ty": null
+        },
+        "col": "11",
+        "index": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "19",
+         "ty": null,
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "19",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "io",
+      "alloc"
+     ],
+     "ensures": [],
+     "kind": "Function",
+     "line": "16",
+     "name": "f",
+     "params": [],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

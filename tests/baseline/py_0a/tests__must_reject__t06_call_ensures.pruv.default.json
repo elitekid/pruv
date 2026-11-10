@@ -1,0 +1,385 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "5",
+        "name": "x",
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "col": "18",
+        "kind": "Binary",
+        "left": {
+         "col": "11",
+         "kind": "Var",
+         "line": "3",
+         "name": "result",
+         "ty": "i64"
+        },
+        "line": "3",
+        "op": ">=",
+        "right": {
+         "col": "21",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "line": "3",
+       "op": "&&",
+       "right": {
+        "col": "33",
+        "kind": "Binary",
+        "left": {
+         "col": "26",
+         "kind": "Var",
+         "line": "3",
+         "name": "result",
+         "ty": "i64"
+        },
+        "line": "3",
+        "op": "<",
+        "right": {
+         "col": "35",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": "i64",
+         "value": "10"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "h",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "2",
+         "name": "x",
+         "ty": "i64"
+        },
+        "line": "2",
+        "op": ">=",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "0"
+        },
+        "ty": "bool"
+       },
+       "line": "2",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "2",
+         "name": "x",
+         "ty": "i64"
+        },
+        "line": "2",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": "i64",
+         "value": "10"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "25",
+       "kind": "Return",
+       "line": "7",
+       "value": {
+        "col": "32",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": "i64",
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "7",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/must_reject/t06_call_ensures.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "5",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "5",
+        "name": "x",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "col": "18",
+        "kind": "Binary",
+        "left": {
+         "col": "11",
+         "kind": "Var",
+         "line": "3",
+         "name": "result",
+         "ty": null
+        },
+        "line": "3",
+        "op": ">=",
+        "right": {
+         "col": "21",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "line": "3",
+       "op": "&&",
+       "right": {
+        "col": "33",
+        "kind": "Binary",
+        "left": {
+         "col": "26",
+         "kind": "Var",
+         "line": "3",
+         "name": "result",
+         "ty": null
+        },
+        "line": "3",
+        "op": "<",
+        "right": {
+         "col": "35",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "10"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "1",
+     "name": "h",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "x",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "Var",
+         "line": "2",
+         "name": "x",
+         "ty": null
+        },
+        "line": "2",
+        "op": ">=",
+        "right": {
+         "col": "17",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "0"
+        },
+        "ty": null
+       },
+       "line": "2",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "2",
+         "name": "x",
+         "ty": null
+        },
+        "line": "2",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "2",
+         "ty": null,
+         "value": "10"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "i64"
+    },
+    {
+     "body": [
+      {
+       "col": "25",
+       "kind": "Return",
+       "line": "7",
+       "value": {
+        "col": "32",
+        "kind": "IntLit",
+        "line": "7",
+        "ty": null,
+        "value": "0"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "7",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "array"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "ensures",
+    "col": 3,
+    "counterexample": {
+     "x": 10
+    },
+    "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+    "line": 5,
+    "message": "cannot prove postcondition (line 3) in h",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun x!1 () Int)\n(assert (and (>= x!1 (- 9223372036854775808)) (<= x!1 9223372036854775807)))\n(assert (and (<= 0 x!1) (>= 10 x!1)))\n(assert (not (and (<= 0 x!1) (> 10 x!1))))\n"
+     }
+    ],
+    "code": "ensures",
+    "col": 3,
+    "fn": "h",
+    "line": 5,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

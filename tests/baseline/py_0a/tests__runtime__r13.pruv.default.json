@@ -1,0 +1,162 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "2",
+       "value": {
+        "col": "12",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "Var",
+         "line": "2",
+         "name": "a",
+         "ty": "i64"
+        },
+        "line": "2",
+        "op": "/",
+        "right": {
+         "col": "14",
+         "kind": "Var",
+         "line": "2",
+         "name": "b",
+         "ty": "i64"
+        },
+        "ty": "i64"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "d",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "i64"
+      },
+      {
+       "kind": "Param",
+       "name": "b",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [],
+ "input": "tests/runtime/r13.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "2",
+       "value": {
+        "col": "12",
+        "kind": "Binary",
+        "left": {
+         "col": "10",
+         "kind": "Var",
+         "line": "2",
+         "name": "a",
+         "ty": null
+        },
+        "line": "2",
+        "op": "/",
+        "right": {
+         "col": "14",
+         "kind": "Var",
+         "line": "2",
+         "name": "b",
+         "ty": null
+        },
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [],
+     "ensures": [],
+     "kind": "Function",
+     "line": "1",
+     "name": "d",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "a",
+       "type": "i64"
+      },
+      {
+       "kind": "Param",
+       "name": "b",
+       "type": "i64"
+      }
+     ],
+     "requires": [],
+     "ret": "i64"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "div",
+    "col": 12,
+    "counterexample": {
+     "a": -1,
+     "b": 0
+    },
+    "fix": "prove divisor > 0 and dividend >= 0 (add an if or requires)",
+    "line": 2,
+    "message": "cannot prove divisor > 0 and dividend >= 0 in d",
+    "stage": "verify"
+   }
+  ],
+  "obligations": [
+   {
+    "attempts": [
+     {
+      "lemmas": false,
+      "result": "sat",
+      "smt2": "(set-option :timeout 8000)\n(declare-fun a!1 () Int)\n(declare-fun b!2 () Int)\n(assert (and (>= a!1 (- 9223372036854775808)) (<= a!1 9223372036854775807)))\n(assert (and (>= b!2 (- 9223372036854775808)) (<= b!2 9223372036854775807)))\n(assert (not (and (> b!2 0) (>= a!1 0))))\n"
+     }
+    ],
+    "code": "div",
+    "col": 12,
+    "fn": "d",
+    "line": 2,
+    "seq": 0
+   }
+  ],
+  "schema": "pruv-trace-v1",
+  "timeout_ms": 8000
+ }
+}

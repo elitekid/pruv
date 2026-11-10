@@ -1,0 +1,393 @@
+{
+ "check": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": true,
+       "name": "r",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "Var",
+          "line": "7",
+          "name": "n",
+          "ty": "i64"
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": "i64",
+          "value": "7"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "7",
+        "name": "alloc",
+        "ty": "array"
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "8",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "8",
+        "name": "r",
+        "ty": "array"
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "15",
+          "kind": "Var",
+          "line": "4",
+          "name": "result",
+          "ty": "array"
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "4",
+        "name": "len",
+        "ty": "i64"
+       },
+       "line": "4",
+       "op": "==",
+       "right": {
+        "col": "26",
+        "kind": "Var",
+        "line": "4",
+        "name": "n",
+        "ty": "i64"
+       },
+       "ty": "bool"
+      },
+      {
+       "col": "21",
+       "kind": "Binary",
+       "left": {
+        "array": {
+         "col": "11",
+         "kind": "Var",
+         "line": "5",
+         "name": "result",
+         "ty": "array"
+        },
+        "col": "17",
+        "index": {
+         "col": "18",
+         "kind": "IntLit",
+         "line": "5",
+         "ty": "i64",
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "5",
+        "ty": "i64"
+       },
+       "line": "5",
+       "op": "==",
+       "right": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": "i64",
+        "value": "7"
+       },
+       "ty": "bool"
+      }
+     ],
+     "kind": "Function",
+     "line": "2",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": "i64",
+         "value": "1"
+        },
+        "line": "3",
+        "op": "<=",
+        "right": {
+         "col": "17",
+         "kind": "Var",
+         "line": "3",
+         "name": "n",
+         "ty": "i64"
+        },
+        "ty": "bool"
+       },
+       "line": "3",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "3",
+         "name": "n",
+         "ty": "i64"
+        },
+        "line": "3",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": "i64",
+         "value": "100"
+        },
+        "ty": "bool"
+       },
+       "ty": "bool"
+      }
+     ],
+     "ret": "array"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1",
+  "type_table": {
+   "entries": [],
+   "order": []
+  }
+ },
+ "flags": [
+  "--no-verify"
+ ],
+ "input": "tests/runtime/cd_ensures_prev.pruv",
+ "parse": {
+  "program": {
+   "functions": [
+    {
+     "body": [
+      {
+       "col": "3",
+       "kind": "Let",
+       "line": "7",
+       "mutable": true,
+       "name": "r",
+       "type": "array",
+       "value": {
+        "args": [
+         {
+          "col": "28",
+          "kind": "Var",
+          "line": "7",
+          "name": "n",
+          "ty": null
+         },
+         {
+          "col": "31",
+          "kind": "IntLit",
+          "line": "7",
+          "ty": null,
+          "value": "7"
+         }
+        ],
+        "col": "22",
+        "kind": "Call",
+        "line": "7",
+        "name": "alloc",
+        "ty": null
+       }
+      },
+      {
+       "col": "3",
+       "kind": "Return",
+       "line": "8",
+       "value": {
+        "col": "10",
+        "kind": "Var",
+        "line": "8",
+        "name": "r",
+        "ty": null
+       }
+      }
+     ],
+     "col": "1",
+     "effects": [
+      "alloc"
+     ],
+     "ensures": [
+      {
+       "col": "23",
+       "kind": "Binary",
+       "left": {
+        "args": [
+         {
+          "col": "15",
+          "kind": "Var",
+          "line": "4",
+          "name": "result",
+          "ty": null
+         }
+        ],
+        "col": "11",
+        "kind": "Call",
+        "line": "4",
+        "name": "len",
+        "ty": null
+       },
+       "line": "4",
+       "op": "==",
+       "right": {
+        "col": "26",
+        "kind": "Var",
+        "line": "4",
+        "name": "n",
+        "ty": null
+       },
+       "ty": null
+      },
+      {
+       "col": "21",
+       "kind": "Binary",
+       "left": {
+        "array": {
+         "col": "11",
+         "kind": "Var",
+         "line": "5",
+         "name": "result",
+         "ty": null
+        },
+        "col": "17",
+        "index": {
+         "col": "18",
+         "kind": "IntLit",
+         "line": "5",
+         "ty": null,
+         "value": "0"
+        },
+        "kind": "Index",
+        "line": "5",
+        "ty": null
+       },
+       "line": "5",
+       "op": "==",
+       "right": {
+        "col": "24",
+        "kind": "IntLit",
+        "line": "5",
+        "ty": null,
+        "value": "7"
+       },
+       "ty": null
+      }
+     ],
+     "kind": "Function",
+     "line": "2",
+     "name": "f",
+     "params": [
+      {
+       "kind": "Param",
+       "name": "n",
+       "type": "i64"
+      }
+     ],
+     "requires": [
+      {
+       "col": "19",
+       "kind": "Binary",
+       "left": {
+        "col": "14",
+        "kind": "Binary",
+        "left": {
+         "col": "12",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "1"
+        },
+        "line": "3",
+        "op": "<=",
+        "right": {
+         "col": "17",
+         "kind": "Var",
+         "line": "3",
+         "name": "n",
+         "ty": null
+        },
+        "ty": null
+       },
+       "line": "3",
+       "op": "&&",
+       "right": {
+        "col": "24",
+        "kind": "Binary",
+        "left": {
+         "col": "22",
+         "kind": "Var",
+         "line": "3",
+         "name": "n",
+         "ty": null
+        },
+        "line": "3",
+        "op": "<=",
+        "right": {
+         "col": "27",
+         "kind": "IntLit",
+         "line": "3",
+         "ty": null,
+         "value": "100"
+        },
+        "ty": null
+       },
+       "ty": null
+      }
+     ],
+     "ret": "array"
+    }
+   ],
+   "kind": "Program",
+   "types": []
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}

@@ -1,0 +1,85 @@
+{
+ "check": {
+  "error": {
+   "code": "recursive_type",
+   "col": 1,
+   "fix": "types have fixed size; remove the cycle",
+   "line": 1,
+   "message": "recursive type is not allowed: Holder -> Wrapper -> Holder",
+   "stage": "type"
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "flags": [],
+ "input": "tests/must_reject/g1_recursive_indirect.pruv",
+ "parse": {
+  "program": {
+   "functions": [],
+   "kind": "Program",
+   "types": [
+    {
+     "col": "1",
+     "fields": [
+      {
+       "col": "3",
+       "kind": "FieldDecl",
+       "line": "2",
+       "name": "item",
+       "type": "Wrapper"
+      }
+     ],
+     "kind": "StructDecl",
+     "line": "1",
+     "name": "Holder"
+    },
+    {
+     "col": "1",
+     "kind": "EnumDecl",
+     "line": "5",
+     "name": "Wrapper",
+     "variants": [
+      {
+       "col": "3",
+       "fields": [],
+       "kind": "VariantDecl",
+       "line": "6",
+       "name": "Leaf"
+      },
+      {
+       "col": "3",
+       "fields": [
+        {
+         "col": "8",
+         "kind": "FieldDecl",
+         "line": "7",
+         "name": "holder",
+         "type": "Holder"
+        }
+       ],
+       "kind": "VariantDecl",
+       "line": "7",
+       "name": "Wrap"
+      }
+     ]
+    }
+   ]
+  },
+  "schema": "pruv-ast-v1"
+ },
+ "schema": "pruv-snapshot-item-v1",
+ "status": "ok",
+ "trace": {
+  "errors": [
+   {
+    "code": "recursive_type",
+    "col": 1,
+    "fix": "types have fixed size; remove the cycle",
+    "line": 1,
+    "message": "recursive type is not allowed: Holder -> Wrapper -> Holder",
+    "stage": "type"
+   }
+  ],
+  "obligations": [],
+  "schema": "pruv-trace-v1"
+ }
+}
