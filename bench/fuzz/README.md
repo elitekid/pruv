@@ -131,16 +131,16 @@ OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 1
 
 - **fz01 — 인덱스 대입 평가 순서** (`tests/runtime/fz01_index_assign_order.{vow,rs,json}`).
   `b[i] = v`에서 증명 모드는 값(`v`)을 먼저, 안전 모드는 인덱스(`i`)를 먼저 평가해 부수 효과·실패 순서가 다르다.
-  상태: **현재 실패 중**. 고칠 곳은 vowc다: `codegen.py`의 `IndexAssign` 검증된 가지가
+  상태: **고침**(RESULTS.md 10절: 모든 모드에서 소스 순서, 같은 종류의 `alloc(n, v)` fz04도 함께, `r34_eval_order`로 고정).
+  아래는 찾을 때의 원인 기록이다. `codegen.py`의 `IndexAssign` 검증된 가지가
   `*a.get_unchecked_mut(i) = v`를 내는데 Rust는 이때 오른쪽을 먼저 평가한다. `llvmgen.py`의 `IndexAssign`이 이를 그대로 따른다.
   생성기 3판(effects 재료)은 100개 중 5개에서 이것을 스스로 찾는다. 이미 보고했으므로 `--avoid-known fz01`로 피할 수 있다
   (값을 지역에 먼저 묶어 대입).
 - **fz02 / fz03 — 증명 모드 Rust 뒷단의 rustc 거부 lint** (`tests/runtime/fz02_const_div_zero`, `fz03_const_overflow`).
   requires가 모순이라 검증이 공허하게 통과한 함수의 본문에 `x % 0` 또는 `i64::MAX + 1`처럼 상수로 접히는 연산이 있으면,
   증명 모드 Rust 출력(검사 없는 `%`·`+`)을 rustc가 기본 거부 lint `unconditional_panic`·`arithmetic_overflow`로 컴파일하지 않는다.
-  LLVM 뒷단과 안전 모드는 정상(진입 requires 위반으로 101). 상태: **현재 실패 중**(Rust 증명 모드만).
-  고칠 곳 추정: `codegen.py`의 `ALLOW` 속성에 `unconditional_panic, arithmetic_overflow`를 더한다(검증된 코드에서 그 연산은
-  도달 불가). 퍼징에서는 생성기 2판 재료(나눗셈 재료가 상수 0을 고름 + 모순 requires)로 600개 중 1개에서 나왔다.
+  LLVM 뒷단과 안전 모드는 정상(진입 requires 위반으로 101). 상태: **고침**(RESULTS.md 10절: Rust 뒷단 allow에
+  `unconditional_panic`, `arithmetic_overflow` 추가, 검증된 코드에서 그 연산은 도달 불가). 퍼징에서는 생성기 2판 재료(나눗셈 재료가 상수 0을 고름 + 모순 requires)로 600개 중 1개에서 나왔다.
 
 ## 실패를 회귀 테스트로 만들기
 
