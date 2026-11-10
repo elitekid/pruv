@@ -47,7 +47,7 @@ GROUP_DIRS = [
     ("check_edge", "tests/check_edge", "ok_*.pruv"),
 ]
 ALL_GROUPS = [g for g, _, _ in GROUP_DIRS] + ["fuzz", "input"]
-COLS = ("inputs", "same", "cex_only", "flaky_unknown", "diff", "py_crash", "rs_crash", "timeout")
+COLS = ("inputs", "same", "cex_only", "flaky_unknown", "py_recursion", "diff", "py_crash", "rs_crash", "timeout")
 
 
 class Case(object):
@@ -204,9 +204,17 @@ def unknown_involved(py, rs):
     return False
 
 
+def py_recursion(obj):
+    """Python 이 재귀 한도(RecursionError)로 internal_error 를 냈는가(비교 대상 없음, diff_parse 와 같은 범주)"""
+    return any(isinstance(e, dict) and e.get("code") == "internal_error"
+               and "maximum recursion depth" in str(e.get("message", "")) for e in obj.get("errors", []))
+
+
 def classify(case):
     if case.py_raw == case.rs_raw:
         return "same"
+    if py_recursion(case.py_obj):
+        return "py_recursion"
     if canon(strip_cex(case.py_obj)) == canon(strip_cex(case.rs_obj)):
         return "cex_only"
     if unknown_involved(case.py_obj, case.rs_obj):

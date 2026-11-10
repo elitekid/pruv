@@ -40,13 +40,10 @@ fn output(errors: Vec<Json>, trace: &Trace, timeout: Option<u32>) -> String {
 }
 
 fn run(path: &std::ffi::OsStr) -> String {
-    let bytes = match std::fs::read(path) {
-        Ok(b) => b,
-        Err(_) => return r#"{"adapter_error": "io"}"#.to_string(),
-    };
-    let src = match String::from_utf8(bytes) {
+    // 어댑터 trace_result 처럼 읽기·해독 실패도 internal_error(Python 예외 문장)로 낸다(감사 필수 1).
+    let src = match pruv_core::pyio::read_source(std::path::Path::new(path)) {
         Ok(s) => s,
-        Err(_) => return r#"{"adapter_error": "decode"}"#.to_string(),
+        Err(msg) => return output(vec![internal_err(&msg)], &Trace::adapter(), None),
     };
     let mut errors: Vec<Json> = Vec::new();
     let mut trace = Trace::adapter();
@@ -76,9 +73,13 @@ fn main() {
     let path = args[0].clone();
     // 깊게 중첩된 입력을 위해 1GB 스택 스레드에서 돌린다(파서·검사기·기호 실행이 모두 재귀).
     let handle = std::thread::Builder::new().stack_size(1 << 30).spawn(move || run(&path));
+    // 패닉·스레드 생성 실패는 차분 도구가 rs_crash 로 세도록 0 이 아닌 종료 코드로 끝낸다.
     let line = match handle.map(|h| h.join()) {
         Ok(Ok(s)) => s,
-        _ => output(vec![internal_err("pruv-trace-dump: internal failure")], &Trace::adapter(), None),
+        _ => {
+            eprintln!("pruv-trace-dump: internal failure");
+            std::process::exit(3);
+        }
     };
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
