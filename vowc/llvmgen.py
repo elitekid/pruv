@@ -20,7 +20,7 @@ Generated names (user identifiers never start with `vow_` nor contain `__`, so n
   @f__vow_entry   internal; evaluates requires (declaration order, first failure panics with
                   vow_panic_requires(fn, show(expr))) and calls the body.
   @vow_abi_f      external C-ABI wrapper used by the Rust bindings (bool -> i64, Option/Result args as
-                  two i64, array/Option/Result results through a trailing `ptr out`).
+                  two i64, array results through a trailing `ptr out`, Option/Result results by value as { i64, i64 }).
   @vow_cdiv/@vow_crem  internal i128 Euclidean division for requires (only if some entry checks).
   @.str.N         private string constants.
 Local IR names: %tN temporaries, %lN.name.{a,b} local slots (entry-block alloca), %p.name parameters,
@@ -797,24 +797,27 @@ def abi_of(f):
     rt = f.ret
     entry = "@%s__vow_entry" % n
     body = ["  " + x for x in pre]
-    if rt in (ARRAY, OPTION, RESULT):
+    if rt == ARRAY:
         ext.append("ptr %out")
         body.append("  %%r = call %s %s(%s)" % (lty(rt), entry, ", ".join(args)))
         body.append("  %%x0 = extractvalue %s %%r, 0" % lty(rt))
         body.append("  %%x1 = extractvalue %s %%r, 1" % lty(rt))
-        if rt == ARRAY:
-            body.append("  %o0 = getelementptr inbounds { ptr, i64 }, ptr %out, i32 0, i32 0")
-            body.append("  %o1 = getelementptr inbounds { ptr, i64 }, ptr %out, i32 0, i32 1")
-            body.append("  store ptr %x0, ptr %o0")
-            body.append("  store i64 %x1, ptr %o1")
-        else:
-            body.append("  %x0z = zext i1 %x0 to i64")
-            body.append("  %o0 = getelementptr inbounds { i64, i64 }, ptr %out, i32 0, i32 0")
-            body.append("  %o1 = getelementptr inbounds { i64, i64 }, ptr %out, i32 0, i32 1")
-            body.append("  store i64 %x0z, ptr %o0")
-            body.append("  store i64 %x1, ptr %o1")
+        body.append("  %o0 = getelementptr inbounds { ptr, i64 }, ptr %out, i32 0, i32 0")
+        body.append("  %o1 = getelementptr inbounds { ptr, i64 }, ptr %out, i32 0, i32 1")
+        body.append("  store ptr %x0, ptr %o0")
+        body.append("  store i64 %x1, ptr %o1")
         body.append("  ret void")
         ret = "void"
+    elif rt in (OPTION, RESULT):
+        # returned by value as { i64, i64 } (two registers on macOS arm64 / SysV x86-64)
+        body.append("  %%r = call %s %s(%s)" % (lty(rt), entry, ", ".join(args)))
+        body.append("  %%x0 = extractvalue %s %%r, 0" % lty(rt))
+        body.append("  %%x1 = extractvalue %s %%r, 1" % lty(rt))
+        body.append("  %x0z = zext i1 %x0 to i64")
+        body.append("  %t0 = insertvalue { i64, i64 } undef, i64 %x0z, 0")
+        body.append("  %t1 = insertvalue { i64, i64 } %t0, i64 %x1, 1")
+        body.append("  ret { i64, i64 } %t1")
+        ret = "{ i64, i64 }"
     elif rt == UNIT:
         body.append("  call void %s(%s)" % (entry, ", ".join(args)))
         body.append("  ret void")
@@ -940,9 +943,7 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
                 ps.append("i64")
         if f.ret == ARRAY:
             ps.append("*mut Vow__Array")
-        elif f.ret in (OPTION, RESULT):
-            ps.append("*mut Vow__Tagged")
-        ret = " -> i64" if f.ret in (I64, BOOL) else ""
+        ret = " -> i64" if f.ret in (I64, BOOL) else (" -> Vow__Tagged" if f.ret in (OPTION, RESULT) else "")
         decls.append("    fn vow_abi_%s(%s)%s;" % (f.name, ", ".join("p%d: %s" % (i, t) for i, t in enumerate(ps)), ret))
     if returns_array:
         decls.append("    fn vow_runtime_rust_allocator_v1();")
@@ -988,8 +989,7 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
                         "vow__out.len as usize) } else { Vec::new() }")
         else:
             a, b = ("Some", "None") if f.ret == OPTION else ("Ok", "Err")
-            body.append("let mut vow__out = Vow__Tagged { tag: 0, value: 0 };")
-            body.append(callo + ";")
+            body.append("let vow__out = %s;" % call)
             if f.ret == OPTION:
                 body.append("if vow__out.tag != 0 { Some(vow__out.value) } else { None }")
             else:

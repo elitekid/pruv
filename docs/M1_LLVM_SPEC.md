@@ -62,8 +62,9 @@ _Noreturn void vow_panic_undefined(const char *detail);            // "vow: requ
   - i64 → `i64`, bool 인자 → `i64`(0/1), 배열 인자 → `ptr, i64`, Option/Result 인자 → `i64 tag, i64 value`.
   - 반환: i64 → `i64`, bool → `i64`(0/1), unit → `void`.
   - 배열 반환 → `void`, 마지막 인자 `ptr out`에 `VowArray { int64_t *data; int64_t len; }` 저장.
-  - Option/Result 반환 → `void`, 마지막 인자 `ptr out`에 `VowTagged { int64_t tag; int64_t value; }` 저장.
-  - `sret` 속성은 쓰지 않는다(명시적 out-pointer).
+  - Option/Result 반환은 `{i64,i64}` 값 반환(`{tag zext, payload}`, Rust 쪽은 `#[repr(C)] Vow__Tagged`를 `-> Vow__Tagged`로 받음; macOS arm64·SysV 전용; Windows x64는 16바이트 구조체를 숨은 포인터로 돌려주므로 M3에서 out-pointer로 되돌리거나 ABI 하강 필요).
+    - 이유: p04 백만 회 호출에서 out-pointer 저장·읽기 비용을 측정했고, 값 반환이 그 비용을 없앤다.
+  - 배열 반환만 out-pointer를 쓴다. `sret` 속성은 쓰지 않는다(명시적 out-pointer).
 - IR에 target triple·datalayout은 넣지 않는다(clang에 `-Wno-override-module`).
 
 ## 5. 본문 하강

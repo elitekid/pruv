@@ -53,7 +53,7 @@
 
 각 단계는 시험 숫자(첫 시도 통과율, 변이 잡는 비율, 속도)가 실제로 오를 때만 다음 단계로 넘어간다.
 
-### 단기 목표: 독립 실행 (2026-11-10 정함, M1 진행 중)
+### 단기 목표: 독립 실행 (2026-11-10 정함, M1 완료, 다음 M2)
 **목표:** `vowc` 실행 파일 하나로 `.vow` → 실행 파일. 사용자가 Python도 rustc도 깔 필요가 없다.
 - 남는 의존(정직하게): z3·LLVM은 실행 파일 안에 넣는다(정적 링크, 파일이 커짐). 시스템 링커(macOS `ld`, Windows `link.exe`)는 Rust처럼 빌린다.
 - 이 목표의 가치는 배포와 속도 상한(증명 결과를 LLVM에 직접 넘김)이다. 우리 개발 속도를 올리는 일은 아니다 — 개발 속도는 0·1·3단계 도구가 올린다.
@@ -78,7 +78,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 2. 구현: `vowc/llvmgen.py`(새 파일, codegen.py는 그대로 둠), `vowc.py`에 `--backend` 옵션, 실행 지원 코드 `vowc/runtime.c` 또는 IR로 작성.
 3. 확인: examples·bench 10문제를 두 뒷단으로 돌려 출력 대조, 변이 시험, 속도 비교.
 4. 감사 1회 + 확인 1회. 결과를 RESULTS에 기록.
-- **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. 남은 기준 미달: p04가 4~5% 느림(호출 경계가 일부를 설명, 나머지는 out-pointer 반환·본체 후보, 조용한 기계에서 재측정 필요). 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
+- **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. p04는 Option·Result를 레지스터로 반환하게 바꾼 뒤 Rust판과 측정 오차 안이다(부하 높은 기계에서 잼, RESULTS 7절). **M1 완료.** 남은 일: Windows x64 ABI 하강은 M3에서. 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
 - 정함(2026-11-10): 실행 지원 코드는 C(`vowc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
 
 ### 0단계: 검증기 신뢰 (진행 중)
