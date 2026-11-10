@@ -225,3 +225,18 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - 시간: CPU 시간이 두 쌍 모두 20% 넘게 줄었다. 벽시계는 같은 맥의 다른 작업 부하로 흔들려(같은 코드의 실행 단계가 81~138초) 줄어든 폭이 9~14%로만 보인다. LLVM 생성은 생성+검증 단계로 옮겨 가 그 칸은 늘고 빌드 칸은 준다.
 - 후보 수 1,519/1,520 차이는 스트리밍 제출이 멈추는 시점의 꼬리(거절 1개)이고 빌드 대상은 같다.
 - 바뀐 실패 분류: LLVM 생성기 내부 오류는 이제 phase_a에서 `internal_error`로 잡혀 그 프로그램 전체가 빠진다(예전엔 llvm 모드만 `build_error`). 실패로 저장되는 것은 같다.
+
+## 13. M3 = C4 첫 묶음: 설계 확정 (2026-11-10)
+1. **산출물**: `docs/M3_C4_SPEC.md`(396줄, 확정·설계 논쟁 반영). 코드는 바꾸지 않았다(전체 회귀 생략).
+2. **조사**(웹·커뮤니티, 코드): 언어 Rust(Go는 z3·LLVM 모두 cgo라 정적 링크·크로스 빌드가 더 나쁨). z3 크레이트 `=0.22.0` `vendored` + `z3-src =503.3.0`(z3 `gh-release`는 5.3.0 뒤 `libz3.a` 누락 신고 Z3Prover/z3#11266). LLVM은 `llvm-sys 221`(LLVM 22) `force-static`(`prefer-static`은 동적으로 조용히 넘어감), 첫 이식은 텍스트 IR 생성기를 그대로 옮기고 LLVM 라이브러리로 읽어 O2·객체 생성. 시스템 링커는 빌린다(Windows는 MSVC Build Tools 필요). Python판에 이미 비결정 순회 2곳(`check.py` 호출 그래프, `verify.py` havoc 집합) → 0A에서 정렬.
+3. **시제품**(`Lair Outputs/.../spike`, 이 맥 arm64): z3 질의 + 텍스트 IR → `default<O2>` → 객체 → `cc` 링크 → 실행 성공.
+
+| 확인 | 결과 |
+|---|---|
+| 정적 z3 실행 버전 | `5.3.3.0` = Python판 z3-solver 5.3.3.0 |
+| 빌드 | cold 393초(대부분 z3 C++, LLVM은 Homebrew 설치본), 다시 빌드 6초 |
+| 크기 | strip 105MB(모든 LLVM 대상 초기화) |
+| 동적 의존 | macOS 기본 라이브러리 + Homebrew `libzstd`(배포 불가) → 배포 LLVM은 zstd·libxml2·zlib 끄고 직접 빌드 |
+
+4. **설계 논쟁**(Codex): 지적 13개 모두 채택 또는 수정 반영. 큰 변경: 첫 구현 묶음을 위험 먼저로(0A 결정성 + 0B z3 실의무 시제품·SMT-LIB 대조 + 0C Python .ll을 LLVM 라이브러리로 객체화해 시험 장치의 clang 의존 먼저 떼기 + 0D Windows ABI 표본), CLI 기본값은 M3에서 유지(`--emit exe` 추가), Windows sret는 생성기가 대상별로 직접 출력, 비용 상한(150MB·CI cold 120분), 공개 순서 macOS arm64 → Linux → Windows → macOS x64. 반대 의견 중 "Rust 소스 뒷단 이식 폐기"는 받지 않고 M3 맨 뒤로 미뤘다(6단계 여러 언어 출력 계획과 기존 Rust 출력 시험 집계 때문).
+- 검증 시간: 시제품 빌드 393초 한 번. 회귀·bench는 코드 변경이 없어 돌리지 않았다.

@@ -80,6 +80,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 4. 감사 1회 + 확인 1회. 결과를 RESULTS에 기록.
 - **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. p04는 Option·Result를 레지스터로 반환하게 바꾼 뒤 Rust판과 측정 오차 안이다(부하 높은 기계에서 잼, RESULTS 7절). **M1 완료.** 남은 일: Windows x64 ABI 하강은 M3에서. 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
 - **M2 결과(2026-11-10, RESULTS 8절):** 구조체·열거형(G1) 완료. 관문 5개 통과: SPEC 6a절, G1 거부 시험 36개, 회귀 250/250(두 뒷단)·변이 판정 M1과 같음, 감사 필수 0, 독립 AI 첫 시도 4/5→고친 뒤 5/5. 설계 `docs/M2_G1_SPEC.md`. **M2 완료.**
+- **M3 첫 묶음(2026-11-10, RESULTS 13절):** 설계 확정 `docs/M3_C4_SPEC.md`(설계 논쟁 반영). Rust + z3 0.22 vendored(z3 5.3.3, Python판과 같음) + llvm-sys 221 force-static, 시스템 링커 빌림. 시제품으로 z3·LLVM 정적 링크와 IR→객체→링크→실행을 이 맥에서 확인(393초·105MB, Homebrew zstd 의존은 배포 LLVM 직접 빌드로 뗌). **다음: 0A~0D**(Python 비결정 순회 정렬·기준 스냅샷 / z3 실의무 시제품과 SMT-LIB 대조 / Python .ll을 LLVM 라이브러리로 객체화해 시험 장치의 clang 의존 떼기 / Windows ABI 표본) → 검토 뒤 파서부터 이식.
 - 정함(2026-11-10): 실행 지원 코드는 C(`vowc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
 
 ### 0단계: 검증기 신뢰 (진행 중)
