@@ -1,4 +1,4 @@
-"""Vow -> Rust.  gen_rust(prog, verified=True, trust_callers=False)
+"""Vow -> Rust.  gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30)
 
 Contracts are erased from function bodies; they are only used (a) by the verifier and
 (b) to build the runtime `requires` check of the public entry point.
@@ -49,7 +49,8 @@ from vast import *
 from typeinfo import TypeTable, is_user_type
 
 ALLOW = ("#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, "
-         "dead_code, unreachable_code, unreachable_patterns)]")
+         "dead_code, unreachable_code, unreachable_patterns, "
+         "unconditional_panic, arithmetic_overflow)]")
 
 SAFE_PRELUDE = """\
 #[allow(dead_code)]
@@ -270,7 +271,8 @@ def rstr(text):
 
 
 class Gen:
-    def __init__(s, prog, verified=True, trust_callers=False):
+    def __init__(s, prog, verified=True, trust_callers=False, budget=1 << 30):
+        s.budget = budget
         s.prog = prog
         s.verified = verified
         s.trust = trust_callers
@@ -359,7 +361,7 @@ class Gen:
                 if p.name in used:
                     s.emit(1, "let vow_cp_%s: %s = %s;" % (p.name, cty(used[p.name]), conv(used[p.name], p.name)))
             if checks:
-                s.emit(1, "let mut vow_budget: i64 = 1_073_741_824;")
+                s.emit(1, "let mut vow_budget: i64 = %s;" % format(s.budget, "_"))
             for line in checks:
                 s.emit(1, line)
         s.emit(1, "%s(%s)" % (body_name, ", ".join(p.name for p in f.params)))
@@ -501,7 +503,8 @@ class Gen:
             s.emit(ind, "{ %s%s; %s.%s = vow_v; }" % (decl, s.e(st.value), st.name, ".".join(st.fields)))
         elif isinstance(st, IndexAssign):
             if s.verified:
-                s.emit(ind, "unsafe { *%s.get_unchecked_mut((%s) as usize) = %s; }" % (st.name, s.e(st.index), s.e(st.value)))
+                s.emit(ind, "{ let vow_i: i64 = %s; let vow_x: i64 = %s; unsafe { *%s.get_unchecked_mut(vow_i as usize) = vow_x; } }" %
+                       (s.e(st.index), s.e(st.value), st.name))
             else:
                 # temporaries first: `&mut a` must not be live while index/value read `a`
                 s.emit(ind, "{ let vow_i: i64 = %s; let vow_x: i64 = %s; vow_set(&mut %s, vow_i, vow_x); }" %
@@ -583,7 +586,8 @@ class Gen:
             if n == "alloc":
                 if not s.verified:
                     return "vow_alloc(%s, %s)" % (s.e(a[0]), s.e(a[1]))
-                return "vec![%s; (%s) as usize]" % (s.e(a[1]), s.e(a[0]))
+                # source order: n before v (vec![v; n] would evaluate v first)
+                return "{ let vow_n: i64 = %s; let vow_v: i64 = %s; vec![vow_v; vow_n as usize] }" % (s.e(a[0]), s.e(a[1]))
             if n == "copy":
                 return "%s.to_vec()" % s.e(a[0])
             if n == "print":
@@ -595,8 +599,8 @@ class Gen:
         raise Exception("codegen: contract-only expression in code: %r" % e)
 
 
-def gen_rust(prog, verified=True, trust_callers=False):
-    g = Gen(prog, verified, trust_callers)
+def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30):
+    g = Gen(prog, verified, trust_callers, budget)
     g.prelude()
     for f in prog.functions:
         g.fn(f)

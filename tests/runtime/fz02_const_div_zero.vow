@@ -1,0 +1,9 @@
+// fuzz (bench/fuzz) finding: a verified function whose code divides by a constant 0 (unreachable:
+// its requires are contradictory) must still build. The rust backend in proof mode emits `x % 0`
+// and rustc rejects it with the deny-by-default lint `unconditional_panic`.
+fn f(x: i64) -> i64
+  requires x < 0
+  requires x > 0
+{
+  return x % 0;
+}

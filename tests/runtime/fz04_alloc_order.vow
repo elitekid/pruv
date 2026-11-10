@@ -1,0 +1,19 @@
+// fuzz-class finding: `alloc(n, v)` must evaluate n before v in every mode.
+// Proof mode (rust and llvm) evaluated the value first (vec![v; n]), safe mode n first.
+
+fn n() -> i64 ! io
+  ensures result == 2
+{
+  print(1);
+  return 2;
+}
+
+fn v() -> i64 ! io {
+  print(2);
+  return 7;
+}
+
+fn f() -> i64 ! io, alloc {
+  let a: [i64] = alloc(n(), v());
+  return a[1];
+}

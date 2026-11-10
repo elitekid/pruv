@@ -1,4 +1,4 @@
-"""Vow -> LLVM IR (text) + Rust bindings.  gen_llvm(prog, verified=True, trust_callers=False)
+"""Vow -> LLVM IR (text) + Rust bindings.  gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30)
 returns (ir_text, rust_bindings_text).  Semantics reference: codegen.py (Rust back end);
 format spec: docs/M1_LLVM_SPEC.md.
 
@@ -580,12 +580,8 @@ class FnGen:
         elif isinstance(st, IndexAssign):
             s.begin_temps()
             sl = s.lookup(st.name)[1]
-            if s.verified:      # canonical Rust: `*a.get_unchecked_mut(i) = v` evaluates the right side first
-                v = s.ev(st.value)
-                i = s.ev(st.index)
-            else:
-                i = s.ev(st.index)
-                v = s.ev(st.value)
+            i = s.ev(st.index)      # index first, then value, in every mode
+            v = s.ev(st.value)
             a = s.load(sl)
             g = s.index_ptr(a, i)
             s.ins("store i64 %s, ptr %s" % (v.a, g))
@@ -807,12 +803,9 @@ class FnGen:
         if n == "len":
             return V("i64", s.ev(a[0]).b)
         if n == "alloc":
-            if s.verified:
-                v = s.ev(a[1])      # same order as codegen.py: vec![v; n]
-                cnt = s.ev(a[0])
-            else:
-                cnt = s.ev(a[0])
-                v = s.ev(a[1])
+            cnt = s.ev(a[0])        # source order in every mode: n then v
+            v = s.ev(a[1])
+            if not s.verified:
                 ok = s.op("icmp ult i64 %s, 1099511627777" % cnt.a)
                 s.guard(ok, s.panic1("vow_panic_arith", "alloc length outside 0..2^40"), False)
             p = s.op("call ptr @vow_alloc(i64 %s, i64 %s)" % (cnt.a, v.a))
@@ -1100,7 +1093,7 @@ class FnGen:
         return V(rty, res)
 
 
-def entry_of(m, funcs, f, trust):
+def entry_of(m, funcs, f, trust, budget=1 << 30):
     g = FnGen(m, funcs, f, True)
     params = ir_params(f)
     rt = lty(f.ret)
@@ -1110,7 +1103,7 @@ def entry_of(m, funcs, f, trust):
         g.bind_contract_params()
         g.budget = "%req.budget"
         g.allocas.append("%s = alloca i64" % g.budget)
-        g.ins("store i64 1073741824, ptr %s" % g.budget)
+        g.ins("store i64 %d, ptr %s" % (budget, g.budget))
         for r in f.requires:
             c = g.cev(r)
             msg_fn = m.string(f.name)
@@ -1543,7 +1536,7 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
     return "\n".join(o) + "\n"
 
 
-def gen_llvm(prog, verified=True, trust_callers=False):
+def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30):
     tt = TypeTable(prog)
     m = Mod(tt)
     funcs = {f.name: f for f in prog.functions}
@@ -1556,7 +1549,7 @@ def gen_llvm(prog, verified=True, trust_callers=False):
         g.body()
         params = ir_params(f)
         chunks.append(g.render("define internal %s @%s__vow_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
-        chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires))
+        chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
         chunks.append(abi_of(f, tt))
     ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + "\n" + "\n".join(chunks)
     return ir, gen_bindings(prog)

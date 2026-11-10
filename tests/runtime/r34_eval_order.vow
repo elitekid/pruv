@@ -1,0 +1,99 @@
+// pins left-to-right source-order evaluation in proof and safe mode, both backends
+// (see SPEC.md evaluation order): binary operands, call args, struct literal fields,
+// enum constructor payloads, Some(..), alloc(n, v), index read, `b[i] = v`, array reassignment.
+
+struct S {
+  x: i64,
+  y: i64,
+}
+
+enum E {
+  N,
+  V(a: i64, b: i64),
+}
+
+fn p(x: i64) -> i64 ! io
+  ensures result == x
+{
+  print(x);
+  return x;
+}
+
+fn h(a: i64, b: i64) -> i64
+  requires a >= 0 && a <= 100
+  requires b >= 0 && b <= 100
+{
+  return a * 10 + b;
+}
+
+fn mk(n: i64) -> [i64] ! alloc {
+  return alloc(2, n);
+}
+
+fn t_bin() -> i64 ! io {
+  return p(1) + p(2);
+}
+
+fn t_call() -> i64 ! io {
+  return h(p(3), p(4));
+}
+
+fn t_struct() -> i64 ! io {
+  let s: S = S { x: p(5), y: p(6) };
+  return s.x + s.y;
+}
+
+fn t_enum() -> i64 ! io {
+  let e: E = E::V(p(7), p(8));
+  let mut r: i64 = 0;
+  match e {
+    E::N => { r = 0; }
+    E::V(a, b) => { r = a + b; }
+  }
+  return r;
+}
+
+fn t_some() -> i64 ! io {
+  let o: Option<i64> = Some(p(9));
+  let mut r: i64 = 0;
+  match o {
+    Some(v) => { r = v; }
+    None => { r = 0; }
+  }
+  return r;
+}
+
+fn t_alloc() -> i64 ! io, alloc {
+  let a: [i64] = alloc(p(2), p(11));
+  return a[1];
+}
+
+fn t_index_read() -> i64 ! io, alloc {
+  let a: [i64] = alloc(2, 4);
+  return a[p(12) - 12];
+}
+
+fn t_index_assign() -> i64 ! io, alloc {
+  let mut b: [i64] = alloc(2, 0);
+  b[p(13) - 13] = p(14);
+  return b[0];
+}
+
+fn t_reassign() -> i64 ! io, alloc {
+  let mut a: [i64] = alloc(2, 0);
+  a = mk(p(15));
+  return len(a);
+}
+
+fn run() -> i64 ! io, alloc {
+  let a: i64 = t_bin();
+  let b: i64 = t_call();
+  let c: i64 = t_struct();
+  let d: i64 = t_enum();
+  let e: i64 = t_some();
+  let f: i64 = t_alloc();
+  let g: i64 = t_index_read();
+  let i: i64 = t_index_assign();
+  let j: i64 = t_reassign();
+  return j;
+}

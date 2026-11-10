@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": [], "stderr_contains": "contract iteration budget exceeded"}
+{"flags_matrix": [[], ["--no-verify"]], "contract_budget": 1000, "exit": 101, "stdout_lines": [], "stderr_contains": "contract iteration budget exceeded"}

@@ -10,6 +10,8 @@
                  --rust-bindings PATH (default: OUT with the extension changed to .rs;
                  it is a usage error if that equals OUT).
 --rust-bindings  llvm backend only; giving it with the rust backend is a usage error.
+--contract-budget N  internal/test-only (overrides the per-entry requires iteration
+                 budget, default 2^30; not part of the language spec).
 
 Language errors: JSON lines on stdout, exit 1.  Success: {"ok": true}, exit 0.
 Usage errors: usage text, exit 2.
@@ -35,7 +37,11 @@ def default_bindings_path(out):
     return os.path.splitext(out)[0] + ".rs"
 
 
-def compile_file(path, out, verify=True, trust_callers=False, backend="rust", rust_bindings=None):
+def compile_file(path, out, verify=True, trust_callers=False, backend="rust", rust_bindings=None,
+                 budget=None):
+    if budget is None:
+        budget = 1 << 30
+    assert 1 <= budget <= 2 ** 62
     src = open(path).read()
     prog = parse(src)
     check(prog)
@@ -46,14 +52,14 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     if backend == "llvm":
         from llvmgen import gen_llvm  # lazy: only the llvm backend needs it
-        ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers)
+        ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget)
         with open(out, "w") as fh:
             fh.write(ir)
         with open(rust_bindings or default_bindings_path(out), "w") as fh:
             fh.write(bindings)
     else:
         with open(out, "w") as fh:
-            fh.write(gen_rust(prog, verified=verify, trust_callers=trust_callers))
+            fh.write(gen_rust(prog, verified=verify, trust_callers=trust_callers, budget=budget))
     return []
 
 
@@ -72,7 +78,11 @@ def main(argv):
     ap.add_argument("--trust-callers", action="store_true")
     ap.add_argument("--backend", choices=["rust", "llvm"], default="rust")
     ap.add_argument("--rust-bindings", default=None)
+    ap.add_argument("--contract-budget", dest="budget", type=int, default=None,
+                    help=argparse.SUPPRESS)
     a = ap.parse_args(argv[1:])
+    if a.budget is not None and not 1 <= a.budget <= 2 ** 62:
+        ap.error("--contract-budget must be in 1..2**62")
     if a.rust_bindings is not None and a.backend != "llvm":
         ap.error("--rust-bindings requires --backend llvm")
     bindings = a.rust_bindings
@@ -82,7 +92,8 @@ def main(argv):
         if os.path.abspath(bindings) == os.path.abspath(a.out):
             ap.error("--rust-bindings path must differ from -o path")
     try:
-        errs = compile_file(a.input, a.out, not a.no_verify, a.trust_callers, a.backend, bindings)
+        errs = compile_file(a.input, a.out, not a.no_verify, a.trust_callers, a.backend, bindings,
+                          a.budget)
     except VowError as e:
         errs = [e]
     except Exception as e:  # compiler-internal failure, not a language error

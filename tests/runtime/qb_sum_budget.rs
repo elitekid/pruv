@@ -1,3 +1,4 @@
 fn main() {
-    println!("{}", sol::f(2000000000));
+    // 2000 iterations > budget 1000
+    println!("{}", sol::f(2000));
 }

@@ -1,0 +1,10 @@
+// fuzz (bench/fuzz) finding: same as fz02 for constant overflow: the rust backend in proof mode emits
+// an i64 addition rustc can fold to an overflow and rejects it with the deny-by-default lint
+// `arithmetic_overflow`.
+fn f(x: i64) -> i64
+  requires x < 0
+  requires x > 0
+{
+  let m: i64 = 9223372036854775807;
+  return m + 1;
+}

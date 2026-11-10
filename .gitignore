@@ -6,3 +6,4 @@ __pycache__/
 *.rs.out
 /out.json
 target/
+bench/fuzz/out/

@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["600000000", "600000000"]}
+{"flags_matrix": [[], ["--no-verify"]], "contract_budget": 1000, "exit": 0, "stdout_lines": ["600", "600"]}

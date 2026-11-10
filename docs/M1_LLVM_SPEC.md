@@ -86,7 +86,7 @@ _Noreturn void vow_panic_undefined(const char *detail);            // "vow: requ
 | `print(x)` | `vow_print_i64` / `vow_print_bool(zext)` | 같음 |
 
 - 실패 경로는 별도 블록에서 panic 호출 + `unreachable`. panic 선언에 `noreturn cold`.
-- 평가 순서는 정본과 같다(`! io` 사용자 함수를 식 안에서 부를 수 있어 순서가 출력으로 드러난다). 인덱스 대입 `a[i] = v`: 안전 모드는 i → v → 범위 검사 → store(정본 `vow_set` 임시 순서), 증명 모드는 v → i → store(정본 `*a.get_unchecked_mut(i) = v`, Rust는 대입 오른쪽을 먼저 평가). `alloc(n, v)`: 증명 모드 v → n(`vec![v; n]`), 안전 모드 n → v.
+- 평가 순서는 모든 모드에서 소스 순서(왼쪽에서 오른쪽)다(`! io` 사용자 함수를 식 안에서 부를 수 있어 순서가 출력으로 드러난다). 인덱스 대입 `a[i] = v`: i → v(안전 모드는 이어서 범위 검사) → store. `alloc(n, v)`: n → v(안전 모드는 이어서 길이 검사).
 - 증명 사실 표시: 증명 모드 본체에만 `nsw`, `inbounds`, `udiv/urem`. 안전 모드 본체에는 `nsw`를 붙이지 않는다(검사 성공 경로의 결과는 intrinsic 값 그대로).
 
 ## 6. 메모리 (Rust `Vec` drop과 같은 의미)
