@@ -1,1 +1,1 @@
-{"flags_matrix": [[]], "exit": 101, "stdout_lines": [], "stderr_contains": "contract iteration budget exceeded", "gen_contains": ["let mut vow_budget: i64 = 1_073_741_824;"], "ll_contains": ["store i64 1073741824, ptr %req.budget"]}
+{"flags_matrix": [[]], "exit": 101, "stdout_lines": [], "stderr_contains": "contract iteration budget exceeded", "gen_contains": ["let mut pruv_budget: i64 = 1_073_741_824;"], "ll_contains": ["store i64 1073741824, ptr %req.budget"]}

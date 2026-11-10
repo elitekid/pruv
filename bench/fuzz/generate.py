@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Vow 컴파일러 차분 퍼징용 프로그램 생성기 (표준 라이브러리만, Python 3.9).
+"""Pruv 컴파일러 차분 퍼징용 프로그램 생성기 (표준 라이브러리만, Python 3.9).
 
     generate_case(seed, index) -> dict      결정적 (random.Random(f"{seed}:{index}"))
     candidate_inputs(case, rng, n) -> list  인자 목록 n개 (requires 경계 근처 편향)
 
-    python bench/fuzz/generate.py --seed S --count N --out DIR   # .vow 파일로 눈으로 확인
+    python bench/fuzz/generate.py --seed S --count N --out DIR   # .pruv 파일로 눈으로 확인
 
 생성 규칙: 매개변수는 불변, `let mut` 지역만 재대입, 모든 경로가 `return e;`로 끝남,
 while에는 decreases(와 invariant), 이항식은 항상 괄호, 음수 리터럴은 `(-5)`.
@@ -37,7 +37,7 @@ CMPS = ["<", "<=", ">", ">=", "==", "!="]
 
 
 def lit(n):
-    """Vow 리터럴: 음수는 (-5) 형태."""
+    """Pruv 리터럴: 음수는 (-5) 형태."""
     return str(n) if n >= 0 else "(-%d)" % (-n)
 
 
@@ -2908,7 +2908,7 @@ def candidate_inputs(case, rng, n):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Vow 퍼징 프로그램 생성 (.vow 파일로 저장)")
+    ap = argparse.ArgumentParser(description="Pruv 퍼징 프로그램 생성 (.pruv 파일로 저장)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--count", type=int, default=20)
     ap.add_argument("--out", default="bench/fuzz/out/generated")
@@ -2916,7 +2916,7 @@ def main(argv=None):
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
         case = generate_case(a.seed, i)
-        with open(os.path.join(a.out, case["name"] + ".vow"), "w") as fh:
+        with open(os.path.join(a.out, case["name"] + ".pruv"), "w") as fh:
             fh.write(case["src"])
     print("wrote %d files to %s" % (a.count, a.out))
     return 0

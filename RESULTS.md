@@ -1,4 +1,6 @@
-# Vow v0.1 실험 결과 (2026-11-10)
+# Pruv(옛 이름 Vow) v0.1 실험 결과 (2026-11-10)
+
+> 이름 변경(2026-11-10): 언어 이름이 Vow → **Pruv**로 바뀌었다(14절). 13절까지는 당시 기록이라 옛 이름·경로를 그대로 둔다. 옛 경로 대응: `vowc/vowc.py` → `pruvc/pruvc.py`, `*.vow` → `*.pruv`, `solutions/vow_try1`·`vow_agg` → `pruv_try1`·`pruv_agg`, `g1/solutions/ref_vow` → `ref_pruv`, `solve/vow` → `solve/pruv`, 실행 오류 접두사 `vow:` → `pruv:`. bench 결과 JSON(`mutants*.json`, `results_*vow*.json`, `g1/results_*.json`)과 `solve/` 입력 사본(SPEC·PROBLEMS)은 옛 이름 그대로 보존.
 
 ## 1. 독립 AI 작업자(Claude sonnet, 실행 없이 한 번에 작성)
 | | 첫 시도 | 고치기 1회 뒤 |
@@ -205,13 +207,13 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 | 회귀 `run_all --backend both` | 363/363, 108초(다른 작업 부하) |
 | 감사(Claude opus) | 오라클·하네스 거짓 음성 경로 없음. 필수 2(requires에 사용자 타입 비교 없음, 새 틀에 io 없음 — 생성기 범위 구멍)·권고 6 중 5 반영(오라클 인자 잎 검사는 rustc 빌드 오류로 드러나 남김). 고친 뒤 확인(Claude opus): 필수 0, 권고 7 중 늘 거절되던 두 변형(option_tap arg, tmatch Hit 전용)만 고침 → 표본 14/14 검증 통과, 시드 57 통과 212 실패 0(38초) |
 
-- 컴파일러는 바꾸지 않아 bench 성능·변이·g1은 돌리지 않았다.
+- 컴파일러는 바꾸지 않아 bench 성능·변이 전체·g1은 돌리지 않았다.
 - 남김: ~~퍼저가 뒷단마다 vowc를 따로 불러 LLVM 증명 빌드가 검증을 한 번 더 돈다~~(12절에서 없앰). requires 비교의 i128 초과 입력은 경계 requires 때문에 드물다. 일부 비교 requires(e2·qval·항상 참인 구조체 `==`·`Some(x)`)는 입력 힌트가 위반 값을 잘 못 만든다(확인 감사 권고, 남김).
 
 ## 12. 퍼저의 LLVM 증명 빌드 재검증 없애기 (2026-11-10)
 1. **문제**: 퍼저(`bench/fuzz/run.py`)가 뒷단마다 vowc를 따로 불러, 검증 통과 프로그램의 LLVM 빌드(`prep_llvm`의 `--backend llvm --rust-bindings`)가 phase_a에서 이미 한 z3 검증을 한 번 더 돌았다.
 2. **고침**: vowc에 숨은 시험 옵션 `--also-llvm LL RS`(`vowc/vowc.py`, `--contract-budget`처럼 SPEC 밖·도움말에 없음). Rust 뒷단에서만 받고, 같은 파싱·검사·검증 한 번으로 Rust 출력과 LLVM IR·bindings를 함께 쓴다. "이미 검증됨"을 믿어 주는 옵션은 검증 안 된 프로그램을 증명 모드로 내보내는 길이 되므로 고르지 않았다. 검증이 실패하면 파일을 하나도 쓰지 않고, 모든 출력 텍스트를 만든 뒤에 파일을 쓴다(생성기 내부 오류면 이번 호출의 출력이 남지 않음). OUT·LL·RS가 겹치거나 `--backend llvm`과 함께 주면 사용법 오류(exit 2). 하네스는 phase_a의 두 호출(`--no-verify`, 기본)에 이 옵션을 붙이고, 호출 전에 출력 경로를 지우며, `prep_llvm`은 vowc를 부르지 않고 그 파일만 clang에 넘긴다. `llvm-proof` 파일은 status가 `verified`일 때만 쓴다(아니면 `harness_error`).
-3. **검증기·코드 생성은 바꾸지 않았다**(옵션과 출력 경로만). 두 생성기가 `prog`를 바꾸지 않음은 감사가 코드로 확인했고, 출력이 따로 부른 것과 바이트까지 같음은 새 시험이 확인한다. 그래서 bench 성능·변이·g1은 돌리지 않았다.
+3. **검증기·코드 생성은 바꾸지 않았다**(옵션과 출력 경로만). 두 생성기가 `prog`를 바꾸지 않음은 감사가 코드로 확인했고, 출력이 따로 부른 것과 바이트까지 같음은 새 시험이 확인한다. 그래서 bench 성능·변이 전체·g1은 돌리지 않았다.
 4. **새 시험** `tests/cli_also_llvm.py`(따로 실행, run_all 밖): 예제×3모드 바이트 동일, must-reject는 exit 1·파일 없음·진단 같음, 사용법 오류 5가지(exit 2·파일 없음), 퍼저 생성 프로그램 40개×2모드. 진단은 (stage, code, line, col)만 비교한다. 같은 vowc 호출을 되풀이해도 z3 반례 값이 달라지는 일이 있어서다(4번 중 1번, 기존 동작).
 
 | 확인 | 결과 |
@@ -240,3 +242,21 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 4. **설계 논쟁**(Codex): 지적 13개 모두 채택 또는 수정 반영. 큰 변경: 첫 구현 묶음을 위험 먼저로(0A 결정성 + 0B z3 실의무 시제품·SMT-LIB 대조 + 0C Python .ll을 LLVM 라이브러리로 객체화해 시험 장치의 clang 의존 먼저 떼기 + 0D Windows ABI 표본), CLI 기본값은 M3에서 유지(`--emit exe` 추가), Windows sret는 생성기가 대상별로 직접 출력, 비용 상한(150MB·CI cold 120분), 공개 순서 macOS arm64 → Linux → Windows → macOS x64. 반대 의견 중 "Rust 소스 뒷단 이식 폐기"는 받지 않고 M3 맨 뒤로 미뤘다(6단계 여러 언어 출력 계획과 기존 Rust 출력 시험 집계 때문).
 - 검증 시간: 시제품 빌드 393초 한 번. 회귀·bench는 코드 변경이 없어 돌리지 않았다.
+
+## 14. 이름 바꾸기 Vow → Pruv (2026-11-10)
+같은 성격의 언어(vow-lang)가 있어 이름을 Pruv로 바꿨다(근거는 BLUEPRINT 머리·6절). 도메인 `pruvlang.org` 확보.
+
+| 대상 | 처리 |
+|---|---|
+| 컴파일러 | `vowc/` → `pruvc/`, `vowc.py` → `pruvc.py`(git mv, 이력 유지), 사용법 문구 `pruvc.py` |
+| 소스 파일 | `*.vow` 205개 → `*.pruv`, 풀이 폴더 `pruv_try1`·`pruv_agg`·`ref_pruv`·`solve/pruv` |
+| 생성 코드·실행 지원 | 실행 오류 접두사 `pruv:`, 기호 `__pruv_body`·`pruv_abi_*`·`Pruv__Tagged`·`pruv_runtime_rust_allocator_v1`, 매크로 `PRUV_*`, `PruvError` |
+| 언어 규칙 | 예약 이름 접두사 `vow_` → `pruv_`(생성 기호와 겹치지 않게 하는 규칙이라 함께 바꿈, must_reject 시험도 바꿈) |
+| 시험·bench 장치 | 경로 상수·명령·임시 폴더 접두사·결과 키(`pruv_error`·`pruv_errors`, mutate 판정 `pruv`·`pruv_stage`·`pruv_code`) |
+| 문서 | README·SPEC·BLUEPRINT·docs/M0~M3·bench/fuzz/README·PROBLEMS 본문 |
+| 그대로 둔 것 | RESULTS 1~13절(머리에 대응표), `docs/research-2026-11.md`(당시 조사 기록, 머리에 메모), bench 결과 JSON(`mutants*.json`·`results_*vow*.json`·`g1/results_*.json`, 옛 키 `vow_stage` 등), `solve/` 입력 사본 SPEC·PROBLEMS(당시 작업자가 본 글, 머리에 메모), BLUEPRINT의 경쟁 언어 Vow(vow-lang) 언급 |
+
+- 방법: git mv 뒤 살아 있는 파일 50개(BLUEPRINT 포함)에 대소문자를 지킨 단순 치환(`Vow`/`VOW`/`vow` → `Pruv`/`PRUV`/`pruv`). 'vow'가 영어 단어나 다른 뜻으로 쓰인 곳은 없었다(토큰 전수 확인).
+- 검증: `run_all --backend both` 363/363(82초), `cli_also_llvm` 185/185(8초), 퍼저 seed 1110 30개 실패 0(8초). 생성 코드는 기호 이름과 오류 문구만 바뀌고 의미는 같아 bench 성능·변이 전체·g1은 돌리지 않았다.
+- 감사(Claude opus): 필수 1건 — `bench/mutate.py`가 확장자를 앞 4글자로 떼어 `.pruv`에서 문제 번호가 `p01.`이 되어 변이 시험이 멈춤(시험이 안 덮는 경로) → `os.path.splitext`로 고치고 p02 하나로 실행해 확인(변이 7개 정상, 122초). 권고 반영: `solve/` 입력 사본 본문 되돌림, BLUEPRINT 43행 "당시 이름" 표기, 코드 블록 정렬, 이 절의 키·보존 목록 보완.
+- 주의: 새 결과 JSON의 키가 `pruv_*`라 옛 결과 JSON(`vow`·`vow_*`)과 직접 비교하는 스크립트를 쓰면 키를 맞춰야 한다.

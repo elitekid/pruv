@@ -1,1 +1,1 @@
-{"flags": ["--no-verify"], "exit": 101, "stdout_contains": null, "stderr_contains": "vow: arithmetic error"}
+{"flags": ["--no-verify"], "exit": 101, "stdout_contains": null, "stderr_contains": "pruv: arithmetic error"}

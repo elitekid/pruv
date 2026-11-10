@@ -1,14 +1,14 @@
 """G1 (structs/enums) grader.
 python bench/g1/run.py <solutions_dir> <out.json> [--backend rust|llvm] [--no-verify] [--trust-callers] [gNN ...]
-Solutions are gNN.vow files compiled with vowc (--vow is accepted and ignored: Vow is the only input kind).
-Per problem: status ok|wrong|vow_error|missing|timeout (|compile_error), tests_passed/total, vow_errors."""
+Solutions are gNN.pruv files compiled with pruvc (--pruv is accepted and ignored: Pruv is the only input kind).
+Per problem: status ok|wrong|pruv_error|missing|timeout (|compile_error), tests_passed/total, pruv_errors."""
 import json, os, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 PY = os.path.join(ROOT, ".venv/bin/python")
-VOWC = os.path.join(ROOT, "vowc/vowc.py")
+PRUVC = os.path.join(ROOT, "pruvc/pruvc.py")
 CLANG = shutil.which("clang") or "/usr/bin/clang"
 
 E = "1_000_000_000"
@@ -101,8 +101,8 @@ def build_llvm_objects(llvm_path, stem, workdir):
                        capture_output=True, text=True)
     if c.returncode != 0:
         return [], "clang (gen.ll): " + c.stderr[-1500:]
-    c = subprocess.run([CLANG, "-O2", cpu, "-std=c11", "-DVOW_RUST_ALLOCATOR", "-c",
-                        os.path.join(ROOT, "vowc/runtime.c"), "-o", rt_o],
+    c = subprocess.run([CLANG, "-O2", cpu, "-std=c11", "-DPRUV_RUST_ALLOCATOR", "-c",
+                        os.path.join(ROOT, "pruvc/runtime.c"), "-o", rt_o],
                        capture_output=True, text=True)
     if c.returncode != 0:
         return [], "clang (runtime.c): " + c.stderr[-1500:]
@@ -168,20 +168,20 @@ def main():
     only = [a for a in args[2:] if a in P]
     llvm = backend == "llvm"
     res = {}
-    work = tempfile.mkdtemp(prefix="vowg1_")
+    work = tempfile.mkdtemp(prefix="pruvg1_")
     for pid in sorted(P):
         if only and pid not in only:
             continue
-        src = os.path.join(sdir, pid + ".vow")
+        src = os.path.join(sdir, pid + ".pruv")
         if not os.path.exists(src):
             res[pid] = {"status": "missing"}; continue
         rs = os.path.join(work, pid + "_gen.rs")
         ll = None
         if llvm:
             ll = os.path.join(work, pid + "_gen.ll")
-            cmd = [PY, VOWC, src, "-o", ll, "--backend", "llvm", "--rust-bindings", rs] + flags
+            cmd = [PY, PRUVC, src, "-o", ll, "--backend", "llvm", "--rust-bindings", rs] + flags
         else:
-            cmd = [PY, VOWC, src, "-o", rs] + flags
+            cmd = [PY, PRUVC, src, "-o", rs] + flags
         c = subprocess.run(cmd, capture_output=True, text=True)
         if c.returncode != 0:
             errs = []
@@ -191,7 +191,7 @@ def main():
                         errs.append(json.loads(l))
                     except ValueError:
                         errs.append({"raw": l})
-            res[pid] = {"status": "vow_error", "vow_errors": errs}
+            res[pid] = {"status": "pruv_error", "pruv_errors": errs}
             if not errs:
                 res[pid]["stderr"] = (c.stdout + c.stderr)[-500:]
             continue
@@ -201,8 +201,8 @@ def main():
     for pid, r in res.items():
         t = "%s/%s" % (r.get("tests_passed", "-"), r.get("tests_total", "-"))
         note = ""
-        if r["status"] == "vow_error" and r.get("vow_errors"):
-            e = r["vow_errors"][0]
+        if r["status"] == "pruv_error" and r.get("pruv_errors"):
+            e = r["pruv_errors"][0]
             note = "%s %s" % (e.get("stage", ""), e.get("code", ""))
         elif r.get("first_failure"):
             note = r["first_failure"][:80]

@@ -1,5 +1,5 @@
 # Problems
-Each solution is one file `pNN.rs` (Rust) or `pNN.vow` (Vow) defining the function below (helpers allowed).
+Each solution is one file `pNN.rs` (Rust) or `pNN.pruv` (Pruv) defining the function below (helpers allowed).
 Unless stated: 0 <= len(a) <= 1_000_000, every element and x in [-1_000_000_000, 1_000_000_000].
 Inputs always satisfy the constraints. Solutions must not panic.
 
@@ -14,4 +14,4 @@ Inputs always satisfy the constraints. Solutions must not panic.
 - p09 `dot(a: &[i64], b: &[i64]) -> Result<i64, i64>` — Err(1) if lengths differ, else Ok(sum a[i]*b[i]). Here elements are in [-1_000_000, 1_000_000].
 - p10 `gcd(a: i64, b: i64) -> i64` — 0 <= a, b <= 1_000_000_000_000; gcd(0, 0) = 0.
 
-Vow type mapping: `&[i64]`/`Vec<i64>` -> `[i64]`, `Result<i64, i64>` -> `Result<i64>`.
+Pruv type mapping: `&[i64]`/`Vec<i64>` -> `[i64]`, `Result<i64, i64>` -> `Result<i64>`.

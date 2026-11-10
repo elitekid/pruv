@@ -1,1 +1,1 @@
-{"flags": [], "exit": 0, "stdout_lines": ["11"], "stderr_contains": null, "gen_contains": ["g__vow_body(y)"], "llvm_fn_contains": {"f": ["call i64 @g__vow_body("]}, "llvm_fn_absent": {"f": ["@g__vow_entry("]}}
+{"flags": [], "exit": 0, "stdout_lines": ["11"], "stderr_contains": null, "gen_contains": ["g__pruv_body(y)"], "llvm_fn_contains": {"f": ["call i64 @g__pruv_body("]}, "llvm_fn_absent": {"f": ["@g__pruv_entry("]}}

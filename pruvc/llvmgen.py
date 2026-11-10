@@ -1,4 +1,4 @@
-"""Vow -> LLVM IR (text) + Rust bindings.  gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30)
+"""Pruv -> LLVM IR (text) + Rust bindings.  gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30)
 returns (ir_text, rust_bindings_text).  Semantics reference: codegen.py (Rust back end);
 format spec: docs/M1_LLVM_SPEC.md.
 
@@ -7,27 +7,27 @@ Modes (two independent axes, same meaning as codegen.py):
                   `sub nsw 0, x`, / and % are `udiv/urem` (verifier proved dividend >= 0, divisor > 0),
                   array accesses are `getelementptr inbounds` without checks.  No checks at all.
   verified=False  (--no-verify, "safe mode") nothing is assumed: + - * and unary - use
-                  llvm.s*.with.overflow.i64 (fail -> vow_panic_arith "overflow in +" ...), / and %
+                  llvm.s*.with.overflow.i64 (fail -> pruv_panic_arith "overflow in +" ...), / and %
                   check `divisor > 0 && dividend >= 0` (fail -> "division outside domain: ..."),
-                  index read/write checks 0 <= i < len (fail -> vow_panic_oob), alloc(n, v) checks
+                  index read/write checks 0 <= i < len (fail -> pruv_panic_oob), alloc(n, v) checks
                   0 <= n <= 2^40.  No `nsw` is ever emitted in safe mode.
   trust_callers=False (default)  the entry function checks every `requires` (i128) before the body;
                   trust_callers=True: entry calls the body without checks.
 
-Generated names (user identifiers never start with `vow_` nor contain `__`, so no collisions):
-  @f__vow_body    internal; the function body.  Inner calls: verified -> f__vow_body (the caller proved
-                  requires), safe -> f__vow_entry.
-  @f__vow_entry   internal; evaluates requires (declaration order, first failure panics with
-                  vow_panic_requires(fn, show(expr))) and calls the body.
-  @vow_abi_f      external C-ABI wrapper used by the Rust bindings (bool -> i64, Option/Result args as
+Generated names (user identifiers never start with `pruv_` nor contain `__`, so no collisions):
+  @f__pruv_body    internal; the function body.  Inner calls: verified -> f__pruv_body (the caller proved
+                  requires), safe -> f__pruv_entry.
+  @f__pruv_entry   internal; evaluates requires (declaration order, first failure panics with
+                  pruv_panic_requires(fn, show(expr))) and calls the body.
+  @pruv_abi_f      external C-ABI wrapper used by the Rust bindings (bool -> i64, Option/Result args as
                   two i64, array results through a trailing `ptr out`, Option/Result results by value as { i64, i64 }).
-  @vow_cdiv/@vow_crem  internal i128 Euclidean division for requires (only if some entry checks).
+  @pruv_cdiv/@pruv_crem  internal i128 Euclidean division for requires (only if some entry checks).
   @.str.N         private string constants.
 Local IR names: %tN temporaries, %lN.name.{a,b} local slots (entry-block alloca), %p.name parameters,
 %qN.* quantifier slots, labels `hint.N` (per-function counters).
 
 Ownership of arrays is tracked at compile time (borrowed params; alloc/copy/array-returning call
-results are owned).  Block-scoped locals are freed (vow_free) in reverse declaration order when the
+results are owned).  Block-scoped locals are freed (pruv_free) in reverse declaration order when the
 block ends or at `return`; `a = f(..)` frees the old value after evaluating the right side; call-result
 temporaries are freed at the end of the statement/condition (only on the executed path).
 """
@@ -39,24 +39,24 @@ from typeinfo import TypeTable, is_user_type
 
 SIGNED_MIN128 = -170141183460469231731687303715884105728
 OPT = "{ i1, i64 }"
-COPT = "{ i1, i128 }"       # Option/Result stored inside a contract aggregate (%vow_c_*)
+COPT = "{ i1, i128 }"       # Option/Result stored inside a contract aggregate (%pruv_c_*)
 ARR = "{ ptr, i64 }"
 
 # G1 (docs/M2_G1_SPEC.md section 5): user struct/enum layout
-#   %vow_t_Name  struct: its fields in order ({} if none); enum: { i64 tag, every variant's payload fields in
+#   %pruv_t_Name  struct: its fields in order ({} if none); enum: { i64 tag, every variant's payload fields in
 #                variant order then field order }.  Inactive payload is always zeroinitializer-derived.
-#   %vow_c_Name  same shape for requires evaluation: integer leaves are i128, Option/Result are { i1, i128 }.
+#   %pruv_c_Name  same shape for requires evaluation: integer leaves are i128, Option/Result are { i1, i128 }.
 
 DECLS = """\
-declare noalias ptr @vow_alloc(i64, i64) nounwind
-declare noalias ptr @vow_copy(ptr nocapture readonly, i64) nounwind
-declare void @vow_free(ptr nocapture, i64) nounwind
-declare void @vow_print_i64(i64) nounwind
-declare void @vow_print_bool(i64) nounwind
-declare void @vow_panic_oob(i64, i64) noreturn cold nounwind
-declare void @vow_panic_arith(ptr) noreturn cold nounwind
-declare void @vow_panic_requires(ptr, ptr) noreturn cold nounwind
-declare void @vow_panic_undefined(ptr) noreturn cold nounwind
+declare noalias ptr @pruv_alloc(i64, i64) nounwind
+declare noalias ptr @pruv_copy(ptr nocapture readonly, i64) nounwind
+declare void @pruv_free(ptr nocapture, i64) nounwind
+declare void @pruv_print_i64(i64) nounwind
+declare void @pruv_print_bool(i64) nounwind
+declare void @pruv_panic_oob(i64, i64) noreturn cold nounwind
+declare void @pruv_panic_arith(ptr) noreturn cold nounwind
+declare void @pruv_panic_requires(ptr, ptr) noreturn cold nounwind
+declare void @pruv_panic_undefined(ptr) noreturn cold nounwind
 declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)
 declare { i64, i1 } @llvm.ssub.with.overflow.i64(i64, i64)
 declare { i64, i1 } @llvm.smul.with.overflow.i64(i64, i64)
@@ -71,10 +71,10 @@ def mangle(n):
 
 
 def lty(t):
-    """internal SSA type of a Vow type"""
+    """internal SSA type of a Pruv type"""
     r = {"i64": "i64", "bool": "i1", "unit": "void", "array": ARR,
          "option": OPT, "result": OPT}.get(t.name)
-    return r if r is not None else "%%vow_t_%s" % t.name
+    return r if r is not None else "%%pruv_t_%s" % t.name
 
 
 def vkind(t):
@@ -91,11 +91,11 @@ def st(t, c=False):
         return "i1"
     if n in ("option", "result"):
         return COPT if c else OPT
-    return "%%vow_%s_%s" % ("c" if c else "t", n)
+    return "%%pruv_%s_%s" % ("c" if c else "t", n)
 
 
 def payload_index(tt, ty, variant, i):
-    """storage index of field i of `variant` inside the flattened enum %vow_t_/%vow_c_ type"""
+    """storage index of field i of `variant` inside the flattened enum %pruv_t_/%pruv_c_ type"""
     base = 1
     for v in tt.decl(ty).variants:
         if v.name == variant:
@@ -105,7 +105,7 @@ def payload_index(tt, ty, variant, i):
 
 
 def words(tt, ty):
-    """W(T): number of i64 words of the external (vow_abi_*) form"""
+    """W(T): number of i64 words of the external (pruv_abi_*) form"""
     n = ty.name
     if n in ("i64", "bool"):
         return 1
@@ -125,13 +125,13 @@ def type_defs(tt):
                 fs = [st(f.type, c) for f in d.fields]
             else:
                 fs = ["i64"] + [st(f.type, c) for v in d.variants for f in v.fields]
-            out.append("%%vow_%s_%s = type %s" % ("c" if c else "t", d.name, "{ %s }" % ", ".join(fs) if fs else "{}"))
+            out.append("%%pruv_%s_%s = type %s" % ("c" if c else "t", d.name, "{ %s }" % ", ".join(fs) if fs else "{}"))
     return "\n".join(out) + ("\n" if out else "")
 
 
 class V:
     """an SSA value: k in i64 | i1 | i128 | arr (a=ptr, b=len) | opt (a=tag i1, b=payload) | unit |
-    agg (a=aggregate SSA of a user struct/enum, ty=its Type; %vow_t_* in code, %vow_c_* in requires)"""
+    agg (a=aggregate SSA of a user struct/enum, ty=its Type; %pruv_t_* in code, %pruv_c_* in requires)"""
     __slots__ = ("k", "a", "b", "ty")
 
     def __init__(s, k, a=None, b=None, ty=None):
@@ -315,7 +315,7 @@ class FnGen:
         s.scopes.append({"names": {}, "arrays": []})
 
     def free_val(s, v):
-        s.ins("call void @vow_free(ptr %s, i64 %s)" % (v.a, v.b))
+        s.ins("call void @pruv_free(ptr %s, i64 %s)" % (v.a, v.b))
 
     def free_scope(s, sc):
         for sl in reversed(sc["arrays"]):
@@ -696,7 +696,7 @@ class FnGen:
     def index_ptr(s, a, i):
         if not s.verified:
             ok = s.op("icmp ult i64 %s, %s" % (i.a, a.b))
-            s.guard(ok, lambda: s.ins("call void @vow_panic_oob(i64 %s, i64 %s)" % (i.a, a.b)), False)
+            s.guard(ok, lambda: s.ins("call void @pruv_panic_oob(i64 %s, i64 %s)" % (i.a, a.b)), False)
         return s.op("getelementptr inbounds i64, ptr %s, i64 %s" % (a.a, i.a))
 
     def checked(s, ty, name, sym, a, b):
@@ -704,9 +704,9 @@ class FnGen:
         v = s.op("extractvalue { %s, i1 } %s, 0" % (ty, r))
         o = s.op("extractvalue { %s, i1 } %s, 1" % (ty, r))
         if ty == "i64":
-            s.guard(o, s.panic1("vow_panic_arith", "overflow in " + sym), True)
+            s.guard(o, s.panic1("pruv_panic_arith", "overflow in " + sym), True)
         else:
-            s.guard(o, s.panic1("vow_panic_undefined", "i128 overflow in " + sym), True)
+            s.guard(o, s.panic1("pruv_panic_undefined", "i128 overflow in " + sym), True)
         return v
 
     def temp_arr(s, v, owned):
@@ -791,7 +791,7 @@ class FnGen:
                 c1 = s.op("icmp sgt i64 %s, 0" % r.a)
                 c2 = s.op("icmp sge i64 %s, 0" % l.a)
                 ok = s.op("and i1 %s, %s" % (c1, c2))
-                s.guard(ok, s.panic1("vow_panic_arith",
+                s.guard(ok, s.panic1("pruv_panic_arith",
                                      "division outside domain: need divisor > 0 and dividend >= 0"), False)
             return V("i64", s.op("%s i64 %s, %s" % ("udiv" if op == "/" else "urem", l.a, r.a)))
         cmp = {"==": "eq", "!=": "ne", "<": "slt", "<=": "sle", ">": "sgt", ">=": "sge"}[op]
@@ -807,22 +807,22 @@ class FnGen:
             v = s.ev(a[1])
             if not s.verified:
                 ok = s.op("icmp ult i64 %s, 1099511627777" % cnt.a)
-                s.guard(ok, s.panic1("vow_panic_arith", "alloc length outside 0..2^40"), False)
-            p = s.op("call ptr @vow_alloc(i64 %s, i64 %s)" % (cnt.a, v.a))
+                s.guard(ok, s.panic1("pruv_panic_arith", "alloc length outside 0..2^40"), False)
+            p = s.op("call ptr @pruv_alloc(i64 %s, i64 %s)" % (cnt.a, v.a))
             return s.temp_arr(V("arr", p, cnt.a), owned)
         if n == "copy":
             src = s.ev(a[0])
             if not s.verified:
                 pass    # spec: same checks as proof mode (none)
-            p = s.op("call ptr @vow_copy(ptr %s, i64 %s)" % (src.a, src.b))
+            p = s.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (src.a, src.b))
             return s.temp_arr(V("arr", p, src.b), owned)
         if n == "print":
             x = s.ev(a[0])
             if x.k == "i1":
                 z = s.op("zext i1 %s to i64" % x.a)
-                s.ins("call void @vow_print_bool(i64 %s)" % z)
+                s.ins("call void @pruv_print_bool(i64 %s)" % z)
             else:
-                s.ins("call void @vow_print_i64(i64 %s)" % x.a)
+                s.ins("call void @pruv_print_i64(i64 %s)" % x.a)
             return V("unit")
         if n not in s.funcs:
             raise Exception("llvmgen: unsupported call in code: %s" % n)
@@ -838,7 +838,7 @@ class FnGen:
                 args.append("%s %s" % (lty(v.ty), v.a))
             else:
                 args.append("%s %s" % (v.k, v.a))
-        callee = "@%s__vow_%s" % (mangle(f.name), "body" if s.verified else "entry")
+        callee = "@%s__pruv_%s" % (mangle(f.name), "body" if s.verified else "entry")
         if f.ret == UNIT:
             s.ins("call void %s(%s)" % (callee, ", ".join(args)))
             return V("unit")
@@ -872,7 +872,7 @@ class FnGen:
                 s.cenv[p.name] = V("opt", t, s.op("sext i64 %s to i128" % v))
 
     def cev(s, e):
-        und = lambda msg: s.panic1("vow_panic_undefined", msg)
+        und = lambda msg: s.panic1("pruv_panic_undefined", msg)
         if isinstance(e, IntLit):
             return V("i128", str(e.value))
         if isinstance(e, BoolLit):
@@ -899,7 +899,7 @@ class FnGen:
                 name = {"+": "sadd", "-": "ssub", "*": "smul"}[op]
                 return V("i128", s.checked("i128", name, op, l.a, r.a))
             if op in ("/", "%"):
-                fn = "vow_cdiv" if op == "/" else "vow_crem"
+                fn = "pruv_cdiv" if op == "/" else "pruv_crem"
                 return V("i128", s.op("call i128 @%s(i128 %s, i128 %s)" % (fn, l.a, r.a)))
             if op in ("==", "!=") and l.k == "agg":
                 eq = s.ceq(l, r, l.ty)
@@ -978,7 +978,7 @@ class FnGen:
         nv = s.op("sub i64 %s, 1" % old)
         s.ins("store i64 %s, ptr %s" % (nv, s.budget))
         ok = s.op("icmp sge i64 %s, 0" % nv)
-        s.guard(ok, s.panic1("vow_panic_undefined", "contract iteration budget exceeded"), False)
+        s.guard(ok, s.panic1("pruv_panic_undefined", "contract iteration budget exceeded"), False)
 
     def csorted(s, name, q):
         """O(n) form of the sorted-precondition forall: forall k in 1..len(a): a[k-1] <= a[k]"""
@@ -1088,7 +1088,7 @@ class FnGen:
         s.place(el)
         if kind in ("max", "min"):
             hv = s.op("load i1, ptr %s" % h)
-            s.guard(hv, s.panic1("vow_panic_undefined", "%s over an empty range" % kind), False)
+            s.guard(hv, s.panic1("pruv_panic_undefined", "%s over an empty range" % kind), False)
         res = s.op("load %s, ptr %s" % (rty, r))
         return V(rty, res)
 
@@ -1108,17 +1108,17 @@ def entry_of(m, funcs, f, trust, budget=1 << 30):
             c = g.cev(r)
             msg_fn = m.string(f.name)
             msg_ex = m.string(show(r))
-            g.guard(c.a, lambda a=msg_fn, b=msg_ex: g.ins("call void @vow_panic_requires(ptr %s, ptr %s)" % (a, b)),
+            g.guard(c.a, lambda a=msg_fn, b=msg_ex: g.ins("call void @pruv_panic_requires(ptr %s, ptr %s)" % (a, b)),
                     False)
     args = ", ".join("%s %s" % (t, n) for t, n in params)
-    callee = "@%s__vow_body" % mangle(f.name)
+    callee = "@%s__pruv_body" % mangle(f.name)
     if f.ret == UNIT:
         g.ins("call void %s(%s)" % (callee, args))
         g.term("ret void")
     else:
         r = g.op("call %s %s(%s)" % (rt, callee, args))
         g.term("ret %s %s" % (rt, r))
-    return g.render("define internal %s @%s__vow_entry(%s)" % (rt, mangle(f.name), sig_text(params)))
+    return g.render("define internal %s @%s__pruv_entry(%s)" % (rt, mangle(f.name), sig_text(params)))
 
 
 class Words:
@@ -1239,7 +1239,7 @@ def abi_of(f, tt):
             pre.append("%%c.%s.g = insertvalue %s %%c.%s.g1, i64 %%a.%s.v, 1" % (q, OPT, q, q))
             args.append("%s %%c.%s.g" % (OPT, q))
     rt = f.ret
-    entry = "@%s__vow_entry" % n
+    entry = "@%s__pruv_entry" % n
     body = ["  " + x for x in pre]
     if rt == ARRAY:
         ext.append("ptr %out")
@@ -1282,12 +1282,12 @@ def abi_of(f, tt):
         body.append("  %%r = call i64 %s(%s)" % (entry, ", ".join(args)))
         body.append("  ret i64 %r")
         ret = "i64"
-    return "define %s @vow_abi_%s(%s) {\nentry:\n%s\n}\n" % (ret, n, ", ".join(ext), "\n".join(body))
+    return "define %s @pruv_abi_%s(%s) {\nentry:\n%s\n}\n" % (ret, n, ", ".join(ext), "\n".join(body))
 
 
 # ---------- helper functions for requires ----------
 def cdivrem(m, is_div):
-    nm, sym = ("vow_cdiv", "/") if is_div else ("vow_crem", "%")
+    nm, sym = ("pruv_cdiv", "/") if is_div else ("pruv_crem", "%")
     z = m.string("division by zero in " + sym)
     o = m.string("i128 overflow in " + sym)
     res = "%qq" if is_div else "%rr"
@@ -1297,7 +1297,7 @@ entry:
   %%z = icmp eq i128 %%b, 0
   br i1 %%z, label %%dz, label %%c1
 dz:
-  call void @vow_panic_undefined(ptr %s)
+  call void @pruv_panic_undefined(ptr %s)
   unreachable
 c1:
   %%am = icmp eq i128 %%a, %d
@@ -1305,7 +1305,7 @@ c1:
   %%ov = and i1 %%am, %%bm
   br i1 %%ov, label %%of, label %%c2
 of:
-  call void @vow_panic_undefined(ptr %s)
+  call void @pruv_panic_undefined(ptr %s)
   unreachable
 c2:
   %%q = sdiv i128 %%a, %%b
@@ -1345,7 +1345,7 @@ def rs_ser(tt, ty, expr, arr, off, ctr):
         return ["%s[%d] = (%s) as i64;" % (arr, off, expr)]
     if n in ("option", "result"):
         ctr[0] += 1
-        v = "vow__b%d" % ctr[0]
+        v = "pruv__b%d" % ctr[0]
         a, b = ("Some", "None") if n == "option" else ("Ok", "Err")
         if n == "option":
             return ["match %s { Some(%s) => { %s[%d] = 1; %s[%d] = %s; } None => { %s[%d] = 0; %s[%d] = 0; } }"
@@ -1364,7 +1364,7 @@ def rs_ser(tt, ty, expr, arr, off, ctr):
         names, stmts = [], ["%s[%d] = %d;" % (arr, off, k)]
         for f in v.fields:
             ctr[0] += 1
-            nm = "vow__b%d" % ctr[0]
+            nm = "pruv__b%d" % ctr[0]
             names.append(nm)
             stmts += rs_ser(tt, f.type, nm, arr, o, ctr)
             o += words(tt, f.type)
@@ -1404,18 +1404,18 @@ def rs_de(tt, ty, arr, off):
 def gen_bindings(prog):
     tt = TypeTable(prog)
     o = []
-    o.append("// generated by vowc llvmgen -- Rust bindings for the LLVM back end (include with #[path] mod sol;)")
+    o.append("// generated by pruvc llvmgen -- Rust bindings for the LLVM back end (include with #[path] mod sol;)")
     if prog.types:
         pub = codegen.emit_public_types(prog)
         o.append(pub.replace("#[derive", ALLOW + "\n#[derive") if "#[derive" in pub else pub)
     o.append(ALLOW)
-    o.append("#[repr(C)]\npub struct Vow__Array { pub data: *mut i64, pub len: i64 }")
+    o.append("#[repr(C)]\npub struct Pruv__Array { pub data: *mut i64, pub len: i64 }")
     o.append(ALLOW)
-    o.append("#[repr(C)]\npub struct Vow__Tagged { pub tag: i64, pub value: i64 }")
+    o.append("#[repr(C)]\npub struct Pruv__Tagged { pub tag: i64, pub value: i64 }")
     o.append(ALLOW)
     o.append("""\
 #[no_mangle]
-pub extern "C" fn vow_host_alloc(len: i64) -> *mut i64 {
+pub extern "C" fn pruv_host_alloc(len: i64) -> *mut i64 {
     let layout = match ::std::alloc::Layout::array::<i64>(len as usize) {
         Ok(l) => l,
         Err(_) => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<i64>()),
@@ -1427,7 +1427,7 @@ pub extern "C" fn vow_host_alloc(len: i64) -> *mut i64 {
     o.append(ALLOW)
     o.append("""\
 #[no_mangle]
-pub extern "C" fn vow_host_alloc_zeroed(len: i64) -> *mut i64 {
+pub extern "C" fn pruv_host_alloc_zeroed(len: i64) -> *mut i64 {
     let layout = match ::std::alloc::Layout::array::<i64>(len as usize) {
         Ok(l) => l,
         Err(_) => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<i64>()),
@@ -1439,13 +1439,13 @@ pub extern "C" fn vow_host_alloc_zeroed(len: i64) -> *mut i64 {
     o.append(ALLOW)
     o.append("""\
 #[no_mangle]
-pub extern "C" fn vow_host_flush() {
+pub extern "C" fn pruv_host_flush() {
     let _ = ::std::io::Write::flush(&mut ::std::io::stdout());
 }""")
     o.append(ALLOW)
     o.append("""\
 #[no_mangle]
-pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
+pub extern "C" fn pruv_host_free(data: *mut i64, len: i64) {
     if data.is_null() || len <= 0 { return; }
     if let Ok(layout) = ::std::alloc::Layout::array::<i64>(len as usize) {
         unsafe { ::std::alloc::dealloc(data as *mut u8, layout) };
@@ -1467,13 +1467,13 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
             else:
                 ps.append("i64")
         if f.ret == ARRAY:
-            ps.append("*mut Vow__Array")
+            ps.append("*mut Pruv__Array")
         elif is_user_type(f.ret):
             ps.append("*mut i64")
-        ret = " -> i64" if f.ret in (I64, BOOL) else (" -> Vow__Tagged" if f.ret in (OPTION, RESULT) else "")
-        decls.append("    fn vow_abi_%s(%s)%s;" % (f.name, ", ".join("p%d: %s" % (i, t) for i, t in enumerate(ps)), ret))
+        ret = " -> i64" if f.ret in (I64, BOOL) else (" -> Pruv__Tagged" if f.ret in (OPTION, RESULT) else "")
+        decls.append("    fn pruv_abi_%s(%s)%s;" % (f.name, ", ".join("p%d: %s" % (i, t) for i, t in enumerate(ps)), ret))
     if returns_array:
-        decls.append("    fn vow_runtime_rust_allocator_v1();")
+        decls.append("    fn pruv_runtime_rust_allocator_v1();")
     o.append(ALLOW)
     o.append('extern "C" {\n%s\n}' % "\n".join(decls))
     for f in prog.functions:
@@ -1488,26 +1488,26 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
             elif p.type == ARRAY:
                 args += ["%s.as_ptr()" % p.name, "%s.len() as i64" % p.name]
             elif is_user_type(p.type):
-                w = "vow__w_" + p.name
+                w = "pruv__w_" + p.name
                 pre.append("let mut %s = [0i64; %d];" % (w, words(tt, p.type)))
                 pre += rs_ser(tt, p.type, p.name, w, 0, [0])
                 args.append(w + ".as_ptr()")
             else:
                 a, b = ("Some", "None") if p.type == OPTION else ("Ok", "Err")
-                pre.append("let (vow__t_%s, vow__v_%s): (i64, i64) = match %s { %s(v) => (1, v), %s(v) => (0, v) };"
+                pre.append("let (pruv__t_%s, pruv__v_%s): (i64, i64) = match %s { %s(v) => (1, v), %s(v) => (0, v) };"
                            % (p.name, p.name, p.name, a, b))
                 if p.type == OPTION:
-                    pre[-1] = ("let (vow__t_%s, vow__v_%s): (i64, i64) = match %s { Some(v) => (1, v), None => (0, 0) };"
+                    pre[-1] = ("let (pruv__t_%s, pruv__v_%s): (i64, i64) = match %s { Some(v) => (1, v), None => (0, 0) };"
                                % (p.name, p.name, p.name))
-                args += ["vow__t_" + p.name, "vow__v_" + p.name]
+                args += ["pruv__t_" + p.name, "pruv__v_" + p.name]
         body = []
         if "io" in f.effects:
             body.append("::std::io::Write::flush(&mut ::std::io::stdout());")
         if f.ret == ARRAY:
-            body.append("let _ = ::std::hint::black_box(vow_runtime_rust_allocator_v1 as unsafe extern \"C\" fn());")
+            body.append("let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v1 as unsafe extern \"C\" fn());")
         body += pre
-        call = "vow_abi_%s(%s)" % (f.name, ", ".join(args))
-        callo = "vow_abi_%s(%s)" % (f.name, ", ".join(args + ["&mut vow__out"]))
+        call = "pruv_abi_%s(%s)" % (f.name, ", ".join(args))
+        callo = "pruv_abi_%s(%s)" % (f.name, ", ".join(args + ["&mut pruv__out"]))
         if f.ret == UNIT:
             body.append(call + ";")
         elif f.ret == I64:
@@ -1515,21 +1515,21 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
         elif f.ret == BOOL:
             body.append(call + " != 0")
         elif f.ret == ARRAY:
-            body.append("let mut vow__out = Vow__Array { data: ::std::ptr::null_mut(), len: 0 };")
+            body.append("let mut pruv__out = Pruv__Array { data: ::std::ptr::null_mut(), len: 0 };")
             body.append(callo + ";")
-            body.append("if vow__out.len > 0 { ::std::vec::Vec::from_raw_parts(vow__out.data, vow__out.len as usize, "
-                        "vow__out.len as usize) } else { ::std::vec::Vec::new() }")
+            body.append("if pruv__out.len > 0 { ::std::vec::Vec::from_raw_parts(pruv__out.data, pruv__out.len as usize, "
+                        "pruv__out.len as usize) } else { ::std::vec::Vec::new() }")
         elif is_user_type(f.ret):
-            body.append("let mut vow__out = [0i64; %d];" % words(tt, f.ret))
-            body.append("vow_abi_%s(%s);" % (f.name, ", ".join(args + ["vow__out.as_mut_ptr()"])))
-            body.append(rs_de(tt, f.ret, "vow__out", 0))
+            body.append("let mut pruv__out = [0i64; %d];" % words(tt, f.ret))
+            body.append("pruv_abi_%s(%s);" % (f.name, ", ".join(args + ["pruv__out.as_mut_ptr()"])))
+            body.append(rs_de(tt, f.ret, "pruv__out", 0))
         else:
             a, b = ("Some", "None") if f.ret == OPTION else ("Ok", "Err")
-            body.append("let vow__out = %s;" % call)
+            body.append("let pruv__out = %s;" % call)
             if f.ret == OPTION:
-                body.append("if vow__out.tag != 0 { Some(vow__out.value) } else { None }")
+                body.append("if pruv__out.tag != 0 { Some(pruv__out.value) } else { None }")
             else:
-                body.append("if vow__out.tag != 0 { Ok(vow__out.value) } else { Err(vow__out.value) }")
+                body.append("if pruv__out.tag != 0 { Ok(pruv__out.value) } else { Err(pruv__out.value) }")
         o.append(ALLOW)
         o.append("#[inline]\npub fn %s(%s)%s {\n    unsafe {\n%s\n    }\n}" %
                  (f.name, ps, ret, "\n".join("        " + b for b in body)))
@@ -1548,7 +1548,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30):
         g = FnGen(m, funcs, f, verified)
         g.body()
         params = ir_params(f)
-        chunks.append(g.render("define internal %s @%s__vow_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
+        chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
         chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
         chunks.append(abi_of(f, tt))
     ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + "\n" + "\n".join(chunks)

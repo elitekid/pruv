@@ -1,4 +1,7 @@
 # Problems
+
+> 당시 독립 작업자에게 준 입력 사본이라 옛 이름(Vow)을 그대로 둔다. 지금 이름은 Pruv(RESULTS 14절).
+
 Each solution is one file `pNN.rs` (Rust) or `pNN.vow` (Vow) defining the function below (helpers allowed).
 Unless stated: 0 <= len(a) <= 1_000_000, every element and x in [-1_000_000_000, 1_000_000_000].
 Inputs always satisfy the constraints. Solutions must not panic.

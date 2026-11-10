@@ -7,7 +7,7 @@
 
 ## 1. 목표·범위·안 하는 것
 
-`vowc` 한 파일로 `.vow`를 검증하고 실행 파일까지 만든다. 사용자에게 Python·rustc·IR 컴파일용 clang을 요구하지 않는다.
+`pruvc` 한 파일로 `.pruv`를 검증하고 실행 파일까지 만든다. 사용자에게 Python·rustc·IR 컴파일용 clang을 요구하지 않는다.
 z3·LLVM은 컴파일러에 정적 링크한다. 생성 프로그램에는 필요한 실행 지원 객체만 링크하며 z3·LLVM은 넣지 않는다.
 시스템 링커와 대상 C 런타임·SDK는 빌린다(BLUEPRINT 58줄). 따라서 개발 도구가 전혀 없는 OS에서의 링크까지 보장하지 않는다.
 
@@ -17,28 +17,28 @@ z3·LLVM은 컴파일러에 정적 링크한다. 생성 프로그램에는 필�
 | 언어 | Rust. Go는 z3·LLVM 모두 cgo 경계를 거쳐 정적 링크·크로스 빌드가 더 복잡하고, 기존 시험은 이미 rustc 사용 |
 | 의미 보존 | 언어 기능 추가 없음. AST·검사·증명·Rust/LLVM 출력·실행 결과를 Python판과 대조 |
 | 회귀 | 최종 기존 `--backend both` 363건을 두 컴파일러 각각 통과. Rust 소스 뒷단 완료 전에는 'LLVM 뒷단 행만' 별도 집계 |
-| 독립 실행 | Vow main에서 직접 만든 실행 파일의 출력·panic 101 확인; Python/rustc 없는 환경에서도 컴파일 |
+| 독립 실행 | Pruv main에서 직접 만든 실행 파일의 출력·panic 101 확인; Python/rustc 없는 환경에서도 컴파일 |
 | 범위 밖 | LLD 내장, Cranelift, inkwell, 셀프 호스팅, 새 최적화·증명 전략, 언어 확장, enum union 배치 |
 | 배포 약속 | 단일 컴파일러 파일이지 완전 정적 OS 실행 환경이 아님. OS 라이브러리·링커·SDK 의존 공개 |
 
 ## 2. 크레이트 구성·의존·빌드 환경
 
-`vowc-rs/`를 별도 Cargo workspace로 둔다. 이름 충돌을 피하고 Python `vowc/`는 계속 실행 가능하게 남긴다.
-처음에는 세 크레이트로 나눈다. `vow-core`(앞단·출력), `vow-proof`(z3), `vowc`(CLI·LLVM·링크).
+`pruvc-rs/`를 별도 Cargo workspace로 둔다. 이름 충돌을 피하고 Python `pruvc/`는 계속 실행 가능하게 남긴다.
+처음에는 세 크레이트로 나눈다. `pruv-core`(앞단·출력), `pruv-proof`(z3), `pruvc`(CLI·LLVM·링크).
 라이브러리 API는 `parse → check → verify → gen`이고, 검사 뒤 AST는 읽기 전용이다. 코드 생성 중 AST를 수정하지 않는다.
 
-| Python / 기존 파일 | Rust 위치(`vowc-rs/crates/` 아래) | 담당 |
+| Python / 기존 파일 | Rust 위치(`pruvc-rs/crates/` 아래) | 담당 |
 |---|---|---|
-| `vast.py` | `vow-core/src/ast.rs`, `diagnostic.rs` | 식 14·문 10·선언/보조 노드 9, 합계 33 구체 노드; Type은 이름 하나 |
-| `vparser.py` | `vow-core/src/lexer.rs`, `parser.rs` | 토큰·위치·재귀 하강·음수 리터럴 접기 |
-| `typeinfo.py` | `vow-core/src/typeinfo.rs` | 명목 타입·선언 순서·안정적인 의존 순서 |
-| `check.py` | `vow-core/src/check.rs` | 타입·효과·소유·재귀 금지·첫 오류 순서 |
-| `codegen.py` | `vow-core/src/codegen.rs`, `emit_common.rs` | Rust 출력은 마지막; 공통 `show`, `emit_public_types`, `match_sorted_requires`는 LLVM 단계에서 먼저 이식 |
-| `verify.py` | `vow-proof/src/{lib,model,symbolic,obligation}.rs` | z3 모델·상태·정의역·의무·반례 |
-| `llvmgen.py` | `vow-core/src/{llvmgen,abi,bindings}.rs` | 본체 텍스트 IR / 대상 wrapper / Rust 바인딩을 분리, 공통 출력 모듈 사용 |
-| `vowc.py` | `vowc/src/{main,cli,driver}.rs` | 인자·출력 조정·JSON·종료 코드 |
-| 새 객체/링크 층 | `vowc/src/{lib,llvm,target,link,runtime}.rs`, 개발 도구의 `abi_lower.rs` | LLVM C API·링크·내장 객체는 공유; IR ABI 후처리는 vowc-ir-tool 전용 |
-| `runtime.c` | `vowc/build.rs`에서 원본을 읽음 | 별도 사본 없이 대상별로 컴파일해 `OUT_DIR`에 생성 |
+| `vast.py` | `pruv-core/src/ast.rs`, `diagnostic.rs` | 식 14·문 10·선언/보조 노드 9, 합계 33 구체 노드; Type은 이름 하나 |
+| `vparser.py` | `pruv-core/src/lexer.rs`, `parser.rs` | 토큰·위치·재귀 하강·음수 리터럴 접기 |
+| `typeinfo.py` | `pruv-core/src/typeinfo.rs` | 명목 타입·선언 순서·안정적인 의존 순서 |
+| `check.py` | `pruv-core/src/check.rs` | 타입·효과·소유·재귀 금지·첫 오류 순서 |
+| `codegen.py` | `pruv-core/src/codegen.rs`, `emit_common.rs` | Rust 출력은 마지막; 공통 `show`, `emit_public_types`, `match_sorted_requires`는 LLVM 단계에서 먼저 이식 |
+| `verify.py` | `pruv-proof/src/{lib,model,symbolic,obligation}.rs` | z3 모델·상태·정의역·의무·반례 |
+| `llvmgen.py` | `pruv-core/src/{llvmgen,abi,bindings}.rs` | 본체 텍스트 IR / 대상 wrapper / Rust 바인딩을 분리, 공통 출력 모듈 사용 |
+| `pruvc.py` | `pruvc/src/{main,cli,driver}.rs` | 인자·출력 조정·JSON·종료 코드 |
+| 새 객체/링크 층 | `pruvc/src/{lib,llvm,target,link,runtime}.rs`, 개발 도구의 `abi_lower.rs` | LLVM C API·링크·내장 객체는 공유; IR ABI 후처리는 pruvc-ir-tool 전용 |
+| `runtime.c` | `pruvc/build.rs`에서 원본을 읽음 | 별도 사본 없이 대상별로 컴파일해 `OUT_DIR`에 생성 |
 
 AST는 enum+struct로 표현하고 재귀 식은 Box/Vec로 소유한다. `IndexMap`과 Vec로 선언·필드·함수·가정 순서를 보존한다.
 HashMap/HashSet은 조회·포함 검사에만 쓴다. 순회 결과가 진단·이름·출력에 들어가면 반드시 순서를 정의한다.
@@ -74,7 +74,7 @@ workspace Cargo.toml·Cargo.lock·도구 체인 파일·의존 소스 해시다.
 | `SDKROOT`, `MACOSX_DEPLOYMENT_TARGET` | macOS SDK·최소 OS 고정; 컴파일러·런타임·객체의 값 일치 |
 | `RUSTFLAGS`, Windows CMake CRT 설정 | Windows는 `-C target-feature=+crt-static`, `/MT` 계열로 Rust·z3·LLVM·런타임 통일 |
 | `OUT_DIR`, `HOST`, `TARGET` | Cargo 제공. 런타임 대상은 TARGET이며 빌드 스크립트 실행 호스트와 혼동 금지 |
-| `VOWC_LINKER`, `VOWC_SYSROOT` (새 런타임 설정) | 사용자가 지정한 링커/대상 SDK; 자동 탐색보다 우선, 셸 문자열이 아닌 실행 경로로 취급 |
+| `PRUVC_LINKER`, `PRUVC_SYSROOT` (새 런타임 설정) | 사용자가 지정한 링커/대상 SDK; 자동 탐색보다 우선, 셸 문자열이 아닌 실행 경로로 취급 |
 
 LLVM 개발 설치를 배포물로 복사하지 않는다. CI에서 `BUILD_SHARED_LIBS=OFF`, `LLVM_BUILD_LLVM_DYLIB=OFF`,
 `LLVM_LINK_LLVM_DYLIB=OFF`, `LLVM_TARGETS_TO_BUILD=X86;AArch64`로 정적 묶음을 만들고 캐시한다.
@@ -85,12 +85,12 @@ Windows 공식 배포 정적 lib은 [llvm-project#172890](https://github.com/llv
 ## 3. CLI·출력 형식·대상 정책
 
 ```text
-vowc app.vow -o app.rs               # M3 기본: 기존 Rust 소스 출력 유지
-vowc app.vow -o app --emit exe
-vowc lib.vow -o lib.ll --backend llvm # 기존 명령: .ll + 기본 lib.rs 바인딩
-vowc lib.vow -o lib.rs --backend rust
-vowc lib.vow -o lib.o --emit obj --rust-bindings lib.rs
-vowc app.vow --emit exe --target x86_64-pc-windows-msvc -mcpu=generic
+pruvc app.pruv -o app.rs               # M3 기본: 기존 Rust 소스 출력 유지
+pruvc app.pruv -o app --emit exe
+pruvc lib.pruv -o lib.ll --backend llvm # 기존 명령: .ll + 기본 lib.rs 바인딩
+pruvc lib.pruv -o lib.rs --backend rust
+pruvc lib.pruv -o lib.o --emit obj --rust-bindings lib.rs
+pruvc app.pruv --emit exe --target x86_64-pc-windows-msvc -mcpu=generic
 ```
 
 | 옵션 | 결정 |
@@ -117,7 +117,7 @@ M3에서는 두 판 모두 기본 Rust 소스와 기본 rs의 `-o` 필수를 유
 | 결과 | stdout / 종료 |
 |---|---|
 | 성공 | `{"ok": true}` 한 줄 / 0 |
-| 언어·증명 오류 | VowError JSON 줄 / 1. stage,line,col,code,message,fix[,counterexample], UTF-8 비ASCII 보존 |
+| 언어·증명 오류 | PruvError JSON 줄 / 1. stage,line,col,code,message,fix[,counterexample], UTF-8 비ASCII 보존 |
 | 사용법 오류 | 기존처럼 usage + stderr 상세 / 2; 오류 문장의 실행 파일 이름 차이만 대조 시 정규화 |
 | 내부 결함 | stage=internal, code=internal_error, line=col=0 / 3 |
 | 새 빌드 실패 | stage=link 또는 codegen의 JSON / 1; `linker_missing`, `link_failed`, `target_runtime_missing` 등 별도 목록 |
@@ -132,15 +132,15 @@ workspace manifest·CLI 연결은 통합 담당만 고친다. 아래 `core`, `pr
 
 | 단계 / 묶음 | 독점 파일 경계 | 끝 기준·차분 지점 |
 |---|---|---|
-| 0A 최소 결정성·기준 | `vowc/check.py`, `vowc/verify.py`, `tests/diff_py_adapter.py` | 두 set 소비 순회만 정렬; 기준 스냅샷·manifest 해시·여러 hash seed의 진단/질의 순서 고정 |
+| 0A 최소 결정성·기준 | `pruvc/check.py`, `pruvc/verify.py`, `tests/diff_py_adapter.py` | 두 set 소비 순회만 정렬; 기준 스냅샷·manifest 해시·여러 hash seed의 진단/질의 순서 고정 |
 | 0B 잠금·실의무 시제품 | workspace manifests/lock/toolchain, `ci/m3/`, z3 시제품 | Rust z3로 집계 보조정리·Opt/Res/사용자 Datatype·havoc·중첩 양화+patterns·재시도 재현; Python SMT-LIB·판정 대조, 정확 잠금·플랫폼별 정적 의존/비용 기록 |
-| 0C 객체·링크 도구 선행 | `bin/{lib,llvm,target,link,runtime}.rs`, `bin/bin/vowc-ir-tool.rs`, 도구 전용 `abi_lower.rs`, `vowc/build.rs` | Python .ll→LLVM 객체→내장 runtime·시스템 링크; 시험 장치 IR용 clang 제거, i128 보조 기호 확인 |
+| 0C 객체·링크 도구 선행 | `bin/{lib,llvm,target,link,runtime}.rs`, `bin/bin/pruvc-ir-tool.rs`, 도구 전용 `abi_lower.rs`, `pruvc/build.rs` | Python .ll→LLVM 객체→내장 runtime·시스템 링크; 시험 장치 IR용 clang 제거, i128 보조 기호 확인 |
 | 0D Windows ABI 표본 | `tests/abi/`, `core/abi.rs` 계획 | 대상별 wrapper를 직접 출력한 작은 .ll→cross 객체·서명 검사, Windows 실행은 CI; 0A~0D 검토 후 파서 착수 |
 | 1 파서 | `core/{ast,diagnostic,lexer,parser}.rs` | parse AST JSON·parse 오류 비교; 극대 정수·유니코드 위치·33 노드 모두 대응 |
 | 2 검사 | `core/{typeinfo,check}.rs` | typed AST·타입 순서·type/effect 오류 JSON 동일, 재귀·소유 규칙 동일 |
 | 3 검증기 | `proof/{lib,model,symbolic,obligation}.rs` | 의무별 첫 시도/재시도 SMT-LIB·판정·진단 비교, 승인 전 proof 모드 CLI 공개 금지 |
 | 4 LLVM 출력·공통 함수 | `core/{llvmgen,abi,bindings,emit_common}.rs` | show·emit_public_types·match_sorted_requires·Rust 바인딩 선행, 원본 .ll·바인딩 이식 관문과 대상별 wrapper 기대값·M0/G1 회귀 |
-| 5 객체·링크 통합 | 0C 파일 소유권 인계, `vowc/runtime.c` | 직접 O2 객체·시스템 링크·main shim, 내장 런타임·MSVC count 초기화·링커 진단 |
+| 5 객체·링크 통합 | 0C 파일 소유권 인계, `pruvc/runtime.c` | 직접 O2 객체·시스템 링크·main shim, 내장 런타임·MSVC count 초기화·링커 진단 |
 | 6 Windows ABI 통합 | `core/abi.rs`, `tests/abi/` | Rust 생성기가 대상 ABI wrapper 직접 출력; sret C/Rust 호출·배열/집합 왕복을 Windows CI에서 통과 |
 | 7 Rust 소스 출력(마지막) | `core/codegen.rs` | .rs 바이트 이식 관문, BLUEPRINT 6단계 여러 언어 출력 계획·기존 Rust 출력 시험 집계 유지 |
 | T 차분 장치 | `tests/{compiler_driver,diff_compilers}.py`, 기존 호출 장치 5개 | 5절 선택 옵션·결과 분류·재현 산출물. 1~7과 인터페이스 단위 병렬 |
@@ -164,23 +164,23 @@ workspace manifest·CLI 연결은 통합 담당만 고친다. 아래 `core`, `pr
 
 | 파일:줄 | 실제 호출 / 연결 | M3에서 바꿀 경계 |
 |---|---|---|
-| `tests/run_all.py:30,33,42` | PY/VOWC 선택, `[PY,VOWC,src,-o,out]` 실행 | 공통 compiler_driver 사용 |
+| `tests/run_all.py:30,33,42` | PY/PRUVC 선택, `[PY,PRUVC,src,-o,out]` 실행 | 공통 compiler_driver 사용 |
 | `tests/run_all.py:57,71` | runtime.c 변형별 캐시, .ll을 clang -O2로 객체화 | 새 비교 경로는 두 판 모두 내장 런타임·LLVM 객체 API |
 | `tests/run_all.py:168,180,228` | LLVM 예제 링크, Rust 예제 lib, runtime Rust main 빌드 | rustc 시험 드라이버 유지 |
-| `bench/harness/run.py:8,9,195,197,198` | PY/VOWC, backend별 명령 구성·subprocess | 컴파일러 선택 인자를 build 경로까지 전달 |
+| `bench/harness/run.py:8,9,195,197,198` | PY/PRUVC, backend별 명령 구성·subprocess | 컴파일러 선택 인자를 build 경로까지 전달 |
 | `bench/harness/run.py:107,111,138` | clang으로 IR·runtime, rustc -C target-cpu=native 링크 | 새 객체 경로, 같은 CPU·최적화 조건 |
 | `bench/fuzz/run.py:42,45,236,263` | 안전·증명 호출 각각 --also-llvm, run_cmd(:60) | 검증 1회 유지, 컴파일러별 작업 폴더 |
-| `bench/fuzz/run.py:87,383,448` | runtime 빌드, 심볼 고유화한 .ll 객체화, 배치 rustc 링크 | 재작성 후 LLVM API 객체화; prep_llvm은 vowc 재검증 안 함 |
-| `bench/mutate.py:45,49,55` | H.PY/H.VOWC로 증명·안전 호출, H.build_and_run | 선택 정보를 H까지 전달, crash와 reject 구별 |
-| `tests/cli_also_llvm.py:25,31` | sys.executable로 VOWC 실행 | 선택 옵션 추가, 성공 출력·바이트·실패 무출력 검사 유지 |
+| `bench/fuzz/run.py:87,383,448` | runtime 빌드, 심볼 고유화한 .ll 객체화, 배치 rustc 링크 | 재작성 후 LLVM API 객체화; prep_llvm은 pruvc 재검증 안 함 |
+| `bench/mutate.py:45,49,55` | H.PY/H.PRUVC로 증명·안전 호출, H.build_and_run | 선택 정보를 H까지 전달, crash와 reject 구별 |
+| `tests/cli_also_llvm.py:25,31` | sys.executable로 PRUVC 실행 | 선택 옵션 추가, 성공 출력·바이트·실패 무출력 검사 유지 |
 
 `bench/fuzz/generate.py`는 seed:index로 입력을 만들고 `oracle.py`는 독립 파서·해석기다. 둘은 컴파일러를 호출하지 않으며 독립성을 유지한다.
 시험 도구에 `--compiler py|rs`(초기 기본 py), `--compiler-path PATH`를 더한다. `--backend`는 계속 출력 뒷단 선택이다.
-`tests/compiler_driver.py`가 argv 목록을 만든다(py=[고정 Python,VOWC], rs=[바이너리]). 모든 호출은 backend를 명시한다.
+`tests/compiler_driver.py`가 argv 목록을 만든다(py=[고정 Python,PRUVC], rs=[바이너리]). 모든 호출은 backend를 명시한다.
 Python 실행 경로는 Windows `.venv/Scripts/python.exe`도 지원하고 PATH의 도구 유무를 선검사한다. 셸 문자열 결합은 하지 않는다.
 기존 시험의 Rust main은 그대로 유지한다. 개발·시험의 rustc 의존과 사용자 `--emit exe`의 무-rustc 경로는 별개다.
-LLVM API 공통 함수를 쓰는 개발 전용 `vowc-ir-tool`을 0C에서 `vowc/src/bin/`에 둔다: 이미 생성된 ll→obj, 내장 runtime 추출·시스템 링크를 연결한다.
-퍼저의 심볼 재작성 뒤 파일도 이 도구로 처리한다. 배포에 포함하지 않으며, 입력 IR을 검증된 Vow라고 선언하는 기능은 없다.
+LLVM API 공통 함수를 쓰는 개발 전용 `pruvc-ir-tool`을 0C에서 `pruvc/src/bin/`에 둔다: 이미 생성된 ll→obj, 내장 runtime 추출·시스템 링크를 연결한다.
+퍼저의 심볼 재작성 뒤 파일도 이 도구로 처리한다. 배포에 포함하지 않으며, 입력 IR을 검증된 Pruv라고 선언하는 기능은 없다.
 Windows에서는 Python판도 이 도구로 대상 ABI 하강 후 객체화한다. 기존 clang 경로만으로는 Python판의 16바이트 반환 결함이 남는다.
 `--input-abi legacy|target`은 이 도구 전용이다. Python 원본/대상별 직접 생성 IR을 구별하고 서명을 검사해 sret 이중 적용을 막는다.
 제한적 `abi_lower`와 `--input-abi`는 Python판 대조가 끝나면 제거한다. 배포 CLI·Rust 생성기 경로에는 넣지 않는다.
@@ -192,7 +192,7 @@ Windows에서는 Python판도 이 도구로 대상 ABI 하강 후 객체화한�
 `tests/diff_py_adapter.py`와 Rust 시험 API가 parse/typed AST·검증 trace를 낸다(공개 CLI 규약 밖).
 AST 시험 스키마 v1은 명시한 노드·필드·위치·타입·목록 순서만 직렬화한다. 역직렬화·범용 IR은 만들지 않고 변경 시 버전을 올린다.
 입력 manifest에는 must_reject, examples(거부 예제 포함), runtime의 flags_matrix·contract_budget,
-bench `solutions/vow_agg` 10문제, 변이, 퍼저 생성 소스·입력·seed:index를 저장한다. 퍼저는 후보 목록을 먼저 고정해 병렬 제출 꼬리 차이를 없앤다.
+bench `solutions/pruv_agg` 10문제, 변이, 퍼저 생성 소스·입력·seed:index를 저장한다. 퍼저는 후보 목록을 먼저 고정해 병렬 제출 꼬리 차이를 없앤다.
 
 | 비교 대상 | 통과 규칙 |
 |---|---|
@@ -202,8 +202,8 @@ bench `solutions/vow_agg` 10문제, 변이, 퍼저 생성 소스·입력·seed:i
 | 승인된 출력 변경 | 이후 개별 기대값 변경으로 관리. 대상별 Windows wrapper·exe main·triple/datalayout은 별도 기대 IR; ABI·안전 검사·평가 순서·실행 결과 관문은 계속 필수 |
 | 증명 | 의무 ID·순서·첫 시도/재시도 각각 SMT-LIB 텍스트·sat/unsat/unknown 비교(6절); unknown은 성공 아님 |
 | 반례 | 숫자 바이트 동일 요구 안 함. 아래 반례 판정으로 유효성·부분 정보·보조정리 생략을 구별 |
-| 객체·exe | 바이트 동일 요구 안 함(LLVM/링커 차이). 같은 대상에서 exit·stdout·`vow:` 진단 비교 |
-| 실행 | 같은 backend·모드는 정확 비교. Rust panic 장식은 제외하고 vow 줄 비교; proof/safe 교차는 oracle 기대가 같을 때만 |
+| 객체·exe | 바이트 동일 요구 안 함(LLVM/링커 차이). 같은 대상에서 exit·stdout·`pruv:` 진단 비교 |
+| 실행 | 같은 backend·모드는 정확 비교. Rust panic 장식은 제외하고 pruv 줄 비교; proof/safe 교차는 oracle 기대가 같을 때만 |
 
 반례는 공개 JSON만으로 완전 재실행할 수 없다: 배열은 앞 8개만, 상태에는 havoc 지역도 있고 `_note`는 집계 정의를 생략한 모델이다.
 유한 스칼라·배열의 완전 입력은 독립 oracle로 위반을 재평가한다. 양화·havoc·relaxed는 원 질의(pc·guard·의무·보조정리)와 전체 모델/해석을 보존해 '미결'로 분류한다.
@@ -236,12 +236,12 @@ bench 성능은 조용한 머신에서 별도 측정하고 p04 기존 timeout은
 | 순서 | 소스 함수·매개변수·필드·변형·경로·가정·보조정리 순서 보존. 0A에서 정한 havoc/호출 집합 정렬만 적용 |
 | sexpr 내부 키 | 집계 캐시 키(kind,Tc.sexpr(),outer 수)·보조정리 중복 키 그대로; Rust Display와 Python sexpr golden 검사, 단순 정규화로 차이를 덮지 않음 |
 | solver | 의무마다 새 Solver(timeout=8000ms), pc→guard→Not(ob). unsat 아니고 lemmas가 있으면 새 Solver에 보조정리 추가해 재시도 |
-| 모델 | `model_completion=true`; 환경 삽입 순서·사용자 타입 Vow 표현 유지. relaxed sat 뒤 unknown의 `_note`도 유지 |
+| 모델 | `model_completion=true`; 환경 삽입 순서·사용자 타입 Pruv 표현 유지. relaxed sat 뒤 unknown의 `_note`도 유지 |
 
 의무마다 첫 시도·재시도 각각 선언·assert 순서·patterns·solver 설정(timeout 포함)을 담은 SMT-LIB와 판정을 기록한다.
 Python `Solver.sexpr()`/`to_smt2` 상당과 Rust의 같은 출력을 쓰되, 누락되는 solver 설정은 `set-option`(예: `:timeout 8000`)으로 함께 기록해 재생 시 적용한다.
 텍스트 동일이 1차 기준이다. 다르면 양쪽 원문을 각각 같은 z3로 재생해 판정을 비교하고 차이 원인을 기록한다. 같은 SMT라도 시간 판정은 보장되지 않는다.
-0B는 Int smoke를 넘어 실제 Vow 의무 모양(집계 보조정리·Opt/Res/사용자 Datatype·havoc·중첩 양화+patterns·재시도)을 재현해 이 기준으로 검토한다.
+0B는 Int smoke를 넘어 실제 Pruv 의무 모양(집계 보조정리·Opt/Res/사용자 Datatype·havoc·중첩 양화+patterns·재시도)을 재현해 이 기준으로 검토한다.
 z3 크레이트의 자동 평탄화·quantifier weight/pattern 변경도 이 trace로 확인한다.
 필요한 저수준 API는 작은 z3-sys 래퍼로 한정하고 수명·context 소유를 감사한다. 의무 생성 중 병렬화하지 않는다.
 timeout은 호출당 8초이므로 보조정리 재시도가 있으면 의무 하나가 약 16초를 쓸 수 있다. 전체 프로세스 제한과 혼동하지 않는다.
@@ -256,7 +256,7 @@ Rust 텍스트 생성기가 대상 ABI 계획으로 wrapper를 직접 출력한�
 LLVM C API를 llvm-sys로 직접 부르고 메모리·오류 메시지 소유를 RAII로 감싼다. inkwell은 이식 표면을 늘리므로 나중 검토한다.
 `--emit ll`은 최적화 전 직접 생성 텍스트다. 기존 macOS/SysV는 triple/datalayout 없는 출력을 유지하고, Windows는 대상 정보를 붙인다.
 원본 이식 관문은 기존 ABI 출력에 적용한다. Windows 직접 출력은 별도 기대값이며 Python 원본과 바이트 동일 대상이 아니다.
-`core/abi.rs`는 LLVM 의존 없는 대상 ABI 계획·wrapper 출력 함수다. `llvmgen.rs`가 이를 사용해 외부 `vow_abi_*`를 처음부터 대상별로 출력한다.
+`core/abi.rs`는 LLVM 의존 없는 대상 ABI 계획·wrapper 출력 함수다. `llvmgen.rs`가 이를 사용해 외부 `pruv_abi_*`를 처음부터 대상별로 출력한다.
 IR 후처리 `abi_lower`는 Python 원본 IR을 Windows에서 객체화하는 개발 도구에만 제한한다(5절 종료 조건). Rust CLI 경로에는 없다.
 ir-tool은 라이브러리 IR에 main을 삽입하지 않는다. 0C 링크 표본은 진입점이 있는 IR/독립 드라이버를 쓴다.
 배포 CPU는 generic, host bench만 native; PIC/PIE·최소 OS·코드 모델을 대상 설정으로 고정하고 링크 설정과 맞춘다.
@@ -264,12 +264,12 @@ ir-tool은 라이브러리 IR에 main을 삽입하지 않는다. 0C 링크 표�
 ### 실행 파일과 런타임
 
 exe는 `SPEC.md:45`의 인자 없는 unit main을 요구하고, 기존 효과 검사에 따라 IO/alloc을 처리한다. 잘못된 진입점은 exe 빌드 진단으로 거부한다.
-같은 LLVM 모듈 안에 IR 진입 shim `define i32 @main()`을 삽입해 internal `main__vow_entry`를 호출하고 0을 반환한다. trust 설정은 entry 생성에 그대로 반영한다.
-Vow 함수 본체·ABI 이름은 기존 mangling을 쓰므로 C main과 충돌하지 않는다. ll/obj 라이브러리 출력에는 C main을 만들지 않는다.
+같은 LLVM 모듈 안에 IR 진입 shim `define i32 @main()`을 삽입해 internal `main__pruv_entry`를 호출하고 0을 반환한다. trust 설정은 entry 생성에 그대로 반영한다.
+Pruv 함수 본체·ABI 이름은 기존 mangling을 쓰므로 C main과 충돌하지 않는다. ll/obj 라이브러리 출력에는 C main을 만들지 않는다.
 OS CRT가 main을 부르게 하며 `_start`/`mainCRTStartup`을 직접 구현하지 않는다.
 `build.rs`는 cc로 대상 런타임 객체를 만들고 `include_bytes!`로 넣는다. exe 링크 때 전용 임시 디렉터리에 꺼내고 종료 시 정리한다.
-기본 malloc/free와 `VOW_RUST_ALLOCATOR` 두 변형, 각각 `VOW_COUNT_ALLOCS` 시험 변형을 구별한다. exe는 malloc, Rust 드라이버는 Rust allocator다.
-Rust allocator 객체의 `vow_runtime_rust_allocator_v1` 연결 검사를 유지해 malloc 배열을 Vec가 해제하는 조합을 막는다.
+기본 malloc/free와 `PRUV_RUST_ALLOCATOR` 두 변형, 각각 `PRUV_COUNT_ALLOCS` 시험 변형을 구별한다. exe는 malloc, Rust 드라이버는 Rust allocator다.
+Rust allocator 객체의 `pruv_runtime_rust_allocator_v1` 연결 검사를 유지해 malloc 배열을 Vec가 해제하는 조합을 막는다.
 Windows의 count 변형은 현재 GCC식 `__attribute__((constructor))`를 MSVC에서도 작동하는 초기화 경로로 옮기는 작업이 필요하다.
 계약 i128 연산이 내는 `__divti3`·`__modti3`·`__multi3` 등 미해결 보조 기호를 대상별 조사한다. 시스템이 공급하지 않으면
 동일 LLVM 버전의 compiler-rt builtins 중 필요한 정적 객체를 함께 내장한다(특히 MSVC). rustc가 우연히 보충한 경로에 기대지 않는다.
@@ -292,8 +292,8 @@ M1 명세 4절(65줄 근처), RESULTS 124줄의 미완료 항목을 여기서 �
 
 | 함수 경계 | Windows x64 적용 |
 |---|---|
-| 외부 `vow_abi_f`, 반환 Option/Result | `{i64,i64}`(16바이트) 반환 대신 처음부터 `void`+첫 숨은 `ptr sret({i64,i64}) align 8`로 출력 |
-| 같은 함수의 Rust extern | `#[repr(C)] Vow__Tagged` 값 반환 선언 유지; rustc의 MSVC C ABI가 숨은 첫 인자를 만든다 |
+| 외부 `pruv_abi_f`, 반환 Option/Result | `{i64,i64}`(16바이트) 반환 대신 처음부터 `void`+첫 숨은 `ptr sret({i64,i64}) align 8`로 출력 |
+| 같은 함수의 Rust extern | `#[repr(C)] Pruv__Tagged` 값 반환 선언 유지; rustc의 MSVC C ABI가 숨은 첫 인자를 만든다 |
 | 내부 body/entry | 자체 LLVM 집합 인자·반환 유지. 모두 같은 모듈/규칙으로 호출하므로 외부 C ABI 하강 대상 아님 |
 | 배열 반환 | 기존 마지막 명시 out 포인터 + void 유지; 숨은 sret 추가 금지 |
 | 사용자 구조체·열거형 | 기존 word 배열 포인터 인자/마지막 out 포인터 유지(크기 16바이트여도 예외 없음) |
@@ -317,7 +317,7 @@ Some/None·Ok/Err, MIN/MAX, 인자 0·1·5개(레지스터/스택 경계), 반�
 
 runner 라벨 제공 여부는 CI 착수 때 확인하고 architecture assert를 넣는다. Intel hosted가 없으면 해당 self-hosted runner가 필요하다.
 캐시 키는 OS/arch·Rust·LLVM/z3 소스 해시·CMake 설정·CRT·SDK·Cargo.lock을 포함한다. 라이브러리 캐시와 완성 바이너리를 구별한다.
-출시 산출물은 대상별 vowc 하나, SHA-256, 라이선스/NOTICE·빌드 정보다. universal macOS 합본은 필수 아님.
+출시 산출물은 대상별 pruvc 하나, SHA-256, 라이선스/NOTICE·빌드 정보다. universal macOS 합본은 필수 아님.
 비용 상한은 대상별 strip 실행 파일 **150MB**, CI cold(LLVM 정적 묶음 포함) **120분**, 캐시 적중 **15분**이다.
 플랫폼별 LLVM 정적 묶음 빌드 / 컴파일러 링크 / 회귀 시간을 따로 재고 전체 CI 시간·최대 메모리도 기록한다.
 초과 시 LLVM 대상 X86·AArch64만 남기기·불필요 구성 끄기로 대상을 줄이거나 목표 개정을 결정한다. 동적 LLVM 배포는 BLUEPRINT 약속 변경이므로 대안으로 쓰지 않는다.
@@ -373,7 +373,7 @@ Windows VC 런타임의 비시스템 DLL 의존도 검사한다. OS 기본 라�
 
 **첫 구현 묶음은 0A~0D+T**다. (a) 호출 그래프·havoc set 소비 정렬과 기준 스냅샷/manifest 해시를 만들고 기존 363·CLI 185·변이 판정 및 hash seed 0·1·2·random을 기록한다.
 (b) 0B에서 Rust z3 실의무 시제품(집계 보조정리·Opt/Res/사용자 Datatype·havoc·중첩 양화+patterns·재시도)의 SMT-LIB·판정을 Python과 대조하고 의존을 잠근다.
-(c) vowc-ir-tool을 앞당겨 Python .ll을 LLVM 라이브러리로 객체화하고 내장 runtime·시스템 링커로 링크한다. i128 보조 기호를 확인하고 시험 장치의 IR 컴파일용 clang 의존을 M3 초기에 뗀다.
+(c) pruvc-ir-tool을 앞당겨 Python .ll을 LLVM 라이브러리로 객체화하고 내장 runtime·시스템 링커로 링크한다. i128 보조 기호를 확인하고 시험 장치의 IR 컴파일용 clang 의존을 M3 초기에 뗀다.
 (d) 대상별 직접 출력 형태의 작은 .ll로 Windows ABI cross 객체·서명을 검사하고 실행은 Windows CI에서 확인한다. T는 argv 어댑터·비교·재현 저장부터 만들며 rs 미구현을 통과로 세지 않는다.
 이 네 결과와 잠금·비용 기록을 검토한 뒤 본 앞단 이식(1 파서)에 착수한다. 이번 문서 개정에서는 구현·회귀 실행·네 플랫폼 빌드를 하지 않았다.
 
@@ -382,7 +382,7 @@ Windows VC 런타임의 비시스템 DLL 의존도 검사한다. OS 기본 라�
 | 지적 13개 | 채택/수정 |
 |---|---|
 | 1. 결정성 기준 부재 | 채택: 0A 두 set 순회 최소 수정·기준 스냅샷(4·10절) |
-| 2. z3 smoke 부족 | 수정: 실제 Vow 의무·재시도 SMT-LIB/판정 시제품(4·6·10절) |
+| 2. z3 smoke 부족 | 수정: 실제 Pruv 의무·재시도 SMT-LIB/판정 시제품(4·6·10절) |
 | 3. 객체화·ABI 위험 확인이 늦음 | 채택: ir-tool·내장 runtime 링크·i128·Windows cross 표본 선행(4·7·10절) |
 | 4. 바이트 동일의 영구 제약 | 수정: 이식 관문으로 한정, 승인 기대값 변경·의미 관문 유지(5절) |
 | 5. AST 시험 IR 과대화 | 수정: 버전 있는 명시 스키마 직렬화만, TypeTable 별도(5절) |

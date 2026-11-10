@@ -1,6 +1,6 @@
 # G1 problems (structs and enums)
 
-Each solution is one Vow file `gNN.vow` (spec: SPEC.md, especially section 6a). Copy the **type declarations**
+Each solution is one Pruv file `gNN.pruv` (spec: SPEC.md, especially section 6a). Copy the **type declarations**
 of the problem into the file verbatim (names, field names, field order, variant order must match exactly), then
 define the function with exactly the given name and parameter/return types. Helper functions are allowed.
 Inputs always satisfy the stated constraints. The function must prove (verify) and must not panic.

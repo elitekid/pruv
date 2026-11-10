@@ -20,7 +20,7 @@
 | 출력 | `print`는 계속 `i64`·`bool`만 |
 
 ### 선언과 생성
-```vow
+```pruv
 struct Point {
   x: i64,
   y: i64,
@@ -42,7 +42,7 @@ enum Event {
 - 필드 0개 변형은 괄호 없음(`Empty()` 금지). 선언은 쉼표 구분, 마지막 쉼표 허용.
 - 타입·함수 선언은 최상위에만, 섞어 둘 수 있고 뒤에 선언된 타입을 참조할 수 있다.
 
-```vow
+```pruv
 let p: Point = Point { x: 3, y: 4 };
 let e: Event = Event::Hit(p, true);
 let empty: Event = Event::Empty;
@@ -56,7 +56,7 @@ let x: i64 = frame.origin.x;
   (`make_point().x = 1`, 열거형을 통과하는 경로 금지). 오른쪽을 완전히 평가한 뒤 저장.
 
 ### match
-```vow
+```pruv
 fn event_x(e: Event) -> i64 {
   match e {
     Event::Empty => { return 0; }
@@ -75,14 +75,14 @@ fn event_x(e: Event) -> i64 {
 - `variant_field(e, Event::Hit, point)` : 그 필드 값. 실제 변형이 지정 변형일 때만 정의.
 - 두 번째 인자는 변형 이름, 세 번째는 필드 이름(값 식 아님).
 - 공개 requires 실행 검사에서 잘못된 변형 조회에 닿으면:
-  `vow: requires undefined: variant_field expected Event::Hit.point` (종료 코드 101)
+  `pruv: requires undefined: variant_field expected Event::Hit.point` (종료 코드 101)
 - `==`·`!=`는 같은 타입끼리. 구조체는 모든 필드, 열거형은 변형과 활성 payload만 비교.
 - 계약 안 생성 식의 정수 필드는 수학적 정수(실행 requires는 기존처럼 checked i128). 계약 생성 값에 i64 범위를 강제하지 않는다.
 - 열거형 직접 필드 접근(`e.point`)은 없다.
 
 ### 이름·구문 분석
 - 타입·사용자 변형 이름: `[A-Z][A-Za-z0-9_]*`. 필드 이름: `[a-z][A-Za-z0-9_]*`. 기존 함수·변수 규칙 유지.
-- `vow_` 접두사, `__` 포함, `_`, Rust 예약어 금지는 새 이름(타입·변형·필드)에도 적용.
+- `pruv_` 접두사, `__` 포함, `_`, Rust 예약어 금지는 새 이름(타입·변형·필드)에도 적용.
 - `Option`, `Result`, `Some`, `None`, `Ok`, `Err`는 사용자 타입 이름으로 못 씀. 타입·함수 동일 이름 금지.
   다른 타입의 필드끼리, 다른 열거형의 변형끼리는 이름 중복 가능.
 - 추가 키워드: `struct`, `enum`, `is_variant`, `variant_field`. 추가 토큰: `::`, `.`(lexer는 `::`를 `:`보다, `..`를 `.`보다 먼저).
@@ -193,21 +193,21 @@ pub enum Event { Empty, Hit(Point, bool), Failed(i64) }
 ```
 - 모두 `Copy`. 타입·필드 공개. 열거형 변형은 위치 인자 형식. 코드의 동등성 금지는 checker 책임.
 - `rty()`의 "모르는 타입이면 Vec" 대체를 없앤다. 사용자 타입이면 이름, 그 밖 미지원은 내부 오류.
-- 계약용 타입 `vow_contract__Point` 등: 구조 같고 i64 leaf → i128, Option/Result도 i128 payload, 사용자 필드는 대응 계약 타입,
+- 계약용 타입 `pruv_contract__Point` 등: 구조 같고 i64 leaf → i128, Option/Result도 i128 payload, 사용자 필드는 대응 계약 타입,
   `Clone, Copy, PartialEq, Eq`. 실행 값→계약 값 변환은 재귀(열거형은 활성 변형만). `Gen.c()`는 이 표현으로 생성·필드 접근·동등성 출력.
 - `Gen.e()`: 구조체·변형 생성, 필드 읽기. `Gen.stmt()`: 중첩 필드 대입, 여러 바인더 match. `Gen.entry()`: 기존 순차 requires 검사 재사용.
 - `show()`: 새 식을 공통 문자열로(`is_variant(e, Event::Hit)`, `variant_field(e, Event::Hit, point)`, `p.x`, `Point { x: 1, y: 2 }`, `Event::Hit(p, true)`).
-- `variant_field` 실행 코드: base를 임시값에 한 번 저장 후 Rust match로 추출, 나머지 arm은 `vow_ud("variant_field expected Event::Hit.point")`.
+- `variant_field` 실행 코드: base를 임시값에 한 번 저장 후 Rust match로 추출, 나머지 arm은 `pruv_ud("variant_field expected Event::Hit.point")`.
 - 새 `emit_public_types(prog) -> str`를 codegen.py에 두고 LLVM 바인딩에서도 쓴다.
-- 표준 타입 경로를 `::std::vec::Vec`, `::std::option::Option`, `::std::result::Result`로 한정(사용자 타입 `Vec` 충돌 방지). 생성 임시 이름은 `vow_`·`__` 사용.
-- 증명 모드 내부 호출은 기존 `f__vow_body`, 안전 모드는 공개 진입. `--trust-callers`는 두 모드에서 requires 실행 검사 생략, 안전 모드 산술 검사는 유지.
+- 표준 타입 경로를 `::std::vec::Vec`, `::std::option::Option`, `::std::result::Result`로 한정(사용자 타입 `Vec` 충돌 방지). 생성 임시 이름은 `pruv_`·`__` 사용.
+- 증명 모드 내부 호출은 기존 `f__pruv_body`, 안전 모드는 공개 진입. `--trust-callers`는 두 모드에서 requires 실행 검사 생략, 안전 모드 산술 검사는 유지.
 
 ## 5. LLVM 뒷단(llvmgen.py)
 
 ### 내부 배치(평탄화: 태그 + 모든 변형 payload 공간)
 ```llvm
-%vow_t_Point = type { i64, i64 }
-%vow_t_Event = type { i64, %vow_t_Point, i1, i64 }
+%pruv_t_Point = type { i64, i64 }
+%pruv_t_Event = type { i64, %pruv_t_Point, i1, i64 }
 ```
 | 인덱스 | 의미 |
 |---|---|
@@ -217,15 +217,15 @@ pub enum Event { Empty, Hit(Point, bool), Failed(i64) }
 | 3 | Failed.code |
 - 구조체 필드는 선언 순서. 열거형 payload는 변형 순서·필드 순서로 이어 붙임(저장 인덱스 = 1 + 앞선 변형 필드 수 합 + field_index).
 - 비활성 payload는 항상 `zeroinitializer`에서 시작. 빈 구조체는 `{}`. 중첩 사용자 타입은 그 LLVM 집합 타입을 필드로.
-- 계약용 `%vow_c_*`는 같은 구조에서 정수 leaf만 i128. 기존 Option/Result `{ i1, i64 }`와 계약 i128 표현 유지.
+- 계약용 `%pruv_c_*`는 같은 구조에서 정수 leaf만 i128. 기존 Option/Result `{ i1, i64 }`와 계약 i128 표현 유지.
 - 비활성 필드 안 중첩 값은 유효 값으로 보지 않는다(읽기·비교·계약 변환 금지).
 
 ### 호출 규약
 | 경계 | 사용자 구조체·열거형 |
 |---|---|
-| `__vow_body` / `__vow_entry` 내부 인자 | LLVM 집합값 하나 |
+| `__pruv_body` / `__pruv_entry` 내부 인자 | LLVM 집합값 하나 |
 | 내부 반환 | 집합값 반환 |
-| 외부 `vow_abi_*` 인자 | 고정 길이 i64 word 배열을 가리키는 `ptr` |
+| 외부 `pruv_abi_*` 인자 | 고정 길이 i64 word 배열을 가리키는 `ptr` |
 | 외부 반환 | `void`, 마지막 `ptr out`에 word 배열 기록 |
 | Rust 공개 래퍼 | 원래 사용자 타입을 값으로 받고 반환 |
 
@@ -238,15 +238,15 @@ M1의 최상위 Option/Result 인자·2-word 레지스터 반환 ABI는 바꾸�
 - `V`와 `Slot`에 `ty: Optional[Type]` 추가, 새 kind `"agg"`(`V.a` 집합 SSA, `Slot.a` 집합 alloca, `b` 미사용).
 - 확장: `lty()`, `vkind()`, `ir_params()`, `new_slot()`, `load()`, `store()`, `agg()`, `bind_params()`, `emit_ret()`, `ev_call()`,
   `ev()`, `cev()`, `bind_contract_params()`, `abi_of()`, `gen_bindings()`, `gen_llvm()`.
-- 필드 대입: RHS 평가 → 루트 load → 중첩 `insertvalue` → 루트 store. 필드 읽기: `extractvalue`. 집합값은 배열 소유 목록·`vow_free` 대상 아님.
+- 필드 대입: RHS 평가 → 루트 load → 중첩 `insertvalue` → 루트 store. 필드 읽기: `extractvalue`. 집합값은 배열 소유 목록·`pruv_free` 대상 아님.
 - 열거형 match: 태그 `switch`, payload 추출은 그 arm 블록에서만. 모든 arm이 끝나면 join 블록 생략. default는 `unreachable`.
 - 계약 동등성: 양쪽 한 번 평가 → 구조체는 필드별 재귀 → 열거형은 태그 다르면 false, 같으면 활성 필드만 → Option None payload 비교 안 함.
-- `variant_field`는 태그 분기 뒤 접근, 실패는 기존 `vow_panic_undefined`. `select`로 합치지 않는다.
-- `runtime.c` 변경 없음. 두 뒷단의 비교 대상은 `vow:` 진단 문자열.
+- `variant_field`는 태그 분기 뒤 접근, 실패는 기존 `pruv_panic_undefined`. `select`로 합치지 않는다.
+- `runtime.c` 변경 없음. 두 뒷단의 비교 대상은 `pruv:` 진단 문자열.
 
 ## 6. 시험과 예제
 
-### 거부 시험(`tests/must_reject/g1_*.vow` + 같은 이름 `.json`에 `{"stage": ..., "code": ...}`)
+### 거부 시험(`tests/must_reject/g1_*.pruv` + 같은 이름 `.json`에 `{"stage": ..., "code": ...}`)
 `run_must_reject()`는 `.json`이 있으면 실제 JSON 진단에 그 stage·code가 있는지도 확인한다(없으면 기존처럼 종료 코드 1만).
 
 | 파일 | 틀린 프로그램 | 기대 stage/code |
@@ -272,7 +272,7 @@ M1의 최상위 Option/Result 인자·2-word 레지스터 반환 ABI는 바꾸�
 | `g1_match_shadow` | payload 바인더가 매개변수 이름과 같음 | type/`shadow` |
 | `g1_unused_wrapper` | Option 필드 구조체 반환 호출을 문장으로 버림 | type/`unused_value` |
 | `g1_code_equal` | 본문에서 `p == q` | type/`eq_type` |
-| `g1_reserved_field` | 필드 이름 `vow_x` | parse/`reserved_name` |
+| `g1_reserved_field` | 필드 이름 `pruv_x` | parse/`reserved_name` |
 | `g1_false_ensures` | 반환 필드가 계약과 다름 | verify/`ensures` |
 | `g1_bad_variant_contract` | 무조건 Empty 반환하며 Hit 필드 조회 ensures | verify/`variant_domain` |
 | `g1_call_requires` | x>0 요구 함수에 x=0 구조체 전달 | verify/`call_requires` |
@@ -281,7 +281,7 @@ M1의 최상위 Option/Result 인자·2-word 레지스터 반환 ABI는 바꾸�
 
 (verify 단계 code 이름은 기존 verify.py가 실제로 내는 코드에 맞춘다.)
 
-```vow
+```pruv
 struct Point { x: i64, y: i64 }
 fn wrong() -> Point
   ensures result.x == 1
@@ -289,7 +289,7 @@ fn wrong() -> Point
   return Point { x: 2, y: 0 };
 }
 ```
-```vow
+```pruv
 enum Event { Empty, Hit(value: i64) }
 fn wrong() -> Event
   ensures variant_field(result, Event::Hit, value) == 0
@@ -297,7 +297,7 @@ fn wrong() -> Event
   return Event::Empty;
 }
 ```
-```vow
+```pruv
 struct Point { x: i64, y: i64 }
 fn lost() -> () {
   let mut p: Point = Point { x: 0, y: 7 };
@@ -312,9 +312,9 @@ fn lost() -> () {
   assert p.y == 7;
 }
 ```
-(`invariant p.y == 7`을 넣은 판은 통과해야 한다 — examples/g1_counter.vow에서 확인.)
+(`invariant p.y == 7`을 넣은 판은 통과해야 한다 — examples/g1_counter.pruv에서 확인.)
 
-### 실행 시험(`tests/runtime/g1_*`: `.vow`·`.rs`·`.json`)
+### 실행 시험(`tests/runtime/g1_*`: `.pruv`·`.rs`·`.json`)
 stdout은 `stdout_lines`로 정확히 비교. 성공 시험은 두 뒷단에서 기본·안전·trust·안전+trust 네 조합(선택적 `flags_matrix`, 기존 `flags` 형식 유지).
 
 | stem | 내용 | 모드 | stdout | exit / stderr |
@@ -323,24 +323,24 @@ stdout은 `stdout_lines`로 정확히 비교. 성공 시험은 두 뒷단에서 
 | `g1_r02_nested` | Frame.origin.x 3→8; 이전 복사본과 새 값 출력 | 네 조합 | `3`,`8` | 0 |
 | `g1_r03_variants` | Empty, Hit(Point(3,4),true), Failed(7) 인자·반환·match 왕복 | 네 조합 | `0`,`3`,`7` | 0 |
 | `g1_r04_wrapped` | 구조체 안 Some(5), None, Ok(6), Err(7)를 match로 추출 | 네 조합 | `5`,`0`,`6`,`7` | 0 |
-| `g1_r05_requires` | `positive(p)` `requires p.x > 0`, driver가 x=0 | 기본·안전 | 없음 | 101, `vow: requires violated: positive: (p.x > 0)` |
-| `g1_r06_undefined` | requires가 곧바로 Hit.value 조회, driver가 Empty | 기본·안전 | 없음 | 101, `vow: requires undefined: variant_field expected Event::Hit.value` |
+| `g1_r05_requires` | `positive(p)` `requires p.x > 0`, driver가 x=0 | 기본·안전 | 없음 | 101, `pruv: requires violated: positive: (p.x > 0)` |
+| `g1_r06_undefined` | requires가 곧바로 Hit.value 조회, driver가 Empty | 기본·안전 | 없음 | 101, `pruv: requires undefined: variant_field expected Event::Hit.value` |
 | `g1_r07_guarded` | `!is_variant(e, Event::Hit) \|\| variant_field(e, Event::Hit, value) > 0`, Empty 전달 | 기본·안전 | `7` | 0 |
 | `g1_r08_trust` | r05 함수가 본문에서 7 반환, x=0 전달 | trust·안전+trust | `7` | 0 |
-| `g1_r09_overflow` | 구조체 x에 `p.x + 1` 대입, driver가 MAX | 안전·안전+trust | 없음 | 101, `vow: arithmetic error: overflow in +` |
+| `g1_r09_overflow` | 구조체 x에 `p.x + 1` 대입, driver가 MAX | 안전·안전+trust | 없음 | 101, `pruv: arithmetic error: overflow in +` |
 | `g1_r10_order` | 생성자 인자 함수가 1,2 출력, scrutinee 함수가 3 출력, Hit 합 출력 | 네 조합 | `1`,`2`,`3`,`30` | 0 |
 | `g1_r11_wide_abi` | bool·Option·Result·중첩 enum 포함 2-word 초과 구조체 인자·반환 왕복(모든 변형) | 네 조합 | `true`,`5`,`6`,`7` | 0 |
 | `g1_r12_contract_int` | requires에서 `Point { x: p.x + 1, y: 0 } == Point { x: p.x + 1, y: 0 }`, x=MAX | 기본·안전 | `true` | 0 |
 | `g1_r13_empty` | 빈 구조체·무필드 변형 인자·반환 왕복 | 네 조합 | `1` | 0 |
-| `g1_r14_internal_entry` | 내부 호출이 잘못된 Point를 requires 함수에 전달 | 안전 | 없음 | 101, `vow: requires violated` |
+| `g1_r14_internal_entry` | 내부 호출이 잘못된 Point를 requires 함수에 전달 | 안전 | 없음 | 101, `pruv: requires violated` |
 | `g1_r15_quant_domain` | forall/exists가 첫 원소에서 단락해 뒤의 잘못된 변형 조회를 건너뜀 | 기본·안전 | `true`,`true` | 0 |
 
 메시지·driver 모양은 기존 tests/runtime 시험과 기존 메시지 형식에 맞춘다(위 문자열은 기대 의미).
 
 ### 예제
-- `examples/g1_point.vow`: 중첩 구조체 갱신, 입력 불변성, 필드 ensures.
-- `examples/g1_event.vow`: 0·1·여러 필드 변형, 전체 match, 계약 변형 검사.
-- `examples/g1_counter.vow`: 구조체 전체 havoc에 맞춘 필드 invariant.
+- `examples/g1_point.pruv`: 중첩 구조체 갱신, 입력 불변성, 필드 ensures.
+- `examples/g1_event.pruv`: 0·1·여러 필드 변형, 전체 match, 계약 변형 검사.
+- `examples/g1_counter.pruv`: 구조체 전체 havoc에 맞춘 필드 invariant.
 
 ## 7. 확정 AST와 파일 경계
 
@@ -442,7 +442,7 @@ class Program:
 - 기존 `Ctor`, `Call`, `Match` 유지. 새 내장 구문을 `Call.args`에 가짜 `Var`로 넣지 않는다.
 - `line`, `col`은 구문 첫 토큰. (dataclass 상속에서 기본값 필드 순서 문제가 있으면 기존 vast.py 관례대로 맞춘다.)
 
-### 공유 타입 정보 `vowc/typeinfo.py`(묶음 A 소유)
+### 공유 타입 정보 `pruvc/typeinfo.py`(묶음 A 소유)
 ```python
 def type_name(ty: Type) -> str: ...
 
@@ -462,12 +462,12 @@ class TypeTable:
 ### 묶음(같은 파일을 두 묶음이 고치지 않는다)
 | 묶음 | 독점 수정 파일 | 산출물 |
 |---|---|---|
-| A 앞단 | `vowc/vast.py`, `vowc/vparser.py`, `vowc/check.py`, 새 `vowc/typeinfo.py` | AST, 문법, 타입·효과 검사 |
-| B 증명 | `vowc/verify.py` | Datatype, 정의역, 재구성, havoc, 호출·match |
-| C Rust | `vowc/codegen.py` | 공개 타입 출력, 계약 타입, Rust 코드, 공통 `show` |
-| D LLVM | `vowc/llvmgen.py` | 집합값 IR, ABI 직렬화, 바인딩 |
+| A 앞단 | `pruvc/vast.py`, `pruvc/vparser.py`, `pruvc/check.py`, 새 `pruvc/typeinfo.py` | AST, 문법, 타입·효과 검사 |
+| B 증명 | `pruvc/verify.py` | Datatype, 정의역, 재구성, havoc, 호출·match |
+| C Rust | `pruvc/codegen.py` | 공개 타입 출력, 계약 타입, Rust 코드, 공통 `show` |
+| D LLVM | `pruvc/llvmgen.py` | 집합값 IR, ABI 직렬화, 바인딩 |
 | E 시험 | `tests/run_all.py`, 새 `tests/must_reject/g1_*`, 새 `tests/runtime/g1_*`, 새 `examples/g1_*` | 회귀·예제 |
-`runtime.c`, `vowc.py`, `docs/M1_LLVM_SPEC.md`는 고치지 않는다. SPEC.md G1 절은 메인이 넣는다.
+`runtime.c`, `pruvc.py`, `docs/M1_LLVM_SPEC.md`는 고치지 않는다. SPEC.md G1 절은 메인이 넣는다.
 순서: A·E 병렬 → B·C 병렬 → D(C의 `emit_public_types` 사용) → 메인이 실행·통합 → 감사·확인 → 독립 풀이 측정.
 
 ## 8. SPEC.md G1 절 초안(영어) — 메인이 SPEC.md에 넣는다

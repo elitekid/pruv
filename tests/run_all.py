@@ -7,17 +7,17 @@ as each one and all earlier ones are finished. runtime.c is compiled once per
 variant and reused; every job uses its own work file names.
 
 Optional runtime json field "contract_budget": N appends
-["--contract-budget", str(N)] to the vowc flags of every matrix row (labels unchanged).
+["--contract-budget", str(N)] to the pruvc flags of every matrix row (labels unchanged).
 Optional runtime json field "ll_contains": [strings] (llvm backend only) must each occur in
-the WHOLE generated .ll text (not just __vow_body functions)."""
+the WHOLE generated .ll text (not just __pruv_body functions)."""
 import concurrent.futures, glob, json, os, platform, re, shutil, subprocess, sys, tempfile, threading
 
 CPU_FLAG = "-mcpu=native" if platform.machine().lower() in ("arm64", "aarch64") else "-march=native"
-BODY_DEF = re.compile(r"^define internal [^\n]*@([A-Za-z0-9_.$]+?)__vow_body\(", re.M)
+BODY_DEF = re.compile(r"^define internal [^\n]*@([A-Za-z0-9_.$]+?)__pruv_body\(", re.M)
 
 
 def body_functions(text):
-    """{mangled name: text of the `@name__vow_body(` definition} from an .ll text."""
+    """{mangled name: text of the `@name__pruv_body(` definition} from an .ll text."""
     out = {}
     for m in BODY_DEF.finditer(text):
         end = text.find("\n}", m.start())
@@ -30,21 +30,21 @@ VENV_PY = os.path.join(ROOT, ".venv/bin/python")
 PY = VENV_PY if os.path.exists(VENV_PY) else sys.executable
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 CLANG = shutil.which("clang") or "/usr/bin/clang"
-VOWC = os.path.join(ROOT, "vowc/vowc.py")
-RUNTIME_C = os.path.join(ROOT, "vowc/runtime.c")
+PRUVC = os.path.join(ROOT, "pruvc/pruvc.py")
+RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 
 WORK = None  # temp dir, set in main()
 _rt_cache = {}  # count_allocs -> (object path or None, error or None)
 _rt_lock = threading.Lock()
 
 
-def vowc(src, out, flags=()):
-    return subprocess.run([PY, VOWC, src, "-o", out] + list(flags), capture_output=True, text=True, timeout=300)
+def pruvc(src, out, flags=()):
+    return subprocess.run([PY, PRUVC, src, "-o", out] + list(flags), capture_output=True, text=True, timeout=300)
 
 
-def vowc_llvm(src, ll, rs, flags=()):
+def pruvc_llvm(src, ll, rs, flags=()):
     """LLVM backend: writes IR to ll and Rust bindings to rs."""
-    return vowc(src, ll, ["--backend", "llvm", "--rust-bindings", rs] + list(flags))
+    return pruvc(src, ll, ["--backend", "llvm", "--rust-bindings", rs] + list(flags))
 
 
 def runtime_object(count_allocs):
@@ -52,9 +52,9 @@ def runtime_object(count_allocs):
     with _rt_lock:
         if count_allocs not in _rt_cache:
             rt_o = os.path.join(WORK, "runtime%s.o" % ("_count" if count_allocs else ""))
-            extra = ["-DVOW_COUNT_ALLOCS"] if count_allocs else []
+            extra = ["-DPRUV_COUNT_ALLOCS"] if count_allocs else []
             try:
-                c = subprocess.run([CLANG, "-O2", CPU_FLAG, "-std=c11", "-DVOW_RUST_ALLOCATOR"] + extra + ["-c", RUNTIME_C, "-o", rt_o],
+                c = subprocess.run([CLANG, "-O2", CPU_FLAG, "-std=c11", "-DPRUV_RUST_ALLOCATOR"] + extra + ["-c", RUNTIME_C, "-o", rt_o],
                                    capture_output=True, text=True, timeout=300)
                 if c.returncode != 0:
                     _rt_cache[count_allocs] = (None, "clang (runtime.c): " + c.stderr[-400:])
@@ -93,11 +93,11 @@ def safe(name, fn):
 
 def must_reject_jobs():
     jobs = []
-    for f in sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/*.vow"))):
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/*.pruv"))):
         name = "must_reject/" + os.path.basename(f)
 
         def fn(f=f):
-            c = vowc(f, os.path.join(WORK, "mr_%s.rs" % os.path.splitext(os.path.basename(f))[0]))
+            c = pruvc(f, os.path.join(WORK, "mr_%s.rs" % os.path.splitext(os.path.basename(f))[0]))
             ok = c.returncode == 1
             detail = "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr)
             jf = os.path.splitext(f)[0] + ".json"
@@ -130,23 +130,23 @@ def example_job(f, mode, flags, llvm, name):
     work = WORK
 
     def fn():
-        if base == "bad_index.vow":
+        if base == "bad_index.pruv":
             if llvm:
-                c = vowc_llvm(f, os.path.join(work, stem + "_bad.ll"), os.path.join(work, stem + "_bad_llvm.rs"))
+                c = pruvc_llvm(f, os.path.join(work, stem + "_bad.ll"), os.path.join(work, stem + "_bad_llvm.rs"))
             else:
-                c = vowc(f, os.path.join(work, stem + ".rs"))
+                c = pruvc(f, os.path.join(work, stem + ".rs"))
             return c.returncode == 1, "exit %d (expected rejection) %s" % (c.returncode, c.stdout + c.stderr)
         if llvm:
             key = "%s_%s_llvm" % (stem, mode)
             ll = os.path.join(work, key + ".ll")
             rs = os.path.join(work, key + ".rs")
-            c = vowc_llvm(f, ll, rs, flags)
+            c = pruvc_llvm(f, ll, rs, flags)
             if c.returncode != 0:
-                return False, "vowc exit %d %s" % (c.returncode, c.stdout + c.stderr)
+                return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
             text = open(ll).read()
             bodies = body_functions(text)
             if not bodies:
-                return False, "no @..__vow_body( definitions found in .ll"
+                return False, "no @..__pruv_body( definitions found in .ll"
             bad = None
             for fname, btxt in bodies.items():
                 if mode == "no-verify":
@@ -169,9 +169,9 @@ def example_job(f, mode, flags, llvm, name):
                                capture_output=True, text=True, timeout=300)
             return r.returncode == 0, "rustc link: " + r.stderr[-400:]
         out = os.path.join(work, "%s_%s.rs" % (stem, mode))
-        c = vowc(f, out, flags)
+        c = pruvc(f, out, flags)
         if c.returncode != 0:
-            return False, "vowc exit %d %s" % (c.returncode, c.stdout + c.stderr)
+            return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
         if mode == "no-verify":
             text = open(out).read()
             bad = [s for s in ("unsafe", "get_unchecked") if s in text]
@@ -188,9 +188,9 @@ def examples_jobs(backend):
     llvm = backend == "llvm"
     tag = " [llvm]" if llvm else ""
     jobs = []
-    for f in sorted(glob.glob(os.path.join(ROOT, "examples/*.vow"))):
+    for f in sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv"))):
         base = os.path.basename(f)
-        if base == "bad_index.vow":
+        if base == "bad_index.pruv":
             jobs.append(example_job(f, "bad", [], llvm, "examples/" + base + tag))
             continue
         for mode, flags in EXAMPLE_MODES:
@@ -203,19 +203,19 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
 
     def fn():
         d = os.path.dirname(j)
-        vow, drv = os.path.join(d, t + ".vow"), os.path.join(d, t + ".rs")
+        pruv, drv = os.path.join(d, t + ".pruv"), os.path.join(d, t + ".rs")
         link = []
         if llvm:
             key = t + suffix + "_llvm"
             ll = os.path.join(work, key + ".ll")
             gen = os.path.join(work, key + "_gen.rs")
-            c = vowc_llvm(vow, ll, gen, flags)
+            c = pruvc_llvm(pruv, ll, gen, flags)
         else:
             key = t + suffix
             gen = os.path.join(work, key + "_gen.rs")
-            c = vowc(vow, gen, flags)
+            c = pruvc(pruv, gen, flags)
         if c.returncode != 0:
-            return False, "vowc exit %d %s" % (c.returncode, c.stdout + c.stderr)
+            return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
         if llvm:
             link, err = llvm_objects(ll, key, work, bool(spec.get("alloc_balance")))
             if err:
@@ -246,9 +246,9 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             problems.append("stdout lines %r != %r" % (p.stdout.splitlines(), sl))
         if llvm:
             if spec.get("alloc_balance"):
-                m = re.search(r"vow-alloc-balance: (\d+) (\d+)", p.stderr)
+                m = re.search(r"pruv-alloc-balance: (\d+) (\d+)", p.stderr)
                 if not m:
-                    problems.append("no vow-alloc-balance line in stderr %r" % p.stderr[-150:])
+                    problems.append("no pruv-alloc-balance line in stderr %r" % p.stderr[-150:])
                 else:
                     a, fr = int(m.group(1)), int(m.group(2))
                     if a != fr or a <= 0:
@@ -262,7 +262,7 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
                 for fn_name, pats in (spec.get(field) or {}).items():
                     btxt = bodies.get(fn_name)
                     if btxt is None:
-                        problems.append("%s: no @%s__vow_body( definition" % (field, fn_name))
+                        problems.append("%s: no @%s__pruv_body( definition" % (field, fn_name))
                         continue
                     for s in pats:
                         if (s in btxt) != want:
@@ -325,7 +325,7 @@ def main():
             print(USAGE)
             return 2
     backends = ["rust", "llvm"] if backend == "both" else [backend]
-    WORK = tempfile.mkdtemp(prefix="vowtests_")
+    WORK = tempfile.mkdtemp(prefix="pruvtests_")
     passed = total = 0
     try:
         jobs = []

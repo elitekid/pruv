@@ -1,4 +1,4 @@
-"""Vow AST. Shared interface between parser, checker, verifier and codegen.
+"""Pruv AST. Shared interface between parser, checker, verifier and codegen.
 Python 3.9: no match statements, no `X | Y` type unions at runtime.
 Every node has `line` and `col` (1-based) of its first token.
 Checker fills `Expr.ty` with a Type after type checking."""
@@ -239,7 +239,7 @@ class Program:
     functions: List[Function] = field(default_factory=list)
     types: List[TypeDecl] = field(default_factory=list)
 
-class VowError(Exception):
+class PruvError(Exception):
     """Raise for any compile error. stage: parse|type|effect|verify|rustc."""
     def __init__(self, stage, line, col, code, message, fix="", counterexample=None):
         super().__init__(message)

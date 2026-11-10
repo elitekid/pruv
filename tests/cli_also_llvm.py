@@ -1,9 +1,9 @@
-"""Tests for the hidden `--also-llvm LL RS` option of vowc.
+"""Tests for the hidden `--also-llvm LL RS` option of pruvc.
 Run from the repo root: .venv/bin/python tests/cli_also_llvm.py
 
 a. accepted examples x {default, --no-verify, --trust-callers}: one --also-llvm run writes
    exactly what the separate rust run and llvm run write.
-b. must-reject programs (tests/must_reject/*.vow and examples/bad_index.vow): exit 1,
+b. must-reject programs (tests/must_reject/*.pruv and examples/bad_index.pruv): exit 1,
    no output file at all, same diagnostics as the plain run.
 c. usage errors exit 2 and write no output file.
 d. fuzz-shaped programs (generate.generate_case(56, i), i < 40) x {default, --no-verify}:
@@ -22,13 +22,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "bench", "fuzz"))
 import generate  # noqa: E402
-VOWC = os.path.join(ROOT, "vowc", "vowc.py")
+PRUVC = os.path.join(ROOT, "pruvc", "pruvc.py")
 MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 OK_LINE = json.dumps({"ok": True})
 
 
 def run(args):
-    return subprocess.run([sys.executable, VOWC] + args, capture_output=True, text=True, timeout=300)
+    return subprocess.run([sys.executable, PRUVC] + args, capture_output=True, text=True, timeout=300)
 
 
 def read(p):
@@ -100,10 +100,10 @@ def hash_name(f):
 def usage_case(args_fn, work, tag):
     d = os.path.join(work, "usage_" + tag)
     os.makedirs(d)
-    src = os.path.join(ROOT, "examples", "bad_index.vow")
-    cands = sorted(glob.glob(os.path.join(ROOT, "examples/*.vow")))
+    src = os.path.join(ROOT, "examples", "bad_index.pruv")
+    cands = sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv")))
     for c in cands:
-        if os.path.basename(c) != "bad_index.vow":
+        if os.path.basename(c) != "bad_index.pruv":
             src = c
             break
     r = run(args_fn(src, d))
@@ -121,7 +121,7 @@ def fuzz_case(i, mode, flags, work):
     d = os.path.join(work, "fuzz_%d_%s" % (i, mode))
     os.makedirs(d)
     P = lambda n: os.path.join(d, n)
-    src = P("p.vow")
+    src = P("p.pruv")
     with open(src, "w") as fh:
         fh.write(case["src"])
     r1 = run([src, "-o", P("a.rs")] + flags)
@@ -158,11 +158,11 @@ def main():
     work = tempfile.mkdtemp(prefix="cli_also_llvm_")
     jobs = []
     try:
-        examples = sorted(glob.glob(os.path.join(ROOT, "examples/*.vow")))
-        rejects = sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/*.vow")))
+        examples = sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv")))
+        rejects = sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/*.pruv")))
         for f in examples:
             base = os.path.basename(f)
-            if base == "bad_index.vow":
+            if base == "bad_index.pruv":
                 rejects.append(f)  # rejected example: handled as must-reject
                 continue
             for mode, flags in MODES:

@@ -1,4 +1,4 @@
-"""Vow -> Rust.  gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30)
+"""Pruv -> Rust.  gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30)
 
 Contracts are erased from function bodies; they are only used (a) by the verifier and
 (b) to build the runtime `requires` check of the public entry point.
@@ -7,40 +7,40 @@ Modes (two independent axes):
   verified=True   Output of a program the verifier proved: array accesses are
                   `get_unchecked` (unsafe), arithmetic is plain Rust.
   verified=False  (--no-verify, "safe mode") No proof exists, so nothing unsafe is emitted
-                  and nothing wraps silently: array reads/writes go through vow_get/vow_set
+                  and nothing wraps silently: array reads/writes go through pruv_get/pruv_set
                   (panic unless 0 <= i < len), + - * / % and unary - go through
-                  vow_add/vow_sub/vow_mul/vow_div/vow_rem/vow_neg (+ - * and unary -
+                  pruv_add/pruv_sub/pruv_mul/pruv_div/pruv_rem/pruv_neg (+ - * and unary -
                   are checked_*, panic on overflow), alloc(n, v) goes through
-                  vow_alloc (panic unless 0 <= n <= 2^40).  / and % use the same domain
+                  pruv_alloc (panic unless 0 <= n <= 2^40).  / and % use the same domain
                   the verifier proves (verify.py): divisor > 0 and dividend >= 0,
                   otherwise panic "division outside domain: ...".
   trust_callers=False (default)  Functions with `requires` are emitted twice; the public
                   entry checks every requires at run time and panics with
-                  "vow: requires violated: <fn>: <expr>" before running the body.
+                  "pruv: requires violated: <fn>: <expr>" before running the body.
   trust_callers=True  The public entry calls the body without checks (for benchmarking).
 
-Generated names (reserved: the parser rejects any user identifier that starts with `vow_`
+Generated names (reserved: the parser rejects any user identifier that starts with `pruv_`
 or contains `__`, error code reserved_name, so user names never collide with these):
-  f                 public function, same name/params/return type as the Vow function
+  f                 public function, same name/params/return type as the Pruv function
                     (`#[inline]` wrapper when f has requires, otherwise the real body).
-  f__vow_body       private unchecked body, only for functions with requires.
-                    Verified mode: calls inside Vow code go straight to f__vow_body
+  f__pruv_body       private unchecked body, only for functions with requires.
+                    Verified mode: calls inside Pruv code go straight to f__pruv_body
                     (the caller proved requires).  Safe mode: inner
                     calls go to the checked entry f.
-  vow_*             helper functions emitted once at the top of the file (only the ones
-                    needed): vow_idx vow_oob vow_get vow_set vow_ovf vow_add vow_sub
-                    vow_mul vow_div vow_rem vow_neg vow_alloc (safe mode) and
-                    vow_ud vow_cidx vow_cadd vow_csub vow_cmul vow_cneg vow_cdiv vow_crem
-                    (requires evaluation).  Local temporaries vow_* are also reserved.
+  pruv_*             helper functions emitted once at the top of the file (only the ones
+                    needed): pruv_idx pruv_oob pruv_get pruv_set pruv_ovf pruv_add pruv_sub
+                    pruv_mul pruv_div pruv_rem pruv_neg pruv_alloc (safe mode) and
+                    pruv_ud pruv_cidx pruv_cadd pruv_csub pruv_cmul pruv_cneg pruv_cdiv pruv_crem
+                    (requires evaluation).  Local temporaries pruv_* are also reserved.
 
 Run-time requires evaluation uses i128 (contracts are mathematical integers).  Contract
 / and % are Euclidean (div_euclid/rem_euclid, as z3 Int).  Anything undefined there
 (division by zero, index out of range, i128 overflow, max/min over an empty range,
-some_val of None, ...) panics with "vow: requires undefined: ...".
+some_val of None, ...) panics with "pruv: requires undefined: ...".
 
 G1 (structs/enums): user types are `Copy` and emitted by emit_public_types(prog) at the top of
-the file.  Contract evaluation uses mirror types `vow_contract__Name` (every i64 leaf is i128,
-Option/Result carry i128) and converters `vow_to_c__Name(value)` (recursive; an enum converts
+the file.  Contract evaluation uses mirror types `pruv_contract__Name` (every i64 leaf is i128,
+Option/Result carry i128) and converters `pruv_to_c__Name(value)` (recursive; an enum converts
 only its active variant), so contract arithmetic never goes through i64.
 Standard types are always written `::std::vec::Vec` / `::std::option::Option` /
 `::std::result::Result` so user types named Vec etc. cannot collide.
@@ -56,73 +56,73 @@ SAFE_PRELUDE = """\
 #[allow(dead_code)]
 #[cold]
 #[inline(never)]
-fn vow_oob(i: i64, len: usize) -> ! { panic!("vow: index out of bounds: {} (len {})", i, len) }
+fn pruv_oob(i: i64, len: usize) -> ! { panic!("pruv: index out of bounds: {} (len {})", i, len) }
 #[allow(dead_code)]
 #[cold]
 #[inline(never)]
-fn vow_ovf(what: &str) -> ! { panic!("vow: arithmetic error: {}", what) }
+fn pruv_ovf(what: &str) -> ! { panic!("pruv: arithmetic error: {}", what) }
 #[allow(dead_code)]
 #[inline]
-fn vow_idx(i: i64, len: usize) -> usize { if i >= 0 && (i as u64) < (len as u64) { i as usize } else { vow_oob(i, len) } }
+fn pruv_idx(i: i64, len: usize) -> usize { if i >= 0 && (i as u64) < (len as u64) { i as usize } else { pruv_oob(i, len) } }
 #[allow(dead_code)]
 #[inline]
-fn vow_get(a: &[i64], i: i64) -> i64 { a[vow_idx(i, a.len())] }
+fn pruv_get(a: &[i64], i: i64) -> i64 { a[pruv_idx(i, a.len())] }
 #[allow(dead_code)]
 #[inline]
-fn vow_set(a: &mut [i64], i: i64, v: i64) { let k = vow_idx(i, a.len()); a[k] = v; }
+fn pruv_set(a: &mut [i64], i: i64, v: i64) { let k = pruv_idx(i, a.len()); a[k] = v; }
 #[allow(dead_code)]
 #[inline]
-fn vow_add(a: i64, b: i64) -> i64 { match a.checked_add(b) { Some(v) => v, None => vow_ovf("overflow in +") } }
+fn pruv_add(a: i64, b: i64) -> i64 { match a.checked_add(b) { Some(v) => v, None => pruv_ovf("overflow in +") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_sub(a: i64, b: i64) -> i64 { match a.checked_sub(b) { Some(v) => v, None => vow_ovf("overflow in -") } }
+fn pruv_sub(a: i64, b: i64) -> i64 { match a.checked_sub(b) { Some(v) => v, None => pruv_ovf("overflow in -") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_mul(a: i64, b: i64) -> i64 { match a.checked_mul(b) { Some(v) => v, None => vow_ovf("overflow in *") } }
+fn pruv_mul(a: i64, b: i64) -> i64 { match a.checked_mul(b) { Some(v) => v, None => pruv_ovf("overflow in *") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_div(a: i64, b: i64) -> i64 { if b > 0 && a >= 0 { a / b } else { vow_ovf("division outside domain: need divisor > 0 and dividend >= 0") } }
+fn pruv_div(a: i64, b: i64) -> i64 { if b > 0 && a >= 0 { a / b } else { pruv_ovf("division outside domain: need divisor > 0 and dividend >= 0") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_rem(a: i64, b: i64) -> i64 { if b > 0 && a >= 0 { a % b } else { vow_ovf("division outside domain: need divisor > 0 and dividend >= 0") } }
+fn pruv_rem(a: i64, b: i64) -> i64 { if b > 0 && a >= 0 { a % b } else { pruv_ovf("division outside domain: need divisor > 0 and dividend >= 0") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_neg(a: i64) -> i64 { match a.checked_neg() { Some(v) => v, None => vow_ovf("overflow in unary -") } }
+fn pruv_neg(a: i64) -> i64 { match a.checked_neg() { Some(v) => v, None => pruv_ovf("overflow in unary -") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_alloc(n: i64, v: i64) -> ::std::vec::Vec<i64> { if n < 0 || n > (1i64 << 40) { vow_ovf("alloc length outside 0..2^40") } vec![v; n as usize] }
+fn pruv_alloc(n: i64, v: i64) -> ::std::vec::Vec<i64> { if n < 0 || n > (1i64 << 40) { pruv_ovf("alloc length outside 0..2^40") } vec![v; n as usize] }
 """
 
 CONTRACT_PRELUDE = """\
 #[allow(dead_code)]
 #[cold]
 #[inline(never)]
-fn vow_ud(what: &str) -> ! { panic!("vow: requires undefined: {}", what) }
+fn pruv_ud(what: &str) -> ! { panic!("pruv: requires undefined: {}", what) }
 #[allow(dead_code)]
 #[inline]
-fn vow_cidx(a: &[i64], i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a[i as usize] as i128 } else { vow_ud("array index out of range") } }
+fn pruv_cidx(a: &[i64], i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a[i as usize] as i128 } else { pruv_ud("array index out of range") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_cadd(a: i128, b: i128) -> i128 { a.checked_add(b).unwrap_or_else(|| vow_ud("i128 overflow in +")) }
+fn pruv_cadd(a: i128, b: i128) -> i128 { a.checked_add(b).unwrap_or_else(|| pruv_ud("i128 overflow in +")) }
 #[allow(dead_code)]
 #[inline]
-fn vow_csub(a: i128, b: i128) -> i128 { a.checked_sub(b).unwrap_or_else(|| vow_ud("i128 overflow in -")) }
+fn pruv_csub(a: i128, b: i128) -> i128 { a.checked_sub(b).unwrap_or_else(|| pruv_ud("i128 overflow in -")) }
 #[allow(dead_code)]
 #[inline]
-fn vow_cmul(a: i128, b: i128) -> i128 { a.checked_mul(b).unwrap_or_else(|| vow_ud("i128 overflow in *")) }
+fn pruv_cmul(a: i128, b: i128) -> i128 { a.checked_mul(b).unwrap_or_else(|| pruv_ud("i128 overflow in *")) }
 #[allow(dead_code)]
 #[inline]
-fn vow_cneg(a: i128) -> i128 { a.checked_neg().unwrap_or_else(|| vow_ud("i128 overflow in unary -")) }
+fn pruv_cneg(a: i128) -> i128 { a.checked_neg().unwrap_or_else(|| pruv_ud("i128 overflow in unary -")) }
 #[allow(dead_code)]
 #[inline]
-fn vow_cdiv(a: i128, b: i128) -> i128 { if b == 0 { vow_ud("division by zero in /") } a.checked_div_euclid(b).unwrap_or_else(|| vow_ud("i128 overflow in /")) }
+fn pruv_cdiv(a: i128, b: i128) -> i128 { if b == 0 { pruv_ud("division by zero in /") } a.checked_div_euclid(b).unwrap_or_else(|| pruv_ud("i128 overflow in /")) }
 #[allow(dead_code)]
 #[inline]
-fn vow_crem(a: i128, b: i128) -> i128 { if b == 0 { vow_ud("division by zero in %") } a.checked_rem_euclid(b).unwrap_or_else(|| vow_ud("i128 overflow in %")) }
+fn pruv_crem(a: i128, b: i128) -> i128 { if b == 0 { pruv_ud("division by zero in %") } a.checked_rem_euclid(b).unwrap_or_else(|| pruv_ud("i128 overflow in %")) }
 """
 
-SAFE_ARITH = {"+": "vow_add", "-": "vow_sub", "*": "vow_mul", "/": "vow_div", "%": "vow_rem"}
-CONTRACT_ARITH = {"+": "vow_cadd", "-": "vow_csub", "*": "vow_cmul", "/": "vow_cdiv", "%": "vow_crem"}
+SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div", "%": "pruv_rem"}
+CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
 
 
 def rty(t, param=False):
@@ -149,7 +149,7 @@ def cty(t):
     if n == "result":
         return "::std::result::Result<i128, i128>"
     if is_user_type(t):
-        return "vow_contract__" + n
+        return "pruv_contract__" + n
     raise Exception("codegen: type %r has no contract representation" % (t,))
 
 
@@ -165,7 +165,7 @@ def conv(t, x):
     if n == "result":
         return "%s.map(|v| v as i128).map_err(|v| v as i128)" % x
     if is_user_type(t):
-        return "vow_to_c__%s(%s)" % (n, x)
+        return "pruv_to_c__%s(%s)" % (n, x)
     raise Exception("codegen: type %r has no contract representation" % (t,))
 
 
@@ -299,11 +299,11 @@ class Gen:
                 s.out.append(ctypes)
 
     def contract_types(s):
-        """vow_contract__Name mirror types and vow_to_c__Name converters (only for requires evaluation)"""
+        """pruv_contract__Name mirror types and pruv_to_c__Name converters (only for requires evaluation)"""
         attrs = "#[allow(dead_code, non_camel_case_types, non_snake_case, unused_variables)]"
         out = []
         for d in s.table.order:
-            cn = "vow_contract__" + d.name
+            cn = "pruv_contract__" + d.name
             out.append(attrs)
             out.append("#[derive(Clone, Copy, PartialEq, Eq)]")
             if isinstance(d, StructDecl):
@@ -311,13 +311,13 @@ class Gen:
                 out.append(attrs)
                 out.append("#[inline]")
                 init = ", ".join("%s: %s" % (f.name, conv(f.type, "v." + f.name)) for f in d.fields)
-                out.append("fn vow_to_c__%s(v: %s) -> %s { %s { %s } }" % (d.name, d.name, cn, cn, init))
+                out.append("fn pruv_to_c__%s(v: %s) -> %s { %s { %s } }" % (d.name, d.name, cn, cn, init))
             else:
                 vs, arms = [], []
                 for v in d.variants:
                     if v.fields:
                         vs.append("%s(%s)" % (v.name, ", ".join(cty(f.type) for f in v.fields)))
-                        names = ["vow_a%d" % i for i in range(len(v.fields))]
+                        names = ["pruv_a%d" % i for i in range(len(v.fields))]
                         args = ", ".join(conv(f.type, n) for f, n in zip(v.fields, names))
                         arms.append("%s::%s(%s) => %s::%s(%s)," % (d.name, v.name, ", ".join(names), cn, v.name, args))
                     else:
@@ -326,14 +326,14 @@ class Gen:
                 out.append("enum %s { %s }" % (cn, ", ".join(vs)))
                 out.append(attrs)
                 out.append("#[inline]")
-                out.append("fn vow_to_c__%s(v: %s) -> %s { match v { %s } }" % (d.name, d.name, cn, " ".join(arms)))
+                out.append("fn pruv_to_c__%s(v: %s) -> %s { match v { %s } }" % (d.name, d.name, cn, " ".join(arms)))
         return "\n".join(out) + ("\n" if out else "")
 
     def fn(s, f):
         s.params = {p.name for p in f.params}
         ps = ", ".join("%s: %s" % (p.name, rty(p.type, True)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
-        body_name = f.name + "__vow_body" if f.requires else f.name
+        body_name = f.name + "__pruv_body" if f.requires else f.name
         s.emit(0, ALLOW)
         s.emit(0, "%sfn %s(%s)%s {" % ("" if f.requires else "pub ", body_name, ps, ret))
         s.block(f.body, 1)
@@ -351,7 +351,7 @@ class Gen:
             checks = []
             try:
                 for n, r in enumerate(f.requires, 1):
-                    msg = "vow: requires violated: %s: %s" % (f.name, show(r))
+                    msg = "pruv: requires violated: %s: %s" % (f.name, show(r))
                     code = s.c(r)
                     checks.append("if !(%s) { panic!(\"{}\", %s); }" % (code, rstr(msg)))
                 used = dict(s.cp)
@@ -359,9 +359,9 @@ class Gen:
                 s.cp = None
             for p in f.params:
                 if p.name in used:
-                    s.emit(1, "let vow_cp_%s: %s = %s;" % (p.name, cty(used[p.name]), conv(used[p.name], p.name)))
+                    s.emit(1, "let pruv_cp_%s: %s = %s;" % (p.name, cty(used[p.name]), conv(used[p.name], p.name)))
             if checks:
-                s.emit(1, "let mut vow_budget: i64 = %s;" % format(s.budget, "_"))
+                s.emit(1, "let mut pruv_budget: i64 = %s;" % format(s.budget, "_"))
             for line in checks:
                 s.emit(1, line)
         s.emit(1, "%s(%s)" % (body_name, ", ".join(p.name for p in f.params)))
@@ -385,14 +385,14 @@ class Gen:
             t = e.ty.name if e.ty is not None else "i64"
             if s.cp is not None and e.ty is not None and is_user_type(e.ty) and e.name in s.params:
                 s.cp[e.name] = e.ty
-                return "vow_cp_" + e.name
+                return "pruv_cp_" + e.name
             if t in ("i64", "option", "result") or is_user_type(e.ty):
                 return conv(e.ty if e.ty is not None else I64, e.name)
             return e.name
         if isinstance(e, Unary):
             if e.op == "!":
                 return "(!%s)" % s.c(e.operand)
-            return "vow_cneg(%s)" % s.c(e.operand)
+            return "pruv_cneg(%s)" % s.c(e.operand)
         if isinstance(e, Binary):
             op = e.op
             if op == "==>":
@@ -401,7 +401,7 @@ class Gen:
                 return "%s(%s, %s)" % (CONTRACT_ARITH[op], s.c(e.left), s.c(e.right))
             return "(%s %s %s)" % (s.c(e.left), op, s.c(e.right))
         if isinstance(e, Index):
-            return "vow_cidx(%s, %s)" % (s.carr(e.array), s.c(e.index))
+            return "pruv_cidx(%s, %s)" % (s.carr(e.array), s.c(e.index))
         if isinstance(e, Ctor):
             if e.name == "None":
                 return "None::<i128>"
@@ -414,25 +414,25 @@ class Gen:
             inits = {f.name: f.value for f in e.fields}
             fs = s.table.fields(Type(e.name))
             body = ", ".join("%s: %s" % (f.name, s.c(inits[f.name])) for f in fs)
-            return "(vow_contract__%s { %s })" % (e.name, body) if fs else "(vow_contract__%s {})" % e.name
+            return "(pruv_contract__%s { %s })" % (e.name, body) if fs else "(pruv_contract__%s {})" % e.name
         if isinstance(e, EnumCtor):
-            ctor = "vow_contract__%s::%s" % (e.enum_name, e.variant)
+            ctor = "pruv_contract__%s::%s" % (e.enum_name, e.variant)
             if not e.args:
                 return ctor
             return "%s(%s)" % (ctor, ", ".join(s.c(a) for a in e.args))
         if isinstance(e, FieldAccess):
             return "%s.%s" % (s.c(e.base), e.field)
         if isinstance(e, IsVariant):
-            return "matches!(%s, vow_contract__%s::%s { .. })" % (s.c(e.value), e.enum_name, e.variant)
+            return "matches!(%s, pruv_contract__%s::%s { .. })" % (s.c(e.value), e.enum_name, e.variant)
         if isinstance(e, VariantField):
             s.tmp += 1
-            tmp = "vow_e%d" % s.tmp
-            cn = "vow_contract__%s" % e.enum_name
+            tmp = "pruv_e%d" % s.tmp
+            cn = "pruv_contract__%s" % e.enum_name
             vf = s.table.variant(Type(e.enum_name), e.variant)
             idx = s.table.field_index(Type(e.enum_name), e.field, e.variant)
-            pats = ", ".join("vow_f" if i == idx else "_" for i in range(len(vf.fields)))
+            pats = ", ".join("pruv_f" if i == idx else "_" for i in range(len(vf.fields)))
             msg = "variant_field expected %s::%s.%s" % (e.enum_name, e.variant, e.field)
-            return "({ let %s: %s = %s; match %s { %s::%s(%s) => vow_f, _ => vow_ud(%s) } })" % (
+            return "({ let %s: %s = %s; match %s { %s::%s(%s) => pruv_f, _ => pruv_ud(%s) } })" % (
                 tmp, cn, s.c(e.value), tmp, cn, e.variant, pats, rstr(msg))
         if isinstance(e, Call):
             n, a = e.name, e.args
@@ -441,22 +441,22 @@ class Gen:
             if n == "is_some":
                 return "%s.is_some()" % s.c(a[0])
             if n == "some_val":
-                return '%s.unwrap_or_else(|| vow_ud("some_val of None"))' % s.c(a[0])
+                return '%s.unwrap_or_else(|| pruv_ud("some_val of None"))' % s.c(a[0])
             if n == "is_ok":
                 return "%s.is_ok()" % s.c(a[0])
             if n == "ok_val":
-                return '%s.ok().unwrap_or_else(|| vow_ud("ok_val of Err"))' % s.c(a[0])
+                return '%s.ok().unwrap_or_else(|| pruv_ud("ok_val of Err"))' % s.c(a[0])
             if n == "err_val":
-                return '%s.err().unwrap_or_else(|| vow_ud("err_val of Ok"))' % s.c(a[0])
+                return '%s.err().unwrap_or_else(|| pruv_ud("err_val of Ok"))' % s.c(a[0])
         raise Exception("codegen: unsupported expression in requires: %r" % e)
 
     def cquant(s, e):
         arr = match_sorted_requires(e)
         if arr is not None:
-            # O(n) equivalent (docs/M0_CONTRACTS.md C): forall vow_sk in 1..len(a): a[vow_sk-1] <= a[vow_sk]
+            # O(n) equivalent (docs/M0_CONTRACTS.md C): forall pruv_sk in 1..len(a): a[pruv_sk-1] <= a[pruv_sk]
             L = dict(line=e.line, col=e.col)
-            kv = Var(name="vow_sk", **L)
-            e = Quant(kind="forall", var="vow_sk", lo=IntLit(value=1, **L), hi=e.hi,
+            kv = Var(name="pruv_sk", **L)
+            e = Quant(kind="forall", var="pruv_sk", lo=IntLit(value=1, **L), hi=e.hi,
                       body=Binary(op="<=", left=Index(array=Var(name=arr, **L),
                                                        index=Binary(op="-", left=kv, right=IntLit(value=1, **L), **L), **L),
                                   right=Index(array=Var(name=arr, **L), index=kv, **L), **L), **L)
@@ -466,9 +466,9 @@ class Gen:
         s.bound.append(e.var)
         body = s.c(e.body)
         s.bound.pop()
-        k, r, h = "vow_k%d" % n, "vow_r%d" % n, "vow_hi%d" % n
-        head = "{ let vow_lo%d: i128 = %s; let %s: i128 = %s; let mut %s: i128 = vow_lo%d; " % (n, lo, h, hi, k, n)
-        loop = ("while %s < %s { vow_budget -= 1; if vow_budget < 0 { vow_ud(\"contract iteration budget exceeded\"); } "
+        k, r, h = "pruv_k%d" % n, "pruv_r%d" % n, "pruv_hi%d" % n
+        head = "{ let pruv_lo%d: i128 = %s; let %s: i128 = %s; let mut %s: i128 = pruv_lo%d; " % (n, lo, h, hi, k, n)
+        loop = ("while %s < %s { pruv_budget -= 1; if pruv_budget < 0 { pruv_ud(\"contract iteration budget exceeded\"); } "
                 "let %s: i128 = %s; ") % (k, h, e.var, k)
         tail = "%s += 1; } " % k
         kind = e.kind
@@ -477,14 +477,14 @@ class Gen:
         if kind == "exists":
             return head + "let mut %s = false; " % r + loop + "if %s { %s = true; break; } " % (body, r) + tail + r + " }"
         if kind == "sum":
-            return head + "let mut %s: i128 = 0; " % r + loop + "%s = vow_cadd(%s, %s); " % (r, r, body) + tail + r + " }"
+            return head + "let mut %s: i128 = 0; " % r + loop + "%s = pruv_cadd(%s, %s); " % (r, r, body) + tail + r + " }"
         if kind == "count":
             return head + "let mut %s: i128 = 0; " % r + loop + "if %s { %s += 1; } " % (body, r) + tail + r + " }"
         # max / min
         cmp = ">" if kind == "max" else "<"
-        return (head + "let mut %s: ::std::option::Option<i128> = None; " % r + loop + "let vow_v: i128 = %s; " % body +
-                "%s = Some(match %s { None => vow_v, Some(vow_a) => if vow_v %s vow_a { vow_v } else { vow_a } }); " % (r, r, cmp) +
-                tail + '%s.unwrap_or_else(|| vow_ud("%s over an empty range")) }' % (r, kind))
+        return (head + "let mut %s: ::std::option::Option<i128> = None; " % r + loop + "let pruv_v: i128 = %s; " % body +
+                "%s = Some(match %s { None => pruv_v, Some(pruv_a) => if pruv_v %s pruv_a { pruv_v } else { pruv_a } }); " % (r, r, cmp) +
+                tail + '%s.unwrap_or_else(|| pruv_ud("%s over an empty range")) }' % (r, kind))
 
     # ---------- statements / code expressions ----------
     def block(s, stmts, ind):
@@ -499,15 +499,15 @@ class Gen:
         elif isinstance(st, FieldAssign):
             # rhs is fully evaluated into a temporary before the store
             vty = st.value.ty
-            decl = "let vow_v: %s = " % rty(vty) if vty is not None else "let vow_v = "
-            s.emit(ind, "{ %s%s; %s.%s = vow_v; }" % (decl, s.e(st.value), st.name, ".".join(st.fields)))
+            decl = "let pruv_v: %s = " % rty(vty) if vty is not None else "let pruv_v = "
+            s.emit(ind, "{ %s%s; %s.%s = pruv_v; }" % (decl, s.e(st.value), st.name, ".".join(st.fields)))
         elif isinstance(st, IndexAssign):
             if s.verified:
-                s.emit(ind, "{ let vow_i: i64 = %s; let vow_x: i64 = %s; unsafe { *%s.get_unchecked_mut(vow_i as usize) = vow_x; } }" %
+                s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x; } }" %
                        (s.e(st.index), s.e(st.value), st.name))
             else:
                 # temporaries first: `&mut a` must not be live while index/value read `a`
-                s.emit(ind, "{ let vow_i: i64 = %s; let vow_x: i64 = %s; vow_set(&mut %s, vow_i, vow_x); }" %
+                s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; pruv_set(&mut %s, pruv_i, pruv_x); }" %
                        (s.e(st.index), s.e(st.value), st.name))
         elif isinstance(st, If):
             s.emit(ind, "if %s {" % s.e(st.cond))
@@ -555,7 +555,7 @@ class Gen:
             return e.name
         if isinstance(e, Unary):
             if not s.verified and e.op == "-":
-                return "vow_neg(%s)" % s.e(e.operand)
+                return "pruv_neg(%s)" % s.e(e.operand)
             return "(%s%s)" % (e.op, s.e(e.operand))
         if isinstance(e, Binary):
             if not s.verified and e.op in SAFE_ARITH:
@@ -563,7 +563,7 @@ class Gen:
             return "(%s %s %s)" % (s.e(e.left), e.op, s.e(e.right))
         if isinstance(e, Index):
             if not s.verified:
-                return "vow_get(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
+                return "pruv_get(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
             return "(unsafe { *%s.get_unchecked((%s) as usize) })" % (s.e(e.array), s.e(e.index))
         if isinstance(e, Ctor):
             return "None" if e.name == "None" else "%s(%s)" % (e.name, s.e(e.arg))
@@ -585,16 +585,16 @@ class Gen:
                 return "(%s.len() as i64)" % s.e(a[0])
             if n == "alloc":
                 if not s.verified:
-                    return "vow_alloc(%s, %s)" % (s.e(a[0]), s.e(a[1]))
+                    return "pruv_alloc(%s, %s)" % (s.e(a[0]), s.e(a[1]))
                 # source order: n before v (vec![v; n] would evaluate v first)
-                return "{ let vow_n: i64 = %s; let vow_v: i64 = %s; vec![vow_v; vow_n as usize] }" % (s.e(a[0]), s.e(a[1]))
+                return "{ let pruv_n: i64 = %s; let pruv_v: i64 = %s; vec![pruv_v; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]))
             if n == "copy":
                 return "%s.to_vec()" % s.e(a[0])
             if n == "print":
                 return 'println!("{}", %s)' % s.e(a[0])
             args = [s.arr_ref(x) if x.ty == ARRAY else s.e(x) for x in a]
             if s.verified and n in s.has_req:
-                n = n + "__vow_body"   # caller proved requires
+                n = n + "__pruv_body"   # caller proved requires
             return "%s(%s)" % (n, ", ".join(args))
         raise Exception("codegen: contract-only expression in code: %r" % e)
 

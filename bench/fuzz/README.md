@@ -1,10 +1,10 @@
-# Vow 컴파일러 차분 퍼징
+# Pruv 컴파일러 차분 퍼징
 
-무작위로 만든 Vow 프로그램을 컴파일러(`vowc/vowc.py`)와 독립 오라클(`oracle.py`)에 모두 돌려서 결과를 비교한다.
+무작위로 만든 Pruv 프로그램을 컴파일러(`pruvc/pruvc.py`)와 독립 오라클(`oracle.py`)에 모두 돌려서 결과를 비교한다.
 
 ## 검사하는 약속
 
-검증기가 받아들인 프로그램(vowc 기본 모드, exit 0)은 다음을 만족해야 한다.
+검증기가 받아들인 프로그램(pruvc 기본 모드, exit 0)은 다음을 만족해야 한다.
 
 - `requires`를 만족하는 모든 입력에서 범위 밖 인덱스, 오버플로, 나눗셈 정의역 위반이 없다.
 - `ensures`(그리고 invariant/assert/decreases)가 성립한다.
@@ -15,10 +15,10 @@
 검증된 프로그램은 입력마다 두 결과(`oracle_proof`, `oracle_safe`)를 계산하고, 거절된 프로그램은 안전 결과만 쓴다.
 (`results.json`의 `oracle`은 호환용으로 안전 결과.)
 
-- 오라클 결과(kind, 값, 출력, detail 접두어)가 같은 모드끼리는 (종료 코드, stdout, `vow: ...` 줄)이 정확히 같아야 한다.
+- 오라클 결과(kind, 값, 출력, detail 접두어)가 같은 모드끼리는 (종료 코드, stdout, `pruv: ...` 줄)이 정확히 같아야 한다.
   `rust-X == llvm-X`(X = proof, safe)는 항상 요구하고, proof == safe는 두 오라클 결과가 같을 때만 요구한다.
   안쪽 호출의 실행 requires가 i128 한계에 닿는 경우처럼 두 오라클 결과가 다르면 증명·안전 모드가 정당하게 달라질 수 있다.
-- 오라클이 ok면 exit 0, 기대 stdout, **빈** `vow:` 줄. 오라클이 오류면 exit 101, `vow:` 줄이 기대 접두어로 시작,
+- 오라클이 ok면 exit 0, 기대 stdout, **빈** `pruv:` 줄. 오라클이 오류면 exit 101, `pruv:` 줄이 기대 접두어로 시작,
   stdout은 오류 직전까지 오라클이 찍은 줄들(각 줄 + 개행, 없으면 빈 문자열)과 같아야 한다.
 - 오라클이 `limit`(단계 한도 초과)이면 비교하지 못한 것으로 `incomplete`에 센다 (실패도 통과도 아님).
 
@@ -38,20 +38,20 @@ python bench/fuzz/run.py [--seed 1] [--programs 100] [--inputs 8] [--max-candida
                          [--rejected-sample 30] [--jobs N] [--out bench/fuzz/out/<seed>] [--keep-work]
 python bench/fuzz/run.py --seed 32 --programs 600 --max-candidates 3000 --avoid-known fz01   # 보고한 결함 형태는 피함
 python bench/fuzz/run.py --replay bench/fuzz/out/1/failures/unsound_c1_17     # 저장된 사례 다시 실행
-python bench/fuzz/run.py --replay path/to/case.vow                             # 옆의 inputs.json 사용
-python bench/fuzz/generate.py --seed 1 --count 20 --out /tmp/vowgen            # 생성된 .vow만 확인
+python bench/fuzz/run.py --replay path/to/case.pruv                             # 옆의 inputs.json 사용
+python bench/fuzz/generate.py --seed 1 --count 20 --out /tmp/pruvgen            # 생성된 .pruv만 확인
 ```
 
-- 필요 도구: `rustc`, `clang`, 파이썬 3.9 (`.venv/bin/python`이 있으면 그것으로 vowc를 돌린다). 표준 라이브러리만 쓴다.
+- 필요 도구: `rustc`, `clang`, 파이썬 3.9 (`.venv/bin/python`이 있으면 그것으로 pruvc를 돌린다). 표준 라이브러리만 쓴다.
 - `runtime.c` 객체는 한 번만 만들어 재사용한다.
 - 종료 코드: 실패가 하나라도 있으면 1.
 
 ### 단계
 
 1. 후보 생성(index 0,1,2,...) 후 `oracle.parse_program`으로 파싱. 오라클이 지원하지 않으면 건너뛰고 센다.
-2. `vowc --no-verify`(타입 검사)와 기본 모드(검증)를 돌린다. 두 호출 모두 숨은 시험 옵션
+2. `pruvc --no-verify`(타입 검사)와 기본 모드(검증)를 돌린다. 두 호출 모두 숨은 시험 옵션
    `--also-llvm LL RS`로 같은 실행에서 LLVM 출력(`llvm-safe.ll`/`llvm-proof.ll`과 bindings)까지 만든다. 그래서 z3 검증은
-   프로그램마다 한 번만 돌고, 4단계는 vowc를 다시 부르지 않고 이 파일을 clang에 넘긴다. vowc는 검증이 실패하면 파일을 하나도
+   프로그램마다 한 번만 돌고, 4단계는 pruvc를 다시 부르지 않고 이 파일을 clang에 넘긴다. pruvc는 검증이 실패하면 파일을 하나도
    쓰지 않고, 하네스는 호출 전에 출력 경로를 지우며 `llvm-proof` 파일은 status가 `verified`일 때만 쓴다(아니면 `harness_error`).
    `--no-verify`가 exit 1이고 진단 JSON의 stage가
    parse/type/effect뿐이면 `generator_invalid`. 그 밖의 종료 코드(음수=신호/크래시, 2=사용법, 3=내부 오류 등)나
@@ -61,7 +61,7 @@ python bench/fuzz/generate.py --seed 1 --count 20 --out /tmp/vowgen            #
    (실패도 기록). `--programs`를 넘는 통과 프로그램은 빌드하지 않는다. 통과가 모자라면 경고를 찍고 `programs_short`.
 3. 프로그램마다 입력 300개를 뽑아 `check_requires`로 나누고, `--inputs`의 3/4를 만족 입력, 나머지를 위반/미정의 입력으로 고른다 (모자라면 있는 것으로 채움).
 4. (프로그램, 모드)마다 바이너리 1개를 만든다. 생성된 `main`이 `argv[1]`로 입력 번호를 받는다.
-5. 바이너리를 입력마다 1번 실행한다 (제한 10초). (종료 코드, stdout, 첫 `vow: ` 줄)을 기록한다.
+5. 바이너리를 입력마다 1번 실행한다 (제한 10초). (종료 코드, stdout, 첫 `pruv: ` 줄)을 기록한다.
 6. 검사하고 실패를 저장한다.
 7. `summary.json`과 짧은 요약을 쓴다. 작업 폴더는 `--keep-work`가 없으면 지운다.
 
@@ -73,10 +73,10 @@ OUT/summary.json                  후보 수, 생성기 오류, 검증 통과, �
                                   no_sat_inputs({count, names 처음 20개}: requires 만족 입력이 하나도 없는 프로그램),
                                   programs_short(검증 통과가 --programs보다 적으면 true)
 OUT/failures/<kind>_<case>/       실패한 사례마다
-    case.vow                      프로그램
+    case.pruv                     프로그램
     inputs.json                   인자 목록들
-    results.json                  모드·입력별 (exit, stdout, vow 줄)과 오라클 결과, 실패 상세
-    vowc_output.txt               vowc 출력 (--no-verify, 검증)
+    results.json                  모드·입력별 (exit, stdout, pruv 줄)과 오라클 결과, 실패 상세
+    pruvc_output.txt              pruvc 출력 (--no-verify, 검증)
 OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 10개
 ```
 
@@ -84,21 +84,21 @@ OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 1
 
 | kind | 뜻 |
 |---|---|
-| `mode_mismatch` | 기대 오라클 결과가 같은 모드들(또는 rust-X/llvm-X)이 (종료 코드, stdout, `vow:` 줄)에서 서로 다르다 |
-| `oracle_mismatch` | 모드별 오라클과 다르다: ok면 exit 0 + 기대 stdout + 빈 `vow:` 줄, 오류면 exit 101 + `expected_stderr_prefix`로 시작하는 줄 + 오류 직전 출력과 같은 stdout (`limit`은 `incomplete`로 셈) |
+| `mode_mismatch` | 기대 오라클 결과가 같은 모드들(또는 rust-X/llvm-X)이 (종료 코드, stdout, `pruv:` 줄)에서 서로 다르다 |
+| `oracle_mismatch` | 모드별 오라클과 다르다: ok면 exit 0 + 기대 stdout + 빈 `pruv:` 줄, 오류면 exit 101 + `expected_stderr_prefix`로 시작하는 줄 + 오류 직전 출력과 같은 stdout (`limit`은 `incomplete`로 셈) |
 | `unsound` | 검증됨 + 입력이 requires 만족인데 `oracle_proof`가 오류(oob/overflow/div_domain/내부 requires)를 내거나 `contract_failures`(ensures·invariant·assert·decreases, `call_requires ...` 포함)가 있다. `limit` 결과도 먼저 검사한다 |
-| `internal_error` | vowc 종료 코드가 0/1이 아님(3, 음수=신호, 2=사용법 등), `--no-verify` exit 1인데 진단 stage가 parse/type/effect가 아님, 또는 검증기 오류 JSON의 stage가 `internal`. LLVM 생성기 오류도 1~2단계의 vowc 호출에서 나므로 여기로 온다(상세에 `rust+llvm`과 vowc 출력 끝부분) |
+| `internal_error` | pruvc 종료 코드가 0/1이 아님(3, 음수=신호, 2=사용법 등), `--no-verify` exit 1인데 진단 stage가 parse/type/effect가 아님, 또는 검증기 오류 JSON의 stage가 `internal`. LLVM 생성기 오류도 1~2단계의 pruvc 호출에서 나므로 여기로 온다(상세에 `rust+llvm`과 pruvc 출력 끝부분) |
 | `build_error` | 검증기(또는 `--no-verify`)가 받아들였는데 clang/rustc가 실패 |
-| `timeout` | vowc가 120초 안에 끝나지 않음 |
+| `timeout` | pruvc가 120초 안에 끝나지 않음 |
 | `run_timeout` | 바이너리가 10초 안에 끝나지 않음 (오라클이 `limit`이면 `incomplete`로 셈) |
 | `oracle_error` | 오라클이 예외를 던짐 (오라클 버그 의심) |
 | `harness_error` | 이 도구 자체의 예외 |
 
 ## 오라클 독립성
 
-`oracle.py`는 자체 파서와 해석기를 가지며 `vowc`에서 아무것도 import하지 않는다.
+`oracle.py`는 자체 파서와 해석기를 가지며 `pruvc`에서 아무것도 import하지 않는다.
 그래서 컴파일러와 같은 버그를 공유하지 않는다. 오라클은 Rust `println!("{}")` 형식으로 값을 찍고,
-`vow: ...` 메시지의 접두어를 알려 준다. 오라클 자체가 틀렸을 수 있으므로 `oracle_mismatch`는 먼저 오라클을 의심해 본다.
+`pruv: ...` 메시지의 접두어를 알려 준다. 오라클 자체가 틀렸을 수 있으므로 `oracle_mismatch`는 먼저 오라클을 의심해 본다.
 
 ## 생성기 재료 (`generate.py`)
 
@@ -125,11 +125,11 @@ OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 1
 - 배열 길이는 최대 8, 값 범위는 경계 근처로 치우쳐 있어 큰 배열이나 `2^30` 반복 예산 같은 자원 한계는 건드리지 못한다.
 - 오라클의 `limit`(단계 한도 초과)은 비교하지 않고 `incomplete`로만 센다 (단, `limit` 결과의 `contract_failures`는 `unsound` 검사에 쓴다).
   `limit` 모드끼리는 기대 결과가 같다고 보지 않으므로 proof == safe 도 요구하지 않는다(rust-X == llvm-X 는 요구).
-- `vow: ` 줄은 stderr의 첫 번째 `vow: `로 시작하는 줄만 본다.
+- `pruv: ` 줄은 stderr의 첫 번째 `pruv: `로 시작하는 줄만 본다.
 
 ## 찾은 실패
 
-- **fz01 — 인덱스 대입 평가 순서** (`tests/runtime/fz01_index_assign_order.{vow,rs,json}`).
+- **fz01 — 인덱스 대입 평가 순서** (`tests/runtime/fz01_index_assign_order.{pruv,rs,json}`).
   `b[i] = v`에서 증명 모드는 값(`v`)을 먼저, 안전 모드는 인덱스(`i`)를 먼저 평가해 부수 효과·실패 순서가 다르다.
   상태: **고침**(RESULTS.md 10절: 모든 모드에서 소스 순서, 같은 종류의 `alloc(n, v)` fz04도 함께, `r34_eval_order`로 고정).
   아래는 찾을 때의 원인 기록이다. `codegen.py`의 `IndexAssign` 검증된 가지가
@@ -145,9 +145,9 @@ OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 1
 ## 실패를 회귀 테스트로 만들기
 
 1. `--replay OUT/failures/<kind>_<case>`로 재현하고, 가능하면 프로그램을 줄인다.
-2. 검증기가 받아들이면 안 되는 프로그램(`unsound` 중 검증이 틀린 경우): `tests/must_reject/<이름>.vow`와
+2. 검증기가 받아들이면 안 되는 프로그램(`unsound` 중 검증이 틀린 경우): `tests/must_reject/<이름>.pruv`와
    `tests/must_reject/<이름>.json`(`{"stage": "verify", "code": "<기대 오류 코드>"}`)을 만든다. 기존 파일 형식을 따른다.
-3. 실행 시간 동작(모드 불일치, 메시지, 종료 코드): `tests/runtime/<이름>.vow`, 입력 하나를 부르는 `tests/runtime/<이름>.rs`
+3. 실행 시간 동작(모드 불일치, 메시지, 종료 코드): `tests/runtime/<이름>.pruv`, 입력 하나를 부르는 `tests/runtime/<이름>.rs`
    (`fn main() { ... println!("{}", sol::f(...)); }`), 기대를 적은 `tests/runtime/<이름>.json`
    (예: `{"flags": [], "exit": 101, "stdout_contains": null, "stderr_contains": "requires violated"}`)을 만든다.
    `--no-verify` 동작이면 `"flags": ["--no-verify"]`, 여러 입력은 여러 테스트로 나눈다.
@@ -171,7 +171,7 @@ OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 1
 | 54 | 4판, f 경계 구조체 70% | 808 | 1,466 | 6,610 | 25,960 | 145초 (43 / 39 / 63) | 0 |
 | 56 | 4판, 감사 반영(requires 비교·tap) | 805 | 1,526 | 6,550 | 25,720 | 154초 (46 / 44 / 64) | 0 |
 
-- vowc 한 번 호출로 Rust·LLVM 출력을 함께 만든 뒤(`--also-llvm`, RESULTS.md 12절) 같은 시드 56을 바꾸기 전·후로 두 쌍 쟀다.
+- pruvc 한 번 호출로 Rust·LLVM 출력을 함께 만든 뒤(`--also-llvm`, RESULTS.md 12절) 같은 시드 56을 바꾸기 전·후로 두 쌍 쟀다.
   결과는 같고(실패 0, 통과 808, 입력 6,550, 프로세스 실행 25,720, 입력 결과 분포 같음) CPU 시간(user+sys)이
   805→645초, 876→671초로 줄었다. 벽시계는 다른 작업 부하로 흔들려(같은 코드의 실행 단계가 81~138초) 232→200초, 291→264초.
   후보 수 1,519/1,520 차이는 스트리밍 제출이 멈추는 시점의 꼬리(거절 후보 1개)이고 빌드 대상은 같다.

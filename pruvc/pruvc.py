@@ -1,6 +1,6 @@
-"""vowc: Vow compiler CLI.
+"""pruvc: Pruv compiler CLI.
 
-  python vowc/vowc.py in.vow -o OUT [--no-verify] [--trust-callers]
+  python pruvc/pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers]
                       [--backend rust|llvm] [--rust-bindings PATH]
 
 --no-verify      skip the proof; emit safe code (checked indexing/arithmetic)
@@ -21,7 +21,7 @@
 
 Language errors: JSON lines on stdout, exit 1.  Success: {"ok": true}, exit 0.
 Usage errors: usage text, exit 2.
-Internal compiler errors (any non-VowError exception): one JSON line with
+Internal compiler errors (any non-PruvError exception): one JSON line with
 stage "internal", code "internal_error" on stdout, exit 3.
 """
 import argparse
@@ -30,12 +30,12 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from vast import VowError  # noqa: E402
+from vast import PruvError  # noqa: E402
 from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust  # noqa: E402
 
-USAGE = ("usage: vowc.py in.vow -o OUT [--no-verify] [--trust-callers] "
+USAGE = ("usage: pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers] "
          "[--backend rust|llvm] [--rust-bindings PATH]")
 
 
@@ -86,12 +86,12 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
 class _Parser(argparse.ArgumentParser):
     def error(self, message):
         print(USAGE)
-        print("vowc.py: error: " + message, file=sys.stderr)
+        print("pruvc.py: error: " + message, file=sys.stderr)
         sys.exit(2)
 
 
 def main(argv):
-    ap = _Parser(prog="vowc.py", usage=USAGE, add_help=False)
+    ap = _Parser(prog="pruvc.py", usage=USAGE, add_help=False)
     ap.add_argument("input")
     ap.add_argument("-o", dest="out", required=True)
     ap.add_argument("--no-verify", action="store_true")
@@ -122,7 +122,7 @@ def main(argv):
     try:
         errs = compile_file(a.input, a.out, not a.no_verify, a.trust_callers, a.backend, bindings,
                           a.budget, tuple(a.also_llvm) if a.also_llvm else None)
-    except VowError as e:
+    except PruvError as e:
         errs = [e]
     except Exception as e:  # compiler-internal failure, not a language error
         print(json.dumps({"stage": "internal", "line": 0, "col": 0,

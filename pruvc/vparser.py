@@ -1,11 +1,11 @@
-"""Vow lexer + recursive-descent parser -> vast.Program"""
+"""Pruv lexer + recursive-descent parser -> vast.Program"""
 import re
 from vast import *
 
 KEYWORDS = {"fn", "let", "mut", "if", "else", "while", "return", "match", "true", "false",
             "invariant", "decreases", "requires", "ensures", "assert", "forall", "exists",
             "in", "Some", "None", "Ok", "Err", "struct", "enum", "is_variant", "variant_field"}
-# Rust keywords that are not Vow keywords: user names go into the generated Rust unchanged.
+# Rust keywords that are not Pruv keywords: user names go into the generated Rust unchanged.
 RUST_KEYWORDS = {"as", "async", "await", "break", "const", "continue", "crate", "dyn", "enum", "extern", "for",
                  "impl", "loop", "mod", "move", "pub", "ref", "self", "Self", "static", "struct", "super",
                  "trait", "type", "unsafe", "use", "where", "abstract", "become", "box", "do", "final", "gen",
@@ -33,7 +33,7 @@ def lex(src):
     while pos < len(src):
         m = TOKEN_RE.match(src, pos)
         if not m:
-            raise VowError("parse", line, pos - lstart + 1, "bad_char",
+            raise PruvError("parse", line, pos - lstart + 1, "bad_char",
                            "unexpected character %r" % src[pos], "remove it")
         k = m.lastgroup
         v = m.group(k)
@@ -43,13 +43,13 @@ def lex(src):
             lstart = m.end()
         elif k == "int":
             if v.endswith("_"):
-                raise VowError("parse", line, col, "bad_int", "integer literal ends with _", "")
+                raise PruvError("parse", line, col, "bad_int", "integer literal ends with _", "")
             toks.append(Tok("int", int(v.replace("_", "")), line, col))
         elif k == "id":
-            if v not in KEYWORDS and (v.startswith("vow_") or "__" in v or v in RUST_KEYWORDS):
-                raise VowError("parse", line, col, "reserved_name",
+            if v not in KEYWORDS and (v.startswith("pruv_") or "__" in v or v in RUST_KEYWORDS):
+                raise PruvError("parse", line, col, "reserved_name",
                                "name %r is reserved for the compiler" % v,
-                               "rename it; names starting with vow_, containing __, `_` and Rust keywords are reserved")
+                               "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved")
             toks.append(Tok("kw" if v in KEYWORDS else "id", v, line, col))
         elif k == "op":
             toks.append(Tok("op", v, line, col))
@@ -78,7 +78,7 @@ class Parser:
 
     def err(s, msg, fix="", tok=None):
         t = tok or s.peek()
-        raise VowError("parse", t.line, t.col, "syntax", msg, fix)
+        raise PruvError("parse", t.line, t.col, "syntax", msg, fix)
 
     def expect(s, val):
         if not s.at(val):
@@ -106,7 +106,7 @@ class Parser:
         return p
 
     def unsupported(s, what, tok):
-        raise VowError("parse", tok.line, tok.col, "unsupported_type",
+        raise PruvError("parse", tok.line, tok.col, "unsupported_type",
                        "%s is not supported" % what,
                        "arrays hold i64 and Option/Result hold i64; user types can only be used directly")
 

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Vow 컴파일러 차분 퍼징 실행기 (표준 라이브러리만, Python 3.9).
+"""Pruv 컴파일러 차분 퍼징 실행기 (표준 라이브러리만, Python 3.9).
 
     python bench/fuzz/run.py [--seed 1] [--programs 100] [--inputs 8] [--max-candidates 400]
                              [--rejected-sample 30] [--jobs N] [--batch 25] [--out DIR] [--keep-work]
-    python bench/fuzz/run.py --replay DIR_OR_VOWFILE
+    python bench/fuzz/run.py --replay DIR_OR_PRUVFILE
 
-약속: 검증기가 받아들인 프로그램(vowc 기본 모드 exit 0)은 requires를 만족하는 모든 입력에서
+약속: 검증기가 받아들인 프로그램(pruvc 기본 모드 exit 0)은 requires를 만족하는 모든 입력에서
 범위 밖 인덱스/오버플로 없이 ensures가 성립하고 출력이 오라클과 같다. 모드마다 자기 오라클과 비교한다
 (증명 모드는 mode="proof", 안전 모드는 mode="safe"). 기대 결과가 같은 모드끼리는 stdout, 종료 코드,
-`vow: ...` 줄이 정확히 같고, rust-X == llvm-X 는 항상 같다. 증명·안전 모드는 안쪽 호출의 실행 requires가
+`pruv: ...` 줄이 정확히 같고, rust-X == llvm-X 는 항상 같다. 증명·안전 모드는 안쪽 호출의 실행 requires가
 i128 한계에 닿을 때처럼 오라클 결과가 다르면 정당하게 달라질 수 있다.
 검증된 프로그램의 실행 requires 검사는 정의역 밖(`requires undefined`)에 닿지 않는다(i128 한계만 예외).
 
 빌드: macOS는 새 실행 파일의 첫 실행마다 약 0.33초를 직렬로 쓰므로, 프로그램 --batch개를 한 실행
-파일(백엔드마다 1개, 증명·안전 모듈을 함께)에 묶는다. LLVM 모듈은 `vow_abi_` 기호에 고유 접두사를
-붙인 사본으로 링크하고 `vow_host_*`의 #[no_mangle]은 첫 모듈에만 둔다.
+파일(백엔드마다 1개, 증명·안전 모듈을 함께)에 묶는다. LLVM 모듈은 `pruv_abi_` 기호에 고유 접두사를
+붙인 사본으로 링크하고 `pruv_host_*`의 #[no_mangle]은 첫 모듈에만 둔다.
 """
 import argparse
 import concurrent.futures as cf
@@ -42,8 +42,8 @@ VENV_PY = os.path.join(ROOT, ".venv/bin/python")
 PY = VENV_PY if os.path.exists(VENV_PY) else sys.executable
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 CLANG = shutil.which("clang") or "/usr/bin/clang"
-VOWC = os.path.join(ROOT, "vowc/vowc.py")
-RUNTIME_C = os.path.join(ROOT, "vowc/runtime.c")
+PRUVC = os.path.join(ROOT, "pruvc/pruvc.py")
+RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 
 I64_MIN = -(1 << 63)
 TIMEOUT_RC = -999
@@ -84,7 +84,7 @@ def write(path, text):
 
 def build_runtime(work):
     rt_o = os.path.join(work, "runtime.o")
-    rc, so, se = run_cmd([CLANG, "-O2", CPU_FLAG, "-std=c11", "-DVOW_RUST_ALLOCATOR",
+    rc, so, se = run_cmd([CLANG, "-O2", CPU_FLAG, "-std=c11", "-DPRUV_RUST_ALLOCATOR",
                           "-c", RUNTIME_C, "-o", rt_o], 300)
     if rc != 0:
         raise RuntimeError("clang (runtime.c) 실패: " + se[-400:])
@@ -128,7 +128,7 @@ def rust_option_result(ty, v):
 
 def rust_value(mod, v):
     """값 dict 를 Rust 식으로(재귀). 구조체/열거형 경로는 `<mod>::` 접두어(Rust·LLVM 모두 생성 모듈 최상단에
-    pub 타입이 있다: vowc/codegen.py emit_public_types, llvmgen 도 같은 함수를 쓴다)."""
+    pub 타입이 있다: pruvc/codegen.py emit_public_types, llvmgen 도 같은 함수를 쓴다)."""
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, int):
@@ -206,9 +206,9 @@ def phase_a(case, work):
     d = os.path.join(work, case["name"])
     os.makedirs(d, exist_ok=True)
     rec["dir"] = d
-    vow = os.path.join(d, "case.vow")
-    write(vow, case["src"])
-    rec["vow"] = vow
+    pruv = os.path.join(d, "case.pruv")
+    write(pruv, case["src"])
+    rec["pruv"] = pruv
     try:
         rec["prog"] = oracle.parse_program(case["src"])
     except oracle.OracleUnsupported as e:
@@ -219,7 +219,7 @@ def phase_a(case, work):
         return rec
     rec["nv_rs"] = os.path.join(d, "rust_safe_gen.rs")
     rec["ver_rs"] = os.path.join(d, "rust_proof_gen.rs")
-    # vowc 한 번 호출이 Rust 출력과 LLVM 출력(.ll + bindings)을 함께 만든다 (--also-llvm).
+    # pruvc 한 번 호출이 Rust 출력과 LLVM 출력(.ll + bindings)을 함께 만든다 (--also-llvm).
     # 재사용된 작업 폴더의 옛 파일을 집어 쓰지 않도록 호출 전에 출력 경로를 먼저 지운다.
     llvm_paths = {}
     for lname in ("llvm-safe", "llvm-proof"):
@@ -233,18 +233,18 @@ def phase_a(case, work):
 
     sll, srs = llvm_paths["llvm-safe"]
     clear_outputs([rec["nv_rs"], sll, srs])
-    rc, so, se = run_cmd([PY, VOWC, vow, "-o", rec["nv_rs"], "--no-verify", "--also-llvm", sll, srs], 120)
+    rc, so, se = run_cmd([PY, PRUVC, pruv, "-o", rec["nv_rs"], "--no-verify", "--also-llvm", sll, srs], 120)
     if rc == 0:
         rec["llvm_files"]["llvm-safe"] = (sll, srs)
     rec["logs"]["no-verify"] = "exit %d\n%s%s" % (rc, so, se)
     if rc == TIMEOUT_RC:
         rec["status"] = "failed"
-        rec["failures"].append({"kind": "timeout", "detail": "vowc --no-verify (rust+llvm) exit %d: %s"
+        rec["failures"].append({"kind": "timeout", "detail": "pruvc --no-verify (rust+llvm) exit %d: %s"
                                                           % (rc, (so + se).strip()[-400:])})
         return rec
     if rc not in (0, 1):  # 음수(신호/크래시), 2(사용법), 3(내부 오류) 등은 모두 실패
         rec["status"] = "failed"
-        rec["failures"].append({"kind": "internal_error", "detail": "vowc --no-verify (rust+llvm) exit %d: %s"
+        rec["failures"].append({"kind": "internal_error", "detail": "pruvc --no-verify (rust+llvm) exit %d: %s"
                                                           % (rc, (so + se).strip()[-400:])})
         return rec
     if rc == 1:
@@ -255,12 +255,12 @@ def phase_a(case, work):
         else:
             rec["status"] = "failed"
             rec["failures"].append({"kind": "internal_error",
-                                    "detail": "vowc --no-verify exit 1, 진단 stage=%s"
+                                    "detail": "pruvc --no-verify exit 1, 진단 stage=%s"
                                               % (sorted(str(s) for s in stages) or "없음")})
         return rec
     pll, prs = llvm_paths["llvm-proof"]
     clear_outputs([rec["ver_rs"], pll, prs])
-    rc, so, se = run_cmd([PY, VOWC, vow, "-o", rec["ver_rs"], "--also-llvm", pll, prs], 120)
+    rc, so, se = run_cmd([PY, PRUVC, pruv, "-o", rec["ver_rs"], "--also-llvm", pll, prs], 120)
     rec["logs"]["verify"] = "exit %d\n%s%s" % (rc, so, se)
     if rc == 0:
         rec["status"] = "verified"
@@ -274,7 +274,7 @@ def phase_a(case, work):
     else:
         rec["status"] = "failed"
         rec["failures"].append({"kind": "timeout" if rc == TIMEOUT_RC else "internal_error",
-                                "detail": "vowc (verify, rust+llvm) exit %d: %s"
+                                "detail": "pruvc (verify, rust+llvm) exit %d: %s"
                                           % (rc, (so + se).strip()[-400:])})
     return rec
 
@@ -351,8 +351,8 @@ NO_MANGLE_RE = re.compile(r"^[ \t]*#\[no_mangle\][ \t]*\n", re.M)
 
 
 def prep_llvm(rec, mode, rt_o):
-    """phase_a 가 vowc --also-llvm 로 만든 .ll/bindings(rec['llvm_files'][name])를 읽어
-    심볼을 고유하게 바꾼 .ll 사본 -> clang .o. vowc 는 여기서 부르지 않는다.
+    """phase_a 가 pruvc --also-llvm 로 만든 .ll/bindings(rec['llvm_files'][name])를 읽어
+    심볼을 고유하게 바꾼 .ll 사본 -> clang .o. pruvc 는 여기서 부르지 않는다.
     -> (art 또는 None, 실패 종류 또는 None, 오류 문장 또는 None). 원본 .ll/.rs는 rec['dir']에 그대로 둔다.
     건전성: proof 모드 산출물은 rec['status'] == 'verified' 일 때만 쓴다."""
     name, backend, safe = mode
@@ -369,15 +369,15 @@ def prep_llvm(rec, mode, rt_o):
         ll_text = fh.read()
     with open(gen) as fh:
         rs_text = fh.read()
-    n_ll = ll_text.count("@vow_abi_")
-    n_rs = rs_text.count("vow_abi_")
+    n_ll = ll_text.count("@pruv_abi_")
+    n_rs = rs_text.count("pruv_abi_")
     if n_ll < 1 or n_rs < 1:
-        return None, "harness_error", ("%s: 심볼 재작성 대상 없음 (.ll @vow_abi_ %d개, bindings vow_abi_ %d개)"
+        return None, "harness_error", ("%s: 심볼 재작성 대상 없음 (.ll @pruv_abi_ %d개, bindings pruv_abi_ %d개)"
                                        % (name, n_ll, n_rs))
     rw_ll = os.path.join(d, name + "_rw.ll")
-    write(rw_ll, ll_text.replace("@vow_abi_", "@vow_abi_%s_" % tag))
-    rs_new = rs_text.replace("vow_abi_", "vow_abi_%s_" % tag)
-    if rs_new.count("vow_abi_%s_" % tag) != n_rs:
+    write(rw_ll, ll_text.replace("@pruv_abi_", "@pruv_abi_%s_" % tag))
+    rs_new = rs_text.replace("pruv_abi_", "pruv_abi_%s_" % tag)
+    if rs_new.count("pruv_abi_%s_" % tag) != n_rs:
         return None, "harness_error", "%s: bindings 재작성 개수 불일치" % name
     gen_o = os.path.join(d, name + "_gen.o")
     rc, so, se = run_cmd([CLANG, "-O2", CPU_FLAG, "-Wno-override-module", "-c", rw_ll, "-o", gen_o], 300)
@@ -425,7 +425,7 @@ def build_binary(recs, backend, label, work, rt_o, only_mode=None):
             else:
                 modname = "p%d_l%s" % (rec["idx"], "safe" if safe else "proof")
                 gen = os.path.join(rec["dir"], "%s_%s_bind.rs" % (name, label))
-                # vow_host_* 의 #[no_mangle]은 바이너리의 첫 LLVM 모듈에만 둔다
+                # pruv_host_* 의 #[no_mangle]은 바이너리의 첫 LLVM 모듈에만 둔다
                 write(gen, art["rs"] if not entries else NO_MANGLE_RE.sub("", art["rs"]))
                 links.append(art["o"])
             entries.append((rec, name, modname, os.path.abspath(gen)))
@@ -509,12 +509,12 @@ def build_all(progs, args, work, rt_o):
 
 def run_one(exe, rid):
     rc, so, se = run_cmd([exe, str(rid)], 10)
-    vow_line = ""
+    pruv_line = ""
     for line in se.splitlines():
-        if line.startswith("vow: "):
-            vow_line = line
+        if line.startswith("pruv: "):
+            pruv_line = line
             break
-    return {"exit": rc, "stdout": so, "vow": vow_line}
+    return {"exit": rc, "stdout": so, "pruv": pruv_line}
 
 
 def run_all(progs, jobs):
@@ -537,7 +537,7 @@ def run_all(progs, jobs):
                 rec["runs"][name][k] = f.result()
             except Exception:
                 rec["failures"].append({"kind": "harness_error", "detail": traceback.format_exc()[-1500:]})
-                rec["runs"][name][k] = {"exit": -998, "stdout": "", "vow": ""}
+                rec["runs"][name][k] = {"exit": -998, "stdout": "", "pruv": ""}
             done += 1
             if done % 500 == 0:
                 print("[실행] %d/%d" % (done, len(tasks)), flush=True)
@@ -584,7 +584,7 @@ def check(rec):
     for k, args in enumerate(rec["inputs"]):
         runs = {m: rec["runs"][m][k] for m in modes}
         orc = {m: mode_oracle(rec, m, k) for m in modes}
-        sigs = {m: (runs[m]["exit"], runs[m]["stdout"], runs[m]["vow"]) for m in modes}
+        sigs = {m: (runs[m]["exit"], runs[m]["stdout"], runs[m]["pruv"]) for m in modes}
         # 1) 건전성: limit 건너뛰기보다 먼저 (limit 결과도 contract_failures를 가질 수 있다)
         if verified:
             op = (rec.get("oracle_proof") or rec["oracle"])[k]
@@ -641,19 +641,19 @@ def check(rec):
                 continue
             if okind == "ok":
                 want = expected_stdout(o)
-                if run["exit"] != 0 or run["stdout"] != want or run["vow"] != "":
+                if run["exit"] != 0 or run["stdout"] != want or run["pruv"] != "":
                     fails.append({"kind": "oracle_mismatch", "input": k, "mode": m,
-                                  "detail": "oracle ok %r; got exit %d stdout %r vow %r"
-                                            % (want, run["exit"], run["stdout"], run["vow"])})
+                                  "detail": "oracle ok %r; got exit %d stdout %r pruv %r"
+                                            % (want, run["exit"], run["stdout"], run["pruv"])})
             elif okind in FAULT_KINDS:
                 pre = oracle.expected_stderr_prefix(o)
                 want = fault_stdout(o)
-                if run["exit"] != 101 or (pre is not None and not run["vow"].startswith(pre)) \
+                if run["exit"] != 101 or (pre is not None and not run["pruv"].startswith(pre)) \
                         or run["stdout"] != want:
                     fails.append({"kind": "oracle_mismatch", "input": k, "mode": m,
-                                  "detail": "oracle %s (%s) -> want exit 101 + %r + stdout %r; got exit %d stdout %r vow %r"
+                                  "detail": "oracle %s (%s) -> want exit 101 + %r + stdout %r; got exit %d stdout %r pruv %r"
                                             % (okind, o.get("detail"), pre, want, run["exit"],
-                                               run["stdout"], run["vow"])})
+                                               run["stdout"], run["pruv"])})
     rec["incomplete"] = incomplete
     return fails
 
@@ -678,13 +678,13 @@ def rec_results(rec):
 def save_failure(out_dir, rec, kind, items):
     d = os.path.join(out_dir, "failures", "%s_%s" % (kind, rec["name"]))
     os.makedirs(d, exist_ok=True)
-    write(os.path.join(d, "case.vow"), rec["src"])
+    write(os.path.join(d, "case.pruv"), rec["src"])
     write(os.path.join(d, "inputs.json"), json.dumps(rec.get("inputs", []), indent=1))
     write(os.path.join(d, "results.json"), json.dumps(
         {"name": rec["name"], "status": rec["status"], "params": rec["params"], "ret": rec["ret"],
          "failures": items, "build_errors": rec.get("build_errors", {}), "inputs": rec_results(rec)},
         indent=1, default=str))
-    write(os.path.join(d, "vowc_output.txt"),
+    write(os.path.join(d, "pruvc_output.txt"),
           "".join("== %s ==\n%s\n" % (k, v) for k, v in rec["logs"].items()))
     # 이 프로그램 자신의 (재작성하지 않은) 생성 파일
     try:
@@ -709,7 +709,7 @@ def print_table(rec):
         cells = []
         for m in modes:
             r = rec["runs"][m][k]
-            cells.append("%s/%s" % (r["exit"], (r["stdout"].strip() or r["vow"])[:40]))
+            cells.append("%s/%s" % (r["exit"], (r["stdout"].strip() or r["pruv"])[:40]))
         print("  %-3d %-34s %-28s %s" % (k, "%s (%s)" % (short(args, 26), rec["req"][k]), osum[:28], " | ".join(cells)))
 
 
@@ -726,29 +726,29 @@ def guard(fn, rec, *a):
 
 def replay(path, args):
     if os.path.isdir(path):
-        vow = os.path.join(path, "case.vow")
-        if not os.path.exists(vow):
-            cand = sorted(f for f in os.listdir(path) if f.endswith(".vow"))
+        pruv = os.path.join(path, "case.pruv")
+        if not os.path.exists(pruv):
+            cand = sorted(f for f in os.listdir(path) if f.endswith(".pruv"))
             if not cand:
-                print(".vow 파일이 없습니다: " + path)
+                print(".pruv 파일이 없습니다: " + path)
                 return 2
-            vow = os.path.join(path, cand[0])
+            pruv = os.path.join(path, cand[0])
     else:
-        vow = path
-    base = os.path.dirname(os.path.abspath(vow))
+        pruv = path
+    base = os.path.dirname(os.path.abspath(pruv))
     inp = os.path.join(base, "inputs.json")
     if not os.path.exists(inp):
-        alt = os.path.splitext(vow)[0] + ".inputs.json"
+        alt = os.path.splitext(pruv)[0] + ".inputs.json"
         inp = alt if os.path.exists(alt) else None
     if inp is None:
         print("inputs.json을 찾지 못했습니다: " + base)
         return 2
-    src = open(vow).read()
+    src = open(pruv).read()
     inputs = json.load(open(inp))
     params, ret = signature_from_src(src)
-    case = {"name": "replay_" + os.path.splitext(os.path.basename(vow))[0], "src": src, "entry": "f",
+    case = {"name": "replay_" + os.path.splitext(os.path.basename(pruv))[0], "src": src, "entry": "f",
             "params": params, "ret": ret, "input_hints": {}}
-    work = tempfile.mkdtemp(prefix="vowfuzz_replay_")
+    work = tempfile.mkdtemp(prefix="pruvfuzz_replay_")
     try:
         rt_o = build_runtime(work)
         rec = phase_a(case, work)
@@ -779,7 +779,7 @@ def replay(path, args):
 # ---------------------------------------------------------------- 본 실행
 
 def main():
-    ap = argparse.ArgumentParser(description="Vow 차분 퍼징")
+    ap = argparse.ArgumentParser(description="Pruv 차분 퍼징")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--programs", type=int, default=100)
     ap.add_argument("--inputs", type=int, default=8)
@@ -798,7 +798,7 @@ def main():
         return replay(args.replay, args)
     out_dir = args.out or os.path.join(HERE, "out", str(args.seed))
     os.makedirs(out_dir, exist_ok=True)
-    work = tempfile.mkdtemp(prefix="vowfuzz_")
+    work = tempfile.mkdtemp(prefix="pruvfuzz_")
     t0 = time.time()
     counts = {"candidates": 0, "generator_invalid": 0, "oracle_unsupported": 0, "oracle_parse_error": 0,
               "verified": 0, "rejected": 0, "rejected_built": 0, "failed_in_phase_a": 0}
@@ -834,7 +834,7 @@ def main():
                     invalid_saved += 1
                     gd = os.path.join(out_dir, "generator_invalid")
                     os.makedirs(gd, exist_ok=True)
-                    write(os.path.join(gd, rec["name"] + ".vow"), rec["src"])
+                    write(os.path.join(gd, rec["name"] + ".pruv"), rec["src"])
                     write(os.path.join(gd, rec["name"] + ".txt"), rec["logs"].get("no-verify", ""))
             elif st == "failed":
                 counts["failed_in_phase_a"] += 1
@@ -881,7 +881,7 @@ def main():
         sample = rejected_all[:args.rejected_sample]
         counts["rejected_built"] = len(sample)
         progs = verified + sample
-        # --- 3~4단계 (입력 선택 + clang 준비, 이어서 배치 빌드; vowc 는 phase_a 에서 이미 끝남)
+        # --- 3~4단계 (입력 선택 + clang 준비, 이어서 배치 빌드; pruvc 는 phase_a 에서 이미 끝남)
         for i, r in enumerate(progs):
             r["idx"] = i
         done = 0

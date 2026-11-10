@@ -1,1 +1,1 @@
-{"flags": ["--no-verify"], "exit": 101, "stdout_lines": [], "stderr_contains": "vow: requires violated"}
+{"flags": ["--no-verify"], "exit": 101, "stdout_lines": [], "stderr_contains": "pruv: requires violated"}

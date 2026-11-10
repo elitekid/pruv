@@ -1,4 +1,4 @@
-"""Vow type / effect / structure checker. Fills Expr.ty."""
+"""Pruv type / effect / structure checker. Fills Expr.ty."""
 import re
 from vast import *
 from typeinfo import TypeTable, type_name, is_user_type
@@ -11,7 +11,7 @@ FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
 
 
 def terr(node, code, msg, fix="", stage="type"):
-    raise VowError(stage, node.line, node.col, code, msg, fix)
+    raise PruvError(stage, node.line, node.col, code, msg, fix)
 
 
 class Checker:

@@ -1,4 +1,4 @@
-// Trusted reference implementations for the G1 problems (same type names and shapes as the Vow declarations,
+// Trusted reference implementations for the G1 problems (same type names and shapes as the Pruv declarations,
 // so Debug output of results is comparable with the generated `sol` module).
 #![allow(dead_code)]
 

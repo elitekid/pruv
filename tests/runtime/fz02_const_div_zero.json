@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": [], "stderr_contains": "vow: requires violated: f: (x < 0)"}
+{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": [], "stderr_contains": "pruv: requires violated: f: (x < 0)"}

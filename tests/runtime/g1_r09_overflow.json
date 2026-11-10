@@ -1,1 +1,1 @@
-{"flags_matrix": [["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 101, "stdout_lines": [], "stderr_contains": "vow: arithmetic error: overflow in +"}
+{"flags_matrix": [["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 101, "stdout_lines": [], "stderr_contains": "pruv: arithmetic error: overflow in +"}

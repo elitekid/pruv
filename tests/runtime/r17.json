@@ -1,1 +1,1 @@
-{"flags": ["--no-verify"], "exit": 101, "stderr_contains": "vow: index out of bounds"}
+{"flags": ["--no-verify"], "exit": 101, "stderr_contains": "pruv: index out of bounds"}

@@ -1,12 +1,12 @@
-"""Benchmark harness.  python run.py <solutions_dir> <out.json> [--vow]
---vow: compile pNN.vow with vowc first (vow errors -> status vow_error)."""
+"""Benchmark harness.  python run.py <solutions_dir> <out.json> [--pruv]
+--pruv: compile pNN.pruv with pruvc first (pruv errors -> status pruv_error)."""
 import json, os, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 PY = os.path.join(ROOT, ".venv/bin/python")
-VOWC = os.path.join(ROOT, "vowc/vowc.py")
+PRUVC = os.path.join(ROOT, "pruvc/pruvc.py")
 
 E = "1_000_000_000"
 # name: (fn, gen(rng, n) -> tuple expr, call template with F, perf body with F (uses input t))
@@ -108,8 +108,8 @@ def build_llvm_objects(llvm_path, stem, workdir):
                        capture_output=True, text=True)
     if c.returncode != 0:
         return [], "clang (gen.ll): " + c.stderr[-1500:]
-    c = subprocess.run([CLANG, "-O2", cpu, "-std=c11", "-DVOW_RUST_ALLOCATOR", "-c",
-                        os.path.join(ROOT, "vowc/runtime.c"), "-o", rt_o],
+    c = subprocess.run([CLANG, "-O2", cpu, "-std=c11", "-DPRUV_RUST_ALLOCATOR", "-c",
+                        os.path.join(ROOT, "pruvc/runtime.c"), "-o", rt_o],
                        capture_output=True, text=True)
     if c.returncode != 0:
         return [], "clang (runtime.c): " + c.stderr[-1500:]
@@ -165,42 +165,42 @@ def build_and_run(sol_path, pid, workdir, noperf=False, llvm_path=None):
 
 def main():
     sdir, outp = os.path.abspath(sys.argv[1]), sys.argv[2]
-    vow = "--vow" in sys.argv
+    pruv = "--pruv" in sys.argv
     backend = "rust"
     if "--backend" in sys.argv:
         bi = sys.argv.index("--backend")
         backend = sys.argv[bi + 1] if bi + 1 < len(sys.argv) else ""
         if backend not in ("rust", "llvm"):
-            print("usage: run.py <solutions_dir> <out.json> [--vow] [--backend rust|llvm] [--no-verify] [--trust-callers] [pNN ...]")
+            print("usage: run.py <solutions_dir> <out.json> [--pruv] [--backend rust|llvm] [--no-verify] [--trust-callers] [pNN ...]")
             sys.exit(2)
-        if backend == "llvm" and not vow:
-            print("--backend llvm requires --vow")
+        if backend == "llvm" and not pruv:
+            print("--backend llvm requires --pruv")
             sys.exit(2)
     llvm = backend == "llvm"
     only = [a for a in sys.argv[3:] if a.startswith("p")]
     res = {}
-    work = tempfile.mkdtemp(prefix="vowbench_")
+    work = tempfile.mkdtemp(prefix="pruvbench_")
     for pid in sorted(P):
         if only and pid not in only:
             continue
-        src = os.path.join(sdir, pid + (".vow" if vow else ".rs"))
+        src = os.path.join(sdir, pid + (".pruv" if pruv else ".rs"))
         if not os.path.exists(src):
             res[pid] = {"status": "missing"}; continue
-        if vow:
+        if pruv:
             rs = os.path.join(work, pid + "_gen.rs")
             flags = [f for f in ("--no-verify", "--trust-callers") if f in sys.argv]
             ll = None
             if llvm:
                 ll = os.path.join(work, pid + "_gen.ll")
-                cmd = [PY, VOWC, src, "-o", ll, "--backend", "llvm", "--rust-bindings", rs] + flags
+                cmd = [PY, PRUVC, src, "-o", ll, "--backend", "llvm", "--rust-bindings", rs] + flags
             else:
-                cmd = [PY, VOWC, src, "-o", rs] + flags
+                cmd = [PY, PRUVC, src, "-o", rs] + flags
             c = subprocess.run(cmd, capture_output=True, text=True)
             if c.returncode != 0:
-                res[pid] = {"status": "vow_error", "vow_errors": [json.loads(l) for l in c.stdout.splitlines() if l.startswith("{")]}
+                res[pid] = {"status": "pruv_error", "pruv_errors": [json.loads(l) for l in c.stdout.splitlines() if l.startswith("{")]}
                 continue
             src = rs
-        res[pid] = build_and_run(src, pid, work, llvm_path=ll if vow else None)
+        res[pid] = build_and_run(src, pid, work, llvm_path=ll if pruv else None)
     json.dump(res, open(outp, "w"), indent=1, ensure_ascii=False)
     print("%-4s %-13s %-9s %12s %12s" % ("id", "status", "tests", "sol_ms", "ref_ms"))
     for pid, r in res.items():

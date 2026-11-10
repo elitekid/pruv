@@ -1,6 +1,6 @@
-# Vow language spec v0.1
+# Pruv language spec v0.1
 
-Vow is a tiny language designed to be written by AI. Humans read only the contracts
+Pruv is a tiny language designed to be written by AI. Humans read only the contracts
 (`requires` / `ensures`). The compiler proves every function correct against its contracts
 with an SMT solver (z3), proves every array access in bounds and every arithmetic
 operation free of i64 overflow, then emits Rust with all those runtime checks removed.
@@ -13,10 +13,10 @@ signature; no null, no exceptions, no implicit conversions, no globals, no overl
 - Comments: `// ...` to end of line.
 - Identifiers: `[a-zA-Z_][a-zA-Z0-9_]*`. Integer literals: decimal digits, optional `_` separators (`1_000_000`).
 - Keywords: `fn let mut if else while return match true false invariant decreases requires ensures assert forall exists in result Some None Ok Err struct enum is_variant variant_field`.
-- Names starting with `vow_` or containing `__`, the name `_`, and Rust keywords (`type`, `loop`, `self`, `for`, ...) are reserved; the parser rejects them (`reserved_name`).
+- Names starting with `pruv_` or containing `__`, the name `_`, and Rust keywords (`type`, `loop`, `self`, `for`, ...) are reserved; the parser rejects them (`reserved_name`).
 
 ## 2. Types
-| Vow | meaning | Rust |
+| Pruv | meaning | Rust |
 |---|---|---|
 | `i64` | 64-bit signed int | `i64` |
 | `bool` | boolean | `bool` |
@@ -146,18 +146,18 @@ match e {                                  // statement; every variant exactly o
 3. `/ %`: divisor > 0, dividend >= 0. `alloc(n, v)`: 0 <= n <= 2^40.
 4. Callee `requires` at each call; `ensures` at each return; `assert`s.
 5. Loop invariants hold on entry and are preserved; `decreases` is >= 0 at each iteration start and strictly decreases.
-6. Array parameters have `0 <= len(a) <= 2^40` and elements in i64 range (assumed; guaranteed for Vow callers because every alloc is proven <= 2^40).
+6. Array parameters have `0 <= len(a) <= 2^40` and elements in i64 range (assumed; guaranteed for Pruv callers because every alloc is proven <= 2^40).
 Variables not assigned in a loop keep their values across it; assigned ones are only known through invariants.
 
 ### Run-time `requires` and modes
 A public function's `requires` are checked at run time, left to right with short-circuit evaluation; a violation
-panics with `vow: requires violated`. If evaluation reaches something outside the contract domain (index out of
+panics with `pruv: requires violated`. If evaluation reaches something outside the contract domain (index out of
 range, division by zero, `max`/`min` over an empty range, `some_val(None)`, `variant_field` of another variant, ...), it panics with
-`vow: requires undefined`. So write domain conditions first, e.g. `0 <= i && i < len(a) && a[i] > 0`.
+`pruv: requires undefined`. So write domain conditions first, e.g. `0 <= i && i < len(a) && a[i] > 0`.
 A verified program never reaches these (the verifier proves the contract domain), except two run-time resource limits
-that also panic with `vow: requires undefined`: contract arithmetic is evaluated in i128 (an intermediate value or
+that also panic with `pruv: requires undefined`: contract arithmetic is evaluated in i128 (an intermediate value or
 running sum beyond i128 stops the check), and one public call's `requires` checks share a budget of 2^30 quantifier and
-aggregate iterations (`vow: requires undefined: contract iteration budget exceeded`). Skipped short-circuit operands
+aggregate iterations (`pruv: requires undefined: contract iteration budget exceeded`). Skipped short-circuit operands
 and empty ranges cost nothing. These limits never make a false `requires` pass.
 Number-range quantifiers and aggregates iterate once per element of the range, so their cost is the range length,
 with one exception: the sortedness precondition `forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]` (or with

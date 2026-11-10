@@ -1,4 +1,4 @@
-"""Vow verifier: symbolic execution + z3. Proves bounds, overflow, contracts, loops."""
+"""Pruv verifier: symbolic execution + z3. Proves bounds, overflow, contracts, loops."""
 import z3
 from vast import *
 from typeinfo import TypeTable
@@ -62,7 +62,7 @@ class Model:
         return s.sorts[ty.name]
 
     def type_of(s, v):
-        """Vow Type of a z3 datatype value (Opt/Res/user), or None"""
+        """Pruv Type of a z3 datatype value (Opt/Res/user), or None"""
         try:
             return s.by_sort.get(v.sort().name())
         except Exception:
@@ -287,7 +287,7 @@ class FnVerifier:
             code2, msg = code, "cannot prove %s in %s" % (what, s.f.name)
         else:
             code2, msg = "verify_unknown", "solver gave up proving %s in %s (%s)" % (what, s.f.name, sol.reason_unknown())
-        s.errors.append(VowError("verify", node.line, node.col, code2, msg, FIX.get(code, ""), cex))
+        s.errors.append(PruvError("verify", node.line, node.col, code2, msg, FIX.get(code, ""), cex))
 
     def cex(s, m, st):
         out = {}
@@ -308,7 +308,7 @@ class FnVerifier:
         return out
 
     def fmt_val(s, v):
-        """z3 model value -> Vow syntax on one line (user struct/enum); unknown shapes keep z3's str()"""
+        """z3 model value -> Pruv syntax on one line (user struct/enum); unknown shapes keep z3's str()"""
         try:
             if z3.is_int_value(v):
                 return str(v.as_long())

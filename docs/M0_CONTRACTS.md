@@ -27,7 +27,7 @@
 
 ## B. 실행 requires 검사의 반복 예산
 - 정적 상한 의무는 넣지 않는다(증명 전용 계약에 불필요한 부담, 중첩 곱 비용은 막지 못함).
-- 공개 함수 진입 한 번의 모든 requires 검사가 반복 예산 2^30(1,073,741,824)회를 공유한다. forall/exists/집계 본문을 한 번 돌 때마다 1 줄이고, 다 쓰면 `vow: requires undefined: contract iteration budget exceeded`, 종료 코드 101. 진입마다 새 예산(지역 변수, 전역 상태 없음).
+- 공개 함수 진입 한 번의 모든 requires 검사가 반복 예산 2^30(1,073,741,824)회를 공유한다. forall/exists/집계 본문을 한 번 돌 때마다 1 줄이고, 다 쓰면 `pruv: requires undefined: contract iteration budget exceeded`, 종료 코드 101. 진입마다 새 예산(지역 변수, 전역 상태 없음).
 - 범위 길이를 따로 계산하지 않는다(i128 반복 변수는 hi 미만이라 넘치지 않음). 빈 범위·단락으로 건너뛴 식은 예산을 안 쓴다.
 - ensures·invariant·assert·decreases는 실행 코드가 없어 해당 없음.
 

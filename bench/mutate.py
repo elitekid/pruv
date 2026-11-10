@@ -1,5 +1,5 @@
-"""Mutation test: inject small bugs into code lines of Vow solutions.
-For each mutant: (1) does Vow's verifier reject it?  (2) does the same code, compiled to
+"""Mutation test: inject small bugs into code lines of Pruv solutions.
+For each mutant: (1) does Pruv's verifier reject it?  (2) does the same code, compiled to
 Rust without verification (what rustc alone would accept), fail the tests?"""
 import json, os, re, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -38,15 +38,15 @@ def mutants(text):
 def one(job):
     pid, ln, old, new, text = job
     d = tempfile.mkdtemp(prefix="mut_")
-    vp = os.path.join(d, pid + ".vow"); rs = os.path.join(d, pid + ".rs")
+    vp = os.path.join(d, pid + ".pruv"); rs = os.path.join(d, pid + ".rs")
     ll = os.path.join(d, pid + ".ll")
     open(vp, "w").write(text)
     be = ["-o", ll, "--backend", "llvm", "--rust-bindings", rs] if LLVM else ["-o", rs]
-    v = subprocess.run([H.PY, H.VOWC, vp] + be, capture_output=True, text=True)
+    v = subprocess.run([H.PY, H.PRUVC, vp] + be, capture_output=True, text=True)
     errs = [json.loads(l) for l in v.stdout.splitlines() if l.startswith("{")]
-    vow_ok = v.returncode == 0
-    stage = None if vow_ok else errs[0].get("stage", str(errs[0])) if errs else "crash"
-    n = subprocess.run([H.PY, H.VOWC, vp] + be + ["--no-verify"], capture_output=True, text=True)
+    pruv_ok = v.returncode == 0
+    stage = None if pruv_ok else errs[0].get("stage", str(errs[0])) if errs else "crash"
+    n = subprocess.run([H.PY, H.PRUVC, vp] + be + ["--no-verify"], capture_output=True, text=True)
     if n.returncode == 3:
         tests = "crash"
     elif n.returncode != 0:
@@ -54,19 +54,19 @@ def one(job):
     else:
         r = H.build_and_run(rs, pid, d, noperf=True, llvm_path=ll if LLVM else None)
         tests = "pass" if r["status"] == "ok" else r["status"]
-    vow_crash = (not vow_ok) and (stage in ("internal", "crash") or v.returncode == 3)
+    pruv_crash = (not pruv_ok) and (stage in ("internal", "crash") or v.returncode == 3)
     return {"pid": pid, "line": ln, "from": old, "to": new,
-            "vow": "accepted" if vow_ok else ("crash" if vow_crash else "rejected"),
-            "vow_stage": stage, "vow_code": (errs[0].get("code") if errs else ("crash:" + v.stderr.strip().splitlines()[-1][:150] if v.stderr.strip() else None)), "tests": tests,
+            "pruv": "accepted" if pruv_ok else ("crash" if pruv_crash else "rejected"),
+            "pruv_stage": stage, "pruv_code": (errs[0].get("code") if errs else ("crash:" + v.stderr.strip().splitlines()[-1][:150] if v.stderr.strip() else None)), "tests": tests,
             "first_failure": None}
 
 
 jobs = []
 for f in sorted(os.listdir(SRC)):
-    if f.endswith(".vow"):
+    if f.endswith(".pruv"):
         t = open(os.path.join(SRC, f)).read()
         for ln, old, new, mt in mutants(t):
-            jobs.append((f[:-4], ln, old, new, mt))
+            jobs.append((os.path.splitext(f)[0], ln, old, new, mt))
 print("mutants:", len(jobs), flush=True)
 with ThreadPoolExecutor(6) as ex:
     res = list(ex.map(one, jobs))

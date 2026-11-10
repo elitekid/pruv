@@ -1,6 +1,6 @@
-"""Independent reference interpreter for a subset of Vow (written from SPEC.md only).
+"""Independent reference interpreter for a subset of Pruv (written from SPEC.md only).
 
-Does NOT import anything from vowc/.  Python 3.9, stdlib only, unbounded ints.
+Does NOT import anything from pruvc/.  Python 3.9, stdlib only, unbounded ints.
 
 Supported subset (anything else -> OracleUnsupported):
   * top level: `fn`, `struct Name { f: T, ... }`, `enum Name { V, W(a: T, b: T), ... }` declarations
@@ -34,7 +34,7 @@ Semantics:
     of its block; assignment to an outer variable updates the outer binding.  (The real checker forbids
     shadowing; sibling-scope reuse of a name after a block ends is fine.)  a[i] = e evaluates the index first,
     then the value (source order) -- the oracle's CHOSEN semantics (the compiler's proof mode currently
-    evaluates the value first; see tests/runtime/fz01_index_assign_order.vow); oob is checked after both.
+    evaluates the value first; see tests/runtime/fz01_index_assign_order.pruv); oob is checked after both.
   MODES: run(..., mode="safe"|"proof", default "safe").  The TOP-LEVEL call always checks requires at run
     time (i128 limit) in both modes (checked public entry).  Inner calls from code: "safe" = same run-time
     check (fault on violated/undefined); "proof" (compiled program calls the unchecked body) = never fault:
@@ -1057,7 +1057,7 @@ class _Interp(object):
 # ---------------------------------------------------------------- public API
 def format_value(v):
     """Rust `{:?}` 출력과 같은 문자열: -5, true, [1, -2], [], Some(3), None, Ok(3), Err(-2), ().
-    구조체·열거형은 생성 Rust 의 #[derive(Debug)] 모양(vowc/codegen.py:177-191 의 `pub struct N { pub f: T }`,
+    구조체·열거형은 생성 Rust 의 #[derive(Debug)] 모양(pruvc/codegen.py:177-191 의 `pub struct N { pub f: T }`,
     `pub enum E { V(T, U), W }`): `Point { x: 1, y: -2 }`, 필드 없는 구조체 `Name`,
     열거형 `Empty` / `Hit(Point { x: 3, y: 4 }, true)` (페이로드는 필드 이름 없는 튜플 형식)."""
     if v is None:
@@ -1140,15 +1140,15 @@ def check_requires(prog, fn_name, args):
 def expected_stderr_prefix(result):
     k, d = result["kind"], result["detail"]
     if k == "requires_violated":
-        return "vow: requires violated: %s:" % d.split()[0]
+        return "pruv: requires violated: %s:" % d.split()[0]
     if k == "requires_undefined":
-        return "vow: requires undefined:"
+        return "pruv: requires undefined:"
     if k == "oob":
-        return "vow: index out of bounds:"
+        return "pruv: index out of bounds:"
     if k == "overflow":
-        return "vow: arithmetic error: alloc length" if d == "alloc" else "vow: arithmetic error: overflow in " + d
+        return "pruv: arithmetic error: alloc length" if d == "alloc" else "pruv: arithmetic error: overflow in " + d
     if k == "div_domain":
-        return "vow: arithmetic error: division outside domain"
+        return "pruv: arithmetic error: division outside domain"
     return None
 
 
@@ -1164,15 +1164,15 @@ def _selftest():
         with open(os.path.join(ex, name)) as f:
             return f.read()
 
-    r = go(load("sum.vow"), "sum", [[1, 2, 3]])
+    r = go(load("sum.pruv"), "sum", [[1, 2, 3]])
     assert r["kind"] == "ok" and r["value"] == 6 and not r["contract_failures"], r
-    assert go(load("sum.vow"), "sum", [[2_000_000_000]])["kind"] == "requires_violated"
-    pre = parse_program(load("prefix.vow"))
+    assert go(load("sum.pruv"), "sum", [[2_000_000_000]])["kind"] == "requires_violated"
+    pre = parse_program(load("prefix.pruv"))
     r = run(pre, "prefix", [[1, 2, 3]])
     assert r["value"] == [0, 1, 3, 6] and not r["contract_failures"], r
     r = run(pre, "main", [])
     assert r["output"] == ["21"], r
-    bs = parse_program(load("bsearch.vow"))
+    bs = parse_program(load("bsearch.pruv"))
     r = run(bs, "bsearch", [[1, 3, 5], 3])
     assert r["kind"] == "ok" and r["value"] == {"tag": "Some", "v": 1} and not r["contract_failures"], r
     r = run(bs, "bsearch", [[1, 3, 5], 4])
@@ -1191,7 +1191,7 @@ def _selftest():
         assert (r["kind"], r["detail"]) == ("overflow", d), r
     r = go("fn f(x: i64) -> i64 { return -x; }", "f", [I64_MIN])
     assert (r["kind"], r["detail"]) == ("overflow", "unary -"), r
-    assert expected_stderr_prefix(r) == "vow: arithmetic error: overflow in unary -"
+    assert expected_stderr_prefix(r) == "pruv: arithmetic error: overflow in unary -"
     r = go("fn f(n: i64) -> [i64] ! alloc { return alloc(n, 0); }", "f", [-1])
     assert (r["kind"], r["detail"]) == ("overflow", "alloc"), r
     assert go("fn f(x: i64, y: i64) -> i64 { return x + y; }", "f", [I64_MAX - 1, 1])["value"] == I64_MAX
@@ -1223,7 +1223,7 @@ def _selftest():
     assert check_requires(parse_program(bad), "f", [[1], 5]) == "undefined"
     assert check_requires(parse_program(good), "f", [[1], 0]) == "ok"
     r = go(good, "f", [[1], 5])
-    assert expected_stderr_prefix(r) == "vow: requires violated: f:"
+    assert expected_stderr_prefix(r) == "pruv: requires violated: f:"
 
     # forall / exists early stop
     fa = "fn f(a: [i64]) -> i64\n requires forall k in 0..5: a[k] > 0\n{ return 0; }"
@@ -1269,7 +1269,7 @@ def _selftest():
     r = go(src, "f", [1])
     assert r["kind"] == "requires_violated" and r["detail"].startswith("g "), r
     assert r["output"] == ["1", "true"], r
-    assert expected_stderr_prefix(r) == "vow: requires violated: g:"
+    assert expected_stderr_prefix(r) == "pruv: requires violated: g:"
     r = go("fn f() -> () { while true decreases 1 { } }", "f", [], max_steps=1000)
     assert r["kind"] == "limit" and expected_stderr_prefix(r) is None, r
     assert format_value([1, 2]) == "[1, 2]" and format_value(True) == "true" and format_value(-3) == "-3"
@@ -1364,7 +1364,7 @@ def _selftest_values(go):
            "fn h(o: Option<i64>) -> i64\n requires is_some(o) && some_val(o) > 0\n{ return 1; }\n")
     p = parse_program(src)
     r = run(p, "g", [NONE])
-    assert r["kind"] == "requires_undefined" and expected_stderr_prefix(r) == "vow: requires undefined:", r
+    assert r["kind"] == "requires_undefined" and expected_stderr_prefix(r) == "pruv: requires undefined:", r
     assert run(p, "g", [SOME(-1)])["kind"] == "requires_violated"
     assert run(p, "g", [SOME(4)])["value"] == 1
     assert run(p, "h", [NONE])["kind"] == "requires_violated"
@@ -1511,7 +1511,7 @@ def _selftest_values(go):
         except OracleUnsupported:
             pass
 
-    # 12) _cp 는 dict 도 깊게 복사하고, 지원하지 않는 구성은 OracleUnsupported, vowc 는 import 하지 않는다
+    # 12) _cp 는 dict 도 깊게 복사하고, 지원하지 않는 구성은 OracleUnsupported, pruvc 는 import 하지 않는다
     d = {"struct": "P", "fields": {"x": 1}}
     c = _cp(d)
     c["fields"]["x"] = 2
@@ -1524,7 +1524,7 @@ def _selftest_values(go):
             assert False, bad
         except (OracleUnsupported, OracleParseError):
             pass
-    assert not any(m == "vowc" or m.startswith("vowc.") for m in sys.modules)
+    assert not any(m == "pruvc" or m.startswith("pruvc.") for m in sys.modules)
 
 
 if __name__ == "__main__":

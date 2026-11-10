@@ -1,9 +1,12 @@
-# Vow 청사진
+# Pruv 청사진
 
 > AI가 코드를 쓰고, 사람은 약속(계약)만 읽고, 컴파일러가 그 코드가 약속을 지킨다고 증명한다.
 > 증명된 안전장치는 지워서 빠르게 돌린다.
 
 최종 갱신: 2026-11-10
+
+> **이름 결정(2026-11-10): 언어 이름은 Pruv**(읽기 /pruːv/ 프루브, prove의 소리 철자이자 에스페란토 어근 `pruv-` = 증명하다). 컴파일러 `pruvc`, 확장자 `.pruv`, 도메인 `pruvlang.org`(2027-11-10까지). "Vow"는 같은 성격의 언어(vow-lang: AI용 계약 검증 언어)가 이미 있어 바꿨다. 저장소 안 이름 바꾸기 끝남(2026-11-10, RESULTS 14절: 코드·생성 기호·실행 오류 접두사 `pruv:`까지 모두 바꿈, 지난 결과 기록만 옛 이름).
+> 확인한 것: 같은 이름의 프로그래밍 언어 없음, crates.io·npm 비어 있음, `pruv.org` 미등록, 기본 명령어 충돌 없음, 영어·주요 언어에서 나쁜 뜻 찾지 못함(perv와 동음 아님). 작은 겹침: PyPI `pruv`(검증 도구, 별 1·월 18 내려받기), 제약 첨가제 PRUV®, 크립토 서비스 pruv.finance. 약점: 말로는 prove와 같은 소리 → 소개할 때 철자를 함께 말한다.
 
 ## 1. 왜 만드나
 
@@ -31,13 +34,13 @@
 | 항목 | 내용 |
 |---|---|
 | 명세 | `SPEC.md`(약 7쪽): i64, bool, 배열, Option, Result, 구조체·열거형, 계약(집계 sum/count/max/min 포함), 효과 |
-| 컴파일러 | `vowc/`(Python): 파서 → 타입·효과 검사 → z3 검증 → Rust 생성(증명된 접근은 `get_unchecked`) |
+| 컴파일러 | `pruvc/`(Python): 파서 → 타입·효과 검사 → z3 검증 → Rust 생성(증명된 접근은 `get_unchecked`) |
 | 시험 장치 | `bench/`: 문제 10개, 참조 구현, 무작위 시험 300개, 성능 측정, 변이 시험 |
 | 회귀 시험 | `tests/run_all.py`: 거부 24개(`tests/must_reject/`), examples 세 모드, 런타임 23개(`tests/runtime/`) |
 | 실행 안전 | 공개 함수는 requires를 실행 중 검사(`--trust-callers`로 끔), `--no-verify`는 검사 있는 안전 모드 |
 
 ### 실험 결과 요약 (`RESULTS.md`)
-- 처음 보는 AI(Claude sonnet)가 명세만 읽고 Vow로 9/10을 첫 시도에 통과했고, JSON 오류 한 번으로 10/10이 됐다. Rust로는 첫 시도에 10/10이었다.
+- 처음 보는 AI(Claude sonnet)가 명세만 읽고 Pruv(당시 이름 Vow)로 9/10을 첫 시도에 통과했고, JSON 오류 한 번으로 10/10이 됐다. Rust로는 첫 시도에 10/10이었다.
 - 변이 시험: 테스트에서 틀린 버그 79개 중 73개(92%)를 컴파일 단계에서 잡았다. 놓친 6개는 모두 동작 계약이 없는 함수의 값 버그다.
 - 속도: 손으로 짠 Rust와 측정 오차 안에서 비슷하다.
 - 한계: 문제가 쉽다. 작업자 모델이 하나뿐이다. 변이 시험은 작성자 풀이에만 돌렸다.
@@ -54,7 +57,7 @@
 각 단계는 시험 숫자(첫 시도 통과율, 변이 잡는 비율, 속도)가 실제로 오를 때만 다음 단계로 넘어간다.
 
 ### 단기 목표: 독립 실행 (2026-11-10 정함, M1·M2 완료, 다음 M3)
-**목표:** `vowc` 실행 파일 하나로 `.vow` → 실행 파일. 사용자가 Python도 rustc도 깔 필요가 없다.
+**목표:** `pruvc` 실행 파일 하나로 `.pruv` → 실행 파일. 사용자가 Python도 rustc도 깔 필요가 없다.
 - 남는 의존(정직하게): z3·LLVM은 실행 파일 안에 넣는다(정적 링크, 파일이 커짐). 시스템 링커(macOS `ld`, Windows `link.exe`)는 Rust처럼 빌린다.
 - 이 목표의 가치는 배포와 속도 상한(증명 결과를 LLVM에 직접 넘김)이다. 우리 개발 속도를 올리는 일은 아니다 — 개발 속도는 0·1·3단계 도구가 올린다.
 
@@ -74,14 +77,14 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 - 시험 장치: `bench/harness/run.py`가 rustc를 직접 부른다 → 뒷단 선택 옵션(`--backend rust|llvm`)이 먼저 필요. 두 뒷단을 같은 시험으로 대조한다.
 
 **M1 첫 묶음(착수할 때)**
-1. 설계: Vow 값 → LLVM 타입(i64, i1, 배열 = {ptr, i64 len}, Option/Result = {i1/i64 태그, i64}), 호출 규약, 메모리(할당만 하고 해제는 함수 끝 — 지금 Rust `Vec`의 drop과 같은 의미 유지).
-2. 구현: `vowc/llvmgen.py`(새 파일, codegen.py는 그대로 둠), `vowc.py`에 `--backend` 옵션, 실행 지원 코드 `vowc/runtime.c` 또는 IR로 작성.
+1. 설계: Pruv 값 → LLVM 타입(i64, i1, 배열 = {ptr, i64 len}, Option/Result = {i1/i64 태그, i64}), 호출 규약, 메모리(할당만 하고 해제는 함수 끝 — 지금 Rust `Vec`의 drop과 같은 의미 유지).
+2. 구현: `pruvc/llvmgen.py`(새 파일, codegen.py는 그대로 둠), `pruvc.py`에 `--backend` 옵션, 실행 지원 코드 `pruvc/runtime.c` 또는 IR로 작성.
 3. 확인: examples·bench 10문제를 두 뒷단으로 돌려 출력 대조, 변이 시험, 속도 비교.
 4. 감사 1회 + 확인 1회. 결과를 RESULTS에 기록.
 - **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. p04는 Option·Result를 레지스터로 반환하게 바꾼 뒤 Rust판과 측정 오차 안이다(부하 높은 기계에서 잼, RESULTS 7절). **M1 완료.** 남은 일: Windows x64 ABI 하강은 M3에서. 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
 - **M2 결과(2026-11-10, RESULTS 8절):** 구조체·열거형(G1) 완료. 관문 5개 통과: SPEC 6a절, G1 거부 시험 36개, 회귀 250/250(두 뒷단)·변이 판정 M1과 같음, 감사 필수 0, 독립 AI 첫 시도 4/5→고친 뒤 5/5. 설계 `docs/M2_G1_SPEC.md`. **M2 완료.**
 - **M3 첫 묶음(2026-11-10, RESULTS 13절):** 설계 확정 `docs/M3_C4_SPEC.md`(설계 논쟁 반영). Rust + z3 0.22 vendored(z3 5.3.3, Python판과 같음) + llvm-sys 221 force-static, 시스템 링커 빌림. 시제품으로 z3·LLVM 정적 링크와 IR→객체→링크→실행을 이 맥에서 확인(393초·105MB, Homebrew zstd 의존은 배포 LLVM 직접 빌드로 뗌). **다음: 0A~0D**(Python 비결정 순회 정렬·기준 스냅샷 / z3 실의무 시제품과 SMT-LIB 대조 / Python .ll을 LLVM 라이브러리로 객체화해 시험 장치의 clang 의존 떼기 / Windows ABI 표본) → 검토 뒤 파서부터 이식.
-- 정함(2026-11-10): 실행 지원 코드는 C(`vowc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
+- 정함(2026-11-10): 실행 지원 코드는 C(`pruvc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
 
 ### 0단계: 검증기 신뢰 (진행 중)
 - 독립 감사, 고친 뒤 확인 감사, 거부 회귀 시험을 한다.
@@ -161,7 +164,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 | C3 (선택) | 개발용 빠른 빌드에 Cranelift | 컴파일 속도. 최적화는 약하니 배포용은 LLVM |
 | C4 (단기 목표 M3, G1 뒤) | 컴파일러 자체를 Python에서 Rust 등으로 재작성 | 파일 하나로 배포, 큰 코드에서 컴파일 속도 |
 - 기계어 생성·최적화(LLVM급 뒷단)는 직접 만들지 않는다. 수백만 줄과 20년 넘는 실측의 결과라 따라잡을 수 없고, 목표("Rust만큼 빠르게")와도 어긋난다.
-- 셀프 호스팅(Vow로 Vow 컴파일러 작성)은 후순위 시험대로만 둔다. 검증기 신뢰는 올리지 않는다(z3를 그대로 믿어야 함).
+- 셀프 호스팅(Pruv로 Pruv 컴파일러 작성)은 후순위 시험대로만 둔다. 검증기 신뢰는 올리지 않는다(z3를 그대로 믿어야 함).
 
 ## 5. 보급 전략
 
@@ -176,7 +179,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 - 모든 성질을 자동으로 증명하는 건 원리적으로 불가능하다. 3단계로 실용적으로 메운다.
 - 장점끼리 충돌한다(증명 강도와 컴파일 속도, 기능 수와 단순함). 기능은 시험 숫자를 올릴 때만 넣는다.
 - 생태계(라이브러리, 도구, 에디터 지원)는 몇 년짜리 일이다. AI로 코드 작성은 빨라지지만, 검증기 건전성 확인과 실제 사용자가 쌓이는 시간은 줄지 않는다.
-- 경쟁자: Dafny와 Verus에 AI를 붙이는 연구, Lean과 AI 증명기, Mojo.
+- 경쟁자: Dafny와 Verus에 AI를 붙이는 연구, Lean과 AI 증명기, Mojo. 같은 생각("AI용·계약 먼저·검증")의 신생 언어도 있다(2026-11-10 이름 조사에서 확인): Vow(vow-lang, ESBMC로 계약 검증·에이전트용 JSON 진단), Verum(verum-lang.org, 계약·SMT·LLVM), Prove(prove-lang.org, intent-first, 2026-04 시작). 모두 아직 작다.
 
 ## 7. 작업 규칙
 
@@ -191,14 +194,14 @@ ai-first-lang/
   BLUEPRINT.md        이 문서
   SPEC.md             언어 명세
   RESULTS.md          실험 결과
-  vowc/               컴파일러 (vowc.py, vparser.py, check.py, verify.py, codegen.py, vast.py,
+  pruvc/              컴파일러 (pruvc.py, vparser.py, check.py, verify.py, codegen.py, vast.py,
                       llvmgen.py = LLVM IR 뒷단, runtime.c = LLVM판 실행 지원)
   examples/           예제
   tests/run_all.py    회귀 시험 실행기
   tests/must_reject/  거부 회귀 시험
   tests/runtime/      실행 시험(경계 검사·안전 모드)
   bench/              문제, 참조 구현, 시험 장치(harness/run.py), 변이 시험(mutate.py)
-  solve/              독립 AI 풀이 (rust, vow)
+  solve/              독립 AI 풀이 (rust, pruv)
   docs/M1_LLVM_SPEC.md  LLVM 뒷단 명세(타입·ABI·메모리·시험 연결)
   docs/research-2026-11.md  관련 연구 조사와 청사진 수정 제안
 ```

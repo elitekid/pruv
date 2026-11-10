@@ -1,1 +1,1 @@
-{"flags_matrix": [["--no-verify"]], "exit": 101, "stdout_lines": [], "stderr_contains": "vow: requires undefined: variant_field expected Event::Hit.value"}
+{"flags_matrix": [["--no-verify"]], "exit": 101, "stdout_lines": [], "stderr_contains": "pruv: requires undefined: variant_field expected Event::Hit.value"}
