@@ -78,7 +78,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 2. 구현: `vowc/llvmgen.py`(새 파일, codegen.py는 그대로 둠), `vowc.py`에 `--backend` 옵션, 실행 지원 코드 `vowc/runtime.c` 또는 IR로 작성.
 3. 확인: examples·bench 10문제를 두 뒷단으로 돌려 출력 대조, 변이 시험, 속도 비교.
 4. 감사 1회 + 확인 1회. 결과를 RESULTS에 기록.
-- **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. 남은 기준 미달: p04가 4~5% 느림(FFI 경계). 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
+- **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. 남은 기준 미달: p04가 4~5% 느림(호출 경계가 일부를 설명, 나머지는 out-pointer 반환·본체 후보, 조용한 기계에서 재측정 필요). 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
 - 정함(2026-11-10): 실행 지원 코드는 C(`vowc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
 
 ### 0단계: 검증기 신뢰 (진행 중)

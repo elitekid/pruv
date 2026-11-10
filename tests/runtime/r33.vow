@@ -1,0 +1,13 @@
+fn pick(n: i64) -> i64 ! alloc {
+  if n > 0 {
+    let a: [i64] = alloc(3, n);
+    return a[0] + a[2];
+  } else {
+    let b: [i64] = alloc(2, 7);
+    return b[1] * 10;
+  }
+}
+
+fn top() -> i64 ! alloc {
+  return pick(4) + pick(0) * 100;
+}

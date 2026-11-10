@@ -68,7 +68,7 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 ## 7. M1 = C2: LLVM IR 뒷단 (2026-11-10)
 `vowc --backend llvm`은 텍스트 LLVM IR(`.ll`)과 Rust 바인딩(`.rs`)을 함께 낸다. 실행 지원 코드는 `vowc/runtime.c`이고 clang이 컴파일한다. 명세는 `docs/M1_LLVM_SPEC.md`에 있다. 정본은 Rust 뒷단(`codegen.py`)이며 고치지 않았다.
 - 시험 장치는 Rust 드라이버를 그대로 두고 `mod sol`에 바인딩을 넣는다. 두 오브젝트(gen.o, rt.o)는 rustc에 link-arg로 붙인다. 반환 배열은 Rust 할당기로 할당해 복사 없이 `Vec`로 넘긴다.
-- 회귀(`tests/run_all.py --backend both`) 102/102
+- 회귀(`tests/run_all.py --backend both`) 102/102 (마무리 뒤 110/110, 런타임 33개)
   - 거부 24, 그리고 뒷단마다 examples 10, 런타임 29.
   - 새 시험 r24·r25: 평가 순서. r26~r29: 배열 해제 경로. 해제 경로 시험은 runtime.c `-DVOW_COUNT_ALLOCS`로 할당 수와 해제 수가 같은지 본다.
 - IR의 증명 사실
@@ -94,7 +94,17 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
     - 증명 모드 nsw 검사를 명령어 단위로 엄격하게.
     - 해제 시험 보강: 증명 모드판, while 조건·return 식·인덱스 대입 안의 임시, 길이 0 배열.
     - 누수와 이중 해제가 같이 생기면 수가 상쇄돼 놓친다.
+- 마무리(같은 날, 커밋 d6aa190 뒤)
+  - 감사 고침 뒤 변이 시험 재실행(`bench/mutants6_llvm.json`): mutants5와 똑같다. 검증기 판정은 Rust판과 같고, 시간 초과→wrong 4개도 그대로다.
+  - 해제 시험 r30~r33을 더해 런타임 33개가 됐다. 두 뒷단 모두 통과했고, Rust판 출력이 손으로 계산한 기대값과 같았다.
+    - r30: 증명 모드에서 while 지역 배열·재대입·임시
+    - r31: while 조건·return 식·인덱스 대입 안의 임시
+    - r32: 길이 0 배열
+    - r33: if/else 양쪽 return
+  - p04 원인은 판정하지 못했다. 다른 작업 때문에 load average가 12~34여서 측정이 흔들렸다.
+    - 같은 실행 파일 안 참조 대비 비율을 네 번 재 중앙값을 냈다. Rust판 1.08, Rust판의 공개 함수 인라인을 막은 것 1.22, LLVM판 1.32.
+    - 호출 경계(인라인 불가)가 차이의 일부를 설명하지만 전부는 아닌 것으로 보인다. 남는 후보는 Option을 out-pointer로 돌려주는 비용과 본체 코드 차이다.
+    - 조용한 기계에서 다시 재야 한다.
 - 남은 것
-  - p04 FFI 경계 비용(rustc·clang 사이 LTO나 호출 규약 손질).
-  - 감사 고침 뒤 변이 시험을 LLVM판으로 다시 돌리기.
+  - p04: 조용한 기계에서 재측정하고, 남는 차이가 out-pointer 반환인지 본체인지 가린다. 줄이는 방법은 rustc·clang LTO, Option을 레지스터로 돌려주는 ABI가 있다.
   - Windows·Linux 연결 시험. M1 산출물은 macOS arm64 개발용이다.

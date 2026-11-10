@@ -1,0 +1,29 @@
+fn h(a: [i64]) -> [i64] ! alloc ensures len(result) == len(a) {
+  let mut b: [i64] = copy(a);
+  return b;
+}
+
+fn w() -> i64 ! alloc {
+  let mut i: i64 = 0;
+  let mut s: i64 = 0;
+  while i < 5
+    invariant 0 <= i && i <= 5
+    invariant s == 2 * i
+    decreases 5 - i
+  {
+    let t: [i64] = alloc(2, i);
+    s = s + len(t);
+    i = i + 1;
+  }
+  let mut b: [i64] = alloc(3, 0);
+  let mut j: i64 = 0;
+  while j < 4
+    invariant 0 <= j && j <= 4
+    invariant len(b) == 3
+    decreases 4 - j
+  {
+    b = h(b);
+    j = j + 1;
+  }
+  return s + len(b) * 100 + len(h(b)) * 1000;
+}
