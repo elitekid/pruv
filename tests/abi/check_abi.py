@@ -89,7 +89,7 @@ def parse_sigs(ir_text):
 
 def objectify(ll, obj, ir_tool, llc):
     if ir_tool:
-        argv = [ir_tool, "obj", str(ll), "-o", str(obj), "--target", TRIPLE, "--input-abi", "target"]
+        argv = [ir_tool, "obj", str(ll), "-o", str(obj), "--target", TRIPLE]
     else:
         argv = [llc, "-mtriple=" + TRIPLE, "-filetype=obj", "-O2", str(ll), "-o", str(obj)]
     rc, _, err = run(argv)

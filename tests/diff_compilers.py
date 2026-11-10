@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pruv 컴파일러 두 판(기본 a=py, b=rs)의 차분 대조 (docs/M3_C4_SPEC.md 5절).
 
-    python tests/diff_compilers.py --b-path PATH_TO_RS_BINARY [--backend rust|llvm|both]
+    python tests/diff_compilers.py [--b-path P](생략 시 pruvc-rs/target/release/pruvc, Windows는 .exe) [--backend rust|llvm|both]
         [--a py|rs] [--a-path P] [--b py|rs] [--b-path P] [--input FILE ...] [--flag F ...]
         [--only must_reject|examples|runtime|bench] [--jobs N] [--timeout 300] [--save-dir DIR]
     python tests/diff_compilers.py --replay CASE_DIR

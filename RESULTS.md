@@ -402,3 +402,39 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 - 이로써 설계 7절의 "Windows 실행 ABI는 Windows CI 성공 필수" 관문을 통과했다. 범위는 외부 wrapper·바인딩의 실행 ABI이고, Windows에서 Rust 판 `pruvc` 자체를 빌드·실행한 것은 아니다(배포 빌드는 하지 않기로 함).
 - M3에서 남은 일(사용자 결정 필요 또는 미룸): 4개 플랫폼 배포 실행 파일(LLVM 정적 직접 빌드, Homebrew `libzstd` 의존 떼기), 개발 도구 `abi_lower`·`--input-abi` 제거, 넓힌 퍼저 seed·bench 성능 측정.
+
+## 24. M3 뒷정리: 대조 묶음 명령·개발 도구 정리·Rust 판 정본 (2026-11-11)
+1. **대조 묶음 명령** `tests/m3_all.py`: Python↔Rust 대조 도구 8단계(parse·check·trace·llvm·rust·compilers·standalone·abi)를 차례로 돌려 표로 요약, 하나라도 실패·바이너리 없음이면 exit 1. `--only/--skip/--quick/--rs-dir/--log-dir`.
+2. **개발 전용 ABI 검사 제거**(설계 5·7절): `pruvc-rs/crates/pruvc/src/abi_lower.rs`와 `pruvc-ir-tool obj --input-abi`를 지웠다. ir-tool은 받은 IR을 그대로 객체화한다(Windows wrapper는 Rust 판 `pruvc`가 처음부터 sret로 출력, 23절 CI로 확인). `tests/abi/check_abi.py`·README 정리.
+3. **Rust 판을 정본으로**(결정): 근거 — 모든 출력(parse·check·SMT trace·LLVM IR·바인딩·Rust 소스·CLI·단독 exe)이 Python 판과 바이트 동일, 퍼저·변이 판정 동일, Windows 실행 ABI CI 통과, Python·rustc 없이 실행 파일 하나, 컴파일이 더 빠름(아래). 시험 도구 공통 드라이버 `tests/compiler_driver.py`의 기본을 `rs`(기본 경로 `pruvc-rs/target/release/pruvc`, 없으면 빌드 안내와 함께 실패, Python 판으로 몰래 대체하지 않음)로 바꿨다. Python 판은 지우지 않고 대조 기준으로 둔다(`--compiler py`). **새 기능은 Python 판에 먼저 넣고 같은 묶음에서 Rust 판에 이식해 `m3_all` 대조를 통과시킨다**(빠른 시제품·독립 대조 유지). README '지금 상태' 갱신.
+
+| 확인 | 결과 |
+|---|---|
+| `tests/m3_all.py` 전체 | 8단계 모두 ok, 82초(parse 1.4·check 2.2·trace 12.8·llvm 6.5·rust 5.4·compilers 468 same 9.0·standalone 50 same 44.2·abi 0.9) |
+| `run_all --backend both` Rust 판 / Rust 판 + `--ir-tool` 객체화 | 363/363 / 363/363 |
+| `cli_also_llvm` Rust 판 | 186/186 |
+| `check_abi.py --ir-tool`(`--input-abi` 없이) | 통과 |
+| 기본값 확인 | 옵션 없이 `run_all` → `compiler: rs`, `--compiler py` → Python 판 |
+| 퍼저 Rust 판 새 seed 201~205 × 400 | 후보 3,672 → 증명 통과 2,051·거절 1,621, 입력 17,050·실행 65,800번, **실패 0**, oracle limit 0, seed당 49~64초 |
+
+**bench 성능**(`bench/harness/run.py bench/solutions/pruv_agg --pruv --backend llvm --trust-callers`, 같은 객체화 경로, 두 판 번갈아 4번씩). 조용한 상태는 만들지 못했다: 다른 작업이 함께 돌아 load average 4~8. 그래서 같은 실행 파일 안 참조 대비 비율(sol/ref)의 중앙값으로 비교한다.
+
+| 문제 | Python 판 생성물 | Rust 판 생성물 |
+|---|---|---|
+| p01 | 1.008 | 1.001 |
+| p02 | 1.003 | 0.997 |
+| p03 | 1.127 | 1.145 |
+| p04 | 1.490 | 1.486 |
+| p05 | 0.377 | 0.557 |
+| p06 | 0.985 | 0.989 |
+| p07 | 1.010 | 1.011 |
+| p08 | 1.376 | 1.373 |
+| p09 | 0.912 | 0.907 |
+| p10 | 1.012 | 1.013 |
+
+- 두 판이 만든 `.ll`이 10개 모두 바이트 동일함을 따로 확인했다(`cmp`). 따라서 실행 코드는 같고 위 차이는 측정 잡음이다(p05가 가장 흔들림). 정답 시험은 두 판 모두 10/10.
+- **컴파일 시간**(검증+LLVM IR 출력, bench 10개+examples 7개, 3번 중앙값): Python 판 1.82초 → Rust 판 0.99초(약 1.8배). 이 값도 부하 아래 측정이다.
+- 감사(Claude Opus): 필수 0, 권고 9. 반영 — ir-tool로 Python 판 IR을 Windows 대상 객체화하면 sret 없이 조용히 성공하는 위험(저장소 안 호출 경로는 없음)을 ir-tool 사용법·`tests/abi/README.md`·설계 5·7절에 명시, `m3_all`에 단계당 `--timeout`(넘으면 `timeout`·실패)과 로그 파일 바로 쓰기·`--log-dir` 루트 기준, README에 macOS 빌드의 Homebrew `libzstd` 동적 의존·`--emit exe` 링크 조건(Windows 대상 exe 미지원)·`--contract-budget` 시험용·바인딩 파일 이름 충돌 예시 고침, 퍼저 README 기본값, Windows 기본 경로 `.exe`. 남김 — Rust 판 `pruvc`에 `--version` 없음(대조 기록에 sha256이 남아 판 식별은 됨).
+- 고친 뒤: `cargo build` 성공, `m3_all` 8단계 다시 모두 ok, `--timeout 2`로 standalone이 `timeout`·exit 1·남은 자식 프로세스 없음.
+- 확인 감사(Claude Opus): 필수 0, 권고 5 반영 — 시간 초과·Ctrl-C 때 직접 자식만 죽어 손자(pruvc·rustc·실행 파일)가 남을 수 있음 → 단계를 새 프로세스 묶음으로 띄우고 묶음째 종료(POSIX `killpg`, Windows `taskkill /T`), 설계 문서 `--input-abi`·`abi_lower.rs` 표 항목에 제거 표시, README 링커 순서(`PRUVC_LINKER` 먼저)·`--also-llvm`, `diff_compilers` 사용법 `.exe`. 다시 `--timeout 3`에서 timeout·exit 1·남은 손자 없음, `m3_all --only abi,parse` ok.
+- 남긴 것: 조용한 기계에서의 재측정, 4개 플랫폼 배포 빌드(사용자 결정으로 보류).

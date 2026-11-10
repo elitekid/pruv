@@ -1,7 +1,11 @@
 //! Dev-only tool: .ll → object, embedded runtime extraction, system link,
 //! i128 helper-symbol scan. Not shipped; never marks IR as verified Pruv.
+//!
+//! Warning: `obj` objectifies the given IR as-is. Python (legacy) IR returns
+//! Option/Result as `{i64,i64}` values, so objectifying it for a Windows x64
+//! target mismatches the MSVC ABI (unsupported). Build Windows-target IR with
+//! the Rust `pruvc --target`.
 
-use pruvc::abi_lower::{self, InputAbi};
 use pruvc::link::{self, RuntimeChoice};
 use pruvc::runtime::{self, Variant};
 use pruvc::target::{Cpu, Target};
@@ -10,11 +14,12 @@ use std::path::PathBuf;
 use std::process::exit;
 
 const USAGE: &str = "usage:
-  pruvc-ir-tool obj IN.ll -o OUT.o [--target TRIPLE] [-mcpu=generic|native|NAME] [--input-abi legacy|target]
+  pruvc-ir-tool obj IN.ll -o OUT.o [--target TRIPLE] [-mcpu=generic|native|NAME]
   pruvc-ir-tool runtime -o OUT.o [--variant malloc|rust] [--count-allocs] [--target TRIPLE]
   pruvc-ir-tool link OBJ... -o EXE [--target TRIPLE] [--runtime malloc|malloc-count|none]
   pruvc-ir-tool undef OBJ...
-  pruvc-ir-tool --version";
+  pruvc-ir-tool --version
+note: obj objectifies the given IR as-is. Python (legacy) IR returns Option/Result as {i64,i64} values, so objectifying it for a Windows x64 target mismatches the MSVC ABI (unsupported). Build Windows-target IR with the Rust pruvc --target.";
 
 fn usage(msg: &str) -> ! {
     eprintln!("pruvc-ir-tool: {msg}\n{USAGE}");
@@ -33,7 +38,6 @@ struct Opts {
     output: Option<String>,
     target: Option<String>,
     mcpu: Option<String>,
-    input_abi: Option<String>,
     variant: Option<String>,
     runtime: Option<String>,
     count_allocs: bool,
@@ -54,7 +58,6 @@ fn parse_opts(args: &[String]) -> Opts {
         match a {
             "-o" => o.output = Some(value(&mut i, "-o")),
             "--target" => o.target = Some(value(&mut i, "--target")),
-            "--input-abi" => o.input_abi = Some(value(&mut i, "--input-abi")),
             "--variant" => o.variant = Some(value(&mut i, "--variant")),
             "--runtime" => o.runtime = Some(value(&mut i, "--runtime")),
             "--count-allocs" => o.count_allocs = true,
@@ -79,15 +82,10 @@ fn cmd_obj(o: Opts) {
         usage("obj takes exactly one input .ll");
     }
     let out = o.output.clone().unwrap_or_else(|| usage("obj needs -o OUT.o"));
-    let abi = match o.input_abi.as_deref() {
-        None => InputAbi::Legacy,
-        Some(s) => InputAbi::parse(s).unwrap_or_else(|| usage("--input-abi must be legacy or target")),
-    };
     let cpu = Cpu::parse(o.mcpu.as_deref().unwrap_or("generic"));
     let target = resolve_target(&o);
     let input = &o.positional[0];
     let ir = std::fs::read(input).unwrap_or_else(|e| fail(Error::new("io", format!("{input}: {e}"))));
-    abi_lower::check(&ir, abi, &target).unwrap_or_else(|e| fail(e));
     llvm::compile_ir_to_object(&ir, input, &target, &cpu, std::path::Path::new(&out), )
         .unwrap_or_else(|e| fail(e));
 }

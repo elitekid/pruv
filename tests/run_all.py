@@ -2,7 +2,7 @@
 python tests/run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both]
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
 
---compiler/--compiler-path pick the compiler under test (tests/compiler_driver.py; default py).
+--compiler/--compiler-path pick the compiler under test (tests/compiler_driver.py; default rs).
 --ir-tool PATH: make .ll objects with `PATH obj IN.ll -o OUT.o -mcpu=native` and the runtime object with
 `PATH runtime -o OUT.o --variant rust [--count-allocs]` instead of clang (default: clang as before).
 

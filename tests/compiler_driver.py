@@ -1,7 +1,7 @@
 """Pruv 컴파일러(Python 판 / Rust 판) 호출 공통 드라이버.
 
     import compiler_driver as CD
-    CD.add_args(argparse_parser)        # --compiler py|rs (기본 py), --compiler-path PATH
+    CD.add_args(argparse_parser)        # --compiler py|rs (기본 rs), --compiler-path PATH
     drv = CD.from_args(ns)              # argparse 결과 -> Driver
     drv = CD.from_argv(sys.argv)        # 수동 argv 파싱 도구용: 두 옵션을 argv 에서 떼어 내고 Driver 반환
     argv = drv.argv(src, out, flags, backend)
@@ -12,8 +12,11 @@
   - py: [고정 Python, ROOT/pruvc/pruvc.py, src, -o, out, --backend, B, *flags]
         고정 Python = ROOT/.venv/bin/python (Windows 는 .venv/Scripts/python.exe), 없으면 sys.executable.
         --compiler-path 를 주면 pruvc.py 위치 재정의로 쓴다.
-  - rs: [바이너리, src, -o, out, --backend, B, *flags]; --compiler-path 필수.
-        없거나 실행 불가면 오류로 종료한다(조용히 py 로 넘어가지 않는다).
+  - 기본은 rs(Rust 판이 정본). Python 판은 대조 기준이며 --compiler py 로 고른다.
+  - rs: [바이너리, src, -o, out, --backend, B, *flags]; 바이너리는 --compiler-path 로 주고,
+        없으면 PRUVC_RS_DEFAULT(ROOT/pruvc-rs/target/release/pruvc, Windows 는 .exe).
+        바이너리가 없거나 실행 불가면 빌드 안내와 함께 오류로 종료한다(조용히 py 로 넘어가지 않는다).
+        빌드: cd pruvc-rs && cargo build --release --locked
   - 셸 문자열 결합 없음(argv 목록만).
 """
 import argparse
@@ -26,7 +29,9 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PRUVC_PY = os.path.join(ROOT, "pruvc", "pruvc.py")
-TIMEOUT_RC = -999   # 시간 초과 때 Result.returncode (실제 종료 코드가 아니다)
+PRUVC_RS_DEFAULT = os.path.join(ROOT, "pruvc-rs", "target", "release",
+                                "pruvc.exe" if os.name == "nt" else "pruvc")
+TIMEOUT_RC = -999  # 시간 초과 때 Result.returncode (실제 종료 코드가 아니다)
 SPAWN_FAIL_RC = -998  # 프로세스를 띄우지 못했을 때
 
 
@@ -161,32 +166,34 @@ def make_driver(kind, path=None):
         if not os.path.isfile(p):
             _fail("pruvc.py not found: %s" % p)
         return Driver("py", p)
-    if not path:
-        _fail("--compiler rs requires --compiler-path PATH (no silent fallback to py)")
-    p = os.path.abspath(path)
+    p = os.path.abspath(path) if path else PRUVC_RS_DEFAULT
     if not os.path.isfile(p):
-        _fail("Rust compiler binary not found: %s" % p)
+        _fail("Rust compiler binary not found: %s\n"
+              "  build it: cd pruvc-rs && cargo build --release --locked\n"
+              "  or pass --compiler-path PATH, or use the Python version with --compiler py "
+              "(no silent fallback to py)" % p)
     if not os.access(p, os.X_OK):
         _fail("Rust compiler binary is not executable: %s" % p)
     return Driver("rs", p)
 
 
 def add_args(parser):
-    parser.add_argument("--compiler", choices=["py", "rs"], default="py",
-                        help="compiler under test (default py)")
+    parser.add_argument("--compiler", choices=["py", "rs"], default="rs",
+                        help="compiler under test (default rs)")
     parser.add_argument("--compiler-path", default=None, metavar="PATH",
-                        help="rs: compiler binary (required); py: override pruvc.py location")
+                        help="rs: compiler binary (default pruvc-rs/target/release/pruvc); "
+                             "py: override pruvc.py location")
     return parser
 
 
 def from_args(ns):
-    return make_driver(getattr(ns, "compiler", "py"), getattr(ns, "compiler_path", None))
+    return make_driver(getattr(ns, "compiler", "rs"), getattr(ns, "compiler_path", None))
 
 
 def from_argv(argv):
     """--compiler X / --compiler=X / --compiler-path P / --compiler-path=P 를 argv(리스트)에서 제자리로
     떼어 내고 Driver 를 반환한다. 수동 sys.argv 파싱을 쓰는 도구용."""
-    kind, path, rest, i = "py", None, [], 0
+    kind, path, rest, i = "rs", None, [], 0
     while i < len(argv):
         a = argv[i]
         if a in ("--compiler", "--compiler-path"):
@@ -210,4 +217,4 @@ def from_argv(argv):
 
 
 def default_driver():
-    return make_driver("py", None)
+    return make_driver("rs", None)

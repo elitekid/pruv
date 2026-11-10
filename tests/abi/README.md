@@ -10,8 +10,9 @@
 ```
 .venv/bin/python tests/abi/check_abi.py [--ir-tool PATH]     # 환경변수 PRUV_IR_TOOL 도 가능
 ```
-- `--ir-tool` 이 있으면 `PATH obj IN.ll -o OUT.o --target x86_64-pc-windows-msvc --input-abi target`,
+- `--ir-tool` 이 있으면 `PATH obj IN.ll -o OUT.o --target x86_64-pc-windows-msvc`(받은 IR 을 그대로 객체화),
   없으면 `llc -mtriple=x86_64-pc-windows-msvc -filetype=obj -O2`.
+- 주의: Python 판(legacy) IR 의 Windows 객체화는 지원하지 않는다(Option/Result 를 `{i64,i64}` 값으로 반환해 MSVC ABI 와 어긋남). `abi_lower` 검사는 2026-11-11 제거. Windows 대상 IR 은 Rust 판 `pruvc --target` 으로 만든다.
 - 도구는 `/opt/homebrew/opt/llvm@22/bin` 우선, 없으면 PATH.
 - 하나라도 실패하면 exit 1. 마지막 줄은 항상 `Windows 실행 ABI 는 이 맥에서 확인 불가: Windows CI 필요`.
 

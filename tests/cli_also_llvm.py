@@ -27,7 +27,7 @@ sys.path.append(HERE)
 import compiler_driver as CD  # noqa: E402
 MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 OK_LINE = json.dumps({"ok": True})
-DRIVER = None  # set in main() from --compiler/--compiler-path (default py)
+DRIVER = None  # set in main() from --compiler/--compiler-path (default rs)
 
 
 def run(args, keep_default_backend=False):

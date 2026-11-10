@@ -4,7 +4,7 @@
     python bench/fuzz/run.py [--seed 1] [--programs 100] [--inputs 8] [--max-candidates 400]
                              [--rejected-sample 30] [--jobs N] [--batch 25] [--out DIR] [--keep-work]
     python bench/fuzz/run.py --replay DIR_OR_PRUVFILE
-    (모든 형태에 [--compiler py|rs] [--compiler-path PATH] 사용 가능, tests/compiler_driver.py; 기본 py)
+    (모든 형태에 [--compiler py|rs] [--compiler-path PATH] 사용 가능, tests/compiler_driver.py; 기본 rs)
 
 약속: 검증기가 받아들인 프로그램(pruvc 기본 모드 exit 0)은 requires를 만족하는 모든 입력에서
 범위 밖 인덱스/오버플로 없이 ensures가 성립하고 출력이 오라클과 같다. 모드마다 자기 오라클과 비교한다
@@ -42,7 +42,7 @@ CPU_FLAG = "-mcpu=native" if platform.machine().lower() in ("arm64", "aarch64") 
 sys.path.append(os.path.join(ROOT, "tests"))
 import compiler_driver as CD  # noqa: E402
 
-DRIVER = None  # compiler under test (--compiler/--compiler-path); set in main(), None -> py
+DRIVER = None  # compiler under test (--compiler/--compiler-path); set in main(), None -> rs
 RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 CLANG = shutil.which("clang") or "/usr/bin/clang"
 RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")

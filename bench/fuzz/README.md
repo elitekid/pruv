@@ -1,6 +1,7 @@
 # Pruv 컴파일러 차분 퍼징
 
-무작위로 만든 Pruv 프로그램을 컴파일러(`pruvc/pruvc.py`)와 독립 오라클(`oracle.py`)에 모두 돌려서 결과를 비교한다.
+무작위로 만든 Pruv 프로그램을 컴파일러와 독립 오라클(`oracle.py`)에 모두 돌려서 결과를 비교한다. 기본 컴파일러는 Rust 판(`pruvc-rs/target/release/pruvc`)이고,
+`--compiler py` 로 Python 판(`pruvc/pruvc.py`), `--compiler-path PATH` 로 다른 위치를 고른다(`tests/compiler_driver.py`, 기본 rs).
 
 ## 검사하는 약속
 
@@ -35,14 +36,15 @@
 
 ```
 python bench/fuzz/run.py [--seed 1] [--programs 100] [--inputs 8] [--max-candidates 400] \
-                         [--rejected-sample 30] [--jobs N] [--out bench/fuzz/out/<seed>] [--keep-work]
+                         [--rejected-sample 30] [--jobs N] [--out DIR] [--keep-work] [--compiler py|rs]
+# 기본 출력 폴더: Rust 판 bench/fuzz/out/<seed>_rs, Python 판(--compiler py) bench/fuzz/out/<seed>
 python bench/fuzz/run.py --seed 32 --programs 600 --max-candidates 3000 --avoid-known fz01   # 보고한 결함 형태는 피함
-python bench/fuzz/run.py --replay bench/fuzz/out/1/failures/unsound_c1_17     # 저장된 사례 다시 실행
+python bench/fuzz/run.py --replay bench/fuzz/out/1_rs/failures/unsound_c1_17     # 저장된 사례 다시 실행
 python bench/fuzz/run.py --replay path/to/case.pruv                             # 옆의 inputs.json 사용
 python bench/fuzz/generate.py --seed 1 --count 20 --out /tmp/pruvgen            # 생성된 .pruv만 확인
 ```
 
-- 필요 도구: `rustc`, `clang`, 파이썬 3.9 (`.venv/bin/python`이 있으면 그것으로 pruvc를 돌린다). 표준 라이브러리만 쓴다.
+- 필요 도구: `rustc`, `clang`, 파이썬 3.9 (Python 판을 고를 때 `--compiler py` 는 `.venv/bin/python`이 있으면 그것으로 pruvc를 돌린다). 표준 라이브러리만 쓴다.
 - `runtime.c` 객체는 한 번만 만들어 재사용한다.
 - 종료 코드: 실패가 하나라도 있으면 1.
 
@@ -151,7 +153,7 @@ OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 1
    (`fn main() { ... println!("{}", sol::f(...)); }`), 기대를 적은 `tests/runtime/<이름>.json`
    (예: `{"flags": [], "exit": 101, "stdout_contains": null, "stderr_contains": "requires violated"}`)을 만든다.
    `--no-verify` 동작이면 `"flags": ["--no-verify"]`, 여러 입력은 여러 테스트로 나눈다.
-4. `python tests/run_all.py`로 확인한다 (`--backend both`로 두 backend 모두).
+4. `python tests/run_all.py`로 확인한다 (`--backend both`로 두 backend 모두). Python 판에 먼저 넣은 기능은 `--compiler py` 로 확인한다.
 
 ## 실행 기록
 

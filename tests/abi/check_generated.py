@@ -15,6 +15,7 @@
 종료: 0 통과 / 1 실패 / 2 도구 없음.
 """
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -205,7 +206,7 @@ def check_one(src, a, tools, ref_sigs, ref_err, work):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pruvc", default=str(REPO / "pruvc-rs" / "target" / "release" / "pruvc"))
+    ap.add_argument("--pruvc", default=str(REPO / "pruvc-rs" / "target" / "release" / ("pruvc.exe" if os.name == "nt" else "pruvc")))
     ap.add_argument("--keep", default=None)
     a = ap.parse_args()
 

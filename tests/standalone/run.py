@@ -232,7 +232,7 @@ def do_case(args, root_work, path, idx, flags):
 
 def main():
     ap = argparse.ArgumentParser(description="Rust pruvc --emit exe vs. Python reference")
-    ap.add_argument("--rs-path", default=os.path.join(ROOT, "pruvc-rs", "target", "release", "pruvc"))
+    ap.add_argument("--rs-path", default=os.path.join(ROOT, "pruvc-rs", "target", "release", "pruvc.exe" if os.name == "nt" else "pruvc"))
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--keep", metavar="DIR", default=None, help="keep work files under DIR")
     ap.add_argument("--only", metavar="NAME", default=None, help="only cases whose name contains NAME")

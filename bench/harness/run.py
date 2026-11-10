@@ -8,7 +8,7 @@ RUSTC = shutil.which("rustc") or os.path.expanduser("~/.cargo/bin/rustc")
 sys.path.append(os.path.join(ROOT, "tests"))
 import compiler_driver as CD  # noqa: E402
 
-DRIVER = None  # compiler_driver.Driver; set by main() or by an importer such as bench/mutate.py (None -> py)
+DRIVER = None  # compiler_driver.Driver; set by main() or by an importer such as bench/mutate.py (None -> rs)
 
 
 def get_driver():

@@ -1,8 +1,6 @@
-//! pruvc: LLVM object / link / embedded-runtime layer (shared by the future
-//! CLI and the dev-only `pruvc-ir-tool`). `abi_lower` is dev-tool only and is
-//! to be removed once the Python comparison is finished.
+//! pruvc: LLVM object / link / embedded-runtime layer (shared by the `pruvc`
+//! CLI and the dev-only `pruvc-ir-tool`).
 
-pub mod abi_lower;
 pub mod link;
 pub mod llvm;
 pub mod runtime;

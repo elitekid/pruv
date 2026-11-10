@@ -37,7 +37,7 @@ z3·LLVM은 컴파일러에 정적 링크한다. 생성 프로그램에는 필�
 | `verify.py` | `pruv-proof/src/{lib,model,symbolic,obligation}.rs` | z3 모델·상태·정의역·의무·반례 |
 | `llvmgen.py` | `pruv-core/src/{llvmgen,abi,bindings}.rs` | 본체 텍스트 IR / 대상 wrapper / Rust 바인딩을 분리, 공통 출력 모듈 사용 |
 | `pruvc.py` | `pruvc/src/{main,cli,driver}.rs` | 인자·출력 조정·JSON·종료 코드 |
-| 새 객체/링크 층 | `pruvc/src/{lib,llvm,target,link,runtime}.rs`, 개발 도구의 `abi_lower.rs` | LLVM C API·링크·내장 객체는 공유; IR ABI 후처리는 pruvc-ir-tool 전용 |
+| 새 객체/링크 층 | `pruvc/src/{lib,llvm,target,link,runtime}.rs`, 개발 도구의 `abi_lower.rs`(2026-11-11 제거) | LLVM C API·링크·내장 객체는 공유; IR ABI 후처리는 pruvc-ir-tool 전용 |
 | `runtime.c` | `pruvc/build.rs`에서 원본을 읽음 | 별도 사본 없이 대상별로 컴파일해 `OUT_DIR`에 생성 |
 
 AST는 enum+struct로 표현하고 재귀 식은 Box/Vec로 소유한다. `IndexMap`과 Vec로 선언·필드·함수·가정 순서를 보존한다.
@@ -134,7 +134,7 @@ workspace manifest·CLI 연결은 통합 담당만 고친다. 아래 `core`, `pr
 |---|---|---|
 | 0A 최소 결정성·기준 | `pruvc/check.py`, `pruvc/verify.py`, `tests/diff_py_adapter.py` | 두 set 소비 순회만 정렬; 기준 스냅샷·manifest 해시·여러 hash seed의 진단/질의 순서 고정 |
 | 0B 잠금·실의무 시제품 | workspace manifests/lock/toolchain, `ci/m3/`, z3 시제품 | Rust z3로 집계 보조정리·Opt/Res/사용자 Datatype·havoc·중첩 양화+patterns·재시도 재현; Python SMT-LIB·판정 대조, 정확 잠금·플랫폼별 정적 의존/비용 기록 |
-| 0C 객체·링크 도구 선행 | `bin/{lib,llvm,target,link,runtime}.rs`, `bin/bin/pruvc-ir-tool.rs`, 도구 전용 `abi_lower.rs`, `pruvc/build.rs` | Python .ll→LLVM 객체→내장 runtime·시스템 링크; 시험 장치 IR용 clang 제거, i128 보조 기호 확인 |
+| 0C 객체·링크 도구 선행 | `bin/{lib,llvm,target,link,runtime}.rs`, `bin/bin/pruvc-ir-tool.rs`, 도구 전용 `abi_lower.rs`(2026-11-11 제거), `pruvc/build.rs` | Python .ll→LLVM 객체→내장 runtime·시스템 링크; 시험 장치 IR용 clang 제거, i128 보조 기호 확인 |
 | 0D Windows ABI 표본 | `tests/abi/`, `core/abi.rs` 계획 | 대상별 wrapper를 직접 출력한 작은 .ll→cross 객체·서명 검사, Windows 실행은 CI; 0A~0D 검토 후 파서 착수 |
 | 1 파서 | `core/{ast,diagnostic,lexer,parser}.rs` | parse AST JSON·parse 오류 비교; 극대 정수·유니코드 위치·33 노드 모두 대응 |
 | 2 검사 | `core/{typeinfo,check}.rs` | typed AST·타입 순서·type/effect 오류 JSON 동일, 재귀·소유 규칙 동일 |
@@ -181,9 +181,9 @@ Python 실행 경로는 Windows `.venv/Scripts/python.exe`도 지원하고 PATH�
 기존 시험의 Rust main은 그대로 유지한다. 개발·시험의 rustc 의존과 사용자 `--emit exe`의 무-rustc 경로는 별개다.
 LLVM API 공통 함수를 쓰는 개발 전용 `pruvc-ir-tool`을 0C에서 `pruvc/src/bin/`에 둔다: 이미 생성된 ll→obj, 내장 runtime 추출·시스템 링크를 연결한다.
 퍼저의 심볼 재작성 뒤 파일도 이 도구로 처리한다. 배포에 포함하지 않으며, 입력 IR을 검증된 Pruv라고 선언하는 기능은 없다.
-Windows에서는 Python판도 이 도구로 대상 ABI 하강 후 객체화한다. 기존 clang 경로만으로는 Python판의 16바이트 반환 결함이 남는다.
-`--input-abi legacy|target`은 이 도구 전용이다. Python 원본/대상별 직접 생성 IR을 구별하고 서명을 검사해 sret 이중 적용을 막는다.
-제한적 `abi_lower`와 `--input-abi`는 Python판 대조가 끝나면 제거한다. 배포 CLI·Rust 생성기 경로에는 넣지 않는다.
+Windows에서는 Python판도 이 도구로 대상 ABI 하강 후 객체화한다. 기존 clang 경로만으로는 Python판의 16바이트 반환 결함이 남는다. → 제거됨(2026-11-11, RESULTS 24절). Python 판 IR의 Windows 객체화는 지원하지 않는다.
+`--input-abi legacy|target`은 이 도구 전용이다. Python 원본/대상별 직접 생성 IR을 구별하고 서명을 검사해 sret 이중 적용을 막는다. → 제거됨(2026-11-11, RESULTS 24절).
+제한적 `abi_lower`와 `--input-abi`는 Python판 대조가 끝나면 제거한다. 배포 CLI·Rust 생성기 경로에는 넣지 않는다. → **제거함(2026-11-11, RESULTS 24절)**: ir-tool은 받은 IR을 그대로 객체화한다.
 같은 객체화 층을 쓰는 비교는 앞단 이식의 차분 시험이다. 공유 층 자체의 ABI 정확성은 7절 C/Rust 독립 표본으로 따로 검증한다.
 
 ### `tests/diff_compilers.py` (새 도구)
@@ -257,7 +257,7 @@ LLVM C API를 llvm-sys로 직접 부르고 메모리·오류 메시지 소유를
 `--emit ll`은 최적화 전 직접 생성 텍스트다. 기존 macOS/SysV는 triple/datalayout 없는 출력을 유지하고, Windows는 대상 정보를 붙인다.
 원본 이식 관문은 기존 ABI 출력에 적용한다. Windows 직접 출력은 별도 기대값이며 Python 원본과 바이트 동일 대상이 아니다.
 `core/abi.rs`는 LLVM 의존 없는 대상 ABI 계획·wrapper 출력 함수다. `llvmgen.rs`가 이를 사용해 외부 `pruv_abi_*`를 처음부터 대상별로 출력한다.
-IR 후처리 `abi_lower`는 Python 원본 IR을 Windows에서 객체화하는 개발 도구에만 제한한다(5절 종료 조건). Rust CLI 경로에는 없다.
+IR 후처리 `abi_lower`는 Python 원본 IR을 Windows에서 객체화하는 개발 도구에만 제한한다(5절 종료 조건). Rust CLI 경로에는 없다. → 제거됨(2026-11-11, RESULTS 24절). Python 판 IR의 Windows 객체화는 지원하지 않는다.
 ir-tool은 라이브러리 IR에 main을 삽입하지 않는다. 0C 링크 표본은 진입점이 있는 IR/독립 드라이버를 쓴다.
 배포 CPU는 generic, host bench만 native; PIC/PIE·최소 OS·코드 모델을 대상 설정으로 고정하고 링크 설정과 맞춘다.
 
