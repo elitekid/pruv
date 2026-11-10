@@ -9,6 +9,10 @@ on:
       - "pruvc/runtime.c"
       - ".github/workflows/windows-abi.yml"
 
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   windows-abi:
     runs-on: windows-latest
