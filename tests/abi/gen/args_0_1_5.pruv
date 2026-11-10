@@ -1,0 +1,29 @@
+// 경계: 인자 0·1·5개 + Option 반환 (sret 가 첫 레지스터를 차지)
+fn f0() -> Option<i64>
+{
+  return None;
+}
+
+fn f1(a: i64) -> Option<i64>
+  requires a >= -1_000_000 && a <= 1_000_000
+  ensures is_some(result) ==> a > 0
+{
+  if a > 0 {
+    return Some(a);
+  }
+  return None;
+}
+
+fn f5(a: i64, b: i64, c: i64, d: i64, e: i64) -> Option<i64>
+  requires a >= -1_000_000 && a <= 1_000_000
+  requires b >= -1_000_000 && b <= 1_000_000
+  requires c >= -1_000_000 && c <= 1_000_000
+  requires d >= -1_000_000 && d <= 1_000_000
+  requires e >= -1_000_000 && e <= 1_000_000
+{
+  let s: i64 = a + b + c + d + e;
+  if s > 0 {
+    return Some(s);
+  }
+  return None;
+}

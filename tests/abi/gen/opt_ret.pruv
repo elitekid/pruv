@@ -1,0 +1,10 @@
+// 경계: Option 반환 (Some/None 두 경로)
+fn get_opt(x: i64) -> Option<i64>
+  requires x >= -1_000_000 && x <= 1_000_000
+  ensures is_some(result) ==> x > 0
+{
+  if x > 0 {
+    return Some(x);
+  }
+  return None;
+}

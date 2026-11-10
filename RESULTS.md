@@ -345,6 +345,7 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 - 작업자 코드는 셋으로 나눠 동시에 썼고(본체 / 바인딩·공통 함수 / 차분 도구) 처음 빌드부터 컴파일 오류 없이 첫 대조에서 모두 같았다.
 - 감사(Claude Opus): 검사를 통과한 입력에서 Python과 다른 출력 없음(빈 struct, 필드 없는 변형만 있는 enum, 중첩 사용자 타입 안 Option/Result, sorted 패턴 변형, i64·i128 경계 × budget 7개, 입력 해독 경로를 직접 대조). 필수 2건 — 구조체 리터럴 값 모음(`mk_struct`)과 사용자 enum match 바인더(`user_match`의 retain)가 Python 선형 대비 제곱(필드 32000개 2.14초) → 해시맵·retain 삭제로 고쳐 같은 입력 0.72초(대부분 검사기 시간), 고친 뒤 `diff_llvm` 6548 사례 다름 0. 남긴 권고: 검사기가 막아 닿지 않는 경로의 내부 오류 문구(KeyError·`%r` 흉내), `cty`/`conv` unwrap(호출자는 시험뿐), `words` 중복 구현, 변수 조회·문자열 상수의 복제, 계약 문구 `show`의 깊은 사슬 문자열 복사(Python과 같은 차수), 시험 바이너리 `--budget` 범위 검사 없음(CLI는 검사).
+- 고친 뒤 확인(Claude Opus): 통과. 구조체 리터럴은 소스 순서로 평가하고 같은 이름은 나중 값, 출력은 선언 필드 순서(해시맵 순회가 출력에 안 들어감), match 바인더는 `run_block`이 차례로 넣어 나중 값이 이겨 Python `dict.update`와 같다.
 
 ## 20. M3 = C4 5단계: Rust 판 `pruvc` 명령과 단독 실행 파일 (2026-11-11)
 설계 4절 5단계(객체·링크 통합)에 I 단계의 CLI 부분(`pruvc/src/{main,cli,driver}.rs`)을 앞당겨 붙였다. 실행 파일을 시험하려면 명령이 먼저 있어야 해서다. Python `pruvc.py`와 같은 옵션·출력·종료 코드에 설계 3절의 `--emit exe|obj|ll|rs`·`--target`·`-mcpu=`를 더했다. `--emit exe`는 진입점(`fn main() -> ()`, 매개변수 없음)을 검사하고 같은 모듈에 C `main` shim을 붙여 LLVM 라이브러리로 객체를 만든 뒤 내장 malloc 런타임과 시스템 링커로 묶는다(IR 컴파일용 clang 없음). `--backend rust`(Rust 소스 출력)는 7단계라 아직 exit 2(미구현). 4개 플랫폼 CI·배포 LLVM 정적 빌드는 아직(I 단계). 이 맥에서만 확인했다.
@@ -359,3 +360,14 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 - 시험 프로그램 29개 중 3개(s03·s09·s11)는 작업자가 증명할 수 없는 계산을 써서 Python 판에서도 검증이 실패했다. 범위 조건·출력식을 고쳐 의도대로 만들었다.
 - `pruv-core/src/pyio.rs`를 CLI 입력 읽기에도 써서 읽기·해독 실패 문장이 Python 판과 같다.
+
+## 21. M3 = C4 6단계: Windows x64 대상별 wrapper 직접 출력 (2026-11-11)
+설계 7절 "Windows x64 대상별 wrapper". `pruv-core/src/abi.rs`에 `AbiTarget{SysV, WinX64}`, `llvmgen.rs`에 `gen_llvm_for`를 더했다. Windows x64 대상이면 Option/Result를 돌려주는 외부 `pruv_abi_*`만 처음부터 `void` + 첫 숨은 `ptr sret({ i64, i64 }) align 8`로 출력하고(entry 결과의 tag를 zext해 두 슬롯에 저장), IR 맨 앞에 datalayout·triple을 붙인다. 배열 반환·사용자 타입 out 포인터, Option/Result 인자 펼침, 내부 body/entry는 그대로. Rust 바인딩은 대상과 무관(`-> Pruv__Tagged` 값 반환 extern, MSVC C ABI가 숨은 인자를 만든다). 기본(macOS·Linux) 출력은 바뀌지 않는다. `pruvc --target x86_64-pc-windows-msvc`가 이 경로를 쓴다.
+
+| 확인 | 결과 |
+|---|---|
+| `tests/abi/check_generated.py`(새, 소스 8개) | 모두 통과: 헤더 두 줄, `opt -passes=verify`, wrapper 모양(Option/Result만 sret 하나, 나머지 sret 없음, 바인딩 `Pruv__Tagged` 판정과 일치), `--emit obj` COFF x86-64·`pruv_abi_*` 정의 기호, 같은 소스의 호스트 출력에 triple·sret 없음, clang이 `ref.c`에서 만든 C 2×int64 반환 서명과 같음(인자 0·1·5개) |
+| 0D 표본 `check_abi.py` | 5/5 통과 |
+| 기본 출력 불변 | `diff_llvm` 6548, `diff_compilers --backend llvm` 234 모두 Python과 바이트 동일, `cargo test -p pruv-core` 36 |
+
+- **Windows에서 실제로 실행해 맞물리는지는 이 맥에서 확인할 수 없다.** Rust extern 호출·C 호출자와 링크해 Some/None·MIN/MAX·인자 0·1·5개·반복 호출·구조체 안 Option·배열 반환을 실행하는 것은 Windows CI(I 단계) 몫이다.

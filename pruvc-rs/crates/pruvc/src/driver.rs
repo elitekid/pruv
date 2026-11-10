@@ -102,7 +102,12 @@ fn write_text(path: &str, text: &str) -> Result<(), Fail> {
 }
 
 fn generate(a: &Args, prog: &Program) -> Result<(String, String), Fail> {
-    pruv_core::llvmgen::gen_llvm(prog, a.verify, a.trust_callers, a.budget).map_err(Fail::Internal)
+    // 6단계: Windows x64 대상이면 외부 wrapper 를 처음부터 대상 ABI(sret)로, 그 밖은 기존(Python 과 바이트 동일) 출력.
+    let abi = match &a.target {
+        Some(t) if t.is_windows() => pruv_core::abi::AbiTarget::WinX64,
+        _ => pruv_core::abi::AbiTarget::SysV,
+    };
+    pruv_core::llvmgen::gen_llvm_for(prog, a.verify, a.trust_callers, a.budget, abi).map_err(Fail::Internal)
 }
 
 fn need_target(a: &Args) -> Result<&Target, Fail> {

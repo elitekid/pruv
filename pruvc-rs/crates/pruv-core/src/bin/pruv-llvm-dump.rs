@@ -10,6 +10,7 @@ struct Opts {
     verified: bool,
     trust_callers: bool,
     budget: u64,
+    target: pruv_core::abi::AbiTarget,
     files: Vec<std::ffi::OsString>,
 }
 
@@ -29,7 +30,7 @@ fn line_for(bytes: &[u8], o: &Opts) -> String {
     if let Err(e) = pruv_core::check::check(&mut prog) {
         return obj1("error", e.to_json_value());
     }
-    match pruv_core::llvmgen::gen_llvm(&prog, o.verified, o.trust_callers, o.budget) {
+    match pruv_core::llvmgen::gen_llvm_for(&prog, o.verified, o.trust_callers, o.budget, o.target) {
         Ok((ir, bindings)) => dumps_sorted(&Json::Obj(vec![
             ("ir".to_string(), Json::Str(ir)),
             ("bindings".to_string(), Json::Str(bindings)),
@@ -54,12 +55,18 @@ fn work(o: Opts) -> bool {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: pruv-llvm-dump [--no-verify] [--trust-callers] [--budget N] FILE...");
+    eprintln!("usage: pruv-llvm-dump [--no-verify] [--trust-callers] [--budget N] [--target TRIPLE] FILE...");
     std::process::exit(2);
 }
 
 fn main() {
-    let mut o = Opts { verified: true, trust_callers: false, budget: 1 << 30, files: Vec::new() };
+    let mut o = Opts {
+        verified: true,
+        trust_callers: false,
+        budget: 1 << 30,
+        target: pruv_core::abi::AbiTarget::SysV,
+        files: Vec::new(),
+    };
     let mut it = std::env::args_os().skip(1);
     while let Some(a) = it.next() {
         match a.to_str() {
@@ -68,6 +75,13 @@ fn main() {
             Some("--budget") => match it.next().and_then(|v| v.to_str().and_then(|s| s.parse::<u64>().ok())) {
                 Some(n) => o.budget = n,
                 None => usage(),
+            },
+            Some("--target") => match it.next().as_ref().and_then(|v| v.to_str()) {
+                Some("x86_64-pc-windows-msvc") => o.target = pruv_core::abi::AbiTarget::WinX64,
+                Some("aarch64-apple-darwin") | Some("x86_64-apple-darwin") | Some("x86_64-unknown-linux-gnu") => {
+                    o.target = pruv_core::abi::AbiTarget::SysV
+                }
+                _ => usage(),
             },
             _ => o.files.push(a),
         }

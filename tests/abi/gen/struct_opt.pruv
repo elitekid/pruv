@@ -1,0 +1,15 @@
+// 경계: 사용자 struct(Option 필드 포함) 인자·반환 (out 포인터, sret 없음)
+struct Cell {
+  v: Option<i64>,
+  n: i64,
+}
+
+fn bump(c: Cell, d: i64) -> Cell
+  requires d >= 0 && d <= 1_000
+  requires c.n >= 0 && c.n <= 1_000
+  ensures result.n == c.n + d
+{
+  let mut q: Cell = c;
+  q.n = q.n + d;
+  return q;
+}

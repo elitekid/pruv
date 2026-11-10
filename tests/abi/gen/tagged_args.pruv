@@ -1,0 +1,17 @@
+// 경계: Option/Result 인자 (펼친 두 i64 로 전달)
+fn unwrap_or(o: Option<i64>, d: i64) -> i64
+  ensures !is_some(o) ==> result == d
+{
+  match o {
+    Some(x) => { return x; }
+    None => { return d; }
+  }
+}
+
+fn res_code(r: Result<i64>) -> i64
+{
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return c; }
+  }
+}

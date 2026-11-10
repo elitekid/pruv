@@ -1,0 +1,14 @@
+// 경계: i64 MIN/MAX 를 돌려주는 Option (payload 가 부호 있는 64비트 끝값)
+fn opt_max() -> Option<i64>
+  ensures is_some(result)
+  ensures some_val(result) == 9223372036854775807
+{
+  return Some(9223372036854775807);
+}
+
+fn opt_min() -> Option<i64>
+  ensures is_some(result)
+  ensures some_val(result) == -9223372036854775807 - 1
+{
+  return Some(-9223372036854775807 - 1);
+}

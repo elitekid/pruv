@@ -1,0 +1,8 @@
+// 경계: 배열 반환 (out 포인터, sret 없음)
+fn arr(a: [i64]) -> [i64] ! alloc
+  requires len(a) <= 1_000_000
+  ensures len(result) == len(a)
+{
+  let c: [i64] = copy(a);
+  return c;
+}

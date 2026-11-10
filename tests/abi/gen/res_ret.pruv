@@ -1,0 +1,11 @@
+// 경계: Result 반환 (Ok/Err 두 경로)
+fn get_res(a: i64, b: i64) -> Result<i64>
+  requires a >= 0 && a <= 1_000_000
+  requires b >= 0 && b <= 1_000_000
+  ensures is_ok(result) ==> b > 0
+{
+  if b == 0 {
+    return Err(1);
+  }
+  return Ok(a / b);
+}

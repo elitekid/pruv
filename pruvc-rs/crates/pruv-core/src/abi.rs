@@ -149,7 +149,14 @@ impl<'a> Words<'a> {
     }
 }
 
-pub fn abi_of(f: &Function, tt: &TypeTable) -> R<String> {
+/// wrapper 가 따를 C ABI 대상. SysV = macOS arm64/x64·Linux x64 (기존 출력).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AbiTarget {
+    SysV,
+    WinX64,
+}
+
+pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
     let n = mangle(&f.name);
     let mut ext: Vec<String> = Vec::new();
     let mut pre: Vec<String> = Vec::new();
@@ -197,6 +204,19 @@ pub fn abi_of(f: &Function, tt: &TypeTable) -> R<String> {
         body.push("  %o1 = getelementptr inbounds { ptr, i64 }, ptr %out, i32 0, i32 1".to_string());
         body.push("  store ptr %x0, ptr %o0".to_string());
         body.push("  store i64 %x1, ptr %o1".to_string());
+        body.push("  ret void".to_string());
+        ret = "void";
+    } else if (rt == "option" || rt == "result") && target == AbiTarget::WinX64 {
+        // Windows x64: 16바이트 집합체는 숨은 sret 포인터로 돌려준다(첫 매개변수)
+        ext.insert(0, "ptr sret({ i64, i64 }) align 8 %sret".to_string());
+        body.push(format!("  %r = call {} {}({})", lty(rt), entry, argl));
+        body.push(format!("  %x0 = extractvalue {} %r, 0", lty(rt)));
+        body.push(format!("  %x1 = extractvalue {} %r, 1", lty(rt)));
+        body.push("  %x0z = zext i1 %x0 to i64".to_string());
+        body.push("  %sl0 = getelementptr inbounds { i64, i64 }, ptr %sret, i32 0, i32 0".to_string());
+        body.push("  %sl1 = getelementptr inbounds { i64, i64 }, ptr %sret, i32 0, i32 1".to_string());
+        body.push("  store i64 %x0z, ptr %sl0, align 8".to_string());
+        body.push("  store i64 %x1, ptr %sl1, align 8".to_string());
         body.push("  ret void".to_string());
         ret = "void";
     } else if rt == "option" || rt == "result" {
@@ -254,8 +274,41 @@ mod tests {
             body: vec![],
         };
         assert_eq!(
-            abi_of(&f, &tt).unwrap(),
+            abi_of(&f, &tt, AbiTarget::SysV).unwrap(),
             "define i64 @pruv_abi_f(i64 %a.x, i64 %a.b) {\nentry:\n  %c.b = icmp ne i64 %a.b, 0\n  %r = call i1 @f__pruv_entry(i64 %a.x, i1 %c.b)\n  %rz = zext i1 %r to i64\n  ret i64 %rz\n}\n"
         );
+        // i64/bool 반환은 대상과 무관
+        assert_eq!(abi_of(&f, &tt, AbiTarget::WinX64).unwrap(), abi_of(&f, &tt, AbiTarget::SysV).unwrap());
+    }
+
+    fn opt_fn() -> Function {
+        Function {
+            line: 1,
+            col: 1,
+            name: "f".into(),
+            params: vec![Param { name: "x".into(), ty: "i64".into() }],
+            ret: "option".into(),
+            effects: vec![],
+            requires: vec![],
+            ensures: vec![],
+            body: vec![],
+        }
+    }
+
+    #[test]
+    fn abi_option_sysv() {
+        let tt = TypeTable::new(&[]);
+        assert_eq!(
+            abi_of(&opt_fn(), &tt, AbiTarget::SysV).unwrap(),
+            "define { i64, i64 } @pruv_abi_f(i64 %a.x) {\nentry:\n  %r = call { i1, i64 } @f__pruv_entry(i64 %a.x)\n  %x0 = extractvalue { i1, i64 } %r, 0\n  %x1 = extractvalue { i1, i64 } %r, 1\n  %x0z = zext i1 %x0 to i64\n  %t0 = insertvalue { i64, i64 } undef, i64 %x0z, 0\n  %t1 = insertvalue { i64, i64 } %t0, i64 %x1, 1\n  ret { i64, i64 } %t1\n}\n"
+        );
+    }
+
+    #[test]
+    fn abi_option_win_sret() {
+        let tt = TypeTable::new(&[]);
+        let t = abi_of(&opt_fn(), &tt, AbiTarget::WinX64).unwrap();
+        assert!(t.starts_with("define void @pruv_abi_f(ptr sret({ i64, i64 }) align 8 %sret, i64 %a.x) {\nentry:\n"));
+        assert!(t.contains("  store i64 %x0z, ptr %sl0, align 8\n  store i64 %x1, ptr %sl1, align 8\n  ret void\n}\n"));
     }
 }

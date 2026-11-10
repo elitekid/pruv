@@ -1,0 +1,18 @@
+// 경계: bool·i64·unit 반환 (sret 없음)
+fn is_pos(x: i64) -> bool
+  ensures result == (x > 0)
+{
+  return x > 0;
+}
+
+fn twice(x: i64) -> i64
+  requires x >= -1_000_000 && x <= 1_000_000
+  ensures result == x + x
+{
+  return x + x;
+}
+
+fn noop(x: i64) -> ()
+{
+  return;
+}

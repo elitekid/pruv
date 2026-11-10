@@ -3,7 +3,7 @@
 //! 규칙: 가변 상태(임시 번호·라벨 번호·스코프·임시 해제 목록·계약 환경)는 Python 과 같은 순서로 바꾼다.
 //! Python 의 None 은 문자열 "None" 으로 흉내 낸다(V 의 a/b 기본값).
 
-use crate::abi::abi_of;
+use crate::abi::{abi_of, AbiTarget};
 use crate::ast::*;
 use crate::typeinfo::{is_user_type, TypeTable};
 use std::collections::HashMap;
@@ -1825,6 +1825,13 @@ c2:\n\
 
 /// 프로그램 -> (IR 텍스트, Rust 바인딩 텍스트). Err 는 Python 이 예외를 내는 자리의 메시지.
 pub fn gen_llvm(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> R<(String, String)> {
+    gen_llvm_for(prog, verified, trust_callers, budget, AbiTarget::SysV)
+}
+
+const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-pc-windows-msvc\"\n\n";
+
+/// 대상 ABI 를 고른 생성. SysV 는 gen_llvm 과 바이트 동일.
+pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
     let tt = TypeTable::new(&prog.types);
     let mut m = Mod::new();
     let mut funcs: HashMap<String, &Function> = HashMap::new();
@@ -1847,10 +1854,11 @@ pub fn gen_llvm(prog: &Program, verified: bool, trust_callers: bool, budget: u64
             sig_text(&params)
         )));
         chunks.push(entry_of(&mut m, &tt, &funcs, f, trust_callers || f.requires.is_empty(), budget)?);
-        chunks.push(abi_of(f, &tt)?);
+        chunks.push(abi_of(f, &tt, target)?);
     }
     let ir = format!(
-        "{}\n{}{}{}\n{}",
+        "{}{}\n{}{}{}\n{}",
+        if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
         type_defs(&tt),
         if prog.types.is_empty() { "" } else { "\n" },
@@ -1909,6 +1917,40 @@ mod tests {
         g.guard(&c, Fail::Panic1("pruv_panic_arith", "x".to_string()), false).unwrap();
         let text = g.render("define internal void @f__pruv_body()");
         assert!(text.contains("  %t1 = icmp eq i64 1, 1\n  br i1 %t1, label %ok.1, label %fail.2\nfail.2:\n"));
+    }
+
+    fn opt_prog() -> Program {
+        Program {
+            types: vec![],
+            functions: vec![Function {
+                line: 1,
+                col: 1,
+                name: "f".into(),
+                params: vec![],
+                ret: "option".into(),
+                effects: vec![],
+                requires: vec![],
+                ensures: vec![],
+                body: vec![],
+            }],
+        }
+    }
+
+    #[test]
+    fn gen_llvm_for_targets() {
+        let p = opt_prog();
+        let (sys, b1) = gen_llvm(&p, false, false, 1000).unwrap_or_else(|e| panic!("{}", e));
+        let (sys2, _) = gen_llvm_for(&p, false, false, 1000, AbiTarget::SysV).unwrap();
+        assert_eq!(sys, sys2);
+        assert!(sys.contains("define { i64, i64 } @pruv_abi_f()"));
+        assert!(!sys.contains("target triple"));
+        let (win, b2) = gen_llvm_for(&p, false, false, 1000, AbiTarget::WinX64).unwrap();
+        let mut lines = win.lines();
+        assert!(lines.next().unwrap().starts_with("target datalayout = \"e-m:w-p270:32:32"));
+        assert_eq!(lines.next().unwrap(), "target triple = \"x86_64-pc-windows-msvc\"");
+        assert_eq!(lines.next().unwrap(), "");
+        assert!(win.contains("define void @pruv_abi_f(ptr sret({ i64, i64 }) align 8 %sret) {"));
+        assert_eq!(b1, b2);
     }
 
     #[test]
