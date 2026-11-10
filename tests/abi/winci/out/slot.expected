@@ -1,0 +1,10 @@
+make_slot(5) = Slot { o: Some(5), n: 5 }
+make_slot(-5) = Slot { o: None, n: -5 }
+make_slot(0) = Slot { o: None, n: 0 }
+make_slot(1000000) = Slot { o: Some(1000000), n: 1000000 }
+make_slot(-1000000) = Slot { o: None, n: -1000000 }
+slot_opt(sol::Slot { o: Some(i64::MIN), n: 0 }) = Some(-9223372036854775808)
+slot_opt(sol::Slot { o: Some(i64::MAX), n: 1 }) = Some(9223372036854775807)
+slot_opt(sol::Slot { o: None, n: 1 }) = None
+repeat make_slot n=100000 sum=3179643955332908164
+repeat slot_opt n=100000 sum=4127597167958996328

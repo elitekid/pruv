@@ -1,0 +1,6 @@
+bump(sol::Cell { v: Some(1), n: 2 }, 3) = Cell { v: Some(1), n: 5 }
+bump(sol::Cell { v: None, n: 0 }, 1000) = Cell { v: None, n: 1000 }
+bump(sol::Cell { v: Some(i64::MAX), n: 1000 }, 0) = Cell { v: Some(9223372036854775807), n: 1000 }
+bump(sol::Cell { v: Some(i64::MIN), n: 0 }, 1000) = Cell { v: Some(-9223372036854775808), n: 1000 }
+bump(sol::Cell { v: None, n: 1000 }, 0) = Cell { v: None, n: 1000 }
+repeat bump n=100000 sum=-2740774562045915150

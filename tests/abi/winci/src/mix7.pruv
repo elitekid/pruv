@@ -1,0 +1,12 @@
+// 경계: 사용자 인자 4개 + Option 1개(두 워드) = 6 워드 + sret → 스택 전달, Result 반환
+fn mix(a: i64, o: Option<i64>, b: i64, c: i64, d: i64) -> Result<i64>
+  requires a >= -1_000_000 && a <= 1_000_000
+  requires b >= -1_000_000 && b <= 1_000_000
+  requires c >= -1_000_000 && c <= 1_000_000
+  requires d >= -1_000_000 && d <= 1_000_000
+{
+  match o {
+    Some(x) => { return Ok(x); }
+    None => { return Err(a + b + c + d); }
+  }
+}

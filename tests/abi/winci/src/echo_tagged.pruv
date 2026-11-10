@@ -1,0 +1,16 @@
+// 경계: Option/Result 인자 + 같은 종류 반환 (펼친 두 i64 인자 + sret 반환)
+fn echo_opt(o: Option<i64>) -> Option<i64>
+{
+  match o {
+    Some(x) => { return Some(x); }
+    None => { return None; }
+  }
+}
+
+fn echo_res(r: Result<i64>) -> Result<i64>
+{
+  match r {
+    Ok(v) => { return Ok(v); }
+    Err(c) => { return Err(c); }
+  }
+}

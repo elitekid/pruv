@@ -1,0 +1,66 @@
+{
+  "opt_ret.pruv": [
+    "get_opt(5)", "get_opt(-3)", "get_opt(0)", "get_opt(1)", "get_opt(1000000)", "get_opt(-1000000)",
+    {"repeat": "get_opt", "args": "(i % 2001) - 1000", "n": 100000}
+  ],
+  "res_ret.pruv": [
+    "get_res(10, 2)", "get_res(7, 0)", "get_res(0, 5)", "get_res(1000000, 1)", "get_res(0, 0)",
+    {"repeat": "get_res", "args": "i % 1001, i % 7", "n": 100000}
+  ],
+  "args_0_1_5.pruv": [
+    "f0()", "f1(5)", "f1(-3)", "f1(0)", "f1(1000000)",
+    "f5(1, 2, 3, 4, 5)", "f5(-1, -2, -3, -4, -5)", "f5(10, -20, 30, -40, 50)",
+    "f5(1000000, 1000000, 1000000, 1000000, 1000000)", "f5(-1000000, -1000000, -1000000, -1000000, -1000000)",
+    {"repeat": "f0", "args": "", "n": 100000},
+    {"repeat": "f1", "args": "(i % 2001) - 1000", "n": 100000},
+    {"repeat": "f5", "args": "(i % 100) - 50, 1, 2, 3, 4", "n": 100000}
+  ],
+  "minmax_opt.pruv": [
+    "opt_max()", "opt_min()",
+    {"repeat": "opt_max", "args": "", "n": 100000},
+    {"repeat": "opt_min", "args": "", "n": 100000}
+  ],
+  "scalar_ret.pruv": [
+    "is_pos(5)", "is_pos(-5)", "is_pos(0)", "twice(21)", "twice(-1000000)", "twice(1000000)", "noop(3)",
+    {"repeat": "twice", "args": "(i % 2001) - 1000", "n": 100000}
+  ],
+  "struct_opt.pruv": [
+    "bump(sol::Cell { v: Some(1), n: 2 }, 3)",
+    "bump(sol::Cell { v: None, n: 0 }, 1000)",
+    "bump(sol::Cell { v: Some(i64::MAX), n: 1000 }, 0)",
+    "bump(sol::Cell { v: Some(i64::MIN), n: 0 }, 1000)",
+    "bump(sol::Cell { v: None, n: 1000 }, 0)",
+    {"repeat": "bump", "args": "sol::Cell { v: if i % 2 == 0 { Some(i) } else { None }, n: i % 1000 }, i % 1001", "n": 100000}
+  ],
+  "tagged_args.pruv": [
+    "unwrap_or(Some(3), 9)", "unwrap_or(None, 9)",
+    "unwrap_or(Some(i64::MAX), 0)", "unwrap_or(Some(i64::MIN), 0)", "unwrap_or(None, i64::MIN)", "unwrap_or(None, i64::MAX)",
+    "res_code(Ok(5))", "res_code(Err(7))", "res_code(Ok(i64::MIN))", "res_code(Err(i64::MAX))",
+    {"repeat": "unwrap_or", "args": "if i % 2 == 0 { Some(i) } else { None }, -i", "n": 100000},
+    {"repeat": "res_code", "args": "if i % 3 == 0 { Ok(i) } else { Err(-i) }", "n": 100000}
+  ],
+  "arr_ret.pruv": [
+    "arr(&[])", "arr(&[1, 2, 3])", "arr(&[i64::MIN, 0, i64::MAX])",
+    {"repeat": "arr", "args": "&[i, i + 1, i + 2]", "n": 20000}
+  ],
+  "echo_tagged.pruv": [
+    "echo_opt(Some(1))", "echo_opt(None)", "echo_opt(Some(i64::MAX))", "echo_opt(Some(i64::MIN))",
+    "echo_res(Ok(2))", "echo_res(Err(3))", "echo_res(Ok(i64::MIN))", "echo_res(Err(i64::MAX))",
+    {"repeat": "echo_opt", "args": "if i % 3 == 0 { None } else { Some(i) }", "n": 100000},
+    {"repeat": "echo_res", "args": "if i % 3 == 0 { Ok(i) } else { Err(-i) }", "n": 100000}
+  ],
+  "mix7.pruv": [
+    "mix(1, Some(9), 2, 3, 4)", "mix(1, None, 2, 3, 4)",
+    "mix(-1000000, Some(i64::MIN), -1000000, -1000000, -1000000)",
+    "mix(1000000, Some(i64::MAX), 1000000, 1000000, 1000000)",
+    "mix(1000000, None, 1000000, 1000000, 1000000)", "mix(-1000000, None, -1000000, -1000000, -1000000)",
+    {"repeat": "mix", "args": "(i % 1000) - 500, if i % 2 == 0 { Some(i) } else { None }, 1, 2, 3", "n": 100000}
+  ],
+  "slot.pruv": [
+    "make_slot(5)", "make_slot(-5)", "make_slot(0)", "make_slot(1000000)", "make_slot(-1000000)",
+    "slot_opt(sol::Slot { o: Some(i64::MIN), n: 0 })", "slot_opt(sol::Slot { o: Some(i64::MAX), n: 1 })",
+    "slot_opt(sol::Slot { o: None, n: 1 })",
+    {"repeat": "make_slot", "args": "(i % 2001) - 1000", "n": 100000},
+    {"repeat": "slot_opt", "args": "sol::Slot { o: if i % 2 == 0 { Some(i) } else { None }, n: i }", "n": 100000}
+  ]
+}

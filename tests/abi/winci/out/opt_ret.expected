@@ -1,0 +1,7 @@
+get_opt(5) = Some(5)
+get_opt(-3) = None
+get_opt(0) = None
+get_opt(1) = Some(1)
+get_opt(1000000) = Some(1000000)
+get_opt(-1000000) = None
+repeat get_opt n=100000 sum=4670373530969986690

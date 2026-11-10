@@ -1,0 +1,6 @@
+get_res(10, 2) = Ok(5)
+get_res(7, 0) = Err(1)
+get_res(0, 5) = Ok(0)
+get_res(1000000, 1) = Ok(1000000)
+get_res(0, 0) = Err(1)
+repeat get_res n=100000 sum=3867051922510118707

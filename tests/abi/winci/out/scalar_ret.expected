@@ -1,0 +1,8 @@
+is_pos(5) = true
+is_pos(-5) = false
+is_pos(0) = false
+twice(21) = 42
+twice(-1000000) = -2000000
+twice(1000000) = 2000000
+noop(3) = ()
+repeat twice n=100000 sum=7553015458277559027

@@ -1,0 +1,12 @@
+unwrap_or(Some(3), 9) = 3
+unwrap_or(None, 9) = 9
+unwrap_or(Some(i64::MAX), 0) = 9223372036854775807
+unwrap_or(Some(i64::MIN), 0) = -9223372036854775808
+unwrap_or(None, i64::MIN) = -9223372036854775808
+unwrap_or(None, i64::MAX) = 9223372036854775807
+res_code(Ok(5)) = 5
+res_code(Err(7)) = 7
+res_code(Ok(i64::MIN)) = -9223372036854775808
+res_code(Err(i64::MAX)) = 9223372036854775807
+repeat unwrap_or n=100000 sum=9055879233409803920
+repeat res_code n=100000 sum=6764434188617810050

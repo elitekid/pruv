@@ -1,0 +1,22 @@
+// 경계: 구조체(Option 필드) 반환(out 포인터)과 구조체 인자 → Option 반환(포인터 인자 + sret)
+struct Slot {
+  o: Option<i64>,
+  n: i64,
+}
+
+fn make_slot(x: i64) -> Slot
+  requires x >= -1_000_000 && x <= 1_000_000
+{
+  if x > 0 {
+    return Slot { o: Some(x), n: x };
+  }
+  return Slot { o: None, n: x };
+}
+
+fn slot_opt(s: Slot) -> Option<i64>
+{
+  match s.o {
+    Some(v) => { return Some(v); }
+    None => { return None; }
+  }
+}
