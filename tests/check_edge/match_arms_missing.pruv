@@ -1,0 +1,3 @@
+// match_arms: arm E::B missing
+enum E { A, B }
+fn f(e: E) -> () { match e { E::A => { } } }

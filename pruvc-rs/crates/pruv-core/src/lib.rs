@@ -18,6 +18,7 @@
 pub const SCHEMA_AST: &str = "pruv-ast-v1";
 
 pub mod ast;
+pub mod check;
 pub mod diagnostic;
 pub mod dump;
 pub mod lexer;
@@ -25,6 +26,7 @@ pub mod parser;
 pub mod pyjson;
 pub mod pyrepr;
 pub mod pyrepr_table;
+pub mod typeinfo;
 
 /// 공개 진입: 소스 문자열을 파싱한다(개행 정규화 포함).
 pub fn parse(src: &str) -> Result<ast::Program, diagnostic::PruvError> {

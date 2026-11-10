@@ -1,0 +1,5 @@
+// ok: unrelated types keep declaration order, no dependencies
+struct A { x: i64 }
+enum B { P, Q(v: i64) }
+struct C { y: bool }
+fn f(a: A, b: B, c: C) -> i64 { return a.x; }

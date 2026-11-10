@@ -1,0 +1,2 @@
+// effect_in_contract: alloc inside requires
+fn f(n: i64) -> i64 requires len(alloc(n, 0)) > 0 { return n; }

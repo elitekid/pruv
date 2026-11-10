@@ -1,0 +1,2 @@
+// array_alias: let binds an array straight from a variable
+fn f(a: [i64]) -> i64 { let b: [i64] = a; return 0; }

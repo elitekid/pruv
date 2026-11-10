@@ -1,0 +1,2 @@
+// empty_enum: enum without variants
+enum E { }

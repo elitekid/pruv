@@ -1,0 +1,2 @@
+// unknown_fn: call of an undefined function
+fn f() -> i64 { return foo(1); }

@@ -2,10 +2,15 @@
 # -*- coding: utf-8 -*-
 """Python 정본 파서와 Rust pruv-parse-dump 의 parse 결과를 바이트 단위로 비교한다.
 
-  python tests/diff_parse.py [--rs-path PATH] [--seeds 41,56,57] [--fuzz-count 200]
-                             [--mutations 6] [--save-dir DIR] [--only GROUP[,GROUP...]]
+  python tests/diff_parse.py [--mode parse|check] [--rs-path PATH] [--seeds 41,56,57]
+                             [--fuzz-count 200] [--mutations 6] [--save-dir DIR]
+                             [--only GROUP[,GROUP...]]
 
 그룹: must_reject examples runtime bench edge bytes fuzz mutate
+--mode parse(기본): 기대 줄 = diff_py_adapter.dumps(parse_result(FILE)), Rust = pruv-parse-dump,
+  edge = tests/parse_edge.
+--mode check: 기대 줄 = diff_py_adapter.dumps(check_result(FILE)), Rust = pruv-check-dump,
+  edge = tests/check_edge (mutate 원본에도 들어간다), coverage 는 check 용(45개 오류 code 등).
 기대 줄 = diff_py_adapter.dumps(parse_result(FILE)) (같은 프로세스에서 직접 부른다).
   UnicodeDecodeError -> {"adapter_error": "decode"}, RecursionError -> 비교 제외(py_recursion),
   그 밖의 예외 -> py_crash(실패).
@@ -46,7 +51,23 @@ GROUP_DIRS = [
     ("bench", "bench/solutions/pruv_agg"),
     ("edge", "tests/parse_edge"),
 ]
+CHECK_EDGE_DIR = "tests/check_edge"
+PARSE_EDGE_DIR = "tests/parse_edge"
 ALL_GROUPS = [g for g, _ in GROUP_DIRS] + ["bytes", "fuzz", "mutate"]
+CHECK_CODES = (
+    "arity array_alias call_in_contract contract_only dup_field dup_fn dup_param dup_type dup_variant "
+    "effect_in_contract empty_enum eq_type field_name field_type immutable int_range match_arity "
+    "match_arms match_type missing_effect missing_return name_collision not_array not_enum not_struct "
+    "print_type recursion recursive_type reserved result_scope return_type shadow struct_fields "
+    "type_mismatch type_name unit_let unit_param unknown_field unknown_fn unknown_name unknown_type "
+    "unknown_variant unused_value useless_expr variant_name").split()
+CHECK_TY_BUILTIN = ("i64", "bool", "unit", "array", "option", "result")
+
+
+def group_dirs(mode):
+    if mode == "check":
+        return [(g, CHECK_EDGE_DIR if g == "edge" else d) for g, d in GROUP_DIRS]
+    return GROUP_DIRS
 STATUSES = ("same", "diff", "py_recursion", "py_crash", "rs_crash")
 
 # ---------------------------------------------------------------------------
@@ -217,7 +238,7 @@ def build_cases(selected, args, tmp):
     notes = []
     base = []   # (rel, path) 변형 원본: must_reject·examples·runtime·bench·edge
     per_group = collections.OrderedDict((g, []) for g in ALL_GROUPS)
-    for g, sub in GROUP_DIRS:
+    for g, sub in group_dirs(args.mode):
         files = list_dir(sub)
         if not files:
             notes.append("경고: %s 에 *.pruv 가 없다(%s)" % (g, sub))
@@ -225,6 +246,9 @@ def build_cases(selected, args, tmp):
             base.append((rel(p), p))
             if g in selected:
                 per_group[g].append(Case(g, rel(p), p))
+    if args.mode == "check":   # check 모드의 mutate 원본에는 parse 경계 입력도 더한다
+        for p in list_dir(PARSE_EDGE_DIR):
+            base.append((rel(p), p))
     if "bytes" in selected:
         d = os.path.join(tmp, "bytes")
         os.makedirs(d)
@@ -278,9 +302,10 @@ def build_cases(selected, args, tmp):
 # ---------------------------------------------------------------------------
 # 평가
 # ---------------------------------------------------------------------------
-def eval_python(case):
+def eval_python(case, fn=None):
+    fn = fn or A.parse_result
     try:
-        case.py = A.dumps(A.parse_result(case.path)).encode("utf-8")
+        case.py = A.dumps(fn(case.path)).encode("utf-8")
     except UnicodeDecodeError:
         case.py = A.dumps({"adapter_error": "decode"}).encode("utf-8")
     except RecursionError:
@@ -459,8 +484,87 @@ def coverage(all_cases, enforce):
 
 
 # ---------------------------------------------------------------------------
-def default_rs_path():
-    base = os.path.join(ROOT, "pruvc-rs", "target", "release", "pruv-parse-dump")
+def collect_ty(obj, tys):
+    """식 노드의 ty 값(문자열)을 모은다"""
+    stack = [obj]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, dict):
+            if isinstance(o.get("kind"), str) and isinstance(o.get("ty"), str):
+                tys.add(o["ty"])
+            stack.extend(o.values())
+        elif isinstance(o, list):
+            stack.extend(o)
+
+
+def coverage_check(all_cases, enforce):
+    tys, codes, stages = set(), collections.Counter(), collections.Counter()
+    ok_n = tt_n = tt2_n = adapter_n = 0
+    crash = collections.Counter()
+    for c in all_cases:
+        if c.status == "py_crash":
+            crash[c.note[:160]] += 1
+            continue
+        if c.py is None or c.status == "py_recursion":
+            continue
+        try:
+            obj = json.loads(c.py.decode("utf-8"))
+        except (ValueError, RecursionError):
+            continue
+        if "adapter_error" in obj:
+            adapter_n += 1
+            continue
+        err = obj.get("error")
+        if err:
+            codes[err.get("code")] += 1
+            stages[err.get("stage")] += 1
+            continue
+        ok_n += 1
+        collect_ty(obj.get("program"), tys)
+        tt = obj.get("type_table")
+        if tt is not None:
+            tt_n += 1
+            if len(tt.get("entries", [])) >= 2:
+                tt2_n += 1
+    user_tys = sorted(t for t in tys if t not in CHECK_TY_BUILTIN)
+    ty_missing = [t for t in CHECK_TY_BUILTIN if t not in tys]
+    if not user_tys:
+        ty_missing.append("사용자 타입")
+    missing_codes = [x for x in CHECK_CODES if x not in codes]
+    print("")
+    print("== 대응 범위(coverage, check) ==")
+    print("성공 결과 %d개 (type_table 있음 %d, entries 2개 이상 %d), 해독/읽기 실패 %d개" % (
+        ok_n, tt_n, tt2_n, adapter_n))
+    print("ty 값 종류: %s" % (", ".join(sorted(tys)) or "없음"))
+    print("  내장 ty %d/%d, 사용자 타입 %d종(%s)" % (
+        len([t for t in CHECK_TY_BUILTIN if t in tys]), len(CHECK_TY_BUILTIN), len(user_tys),
+        ", ".join(user_tys[:8])))
+    print("  안 나온 ty 종류: %s" % (", ".join(ty_missing) if ty_missing else "없음"))
+    print("오류 code %d종, 오류 %d건: %s" % (
+        len(codes), sum(codes.values()), ", ".join("%s=%d" % kv for kv in sorted(codes.items())) or "없음"))
+    print("오류 stage: type=%d effect=%d 그 밖=%d" % (
+        stages["type"], stages["effect"],
+        sum(v for k, v in stages.items() if k not in ("type", "effect"))))
+    extra = sorted(set(codes) - set(CHECK_CODES))
+    if extra:
+        print("  기대 45개 밖의 code: %s" % ", ".join(str(x) for x in extra))
+    print("  빠진 필수 code(%d/%d 중): %s" % (
+        len(missing_codes), len(CHECK_CODES), ", ".join(missing_codes) if missing_codes else "없음"))
+    ncrash = sum(crash.values())
+    print("py_crash(RecursionError 제외): %d건" % ncrash)
+    for note, n in crash.most_common(10):
+        print("  %4d  %s" % (n, note))
+    ok = not missing_codes
+    if not enforce:
+        print("coverage 판정: --only 로 일부 그룹만 돌려 판정에서 제외(참고용)")
+        return True
+    print("coverage 판정: %s" % ("통과" if ok else "실패"))
+    return ok
+
+
+def default_rs_path(mode="parse"):
+    name = "pruv-check-dump" if mode == "check" else "pruv-parse-dump"
+    base = os.path.join(ROOT, "pruvc-rs", "target", "release", name)
     if not os.path.isfile(base) and os.path.isfile(base + ".exe"):
         return base + ".exe"
     return base
@@ -468,7 +572,9 @@ def default_rs_path():
 
 def main(argv):
     ap = argparse.ArgumentParser(prog="diff_parse.py", description="Python/Rust parse 결과 바이트 비교")
-    ap.add_argument("--rs-path", default=None, help="pruv-parse-dump 경로")
+    ap.add_argument("--mode", choices=("parse", "check"), default="parse",
+                    help="parse(기본): pruv-parse-dump 와 비교, check: pruv-check-dump 와 비교")
+    ap.add_argument("--rs-path", default=None, help="Rust 바이너리 경로(mode 에 따라 pruv-parse-dump / pruv-check-dump)")
     ap.add_argument("--seeds", default="41,56,57", help="퍼저 seed 목록(쉼표)")
     ap.add_argument("--fuzz-count", type=int, default=200, help="seed 마다 index 수")
     ap.add_argument("--mutations", type=int, default=6, help="파일마다 변형 수")
@@ -486,10 +592,10 @@ def main(argv):
         bad = [t for t in selected if t not in ALL_GROUPS]
         if bad or not selected:
             ap.error("--only: 알 수 없는 그룹 %s (가능: %s)" % (bad, " ".join(ALL_GROUPS)))
-    rs = os.path.abspath(args.rs_path) if args.rs_path else default_rs_path()
+    rs = os.path.abspath(args.rs_path) if args.rs_path else default_rs_path(args.mode)
     if not os.path.isfile(rs) or not os.access(rs, os.X_OK):
         print("오류: Rust 바이너리를 찾을 수 없거나 실행할 수 없다: %s\n"
-              "  먼저 빌드하거나 --rs-path 로 pruv-parse-dump 경로를 준다." % rs, file=sys.stderr)
+              "  먼저 빌드하거나 --rs-path 로 pruv-%s-dump 경로를 준다." % (rs, args.mode), file=sys.stderr)
         return 2
     enc = (locale.getpreferredencoding(False) or "").lower().replace("-", "").replace("_", "")
     if enc != "utf8":
@@ -506,8 +612,9 @@ def main(argv):
             if g not in selected:
                 continue
             cases = per_group[g]
+            py_fn = A.check_result if args.mode == "check" else A.parse_result
             for c in cases:
-                eval_python(c)
+                eval_python(c, py_fn)
             eval_rust(rs, cases, problems)
             stats[g] = collections.Counter(c.status for c in cases)
             stats[g]["inputs"] = len(cases)
@@ -564,7 +671,8 @@ def main(argv):
             print("")
             print("저장: 사례 %d개 -> %s" % (saved, args.save_dir))
 
-        cov_ok = coverage(all_cases, enforce=(args.only is None))
+        cov_fn = coverage_check if args.mode == "check" else coverage
+        cov_ok = cov_fn(all_cases, enforce=(args.only is None))
 
     clean = all(total[k] == 0 for k in ("diff", "py_crash", "rs_crash"))
     ok = clean and cov_ok

@@ -284,9 +284,59 @@ pub fn parse_dump_line(src_bytes: &[u8]) -> String {
     dumps_sorted(&top)
 }
 
+/// 타입 표 -> {"order": [...], "entries": [{"deps","kind","name"}...]} (Python type_table_json).
+fn type_table_json(tt: &crate::typeinfo::TypeTable) -> Json {
+    let mut entries = Vec::new();
+    let mut order = Vec::new();
+    for d in tt.ordered() {
+        let kind = match d {
+            TypeDecl::Struct(_) => "struct",
+            TypeDecl::Enum(_) => "enum",
+        };
+        order.push(js(d.name()));
+        entries.push(Json::Obj(vec![
+            ("name".to_string(), js(d.name())),
+            ("kind".to_string(), js(kind)),
+            ("deps".to_string(), strs(&tt.deps(d))),
+        ]));
+    }
+    Json::Obj(vec![("order".to_string(), Json::Arr(order)), ("entries".to_string(), Json::Arr(entries))])
+}
+
+/// 파일 바이트 하나 -> parse+check 결과 한 줄(개행 제외). 성공이면 ty 가 채워진 program 과 type_table.
+pub fn check_dump_line(src_bytes: &[u8]) -> String {
+    let src = match std::str::from_utf8(src_bytes) {
+        Ok(s) => s,
+        Err(_) => return dumps_sorted(&Json::Obj(vec![("adapter_error".to_string(), js("decode"))])),
+    };
+    let err_top = |e: crate::diagnostic::PruvError| {
+        Json::Obj(vec![
+            ("schema".to_string(), js(crate::SCHEMA_AST)),
+            ("error".to_string(), e.to_json_value()),
+        ])
+    };
+    let top = match parse_source(src) {
+        Err(e) => err_top(e),
+        Ok(mut p) => match crate::check::check(&mut p) {
+            Err(e) => err_top(e),
+            Ok(tt) => Json::Obj(vec![
+                ("schema".to_string(), js(crate::SCHEMA_AST)),
+                ("program".to_string(), program(&p)),
+                ("type_table".to_string(), type_table_json(&tt)),
+            ]),
+        },
+    };
+    dumps_sorted(&top)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_line_decode_error() {
+        assert_eq!(check_dump_line(&[0xff]), r#"{"adapter_error": "decode"}"#);
+    }
 
     #[test]
     fn error_line_is_number() {

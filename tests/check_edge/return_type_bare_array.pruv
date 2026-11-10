@@ -1,0 +1,2 @@
+// return_type: `return;` in a [i64] function (type name in message)
+fn f() -> [i64] { return; }

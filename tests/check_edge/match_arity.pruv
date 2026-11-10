@@ -1,0 +1,3 @@
+// match_arity: pattern binds fewer names than the variant has fields
+enum E { A(x: i64, y: i64) }
+fn f(e: E) -> () { match e { E::A(x) => { } } }

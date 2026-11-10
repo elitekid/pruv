@@ -1,0 +1,4 @@
+// ok: i64 boundary literals (-2^63 and 2^63-1 pass)
+fn lo() -> i64 { return -9223372036854775808; }
+fn hi() -> i64 { return 9223372036854775807; }
+fn mid(x: i64) -> i64 { return x - -1; }

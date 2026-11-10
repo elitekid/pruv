@@ -1,0 +1,4 @@
+// recursion: fa -> fb -> fc -> fa (path of three functions)
+fn fa(x: i64) -> i64 { return fb(x); }
+fn fb(x: i64) -> i64 { return fc(x); }
+fn fc(x: i64) -> i64 { return fa(x); }

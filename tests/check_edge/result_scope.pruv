@@ -1,0 +1,2 @@
+// result_scope: result used in the body
+fn f() -> i64 { return result; }

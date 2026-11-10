@@ -1,0 +1,3 @@
+// contract_only: variant_field in code
+enum E { A(x: i64) }
+fn f(e: E) -> i64 { return variant_field(e, E::A, x); }

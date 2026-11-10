@@ -1,0 +1,14 @@
+// ok: io and alloc declared (different orders), effects propagate through calls
+fn say(x: i64) -> () ! io {
+  print(x);
+  print(x > 0);
+}
+fn both(n: i64) -> i64 ! io, alloc {
+  let a: [i64] = alloc(n, 1);
+  say(len(a));
+  return a[0];
+}
+fn top() -> i64 ! alloc, io {
+  say(1);
+  return both(2);
+}

@@ -1,0 +1,2 @@
+// variant_name: variant starts with a lower-case letter (fix: Aa)
+enum E { aa }

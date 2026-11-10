@@ -1,0 +1,2 @@
+// unknown_fn: aggregate name written as a plain call (message with aggregate fix)
+fn f(a: [i64]) -> i64 { return sum(a); }

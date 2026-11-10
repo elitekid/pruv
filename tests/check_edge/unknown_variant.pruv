@@ -1,0 +1,3 @@
+// unknown_variant: constructor of a variant the enum lacks
+enum E { A }
+fn f() -> E { return E::Z; }

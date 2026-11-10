@@ -1,0 +1,3 @@
+// dup_type: a struct and an enum share the name P
+struct P { a: i64 }
+enum P { A }

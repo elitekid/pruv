@@ -1,0 +1,2 @@
+// contract_only: is_some (contract-only call) in code
+fn f(o: Option<i64>) -> bool { return is_some(o); }

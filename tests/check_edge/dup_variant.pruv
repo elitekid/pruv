@@ -1,0 +1,2 @@
+// dup_variant: variant A declared twice
+enum E { A, B, A }

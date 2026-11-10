@@ -1,0 +1,14 @@
+// ok: match on a user enum with payloads, enum constructors
+enum Shape { Dot, Circle(r: i64), Rect(w: i64, h: i64) }
+fn area(s: Shape) -> i64 {
+  match s {
+    Shape::Dot => { return 0; }
+    Shape::Circle(r) => { return r * r * 3; }
+    Shape::Rect(w, h) => { return w * h; }
+  }
+}
+fn mk(n: i64) -> Shape {
+  if n < 0 { return Shape::Dot; }
+  if n == 0 { return Shape::Circle(n); }
+  return Shape::Rect(n, n + 1);
+}

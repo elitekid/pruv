@@ -1,0 +1,2 @@
+// field_name: field starts with an upper-case letter (fix: ab)
+struct P { Ab: i64 }

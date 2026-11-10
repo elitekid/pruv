@@ -1,0 +1,3 @@
+// contract_only: is_variant in code
+enum E { A, B }
+fn f(e: E) -> bool { return is_variant(e, E::A); }

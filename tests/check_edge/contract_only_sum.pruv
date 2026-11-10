@@ -1,0 +1,2 @@
+// contract_only: aggregate sum in code (message with fix)
+fn f(a: [i64]) -> i64 { return sum(k in 0..len(a): a[k]); }

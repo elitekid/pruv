@@ -1,0 +1,2 @@
+// dup_field: struct declares field a twice
+struct P { a: i64, a: bool }

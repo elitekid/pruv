@@ -1,0 +1,2 @@
+// not_struct: field read on an i64
+fn f(x: i64) -> i64 { return x.a; }

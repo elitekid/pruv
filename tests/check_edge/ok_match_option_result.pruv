@@ -1,0 +1,13 @@
+// ok: match on Option and Result
+fn f(o: Option<i64>, r: Result<i64>) -> i64 {
+  let mut t: i64 = 0;
+  match o {
+    Some(x) => { t = t + x; }
+    None => { t = t + 1; }
+  }
+  match r {
+    Ok(y) => { t = t + y; }
+    Err(e) => { t = t - e; }
+  }
+  return t;
+}

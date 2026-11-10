@@ -1,0 +1,2 @@
+// recursive_type: struct contains itself (path "A -> A")
+struct A { a: A }

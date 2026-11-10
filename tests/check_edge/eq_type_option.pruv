@@ -1,0 +1,2 @@
+// eq_type: Option compared with == in code (only i64/bool allowed in code)
+fn f(o: Option<i64>) -> bool { return o == None; }

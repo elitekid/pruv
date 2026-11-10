@@ -1,0 +1,4 @@
+// ok: type_table order differs from declaration order (Inner before Outer)
+struct Outer { inner: Inner, n: i64 }
+struct Inner { v: i64 }
+fn mk() -> Outer { return Outer { inner: Inner { v: 1 }, n: 2 }; }

@@ -1,0 +1,2 @@
+// type_mismatch: bool value bound to an i64 let
+fn f() -> i64 { let x: i64 = true; return x; }

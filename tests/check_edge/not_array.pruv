@@ -1,0 +1,2 @@
+// not_array: element assignment to an i64 variable
+fn f() -> i64 { let mut x: i64 = 0; x[0] = 1; return x; }

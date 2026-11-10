@@ -1,0 +1,2 @@
+// immutable: assignment to a parameter
+fn f(x: i64) -> i64 { x = 2; return x; }

@@ -1,0 +1,2 @@
+// match_type: match on an i64
+fn f(x: i64) -> () { match x { } }

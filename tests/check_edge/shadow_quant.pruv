@@ -1,0 +1,2 @@
+// shadow: quantifier variable redefines a parameter
+fn f(k: i64) -> i64 requires forall k in 0..3: k >= 0 { return k; }

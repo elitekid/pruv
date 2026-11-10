@@ -1,0 +1,3 @@
+// shadow: user enum arm binder redefines a parameter
+enum E { A(v: i64) }
+fn f(e: E, v: i64) -> () { match e { E::A(v) => { } } }

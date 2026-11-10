@@ -1,0 +1,2 @@
+// dup_param: parameter x declared twice
+fn f(x: i64, x: i64) -> i64 { return x; }

@@ -1,0 +1,3 @@
+// effect_in_contract: user function with an effect called in requires
+fn g() -> i64 ! io { return 1; }
+fn f() -> i64 requires g() > 0 { return 1; }

@@ -1,0 +1,2 @@
+// return_type: `return;` in an i64 function
+fn f() -> i64 { return; }

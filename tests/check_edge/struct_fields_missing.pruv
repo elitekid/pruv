@@ -1,0 +1,3 @@
+// struct_fields: field b missing
+struct P { a: i64, b: i64 }
+fn f() -> P { return P { a: 1 }; }

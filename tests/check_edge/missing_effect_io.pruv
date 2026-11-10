@@ -1,0 +1,2 @@
+// missing_effect: print without declaring io (stage effect)
+fn f(x: i64) -> () { print(x); }

@@ -1,0 +1,3 @@
+// struct_fields: fields not in declaration order
+struct P { a: i64, b: i64 }
+fn f() -> P { return P { b: 1, a: 2 }; }

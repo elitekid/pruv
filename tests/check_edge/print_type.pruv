@@ -1,0 +1,2 @@
+// print_type: print of an array
+fn f(a: [i64]) -> () ! io { print(a); }

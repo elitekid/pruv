@@ -1,0 +1,16 @@
+// ok: array alloc / copy / return / call results
+fn make(n: i64) -> [i64] ! alloc {
+  let a: [i64] = alloc(n, 0);
+  return a;
+}
+fn dup(a: [i64]) -> [i64] ! alloc {
+  let mut b: [i64] = copy(a);
+  b[0] = len(a);
+  return b;
+}
+fn top(n: i64) -> i64 ! alloc {
+  let mut c: [i64] = make(n);
+  c = dup(c);
+  let d: [i64] = copy(c);
+  return d[0] + c[0];
+}

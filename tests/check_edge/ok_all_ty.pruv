@@ -1,0 +1,18 @@
+// ok: every ty kind in the typed AST (i64, bool, unit, array, option, result, user type)
+struct P { a: i64 }
+fn nop() -> () { return; }
+fn mk(n: i64) -> [i64] ! alloc {
+  let a: [i64] = alloc(n, 0);
+  return a;
+}
+fn f(a: [i64], o: Option<i64>, r: Result<i64>, p: P, b: bool) -> Option<i64> {
+  nop();
+  let n: i64 = len(a) + p.a;
+  let ok: bool = b && n > 0;
+  let q: P = P { a: n };
+  let o2: Option<i64> = Some(n);
+  let r2: Result<i64> = Ok(1);
+  let r3: Result<i64> = Err(2);
+  if ok { return o2; }
+  return None;
+}

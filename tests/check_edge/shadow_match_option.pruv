@@ -1,0 +1,2 @@
+// shadow: Option arm binder redefines a parameter
+fn f(o: Option<i64>, x: i64) -> () { match o { Some(x) => { } None => { } } }

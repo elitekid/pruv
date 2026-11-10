@@ -1,0 +1,3 @@
+// unknown_field: struct literal names a field that does not exist
+struct P { a: i64 }
+fn f() -> P { return P { z: 1 }; }

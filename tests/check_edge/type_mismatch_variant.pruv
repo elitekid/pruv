@@ -1,0 +1,3 @@
+// type_mismatch: is_variant on a value that is not the enum
+enum E { A }
+fn f(x: i64) -> i64 requires is_variant(x, E::A) { return x; }

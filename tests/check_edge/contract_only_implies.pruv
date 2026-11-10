@@ -1,0 +1,2 @@
+// contract_only: ==> used in code
+fn f(a: bool, b: bool) -> bool { return a ==> b; }

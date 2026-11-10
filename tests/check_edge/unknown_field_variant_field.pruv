@@ -1,0 +1,3 @@
+// unknown_field: variant_field names a field the variant lacks
+enum E { A(x: i64) }
+fn f(e: E) -> i64 requires variant_field(e, E::A, zz) > 0 { return 0; }

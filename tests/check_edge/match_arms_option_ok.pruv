@@ -1,0 +1,2 @@
+// match_arms: non-user scrutinee (Option) with Some and Ok arms
+fn f(o: Option<i64>) -> () { match o { Some(x) => { } Ok(y) => { } } }

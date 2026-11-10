@@ -1,0 +1,2 @@
+// reserved: type named Option
+struct Option { a: i64 }

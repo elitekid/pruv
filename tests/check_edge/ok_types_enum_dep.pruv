@@ -1,0 +1,10 @@
+// ok: dependencies through enum payloads; table order Kind, Item, Holder
+enum Holder { Empty, Has(i: Item) }
+struct Item { k: Kind, w: i64 }
+enum Kind { Small, Big(n: i64) }
+fn f(h: Holder) -> i64 {
+  match h {
+    Holder::Empty => { return 0; }
+    Holder::Has(i) => { return i.w; }
+  }
+}

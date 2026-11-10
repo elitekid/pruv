@@ -1,0 +1,2 @@
+// unknown_name: undefined variable
+fn f() -> i64 { return y; }

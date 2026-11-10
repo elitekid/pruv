@@ -1,0 +1,27 @@
+// ok: contract-only forms (aggregates, quantifiers, is_variant, variant_field, option/result probes, ==>)
+enum E { A(x: i64), B }
+fn f(a: [i64], e: E, o: Option<i64>, r: Result<i64>) -> i64
+  requires len(a) > 0
+  requires forall k in 0..len(a): a[k] >= 0
+  requires exists k in 0..len(a): a[k] >= 0
+  requires is_variant(e, E::A) ==> variant_field(e, E::A, x) >= 0
+  requires e == E::B || is_variant(e, E::A)
+  requires o == None || is_some(o)
+  requires is_some(o) ==> some_val(o) >= 0
+  requires is_ok(r) ==> ok_val(r) >= 0
+  requires !is_ok(r) ==> err_val(r) >= 0
+  ensures result == sum(k in 0..len(a): a[k])
+  ensures count(k in 0..len(a): a[k] > 0) >= 0
+  ensures max(k in 0..len(a): a[k]) >= min(k in 0..len(a): a[k])
+{
+  let mut i: i64 = 0;
+  let mut s: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    decreases len(a) - i
+  {
+    s = s + a[i];
+    i = i + 1;
+  }
+  return s;
+}

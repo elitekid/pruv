@@ -1,0 +1,9 @@
+// ok: nested struct literal, field read, field assignment paths
+struct In { v: i64 }
+struct Out { i: In, flag: bool, o: Option<i64> }
+fn f(p: Out) -> i64 {
+  let mut q: Out = Out { i: In { v: 1 }, flag: true, o: None };
+  q.i.v = q.i.v + p.i.v;
+  q.flag = !q.flag;
+  return q.i.v;
+}

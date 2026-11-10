@@ -1,0 +1,2 @@
+// contract_only: forall in code
+fn f() -> bool { return forall k in 0..3: k >= 0; }

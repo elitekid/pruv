@@ -1,0 +1,3 @@
+// recursive_type: cycle through an enum payload (path "S -> E -> S")
+struct S { e: E }
+enum E { X(s: S), Y }

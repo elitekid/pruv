@@ -1,0 +1,4 @@
+// match_arms: arm belongs to a different enum
+enum E { A }
+enum F { X }
+fn f(e: E) -> () { match e { F::X => { } } }

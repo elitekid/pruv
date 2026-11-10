@@ -1,0 +1,2 @@
+// missing_effect: only io declared, alloc also used (fix = sorted union "alloc, io")
+fn f(n: i64) -> () ! io { let a: [i64] = alloc(n, 0); print(len(a)); }

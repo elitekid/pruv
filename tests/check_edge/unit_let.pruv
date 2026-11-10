@@ -1,0 +1,3 @@
+// unit_let: let of type ()
+fn g() -> () { return; }
+fn f() -> () { let x: () = g(); }

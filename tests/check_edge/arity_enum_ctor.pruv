@@ -1,0 +1,3 @@
+// arity: enum constructor with the wrong number of arguments
+enum E { A(x: i64) }
+fn f() -> E { return E::A(1, 2); }

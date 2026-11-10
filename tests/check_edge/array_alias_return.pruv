@@ -1,0 +1,2 @@
+// array_alias: returning an array parameter
+fn f(a: [i64]) -> [i64] { return a; }

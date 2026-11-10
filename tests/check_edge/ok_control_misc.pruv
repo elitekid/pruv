@@ -1,0 +1,23 @@
+// ok: control flow, sibling scopes reuse a name, assert, requires/ensures with result
+fn f(n: i64) -> i64
+  requires n >= 0
+  ensures result >= 0 && result >= n
+{
+  let mut i: i64 = 0;
+  let mut s: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    decreases n - i
+  {
+    if i % 2 == 0 {
+      let t: i64 = i * 2;
+      s = s + t;
+    } else {
+      let t: i64 = -i;
+      s = s - t;
+    }
+    i = i + 1;
+  }
+  assert s >= 0 || s < 0;
+  if !(s < 0) { return s + n; } else { return n; }
+}

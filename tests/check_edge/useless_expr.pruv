@@ -1,0 +1,2 @@
+// useless_expr: expression statement that is not a call
+fn f(x: i64) -> () { x; }

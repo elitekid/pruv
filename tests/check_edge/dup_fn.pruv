@@ -1,0 +1,3 @@
+// dup_fn: function f defined twice
+fn f() -> i64 { return 1; }
+fn f() -> i64 { return 2; }

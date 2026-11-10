@@ -303,3 +303,16 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - 잘못된 UTF-8·읽기 실패: Python 어댑터는 예외로 죽고 Rust는 `{"adapter_error": "decode"|"io"}` 줄을 낸다. 비교 도구가 이 대응을 정한다. Python 기준은 시스템 기본 인코딩(이 맥 UTF-8)으로 읽으므로 Windows 기준 출력은 확인하지 않았다.
 - 감사(Claude Opus): 바이트 차이 결함 없음(작업자가 경계 241·변형 3000·생성 1500·큰 CRLF/CR 18·repr 표 전 코드 포인트 대조). 필수 1건 — `peek`/`next`가 토큰을 매번 복제(선형이지만 상수배 낭비; 감사 실측 문 200만 개 0.92초, 같은 입력 Python 27.6초) → `peek`는 참조, `expect`는 소비만(토큰이 필요한 4곳만 복제), 버리는 소비는 `bump`. 권고 반영: 연산자 매칭의 임시 문자열 제거, 안 쓰는 함수·낡은 주석 정리, `pruv-parse-dump`가 줄마다 바로 써서 한 파일의 스택 넘침으로 앞 줄까지 잃지 않게 함. 남긴 권고: 공개 `parse`에 깊이 상한 없음(호출자가 큰 스택을 잡아야 함, I 단계 CLI에서 정함), 개행 정규화·`Vec<char>`의 메모리 약 6배, 오류 형식 크기(`Box` 미적용), 덤프의 JSON 나무 생성.
 - 고친 뒤 확인(Claude Opus): 통과. `expect_tok` 4곳이 Python에서 `expect` 반환값을 쓰는 4곳과 같고, 소비 순서·오류 위치·연산자 우선순위·새 panic 없음을 원본과 줄 단위로 대조. 고친 뒤 `cargo test` 13 통과, `diff_parse` 2263·10943건 다름 0(메인 실행).
+
+## 17. M3 = C4 2단계: 검사기 이식 (2026-11-11)
+설계 4절 2단계. `typeinfo.py`·`check.py`를 `pruvc-rs/crates/pruv-core/src/{typeinfo,check}.rs`로 옮기고(외부 크레이트 없음), 시험 바이너리 `pruv-check-dump`(어댑터 `check`와 같은 typed AST + type_table JSON)를 더했다. `tests/diff_parse.py`에 `--mode check`, 경계 입력 `tests/check_edge/`(오류 77·성공 12)를 더했다. Python 정본은 바꾸지 않았다. 이 맥에서만 확인했다.
+
+| 확인 | 결과 |
+|---|---|
+| `diff_parse.py --mode check` 기본 입력 | 2836건 중 2834 바이트 동일, 다름 0(제외 2건은 1단계와 같은 깊은 중첩의 Python RecursionError). 성공 964건 모두 type_table 같음(타입 2개 이상 68건) |
+| 넓힌 입력(seed 1~8×500, 변형 30) | 13652건 중 13650 동일, 다름 0, 성공 5168건 |
+| 대응 범위 | 검사 오류 code 45/45(도달 불가 `internal` 제외), stage type·effect 둘 다, ty 내장 6종+사용자 타입 24종 |
+| 회귀 | `run_all --backend both` 363/363, `cli_also_llvm` 186/186, `diff_parse` parse 모드 2263 다름 0, `cargo test -p pruv-core` 20 |
+
+- 감사(Claude Opus): 바이트 차이 결함 없음(미대조였던 code 경로 전부를 포함해 약 110개 입력을 두 쪽에 넣어 대조). 필수 2건 — enum 변형·필드 이름 중복 검사가 `Vec::contains`라 O(n²)(필드 10만 개에서 Python 0.92초, Rust 9.2초) → `HashSet`으로 바꿔 필드 10만+변형 10만 입력 0.16초. 남긴 권고: 블록마다 scope 복제(Python `dict(scope)`와 같은 차수지만 항목마다 String 할당), 항 100만 개 덧셈 사슬에서 1GB 스택도 넘침(Python은 항 400개에서 RecursionError라 대조 범위 밖), 식마다 타입 문자열 할당, TypeDecl 이중 복사.
+- 고친 뒤 확인(Claude Opus): 고친 2건은 Python과 같은 동작(이름 검사 → 중복 검사 → 넣기, 오류 위치·문장 같음)으로 통과. 같은 꼴의 목록 포함 검사가 match 팔(`need`·`seen`), 구조체 리터럴(`declared`·`given`), 타입 의존(`deps`)에 남았으나 Python도 같은 자리에서 list를 써 차수가 같으므로 권고로 남긴다(구조체 리터럴 중복 이름은 "두 번 이상 나온 이름 중 맨 앞"이라 고칠 때 개수 사전을 써야 결과가 같다).

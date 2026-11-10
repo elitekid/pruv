@@ -1,0 +1,2 @@
+// unit_param: parameter of type ()
+fn f(x: ()) -> i64 { return 0; }

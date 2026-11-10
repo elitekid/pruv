@@ -1,0 +1,2 @@
+// type_name: type starts with a lower-case letter (fix: Point)
+struct point { a: i64 }

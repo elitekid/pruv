@@ -1,0 +1,2 @@
+// return_type: value returned from a () function
+fn f() -> () { return 1; }
