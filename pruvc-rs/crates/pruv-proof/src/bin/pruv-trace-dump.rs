@@ -6,7 +6,7 @@
 //!    "schema":"pruv-trace-v1", "timeout_ms":N}
 //! parse/check 오류면 errors 에 그 오류 하나, obligations 는 빈 목록이고 timeout_ms 는 없다.
 //! 증명기 내부 실패는 errors 에 `internal_error` 하나(그때까지 기록한 obligations 와 timeout_ms 는 남는다).
-//! 해독 실패는 `{"adapter_error": "decode"}`.
+//! 읽기·해독 실패는 어댑터처럼 internal_error(Python 예외 문장, pruv_core::pyio).
 
 use std::io::Write;
 

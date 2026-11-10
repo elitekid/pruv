@@ -1,7 +1,7 @@
 //! Python `open(path).read()` 흉내: 실패하면 Python 예외의 str(e) 문장을 돌려준다.
 //! (CLI·시험 바이너리가 읽기·해독 실패를 Python 판처럼 internal_error 로 보고하는 데 쓴다.)
-//! 개행 정규화는 parse 가 한다. 해독 오류 위치는 파일 앞에서부터 센 바이트 위치다
-//! (Python 텍스트 모드는 8192바이트 단위로 읽으므로 그보다 뒤의 오류는 위치가 다를 수 있다).
+//! 개행 정규화는 parse 가 한다. 해독 오류 위치는 파일 앞에서부터 센 바이트 위치다(Python 이 파일 전체를
+//! 한 번에 읽을 때와 같다; 8192바이트 너머·CRLF 섞임도 확인됨, RESULTS 18절).
 
 use crate::pyrepr::repr_str;
 
