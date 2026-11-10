@@ -88,6 +88,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 - **M3 1단계 파서(2026-11-11, RESULTS 16절):** `pruv-core`에 ast·lexer·parser 이식(외부 크레이트 없음). parse AST·오류 JSON이 Python과 2263건(넓힌 판 10943건) 바이트 동일, 33 노드·오류 code 5종·극대 정수·유니코드 열 위치 대응, 회귀 363·CLI 186. **다음: 2 검사기(typeinfo·check) 이식.**
 - **M3 2단계 검사기(2026-11-11, RESULTS 17절):** `pruv-core`에 typeinfo·check 이식. typed AST·type_table·검사 오류 JSON이 Python과 2836건(넓힌 판 13652건) 바이트 동일, 검사 오류 code 45종 모두 대조, 회귀 363·CLI 186. **다음: 3 검증기(pruv-proof) 이식.**
 - **M3 3단계 검증기(2026-11-11, RESULTS 18절):** `pruv-proof`에 verify.py 전체 이식. 932건(의무 9649)에서 SMT-LIB 텍스트·판정·오류가 Python과 같음, 반례 값만 83건 다름(모양 같음, 설계상 허용). 회귀 363·CLI 186. **다음: 4 LLVM 출력·공통 함수 이식.**
+- **M3 4단계 LLVM 출력(2026-11-11, RESULTS 19절):** `pruv-core`에 llvmgen·abi·bindings·emit_common 이식. IR·Rust 바인딩이 Python과 27400 사례(입력 6849 × 증명·안전 × trust 켬·끔 + budget) 바이트 동일. 회귀 363·CLI 186. **다음: 5 객체·링크 통합(Rust 판 단독 실행 파일).**
 - 정함(2026-11-10): 실행 지원 코드는 C(`pruvc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
 
 ### 0단계: 검증기 신뢰 (진행 중)

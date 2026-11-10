@@ -331,3 +331,16 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - 차분에서 찾아 고친 것: z3py 반사 비교 규칙을 수 리터럴(ArithRef⊃IntNumRef)만 보던 것을 클래스 계층으로 넓혔다. `BoolVal(False) == ForAll(..)`은 오른쪽이 BoolRef의 하위 클래스 QuantifierRef라 반사 메서드가 먼저 불려 `(= forall false)`가 된다(bench p03). 작업자 코드의 컴파일 오류 1건(`Sat` 열거 참조)도 고쳤다.
 - 반례 값 차이: 같은 SMT 텍스트인데 z3가 고르는 모델이 다르다. 프로그램 전체를 컨텍스트 하나로 바꿔도 그대로여서 되돌렸다(함수마다 비-rc 컨텍스트, 함수가 끝나면 통째로 버림). 원인은 z3py의 rc 컨텍스트(AST 번호 재사용)와의 차이로 추정하며 확인하지 않았다. 설계 5절대로 반례는 바이트 동일을 요구하지 않는다. 같은 질의의 모델이라 질의 기준으로는 유효하다고 보지만, 독립 oracle로 위반을 다시 평가하는 장치는 아직 없다(이정표 관문 몫).
 - 대조에서 아직 나오지 않은 경로: `verify_unknown`(시간 초과), 보조정리 재시도의 relaxed 반례 `_note` — 감사에서 줄 단위 대조로 본다.
+
+## 19. M3 = C4 4단계: LLVM 출력·공통 함수 이식 (2026-11-11)
+설계 4절 4단계. `llvmgen.py`(Mod·FnGen·entry_of·cdivrem·gen_llvm)를 `pruv-core/src/llvmgen.rs`, C-ABI wrapper(Words·abi_of)를 `abi.rs`, Rust 바인딩(gen_bindings)을 `bindings.rs`, `codegen.py`의 공통 함수(rty·cty·conv·emit_public_types·show·match_sorted_requires·rstr)를 `emit_common.rs`로 옮겼다(합계 2875줄, 외부 크레이트 없음). 시험 바이너리 `pruv-llvm-dump`, 차분 도구 `tests/diff_llvm.py`. 대상별 Windows wrapper 직접 출력은 6단계 몫이라 아직 없다(지금은 Python과 같은 기존 IR). 이 맥에서만 확인했다.
+
+| 확인 | 결과 |
+|---|---|
+| `diff_llvm.py` 기본(입력 1636 × 모드 4 + budget 4) | 6548 사례 모두 IR·바인딩 바이트 동일(성공 3320, 언어 오류 3228, internal 0) |
+| 넓힌 입력(seed 1~8×500, 변형 10) | 6849 입력, 27400 사례 모두 동일(성공 17532) |
+| 실제 CLI 대조 | `pruvc.py --backend llvm` 이 쓴 .ll·.rs 와 bench p03 바이트 동일 |
+| 대응 범위 | LLVM 명령 28종, wrapper 4244, nsw(증명 모드) 1190 사례, with.overflow(안전 모드) 1658, 사용자 타입 488, i128 cdiv 1248, requires 검사 3320 |
+| 회귀 | `run_all --backend both` 363/363, `cli_also_llvm` 186/186, `cargo test -p pruv-core` 32, workspace `--locked` 빌드 |
+
+- 작업자 코드는 셋으로 나눠 동시에 썼고(본체 / 바인딩·공통 함수 / 차분 도구) 처음 빌드부터 컴파일 오류 없이 첫 대조에서 모두 같았다.

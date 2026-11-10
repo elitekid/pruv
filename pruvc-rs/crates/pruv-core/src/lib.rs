@@ -17,11 +17,15 @@
 /// AST 덤프(JSON)의 스키마 식별자.
 pub const SCHEMA_AST: &str = "pruv-ast-v1";
 
+pub mod abi;
 pub mod ast;
+pub mod bindings;
 pub mod check;
 pub mod diagnostic;
 pub mod dump;
+pub mod emit_common;
 pub mod lexer;
+pub mod llvmgen;
 pub mod parser;
 pub mod pyjson;
 pub mod pyrepr;
