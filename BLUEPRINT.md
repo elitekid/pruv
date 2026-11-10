@@ -92,6 +92,7 @@ M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 
 - **M3 5단계 `pruvc` 명령(2026-11-11, RESULTS 20절):** Rust 판 CLI(ll·obj·exe, 진입점 검사·main shim·내장 런타임·시스템 링크). 두 CLI 대조 234 same, 회귀 LLVM 행 222/222를 Rust 판으로 통과, 단독 실행 파일 50 사례가 기준과 같음. Rust 소스 출력은 7단계. **다음: 6 Windows ABI 통합(대상별 wrapper 직접 출력).**
 - **M3 6단계 Windows wrapper(2026-11-11, RESULTS 21절):** Windows x64 대상이면 Option/Result 반환 wrapper를 처음부터 sret로 출력. 교차 COFF·verify·C 기준 서명 검사 통과, 기본 출력 불변. Windows 실행은 CI(I 단계). **다음: 7 Rust 소스 출력 이식.**
 - **M3 7단계 Rust 소스 출력(2026-11-11, RESULTS 22절):** `pruv-core`에 codegen 이식(.rs 6548 사례 바이트 동일). **Rust 판 `pruvc`로 기존 회귀 363/363·CLI 186/186·두 판 대조 468 same·퍼저 3 seed·변이 83 판정 동일.** 1~7단계 끝. **다음: I 통합·배포(4개 플랫폼 CI, 배포 LLVM 정적 빌드, 독립 exe 관문).**
+- **M3 I 일부 Windows ABI CI(2026-11-11, RESULTS 23절):** 비용 때문에 Windows 실행 확인만 CI(사용자 결정). 맥에서 만든 Windows IR·기대 출력을 Windows 러너에서 링크·실행해 12/12 통과. 4개 플랫폼 배포 빌드는 보류.
 - 정함(2026-11-10): 실행 지원 코드는 C(`pruvc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
 
 ### 0단계: 검증기 신뢰 (진행 중)

@@ -389,3 +389,16 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 - 감사(Claude Opus): 드문 조합 5묶음(계약 미러의 중첩 struct·enum·Option·Result 필드, 빈 struct, sorted i·i+1 변형과 비변형 7종, i64 최솟값·`-0`·`007`, unit·배열 반환+io, budget 1·999·1000·2^62)이 모든 모드에서 바이트 동일, panic 지점 없음, `--also-llvm` 쓰기 순서·실패 시 부분 출력이 Python과 같음. 필수 1건 — 구조체 리터럴 필드 값 조회가 필드마다 뒤에서 훑어 제곱(Python은 dict) → 리터럴마다 해시맵을 한 번 만들게 고침(필드 8만 개 전체 5.1초, 대부분 Python과 같은 차수인 검사기 몫). 남긴 권고: 계약 쪽 필드 선언 복제, 닿지 않는 Err 문장의 `{:?}` 표기, Python `codegen.py` docstring의 "필요한 prelude만" 문구가 실제(통째로 냄)와 다름, `--also-llvm`도 Windows 대상이면 sret 형태.
 - 남은 M3 일(I 단계): 4개 플랫폼 CI(Windows 실행 ABI 포함), 배포 LLVM 정적 직접 빌드(Homebrew `libzstd` 의존 떼기), 독립 exe 관문, 개발 도구 `abi_lower`·`--input-abi` 제거, 넓힌 퍼저 seed·bench 성능 측정.
+
+## 23. M3 = C4 I 단계 일부: Windows x64 실행 ABI CI (2026-11-11)
+사용자 결정(비공개 저장소 비용): 4개 플랫폼 배포 빌드 없이 **Windows 실행 확인만 CI**. `.github/workflows/windows-abi.yml`(windows-latest 1대, 20분 제한, 관련 경로가 바뀐 main push와 수동 실행만). 컴파일러는 Windows에서 빌드하지 않는다: 맥에서 Rust 판 `pruvc --target x86_64-pc-windows-msvc`로 만든 IR·바인딩·Rust 드라이버와, 같은 소스를 맥 호스트 대상으로 실행한 기대 stdout을 `tests/abi/winci/out/`에 커밋하고(`prepare.py`, `--check`로 재생성 결과 동일 확인), 러너가 clang으로 객체화·rustc(MSVC)로 링크·실행해 비교한다(`run_windows.py`).
+
+| 확인 | 결과 |
+|---|---|
+| 첫 실행(run 42918981038) | 실패: 러너 콘솔 cp1252에서 한글 표 출력 UnicodeEncodeError → 워크플로에 `PYTHONUTF8=1`·`PYTHONIOENCODING=utf-8` |
+| 둘째 실행(run 42919117779, 약 40초) | **12/12 통과**: 소스 11개 stdout이 맥 기대 출력과 한 글자도 다르지 않음 + C 호출자(clang, sret 하강)가 `pruv_abi_f0/f1/f5` 반환값 6개와 10만 번 반복 확인 |
+| 덮은 경계 | Some/None·Ok/Err, i64 MIN/MAX payload, 인자 0·1·5개와 sret+6워드(스택 전달), 함수마다 10만 번 반복 호출, 구조체 안 Option 인자·반환, 배열 반환, Option/Result 인자·반환 왕복 |
+| 러너 도구 | clang 20.1.8(우리 IR은 LLVM 22 출력이지만 객체화됨), rustc 1.99.1(LLVM 23) |
+
+- 이로써 설계 7절의 "Windows 실행 ABI는 Windows CI 성공 필수" 관문을 통과했다. 범위는 외부 wrapper·바인딩의 실행 ABI이고, Windows에서 Rust 판 `pruvc` 자체를 빌드·실행한 것은 아니다(배포 빌드는 하지 않기로 함).
+- M3에서 남은 일(사용자 결정 필요 또는 미룸): 4개 플랫폼 배포 실행 파일(LLVM 정적 직접 빌드, Homebrew `libzstd` 의존 떼기), 개발 도구 `abi_lower`·`--input-abi` 제거, 넓힌 퍼저 seed·bench 성능 측정.
