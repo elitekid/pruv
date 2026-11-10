@@ -1,0 +1,14 @@
+enum Event {
+  Empty,
+  Hit(value: i64),
+}
+
+fn f(e: Event) -> i64 {
+  let mut r: i64 = 0;
+  match e {
+    Event::Empty => { r = 0; }
+    Event::Empty => { r = 1; }
+    Event::Hit(value) => { r = value; }
+  }
+  return r;
+}

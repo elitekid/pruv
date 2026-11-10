@@ -1,0 +1,10 @@
+enum Event {
+  Empty,
+  Hit(value: i64),
+}
+
+fn f(e: Event) -> i64
+  requires !is_variant(e, Event::Hit) || variant_field(e, Event::Hit, value) > 0
+{
+  return 7;
+}

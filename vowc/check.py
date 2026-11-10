@@ -1,10 +1,13 @@
 """Vow type / effect / structure checker. Fills Expr.ty."""
+import re
 from vast import *
+from typeinfo import TypeTable, type_name, is_user_type
 
 CONTRACT_ONLY = {"is_some": (OPTION, BOOL), "some_val": (OPTION, I64), "is_ok": (RESULT, BOOL),
                  "ok_val": (RESULT, I64), "err_val": (RESULT, I64)}
-TNAME = {"i64": "i64", "bool": "bool", "unit": "()", "array": "[i64]", "option": "Option<i64>",
-         "result": "Result<i64>"}
+RESERVED_TYPE_NAMES = ("Option", "Result", "Some", "None", "Ok", "Err")
+TYPE_NAME_RE = re.compile(r"[A-Z][A-Za-z0-9_]*\Z")
+FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
 
 
 def terr(node, code, msg, fix="", stage="type"):
@@ -22,11 +25,100 @@ class Checker:
                 terr(f, "reserved", "%s is a builtin name" % f.name, "rename the function")
             s.funcs[f.name] = f
         s.calls = {}
+        s.decls = {}      # type name -> TypeDecl (first declaration)
+        s.tt = None
 
     def run(s):
+        s.declare_types()      # names, duplicates
+        s.resolve_types()      # every type reference
+        s.type_recursion()
+        s.tt = TypeTable(s.prog)
         for f in s.prog.functions:
             s.fn(f)
         s.no_recursion()
+
+    # ---- user type declarations ----
+    def declare_types(s):
+        for d in s.prog.types:
+            if not TYPE_NAME_RE.match(d.name):
+                terr(d, "type_name", "type name %s must start with an upper-case letter" % d.name,
+                     "rename it, e.g. %s" % (d.name[:1].upper() + d.name[1:]))
+            if d.name in RESERVED_TYPE_NAMES:
+                terr(d, "reserved", "%s is a builtin name" % d.name, "rename the type")
+            if d.name in s.decls:
+                terr(d, "dup_type", "type %s defined twice" % d.name)
+            if d.name in s.funcs:
+                terr(d, "name_collision", "%s is both a type and a function" % d.name,
+                     "rename the type or the function")
+            s.decls[d.name] = d
+            if isinstance(d, StructDecl):
+                s.check_field_names(d.fields, "struct %s" % d.name)
+            else:
+                if not d.variants:
+                    terr(d, "empty_enum", "enum %s has no variants" % d.name, "add at least one variant")
+                seen = set()
+                for v in d.variants:
+                    if not TYPE_NAME_RE.match(v.name):
+                        terr(v, "variant_name", "variant name %s must start with an upper-case letter" % v.name,
+                             "rename it, e.g. %s" % (v.name[:1].upper() + v.name[1:]))
+                    if v.name in seen:
+                        terr(v, "dup_variant", "variant %s defined twice in enum %s" % (v.name, d.name))
+                    seen.add(v.name)
+                    s.check_field_names(v.fields, "variant %s::%s" % (d.name, v.name))
+
+    def check_field_names(s, fields, where):
+        seen = set()
+        for f in fields:
+            if not FIELD_NAME_RE.match(f.name):
+                terr(f, "field_name", "field name %s must start with a lower-case letter" % f.name,
+                     "rename it, e.g. %s" % (f.name[:1].lower() + f.name[1:]))
+            if f.name in seen:
+                terr(f, "dup_field", "field %s defined twice in %s" % (f.name, where))
+            seen.add(f.name)
+
+    def check_type_ref(s, node, ty):
+        if is_user_type(ty) and ty.name not in s.decls:
+            terr(node, "unknown_type", "unknown type %s" % ty.name,
+                 "declare it with `struct %s { ... }` or `enum %s { ... }`" % (ty.name, ty.name))
+
+    def resolve_types(s):
+        for d in s.prog.types:
+            groups = [d.fields] if isinstance(d, StructDecl) else [v.fields for v in d.variants]
+            for fields in groups:
+                for f in fields:
+                    if f.type == UNIT or f.type == ARRAY:
+                        terr(f, "field_type", "field %s cannot have type %s" % (f.name, type_name(f.type)),
+                             "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum")
+                    s.check_type_ref(f, f.type)
+        for f in s.prog.functions:
+            for p in f.params:
+                s.check_type_ref(f, p.type)
+            s.check_type_ref(f, f.ret)
+
+    def type_recursion(s):
+        state = {}
+
+        def deps(d):
+            fields = d.fields if isinstance(d, StructDecl) else [x for v in d.variants for x in v.fields]
+            out = []
+            for f in fields:
+                if is_user_type(f.type) and f.type.name not in out:
+                    out.append(f.type.name)
+            return out
+
+        def visit(n, path):
+            if state.get(n) == 1:
+                cyc = path[path.index(n):] + [n]
+                terr(s.decls[n], "recursive_type", "recursive type is not allowed: %s" % " -> ".join(cyc),
+                     "types have fixed size; remove the cycle")
+            if state.get(n) == 2:
+                return
+            state[n] = 1
+            for c in deps(s.decls[n]):
+                visit(c, path + [n])
+            state[n] = 2
+        for d in s.prog.types:
+            visit(d.name, [])
 
     def no_recursion(s):
         state = {}
@@ -99,6 +191,7 @@ class Checker:
                      "use a new name")
             if st.type == UNIT:
                 terr(st, "unit_let", "cannot bind a () value")
+            s.check_type_ref(st, st.type)
             s.expect(st.value, st.type, scope)
             if st.type == ARRAY:
                 s.array_source(st, st.value, scope)
@@ -120,6 +213,18 @@ class Checker:
                      "use `let mut b: [i64] = copy(%s);` (needs alloc)" % st.name)
             s.expect(st.index, I64, scope)
             s.expect(st.value, I64, scope)
+        elif isinstance(st, FieldAssign):
+            v = s.lookup(st, st.name, scope)
+            cur = v[0]
+            for fname in st.fields:
+                if not s.tt.is_struct(cur):
+                    terr(st, "not_struct", "cannot assign field %s: %s is not a struct" % (fname, type_name(cur)),
+                         "field assignment paths run through structs only; assign the whole enum value instead")
+                cur = s.field_decl(st, cur, fname).type
+            if not v[1]:
+                terr(st, "immutable", "%s is not mutable" % st.name,
+                     "declare it with `let mut`" if v[2] == "local" else "parameters are immutable; copy into a `let mut` local")
+            s.expect(st.value, cur, scope)
         elif isinstance(st, If):
             s.expect(st.cond, BOOL, scope)
             s.block(st.then, dict(scope))
@@ -133,7 +238,7 @@ class Checker:
         elif isinstance(st, Return):
             if st.value is None:
                 if f.ret != UNIT:
-                    terr(st, "return_type", "function returns %s; `return;` is not enough" % TNAME[f.ret.name])
+                    terr(st, "return_type", "function returns %s; `return;` is not enough" % type_name(f.ret))
             else:
                 if f.ret == UNIT:
                     terr(st, "return_type", "function returns (); use `return;`")
@@ -147,25 +252,54 @@ class Checker:
                 terr(st, "useless_expr", "expression statement must be a call", "bind it with let or remove it")
             t = s.expr(st.expr, scope)
             if t != UNIT:
-                terr(st, "unused_value", "value of type %s is dropped" % TNAME[t.name],
+                terr(st, "unused_value", "value of type %s is dropped" % type_name(t),
                      "bind it with `let` or `match` it")
         elif isinstance(st, Match):
             t = s.expr(st.scrutinee, scope)
+            user = s.tt.is_enum(t)
             if t == OPTION:
                 need = {"Some", "None"}
             elif t == RESULT:
                 need = {"Ok", "Err"}
+            elif user:
+                need = [v.name for v in s.tt.decl(t).variants]
             else:
-                terr(st, "match_type", "can only match Option<i64> or Result<i64>")
-            got = [a.ctor for a in st.arms]
-            if set(got) != need or len(got) != 2:
-                terr(st, "match_arms", "match needs exactly arms %s" % " and ".join(sorted(need)))
+                terr(st, "match_type", "can only match Option<i64>, Result<i64> or a user enum")
+            if not user:
+                got = [a.ctor for a in st.arms]
+                if set(got) != need or len(got) != 2 or any(a.enum_name is not None for a in st.arms):
+                    terr(st, "match_arms", "match needs exactly arms %s" % " and ".join(sorted(need)))
+            else:
+                seen = set()
+                for a in st.arms:
+                    if a.enum_name != t.name:
+                        terr(a, "match_arms", "arm %s does not belong to enum %s" % (
+                            ("%s::%s" % (a.enum_name, a.ctor)) if a.enum_name else a.ctor, t.name),
+                             "match arms are written %s::Variant" % t.name)
+                    if a.ctor not in need:
+                        terr(a, "unknown_variant", "enum %s has no variant %s" % (t.name, a.ctor))
+                    if a.ctor in seen:
+                        terr(a, "match_arms", "arm %s::%s appears twice" % (t.name, a.ctor))
+                    seen.add(a.ctor)
+                missing = [n for n in need if n not in seen]
+                if missing:
+                    terr(st, "match_arms", "match is missing arm(s): %s" % ", ".join(
+                        "%s::%s" % (t.name, n) for n in missing))
             for a in st.arms:
                 sc = dict(scope)
-                if a.binder is not None:
-                    if a.binder in sc:
-                        terr(st, "shadow", "%s is already defined" % a.binder, "use a new name")
-                    sc[a.binder] = (I64, False, "local")
+                node = a if user else st
+                if user:
+                    ftypes = [f.type for f in s.tt.fields(t, a.ctor)]
+                    if len(a.binders) != len(ftypes):
+                        terr(a, "match_arity", "%s::%s has %d field(s), the pattern binds %d" % (
+                            t.name, a.ctor, len(ftypes), len(a.binders)),
+                             "bind every field, in declaration order")
+                else:
+                    ftypes = [I64] * len(a.binders)
+                for b, bt in zip(a.binders, ftypes):
+                    if b in sc:
+                        terr(node, "shadow", "%s is already defined" % b, "use a new name")
+                    sc[b] = (bt, False, "local")
                 s.block(a.body, sc)
         else:
             terr(st, "internal", "unknown statement")
@@ -188,7 +322,7 @@ class Checker:
     def expect(s, e, ty, scope, contract=False):
         t = s.expr(e, scope, contract)
         if t != ty:
-            terr(e, "type_mismatch", "expected %s, found %s" % (TNAME[ty.name], TNAME[t.name]))
+            terr(e, "type_mismatch", "expected %s, found %s" % (type_name(ty), type_name(t)))
         return t
 
     def expr(s, e, scope, contract=False):
@@ -255,9 +389,98 @@ class Checker:
             sc = dict(scope); sc[e.var] = (I64, False, "bound")
             s.expect(e.body, BOOL if e.kind in ("forall", "exists", "count") else I64, sc, c)
             return I64 if agg else BOOL
+        if isinstance(e, StructLit):
+            return s.struct_lit(e, scope, c)
+        if isinstance(e, EnumCtor):
+            ety = s.enum_type(e, e.enum_name)
+            fields = s.variant_decl(e, ety, e.variant).fields
+            if len(e.args) != len(fields):
+                terr(e, "arity", "%s::%s takes %d argument(s), got %d" % (
+                    e.enum_name, e.variant, len(fields), len(e.args)))
+            for arg, fd in zip(e.args, fields):
+                s.expect(arg, fd.type, scope, c)
+            return ety
+        if isinstance(e, FieldAccess):
+            bt = s.expr(e.base, scope, c)
+            if not s.tt.is_struct(bt):
+                terr(e, "not_struct", "cannot read field %s: %s is not a struct" % (e.field, type_name(bt)),
+                     "enum payloads are read with match" if s.tt.is_enum(bt) else "")
+            return s.field_decl(e, bt, e.field).type
+        if isinstance(e, IsVariant):
+            if not c:
+                terr(e, "contract_only", "is_variant is only allowed in contracts", "use match in code")
+            s.variant_target(e, scope, c)
+            return BOOL
+        if isinstance(e, VariantField):
+            if not c:
+                terr(e, "contract_only", "variant_field is only allowed in contracts", "use match in code")
+            ety = s.variant_target(e, scope, c)
+            vd = s.variant_decl(e, ety, e.variant)
+            for fd in vd.fields:
+                if fd.name == e.field:
+                    return fd.type
+            terr(e, "unknown_field", "variant %s::%s has no field %s" % (e.enum_name, e.variant, e.field))
         if isinstance(e, Call):
             return s.call(e, scope, c)
         terr(e, "internal", "unknown expression")
+
+    # ---- user type helpers ----
+    def field_decl(s, node, sty, name):
+        for fd in s.tt.fields(sty):
+            if fd.name == name:
+                return fd
+        terr(node, "unknown_field", "struct %s has no field %s" % (sty.name, name))
+
+    def enum_type(s, node, name):
+        """Type of a named enum; unknown_type / not_enum otherwise"""
+        if name not in s.decls:
+            terr(node, "unknown_type", "unknown type %s" % name)
+        ty = Type(name)
+        if not s.tt.is_enum(ty):
+            terr(node, "not_enum", "%s is not an enum" % name)
+        return ty
+
+    def variant_decl(s, node, ety, variant):
+        for v in s.tt.decl(ety).variants:
+            if v.name == variant:
+                return v
+        terr(node, "unknown_variant", "enum %s has no variant %s" % (ety.name, variant))
+
+    def variant_target(s, e, scope, c):
+        """shared by is_variant / variant_field: value, enum and variant checks"""
+        vt = s.expr(e.value, scope, c)
+        ety = s.enum_type(e, e.enum_name)
+        s.variant_decl(e, ety, e.variant)
+        if vt != ety:
+            terr(e.value, "type_mismatch", "expected %s, found %s" % (type_name(ety), type_name(vt)))
+        return ety
+
+    def struct_lit(s, e, scope, c):
+        if e.name not in s.decls:
+            terr(e, "unknown_type", "unknown type %s" % e.name)
+        sty = Type(e.name)
+        if not s.tt.is_struct(sty):
+            terr(e, "not_struct", "%s is not a struct" % e.name,
+                 "enum values are written %s::Variant" % e.name)
+        fields = s.tt.fields(sty)
+        declared = [f.name for f in fields]
+        for fi in e.fields:
+            if fi.name not in declared:
+                terr(fi, "unknown_field", "struct %s has no field %s" % (e.name, fi.name))
+        given = [fi.name for fi in e.fields]
+        if given != declared:
+            if len(set(given)) != len(given):
+                dup = [n for n in given if given.count(n) > 1][0]
+                why = "field %s is given twice" % dup
+            elif set(given) != set(declared):
+                why = "missing field(s): %s" % ", ".join(n for n in declared if n not in given)
+            else:
+                why = "fields must be written in declaration order: %s" % ", ".join(declared)
+            terr(e, "struct_fields", "%s literal: %s" % (e.name, why),
+                 "write every field exactly once, in declaration order")
+        for fi, fd in zip(e.fields, fields):
+            s.expect(fi.value, fd.type, scope, c)
+        return sty
 
     def call(s, e, scope, c):
         n, a = e.name, e.args

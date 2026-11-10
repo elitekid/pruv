@@ -1,0 +1,52 @@
+struct Point { x: i64, y: i64 }
+struct Rect { lo: Point, hi: Point }
+
+fn max2(a: i64, b: i64) -> i64
+  ensures result >= a && result >= b && (result == a || result == b)
+{
+  if a >= b {
+    return a;
+  } else {
+    return b;
+  }
+}
+
+fn min2(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b && (result == a || result == b)
+{
+  if a <= b {
+    return a;
+  } else {
+    return b;
+  }
+}
+
+fn overlap_area(a: Rect, b: Rect) -> i64
+  requires a.lo.x >= -1_000_000_000 && a.lo.x <= 1_000_000_000
+  requires a.lo.y >= -1_000_000_000 && a.lo.y <= 1_000_000_000
+  requires a.hi.x >= -1_000_000_000 && a.hi.x <= 1_000_000_000
+  requires a.hi.y >= -1_000_000_000 && a.hi.y <= 1_000_000_000
+  requires b.lo.x >= -1_000_000_000 && b.lo.x <= 1_000_000_000
+  requires b.lo.y >= -1_000_000_000 && b.lo.y <= 1_000_000_000
+  requires b.hi.x >= -1_000_000_000 && b.hi.x <= 1_000_000_000
+  requires b.hi.y >= -1_000_000_000 && b.hi.y <= 1_000_000_000
+  requires a.lo.x <= a.hi.x && a.lo.y <= a.hi.y
+  requires b.lo.x <= b.hi.x && b.lo.y <= b.hi.y
+  ensures result >= 0
+  ensures (a.hi.x <= b.lo.x || b.hi.x <= a.lo.x || a.hi.y <= b.lo.y || b.hi.y <= a.lo.y) ==> result == 0
+  ensures (a.lo.x < a.hi.x && a.lo.y < a.hi.y && b.lo.x < b.hi.x && b.lo.y < b.hi.y && a.lo.x < b.hi.x && b.lo.x < a.hi.x && a.lo.y < b.hi.y && b.lo.y < a.hi.y) ==> result > 0
+{
+  let x1: i64 = max2(a.lo.x, b.lo.x);
+  let x2: i64 = min2(a.hi.x, b.hi.x);
+  let y1: i64 = max2(a.lo.y, b.lo.y);
+  let y2: i64 = min2(a.hi.y, b.hi.y);
+  if x2 > x1 && y2 > y1 {
+    let w: i64 = x2 - x1;
+    let h: i64 = y2 - y1;
+    assert w > 0 && w <= 2_000_000_000;
+    assert h > 0 && h <= 2_000_000_000;
+    return w * h;
+  } else {
+    return 0;
+  }
+}

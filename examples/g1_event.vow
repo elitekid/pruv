@@ -1,0 +1,43 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+enum Event {
+  Empty,
+  Hit(point: Point, accepted: bool),
+  Failed(code: i64),
+}
+
+fn make_hit(x: i64, y: i64, ok: bool) -> Event
+  ensures is_variant(result, Event::Hit)
+  ensures variant_field(result, Event::Hit, accepted) == ok
+  ensures variant_field(result, Event::Hit, point) == Point { x: x, y: y }
+{
+  return Event::Hit(Point { x: x, y: y }, ok);
+}
+
+fn score(e: Event) -> i64
+  requires is_variant(e, Event::Failed) ==> (variant_field(e, Event::Failed, code) >= 0 && variant_field(e, Event::Failed, code) <= 1_000)
+  ensures result >= 0
+{
+  match e {
+    Event::Empty => { return 0; }
+    Event::Hit(p, accepted) => {
+      if accepted {
+        return 1;
+      }
+      return 2;
+    }
+    Event::Failed(code) => { return code; }
+  }
+}
+
+fn main() -> () ! io {
+  let a: Event = Event::Empty;
+  let b: Event = make_hit(1, 2, true);
+  let c: Event = Event::Failed(5);
+  print(score(a));
+  print(score(b));
+  print(score(c));
+}

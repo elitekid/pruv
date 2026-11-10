@@ -37,10 +37,19 @@ Run-time requires evaluation uses i128 (contracts are mathematical integers).  C
 / and % are Euclidean (div_euclid/rem_euclid, as z3 Int).  Anything undefined there
 (division by zero, index out of range, i128 overflow, max/min over an empty range,
 some_val of None, ...) panics with "vow: requires undefined: ...".
+
+G1 (structs/enums): user types are `Copy` and emitted by emit_public_types(prog) at the top of
+the file.  Contract evaluation uses mirror types `vow_contract__Name` (every i64 leaf is i128,
+Option/Result carry i128) and converters `vow_to_c__Name(value)` (recursive; an enum converts
+only its active variant), so contract arithmetic never goes through i64.
+Standard types are always written `::std::vec::Vec` / `::std::option::Option` /
+`::std::result::Result` so user types named Vec etc. cannot collide.
 """
 from vast import *
+from typeinfo import TypeTable, is_user_type
 
-ALLOW = "#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, dead_code, unreachable_code)]"
+ALLOW = ("#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, "
+         "dead_code, unreachable_code, unreachable_patterns)]")
 
 SAFE_PRELUDE = """\
 #[allow(dead_code)]
@@ -80,7 +89,7 @@ fn vow_rem(a: i64, b: i64) -> i64 { if b > 0 && a >= 0 { a % b } else { vow_ovf(
 fn vow_neg(a: i64) -> i64 { match a.checked_neg() { Some(v) => v, None => vow_ovf("overflow in unary -") } }
 #[allow(dead_code)]
 #[inline]
-fn vow_alloc(n: i64, v: i64) -> Vec<i64> { if n < 0 || n > (1i64 << 40) { vow_ovf("alloc length outside 0..2^40") } vec![v; n as usize] }
+fn vow_alloc(n: i64, v: i64) -> ::std::vec::Vec<i64> { if n < 0 || n > (1i64 << 40) { vow_ovf("alloc length outside 0..2^40") } vec![v; n as usize] }
 """
 
 CONTRACT_PRELUDE = """\
@@ -116,8 +125,71 @@ CONTRACT_ARITH = {"+": "vow_cadd", "-": "vow_csub", "*": "vow_cmul", "/": "vow_c
 
 
 def rty(t, param=False):
-    return {"i64": "i64", "bool": "bool", "unit": "()", "option": "Option<i64>",
-            "result": "Result<i64, i64>"}.get(t.name) or ("&[i64]" if param else "Vec<i64>")
+    simple = {"i64": "i64", "bool": "bool", "unit": "()", "option": "::std::option::Option<i64>",
+              "result": "::std::result::Result<i64, i64>"}
+    if t.name in simple:
+        return simple[t.name]
+    if t.name == "array":
+        return "&[i64]" if param else "::std::vec::Vec<i64>"
+    if is_user_type(t):
+        return t.name
+    raise Exception("codegen: unsupported type %r" % (t,))
+
+
+def cty(t):
+    """contract (i128) mirror of a type"""
+    n = t.name
+    if n == "i64":
+        return "i128"
+    if n == "bool":
+        return "bool"
+    if n == "option":
+        return "::std::option::Option<i128>"
+    if n == "result":
+        return "::std::result::Result<i128, i128>"
+    if is_user_type(t):
+        return "vow_contract__" + n
+    raise Exception("codegen: type %r has no contract representation" % (t,))
+
+
+def conv(t, x):
+    """Rust expression turning the executed value `x` (type t) into its contract value"""
+    n = t.name
+    if n == "i64":
+        return "(%s as i128)" % x
+    if n == "bool":
+        return x
+    if n == "option":
+        return "%s.map(|v| v as i128)" % x
+    if n == "result":
+        return "%s.map(|v| v as i128).map_err(|v| v as i128)" % x
+    if is_user_type(t):
+        return "vow_to_c__%s(%s)" % (n, x)
+    raise Exception("codegen: type %r has no contract representation" % (t,))
+
+
+def emit_public_types(prog):
+    """`pub struct` / `pub enum` for every user type, dependency-first (TypeTable.order)."""
+    out = []
+    for d in TypeTable(prog).order:
+        out.append("#[allow(dead_code, non_camel_case_types, non_snake_case)]")
+        out.append("#[derive(Clone, Copy, Debug, PartialEq, Eq)]")
+        if isinstance(d, StructDecl):
+            if d.fields:
+                body = ", ".join("pub %s: %s" % (f.name, rty(f.type)) for f in d.fields)
+                out.append("pub struct %s { %s }" % (d.name, body))
+            else:
+                out.append("pub struct %s {}" % d.name)
+        else:
+            vs = []
+            for v in d.variants:
+                if v.fields:
+                    vs.append("%s(%s)" % (v.name, ", ".join(rty(f.type) for f in v.fields)))
+                else:
+                    vs.append(v.name)
+            out.append("pub enum %s { %s }" % (d.name, ", ".join(vs)))
+        out.append("")
+    return "\n".join(out) + ("\n" if out else "")
 
 
 def show(e):
@@ -138,6 +210,20 @@ def show(e):
         return e.name if e.arg is None else "%s(%s)" % (e.name, show(e.arg))
     if isinstance(e, Quant):
         return "%s %s in %s..%s: %s" % (e.kind, e.var, show(e.lo), show(e.hi), show(e.body))
+    if isinstance(e, StructLit):
+        if not e.fields:
+            return "%s {}" % e.name
+        return "%s { %s }" % (e.name, ", ".join("%s: %s" % (f.name, show(f.value)) for f in e.fields))
+    if isinstance(e, EnumCtor):
+        if not e.args:
+            return "%s::%s" % (e.enum_name, e.variant)
+        return "%s::%s(%s)" % (e.enum_name, e.variant, ", ".join(show(a) for a in e.args))
+    if isinstance(e, FieldAccess):
+        return "%s.%s" % (show(e.base), e.field)
+    if isinstance(e, IsVariant):
+        return "is_variant(%s, %s::%s)" % (show(e.value), e.enum_name, e.variant)
+    if isinstance(e, VariantField):
+        return "variant_field(%s, %s::%s, %s)" % (show(e.value), e.enum_name, e.variant, e.field)
     return "?"
 
 
@@ -161,17 +247,56 @@ class Gen:
         s.trust = trust_callers
         s.out = []
         s.has_req = {f.name for f in prog.functions if f.requires}
+        s.cp = None    # set during requires entry checks: user-type params already converted
         s.bound = []   # quantifier variables in scope (contract evaluation)
         s.tmp = 0
+        s.table = TypeTable(prog)
 
     def emit(s, ind, line):
         s.out.append("    " * ind + line)
 
     def prelude(s):
+        types = emit_public_types(s.prog)
+        if types:
+            s.out.append(types)
         if not s.verified:
             s.out.append(SAFE_PRELUDE)
         if s.has_req and not s.trust:
             s.out.append(CONTRACT_PRELUDE)
+            ctypes = s.contract_types()
+            if ctypes:
+                s.out.append(ctypes)
+
+    def contract_types(s):
+        """vow_contract__Name mirror types and vow_to_c__Name converters (only for requires evaluation)"""
+        attrs = "#[allow(dead_code, non_camel_case_types, non_snake_case, unused_variables)]"
+        out = []
+        for d in s.table.order:
+            cn = "vow_contract__" + d.name
+            out.append(attrs)
+            out.append("#[derive(Clone, Copy, PartialEq, Eq)]")
+            if isinstance(d, StructDecl):
+                out.append("struct %s { %s }" % (cn, ", ".join("%s: %s" % (f.name, cty(f.type)) for f in d.fields)))
+                out.append(attrs)
+                out.append("#[inline]")
+                init = ", ".join("%s: %s" % (f.name, conv(f.type, "v." + f.name)) for f in d.fields)
+                out.append("fn vow_to_c__%s(v: %s) -> %s { %s { %s } }" % (d.name, d.name, cn, cn, init))
+            else:
+                vs, arms = [], []
+                for v in d.variants:
+                    if v.fields:
+                        vs.append("%s(%s)" % (v.name, ", ".join(cty(f.type) for f in v.fields)))
+                        names = ["vow_a%d" % i for i in range(len(v.fields))]
+                        args = ", ".join(conv(f.type, n) for f, n in zip(v.fields, names))
+                        arms.append("%s::%s(%s) => %s::%s(%s)," % (d.name, v.name, ", ".join(names), cn, v.name, args))
+                    else:
+                        vs.append(v.name)
+                        arms.append("%s::%s => %s::%s," % (d.name, v.name, cn, v.name))
+                out.append("enum %s { %s }" % (cn, ", ".join(vs)))
+                out.append(attrs)
+                out.append("#[inline]")
+                out.append("fn vow_to_c__%s(v: %s) -> %s { match v { %s } }" % (d.name, d.name, cn, " ".join(arms)))
+        return "\n".join(out) + ("\n" if out else "")
 
     def fn(s, f):
         s.params = {p.name for p in f.params}
@@ -191,9 +316,20 @@ class Gen:
         s.emit(0, "#[inline]")
         s.emit(0, "pub fn %s(%s)%s {" % (f.name, ps, ret))
         if not s.trust:
-            for n, r in enumerate(f.requires, 1):
-                msg = "vow: requires violated: %s: %s" % (f.name, show(r))
-                s.emit(1, "if !(%s) { panic!(\"{}\", %s); }" % (s.c(r), rstr(msg)))
+            s.cp = {}   # user-type parameter -> its type, converted once below
+            checks = []
+            try:
+                for n, r in enumerate(f.requires, 1):
+                    msg = "vow: requires violated: %s: %s" % (f.name, show(r))
+                    checks.append("if !(%s) { panic!(\"{}\", %s); }" % (s.c(r), rstr(msg)))
+                used = dict(s.cp)
+            finally:
+                s.cp = None
+            for p in f.params:
+                if p.name in used:
+                    s.emit(1, "let vow_cp_%s: %s = %s;" % (p.name, cty(used[p.name]), conv(used[p.name], p.name)))
+            for line in checks:
+                s.emit(1, line)
         s.emit(1, "%s(%s)" % (body_name, ", ".join(p.name for p in f.params)))
         s.emit(0, "}")
         s.emit(0, "")
@@ -213,12 +349,11 @@ class Gen:
             if e.name in s.bound:
                 return e.name
             t = e.ty.name if e.ty is not None else "i64"
-            if t == "i64":
-                return "(%s as i128)" % e.name
-            if t == "option":
-                return "%s.map(|v| v as i128)" % e.name
-            if t == "result":
-                return "%s.map(|v| v as i128).map_err(|v| v as i128)" % e.name
+            if s.cp is not None and e.ty is not None and is_user_type(e.ty) and e.name in s.params:
+                s.cp[e.name] = e.ty
+                return "vow_cp_" + e.name
+            if t in ("i64", "option", "result") or is_user_type(e.ty):
+                return conv(e.ty if e.ty is not None else I64, e.name)
             return e.name
         if isinstance(e, Unary):
             if e.op == "!":
@@ -240,6 +375,31 @@ class Gen:
             return "%s(%s)" % (ctor, s.c(e.arg))
         if isinstance(e, Quant):
             return s.cquant(e)
+        if isinstance(e, StructLit):
+            # evaluated in declaration order (Rust evaluates literal fields in written order)
+            inits = {f.name: f.value for f in e.fields}
+            fs = s.table.fields(Type(e.name))
+            body = ", ".join("%s: %s" % (f.name, s.c(inits[f.name])) for f in fs)
+            return "(vow_contract__%s { %s })" % (e.name, body) if fs else "(vow_contract__%s {})" % e.name
+        if isinstance(e, EnumCtor):
+            ctor = "vow_contract__%s::%s" % (e.enum_name, e.variant)
+            if not e.args:
+                return ctor
+            return "%s(%s)" % (ctor, ", ".join(s.c(a) for a in e.args))
+        if isinstance(e, FieldAccess):
+            return "%s.%s" % (s.c(e.base), e.field)
+        if isinstance(e, IsVariant):
+            return "matches!(%s, vow_contract__%s::%s { .. })" % (s.c(e.value), e.enum_name, e.variant)
+        if isinstance(e, VariantField):
+            s.tmp += 1
+            tmp = "vow_e%d" % s.tmp
+            cn = "vow_contract__%s" % e.enum_name
+            vf = s.table.variant(Type(e.enum_name), e.variant)
+            idx = s.table.field_index(Type(e.enum_name), e.field, e.variant)
+            pats = ", ".join("vow_f" if i == idx else "_" for i in range(len(vf.fields)))
+            msg = "variant_field expected %s::%s.%s" % (e.enum_name, e.variant, e.field)
+            return "({ let %s: %s = %s; match %s { %s::%s(%s) => vow_f, _ => vow_ud(%s) } })" % (
+                tmp, cn, s.c(e.value), tmp, cn, e.variant, pats, rstr(msg))
         if isinstance(e, Call):
             n, a = e.name, e.args
             if n == "len":
@@ -278,7 +438,7 @@ class Gen:
             return head + "let mut %s: i128 = 0; " % r + loop + "if %s { %s += 1; } " % (body, r) + tail + r + " }"
         # max / min
         cmp = ">" if kind == "max" else "<"
-        return (head + "let mut %s: Option<i128> = None; " % r + loop + "let vow_v: i128 = %s; " % body +
+        return (head + "let mut %s: ::std::option::Option<i128> = None; " % r + loop + "let vow_v: i128 = %s; " % body +
                 "%s = Some(match %s { None => vow_v, Some(vow_a) => if vow_v %s vow_a { vow_v } else { vow_a } }); " % (r, r, cmp) +
                 tail + '%s.unwrap_or_else(|| vow_ud("%s over an empty range")) }' % (r, kind))
 
@@ -292,6 +452,11 @@ class Gen:
             s.emit(ind, "let %s%s: %s = %s;" % ("mut " if st.mutable else "", st.name, rty(st.type), s.e(st.value)))
         elif isinstance(st, Assign):
             s.emit(ind, "%s = %s;" % (st.name, s.e(st.value)))
+        elif isinstance(st, FieldAssign):
+            # rhs is fully evaluated into a temporary before the store
+            vty = st.value.ty
+            decl = "let vow_v: %s = " % rty(vty) if vty is not None else "let vow_v = "
+            s.emit(ind, "{ %s%s; %s.%s = vow_v; }" % (decl, s.e(st.value), st.name, ".".join(st.fields)))
         elif isinstance(st, IndexAssign):
             if s.verified:
                 s.emit(ind, "unsafe { *%s.get_unchecked_mut((%s) as usize) = %s; }" % (st.name, s.e(st.index), s.e(st.value)))
@@ -319,7 +484,8 @@ class Gen:
         elif isinstance(st, Match):
             s.emit(ind, "match %s {" % s.e(st.scrutinee))
             for a in st.arms:
-                pat = a.ctor if a.binder is None else "%s(%s)" % (a.ctor, a.binder)
+                name = a.ctor if a.enum_name is None else "%s::%s" % (a.enum_name, a.ctor)
+                pat = name if not a.binders else "%s(%s)" % (name, ", ".join(a.binders))
                 s.emit(ind + 1, "%s => {" % pat)
                 s.block(a.body, ind + 2)
                 s.emit(ind + 1, "}")
@@ -356,6 +522,18 @@ class Gen:
             return "(unsafe { *%s.get_unchecked((%s) as usize) })" % (s.e(e.array), s.e(e.index))
         if isinstance(e, Ctor):
             return "None" if e.name == "None" else "%s(%s)" % (e.name, s.e(e.arg))
+        if isinstance(e, StructLit):
+            # declaration order = left-to-right evaluation; parenthesized so `if S { .. }.x` parses
+            inits = {f.name: f.value for f in e.fields}
+            fs = s.table.fields(Type(e.name))
+            if not fs:
+                return "(%s {})" % e.name
+            return "(%s { %s })" % (e.name, ", ".join("%s: %s" % (f.name, s.e(inits[f.name])) for f in fs))
+        if isinstance(e, EnumCtor):
+            ctor = "%s::%s" % (e.enum_name, e.variant)
+            return "%s(%s)" % (ctor, ", ".join(s.e(a) for a in e.args)) if e.args else ctor
+        if isinstance(e, FieldAccess):
+            return "%s.%s" % (s.e(e.base), e.field)
         if isinstance(e, Call):
             n, a = e.name, e.args
             if n == "len":

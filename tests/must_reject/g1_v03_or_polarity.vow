@@ -1,0 +1,4 @@
+enum Event { Empty, Hit(value: i64) }
+fn f(e: Event) -> () {
+  assert is_variant(e, Event::Hit) || variant_field(e, Event::Hit, value) == 0;
+}

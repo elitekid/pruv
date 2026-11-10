@@ -1,6 +1,7 @@
 """Vow verifier: symbolic execution + z3. Proves bounds, overflow, contracts, loops."""
 import z3
 from vast import *
+from typeinfo import TypeTable
 
 I64_MIN, I64_MAX = -2 ** 63, 2 ** 63 - 1
 MAX_LEN = 2 ** 40
@@ -9,6 +10,101 @@ TIMEOUT_MS = 8000
 _o = z3.Datatype("Opt"); _o.declare("some", ("sval", z3.IntSort())); _o.declare("none")
 _r = z3.Datatype("Res"); _r.declare("ok", ("oval", z3.IntSort())); _r.declare("err", ("eval", z3.IntSort()))
 Opt, Res = z3.CreateDatatypes(_o, _r)
+
+_MODEL_SEQ = [0]
+
+
+class Model:
+    """Per-program z3 model of the user structs/enums (G1). Built once in verify_program.
+    struct[name] = (constructor, [accessor per field])
+    enum[name][variant] = (constructor, recognizer, [accessor per field])
+    Every variant has its own constructor, so a value has no inactive payload."""
+
+    def __init__(s, prog):
+        s.tt = TypeTable(prog)
+        s.sorts = {}
+        s.struct = {}
+        s.enum = {}
+        s.by_sort = {Opt.name(): OPTION, Res.name(): RESULT}
+        _MODEL_SEQ[0] += 1
+        pre = "m%d" % _MODEL_SEQ[0]
+        for idx, d in enumerate(s.tt.order):
+            tag = "%st%d!" % (pre, idx)
+            dt = z3.Datatype(tag + d.name)
+            if isinstance(d, StructDecl):
+                dt.declare(tag + d.name, *[(tag + d.name + "." + fd.name, s.sort_of(fd.type)) for fd in d.fields])
+                srt = dt.create()
+                s.struct[d.name] = (srt.constructor(0), [srt.accessor(0, j) for j in range(len(d.fields))])
+            else:
+                for v in d.variants:
+                    cn = tag + d.name + "::" + v.name
+                    dt.declare(cn, *[(cn + "." + fd.name, s.sort_of(fd.type)) for fd in v.fields])
+                srt = dt.create()
+                s.enum[d.name] = {}
+                for i, v in enumerate(d.variants):
+                    s.enum[d.name][v.name] = (srt.constructor(i), srt.recognizer(i),
+                                              [srt.accessor(i, j) for j in range(len(v.fields))])
+            s.sorts[d.name] = srt
+            s.by_sort[srt.name()] = Type(d.name)
+
+    def is_user(s, ty):
+        return ty.name in s.sorts
+
+    def sort_of(s, ty):
+        if ty == I64:
+            return z3.IntSort()
+        if ty == BOOL:
+            return z3.BoolSort()
+        if ty == OPTION:
+            return Opt
+        if ty == RESULT:
+            return Res
+        return s.sorts[ty.name]
+
+    def type_of(s, v):
+        """Vow Type of a z3 datatype value (Opt/Res/user), or None"""
+        try:
+            return s.by_sort.get(v.sort().name())
+        except Exception:
+            return None
+
+
+def _conj(xs):
+    xs = [x for x in xs if x is not None]
+    if not xs:
+        return None
+    return xs[0] if len(xs) == 1 else z3.And(*xs)
+
+
+def _imp(c, d):
+    return None if d is None else z3.Implies(c, d)
+
+
+def _has_vf(e):
+    """does the contract expression contain a variant_field lookup (the only source of a nontrivial domain)"""
+    if isinstance(e, VariantField):
+        return True
+    if isinstance(e, Unary):
+        return _has_vf(e.operand)
+    if isinstance(e, Binary):
+        return _has_vf(e.left) or _has_vf(e.right)
+    if isinstance(e, Index):
+        return _has_vf(e.array) or _has_vf(e.index)
+    if isinstance(e, Ctor):
+        return e.arg is not None and _has_vf(e.arg)
+    if isinstance(e, Quant):
+        return _has_vf(e.lo) or _has_vf(e.hi) or _has_vf(e.body)
+    if isinstance(e, Call):
+        return any(_has_vf(a) for a in e.args)
+    if isinstance(e, StructLit):
+        return any(_has_vf(fi.value) for fi in e.fields)
+    if isinstance(e, EnumCtor):
+        return any(_has_vf(a) for a in e.args)
+    if isinstance(e, FieldAccess):
+        return _has_vf(e.base)
+    if isinstance(e, IsVariant):
+        return _has_vf(e.value)
+    return False
 
 
 class Arr:
@@ -60,12 +156,14 @@ FIX = {
     "invariant_preserved": "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
     "decreases_nonneg": "the decreases expression must be >= 0 whenever the loop condition holds; add an invariant",
     "decreases_decrease": "the decreases expression must strictly decrease each iteration",
+    "variant_domain": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
 }
 
 
 class FnVerifier:
-    def __init__(s, prog, f, errors):
+    def __init__(s, prog, f, errors, model=None):
         s.funcs = {g.name: g for g in prog.functions}
+        s.model = model if model is not None else Model(prog)
         s.f, s.errors = f, errors
         s.k = 0
         s.seen = set()
@@ -87,11 +185,48 @@ class FnVerifier:
             return z3.Const(n, Res)
         if ty == ARRAY:
             return Arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".len"), base)
+        if s.model.is_user(ty):
+            return z3.Const(n, s.model.sorts[ty.name])
         raise Exception("fresh: " + ty.name)
 
+    # ---------- value domain ----------
+    def wf(s, ty, v):
+        """well_formed(ty, v): every active leaf is an i64. None when trivially true."""
+        if ty == I64:
+            return in_range(v)
+        if ty == OPTION:
+            return z3.Implies(Opt.is_some(v), in_range(Opt.sval(v)))
+        if ty == RESULT:
+            return z3.And(z3.Implies(Res.is_ok(v), in_range(Res.oval(v))),
+                          z3.Implies(Res.is_err(v), in_range(Res.eval(v))))
+        m = s.model
+        if m.tt.is_struct(ty) and ty.name in m.struct:
+            accs = m.struct[ty.name][1]
+            return _conj([s.wf(fd.type, acc(v)) for fd, acc in zip(m.tt.fields(ty), accs)])
+        if m.tt.is_enum(ty) and ty.name in m.enum:
+            parts = []
+            for vd in m.tt.decl(ty).variants:
+                _, rec, accs = m.enum[ty.name][vd.name]
+                w = _conj([s.wf(fd.type, acc(v)) for fd, acc in zip(vd.fields, accs)])
+                if w is not None:
+                    parts.append(z3.Implies(rec(v), w))
+            return _conj(parts)
+        return None
+
+    def rebuild(s, ty, cur, path, new):
+        """struct value `cur` of type ty with the field path replaced by `new`"""
+        if not path:
+            return new
+        m = s.model
+        i = m.tt.field_index(ty, path[0])
+        ctor, accs = m.struct[ty.name]
+        vals = [acc(cur) for acc in accs]
+        vals[i] = s.rebuild(m.tt.fields(ty)[i].type, vals[i], path[1:], new)
+        return ctor(*vals)
+
     # ---------- obligations ----------
-    def prove(s, st, g, ob, node, code, what):
-        key = (node.line, node.col, code)
+    def prove(s, st, g, ob, node, code, what, key_extra=None):
+        key = (node.line, node.col, code) if key_extra is None else (node.line, node.col, code, key_extra)
         if key in s.seen:
             return
         def run(with_lemmas):
@@ -141,10 +276,40 @@ class FnVerifier:
                 elif z3.is_bool(v):
                     out[name] = z3.is_true(m.eval(v, model_completion=True))
                 else:
-                    out[name] = str(m.eval(v, model_completion=True))
+                    out[name] = s.fmt_val(m.eval(v, model_completion=True))
             except Exception:
                 pass
         return out
+
+    def fmt_val(s, v):
+        """z3 model value -> Vow syntax on one line (user struct/enum); unknown shapes keep z3's str()"""
+        try:
+            if z3.is_int_value(v):
+                return str(v.as_long())
+            if z3.is_bool(v):
+                return "true" if z3.is_true(v) else "false"
+            ty = s.model.type_of(v)
+            if ty is None or not s.model.is_user(ty) or not z3.is_app(v):
+                return str(v)
+            dn = v.decl().name()
+            kids = [s.fmt_val(c) for c in v.children()]
+            if ty.name in s.model.struct:
+                ctor, _ = s.model.struct[ty.name]
+                decl = next((d for d in s.model.tt.order if d.name == ty.name), None)
+                if ctor.name() == dn and decl is not None and len(decl.fields) == len(kids):
+                    if not kids:
+                        return ty.name
+                    return "%s { %s }" % (ty.name, ", ".join(
+                        "%s: %s" % (fd.name, k) for fd, k in zip(decl.fields, kids)))
+            elif ty.name in s.model.enum:
+                for vn, (ctor, _, _) in s.model.enum[ty.name].items():
+                    if ctor.name() == dn:
+                        if not kids:
+                            return "%s::%s" % (ty.name, vn)
+                        return "%s::%s(%s)" % (ty.name, vn, ", ".join(kids))
+            return str(v)
+        except Exception:
+            return str(v)
 
     def assume(s, st, g, fact):
         """add a fact that only holds on the short-circuit path g"""
@@ -226,7 +391,92 @@ class FnVerifier:
             return z3.Exists([k], z3.And(rng, body))
         if isinstance(e, Call):
             return s.call(e, st, g, code, env)
+        if isinstance(e, StructLit):
+            vals = [s.ev(fi.value, st, g, code, env) for fi in e.fields]
+            return s.model.struct[e.name][0](*vals)
+        if isinstance(e, EnumCtor):
+            vals = [s.ev(a, st, g, code, env) for a in e.args]
+            return s.model.enum[e.enum_name][e.variant][0](*vals)
+        if isinstance(e, FieldAccess):
+            v = s.ev(e.base, st, g, code, env)
+            ty = s.model.type_of(v)
+            return s.model.struct[ty.name][1][s.model.tt.field_index(ty, e.field)](v)
+        if isinstance(e, IsVariant):
+            v = s.ev(e.value, st, g, code, env)
+            return s.model.enum[e.enum_name][e.variant][1](v)
+        if isinstance(e, VariantField):
+            v = s.ev(e.value, st, g, code, env)
+            ety = Type(e.enum_name)
+            return s.model.enum[e.enum_name][e.variant][2][s.model.tt.field_index(ety, e.field, e.variant)](v)
         raise Exception("ev: %r" % e)
+
+    # ---------- contract domain of variant_field lookups ----------
+    def dom(s, e, st, g, env):
+        """D(e): z3 condition under which every variant_field lookup in contract e is on the named variant,
+        following the short-circuit order. None means trivially true (no lookup in e)."""
+        if not _has_vf(e):
+            return None
+        if isinstance(e, Unary):
+            return s.dom(e.operand, st, g, env)
+        if isinstance(e, Binary):
+            dl = s.dom(e.left, st, g, env)
+            if e.op in ("&&", "||", "==>"):
+                l = s.ev(e.left, st, g, False, env)
+                dr = s.dom(e.right, st, g, env)
+                guard = z3.Not(l) if e.op == "||" else l
+                return _conj([dl, _imp(guard, dr)])
+            return _conj([dl, s.dom(e.right, st, g, env)])
+        if isinstance(e, Index):
+            return _conj([s.dom(e.array, st, g, env), s.dom(e.index, st, g, env)])
+        if isinstance(e, Ctor):
+            return s.dom(e.arg, st, g, env)
+        if isinstance(e, Call):
+            return _conj([s.dom(a, st, g, env) for a in e.args])
+        if isinstance(e, StructLit):
+            return _conj([s.dom(fi.value, st, g, env) for fi in e.fields])
+        if isinstance(e, EnumCtor):
+            return _conj([s.dom(a, st, g, env) for a in e.args])
+        if isinstance(e, FieldAccess):
+            return s.dom(e.base, st, g, env)
+        if isinstance(e, IsVariant):
+            return s.dom(e.value, st, g, env)
+        if isinstance(e, VariantField):
+            v = s.ev(e.value, st, g, False, env)
+            return _conj([s.dom(e.value, st, g, env), s.model.enum[e.enum_name][e.variant][1](v)])
+        if isinstance(e, Quant):
+            lo = s.ev(e.lo, st, g, False, env)
+            hi = s.ev(e.hi, st, g, False, env)
+            outer = _conj([s.dom(e.lo, st, g, env), s.dom(e.hi, st, g, env)])
+            s.k += 1
+            k = z3.Int("%s!dk%d" % (e.var, s.k))
+            envk = dict(env); envk[e.var] = k
+            s.qstack.append(k)
+            try:
+                dbody = s.dom(e.body, st, g, envk)
+            finally:
+                s.qstack.pop()
+            if dbody is None:
+                return outer
+            rng = z3.And(k >= lo, k < hi)
+            if e.kind in ("forall", "exists"):
+                # the body at k is evaluated only if every earlier body was true (forall) / false (exists)
+                j = z3.Int("%s!dj%d" % (e.var, s.k))
+                envj = dict(env); envj[e.var] = j
+                s.qstack.append(j)
+                try:
+                    bj = s.ev(e.body, st, g, False, envj)
+                finally:
+                    s.qstack.pop()
+                prior = z3.ForAll([j], z3.Implies(z3.And(j >= lo, j < k), bj if e.kind == "forall" else z3.Not(bj)))
+                rng = z3.And(rng, prior)
+            return _conj([outer, z3.ForAll([k], z3.Implies(rng, dbody))])
+        return None
+
+    def check_dom(s, st, g, e, node, what, env=None):
+        """prove D(e) (code variant_domain); no query when e has no variant_field lookup"""
+        d = s.dom(e, st, g, st.env if env is None else env)
+        if d is not None:
+            s.prove(st, g, d, node, "variant_domain", what)
 
     def aggregate(s, kind, k, lo, hi, T):
         """sum/count/max/min over lo<=k<hi as an uninterpreted F(lo, hi, *outer) plus unfolding lemmas."""
@@ -309,16 +559,25 @@ class FnVerifier:
         f = s.funcs[n]
         cenv = {p.name: a for p, a in zip(f.params, args)}
         if code:
-            for r in f.requires:
+            prev = []   # requires run in order: an earlier one that held may justify a later lookup
+            for ri, r in enumerate(f.requires):
                 ob = s.ev(r, st, g, False, cenv)
+                d = s.dom(r, st, g, cenv)
+                if d is not None:
+                    s.prove(st, g + prev, d, e, "variant_domain",
+                            "variant_field lookups in precondition of %s (line %d) are defined" % (n, r.line), key_extra=ri)
+                    prev.append(d)
                 s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
+                prev.append(ob)
         if f.ret == UNIT:
             return None
         res = s.fresh("ret_" + n, f.ret)
         if isinstance(res, Arr):
             s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
-        elif f.ret == I64:
-            s.assume(st, g, in_range(res))
+        else:
+            w = s.wf(f.ret, res)
+            if w is not None:
+                s.assume(st, g, w)
         cenv["result"] = res
         for en in f.ensures:
             s.assume(st, g, s.ev(en, st, g, False, cenv))
@@ -332,6 +591,7 @@ class FnVerifier:
         if val is not None:
             env["result"] = val
         for en in s.f.ensures:
+            s.check_dom(st, [], en, node, "variant_field lookups in postcondition (line %d) are defined" % en.line, env)
             ob = s.ev(en, st, [], False, env)
             s.prove(st, [], ob, node, "ensures", "postcondition (line %d)" % en.line)
 
@@ -348,7 +608,7 @@ class FnVerifier:
 
     def assigned(s, stmts, out):
         for st in stmts:
-            if isinstance(st, (Assign, IndexAssign)):
+            if isinstance(st, (Assign, IndexAssign, FieldAssign)):
                 out.add(st.name)
             elif isinstance(st, If):
                 s.assigned(st.then, out); s.assigned(st.els, out)
@@ -376,7 +636,13 @@ class FnVerifier:
             elif z3.is_bool(old):
                 h.env[n] = s.fresh(n, BOOL)
             else:
-                h.env[n] = z3.Const("%s!h%d" % (n, s.k), old.sort()); s.k += 1
+                nv = z3.Const("%s!h%d" % (n, s.k), old.sort()); s.k += 1
+                h.env[n] = nv
+                ty = s.model.type_of(old)
+                if ty is not None:
+                    w = s.wf(ty, nv)
+                    if w is not None:
+                        h.pc.append(w)
         return h
 
     def exec(s, stmt, st):
@@ -402,24 +668,47 @@ class FnVerifier:
         if isinstance(stmt, Match):
             st = st.fork()
             v = s.ev(stmt.scrutinee, st, [], True)
+            outer = set(st.env)
             out = []
             for a in stmt.arms:
-                if a.ctor == "Some": cond, val = Opt.is_some(v), Opt.sval(v)
-                elif a.ctor == "None": cond, val = Opt.is_none(v), None
-                elif a.ctor == "Ok": cond, val = Res.is_ok(v), Res.oval(v)
-                else: cond, val = Res.is_err(v), Res.eval(v)
+                if a.enum_name is not None:
+                    ety = Type(a.enum_name)
+                    _, rec, accs = s.model.enum[a.enum_name][a.ctor]
+                    cond = rec(v)
+                    vals = [acc(v) for acc in accs]
+                    ftys = [fd.type for fd in s.model.tt.fields(ety, a.ctor)]
+                else:
+                    if a.ctor == "Some": cond, val = Opt.is_some(v), Opt.sval(v)
+                    elif a.ctor == "None": cond, val = Opt.is_none(v), None
+                    elif a.ctor == "Ok": cond, val = Res.is_ok(v), Res.oval(v)
+                    else: cond, val = Res.is_err(v), Res.eval(v)
+                    vals = [] if val is None else [val]
+                    ftys = [I64] * len(vals)
                 b = st.fork(cond)
-                if a.binder is not None:
-                    b.env[a.binder] = val
-                    b.pc.append(in_range(val))
-                out.extend(s.exec_block(a.body, b))
+                for name, val, fty in zip(a.binders, vals, ftys):
+                    b.env[name] = val
+                    w = s.wf(fty, val)
+                    if w is not None:
+                        b.pc.append(w)
+                for end in s.exec_block(a.body, b):
+                    # binders and arm locals end with the arm; only updates to outer variables remain
+                    for k in [k for k in end.env if k not in outer]:
+                        del end.env[k]
+                    out.append(end)
             return out
+        if isinstance(stmt, FieldAssign):
+            st = st.fork()
+            v = s.ev(stmt.value, st, [], True)          # rhs first, on the state before the store
+            root = st.env[stmt.name]
+            st.env[stmt.name] = s.rebuild(s.model.type_of(root), root, stmt.fields, v)
+            return [st]
         if isinstance(stmt, Return):
             st = st.fork()
             v = s.ev(stmt.value, st, [], True) if stmt.value is not None else None
             s.ensures_ok(st, v, stmt)
             return []
         if isinstance(stmt, Assert):
+            s.check_dom(st, [], stmt.cond, stmt, "variant_field lookups in assertion are defined")
             ob = s.ev(stmt.cond, st, [], False)
             s.prove(st, [], ob, stmt, "assert", "assertion")
             st = st.fork(ob)
@@ -434,25 +723,43 @@ class FnVerifier:
 
     def loop(s, w, st):
         for inv in w.invariants:
+            s.check_dom(st, [], inv, inv, "variant_field lookups in loop invariant (entry) are defined")
             s.prove(st, [], s.ev(inv, st, [], False), inv, "invariant_entry", "loop invariant on entry")
         names = s.assigned(w.body, set())
-        # one arbitrary iteration
+        # one arbitrary iteration; the invariants held (and were defined) at its start
         b = s.havoc(st, names)
         for inv in w.invariants:
+            d = s.dom(inv, b, [], b.env)
+            if d is not None:
+                b.pc.append(d)
             b.pc.append(s.ev(inv, b, [], False))
         c = s.ev(w.cond, b, [], True)
         b.pc.append(c)
+        s.check_dom(b, [], w.decreases, w.decreases, "variant_field lookups in decreases are defined")
         d0 = s.ev(w.decreases, b, [], False)
         s.prove(b, [], d0 >= 0, w.decreases, "decreases_nonneg", "decreases >= 0")
         for end in s.exec_block(w.body, b):
             for inv in w.invariants:
+                s.check_dom(end, [], inv, inv, "variant_field lookups in loop invariant (preserved) are defined")
                 s.prove(end, [], s.ev(inv, end, [], False), inv, "invariant_preserved",
                         "loop invariant preserved")
+            if _has_vf(w.decreases):
+                # decreases is read at the end of the body: the invariants just proved may justify its lookups
+                extra = []
+                for inv in w.invariants:
+                    d = s.dom(inv, end, [], end.env)
+                    if d is not None:
+                        extra.append(d)
+                    extra.append(s.ev(inv, end, [], False))
+                s.check_dom(end, extra, w.decreases, w.decreases, "variant_field lookups in decreases are defined")
             s.prove(end, [], s.ev(w.decreases, end, [], False) < d0, w.decreases, "decreases_decrease",
                     "decreases strictly decreases")
         # after the loop
         a = s.havoc(st, names)
         for inv in w.invariants:
+            d = s.dom(inv, a, [], a.env)
+            if d is not None:
+                a.pc.append(d)
             a.pc.append(s.ev(inv, a, [], False))
         c = s.ev(w.cond, a, [], True)
         a.pc.append(z3.Not(c))
@@ -466,12 +773,17 @@ class FnVerifier:
             if isinstance(v, Arr):
                 v.name = p.name
                 pc.append(z3.And(v.n >= 0, v.n <= MAX_LEN))
-            elif p.type == I64:
-                pc.append(in_range(v))
+            else:
+                w = s.wf(p.type, v)
+                if w is not None:
+                    pc.append(w)
             env[p.name] = v
         s.params = dict(env)
         st = State(env, pc)
         for r in f.requires:
+            d = s.dom(r, st, [], st.env)       # D(r) && r, in declaration order
+            if d is not None:
+                st.pc.append(d)
             st.pc.append(s.ev(r, st, [], False))
         for end in s.exec_block(f.body, st):
             if f.ret == UNIT:
@@ -480,6 +792,7 @@ class FnVerifier:
 
 def verify_program(prog):
     errors = []
+    model = Model(prog)
     for f in prog.functions:
-        FnVerifier(prog, f, errors).run()
+        FnVerifier(prog, f, errors, model).run()
     return errors

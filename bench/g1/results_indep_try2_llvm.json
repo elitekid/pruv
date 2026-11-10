@@ -1,0 +1,27 @@
+{
+ "g01": {
+  "status": "ok",
+  "tests_passed": 309,
+  "tests_total": 309
+ },
+ "g02": {
+  "status": "ok",
+  "tests_passed": 310,
+  "tests_total": 310
+ },
+ "g03": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "g04": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "g05": {
+  "status": "ok",
+  "tests_passed": 307,
+  "tests_total": 307
+ }
+}

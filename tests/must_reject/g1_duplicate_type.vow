@@ -1,0 +1,8 @@
+struct Thing {
+  x: i64,
+}
+
+enum Thing {
+  A,
+  B,
+}

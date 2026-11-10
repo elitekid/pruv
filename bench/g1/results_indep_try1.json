@@ -1,0 +1,43 @@
+{
+ "g01": {
+  "status": "vow_error",
+  "vow_errors": [
+   {
+    "stage": "verify",
+    "line": 50,
+    "col": 5,
+    "code": "ensures",
+    "message": "cannot prove postcondition (line 37) in overlap_area",
+    "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+    "counterexample": {
+     "a": "m1t1!Rect(m1t0!Point(-999984078, -999991055),\n          m1t0!Point(-999984078, -999991054))",
+     "b": "m1t1!Rect(m1t0!Point(-999984079, -999991056),\n          m1t0!Point(-999984077, -999991053))",
+     "x1": -999984078,
+     "x2": -999984078,
+     "y1": -999991055,
+     "y2": -999991054
+    }
+   }
+  ]
+ },
+ "g02": {
+  "status": "ok",
+  "tests_passed": 310,
+  "tests_total": 310
+ },
+ "g03": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "g04": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "g05": {
+  "status": "ok",
+  "tests_passed": 307,
+  "tests_total": 307
+ }
+}

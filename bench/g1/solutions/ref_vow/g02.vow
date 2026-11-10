@@ -1,0 +1,24 @@
+struct Acc { value: i64, steps: i64 }
+enum Op { Add(v: i64), Mul(v: i64), Neg, Clear }
+
+fn apply(acc: Acc, op: Op) -> Acc
+  requires acc.value >= -1_000_000_000 && acc.value <= 1_000_000_000
+  requires acc.steps >= 0 && acc.steps <= 1_000_000_000
+  requires is_variant(op, Op::Add) ==> (variant_field(op, Op::Add, v) >= -1_000_000_000 && variant_field(op, Op::Add, v) <= 1_000_000_000)
+  requires is_variant(op, Op::Mul) ==> (variant_field(op, Op::Mul, v) >= -1_000 && variant_field(op, Op::Mul, v) <= 1_000)
+  ensures result.steps == acc.steps + 1
+  ensures is_variant(op, Op::Add) ==> result.value == acc.value + variant_field(op, Op::Add, v)
+  ensures is_variant(op, Op::Mul) ==> result.value == acc.value * variant_field(op, Op::Mul, v)
+  ensures is_variant(op, Op::Neg) ==> result.value == -acc.value
+  ensures is_variant(op, Op::Clear) ==> result.value == 0
+{
+  let mut r: Acc = acc;
+  r.steps = acc.steps + 1;
+  match op {
+    Op::Add(v) => { r.value = acc.value + v; }
+    Op::Mul(v) => { r.value = acc.value * v; }
+    Op::Neg => { r.value = -acc.value; }
+    Op::Clear => { r.value = 0; }
+  }
+  return r;
+}

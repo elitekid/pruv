@@ -1,0 +1,10 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn positive(p: Point) -> i64
+  requires p.x > 0
+{
+  return 7;
+}

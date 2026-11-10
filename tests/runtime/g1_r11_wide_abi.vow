@@ -1,0 +1,38 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+enum Inner {
+  Nothing,
+  Num(n: i64),
+  Pair(p: Point, ok: bool),
+}
+
+struct Wide {
+  flag: bool,
+  opt: Option<i64>,
+  res: Result<i64>,
+  inner: Inner,
+}
+
+fn echo(w: Wide) -> Wide {
+  return w;
+}
+
+fn emit(w: Wide) -> () ! io {
+  print(w.flag);
+  match w.opt {
+    Some(v) => { print(v); }
+    None => { print(-1); }
+  }
+  match w.res {
+    Ok(v) => { print(v); }
+    Err(e) => { print(-2); }
+  }
+  match w.inner {
+    Inner::Nothing => { print(-3); }
+    Inner::Num(n) => { print(n); }
+    Inner::Pair(p, ok) => { print(-4); }
+  }
+}

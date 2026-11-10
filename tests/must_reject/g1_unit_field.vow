@@ -1,0 +1,3 @@
+struct Boxed {
+  item: (),
+}

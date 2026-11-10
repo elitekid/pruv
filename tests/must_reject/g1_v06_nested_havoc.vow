@@ -1,0 +1,17 @@
+struct Point { x: i64, y: i64 }
+enum Mode { A, B }
+fn lost(m: Mode) -> () {
+  let mut p: Point = Point { x: 0, y: 7 };
+  let mut i: i64 = 0;
+  while i < 1
+    invariant 0 <= i && i <= 1
+    decreases 1 - i
+  {
+    match m {
+      Mode::A => { p.y = 1; }
+      Mode::B => { if i == 0 { p.y = 2; } }
+    }
+    i = i + 1;
+  }
+  assert p.y == 7;
+}

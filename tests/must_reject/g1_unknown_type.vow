@@ -1,0 +1,3 @@
+struct Holder {
+  item: Missing,
+}

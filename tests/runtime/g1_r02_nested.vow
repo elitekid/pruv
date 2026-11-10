@@ -1,0 +1,17 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+struct Frame {
+  origin: Point,
+  visible: bool,
+}
+
+fn run() -> () ! io {
+  let mut f: Frame = Frame { origin: Point { x: 3, y: 4 }, visible: true };
+  let old: Frame = f;
+  f.origin.x = 8;
+  print(old.origin.x);
+  print(f.origin.x);
+}

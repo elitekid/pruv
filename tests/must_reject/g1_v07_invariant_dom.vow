@@ -1,0 +1,10 @@
+enum Event { Empty, Hit(value: i64) }
+fn f(e: Event) -> () {
+  let mut i: i64 = 0;
+  while i < 1
+    invariant variant_field(e, Event::Hit, value) == variant_field(e, Event::Hit, value)
+    decreases 1 - i
+  {
+    i = i + 1;
+  }
+}

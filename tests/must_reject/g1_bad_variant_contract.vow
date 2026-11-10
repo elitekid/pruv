@@ -1,0 +1,10 @@
+enum Event {
+  Empty,
+  Hit(value: i64),
+}
+
+fn wrong() -> Event
+  ensures variant_field(result, Event::Hit, value) == 0
+{
+  return Event::Empty;
+}

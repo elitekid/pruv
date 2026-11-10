@@ -1,0 +1,46 @@
+struct Stats { count: i64, sum: i64, min: Option<i64>, max: Option<i64> }
+
+fn stats(a: [i64]) -> Stats
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): a[k] >= -1_000_000_000 && a[k] <= 1_000_000_000
+  ensures result.count == len(a)
+  ensures result.sum == sum(k in 0..len(a): a[k])
+  ensures len(a) == 0 ==> (result.min == None && result.max == None)
+  ensures len(a) >= 1 ==> (result.min == Some(min(k in 0..len(a): a[k])) && result.max == Some(max(k in 0..len(a): a[k])))
+{
+  let mut s: Stats = Stats { count: 0, sum: 0, min: None, max: None };
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant s.count == i
+    invariant s.sum == sum(k in 0..i: a[k])
+    invariant s.sum >= -1_000_000_000 * i && s.sum <= 1_000_000_000 * i
+    invariant i == 0 ==> (s.min == None && s.max == None)
+    invariant i >= 1 ==> (s.min == Some(min(k in 0..i: a[k])) && s.max == Some(max(k in 0..i: a[k])))
+    decreases len(a) - i
+  {
+    let x: i64 = a[i];
+    let cur_min: Option<i64> = s.min;
+    let cur_max: Option<i64> = s.max;
+    match cur_min {
+      Some(m) => {
+        if x < m {
+          s.min = Some(x);
+        }
+      }
+      None => { s.min = Some(x); }
+    }
+    match cur_max {
+      Some(m) => {
+        if x > m {
+          s.max = Some(x);
+        }
+      }
+      None => { s.max = Some(x); }
+    }
+    s.count = s.count + 1;
+    s.sum = s.sum + x;
+    i = i + 1;
+  }
+  return s;
+}

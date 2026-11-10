@@ -1,0 +1,9 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn f() -> i64 ! alloc {
+  let a: [Point] = alloc(1, 0);
+  return 0;
+}

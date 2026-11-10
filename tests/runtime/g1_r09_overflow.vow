@@ -1,0 +1,10 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn bump(p: Point) -> i64 {
+  let mut q: Point = p;
+  q.x = q.x + 1;
+  return q.x;
+}

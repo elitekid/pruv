@@ -1,0 +1,15 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn positive(p: Point) -> i64
+  requires p.x > 0
+{
+  return p.x;
+}
+
+fn caller() -> i64 {
+  let p: Point = Point { x: 0, y: 0 };
+  return positive(p);
+}

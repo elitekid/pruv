@@ -1,0 +1,33 @@
+enum Event {
+  Empty,
+  Hit(a: i64, b: i64),
+}
+
+fn one() -> i64 ! io
+  ensures result == 10
+{
+  print(1);
+  return 10;
+}
+
+fn two() -> i64 ! io
+  ensures result == 20
+{
+  print(2);
+  return 20;
+}
+
+fn pick(e: Event) -> Event ! io
+  ensures result == e
+{
+  print(3);
+  return e;
+}
+
+fn run() -> () ! io {
+  let e: Event = Event::Hit(one(), two());
+  match pick(e) {
+    Event::Empty => { print(0); }
+    Event::Hit(a, b) => { print(a + b); }
+  }
+}

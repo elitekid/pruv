@@ -1,0 +1,5 @@
+enum Event { Empty, Hit(value: i64) }
+fn need(e: Event) -> i64
+  requires variant_field(e, Event::Hit, value) > 0
+{ return 1; }
+fn caller() -> i64 { return need(Event::Empty); }

@@ -1,0 +1,26 @@
+struct Marker {}
+
+enum Mode {
+  Off,
+  On,
+}
+
+fn pass(m: Marker) -> Marker {
+  return m;
+}
+
+fn flip(m: Mode) -> Mode {
+  match m {
+    Mode::Off => { return Mode::On; }
+    Mode::On => { return Mode::Off; }
+  }
+}
+
+fn run() -> () ! io {
+  let m: Marker = pass(Marker {});
+  let k: Mode = flip(Mode::Off);
+  match k {
+    Mode::Off => { print(0); }
+    Mode::On => { print(1); }
+  }
+}

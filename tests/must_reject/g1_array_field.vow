@@ -1,0 +1,3 @@
+struct Boxed {
+  items: [i64],
+}

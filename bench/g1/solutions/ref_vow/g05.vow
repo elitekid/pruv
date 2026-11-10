@@ -1,0 +1,21 @@
+enum Found { Nothing, At(index: i64, value: i64) }
+
+fn first_negative(a: [i64]) -> Found
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): a[k] >= -1_000_000_000 && a[k] <= 1_000_000_000
+  ensures is_variant(result, Found::Nothing) ==> (forall k in 0..len(a): a[k] >= 0)
+  ensures is_variant(result, Found::At) ==> (variant_field(result, Found::At, index) >= 0 && variant_field(result, Found::At, index) < len(a) && a[variant_field(result, Found::At, index)] == variant_field(result, Found::At, value) && variant_field(result, Found::At, value) < 0 && (forall k in 0..variant_field(result, Found::At, index): a[k] >= 0))
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant forall k in 0..i: a[k] >= 0
+    decreases len(a) - i
+  {
+    if a[i] < 0 {
+      return Found::At(i, a[i]);
+    }
+    i = i + 1;
+  }
+  return Found::Nothing;
+}

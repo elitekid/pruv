@@ -1,0 +1,29 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+struct Frame {
+  origin: Point,
+  size: Point,
+}
+
+// Moves the frame right by dx. The input is copied, never changed.
+fn shift(f: Frame, dx: i64) -> Frame
+  requires f.origin.x >= -1_000_000 && f.origin.x <= 1_000_000
+  requires dx >= -1_000_000 && dx <= 1_000_000
+  ensures result.origin.x == f.origin.x + dx
+  ensures result.origin.y == f.origin.y
+  ensures result.size == f.size
+{
+  let mut g: Frame = f;
+  g.origin.x = g.origin.x + dx;
+  return g;
+}
+
+fn main() -> () ! io {
+  let f: Frame = Frame { origin: Point { x: 3, y: 4 }, size: Point { x: 10, y: 20 } };
+  let g: Frame = shift(f, 5);
+  print(f.origin.x);
+  print(g.origin.x);
+}

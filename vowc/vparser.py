@@ -4,7 +4,7 @@ from vast import *
 
 KEYWORDS = {"fn", "let", "mut", "if", "else", "while", "return", "match", "true", "false",
             "invariant", "decreases", "requires", "ensures", "assert", "forall", "exists",
-            "in", "Some", "None", "Ok", "Err"}
+            "in", "Some", "None", "Ok", "Err", "struct", "enum", "is_variant", "variant_field"}
 # Rust keywords that are not Vow keywords: user names go into the generated Rust unchanged.
 RUST_KEYWORDS = {"as", "async", "await", "break", "const", "continue", "crate", "dyn", "enum", "extern", "for",
                  "impl", "loop", "mod", "move", "pub", "ref", "self", "Self", "static", "struct", "super",
@@ -14,7 +14,7 @@ TOKEN_RE = re.compile(r"""
  (?P<ws>[ \t\r]+) | (?P<nl>\n) | (?P<comment>//[^\n]*)
 |(?P<int>[0-9][0-9_]*)
 |(?P<id>[A-Za-z_][A-Za-z0-9_]*)
-|(?P<op>==>|==|!=|<=|>=|&&|\|\||->|=>|\.\.|[-+*/%<>=!(){}\[\],:;])
+|(?P<op>==>|==|!=|<=|>=|&&|\|\||->|=>|::|\.\.|\.|[-+*/%<>=!(){}\[\],:;])
 """, re.X)
 
 
@@ -97,8 +97,61 @@ class Parser:
     def program(s):
         p = Program()
         while s.peek().kind != "eof":
-            p.functions.append(s.function())
+            if s.at("struct"):
+                p.types.append(s.struct_decl())
+            elif s.at("enum"):
+                p.types.append(s.enum_decl())
+            else:
+                p.functions.append(s.function())
         return p
+
+    def unsupported(s, what, tok):
+        raise VowError("parse", tok.line, tok.col, "unsupported_type",
+                       "%s is not supported" % what,
+                       "arrays hold i64 and Option/Result hold i64; user types can only be used directly")
+
+    def field_decl(s):
+        n = s.ident()
+        s.expect(":")
+        return FieldDecl(n.line, n.col, n.val, s.type_())
+
+    def field_list(s, close):
+        """`name: Type, ...` up to (not including) `close`; trailing comma allowed"""
+        out = []
+        while not s.at(close):
+            out.append(s.field_decl())
+            if not s.at(close):
+                s.expect(",")
+        return out
+
+    def struct_decl(s):
+        kw = s.expect("struct")
+        n = s.ident()
+        s.expect("{")
+        fields = s.field_list("}")
+        s.expect("}")
+        return StructDecl(kw.line, kw.col, n.val, fields)
+
+    def enum_decl(s):
+        kw = s.expect("enum")
+        n = s.ident()
+        s.expect("{")
+        variants = []
+        while not s.at("}"):
+            v = s.ident()
+            fields = []
+            if s.at("("):
+                lp = s.next()
+                if s.at(")"):
+                    s.err("a variant without fields is written without parentheses",
+                          "write `%s` instead of `%s()`" % (v.val, v.val), lp)
+                fields = s.field_list(")")
+                s.expect(")")
+            variants.append(VariantDecl(v.line, v.col, v.val, fields))
+            if not s.at("}"):
+                s.expect(",")
+        s.expect("}")
+        return EnumDecl(kw.line, kw.col, n.val, variants)
 
     def type_(s):
         t = s.peek()
@@ -108,6 +161,8 @@ class Parser:
             s.next()
             e = s.ident()
             if e.val != "i64":
+                if e.val[0].isupper():
+                    s.unsupported("[%s]" % e.val, e)
                 s.err("only [i64] arrays exist", "use [i64]", e)
             s.expect("]"); return ARRAY
         n = s.ident()
@@ -117,10 +172,16 @@ class Parser:
             s.expect("<")
             e = s.ident()
             if e.val != "i64":
+                if e.val[0].isupper():
+                    s.unsupported("%s<%s>" % (n.val, e.val), e)
                 s.err("%s only holds i64" % n.val, "use %s<i64>" % n.val, e)
             s.expect(">")
             return OPTION if n.val == "Option" else RESULT
-        s.err("unknown type %r" % n.val, "use i64, bool, (), [i64], Option<i64>, Result<i64>", n)
+        # a user type: the checker resolves the name. Lower-case spellings of the
+        # built-in Type names must not alias them.
+        if n.val in ("unit", "array", "option", "result"):
+            s.err("unknown type %r" % n.val, "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum", n)
+        return Type(n.val)
 
     def function(s):
         kw = s.expect("fn")
@@ -215,13 +276,31 @@ class Parser:
             arms = []
             while not s.at("}"):
                 ct = s.next()
-                if ct.val not in ("Some", "None", "Ok", "Err"):
-                    s.err("match arm must be Some(x), None, Ok(x) or Err(x)", "", ct)
-                b = None
-                if ct.val != "None":
-                    s.expect("("); b = s.ident().val; s.expect(")")
-                s.expect("=>")
-                arms.append(MatchArm(ct.val, b, s.block()))
+                if ct.kind == "id" and s.at("::"):
+                    s.next()
+                    vt = s.ident()
+                    binders = []
+                    if s.at("("):
+                        lp = s.next()
+                        if s.at(")"):
+                            s.err("a pattern lists one name per field; a variant without fields has no parentheses",
+                                  "write `%s::%s =>`" % (ct.val, vt.val), lp)
+                        while True:
+                            binders.append(s.ident().val)
+                            if not s.at(","):
+                                break
+                            s.next()
+                        s.expect(")")
+                    s.expect("=>")
+                    arms.append(MatchArm(ct.line, ct.col, ct.val, vt.val, binders, s.block()))
+                else:
+                    if ct.val not in ("Some", "None", "Ok", "Err"):
+                        s.err("match arm must be Some(x), None, Ok(x), Err(x) or Enum::Variant(...)", "", ct)
+                    binders = []
+                    if ct.val != "None":
+                        s.expect("("); binders = [s.ident().val]; s.expect(")")
+                    s.expect("=>")
+                    arms.append(MatchArm(ct.line, ct.col, None, ct.val, binders, s.block()))
                 if s.at(","):
                     s.next()
             s.expect("}")
@@ -239,6 +318,19 @@ class Parser:
                 s.next()
                 v = s.expr(); s.expect(";")
                 return IndexAssign(L, C, n, idx, v)
+            s.i = save
+        if t.kind == "id" and s.at(".", 1):
+            # field assignment `p.a.b = e;`, otherwise an expression statement
+            save = s.i
+            n = s.next().val
+            path = []
+            while s.at("."):
+                s.next()
+                path.append(s.ident().val)
+            if s.at("="):
+                s.next()
+                v = s.expr(); s.expect(";")
+                return FieldAssign(L, C, n, path, v)
             s.i = save
         e = s.expr()
         s.expect(";")
@@ -312,11 +404,24 @@ class Parser:
 
     def postfix(s):
         e = s.primary()
-        while s.at("["):
-            t = s.next()
-            i = s.expr(); s.expect("]")
-            e = Index(t.line, t.col, e, i)
+        while True:
+            if s.at("["):
+                t = s.next()
+                i = s.expr(); s.expect("]")
+                e = Index(t.line, t.col, e, i)
+            elif s.at("."):
+                s.next()
+                f = s.ident()
+                e = FieldAccess(e.line, e.col, e, f.val)
+            else:
+                break
         return e
+
+    def enum_ref(s):
+        """`Enum::Variant` -> (enum token, variant token)"""
+        en = s.ident()
+        s.expect("::")
+        return en, s.ident()
 
     def primary(s):
         t = s.peek()
@@ -349,8 +454,49 @@ class Parser:
             body = s.expr()
             s.expect(")")
             return Quant(t.line, t.col, t.val, v, lo, hi, body)
+        if s.at("is_variant"):
+            s.next(); s.expect("(")
+            v = s.expr(); s.expect(",")
+            en, vt = s.enum_ref()
+            s.expect(")")
+            return IsVariant(t.line, t.col, v, en.val, vt.val)
+        if s.at("variant_field"):
+            s.next(); s.expect("(")
+            v = s.expr(); s.expect(",")
+            en, vt = s.enum_ref()
+            s.expect(",")
+            f = s.ident()
+            s.expect(")")
+            return VariantField(t.line, t.col, v, en.val, vt.val, f.val)
         if t.kind == "id":
             s.next()
+            if s.at("::"):
+                s.next()
+                vt = s.ident()
+                args = []
+                if s.at("("):
+                    lp = s.next()
+                    if s.at(")"):
+                        s.err("empty parentheses after a variant",
+                              "write `%s::%s` for a variant without fields, or pass its fields as arguments"
+                              % (t.val, vt.val), lp)
+                    while not s.at(")"):
+                        args.append(s.expr())
+                        if not s.at(")"):
+                            s.expect(",")
+                    s.expect(")")
+                return EnumCtor(t.line, t.col, t.val, vt.val, args)
+            if t.val[0].isupper() and s.at("{"):
+                s.next()
+                inits = []
+                while not s.at("}"):
+                    fn = s.ident()
+                    s.expect(":")
+                    inits.append(FieldInit(fn.line, fn.col, fn.val, s.expr()))
+                    if not s.at("}"):
+                        s.expect(",")
+                s.expect("}")
+                return StructLit(t.line, t.col, t.val, inits)
             if s.at("("):
                 s.next()
                 args = []

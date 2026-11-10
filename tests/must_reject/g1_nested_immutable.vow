@@ -1,0 +1,15 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+struct Frame {
+  origin: Point,
+  visible: bool,
+}
+
+fn f() -> i64 {
+  let fr: Frame = Frame { origin: Point { x: 0, y: 0 }, visible: true };
+  fr.origin.x = 1;
+  return fr.origin.y;
+}

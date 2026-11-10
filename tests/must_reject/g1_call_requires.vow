@@ -1,0 +1,15 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn positive(p: Point) -> i64
+  requires p.x > 0
+{
+  return 100 / p.x;
+}
+
+fn f() -> i64 {
+  let p: Point = Point { x: 0, y: 5 };
+  return positive(p);
+}

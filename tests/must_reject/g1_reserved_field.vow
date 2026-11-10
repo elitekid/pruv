@@ -1,0 +1,3 @@
+struct Point {
+  vow_x: i64,
+}

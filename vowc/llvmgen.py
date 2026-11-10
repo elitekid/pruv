@@ -33,11 +33,19 @@ temporaries are freed at the end of the statement/condition (only on the execute
 """
 import re
 from vast import *
+import codegen
 from codegen import show
+from typeinfo import TypeTable, is_user_type
 
 SIGNED_MIN128 = -170141183460469231731687303715884105728
 OPT = "{ i1, i64 }"
+COPT = "{ i1, i128 }"       # Option/Result stored inside a contract aggregate (%vow_c_*)
 ARR = "{ ptr, i64 }"
+
+# G1 (docs/M2_G1_SPEC.md section 5): user struct/enum layout
+#   %vow_t_Name  struct: its fields in order ({} if none); enum: { i64 tag, every variant's payload fields in
+#                variant order then field order }.  Inactive payload is always zeroinitializer-derived.
+#   %vow_c_Name  same shape for requires evaluation: integer leaves are i128, Option/Result are { i1, i128 }.
 
 DECLS = """\
 declare noalias ptr @vow_alloc(i64, i64) nounwind
@@ -64,32 +72,82 @@ def mangle(n):
 
 def lty(t):
     """internal SSA type of a Vow type"""
-    return {"i64": "i64", "bool": "i1", "unit": "void", "array": ARR,
-            "option": OPT, "result": OPT}[t.name]
+    r = {"i64": "i64", "bool": "i1", "unit": "void", "array": ARR,
+         "option": OPT, "result": OPT}.get(t.name)
+    return r if r is not None else "%%vow_t_%s" % t.name
 
 
 def vkind(t):
     return {"i64": "i64", "bool": "i1", "unit": "unit", "array": "arr",
-            "option": "opt", "result": "opt"}[t.name]
+            "option": "opt", "result": "opt"}.get(t.name, "agg")
+
+
+def st(t, c=False):
+    """storage type of a value of type t inside an aggregate (c: contract/i128 form)"""
+    n = t.name
+    if n == "i64":
+        return "i128" if c else "i64"
+    if n == "bool":
+        return "i1"
+    if n in ("option", "result"):
+        return COPT if c else OPT
+    return "%%vow_%s_%s" % ("c" if c else "t", n)
+
+
+def payload_index(tt, ty, variant, i):
+    """storage index of field i of `variant` inside the flattened enum %vow_t_/%vow_c_ type"""
+    base = 1
+    for v in tt.decl(ty).variants:
+        if v.name == variant:
+            return base + i
+        base += len(v.fields)
+    raise KeyError(variant)
+
+
+def words(tt, ty):
+    """W(T): number of i64 words of the external (vow_abi_*) form"""
+    n = ty.name
+    if n in ("i64", "bool"):
+        return 1
+    if n in ("option", "result"):
+        return 2
+    d = tt.decl(ty)
+    if isinstance(d, StructDecl):
+        return max(1, sum(words(tt, f.type) for f in d.fields))
+    return 1 + sum(words(tt, f.type) for v in d.variants for f in v.fields)
+
+
+def type_defs(tt):
+    out = []
+    for c in (False, True):
+        for d in tt.order:
+            if isinstance(d, StructDecl):
+                fs = [st(f.type, c) for f in d.fields]
+            else:
+                fs = ["i64"] + [st(f.type, c) for v in d.variants for f in v.fields]
+            out.append("%%vow_%s_%s = type %s" % ("c" if c else "t", d.name, "{ %s }" % ", ".join(fs) if fs else "{}"))
+    return "\n".join(out) + ("\n" if out else "")
 
 
 class V:
-    """an SSA value: k in i64 | i1 | i128 | arr (a=ptr, b=len) | opt (a=tag i1, b=payload) | unit"""
-    __slots__ = ("k", "a", "b")
+    """an SSA value: k in i64 | i1 | i128 | arr (a=ptr, b=len) | opt (a=tag i1, b=payload) | unit |
+    agg (a=aggregate SSA of a user struct/enum, ty=its Type; %vow_t_* in code, %vow_c_* in requires)"""
+    __slots__ = ("k", "a", "b", "ty")
 
-    def __init__(s, k, a=None, b=None):
-        s.k, s.a, s.b = k, a, b
+    def __init__(s, k, a=None, b=None, ty=None):
+        s.k, s.a, s.b, s.ty = k, a, b, ty
 
 
 class Slot:
-    __slots__ = ("k", "a", "b")
+    __slots__ = ("k", "a", "b", "ty")
 
-    def __init__(s, k, a, b=None):
-        s.k, s.a, s.b = k, a, b
+    def __init__(s, k, a, b=None, ty=None):
+        s.k, s.a, s.b, s.ty = k, a, b, ty
 
 
 class Mod:
-    def __init__(s):
+    def __init__(s, tt=None):
+        s.tt = tt
         s.strs = {}
         s.order = []
 
@@ -119,6 +177,8 @@ def ir_params(f):
             out.append(("i1", "%%p.%s" % n))
         elif p.type == I64:
             out.append(("i64", "%%p.%s" % n))
+        elif is_user_type(p.type):
+            out.append((lty(p.type), "%%p.%s" % n))
         else:
             out.append((OPT, "%%p.%s" % n))
     return out
@@ -140,6 +200,7 @@ class FnGen:
         s.scopes = []
         s.temps = []
         s.cenv = {}
+        s.tt = m.tt
 
     # ---------- emission ----------
     def ins(s, text):
@@ -212,6 +273,9 @@ class FnGen:
             s.allocas.append("%s = alloca ptr" % a)
             s.allocas.append("%s = alloca i64" % b)
             return Slot("arr", a, b)
+        if kind == "agg":
+            s.allocas.append("%s = alloca %s" % (a, lty(ty)))
+            return Slot("agg", a, None, ty)
         s.allocas.append("%s = alloca i1" % a)
         s.allocas.append("%s = alloca i64" % b)
         return Slot("opt", a, b)
@@ -219,6 +283,8 @@ class FnGen:
     def load(s, sl):
         if sl.k in ("i64", "i1"):
             return V(sl.k, s.op("load %s, ptr %s" % (sl.k, sl.a)))
+        if sl.k == "agg":
+            return V("agg", s.op("load %s, ptr %s" % (lty(sl.ty), sl.a)), None, sl.ty)
         if sl.k == "arr":
             p = s.op("load ptr, ptr %s" % sl.a)
             n = s.op("load i64, ptr %s" % sl.b)
@@ -230,6 +296,8 @@ class FnGen:
     def store(s, sl, v):
         if sl.k in ("i64", "i1"):
             s.ins("store %s %s, ptr %s" % (sl.k, v.a, sl.a))
+        elif sl.k == "agg":
+            s.ins("store %s %s, ptr %s" % (lty(sl.ty), v.a, sl.a))
         elif sl.k == "arr":
             s.ins("store ptr %s, ptr %s" % (v.a, sl.a))
             s.ins("store i64 %s, ptr %s" % (v.b, sl.b))
@@ -267,7 +335,162 @@ class FnGen:
             for v in reversed(ts):
                 s.free_val(v)
 
+    # ---------- user aggregates (G1) ----------
+    def pack(s, v, ty, c):
+        """SSA value of storage type st(ty, c) for the value v"""
+        if ty.name in ("option", "result"):
+            ot, pt = (COPT, "i128") if c else (OPT, "i64")
+            a = s.op("insertvalue %s undef, i1 %s, 0" % (ot, v.a))
+            return s.op("insertvalue %s %s, %s %s, 1" % (ot, a, pt, v.b))
+        return v.a
+
+    def unpack(s, x, ty, c):
+        n = ty.name
+        if n == "i64":
+            return V("i128" if c else "i64", x)
+        if n == "bool":
+            return V("i1", x)
+        if n in ("option", "result"):
+            ot = COPT if c else OPT
+            t = s.op("extractvalue %s %s, 0" % (ot, x))
+            p = s.op("extractvalue %s %s, 1" % (ot, x))
+            return V("opt", t, p)
+        return V("agg", x, None, ty)
+
+    def put(s, base, ty, idx, v, fty, c):
+        """insertvalue of field value v (type fty) at storage index idx of aggregate `base` (type ty)"""
+        x = s.pack(v, fty, c)
+        return s.op("insertvalue %s %s, %s %s, %d" % (st(ty, c), base, st(fty, c), x, idx))
+
+    def get(s, base, ty, idx, fty, c):
+        x = s.op("extractvalue %s %s, %d" % (st(ty, c), base.a, idx))
+        return s.unpack(x, fty, c)
+
+    def tag_of(s, v, c):
+        return s.op("extractvalue %s %s, 0" % (st(v.ty, c), v.a))
+
+    def mk_struct(s, e, evf, c):
+        ty = Type(e.name)
+        vals = {}
+        for fi in e.fields:                 # source order evaluation
+            vals[fi.name] = evf(fi.value)
+        acc = "zeroinitializer"
+        for i, fd in enumerate(s.tt.fields(ty)):
+            acc = s.put(acc, ty, i, vals[fd.name], fd.type, c)
+        return V("agg", acc, None, ty)
+
+    def mk_enum(s, e, evf, c):
+        ty = Type(e.enum_name)
+        vals = [evf(x) for x in e.args]     # left to right
+        tag = s.tt.variant_index(ty, e.variant)
+        acc = s.op("insertvalue %s zeroinitializer, i64 %d, 0" % (st(ty, c), tag))
+        for i, fd in enumerate(s.tt.fields(ty, e.variant)):
+            acc = s.put(acc, ty, payload_index(s.tt, ty, e.variant, i), vals[i], fd.type, c)
+        return V("agg", acc, None, ty)
+
+    def set_path(s, base, ty, path, v):
+        """aggregate `base` (code form) with the nested struct field `path` replaced by v"""
+        fds = s.tt.fields(ty)
+        i = s.tt.field_index(ty, path[0])
+        fty = fds[i].type
+        if len(path) == 1:
+            nv = v
+        else:
+            sub = s.get(base, ty, i, fty, False)
+            nv = s.set_path(sub, fty, path[1:], v)
+        return V("agg", s.put(base.a, ty, i, nv, fty, False), None, ty)
+
+    def to_c(s, x, ty):
+        """code value -> contract value (i64 leaves sign-extended; enums convert the active variant only)"""
+        n = ty.name
+        if n == "i64":
+            return V("i128", s.op("sext i64 %s to i128" % x.a))
+        if n == "bool":
+            return x
+        if n in ("option", "result"):
+            return V("opt", x.a, s.op("sext i64 %s to i128" % x.b))
+        d = s.tt.decl(ty)
+        if isinstance(d, StructDecl):
+            acc = "zeroinitializer"
+            for i, f in enumerate(d.fields):
+                fx = s.get(x, ty, i, f.type, False)
+                acc = s.put(acc, ty, i, s.to_c(fx, f.type), f.type, True)
+            return V("agg", acc, None, ty)
+        tag = s.tag_of(x, False)
+        base = s.op("insertvalue %s zeroinitializer, i64 %s, 0" % (st(ty, True), tag))
+        vs = [v for v in d.variants if v.fields]
+        if not vs:
+            return V("agg", base, None, ty)
+        lcur, join = s.cur, s.label("cvend")
+        lbls = [s.label("cvv") for _ in vs]
+        s.term("switch i64 %s, label %%%s [ %s ]" % (tag, join, " ".join(
+            "i64 %d, label %%%s" % (s.tt.variant_index(ty, v.name), l) for v, l in zip(vs, lbls))))
+        entries = [(base, lcur)]
+        for v, l in zip(vs, lbls):
+            s.place(l)
+            acc = base
+            for i, f in enumerate(v.fields):
+                pi = payload_index(s.tt, ty, v.name, i)
+                fx = s.get(x, ty, pi, f.type, False)
+                acc = s.put(acc, ty, pi, s.to_c(fx, f.type), f.type, True)
+            entries.append((acc, s.cur))
+            s.br(join)
+        s.place(join)
+        r = s.op("phi %s %s" % (st(ty, True), ", ".join("[ %s, %%%s ]" % e for e in entries)))
+        return V("agg", r, None, ty)
+
+    def ceq(s, l, r, ty):
+        """structural equality of two contract values of type ty -> i1 (SSA name or literal)"""
+        n = ty.name
+        if n == "i64":
+            return s.op("icmp eq i128 %s, %s" % (l.a, r.a))
+        if n == "bool":
+            return s.op("icmp eq i1 %s, %s" % (l.a, r.a))
+        if n in ("option", "result"):
+            te = s.op("icmp eq i1 %s, %s" % (l.a, r.a))
+            pe = s.op("icmp eq i128 %s, %s" % (l.b, r.b))
+            if n == "option":           # a None payload is not compared
+                nt = s.op("xor i1 %s, true" % l.a)
+                pe = s.op("or i1 %s, %s" % (nt, pe))
+            return s.op("and i1 %s, %s" % (te, pe))
+
+        def fields_eq(fds, pidx):
+            acc = "true"
+            for i, f in enumerate(fds):
+                j = pidx(i)
+                e = s.ceq(s.get(l, ty, j, f.type, True), s.get(r, ty, j, f.type, True), f.type)
+                acc = e if acc == "true" else s.op("and i1 %s, %s" % (acc, e))
+            return acc
+        d = s.tt.decl(ty)
+        if isinstance(d, StructDecl):
+            return fields_eq(d.fields, lambda i: i)
+        tl, tr = s.tag_of(l, True), s.tag_of(r, True)
+        teq = s.op("icmp eq i64 %s, %s" % (tl, tr))
+        vs = [v for v in d.variants if v.fields]
+        if not vs:
+            return teq
+        lcur = s.cur
+        same, dflt, end = s.label("ceqs"), s.label("ceqd"), s.label("ceqe")
+        lbls = [s.label("ceqv") for _ in vs]
+        s.condbr(teq, same, end)
+        entries = [("false", lcur)]
+        s.place(same)
+        s.term("switch i64 %s, label %%%s [ %s ]" % (tl, dflt, " ".join(
+            "i64 %d, label %%%s" % (s.tt.variant_index(ty, v.name), lb) for v, lb in zip(vs, lbls))))
+        s.place(dflt)           # same tag, variant without fields
+        entries.append(("true", dflt))
+        s.br(end)
+        for v, lb in zip(vs, lbls):
+            s.place(lb)
+            e = fields_eq(v.fields, lambda i, v=v: payload_index(s.tt, ty, v.name, i))
+            entries.append((e, s.cur))
+            s.br(end)
+        s.place(end)
+        return s.op("phi i1 %s" % ", ".join("[ %s, %%%s ]" % e for e in entries))
+
     def agg(s, v):
+        if v.k == "agg":
+            return v.a
         if v.k == "arr":
             a = s.op("insertvalue %s undef, ptr %s, 0" % (ARR, v.a))
             return s.op("insertvalue %s %s, i64 %s, 1" % (ARR, a, v.b))
@@ -286,6 +509,8 @@ class FnGen:
                 names[p.name] = ("ssa", V("i1", "%%p.%s" % n))
             elif p.type == I64:
                 names[p.name] = ("ssa", V("i64", "%%p.%s" % n))
+            elif is_user_type(p.type):
+                names[p.name] = ("ssa", V("agg", "%%p.%s" % n, None, p.type))
             else:
                 t = s.op("extractvalue %s %%p.%s, 0" % (OPT, n))
                 v = s.op("extractvalue %s %%p.%s, 1" % (OPT, n))
@@ -342,6 +567,15 @@ class FnGen:
             if sl.k == "arr":
                 s.free_val(s.load(sl))
             s.store(sl, v)
+            s.end_temps()
+        elif isinstance(st, FieldAssign):
+            s.begin_temps()
+            kind, sl = s.lookup(st.name)
+            if kind != "slot":
+                raise Exception("llvmgen: field assignment to non-local %s" % st.name)
+            v = s.ev(st.value)              # right side first, then root load -> insertvalue chain -> store
+            root = s.load(sl)
+            s.store(sl, s.set_path(root, sl.ty, st.fields, v))
             s.end_temps()
         elif isinstance(st, IndexAssign):
             s.begin_temps()
@@ -415,6 +649,9 @@ class FnGen:
             s.begin_temps()
             sv = s.ev(st.scrutinee)
             s.end_temps()
+            if st.arms and st.arms[0].enum_name is not None:
+                s.user_match(st, sv)
+                return
             pos = [a for a in st.arms if a.ctor in ("Some", "Ok")][0]
             neg = [a for a in st.arms if a.ctor in ("None", "Err")][0]
             pl, nl_, end = s.label("armT"), s.label("armF"), s.label("endmatch")
@@ -423,8 +660,8 @@ class FnGen:
             for arm, lbl in ((pos, pl), (neg, nl_)):
                 s.place(lbl)
                 bind = None
-                if arm.binder is not None:
-                    bind = {arm.binder: ("ssa", V("i64", sv.b))}
+                if arm.binders:
+                    bind = {arm.binders[0]: ("ssa", V("i64", sv.b))}
                 if s.run_block(arm.body, bind):
                     s.br(end)
                     reach = True
@@ -434,6 +671,30 @@ class FnGen:
                 s.dead = True
         else:
             raise Exception("llvmgen: unsupported statement %r" % st)
+
+    def user_match(s, st, sv):
+        """match on a user enum: tag switch; payload extraction only inside the arm block; default unreachable"""
+        ty = sv.ty
+        tag = s.tag_of(sv, False)
+        arms = [(a, s.label("arm" + a.ctor)) for a in st.arms]
+        dflt, end = s.label("matchdef"), s.label("endmatch")
+        s.term("switch i64 %s, label %%%s [ %s ]" % (tag, dflt, " ".join(
+            "i64 %d, label %%%s" % (s.tt.variant_index(ty, a.ctor), l) for a, l in arms)))
+        s.place(dflt)
+        s.term("unreachable")
+        reach = False
+        for a, l in arms:
+            s.place(l)
+            bind = {}
+            for i, (name, fd) in enumerate(zip(a.binders, s.tt.fields(ty, a.ctor))):
+                bind[name] = ("ssa", s.get(sv, ty, payload_index(s.tt, ty, a.ctor, i), fd.type, False))
+            if s.run_block(a.body, bind):
+                s.br(end)
+                reach = True
+        if reach:
+            s.place(end)
+        else:
+            s.dead = True
 
     # ---------- code expressions ----------
     def index_ptr(s, a, i):
@@ -500,6 +761,15 @@ class FnGen:
             return V("opt", "true" if e.name in ("Some", "Ok") else "false", x.a)
         if isinstance(e, Call):
             return s.ev_call(e, owned)
+        if isinstance(e, StructLit):
+            return s.mk_struct(e, s.ev, False)
+        if isinstance(e, EnumCtor):
+            return s.mk_enum(e, s.ev, False)
+        if isinstance(e, FieldAccess):
+            b = s.ev(e.base)
+            ty = b.ty if b.ty is not None else e.base.ty
+            i = s.tt.field_index(ty, e.field)
+            return s.get(b, ty, i, s.tt.fields(ty)[i].type, False)
         raise Exception("llvmgen: contract-only expression in code: %r" % e)
 
     def ev_binary(s, e):
@@ -571,6 +841,8 @@ class FnGen:
                 args += ["ptr %s" % v.a, "i64 %s" % v.b]
             elif v.k == "opt":
                 args.append("%s %s" % (OPT, s.agg(v)))
+            elif v.k == "agg":
+                args.append("%s %s" % (lty(v.ty), v.a))
             else:
                 args.append("%s %s" % (v.k, v.a))
         callee = "@%s__vow_%s" % (mangle(f.name), "body" if s.verified else "entry")
@@ -580,6 +852,8 @@ class FnGen:
         r = s.op("call %s %s(%s)" % (lty(f.ret), callee, ", ".join(args)))
         if f.ret in (I64, BOOL):
             return V(vkind(f.ret), r)
+        if is_user_type(f.ret):
+            return V("agg", r, None, f.ret)
         x0 = s.op("extractvalue %s %s, 0" % (lty(f.ret), r))
         x1 = s.op("extractvalue %s %s, 1" % (lty(f.ret), r))
         if f.ret == ARRAY:
@@ -597,6 +871,8 @@ class FnGen:
                 s.cenv[p.name] = V("i1", "%%p.%s" % n)
             elif p.type == I64:
                 s.cenv[p.name] = V("i128", s.op("sext i64 %%p.%s to i128" % n))
+            elif is_user_type(p.type):
+                s.cenv[p.name] = s.to_c(V("agg", "%%p.%s" % n, None, p.type), p.type)
             else:
                 t = s.op("extractvalue %s %%p.%s, 0" % (OPT, n))
                 v = s.op("extractvalue %s %%p.%s, 1" % (OPT, n))
@@ -632,6 +908,11 @@ class FnGen:
             if op in ("/", "%"):
                 fn = "vow_cdiv" if op == "/" else "vow_crem"
                 return V("i128", s.op("call i128 @%s(i128 %s, i128 %s)" % (fn, l.a, r.a)))
+            if op in ("==", "!=") and l.k == "agg":
+                eq = s.ceq(l, r, l.ty)
+                if op == "!=":
+                    eq = s.op("xor i1 %s, true" % eq)
+                return V("i1", eq)
             if op in ("==", "!=") and l.k == "opt":
                 te = s.op("icmp eq i1 %s, %s" % (l.a, r.a))
                 pe = s.op("icmp eq i128 %s, %s" % (l.b, r.b))
@@ -661,6 +942,26 @@ class FnGen:
             return V("opt", "true" if e.name in ("Some", "Ok") else "false", x.a)
         if isinstance(e, Quant):
             return s.cquant(e)
+        if isinstance(e, StructLit):
+            return s.mk_struct(e, s.cev, True)
+        if isinstance(e, EnumCtor):
+            return s.mk_enum(e, s.cev, True)
+        if isinstance(e, FieldAccess):
+            b = s.cev(e.base)
+            i = s.tt.field_index(b.ty, e.field)
+            return s.get(b, b.ty, i, s.tt.fields(b.ty)[i].type, True)
+        if isinstance(e, IsVariant):
+            b = s.cev(e.value)
+            k = s.tt.variant_index(b.ty, e.variant)
+            return V("i1", s.op("icmp eq i64 %s, %d" % (s.tag_of(b, True), k)))
+        if isinstance(e, VariantField):
+            b = s.cev(e.value)
+            k = s.tt.variant_index(b.ty, e.variant)
+            ok = s.op("icmp eq i64 %s, %d" % (s.tag_of(b, True), k))
+            s.guard(ok, und("variant_field expected %s::%s.%s" % (e.enum_name, e.variant, e.field)), False)
+            i = s.tt.field_index(b.ty, e.field, e.variant)
+            fd = s.tt.fields(b.ty, e.variant)[i]
+            return s.get(b, b.ty, payload_index(s.tt, b.ty, e.variant, i), fd.type, True)
         if isinstance(e, Call):
             n, a = e.name, e.args
             if n == "len":
@@ -773,12 +1074,108 @@ def entry_of(m, funcs, f, trust):
     return g.render("define internal %s @%s__vow_entry(%s)" % (rt, mangle(f.name), sig_text(params)))
 
 
-def abi_of(f):
+class Words:
+    """IR text for the external word form of user types (docs/M2_G1_SPEC.md section 5, W(T))"""
+
+    def __init__(s, tt):
+        s.tt, s.lines, s.n = tt, [], 0
+
+    def op(s, text):
+        s.n += 1
+        r = "%%w.%d" % s.n
+        s.lines.append("%s = %s" % (r, text))
+        return r
+
+    def gep(s, ptr, off):
+        return s.op("getelementptr inbounds i64, ptr %s, i64 %d" % (ptr, off))
+
+    def rd(s, ptr, off):
+        return s.op("load i64, ptr %s" % s.gep(ptr, off))
+
+    def wr(s, ptr, off, v):
+        g = s.gep(ptr, off)
+        s.lines.append("store i64 %s, ptr %s" % (v, g))
+
+    def de(s, ty, ptr, off):
+        """read a value of type ty from words at ptr[off..]; returns an SSA name of type st(ty)"""
+        n = ty.name
+        if n == "i64":
+            return s.rd(ptr, off)
+        if n == "bool":
+            return s.op("icmp ne i64 %s, 0" % s.rd(ptr, off))
+        if n in ("option", "result"):
+            t = s.op("icmp ne i64 %s, 0" % s.rd(ptr, off))
+            p = s.rd(ptr, off + 1)
+            a = s.op("insertvalue %s undef, i1 %s, 0" % (OPT, t))
+            return s.op("insertvalue %s %s, i64 %s, 1" % (OPT, a, p))
+        d = s.tt.decl(ty)
+        T = st(ty)
+        acc = "zeroinitializer"
+        if isinstance(d, StructDecl):
+            o = off
+            for i, f in enumerate(d.fields):
+                x = s.de(f.type, ptr, o)
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, i))
+                o += words(s.tt, f.type)
+            return acc
+        tag = s.rd(ptr, off)
+        acc = s.op("insertvalue %s zeroinitializer, i64 %s, 0" % (T, tag))
+        o, idx = off + 1, 1
+        for v in d.variants:
+            for f in v.fields:
+                x = s.de(f.type, ptr, o)
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, idx))
+                o += words(s.tt, f.type)
+                idx += 1
+        return acc
+
+    def ser(s, ty, x, ptr, off):
+        """write the SSA value x (type st(ty)) as words at ptr[off..]"""
+        n = ty.name
+        if n == "i64":
+            s.wr(ptr, off, x)
+        elif n == "bool":
+            s.wr(ptr, off, s.op("zext i1 %s to i64" % x))
+        elif n in ("option", "result"):
+            t = s.op("extractvalue %s %s, 0" % (OPT, x))
+            p = s.op("extractvalue %s %s, 1" % (OPT, x))
+            if n == "option":           # None payload is serialized as 0
+                p = s.op("select i1 %s, i64 %s, i64 0" % (t, p))
+            s.wr(ptr, off, s.op("zext i1 %s to i64" % t))
+            s.wr(ptr, off + 1, p)
+        else:
+            d = s.tt.decl(ty)
+            T = st(ty)
+            if isinstance(d, StructDecl):
+                if not d.fields:
+                    s.wr(ptr, off, "0")
+                o = off
+                for i, f in enumerate(d.fields):
+                    s.ser(f.type, s.op("extractvalue %s %s, %d" % (T, x, i)), ptr, o)
+                    o += words(s.tt, f.type)
+                return
+            # inactive payloads are zero by construction (EnumCtor / deserialization start from zeroinitializer)
+            s.wr(ptr, off, s.op("extractvalue %s %s, 0" % (T, x)))
+            o, idx = off + 1, 1
+            for v in d.variants:
+                for f in v.fields:
+                    s.ser(f.type, s.op("extractvalue %s %s, %d" % (T, x, idx)), ptr, o)
+                    o += words(s.tt, f.type)
+                    idx += 1
+
+
+def abi_of(f, tt):
     n = mangle(f.name)
     ext, pre, args = [], [], []
+    w = Words(tt)
     for p in f.params:
         q = mangle(p.name)
-        if p.type == I64:
+        if is_user_type(p.type):
+            ext.append("ptr %%a.%s" % q)
+            args.append("%s %s" % (lty(p.type), w.de(p.type, "%%a.%s" % q, 0)))
+            pre += w.lines
+            w.lines = []
+        elif p.type == I64:
             ext.append("i64 %%a.%s" % q)
             args.append("i64 %%a.%s" % q)
         elif p.type == BOOL:
@@ -818,6 +1215,13 @@ def abi_of(f):
         body.append("  %t1 = insertvalue { i64, i64 } %t0, i64 %x1, 1")
         body.append("  ret { i64, i64 } %t1")
         ret = "{ i64, i64 }"
+    elif is_user_type(rt):
+        ext.append("ptr %out")
+        body.append("  %%r = call %s %s(%s)" % (lty(rt), entry, ", ".join(args)))
+        w.ser(rt, "%r", "%out", 0)
+        body += ["  " + x for x in w.lines]
+        body.append("  ret void")
+        ret = "void"
     elif rt == UNIT:
         body.append("  call void %s(%s)" % (entry, ", ".join(args)))
         body.append("  ret void")
@@ -875,16 +1279,88 @@ c2:
 
 # ---------- Rust bindings ----------
 def rust_ty(t, param):
-    return {"i64": "i64", "bool": "bool", "unit": "()", "option": "Option<i64>",
-            "result": "Result<i64, i64>"}.get(t.name) or ("&[i64]" if param else "Vec<i64>")
+    if is_user_type(t):
+        return t.name
+    return {"i64": "i64", "bool": "bool", "unit": "()", "option": "::std::option::Option<i64>",
+            "result": "::std::result::Result<i64, i64>"}.get(t.name) or (
+        "&[i64]" if param else "::std::vec::Vec<i64>")
 
 
 ALLOW = "#[allow(dead_code, non_snake_case, unused)]"
 
 
+def rs_ser(tt, ty, expr, arr, off, ctr):
+    """Rust statements writing `expr` (a Copy value of type ty) into the word array `arr` at off"""
+    n = ty.name
+    if n == "i64":
+        return ["%s[%d] = %s;" % (arr, off, expr)]
+    if n == "bool":
+        return ["%s[%d] = (%s) as i64;" % (arr, off, expr)]
+    if n in ("option", "result"):
+        ctr[0] += 1
+        v = "vow__b%d" % ctr[0]
+        a, b = ("Some", "None") if n == "option" else ("Ok", "Err")
+        if n == "option":
+            return ["match %s { Some(%s) => { %s[%d] = 1; %s[%d] = %s; } None => { %s[%d] = 0; %s[%d] = 0; } }"
+                    % (expr, v, arr, off, arr, off + 1, v, arr, off, arr, off + 1)]
+        return ["match %s { Ok(%s) => { %s[%d] = 1; %s[%d] = %s; } Err(%s) => { %s[%d] = 0; %s[%d] = %s; } }"
+                % (expr, v, arr, off, arr, off + 1, v, v, arr, off, arr, off + 1, v)]
+    d = tt.decl(ty)
+    if isinstance(d, StructDecl):
+        out, o = [], off
+        for f in d.fields:
+            out += rs_ser(tt, f.type, "%s.%s" % (expr, f.name), arr, o, ctr)
+            o += words(tt, f.type)
+        return out
+    arms, o = [], off + 1
+    for k, v in enumerate(d.variants):
+        names, stmts = [], ["%s[%d] = %d;" % (arr, off, k)]
+        for f in v.fields:
+            ctr[0] += 1
+            nm = "vow__b%d" % ctr[0]
+            names.append(nm)
+            stmts += rs_ser(tt, f.type, nm, arr, o, ctr)
+            o += words(tt, f.type)
+        pat = "%s::%s(%s)" % (d.name, v.name, ", ".join(names)) if names else "%s::%s" % (d.name, v.name)
+        arms.append("%s => { %s }" % (pat, " ".join(stmts)))
+    return ["match %s { %s }" % (expr, " ".join(arms))]
+
+
+def rs_de(tt, ty, arr, off):
+    """Rust expression rebuilding a value of type ty from the word array `arr` at off (safe constructors only)"""
+    n = ty.name
+    if n == "i64":
+        return "%s[%d]" % (arr, off)
+    if n == "bool":
+        return "(%s[%d] != 0)" % (arr, off)
+    if n == "option":
+        return "(if %s[%d] != 0 { Some(%s[%d]) } else { None })" % (arr, off, arr, off + 1)
+    if n == "result":
+        return "(if %s[%d] != 0 { Ok(%s[%d]) } else { Err(%s[%d]) })" % (arr, off, arr, off + 1, arr, off + 1)
+    d = tt.decl(ty)
+    if isinstance(d, StructDecl):
+        parts, o = [], off
+        for f in d.fields:
+            parts.append("%s: %s" % (f.name, rs_de(tt, f.type, arr, o)))
+            o += words(tt, f.type)
+        return "%s { %s }" % (d.name, ", ".join(parts))
+    arms, o = [], off + 1
+    for k, v in enumerate(d.variants):
+        args = []
+        for f in v.fields:
+            args.append(rs_de(tt, f.type, arr, o))
+            o += words(tt, f.type)
+        arms.append("%d => %s::%s%s," % (k, d.name, v.name, "(%s)" % ", ".join(args) if args else ""))
+    return "(match %s[%d] { %s _ => ::std::unreachable!() })" % (arr, off, " ".join(arms))
+
+
 def gen_bindings(prog):
+    tt = TypeTable(prog)
     o = []
     o.append("// generated by vowc llvmgen -- Rust bindings for the LLVM back end (include with #[path] mod sol;)")
+    if prog.types:
+        pub = codegen.emit_public_types(prog)
+        o.append(pub.replace("#[derive", ALLOW + "\n#[derive") if "#[derive" in pub else pub)
     o.append(ALLOW)
     o.append("#[repr(C)]\npub struct Vow__Array { pub data: *mut i64, pub len: i64 }")
     o.append(ALLOW)
@@ -939,10 +1415,14 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
                 ps += ["*const i64", "i64"]
             elif p.type in (OPTION, RESULT):
                 ps += ["i64", "i64"]
+            elif is_user_type(p.type):
+                ps.append("*const i64")
             else:
                 ps.append("i64")
         if f.ret == ARRAY:
             ps.append("*mut Vow__Array")
+        elif is_user_type(f.ret):
+            ps.append("*mut i64")
         ret = " -> i64" if f.ret in (I64, BOOL) else (" -> Vow__Tagged" if f.ret in (OPTION, RESULT) else "")
         decls.append("    fn vow_abi_%s(%s)%s;" % (f.name, ", ".join("p%d: %s" % (i, t) for i, t in enumerate(ps)), ret))
     if returns_array:
@@ -960,6 +1440,11 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
                 args.append("%s as i64" % p.name)
             elif p.type == ARRAY:
                 args += ["%s.as_ptr()" % p.name, "%s.len() as i64" % p.name]
+            elif is_user_type(p.type):
+                w = "vow__w_" + p.name
+                pre.append("let mut %s = [0i64; %d];" % (w, words(tt, p.type)))
+                pre += rs_ser(tt, p.type, p.name, w, 0, [0])
+                args.append(w + ".as_ptr()")
             else:
                 a, b = ("Some", "None") if p.type == OPTION else ("Ok", "Err")
                 pre.append("let (vow__t_%s, vow__v_%s): (i64, i64) = match %s { %s(v) => (1, v), %s(v) => (0, v) };"
@@ -985,8 +1470,12 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
         elif f.ret == ARRAY:
             body.append("let mut vow__out = Vow__Array { data: ::std::ptr::null_mut(), len: 0 };")
             body.append(callo + ";")
-            body.append("if vow__out.len > 0 { Vec::from_raw_parts(vow__out.data, vow__out.len as usize, "
-                        "vow__out.len as usize) } else { Vec::new() }")
+            body.append("if vow__out.len > 0 { ::std::vec::Vec::from_raw_parts(vow__out.data, vow__out.len as usize, "
+                        "vow__out.len as usize) } else { ::std::vec::Vec::new() }")
+        elif is_user_type(f.ret):
+            body.append("let mut vow__out = [0i64; %d];" % words(tt, f.ret))
+            body.append("vow_abi_%s(%s);" % (f.name, ", ".join(args + ["vow__out.as_mut_ptr()"])))
+            body.append(rs_de(tt, f.ret, "vow__out", 0))
         else:
             a, b = ("Some", "None") if f.ret == OPTION else ("Ok", "Err")
             body.append("let vow__out = %s;" % call)
@@ -1001,7 +1490,8 @@ pub extern "C" fn vow_host_free(data: *mut i64, len: i64) {
 
 
 def gen_llvm(prog, verified=True, trust_callers=False):
-    m = Mod()
+    tt = TypeTable(prog)
+    m = Mod(tt)
     funcs = {f.name: f for f in prog.functions}
     chunks = []
     if not trust_callers and any(f.requires for f in prog.functions):
@@ -1013,6 +1503,6 @@ def gen_llvm(prog, verified=True, trust_callers=False):
         params = ir_params(f)
         chunks.append(g.render("define internal %s @%s__vow_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
         chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires))
-        chunks.append(abi_of(f))
-    ir = m.render_strings() + "\n" + DECLS + "\n" + "\n".join(chunks)
+        chunks.append(abi_of(f, tt))
+    ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + "\n" + "\n".join(chunks)
     return ir, gen_bindings(prog)

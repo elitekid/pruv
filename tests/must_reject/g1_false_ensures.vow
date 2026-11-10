@@ -1,0 +1,10 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn wrong() -> Point
+  ensures result.x == 1
+{
+  return Point { x: 2, y: 0 };
+}

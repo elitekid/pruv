@@ -1,0 +1,18 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+enum Event {
+  Empty,
+  Hit(point: Point, accepted: bool),
+}
+
+fn f(e: Event) -> i64 {
+  let mut r: i64 = 0;
+  match e {
+    Event::Empty => { r = 0; }
+    Event::Hit(p) => { r = p.x; }
+  }
+  return r;
+}

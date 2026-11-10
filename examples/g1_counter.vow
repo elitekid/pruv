@@ -1,0 +1,46 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+struct Counter {
+  count: i64,
+  limit: i64,
+}
+
+// A loop that changes one field havocs the whole struct,
+// so the untouched sibling field needs its own invariant.
+fn kept() -> () {
+  let mut p: Point = Point { x: 0, y: 7 };
+  let mut i: i64 = 0;
+  while i < 1
+    invariant 0 <= i && i <= 1
+    invariant p.y == 7
+    decreases 1 - i
+  {
+    p.x = 1;
+    i = i + 1;
+  }
+  assert p.y == 7;
+}
+
+fn count_to(n: i64) -> Counter
+  requires 0 <= n && n <= 1_000_000
+  ensures result.count == n && result.limit == n
+{
+  let mut c: Counter = Counter { count: 0, limit: n };
+  while c.count < n
+    invariant 0 <= c.count && c.count <= n
+    invariant c.limit == n
+    decreases n - c.count
+  {
+    c.count = c.count + 1;
+  }
+  return c;
+}
+
+fn main() -> () ! io {
+  kept();
+  let c: Counter = count_to(10);
+  print(c.count);
+}

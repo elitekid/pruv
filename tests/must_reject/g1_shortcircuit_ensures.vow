@@ -1,0 +1,17 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn mk(n: i64) -> Point
+  requires n >= 0
+  ensures n >= 0 && result.x == n
+{
+  return Point { x: n, y: 0 };
+}
+
+fn bad(n: i64) -> i64 {
+  let ok: bool = n > 0 && mk(n).x == n;
+  assert n >= 0;
+  return n;
+}

@@ -1,0 +1,12 @@
+struct Wrapper {
+  hint: Option<i64>,
+}
+
+fn make() -> Wrapper {
+  return Wrapper { hint: Some(1) };
+}
+
+fn f() -> i64 {
+  make();
+  return 0;
+}

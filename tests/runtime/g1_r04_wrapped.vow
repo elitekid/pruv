@@ -1,0 +1,30 @@
+struct Wrapped {
+  a: Option<i64>,
+  b: Option<i64>,
+  c: Result<i64>,
+  d: Result<i64>,
+}
+
+fn make() -> Wrapped {
+  return Wrapped { a: Some(5), b: None, c: Ok(6), d: Err(7) };
+}
+
+fn run() -> () ! io {
+  let w: Wrapped = make();
+  match w.a {
+    Some(v) => { print(v); }
+    None => { print(-1); }
+  }
+  match w.b {
+    Some(v) => { print(-1); }
+    None => { print(0); }
+  }
+  match w.c {
+    Ok(v) => { print(v); }
+    Err(e) => { print(-1); }
+  }
+  match w.d {
+    Ok(v) => { print(-1); }
+    Err(e) => { print(e); }
+  }
+}

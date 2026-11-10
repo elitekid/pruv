@@ -12,7 +12,7 @@ signature; no null, no exceptions, no implicit conversions, no globals, no overl
 ## 1. Lexical
 - Comments: `// ...` to end of line.
 - Identifiers: `[a-zA-Z_][a-zA-Z0-9_]*`. Integer literals: decimal digits, optional `_` separators (`1_000_000`).
-- Keywords: `fn let mut if else while return match true false invariant decreases requires ensures assert forall exists in result Some None Ok Err`.
+- Keywords: `fn let mut if else while return match true false invariant decreases requires ensures assert forall exists in result Some None Ok Err struct enum is_variant variant_field`.
 - Names starting with `vow_` or containing `__`, the name `_`, and Rust keywords (`type`, `loop`, `self`, `for`, ...) are reserved; the parser rejects them (`reserved_name`).
 
 ## 2. Types
@@ -24,6 +24,7 @@ signature; no null, no exceptions, no implicit conversions, no globals, no overl
 | `[i64]` | array of i64 | param: `&[i64]`, local/return: `Vec<i64>` |
 | `Option<i64>` | `Some(v)` or `None` | `Option<i64>` |
 | `Result<i64>` | `Ok(v)` or `Err(code)`, code is i64 | `Result<i64, i64>` |
+| `Point`, `Event` | user struct / enum (section 6a) | `pub struct` / `pub enum` (Copy) |
 
 Parameters are immutable. Array parameters are read-only views. Only `let mut` locals can be reassigned
 or have elements assigned.
@@ -59,7 +60,7 @@ while c
 return e;  /  return;
 assert <bool expr>;              // proven at compile time, erased
 print(e);                        // e: i64 or bool; needs `io`
-match e {                        // e: Option<i64> or Result<i64>; all arms required
+match e {                        // e: Option<i64>, Result<i64> or a user enum (6a); all arms required
   Some(v) => { ... }
   None => { ... }
 }
@@ -102,6 +103,33 @@ Allowed only in `requires`, `ensures`, `invariant`, `assert`:
   - Example: `ensures result == count(k in 0..len(a): a[k] < x)` with
     `invariant c == count(k in 0..i: a[k] < x)`.
 
+## 6a. Structs and enums
+```
+struct Point { x: i64, y: i64 }
+enum Event { Empty, Hit(point: Point, accepted: bool), Failed(code: i64) }
+
+let p: Point = Point { x: 3, y: 4 };      // every field, in declaration order
+let e: Event = Event::Hit(p, true);       // arguments in field order; `Event::Empty` has no parentheses
+let mut q: Point = p;                      // values are copied, never shared
+q.x = 8;                                   // field assignment: `let mut` locals only, nested `f.origin.x = e` ok
+match e {                                  // statement; every variant exactly once
+  Event::Empty => { ... }
+  Event::Hit(pt, ok) => { ... }            // one name per field, in order; names are immutable, arm-local
+  Event::Failed(code) => { ... }
+}
+```
+- Declared at top level, in any order. Type and variant names start upper-case, field names lower-case.
+- Fields: `i64`, `bool`, `Option<i64>`, `Result<i64>`, or another struct/enum. No array or `()` fields, no recursive
+  types, no `[Point]`, no `Option<Point>`. Empty structs are allowed; an enum needs at least one variant.
+- Read struct fields with `v.field`. Enum payloads are read only with `match` in code.
+- `==` / `!=` on structs and enums: contracts only, same type. Enums compare the variant and its fields.
+- Contract-only: `is_variant(e, Event::Hit)` (bool) and `variant_field(e, Event::Hit, point)` (that field).
+  `variant_field` is defined only when `e` is that variant; the verifier proves this wherever the contract is
+  evaluated, following short-circuit order (`verify` error `variant_domain`). Guard it:
+  `requires !is_variant(e, Event::Hit) || variant_field(e, Event::Hit, point).x > 0`.
+- A loop that assigns any field of `p` forgets all of `p`; keep the other fields with invariants (`invariant p.y == 7`).
+- Contract arithmetic inside struct literals is mathematical, like all contract arithmetic.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.
@@ -114,7 +142,7 @@ Variables not assigned in a loop keep their values across it; assigned ones are 
 ### Run-time `requires` and modes
 A public function's `requires` are checked at run time, left to right with short-circuit evaluation; a violation
 panics with `vow: requires violated`. If evaluation reaches something outside the contract domain (index out of
-range, division by zero, `max`/`min` over an empty range, `some_val(None)`, ...), it panics with
+range, division by zero, `max`/`min` over an empty range, `some_val(None)`, `variant_field` of another variant, ...), it panics with
 `vow: requires undefined`. So write domain conditions first, e.g. `0 <= i && i < len(a) && a[i] > 0`.
 Number-range quantifiers and aggregates iterate once per element of the range, so their cost is the range length.
 

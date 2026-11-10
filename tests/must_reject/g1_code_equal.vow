@@ -1,0 +1,8 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn same(p: Point, q: Point) -> bool {
+  return p == q;
+}

@@ -1,0 +1,25 @@
+struct Measure { area: i64, perimeter: i64 }
+enum Shape { Circle(r: i64), Rect(w: i64, h: i64), Tri(a: i64, b: i64, c: i64, h: i64) }
+
+fn measure(s: Shape) -> Measure
+  requires is_variant(s, Shape::Circle) ==> (variant_field(s, Shape::Circle, r) >= 0 && variant_field(s, Shape::Circle, r) <= 1_000_000)
+  requires is_variant(s, Shape::Rect) ==> (variant_field(s, Shape::Rect, w) >= 0 && variant_field(s, Shape::Rect, w) <= 1_000_000 && variant_field(s, Shape::Rect, h) >= 0 && variant_field(s, Shape::Rect, h) <= 1_000_000)
+  requires is_variant(s, Shape::Tri) ==> (variant_field(s, Shape::Tri, a) >= 0 && variant_field(s, Shape::Tri, a) <= 1_000_000 && variant_field(s, Shape::Tri, b) >= 0 && variant_field(s, Shape::Tri, b) <= 1_000_000 && variant_field(s, Shape::Tri, c) >= 0 && variant_field(s, Shape::Tri, c) <= 1_000_000 && variant_field(s, Shape::Tri, h) >= 0 && variant_field(s, Shape::Tri, h) <= 1_000_000)
+  ensures result.area >= 0 && result.perimeter >= 0
+  ensures is_variant(s, Shape::Circle) ==> (result.area == 3 * variant_field(s, Shape::Circle, r) * variant_field(s, Shape::Circle, r) && result.perimeter == 6 * variant_field(s, Shape::Circle, r))
+  ensures is_variant(s, Shape::Rect) ==> (result.area == variant_field(s, Shape::Rect, w) * variant_field(s, Shape::Rect, h) && result.perimeter == 2 * (variant_field(s, Shape::Rect, w) + variant_field(s, Shape::Rect, h)))
+  ensures is_variant(s, Shape::Tri) ==> result.perimeter == variant_field(s, Shape::Tri, a) + variant_field(s, Shape::Tri, b) + variant_field(s, Shape::Tri, c)
+{
+  match s {
+    Shape::Circle(r) => {
+      return Measure { area: 3 * r * r, perimeter: 6 * r };
+    }
+    Shape::Rect(w, h) => {
+      return Measure { area: w * h, perimeter: 2 * (w + h) };
+    }
+    Shape::Tri(a, b, c, h) => {
+      let twice: i64 = c * h;
+      return Measure { area: twice / 2, perimeter: a + b + c };
+    }
+  }
+}

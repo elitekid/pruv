@@ -1,0 +1,10 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn f(p: Point) -> () ! io
+  requires Point { x: p.x + 1, y: 0 } == Point { x: p.x + 1, y: 0 }
+{
+  print(true);
+}

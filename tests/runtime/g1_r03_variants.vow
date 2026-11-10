@@ -1,0 +1,22 @@
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+enum Event {
+  Empty,
+  Hit(point: Point, accepted: bool),
+  Failed(code: i64),
+}
+
+fn echo(e: Event) -> Event {
+  return e;
+}
+
+fn score(e: Event) -> i64 {
+  match e {
+    Event::Empty => { return 0; }
+    Event::Hit(p, accepted) => { return p.x; }
+    Event::Failed(code) => { return code; }
+  }
+}

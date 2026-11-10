@@ -64,7 +64,24 @@ def run_must_reject(work):
         name = "must_reject/" + os.path.basename(f)
         try:
             c = vowc(f, os.path.join(work, "mr.rs"))
-            report(name, c.returncode == 1, "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr))
+            ok = c.returncode == 1
+            detail = "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr)
+            jf = os.path.splitext(f)[0] + ".json"
+            if ok and os.path.exists(jf):
+                want = json.load(open(jf))
+                diags = []
+                for line in c.stdout.splitlines():
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(d, dict):
+                        diags.append(d)
+                ok = any(d.get("stage") == want.get("stage") and d.get("code") == want.get("code") for d in diags)
+                detail = "expected stage=%s code=%s; got %s" % (
+                    want.get("stage"), want.get("code"),
+                    [(d.get("stage"), d.get("code")) for d in diags])
+            report(name, ok, detail)
         except subprocess.TimeoutExpired:
             report(name, False, "timeout")
         except Exception as e:
@@ -158,23 +175,35 @@ def run_examples(work, backend):
 def run_runtime(work, backend):
     llvm = backend == "llvm"
     tag = " [llvm]" if llvm else ""
+    jobs = []
     for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/*.json"))):
         t = os.path.splitext(os.path.basename(j))[0]
-        name = "runtime/" + t + tag
-        d = os.path.dirname(j)
         try:
             spec = json.load(open(j))
+        except Exception as e:
+            report("runtime/" + t + tag, False, repr(e))
+            continue
+        matrix = spec.get("flags_matrix")
+        if matrix:
+            for n, fl in enumerate(matrix):
+                jobs.append((j, t, spec, list(fl), "[%s]" % (" ".join(fl) or "default"), "_m%d" % n))
+        else:
+            jobs.append((j, t, spec, spec.get("flags", []), "", ""))
+    for j, t, spec, flags, label, suffix in jobs:
+        name = "runtime/" + t + (" " + label if label else "") + tag
+        d = os.path.dirname(j)
+        try:
             vow, drv = os.path.join(d, t + ".vow"), os.path.join(d, t + ".rs")
             link = []
             if llvm:
-                key = t + "_llvm"
+                key = t + suffix + "_llvm"
                 ll = os.path.join(work, key + ".ll")
                 gen = os.path.join(work, key + "_gen.rs")
-                c = vowc_llvm(vow, ll, gen, spec.get("flags", []))
+                c = vowc_llvm(vow, ll, gen, flags)
             else:
-                key = t
-                gen = os.path.join(work, t + "_gen.rs")
-                c = vowc(vow, gen, spec.get("flags", []))
+                key = t + suffix
+                gen = os.path.join(work, key + "_gen.rs")
+                c = vowc(vow, gen, flags)
             if c.returncode != 0:
                 report(name, False, "vowc exit %d %s" % (c.returncode, c.stdout + c.stderr))
                 continue

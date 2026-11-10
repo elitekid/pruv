@@ -1,0 +1,8 @@
+struct Holder {
+  item: Wrapper,
+}
+
+enum Wrapper {
+  Leaf,
+  Wrap(holder: Holder),
+}

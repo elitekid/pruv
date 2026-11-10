@@ -1,0 +1,16 @@
+enum Event {
+  Empty,
+  Hit(value: i64),
+}
+
+fn any_ok(e: Event) -> () ! io
+  requires exists k in 0..2: k == 0 || variant_field(e, Event::Hit, value) > 0
+{
+  print(true);
+}
+
+fn not_all(e: Event) -> () ! io
+  requires !(forall k in 0..2: k > 0 && variant_field(e, Event::Hit, value) > 0)
+{
+  print(true);
+}

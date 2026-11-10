@@ -1,0 +1,13 @@
+enum Event {
+  Empty,
+  Failed(code: i64),
+}
+
+fn f(e: Event, code: i64) -> i64 {
+  let mut r: i64 = 0;
+  match e {
+    Event::Empty => { r = code; }
+    Event::Failed(code) => { r = code; }
+  }
+  return r;
+}

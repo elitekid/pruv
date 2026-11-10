@@ -76,6 +76,77 @@ class Quant(Expr):
     body: Expr
     ty: Optional[Type] = None
 
+# ---------- G1: structs and enums ----------
+# A user type is Type("Point"): nominal, equal iff the names are equal.
+@dataclass
+class FieldDecl:
+    line: int
+    col: int
+    name: str
+    type: Type
+
+@dataclass
+class VariantDecl:
+    line: int
+    col: int
+    name: str
+    fields: List[FieldDecl]
+
+@dataclass
+class TypeDecl:
+    line: int
+    col: int
+    name: str
+
+@dataclass
+class StructDecl(TypeDecl):
+    fields: List[FieldDecl]
+
+@dataclass
+class EnumDecl(TypeDecl):
+    variants: List[VariantDecl]
+
+@dataclass
+class FieldInit:
+    line: int
+    col: int
+    name: str
+    value: Expr
+
+@dataclass
+class StructLit(Expr):
+    name: str
+    fields: List[FieldInit]
+    ty: Optional[Type] = None
+
+@dataclass
+class EnumCtor(Expr):
+    enum_name: str
+    variant: str
+    args: List[Expr]
+    ty: Optional[Type] = None
+
+@dataclass
+class FieldAccess(Expr):
+    base: Expr
+    field: str
+    ty: Optional[Type] = None
+
+@dataclass
+class IsVariant(Expr):          # contract-only
+    value: Expr
+    enum_name: str
+    variant: str
+    ty: Optional[Type] = None
+
+@dataclass
+class VariantField(Expr):       # contract-only
+    value: Expr
+    enum_name: str
+    variant: str
+    field: str
+    ty: Optional[Type] = None
+
 # ---------- statements ----------
 @dataclass
 class Stmt:
@@ -126,15 +197,24 @@ class ExprStmt(Stmt):
     expr: Expr         # Call returning unit (incl. print)
 
 @dataclass
+class FieldAssign(Stmt):
+    name: str              # root local variable
+    fields: List[str]      # non-empty path: `p.a.b = e` -> name="p", fields=["a", "b"]
+    value: Expr
+
+@dataclass
 class MatchArm:
-    ctor: str          # "Some" | "None" | "Ok" | "Err"
-    binder: Optional[str]
+    line: int
+    col: int
+    enum_name: Optional[str]   # None for Option/Result arms, the enum name for user enums
+    ctor: str                  # "Some" | "None" | "Ok" | "Err" or a variant name ("Hit")
+    binders: List[str]         # Some/Ok/Err: one name; None: []; user variant: one per field
     body: List[Stmt]
 
 @dataclass
 class Match(Stmt):
     scrutinee: Expr
-    arms: List[MatchArm]   # exactly 2, order as written
+    arms: List[MatchArm]   # Option/Result: exactly 2; user enum: one per variant; order as written
 
 # ---------- top level ----------
 @dataclass
@@ -157,6 +237,7 @@ class Function:
 @dataclass
 class Program:
     functions: List[Function] = field(default_factory=list)
+    types: List[TypeDecl] = field(default_factory=list)
 
 class VowError(Exception):
     """Raise for any compile error. stage: parse|type|effect|verify|rustc."""
