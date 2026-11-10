@@ -1,0 +1,5 @@
+// reserved_name: 밑줄 하나뿐인 이름 _
+fn f() -> i64 {
+  let _: i64 = 1;
+  return 1;
+}

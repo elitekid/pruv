@@ -1,0 +1,312 @@
+//! AST 를 어댑터 스키마 pruv-ast-v1 의 Json 으로 직렬화.
+//! 정수·line·col 은 십진 문자열, bool 은 JSON bool, None 은 null, Type 은 이름 문자열.
+
+use crate::ast::*;
+use crate::parser::parse_source;
+use crate::pyjson::{dumps_sorted, Json};
+
+fn js(s: &str) -> Json {
+    Json::Str(s.to_string())
+}
+
+fn ty(t: &Ty) -> Json {
+    match t {
+        Some(s) => js(s),
+        None => Json::Null,
+    }
+}
+
+fn strs(v: &[String]) -> Json {
+    Json::Arr(v.iter().map(|s| js(s)).collect())
+}
+
+fn list<T>(v: &[T], f: fn(&T) -> Json) -> Json {
+    Json::Arr(v.iter().map(f).collect())
+}
+
+/// 노드 하나: kind, (line, col), 필드들.
+fn node(kind: &str, lc: Option<(i64, i64)>, fields: Vec<(&str, Json)>) -> Json {
+    let mut kv: Vec<(String, Json)> = vec![("kind".to_string(), js(kind))];
+    if let Some((l, c)) = lc {
+        kv.push(("line".to_string(), Json::Str(l.to_string())));
+        kv.push(("col".to_string(), Json::Str(c.to_string())));
+    }
+    // Python dict 처럼 같은 키는 덮어쓴다: 어댑터 ser() 에서 Quant.kind("forall" 등)가
+    // 노드 이름 "Quant" 를 덮어쓰는 동작이 기준 스냅샷(pruv-ast-v1)에 들어 있다.
+    for (k, v) in fields {
+        match kv.iter_mut().find(|(kk, _)| kk == k) {
+            Some(slot) => slot.1 = v,
+            None => kv.push((k.to_string(), v)),
+        }
+    }
+    Json::Obj(kv)
+}
+
+fn bx(e: &Expr) -> Json {
+    expr(e)
+}
+
+pub fn expr(e: &Expr) -> Json {
+    match e {
+        Expr::IntLit(x) => node("IntLit", Some((x.line, x.col)), vec![("value", js(&x.value)), ("ty", ty(&x.ty))]),
+        Expr::BoolLit(x) => node("BoolLit", Some((x.line, x.col)), vec![("value", Json::Bool(x.value)), ("ty", ty(&x.ty))]),
+        Expr::Var(x) => node("Var", Some((x.line, x.col)), vec![("name", js(&x.name)), ("ty", ty(&x.ty))]),
+        Expr::Unary(x) => node(
+            "Unary",
+            Some((x.line, x.col)),
+            vec![("op", js(&x.op)), ("operand", bx(&x.operand)), ("ty", ty(&x.ty))],
+        ),
+        Expr::Binary(x) => node(
+            "Binary",
+            Some((x.line, x.col)),
+            vec![("op", js(&x.op)), ("left", bx(&x.left)), ("right", bx(&x.right)), ("ty", ty(&x.ty))],
+        ),
+        Expr::Call(x) => node(
+            "Call",
+            Some((x.line, x.col)),
+            vec![("name", js(&x.name)), ("args", list(&x.args, expr)), ("ty", ty(&x.ty))],
+        ),
+        Expr::Index(x) => node(
+            "Index",
+            Some((x.line, x.col)),
+            vec![("array", bx(&x.array)), ("index", bx(&x.index)), ("ty", ty(&x.ty))],
+        ),
+        Expr::Ctor(x) => node(
+            "Ctor",
+            Some((x.line, x.col)),
+            vec![
+                ("name", js(&x.name)),
+                ("arg", match &x.arg {
+                    Some(a) => bx(a),
+                    None => Json::Null,
+                }),
+                ("ty", ty(&x.ty)),
+            ],
+        ),
+        Expr::Quant(x) => node(
+            "Quant",
+            Some((x.line, x.col)),
+            vec![
+                ("kind", js(&x.kind)),
+                ("var", js(&x.var)),
+                ("lo", bx(&x.lo)),
+                ("hi", bx(&x.hi)),
+                ("body", bx(&x.body)),
+                ("ty", ty(&x.ty)),
+            ],
+        ),
+        Expr::StructLit(x) => node(
+            "StructLit",
+            Some((x.line, x.col)),
+            vec![("name", js(&x.name)), ("fields", list(&x.fields, field_init)), ("ty", ty(&x.ty))],
+        ),
+        Expr::EnumCtor(x) => node(
+            "EnumCtor",
+            Some((x.line, x.col)),
+            vec![
+                ("enum_name", js(&x.enum_name)),
+                ("variant", js(&x.variant)),
+                ("args", list(&x.args, expr)),
+                ("ty", ty(&x.ty)),
+            ],
+        ),
+        Expr::FieldAccess(x) => node(
+            "FieldAccess",
+            Some((x.line, x.col)),
+            vec![("base", bx(&x.base)), ("field", js(&x.field)), ("ty", ty(&x.ty))],
+        ),
+        Expr::IsVariant(x) => node(
+            "IsVariant",
+            Some((x.line, x.col)),
+            vec![
+                ("value", bx(&x.value)),
+                ("enum_name", js(&x.enum_name)),
+                ("variant", js(&x.variant)),
+                ("ty", ty(&x.ty)),
+            ],
+        ),
+        Expr::VariantField(x) => node(
+            "VariantField",
+            Some((x.line, x.col)),
+            vec![
+                ("value", bx(&x.value)),
+                ("enum_name", js(&x.enum_name)),
+                ("variant", js(&x.variant)),
+                ("field", js(&x.field)),
+                ("ty", ty(&x.ty)),
+            ],
+        ),
+    }
+}
+
+fn field_init(f: &FieldInit) -> Json {
+    node("FieldInit", Some((f.line, f.col)), vec![("name", js(&f.name)), ("value", expr(&f.value))])
+}
+
+fn field_decl(f: &FieldDecl) -> Json {
+    node("FieldDecl", Some((f.line, f.col)), vec![("name", js(&f.name)), ("type", js(&f.ty))])
+}
+
+fn variant_decl(v: &VariantDecl) -> Json {
+    node("VariantDecl", Some((v.line, v.col)), vec![("name", js(&v.name)), ("fields", list(&v.fields, field_decl))])
+}
+
+fn type_decl(d: &TypeDecl) -> Json {
+    match d {
+        TypeDecl::Struct(s) => node(
+            "StructDecl",
+            Some((s.line, s.col)),
+            vec![("name", js(&s.name)), ("fields", list(&s.fields, field_decl))],
+        ),
+        TypeDecl::Enum(e) => node(
+            "EnumDecl",
+            Some((e.line, e.col)),
+            vec![("name", js(&e.name)), ("variants", list(&e.variants, variant_decl))],
+        ),
+    }
+}
+
+fn match_arm(a: &MatchArm) -> Json {
+    node(
+        "MatchArm",
+        Some((a.line, a.col)),
+        vec![
+            ("enum_name", match &a.enum_name {
+                Some(s) => js(s),
+                None => Json::Null,
+            }),
+            ("ctor", js(&a.ctor)),
+            ("binders", strs(&a.binders)),
+            ("body", list(&a.body, stmt)),
+        ],
+    )
+}
+
+pub fn stmt(s: &Stmt) -> Json {
+    match s {
+        Stmt::Let(x) => node(
+            "Let",
+            Some((x.line, x.col)),
+            vec![("name", js(&x.name)), ("mutable", Json::Bool(x.mutable)), ("type", js(&x.ty)), ("value", expr(&x.value))],
+        ),
+        Stmt::Assign(x) => node("Assign", Some((x.line, x.col)), vec![("name", js(&x.name)), ("value", expr(&x.value))]),
+        Stmt::IndexAssign(x) => node(
+            "IndexAssign",
+            Some((x.line, x.col)),
+            vec![("name", js(&x.name)), ("index", expr(&x.index)), ("value", expr(&x.value))],
+        ),
+        Stmt::If(x) => if_node(x),
+        Stmt::While(x) => node(
+            "While",
+            Some((x.line, x.col)),
+            vec![
+                ("cond", expr(&x.cond)),
+                ("invariants", list(&x.invariants, expr)),
+                ("decreases", expr(&x.decreases)),
+                ("body", list(&x.body, stmt)),
+            ],
+        ),
+        Stmt::Return(x) => node(
+            "Return",
+            Some((x.line, x.col)),
+            vec![("value", match &x.value {
+                Some(v) => expr(v),
+                None => Json::Null,
+            })],
+        ),
+        Stmt::Assert(x) => node("Assert", Some((x.line, x.col)), vec![("cond", expr(&x.cond))]),
+        Stmt::ExprStmt(x) => node("ExprStmt", Some((x.line, x.col)), vec![("expr", expr(&x.expr))]),
+        Stmt::FieldAssign(x) => node(
+            "FieldAssign",
+            Some((x.line, x.col)),
+            vec![("name", js(&x.name)), ("fields", strs(&x.fields)), ("value", expr(&x.value))],
+        ),
+        Stmt::Match(x) => node(
+            "Match",
+            Some((x.line, x.col)),
+            vec![("scrutinee", expr(&x.scrutinee)), ("arms", list(&x.arms, match_arm))],
+        ),
+    }
+}
+
+fn if_node(x: &If) -> Json {
+    node(
+        "If",
+        Some((x.line, x.col)),
+        vec![("cond", expr(&x.cond)), ("then", list(&x.then, stmt)), ("els", list(&x.els, stmt))],
+    )
+}
+
+fn param(p: &Param) -> Json {
+    node("Param", None, vec![("name", js(&p.name)), ("type", js(&p.ty))])
+}
+
+fn function(f: &Function) -> Json {
+    node(
+        "Function",
+        Some((f.line, f.col)),
+        vec![
+            ("name", js(&f.name)),
+            ("params", list(&f.params, param)),
+            ("ret", js(&f.ret)),
+            ("effects", strs(&f.effects)),
+            ("requires", list(&f.requires, expr)),
+            ("ensures", list(&f.ensures, expr)),
+            ("body", list(&f.body, stmt)),
+        ],
+    )
+}
+
+pub fn program(p: &Program) -> Json {
+    node(
+        "Program",
+        None,
+        vec![("functions", list(&p.functions, function)), ("types", list(&p.types, type_decl))],
+    )
+}
+
+/// 파일 바이트 하나 -> 출력 한 줄(개행 제외).
+pub fn parse_dump_line(src_bytes: &[u8]) -> String {
+    let src = match std::str::from_utf8(src_bytes) {
+        Ok(s) => s,
+        Err(_) => return dumps_sorted(&Json::Obj(vec![("adapter_error".to_string(), js("decode"))])),
+    };
+    let top = match parse_source(src) {
+        Ok(p) => Json::Obj(vec![
+            ("schema".to_string(), js(crate::SCHEMA_AST)),
+            ("program".to_string(), program(&p)),
+        ]),
+        Err(e) => Json::Obj(vec![
+            ("schema".to_string(), js(crate::SCHEMA_AST)),
+            ("error".to_string(), e.to_json_value()),
+        ]),
+    };
+    dumps_sorted(&top)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_line_is_number() {
+        let s = parse_dump_line(b"fn f() -> i64 {\n return 1 }");
+        assert_eq!(
+            s,
+            r#"{"error": {"code": "syntax", "col": 11, "fix": "insert ';'", "line": 2, "message": "expected ';' but found '}'", "stage": "parse"}, "schema": "pruv-ast-v1"}"#
+        );
+    }
+
+    #[test]
+    fn decode_error() {
+        assert_eq!(parse_dump_line(&[0xff, 0xfe]), r#"{"adapter_error": "decode"}"#);
+    }
+
+    #[test]
+    fn empty_program() {
+        assert_eq!(
+            parse_dump_line(b""),
+            r#"{"program": {"functions": [], "kind": "Program", "types": []}, "schema": "pruv-ast-v1"}"#
+        );
+    }
+}

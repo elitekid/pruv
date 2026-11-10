@@ -1,0 +1,169 @@
+//! 토큰 분리기 (vparser.py 의 lex). 입력은 이미 개행 정규화된 문자 배열.
+
+use crate::diagnostic::PruvError;
+use crate::pyrepr::repr_str;
+
+pub const KEYWORDS: &[&str] = &[
+    "fn", "let", "mut", "if", "else", "while", "return", "match", "true", "false", "invariant",
+    "decreases", "requires", "ensures", "assert", "forall", "exists", "in", "Some", "None", "Ok",
+    "Err", "struct", "enum", "is_variant", "variant_field",
+];
+
+/// Pruv 키워드가 아닌 Rust 키워드: 사용자 이름이 생성 Rust 에 그대로 들어간다.
+pub const RUST_KEYWORDS: &[&str] = &[
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "enum", "extern", "for",
+    "impl", "loop", "mod", "move", "pub", "ref", "self", "Self", "static", "struct", "super",
+    "trait", "type", "unsafe", "use", "where", "abstract", "become", "box", "do", "final", "gen",
+    "macro", "override", "priv", "try", "typeof", "unsized", "virtual", "yield", "union", "_",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Int,
+    Id,
+    Kw,
+    Op,
+    Eof,
+}
+
+/// val: 정수 토큰은 정규화 십진 문자열, eof 는 빈 문자열.
+#[derive(Debug, Clone)]
+pub struct Tok {
+    pub kind: Kind,
+    pub val: String,
+    pub line: i64,
+    pub col: i64,
+}
+
+impl Tok {
+    /// Python repr(t.val): 정수 십진, eof 는 None, 나머지는 문자열 repr.
+    pub fn repr(&self) -> String {
+        match self.kind {
+            Kind::Int => self.val.clone(),
+            Kind::Eof => "None".to_string(),
+            _ => repr_str(&self.val),
+        }
+    }
+}
+
+const OPS2: &[&str] = &["==", "!=", "<=", ">=", "&&", "||", "->", "=>", "::", ".."];
+const OPS1_LIST: &[&str] = &[".", "-", "+", "*", "/", "%", "<", ">", "=", "!", "(", ")", "{", "}", "[", "]", ",", ":", ";"];
+
+/// pos 에서 시작하는 연산자 토큰(정규식 순서: 3글자, 2글자, 1글자).
+fn match_op(src: &[char], pos: usize) -> Option<&'static str> {
+    let n = src.len();
+    if pos + 2 < n && src[pos] == '=' && src[pos + 1] == '=' && src[pos + 2] == '>' {
+        return Some("==>");
+    }
+    if pos + 1 < n {
+        let (a, b) = (src[pos], src[pos + 1]);
+        if let Some(op) = OPS2.iter().find(|o| { let mut c = o.chars(); c.next() == Some(a) && c.next() == Some(b) }) {
+            return Some(op);
+        }
+    }
+    OPS1_LIST.iter().find(|o| o.starts_with(src[pos])).copied()
+}
+
+pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
+    let n = src.len();
+    let mut toks: Vec<Tok> = Vec::new();
+    let (mut pos, mut line, mut lstart) = (0usize, 1i64, 0usize);
+    while pos < n {
+        let c = src[pos];
+        let col = (pos - lstart + 1) as i64;
+        if c == ' ' || c == '\t' || c == '\r' {
+            while pos < n && matches!(src[pos], ' ' | '\t' | '\r') {
+                pos += 1;
+            }
+        } else if c == '\n' {
+            line += 1;
+            pos += 1;
+            lstart = pos;
+        } else if c == '/' && pos + 1 < n && src[pos + 1] == '/' {
+            while pos < n && src[pos] != '\n' {
+                pos += 1;
+            }
+        } else if c.is_ascii_digit() {
+            let start = pos;
+            while pos < n && (src[pos].is_ascii_digit() || src[pos] == '_') {
+                pos += 1;
+            }
+            if src[pos - 1] == '_' {
+                return Err(PruvError::new("parse", line, col, "bad_int", "integer literal ends with _", ""));
+            }
+            let digits: String = src[start..pos].iter().filter(|&&d| d != '_').collect();
+            let trimmed = digits.trim_start_matches('0');
+            let val = if trimmed.is_empty() { "0".to_string() } else { trimmed.to_string() };
+            toks.push(Tok { kind: Kind::Int, val, line, col });
+        } else if c.is_ascii_alphabetic() || c == '_' {
+            let start = pos;
+            while pos < n && (src[pos].is_ascii_alphanumeric() || src[pos] == '_') {
+                pos += 1;
+            }
+            let v: String = src[start..pos].iter().collect();
+            let is_kw = KEYWORDS.contains(&v.as_str());
+            if !is_kw && (v.starts_with("pruv_") || v.contains("__") || RUST_KEYWORDS.contains(&v.as_str())) {
+                return Err(PruvError::new(
+                    "parse",
+                    line,
+                    col,
+                    "reserved_name",
+                    format!("name {} is reserved for the compiler", repr_str(&v)),
+                    "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
+                ));
+            }
+            toks.push(Tok { kind: if is_kw { Kind::Kw } else { Kind::Id }, val: v, line, col });
+        } else if let Some(op) = match_op(src, pos) {
+            pos += op.len();
+            toks.push(Tok { kind: Kind::Op, val: op.to_string(), line, col });
+        } else {
+            return Err(PruvError::new(
+                "parse",
+                line,
+                col,
+                "bad_char",
+                format!("unexpected character {}", repr_str(&c.to_string())),
+                "remove it",
+            ));
+        }
+    }
+    toks.push(Tok { kind: Kind::Eof, val: String::new(), line, col: (pos - lstart + 1) as i64 });
+    Ok(toks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chars(s: &str) -> Vec<char> {
+        s.chars().collect()
+    }
+
+    #[test]
+    fn ints_and_ops() {
+        let t = lex(&chars("0_07 ==> == => = 1_000")).unwrap();
+        let vals: Vec<&str> = t.iter().map(|x| x.val.as_str()).collect();
+        assert_eq!(vals, vec!["7", "==>", "==", "=>", "=", "1000", ""]);
+    }
+
+    #[test]
+    fn bad_things() {
+        assert_eq!(lex(&chars("1_")).unwrap_err().code, "bad_int");
+        let e = lex(&chars("a &\n")).unwrap_err();
+        assert_eq!((e.code.as_str(), e.line, e.col), ("bad_char", 1, 3));
+        assert_eq!(e.message, "unexpected character '&'");
+        assert_eq!(lex(&chars("pruv_x")).unwrap_err().code, "reserved_name");
+        assert_eq!(lex(&chars("a__b")).unwrap_err().code, "reserved_name");
+        assert_eq!(lex(&chars("_")).unwrap_err().code, "reserved_name");
+        assert!(lex(&chars("enum Some")).is_ok());
+    }
+
+    #[test]
+    fn unicode_cols() {
+        // 문자 단위 열: 주석 속 비ASCII 뒤 줄바꿈과 eof 열
+        let t = lex(&chars("x // éé")).unwrap();
+        assert_eq!(t.last().unwrap().col, 8);
+        let e = lex(&chars("// éé\né")).unwrap_err();
+        assert_eq!((e.line, e.col), (2, 1));
+    }
+}

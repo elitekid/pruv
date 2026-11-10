@@ -1,0 +1,4 @@
+// syntax: Option 은 i64 만 담는다 — Option<bool>
+fn f() -> Option<bool> {
+  return None;
+}

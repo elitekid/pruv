@@ -1,0 +1,5 @@
+// bad_int: 끝이 밑줄인 정수 1_
+fn f() -> i64 {
+  let a: i64 = 1_;
+  return a;
+}

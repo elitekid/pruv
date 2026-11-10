@@ -1,6 +1,6 @@
 //! pruv-core: 앞단(AST·lexer·parser·typeinfo·check)과 코드 생성 공통부.
 //!
-//! 0B 시점에는 비어 있다. 모듈 계획(docs/M3_C4_SPEC.md 2절 표):
+//! M3 1단계: ast·diagnostic·lexer·parser·dump(시험 스키마) 이식 완료. 모듈 계획(docs/M3_C4_SPEC.md 2절 표):
 //!
 //! | 모듈            | Python 대응        | 담당                                         |
 //! |-----------------|--------------------|----------------------------------------------|
@@ -16,3 +16,17 @@
 
 /// AST 덤프(JSON)의 스키마 식별자.
 pub const SCHEMA_AST: &str = "pruv-ast-v1";
+
+pub mod ast;
+pub mod diagnostic;
+pub mod dump;
+pub mod lexer;
+pub mod parser;
+pub mod pyjson;
+pub mod pyrepr;
+pub mod pyrepr_table;
+
+/// 공개 진입: 소스 문자열을 파싱한다(개행 정규화 포함).
+pub fn parse(src: &str) -> Result<ast::Program, diagnostic::PruvError> {
+    parser::parse_source(src)
+}

@@ -1,0 +1,5 @@
+// syntax: 정수 바로 뒤 식별자(12abc)는 두 토큰이라 ';' 기대 오류, found 'abc'
+fn f() -> i64 {
+  let a: i64 = 12abc;
+  return a;
+}

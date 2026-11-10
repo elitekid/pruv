@@ -1,0 +1,6 @@
+// 효과 목록: ! io / ! alloc / ! io, alloc / 중복 효과, 그리고 이름이 result 인 함수와 ensures 의 result
+fn a() -> () ! io { return; }
+fn b() -> () ! alloc { return; }
+fn c() -> () ! io, alloc { return; }
+fn d() -> () ! alloc, io, io { return; }
+fn result() -> i64 ensures result == 0 { return 0; }

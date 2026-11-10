@@ -1,0 +1,4 @@
+// syntax: 알 수 없는 효과 ! net (효과는 io, alloc 뿐)
+fn f() -> () ! net {
+  return;
+}

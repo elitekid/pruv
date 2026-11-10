@@ -1,0 +1,12 @@
+// 단항/이항 - 구별: !-5(Unary ! 안에 IntLit -5), -x, x - -5, x--y, -x[0], -true, -(1 + 2)
+fn f(x: i64, y: i64) -> i64 {
+  let a: i64 = !-5;
+  let b: i64 = -x;
+  let c: i64 = x - -5;
+  let d: i64 = x--y;
+  let e: i64 = x - - 5;
+  let g: i64 = -x[0];
+  let h: i64 = -true;
+  let k: i64 = -(1 + 2);
+  return a;
+}

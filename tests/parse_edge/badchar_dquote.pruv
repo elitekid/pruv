@@ -1,0 +1,4 @@
+// bad_char: 큰따옴표 " — 메시지의 %r 은 '"' 모양
+fn main() -> () ! io {
+  print("hi");
+}

@@ -1,0 +1,7 @@
+// syntax: 잘못된 match 팔 — Foo(x) 는 Some/None/Ok/Err 도 Enum::Variant 도 아니다
+fn f(o: Option<i64>) -> i64 {
+  match o {
+    Foo(x) => { return 1; }
+    None => { return 2; }
+  }
+}

@@ -1,0 +1,4 @@
+// 단항 접기: --5 는 Unary 없이 IntLit 5 하나가 된다(diff_parse.py 의 '--' 접기 확인 대상)
+fn f() -> i64 {
+  return --5;
+}

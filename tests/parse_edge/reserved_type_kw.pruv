@@ -1,0 +1,5 @@
+// reserved_name: Rust 예약어 type 을 이름으로 쓴 경우
+fn f() -> i64 {
+  let type: i64 = 1;
+  return 1;
+}

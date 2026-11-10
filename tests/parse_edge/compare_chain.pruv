@@ -1,0 +1,4 @@
+// syntax: 비교 연쇄 a < b < c (오류 위치는 둘째 비교 연산자)
+fn f(a: i64, b: i64, c: i64) -> bool {
+  return a < b < c;
+}

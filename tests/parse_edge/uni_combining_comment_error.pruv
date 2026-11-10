@@ -1,0 +1,5 @@
+// 결합 문자 주석 café résumé (e 뒤에 U+0301) 뒤 줄의 오류: 결합 문자도 각각 1열
+fn f() -> i64 {
+  let a: i64 = 1; // café résumé
+  return a $;
+}

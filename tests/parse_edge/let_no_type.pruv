@@ -1,0 +1,5 @@
+// syntax: let 에 타입 표기가 없다(let a = 1;)
+fn f() -> i64 {
+  let a = 1;
+  return a;
+}

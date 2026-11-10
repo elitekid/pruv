@@ -1,0 +1,7 @@
+// syntax: decreases 절이 두 번(오류 위치는 둘째 decreases 토큰)
+fn f(n: i64) -> () {
+  let mut i: i64 = 0;
+  while i < n decreases n - i decreases n {
+    i = i + 1;
+  }
+}

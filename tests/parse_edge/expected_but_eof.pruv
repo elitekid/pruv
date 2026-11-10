@@ -1,0 +1,2 @@
+// syntax: expected '->' but found end of file (함수 머리에서 파일이 끝남)
+fn f()

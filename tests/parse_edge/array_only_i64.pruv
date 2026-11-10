@@ -1,0 +1,4 @@
+// syntax: 배열 원소는 i64 만 — [bool] 은 "only [i64] arrays exist"
+fn f(a: [bool]) -> i64 {
+  return 1;
+}

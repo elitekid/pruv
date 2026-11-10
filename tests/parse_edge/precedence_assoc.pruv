@@ -1,0 +1,12 @@
+// 우선순위·결합: ==> 오른쪽 결합, || 와 &&, 이항 - 왼쪽 결합, !a == b, 한정자 본문 안의 ==>, 범위 끝이 + 식
+fn f(a: i64, b: i64, c: i64) -> bool
+  requires a ==> b ==> c
+  requires a || b && c
+  requires a && b || c
+  requires a - b - c == a * b / c % 2
+  requires !a == b
+  requires forall i in 0..a + 1 : i < b ==> i != c
+  ensures a <= b && b >= c || a != c
+{
+  return a < b;
+}

@@ -286,3 +286,20 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - 감사(Claude): 필수 5건 — mutate에 생긴 300초 제한(되돌림), mutate crash 정의 확대(유지·기록), diff_compilers가 미구현만 있을 때 종료 코드 0(→3), ir-tool 호스트 triple이 LLVM 기본값이라 최소 OS가 빌드 머신을 따름(→대상 표 triple), check_deps가 Intel Homebrew 경로를 놓침(→추가). 권고 반영: z3 오류 처리기, Datatype 출력 배열 null 검사, Rust havoc 내부 정렬, 반례 값 차이는 diff로 세지 않음, Linux `--sysroot=`, xcrun 결과 캐시, 임시 폴더 정리.
 - 고친 뒤 확인(Claude): 필수 5건 모두 해결, 새 필수 없음. 권고 4건 중 mutate crash 정의 문구를 실제 정의에 맞추고, diff_compilers 미구현 판별에서 경로에도 걸리는 `todo`를 뺌(`--allow-unimplemented` 때 거짓 통과 가능성). 나머지(실행 파일 이름 치환이 한쪽에만 적용돼 거짓 실패 가능, check_deps 모서리 사례)는 남김.
 - 남은 일: Linux·Windows·macOS x64에서 빌드·i128 보조 기호·정적 의존 확인, Windows 실행 ABI(CI), 배포 LLVM 정적 직접 빌드, ir-tool을 bench 하니스·퍼저 객체화에도 연결, 오류 없는 z3 cold 빌드 시간 재측정. 다음 단계는 1 파서 이식.
+
+## 16. M3 = C4 1단계: 파서 이식 (2026-11-11)
+설계 `docs/M3_C4_SPEC.md` 4절 1단계. `vast.py`·`vparser.py`를 `pruvc-rs/crates/pruv-core/src/{ast,diagnostic,lexer,parser}.rs`로 옮기고, 시험 스키마 출력 `dump.rs`·Python 호환 JSON `pyjson.rs`·Python `repr()` 흉내 `pyrepr.rs`(+생성 표 `pyrepr_table.rs`, 생성기 `pruvc-rs/tools/gen_pyrepr_table.py`)와 시험 바이너리 `pruv-parse-dump`를 더했다. 외부 크레이트 없음. Python 정본은 바꾸지 않았다. 이 맥에서만 확인했다.
+
+| 확인 | 결과 |
+|---|---|
+| `tests/diff_parse.py`(새 도구) 기본 입력 | 2263건 중 2261 바이트 동일, 다름 0. must_reject 81·examples 7·runtime 72·bench 10·경계 `tests/parse_edge/` 50·바이트 경계 123·퍼저 seed 41·56·57×200·변형 1320 |
+| 넓힌 입력(seed 1~8×500, 변형 30) | 10943건 중 10941 동일, 다름 0 |
+| 제외 2건 | 괄호 2000겹·단항 `-` 3000개: Python이 RecursionError로 죽어 비교 대상 없음(Rust는 1GB 스택 스레드로 처리). 알려진 허용 차이 |
+| 대응 범위 | 노드 33/33, parse 오류 code 5/5(bad_char·bad_int·reserved_name·syntax·unsupported_type), 오류 문장 형태 28종. `9223372036854775807`·`-9223372036854775808`·20자리 넘는 수·음수 큰 수·`--5` 접기 모두 경계 묶음에 있음 |
+| 회귀 | `run_all --backend both` 363/363, `cli_also_llvm` 186/186, `cargo test -p pruv-core` 단위 13 |
+
+- 이식에서 맞춘 Python 동작: `open().read()`의 universal newline(`\r\n`·단독 `\r` → `\n`)을 lexer 전에 적용, line/col은 코드 포인트 단위, BOM은 `bad_char '﻿'`, 정수는 부호+정규화 십진 문자열(자릿수 제한 없음, 음수 접기는 `-` 토큰 위치), bad_char 문장의 `%r`은 Python 3.9.6(Unicode 13.0) `str.isprintable` 표로 `\x`/`\u`/`\U` 선택, 오류 JSON의 line/col은 수·AST의 정수와 위치는 문자열.
+- 차분에서 찾은 것 1건: 어댑터 `ser()`는 Quant의 `kind` 필드("forall"·"sum" 등)가 노드 이름 "Quant"를 덮어쓴다(파이썬 dict 덮어쓰기). 기준 스냅샷 pruv-ast-v1에 이미 들어 있는 동작이라 Rust `dump.rs`가 같게 따랐다. 스키마를 고치려면 v2로 올려야 한다.
+- 잘못된 UTF-8·읽기 실패: Python 어댑터는 예외로 죽고 Rust는 `{"adapter_error": "decode"|"io"}` 줄을 낸다. 비교 도구가 이 대응을 정한다. Python 기준은 시스템 기본 인코딩(이 맥 UTF-8)으로 읽으므로 Windows 기준 출력은 확인하지 않았다.
+- 감사(Claude Opus): 바이트 차이 결함 없음(작업자가 경계 241·변형 3000·생성 1500·큰 CRLF/CR 18·repr 표 전 코드 포인트 대조). 필수 1건 — `peek`/`next`가 토큰을 매번 복제(선형이지만 상수배 낭비; 감사 실측 문 200만 개 0.92초, 같은 입력 Python 27.6초) → `peek`는 참조, `expect`는 소비만(토큰이 필요한 4곳만 복제), 버리는 소비는 `bump`. 권고 반영: 연산자 매칭의 임시 문자열 제거, 안 쓰는 함수·낡은 주석 정리, `pruv-parse-dump`가 줄마다 바로 써서 한 파일의 스택 넘침으로 앞 줄까지 잃지 않게 함. 남긴 권고: 공개 `parse`에 깊이 상한 없음(호출자가 큰 스택을 잡아야 함, I 단계 CLI에서 정함), 개행 정규화·`Vec<char>`의 메모리 약 6배, 오류 형식 크기(`Box` 미적용), 덤프의 JSON 나무 생성.
+- 고친 뒤 확인(Claude Opus): 통과. `expect_tok` 4곳이 Python에서 `expect` 반환값을 쓰는 4곳과 같고, 소비 순서·오류 위치·연산자 우선순위·새 panic 없음을 원본과 줄 단위로 대조. 고친 뒤 `cargo test` 13 통과, `diff_parse` 2263·10943건 다름 0(메인 실행).

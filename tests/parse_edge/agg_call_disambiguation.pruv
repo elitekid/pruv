@@ -1,0 +1,11 @@
+// 집계와 호출의 구별: sum(i in ..) 는 Quant, sum(a)·max(n, 1)·sum(i + 1) 은 Call, 집계 중첩
+fn f(a: [i64], n: i64) -> i64 {
+  let s: i64 = sum(a);
+  let m: i64 = max(n, 1);
+  let c: i64 = count(n);
+  let q: i64 = min(i in 0..n : a[i]);
+  let z: i64 = sum(i in 0..n : max(j in 0..i : a[j]));
+  let v: i64 = sum(i + 1);
+  let u: i64 = count(i in 1_0..n * 2 : a[i] > 0) + 1;
+  return s;
+}

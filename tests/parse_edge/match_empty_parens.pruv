@@ -1,0 +1,7 @@
+// syntax: match 팔 패턴의 빈 괄호 E::A() (오류 위치는 '(')
+fn f(e: E) -> i64 {
+  match e {
+    E::A() => { return 1; }
+    E::B => { return 2; }
+  }
+}

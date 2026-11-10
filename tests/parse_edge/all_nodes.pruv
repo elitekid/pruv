@@ -1,0 +1,81 @@
+// 정상 파일: vast.py 33 노드를 모두 한 번 이상 담는다(문법만 맞으면 되고 의미 검사는 하지 않는다)
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+struct Wrapper { p: Point, ok: bool }
+
+enum Shape {
+  Empty,
+  Circle(r: i64),
+  Rect(w: i64, h: i64,),
+}
+
+fn noop() -> () {
+  return;
+}
+
+fn all(n: i64, xs: [i64], o: Option<i64>, r: Result<i64>, s: Shape, flag: bool) -> i64 ! io, alloc
+  requires n >= 0 && n <= 100
+  requires is_variant(s, Shape::Circle) ==> variant_field(s, Shape::Circle, r) >= 0
+  ensures result >= 0 || !flag
+  ensures forall i in 0..n : xs[i] >= 0
+  ensures exists j in 0..n : xs[j] == 0
+  ensures sum(k in 0..n : xs[k]) >= 0
+  ensures count(k in 0..n : xs[k] > 0) <= n
+  ensures max(k in 0..n : xs[k]) >= 0
+  ensures min(k in 0..n : xs[k]) <= 100
+{
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  let mut arr: [i64] = alloc(n);
+  let mut pt: Point = Point { x: 1, y: 2 };
+  let w: Wrapper = Wrapper { p: Point { x: 3, y: 4 }, ok: false, };
+  let sh: Shape = Shape::Rect(3, 4);
+  let e: Shape = Shape::Empty;
+  let c: Shape = Shape::Circle(7);
+  let b: bool = true && false;
+  let neg: i64 = -total;
+  let o2: Option<i64> = Some(total);
+  let o3: Option<i64> = None;
+  let r2: Result<i64> = Ok(1);
+  let r3: Result<i64> = Err(2);
+  let l: i64 = len(xs);
+  while i < n
+    invariant i >= 0
+    invariant i <= n
+    decreases n - i
+  {
+    arr[i] = i * 2;
+    total = total + arr[i] / 1 - i % 3;
+    i = i + 1;
+  }
+  pt.x = 5;
+  w.p.y = 6;
+  total = total + pt.x + w.p.y;
+  if total > 10 {
+    total = 10;
+  } else if total < 0 {
+    total = 0;
+  } else {
+    total = total + 1;
+  }
+  match o {
+    Some(v) => { total = total + v; }
+    None => { total = total + 0; }
+  }
+  match r {
+    Ok(v) => { total = total + v; }
+    Err(code) => { total = code; },
+  }
+  match s {
+    Shape::Empty => { total = 1; }
+    Shape::Circle(rad) => { total = rad; }
+    Shape::Rect(ww, hh) => { total = ww * hh; }
+  }
+  assert is_variant(sh, Shape::Rect);
+  assert variant_field(sh, Shape::Rect, w) == 3;
+  print(total);
+  return total;
+}

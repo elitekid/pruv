@@ -1,0 +1,5 @@
+// syntax: 식 기대인데 ';' — expected an expression, found ';'
+fn f() -> i64 {
+  let a: i64 = ;
+  return a;
+}

@@ -1,0 +1,7 @@
+// syntax: while 에 decreases 절이 없다(오류 위치는 '{')
+fn f(n: i64) -> () {
+  let mut i: i64 = 0;
+  while i < n invariant i >= 0 {
+    i = i + 1;
+  }
+}

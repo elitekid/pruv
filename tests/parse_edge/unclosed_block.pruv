@@ -1,0 +1,3 @@
+// syntax: 닫히지 않은 블록(unclosed block, 파일 끝 위치는 다음 줄 1열)
+fn f() -> () {
+  let a: i64 = 1;
