@@ -219,15 +219,33 @@ def phase_a(case, work):
         return rec
     rec["nv_rs"] = os.path.join(d, "rust_safe_gen.rs")
     rec["ver_rs"] = os.path.join(d, "rust_proof_gen.rs")
-    rc, so, se = run_cmd([PY, VOWC, vow, "-o", rec["nv_rs"], "--no-verify"], 120)
+    # vowc 한 번 호출이 Rust 출력과 LLVM 출력(.ll + bindings)을 함께 만든다 (--also-llvm).
+    # 재사용된 작업 폴더의 옛 파일을 집어 쓰지 않도록 호출 전에 출력 경로를 먼저 지운다.
+    llvm_paths = {}
+    for lname in ("llvm-safe", "llvm-proof"):
+        llvm_paths[lname] = (os.path.join(d, lname + ".ll"), os.path.join(d, lname + "_gen.rs"))
+    rec["llvm_files"] = {}
+
+    def clear_outputs(paths):
+        for p in paths:
+            if os.path.exists(p):
+                os.remove(p)
+
+    sll, srs = llvm_paths["llvm-safe"]
+    clear_outputs([rec["nv_rs"], sll, srs])
+    rc, so, se = run_cmd([PY, VOWC, vow, "-o", rec["nv_rs"], "--no-verify", "--also-llvm", sll, srs], 120)
+    if rc == 0:
+        rec["llvm_files"]["llvm-safe"] = (sll, srs)
     rec["logs"]["no-verify"] = "exit %d\n%s%s" % (rc, so, se)
     if rc == TIMEOUT_RC:
         rec["status"] = "failed"
-        rec["failures"].append({"kind": "timeout", "detail": "vowc --no-verify exit %d" % rc})
+        rec["failures"].append({"kind": "timeout", "detail": "vowc --no-verify (rust+llvm) exit %d: %s"
+                                                          % (rc, (so + se).strip()[-400:])})
         return rec
     if rc not in (0, 1):  # 음수(신호/크래시), 2(사용법), 3(내부 오류) 등은 모두 실패
         rec["status"] = "failed"
-        rec["failures"].append({"kind": "internal_error", "detail": "vowc --no-verify exit %d" % rc})
+        rec["failures"].append({"kind": "internal_error", "detail": "vowc --no-verify (rust+llvm) exit %d: %s"
+                                                          % (rc, (so + se).strip()[-400:])})
         return rec
     if rc == 1:
         diags = parse_diags(so) + parse_diags(se)
@@ -240,10 +258,13 @@ def phase_a(case, work):
                                     "detail": "vowc --no-verify exit 1, 진단 stage=%s"
                                               % (sorted(str(s) for s in stages) or "없음")})
         return rec
-    rc, so, se = run_cmd([PY, VOWC, vow, "-o", rec["ver_rs"]], 120)
+    pll, prs = llvm_paths["llvm-proof"]
+    clear_outputs([rec["ver_rs"], pll, prs])
+    rc, so, se = run_cmd([PY, VOWC, vow, "-o", rec["ver_rs"], "--also-llvm", pll, prs], 120)
     rec["logs"]["verify"] = "exit %d\n%s%s" % (rc, so, se)
     if rc == 0:
         rec["status"] = "verified"
+        rec["llvm_files"]["llvm-proof"] = (pll, prs)
     elif rc == 1:
         rec["status"] = "rejected"
         diags = parse_diags(so) + parse_diags(se)
@@ -253,11 +274,12 @@ def phase_a(case, work):
     else:
         rec["status"] = "failed"
         rec["failures"].append({"kind": "timeout" if rc == TIMEOUT_RC else "internal_error",
-                                "detail": "vowc (verify) exit %d" % rc})
+                                "detail": "vowc (verify, rust+llvm) exit %d: %s"
+                                          % (rc, (so + se).strip()[-400:])})
     return rec
 
 
-# ---------------------------------------------------------------- 3~4단계: 입력 선택 + 빌드
+# ---------------------------------------------------------------- 3~4단계: 입력 선택 + clang 준비 + 빌드
 
 def safe_check(prog, args):
     try:
@@ -329,17 +351,20 @@ NO_MANGLE_RE = re.compile(r"^[ \t]*#\[no_mangle\][ \t]*\n", re.M)
 
 
 def prep_llvm(rec, mode, rt_o):
-    """vowc(llvm) -> 심볼을 고유하게 바꾼 .ll 사본 -> clang .o.
-    -> (art 또는 None, 실패 종류 또는 None, 오류 문장 또는 None). 원본 .ll/.rs는 rec['dir']에 그대로 둔다."""
+    """phase_a 가 vowc --also-llvm 로 만든 .ll/bindings(rec['llvm_files'][name])를 읽어
+    심볼을 고유하게 바꾼 .ll 사본 -> clang .o. vowc 는 여기서 부르지 않는다.
+    -> (art 또는 None, 실패 종류 또는 None, 오류 문장 또는 None). 원본 .ll/.rs는 rec['dir']에 그대로 둔다.
+    건전성: proof 모드 산출물은 rec['status'] == 'verified' 일 때만 쓴다."""
     name, backend, safe = mode
-    d, vow = rec["dir"], rec["vow"]
-    flags = ["--no-verify"] if safe else []
+    d = rec["dir"]
     tag = "p%dl%d" % (rec["idx"], 1 if safe else 0)
-    ll = os.path.join(d, name + ".ll")
-    gen = os.path.join(d, name + "_gen.rs")
-    rc, so, se = run_cmd([PY, VOWC, vow, "-o", ll, "--backend", "llvm", "--rust-bindings", gen] + flags, 300)
-    if rc != 0:
-        return None, "build_error", "vowc llvm exit %d: %s" % (rc, (so + se)[-600:])
+    if not safe and rec["status"] != "verified":
+        return None, "harness_error", "%s: proof 모드인데 status=%s (verified 아님)" % (name, rec["status"])
+    files = rec.get("llvm_files", {}).get(name)
+    if not files or not os.path.exists(files[0]) or not os.path.exists(files[1]):
+        return None, "harness_error", ("%s: phase_a 가 만든 LLVM 출력 없음 (llvm_files=%s)"
+                                       % (name, files))
+    ll, gen = files
     with open(ll) as fh:
         ll_text = fh.read()
     with open(gen) as fh:
@@ -856,7 +881,7 @@ def main():
         sample = rejected_all[:args.rejected_sample]
         counts["rejected_built"] = len(sample)
         progs = verified + sample
-        # --- 3~4단계 (입력 선택 + vowc/clang 준비, 이어서 배치 빌드)
+        # --- 3~4단계 (입력 선택 + clang 준비, 이어서 배치 빌드; vowc 는 phase_a 에서 이미 끝남)
         for i, r in enumerate(progs):
             r["idx"] = i
         done = 0
