@@ -1,0 +1,5 @@
+fn f(x: i64, y: i64) -> i64
+  requires x / y >= 0
+{
+  return 0;
+}

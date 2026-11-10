@@ -1,0 +1,9 @@
+fn f(a: [i64]) -> () {
+  let mut i: i64 = 0;
+  while i < 3
+    invariant 0 <= i && i <= 3
+    decreases 3 - i + a[0] * 0
+  {
+    i = i + 1;
+  }
+}

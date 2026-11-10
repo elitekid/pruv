@@ -1,0 +1,11 @@
+fn f(a: [i64]) -> i64
+  requires forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]
+{
+  return len(a);
+}
+
+fn g(a: [i64]) -> i64
+  requires forall p in 0..len(a): forall q in p + 1..len(a): a[p] <= a[q]
+{
+  return len(a);
+}

@@ -1,0 +1,8 @@
+fn f(x: i64) -> Option<i64>
+  ensures some_val(result) == some_val(result)
+{
+  if x > 0 {
+    return Some(x);
+  }
+  return None;
+}

@@ -1,0 +1,11 @@
+// pair of cd18: the same mixed requires must also report the index domain (contract_domain)
+enum Event {
+  Empty,
+  Hit(value: i64),
+}
+
+fn f(e: Event, a: [i64], i: i64) -> i64
+  requires variant_field(e, Event::Hit, value) + a[i] > 0
+{
+  return 0;
+}

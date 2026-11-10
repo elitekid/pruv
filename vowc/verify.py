@@ -80,31 +80,56 @@ def _imp(c, d):
     return None if d is None else z3.Implies(c, d)
 
 
-def _has_vf(e):
-    """does the contract expression contain a variant_field lookup (the only source of a nontrivial domain)"""
+_TAG_FNS = ("some_val", "ok_val", "err_val")
+
+
+def _partial_here(e, kind):
+    """is e itself a partial operation of the requested kind (None=any, "variant", "other")"""
     if isinstance(e, VariantField):
-        return True
-    if isinstance(e, Unary):
-        return _has_vf(e.operand)
-    if isinstance(e, Binary):
-        return _has_vf(e.left) or _has_vf(e.right)
+        return kind in (None, "variant")
+    if kind == "variant":
+        return False
     if isinstance(e, Index):
-        return _has_vf(e.array) or _has_vf(e.index)
-    if isinstance(e, Ctor):
-        return e.arg is not None and _has_vf(e.arg)
-    if isinstance(e, Quant):
-        return _has_vf(e.lo) or _has_vf(e.hi) or _has_vf(e.body)
+        return True
+    if isinstance(e, Binary):
+        return e.op in ("/", "%")
     if isinstance(e, Call):
-        return any(_has_vf(a) for a in e.args)
-    if isinstance(e, StructLit):
-        return any(_has_vf(fi.value) for fi in e.fields)
-    if isinstance(e, EnumCtor):
-        return any(_has_vf(a) for a in e.args)
-    if isinstance(e, FieldAccess):
-        return _has_vf(e.base)
-    if isinstance(e, IsVariant):
-        return _has_vf(e.value)
+        return e.name in _TAG_FNS
+    if isinstance(e, Quant):
+        return e.kind in ("max", "min")
     return False
+
+
+def _kids(e):
+    if isinstance(e, Unary):
+        return [e.operand]
+    if isinstance(e, Binary):
+        return [e.left, e.right]
+    if isinstance(e, Index):
+        return [e.array, e.index]
+    if isinstance(e, Ctor):
+        return [] if e.arg is None else [e.arg]
+    if isinstance(e, Quant):
+        return [e.lo, e.hi, e.body]
+    if isinstance(e, Call):
+        return list(e.args)
+    if isinstance(e, StructLit):
+        return [fi.value for fi in e.fields]
+    if isinstance(e, EnumCtor):
+        return list(e.args)
+    if isinstance(e, FieldAccess):
+        return [e.base]
+    if isinstance(e, (IsVariant, VariantField)):
+        return [e.value]
+    return []
+
+
+def _has_vf(e, kind=None):
+    """does the contract expression contain a partial operation (variant_field lookup, or for kind None/"other":
+    index, / %, some_val/ok_val/err_val, max/min), i.e. a source of a nontrivial domain"""
+    if _partial_here(e, kind):
+        return True
+    return any(_has_vf(c, kind) for c in _kids(e))
 
 
 class Arr:
@@ -157,6 +182,7 @@ FIX = {
     "decreases_nonneg": "the decreases expression must be >= 0 whenever the loop condition holds; add an invariant",
     "decreases_decrease": "the decreases expression must strictly decrease each iteration",
     "variant_domain": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
+    "contract_domain": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
 }
 
 
@@ -411,48 +437,71 @@ class FnVerifier:
         raise Exception("ev: %r" % e)
 
     # ---------- contract domain of variant_field lookups ----------
-    def dom(s, e, st, g, env):
-        """D(e): z3 condition under which every variant_field lookup in contract e is on the named variant,
-        following the short-circuit order. None means trivially true (no lookup in e)."""
-        if not _has_vf(e):
+    def dom(s, e, st, g, env, kind=None):
+        """D(e): z3 condition under which every partial operation in contract e is defined (index in range,
+        divisor != 0, some_val/ok_val/err_val on the right tag, variant_field on the named variant, max/min range
+        non-empty), following the short-circuit order. kind: None=all, "variant"=variant_field only,
+        "other"=the rest. None means trivially true."""
+        if not _has_vf(e, kind):
             return None
+        wo = kind in (None, "other")
+        wv = kind in (None, "variant")
         if isinstance(e, Unary):
-            return s.dom(e.operand, st, g, env)
+            return s.dom(e.operand, st, g, env, kind)
         if isinstance(e, Binary):
-            dl = s.dom(e.left, st, g, env)
+            dl = s.dom(e.left, st, g, env, kind)
             if e.op in ("&&", "||", "==>"):
                 l = s.ev(e.left, st, g, False, env)
-                dr = s.dom(e.right, st, g, env)
+                dr = s.dom(e.right, st, g, env, kind)
                 guard = z3.Not(l) if e.op == "||" else l
                 return _conj([dl, _imp(guard, dr)])
-            return _conj([dl, s.dom(e.right, st, g, env)])
+            parts = [dl, s.dom(e.right, st, g, env, kind)]
+            if wo and e.op in ("/", "%"):
+                parts.append(s.ev(e.right, st, g, False, env) != 0)
+            return _conj(parts)
         if isinstance(e, Index):
-            return _conj([s.dom(e.array, st, g, env), s.dom(e.index, st, g, env)])
+            parts = [s.dom(e.array, st, g, env, kind), s.dom(e.index, st, g, env, kind)]
+            if wo:
+                arr = s.ev(e.array, st, g, False, env)
+                i = s.ev(e.index, st, g, False, env)
+                parts.append(z3.And(i >= 0, i < arr.n))
+            return _conj(parts)
         if isinstance(e, Ctor):
-            return s.dom(e.arg, st, g, env)
+            return s.dom(e.arg, st, g, env, kind)
         if isinstance(e, Call):
-            return _conj([s.dom(a, st, g, env) for a in e.args])
+            parts = [s.dom(a, st, g, env, kind) for a in e.args]
+            if wo and e.name in _TAG_FNS:
+                v = s.ev(e.args[0], st, g, False, env)
+                parts.append(Opt.is_some(v) if e.name == "some_val" else
+                             Res.is_ok(v) if e.name == "ok_val" else z3.Not(Res.is_ok(v)))
+            return _conj(parts)
         if isinstance(e, StructLit):
-            return _conj([s.dom(fi.value, st, g, env) for fi in e.fields])
+            return _conj([s.dom(fi.value, st, g, env, kind) for fi in e.fields])
         if isinstance(e, EnumCtor):
-            return _conj([s.dom(a, st, g, env) for a in e.args])
+            return _conj([s.dom(a, st, g, env, kind) for a in e.args])
         if isinstance(e, FieldAccess):
-            return s.dom(e.base, st, g, env)
+            return s.dom(e.base, st, g, env, kind)
         if isinstance(e, IsVariant):
-            return s.dom(e.value, st, g, env)
+            return s.dom(e.value, st, g, env, kind)
         if isinstance(e, VariantField):
+            inner = s.dom(e.value, st, g, env, kind)
+            if not wv:
+                return inner
             v = s.ev(e.value, st, g, False, env)
-            return _conj([s.dom(e.value, st, g, env), s.model.enum[e.enum_name][e.variant][1](v)])
+            return _conj([inner, s.model.enum[e.enum_name][e.variant][1](v)])
         if isinstance(e, Quant):
             lo = s.ev(e.lo, st, g, False, env)
             hi = s.ev(e.hi, st, g, False, env)
-            outer = _conj([s.dom(e.lo, st, g, env), s.dom(e.hi, st, g, env)])
+            outer = [s.dom(e.lo, st, g, env, kind), s.dom(e.hi, st, g, env, kind)]
+            if wo and e.kind in ("max", "min"):
+                outer.append(lo < hi)
+            outer = _conj(outer)
             s.k += 1
             k = z3.Int("%s!dk%d" % (e.var, s.k))
             envk = dict(env); envk[e.var] = k
             s.qstack.append(k)
             try:
-                dbody = s.dom(e.body, st, g, envk)
+                dbody = s.dom(e.body, st, g, envk, kind)
             finally:
                 s.qstack.pop()
             if dbody is None:
@@ -472,11 +521,26 @@ class FnVerifier:
             return _conj([outer, z3.ForAll([k], z3.Implies(rng, dbody))])
         return None
 
+    def dom_obligations(s, e, st, g, env):
+        """[(D, code)]: variant_field lookups -> variant_domain, other partial operations -> contract_domain.
+        Trivial domains (no partial op, or simplify to True) give no entry, hence no query."""
+        out = []
+        for kind, code in (("variant", "variant_domain"), ("other", "contract_domain")):
+            if not _has_vf(e, kind):
+                continue
+            d = s.dom(e, st, g, env, kind)
+            if d is None or z3.is_true(z3.simplify(d)):
+                continue
+            out.append((d, code))
+        return out
+
     def check_dom(s, st, g, e, node, what, env=None):
-        """prove D(e) (code variant_domain); no query when e has no variant_field lookup"""
-        d = s.dom(e, st, g, st.env if env is None else env)
-        if d is not None:
-            s.prove(st, g, d, node, "variant_domain", what)
+        """prove D(e) separately per code (variant_domain / contract_domain); returns the proven domains"""
+        obs = s.dom_obligations(e, st, g, st.env if env is None else env)
+        for d, code in obs:
+            s.prove(st, g, d, node, code, what if code == "variant_domain" else what.replace(
+                "variant_field lookups", "partial operations (index, /, %, some_val/ok_val/err_val, max/min)"))
+        return [d for d, _ in obs]
 
     def aggregate(s, kind, k, lo, hi, T):
         """sum/count/max/min over lo<=k<hi as an uninterpreted F(lo, hi, *outer) plus unfolding lemmas."""
@@ -559,16 +623,12 @@ class FnVerifier:
         f = s.funcs[n]
         cenv = {p.name: a for p, a in zip(f.params, args)}
         if code:
-            prev = []   # requires run in order: an earlier one that held may justify a later lookup
-            for ri, r in enumerate(f.requires):
+            # No domain proof of callee requires here: the callee's own run() already proved
+            # D(r) under "param wf + earlier requires (values and variant domains)"; the call site
+            # proves each earlier requires value and the args satisfy wf, so it would be redundant.
+            for r in f.requires:
                 ob = s.ev(r, st, g, False, cenv)
-                d = s.dom(r, st, g, cenv)
-                if d is not None:
-                    s.prove(st, g + prev, d, e, "variant_domain",
-                            "variant_field lookups in precondition of %s (line %d) are defined" % (n, r.line), key_extra=ri)
-                    prev.append(d)
                 s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
-                prev.append(ob)
         if f.ret == UNIT:
             return None
         res = s.fresh("ret_" + n, f.ret)
@@ -590,10 +650,12 @@ class FnVerifier:
             env[p.name] = s.params[p.name]
         if val is not None:
             env["result"] = val
+        prev = []   # earlier clauses (domain + value) were proven above and may justify later lookups
         for en in s.f.ensures:
-            s.check_dom(st, [], en, node, "variant_field lookups in postcondition (line %d) are defined" % en.line, env)
+            prev.extend(s.check_dom(st, prev, en, node, "variant_field lookups in postcondition (line %d) are defined" % en.line, env))
             ob = s.ev(en, st, [], False, env)
             s.prove(st, [], ob, node, "ensures", "postcondition (line %d)" % en.line)
+            prev.append(ob)
 
     def exec_block(s, stmts, st):
         states = [st]
@@ -722,14 +784,17 @@ class FnVerifier:
         raise Exception("exec: %r" % stmt)
 
     def loop(s, w, st):
+        prev = []   # invariants run in order: an earlier one (proven here) may justify a later one's lookups
         for inv in w.invariants:
-            s.check_dom(st, [], inv, inv, "variant_field lookups in loop invariant (entry) are defined")
-            s.prove(st, [], s.ev(inv, st, [], False), inv, "invariant_entry", "loop invariant on entry")
+            prev.extend(s.check_dom(st, prev, inv, inv, "variant_field lookups in loop invariant (entry) are defined"))
+            ob = s.ev(inv, st, [], False)
+            s.prove(st, [], ob, inv, "invariant_entry", "loop invariant on entry")
+            prev.append(ob)
         names = s.assigned(w.body, set())
         # one arbitrary iteration; the invariants held (and were defined) at its start
         b = s.havoc(st, names)
         for inv in w.invariants:
-            d = s.dom(inv, b, [], b.env)
+            d = s.dom(inv, b, [], b.env, "variant")
             if d is not None:
                 b.pc.append(d)
             b.pc.append(s.ev(inv, b, [], False))
@@ -739,10 +804,12 @@ class FnVerifier:
         d0 = s.ev(w.decreases, b, [], False)
         s.prove(b, [], d0 >= 0, w.decreases, "decreases_nonneg", "decreases >= 0")
         for end in s.exec_block(w.body, b):
+            prev = []
             for inv in w.invariants:
-                s.check_dom(end, [], inv, inv, "variant_field lookups in loop invariant (preserved) are defined")
-                s.prove(end, [], s.ev(inv, end, [], False), inv, "invariant_preserved",
-                        "loop invariant preserved")
+                prev.extend(s.check_dom(end, prev, inv, inv, "variant_field lookups in loop invariant (preserved) are defined"))
+                ob = s.ev(inv, end, [], False)
+                s.prove(end, [], ob, inv, "invariant_preserved", "loop invariant preserved")
+                prev.append(ob)
             if _has_vf(w.decreases):
                 # decreases is read at the end of the body: the invariants just proved may justify its lookups
                 extra = []
@@ -757,7 +824,7 @@ class FnVerifier:
         # after the loop
         a = s.havoc(st, names)
         for inv in w.invariants:
-            d = s.dom(inv, a, [], a.env)
+            d = s.dom(inv, a, [], a.env, "variant")
             if d is not None:
                 a.pc.append(d)
             a.pc.append(s.ev(inv, a, [], False))
@@ -781,7 +848,11 @@ class FnVerifier:
         s.params = dict(env)
         st = State(env, pc)
         for r in f.requires:
-            d = s.dom(r, st, [], st.env)       # D(r) && r, in declaration order
+            # D(r) is proven from the earlier requires only, then D(r) && r is assumed, in declaration order
+            s.check_dom(st, [], r, r, "variant_field lookups in requires (line %d) are defined" % r.line)
+            # assume only the variant_field part of D(r) (as before): the other domains are proven above but not
+            # assumed, since nested quantified index ranges in every later query made p06 ~150x slower
+            d = s.dom(r, st, [], st.env, "variant")
             if d is not None:
                 st.pc.append(d)
             st.pc.append(s.ev(r, st, [], False))

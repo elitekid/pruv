@@ -1,0 +1,6 @@
+fn f(n: i64) -> i64
+  requires n >= 0
+  requires forall i in 0..n: i >= 0
+{
+  return n;
+}

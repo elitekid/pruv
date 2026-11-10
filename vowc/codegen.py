@@ -227,6 +227,35 @@ def show(e):
     return "?"
 
 
+def match_sorted_requires(e):
+    """Name of the array `a` if e is structurally
+    `forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]` (inner start `i` or `i + 1`), else None."""
+    def is_len(x, name=None):
+        if isinstance(x, Call) and x.name == "len" and len(x.args) == 1 and isinstance(x.args[0], Var):
+            return x.args[0].name if name is None else (x.args[0].name == name)
+        return None
+    if not (isinstance(e, Quant) and e.kind == "forall" and isinstance(e.lo, IntLit) and e.lo.value == 0):
+        return None
+    a = is_len(e.hi)
+    if not a:
+        return None
+    q = e.body
+    if not (isinstance(q, Quant) and q.kind == "forall") or q.var == e.var or a in (e.var, q.var):
+        return None
+    lo = q.lo
+    if isinstance(lo, Binary) and lo.op == "+" and isinstance(lo.right, IntLit) and lo.right.value == 1:
+        lo = lo.left
+    if not (isinstance(lo, Var) and lo.name == e.var and is_len(q.hi, a)):
+        return None
+    b = q.body
+    if not (isinstance(b, Binary) and b.op == "<=" and isinstance(b.left, Index) and isinstance(b.right, Index)):
+        return None
+    for ix, v in ((b.left, e.var), (b.right, q.var)):
+        if not (isinstance(ix.array, Var) and ix.array.name == a and isinstance(ix.index, Var) and ix.index.name == v):
+            return None
+    return a
+
+
 def rstr(text):
     """Rust string literal (ASCII-safe)"""
     out = []
@@ -321,13 +350,16 @@ class Gen:
             try:
                 for n, r in enumerate(f.requires, 1):
                     msg = "vow: requires violated: %s: %s" % (f.name, show(r))
-                    checks.append("if !(%s) { panic!(\"{}\", %s); }" % (s.c(r), rstr(msg)))
+                    code = s.c(r)
+                    checks.append("if !(%s) { panic!(\"{}\", %s); }" % (code, rstr(msg)))
                 used = dict(s.cp)
             finally:
                 s.cp = None
             for p in f.params:
                 if p.name in used:
                     s.emit(1, "let vow_cp_%s: %s = %s;" % (p.name, cty(used[p.name]), conv(used[p.name], p.name)))
+            if checks:
+                s.emit(1, "let mut vow_budget: i64 = 1_073_741_824;")
             for line in checks:
                 s.emit(1, line)
         s.emit(1, "%s(%s)" % (body_name, ", ".join(p.name for p in f.params)))
@@ -417,6 +449,15 @@ class Gen:
         raise Exception("codegen: unsupported expression in requires: %r" % e)
 
     def cquant(s, e):
+        arr = match_sorted_requires(e)
+        if arr is not None:
+            # O(n) equivalent (docs/M0_CONTRACTS.md C): forall vow_sk in 1..len(a): a[vow_sk-1] <= a[vow_sk]
+            L = dict(line=e.line, col=e.col)
+            kv = Var(name="vow_sk", **L)
+            e = Quant(kind="forall", var="vow_sk", lo=IntLit(value=1, **L), hi=e.hi,
+                      body=Binary(op="<=", left=Index(array=Var(name=arr, **L),
+                                                       index=Binary(op="-", left=kv, right=IntLit(value=1, **L), **L), **L),
+                                  right=Index(array=Var(name=arr, **L), index=kv, **L), **L), **L)
         s.tmp += 1
         n = s.tmp
         lo, hi = s.c(e.lo), s.c(e.hi)   # bounds see only the outer scope
@@ -425,7 +466,8 @@ class Gen:
         s.bound.pop()
         k, r, h = "vow_k%d" % n, "vow_r%d" % n, "vow_hi%d" % n
         head = "{ let vow_lo%d: i128 = %s; let %s: i128 = %s; let mut %s: i128 = vow_lo%d; " % (n, lo, h, hi, k, n)
-        loop = "while %s < %s { let %s: i128 = %s; " % (k, h, e.var, k)
+        loop = ("while %s < %s { vow_budget -= 1; if vow_budget < 0 { vow_ud(\"contract iteration budget exceeded\"); } "
+                "let %s: i128 = %s; ") % (k, h, e.var, k)
         tail = "%s += 1; } " % k
         kind = e.kind
         if kind == "forall":

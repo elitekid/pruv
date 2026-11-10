@@ -977,7 +977,57 @@ class FnGen:
                 return V("i128", o.b)
         raise Exception("llvmgen: unsupported expression in requires: %r" % e)
 
+    def spend(s):
+        """consume one unit of the per-entry requires iteration budget (docs/M0_CONTRACTS.md B)"""
+        if not hasattr(s, "budget"):
+            raise Exception("llvmgen: internal error: no iteration budget slot")
+        old = s.op("load i64, ptr %s" % s.budget)
+        nv = s.op("sub i64 %s, 1" % old)
+        s.ins("store i64 %s, ptr %s" % (nv, s.budget))
+        ok = s.op("icmp sge i64 %s, 0" % nv)
+        s.guard(ok, s.panic1("vow_panic_undefined", "contract iteration budget exceeded"), False)
+
+    def csorted(s, name, q):
+        """O(n) form of the sorted-precondition forall: forall k in 1..len(a): a[k-1] <= a[k]"""
+        arr = s.cenv[name]
+        k, r = "%%q%d.k" % q, "%%q%d.r" % q
+        s.allocas.append("%s = alloca i64" % k)
+        s.allocas.append("%s = alloca i1" % r)
+        s.ins("store i64 1, ptr %s" % k)
+        s.ins("store i1 true, ptr %s" % r)
+        cl, bl, nl_, el = s.label("qc"), s.label("qb"), s.label("qn"), s.label("qe")
+        s.br(cl)
+        s.place(cl)
+        kv = s.op("load i64, ptr %s" % k)
+        c = s.op("icmp slt i64 %s, %s" % (kv, arr.b))
+        s.condbr(c, bl, el)
+        s.place(bl)
+        s.spend()
+        pk = s.op("sub i64 %s, 1" % kv)
+        g0 = s.op("getelementptr inbounds i64, ptr %s, i64 %s" % (arr.a, pk))
+        g1 = s.op("getelementptr inbounds i64, ptr %s, i64 %s" % (arr.a, kv))
+        x0 = s.op("load i64, ptr %s" % g0)
+        x1 = s.op("load i64, ptr %s" % g1)
+        le = s.op("icmp sle i64 %s, %s" % (x0, x1))
+        stop = s.label("qstop")
+        s.condbr(le, nl_, stop)
+        s.place(stop)
+        s.ins("store i1 false, ptr %s" % r)
+        s.br(el)
+        s.place(nl_)
+        k2 = s.op("add i64 %s, 1" % kv)
+        s.ins("store i64 %s, ptr %s" % (k2, k))
+        s.br(cl)
+        s.place(el)
+        return V("i1", s.op("load i1, ptr %s" % r))
+
     def cquant(s, e):
+        if e.kind == "forall":
+            sorted_arr = codegen.match_sorted_requires(e)
+            if sorted_arr is not None:
+                q = s.nq
+                s.nq += 1
+                return s.csorted(sorted_arr, q)
         lo = s.cev(e.lo)
         hi = s.cev(e.hi)
         q = s.nq
@@ -1005,6 +1055,7 @@ class FnGen:
         c = s.op("icmp slt i128 %s, %s" % (kv, hi.a))
         s.condbr(c, bl, el)
         s.place(bl)
+        s.spend()
         saved = s.cenv.get(e.var)
         s.cenv[e.var] = V("i128", kv)
         b = s.cev(e.body)
@@ -1057,6 +1108,9 @@ def entry_of(m, funcs, f, trust):
         g.place("start")
     else:
         g.bind_contract_params()
+        g.budget = "%req.budget"
+        g.allocas.append("%s = alloca i64" % g.budget)
+        g.ins("store i64 1073741824, ptr %s" % g.budget)
         for r in f.requires:
             c = g.cev(r)
             msg_fn = m.string(f.name)

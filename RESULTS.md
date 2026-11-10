@@ -150,3 +150,25 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - p04 속도: 이 날 기계(녹화 ffmpeg가 CPU 1.5개)에서 이전 커밋도 120초 제한에 걸린다. 정답(307/307, 두 뒷단)은 확인했고 속도는 조용한 기계에서 다시 잰다.
 - LLVM 진입이 requires에 안 쓰는 사용자 타입 매개변수까지 계약 값으로 바꾼다(-O2에서 사라질 것으로 보고 미룸).
 - 열거형 평탄화 배치는 변형이 많으면 값이 커진다. 측정 뒤 union 배치·작은 타입 레지스터 반환을 판단한다.
+
+## 9. 0단계 남은 과제: 계약 정의역·실행 반복 예산·정렬 전제 O(n) (2026-11-10)
+결정 `docs/M0_CONTRACTS.md`(설계 초안 Codex gpt-6-astra, 메인이 고침), 명세 `SPEC.md` 6·6a·7절.
+1. **계약 정의역을 검증기 의무로.** 계약 안 `a[i]`(범위), `/` `%`(제수 != 0, 계약 나눗셈은 유클리드), `some_val`·`ok_val`·`err_val`(태그), 빈 `max`/`min`(lo < hi)을 단락·한정자 도달 순서대로 증명한다(새 오류 코드 `contract_domain`, variant_field는 기존 `variant_domain`). requires는 앞 requires만으로, ensures·invariant는 같은 종류 앞 절까지 써서 증명한다. 이제 증명된 프로그램의 공개 함수 실행 검사는 정의역 때문에 `requires undefined`가 나지 않는다.
+   - 가정에는 variant_field 정의역만 넣는다. 다른 정의역까지 가정하면 중첩 한정자 인덱스 범위가 모든 질의에 실려 p06 증명이 0.44초→69초가 됐다(되돌린 뒤 0.61초).
+   - 호출 지점에서 callee requires 정의역을 다시 증명하지 않는다(callee가 증명, 감사 권고).
+   - 의도한 의미 변경: 보호 없는 `max`·`variant_field` requires(r20, g1_r06)는 기본 모드에서 거부. 두 실행 시험은 `--no-verify`로만, r21은 앞에 `len(a) >= 1`.
+2. **실행 반복 예산.** 정적 상한 대신, 공개 함수 진입 한 번의 requires 검사 전체가 한정자·집계 반복 2^30회를 나눠 쓴다. 넘으면 `vow: requires undefined: contract iteration budget exceeded`(101, 두 뒷단). 빈 범위·단락으로 건너뛴 식은 안 쓴다.
+3. **정렬 전제 O(n).** `forall i in 0..len(a): forall j in i(+1)..len(a): a[i] <= a[j]`를 AST로 알아보고(`codegen.match_sorted_requires`) 실행 검사만 `a[k-1] <= a[k]`로 돈다. 식 어디에 있든(단락 오른쪽, 바깥 한정자 안) 두 뒷단이 같게 바꾼다. 검증기는 원래 식을 쓴다. 20만 원소에서 이중 형식이면 예산 초과, 바뀐 형식은 통과(`sort_nested_big`).
+
+| 확인 | 결과 |
+|---|---|
+| 회귀 `run_all --backend both` | 341/341(이전 250에 거부·런타임 시험 추가). 새 거부 시험 cd01~cd19가 의도 코드로 거부 |
+| 기존 풀이 | vow_agg 10·examples·g1 ref_vow·indep_try2 모두 그대로 증명(indep_try1/g01은 예전과 같은 `ensures` 거부) |
+| bench vow_agg | 두 뒷단 9/10 성능까지 정상, p04는 성능 단계 120초 초과(기계 부하, 이전 커밋도 같음), 정답은 두 뒷단 307/307(noperf) |
+| 변이(LLVM, `bench/mutants8_m0_llvm.json`) | 81개 판정·오류 코드가 `mutants7_g1_llvm.json`과 모두 같음 |
+| g1 | ref_vow(LLVM)·indep_try2(Rust) 5/5 |
+| 감사(Claude opus) | 필수 0, 권고 6: 호출 지점 정의역 중복 제거, 시험 공백 11개 추가, SPEC 갱신을 반영. 정의역 계산 중복·집계 보조정리 누적(성능)은 측정상 영향이 없어 남김. 고친 뒤 확인(Claude opus) 필수 0, 권고 3(시험 다듬기: cd15 진입만 실패하게, cd19 짝 시험, `%` 유클리드 실행 시험)을 반영 |
+
+- p04 성능 구간은 공개 함수를 n번 부르므로 검사가 O(n)이 돼도 전체는 O(n^2)다. 알고리즘 속도 비교는 계속 `--trust-callers`.
+- 한계: 루프 변경 후·루프 뒤에는 불변식의 비-variant 정의역을 가정하지 않는다(예전과 같음, 건전하나 덜 증명). 실행 검사는 i128이라 수학적으로 참인 계약도 중간값이 넘치면 `requires undefined`다(거짓 requires를 통과시키지는 않음). 정렬 변환은 이 두 형식만. 반복 예산 값(2^30)은 정책값이다.
+- 다음: 무작위 프로그램 퍼징(`bench/fuzz/`, 독립 판정기 + Rust·LLVM × 증명·안전 4모드 대조, 계획은 M0_CONTRACTS D절).

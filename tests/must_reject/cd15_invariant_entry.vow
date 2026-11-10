@@ -1,0 +1,12 @@
+fn f(a: [i64]) -> ()
+  requires len(a) == 3
+{
+  let mut i: i64 = 0;
+  while i < 3
+    invariant 0 <= i && i <= 3
+    invariant a[i - 1] == a[i - 1]
+    decreases 3 - i
+  {
+    i = i + 1;
+  }
+}

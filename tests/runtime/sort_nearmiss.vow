@@ -1,0 +1,18 @@
+fn lt(a: [i64]) -> i64
+  requires forall i in 0..len(a): forall j in i + 1..len(a): a[i] < a[j]
+{
+  return len(a);
+}
+
+fn shortend(a: [i64], b: [i64]) -> i64
+  requires len(b) <= len(a)
+  requires forall i in 0..len(a): forall j in i..len(b): a[i] <= a[j]
+{
+  return len(b);
+}
+
+fn reflexive_lt(a: [i64]) -> i64
+  requires forall i in 0..len(a): forall j in i..len(a): a[i] < a[j] || i == j
+{
+  return len(a);
+}

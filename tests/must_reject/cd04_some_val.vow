@@ -1,0 +1,5 @@
+fn f(o: Option<i64>) -> i64
+  requires some_val(o) > 0
+{
+  return 0;
+}

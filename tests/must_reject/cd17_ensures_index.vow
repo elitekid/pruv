@@ -1,0 +1,7 @@
+fn f(n: i64) -> [i64] ! alloc
+  requires 0 <= n && n <= 100
+  ensures result[0] == 7
+{
+  let mut r: [i64] = alloc(n, 7);
+  return r;
+}

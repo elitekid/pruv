@@ -1,0 +1,5 @@
+fn f(a: [i64]) -> i64
+  requires forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]
+{
+  return len(a);
+}

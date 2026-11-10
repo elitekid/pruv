@@ -1,0 +1,6 @@
+fn f(a: [i64], i: i64) -> i64
+  requires a[i] == 0
+  requires 0 <= i && i < len(a)
+{
+  return 0;
+}

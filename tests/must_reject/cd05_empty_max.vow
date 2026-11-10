@@ -1,0 +1,5 @@
+fn f(lo: i64, hi: i64) -> i64
+  requires min(k in lo..hi: k) >= 0
+{
+  return 0;
+}

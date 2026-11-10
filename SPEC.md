@@ -88,11 +88,20 @@ Allowed only in `requires`, `ensures`, `invariant`, `assert`:
 - `forall i in lo..hi: e` / `exists i in lo..hi: e` (i ranges over lo <= i < hi).
 - `a ==> b` (implication).
 - `is_some(o)`, `some_val(o)`, `is_ok(r)`, `ok_val(r)`, `err_val(r)`.
-- In contracts arithmetic is mathematical (unbounded); overflow is only checked in code.
+- In contracts arithmetic is mathematical (unbounded); overflow is only checked in code. Contract `/` `%` are
+  Euclidean (`-7 / 2 == -4`, `-7 % 2 == 1`, the remainder is never negative) and need only a divisor `!= 0`.
+- Contract domain: every partial operation in a contract must be defined where it is evaluated, and the verifier
+  proves it (`verify` error `contract_domain`): `a[i]` needs `0 <= i < len(a)`, `x / y` and `x % y` need `y != 0`,
+  `some_val(o)` needs `is_some(o)`, `ok_val(r)` needs `is_ok(r)`, `err_val(r)` needs `!is_ok(r)`, `max`/`min` need
+  `lo < hi`. Evaluation is left to right with short-circuit `&&` `||` `==>`; `forall`/`exists` go up from `lo` and stop
+  at the first false/true k, so only the k they reach need a defined body; aggregates need it for every k in range.
+  This holds in `requires` (each clause from the earlier ones only: write `requires 0 <= i && i < len(a)` before
+  `requires a[i] > 0`), `ensures`, `invariant` (earlier clauses of the same kind may guard later ones), `assert` and
+  `decreases`.
 - Aggregates (k ranges over lo <= k < hi, like `forall`):
   - `sum(k in lo..hi: e)` — sum of i64 `e`; 0 if the range is empty.
   - `count(k in lo..hi: c)` — number of k where bool `c` holds; 0 if empty.
-  - `max(k in lo..hi: e)`, `min(k in lo..hi: e)` — largest / smallest `e`; unspecified (nothing provable) if empty,
+  - `max(k in lo..hi: e)`, `min(k in lo..hi: e)` — largest / smallest `e`; undefined if empty (`contract_domain`),
     so guard with `len(a) >= 1` or `lo < hi`.
   - There is one form only: write `sum(k in 0..len(a): a[k])`, not `sum(a)`. Ranges are half-open so loop
     invariants can name the part done so far: `invariant s == sum(k in 0..i: a[k])`.
@@ -125,7 +134,7 @@ match e {                                  // statement; every variant exactly o
 - `==` / `!=` on structs and enums: contracts only, same type. Enums compare the variant and its fields.
 - Contract-only: `is_variant(e, Event::Hit)` (bool) and `variant_field(e, Event::Hit, point)` (that field).
   `variant_field` is defined only when `e` is that variant; the verifier proves this wherever the contract is
-  evaluated, following short-circuit order (`verify` error `variant_domain`). Guard it:
+  evaluated, following short-circuit order (`verify` error `variant_domain`; other partial operations give `contract_domain`, section 6). Guard it:
   `requires !is_variant(e, Event::Hit) || variant_field(e, Event::Hit, point).x > 0`.
 - A loop that assigns any field of `p` forgets all of `p`; keep the other fields with invariants (`invariant p.y == 7`).
 - Contract arithmetic inside struct literals is mathematical, like all contract arithmetic.
@@ -144,7 +153,15 @@ A public function's `requires` are checked at run time, left to right with short
 panics with `vow: requires violated`. If evaluation reaches something outside the contract domain (index out of
 range, division by zero, `max`/`min` over an empty range, `some_val(None)`, `variant_field` of another variant, ...), it panics with
 `vow: requires undefined`. So write domain conditions first, e.g. `0 <= i && i < len(a) && a[i] > 0`.
-Number-range quantifiers and aggregates iterate once per element of the range, so their cost is the range length.
+A verified program never reaches these (the verifier proves the contract domain), except two run-time resource limits
+that also panic with `vow: requires undefined`: contract arithmetic is evaluated in i128 (an intermediate value or
+running sum beyond i128 stops the check), and one public call's `requires` checks share a budget of 2^30 quantifier and
+aggregate iterations (`vow: requires undefined: contract iteration budget exceeded`). Skipped short-circuit operands
+and empty ranges cost nothing. These limits never make a false `requires` pass.
+Number-range quantifiers and aggregates iterate once per element of the range, so their cost is the range length,
+with one exception: the sortedness precondition `forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]` (or with
+inner start `i + 1`; any bound names, same array `a`, exactly this shape) is checked as the equivalent
+`forall k in 1..len(a): a[k-1] <= a[k]`, in O(len(a)). The verifier still uses the written form.
 
 `--no-verify` emits safe mode: no proof exists, so indexing and arithmetic are checked (panic on out-of-range index
 or i64 overflow), and `/` `%` use the verifier's domain (divisor > 0 and dividend >= 0, otherwise panic).

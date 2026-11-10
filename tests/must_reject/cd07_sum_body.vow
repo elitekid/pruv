@@ -1,0 +1,5 @@
+fn f(a: [i64]) -> i64
+  requires sum(k in 0..len(a): a[k + 1]) >= 0
+{
+  return 0;
+}

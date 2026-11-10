@@ -1,0 +1,5 @@
+fn f(n: i64) -> i64
+  requires n > 0 || forall i in 0..4000000000: i >= 0
+{
+  return n;
+}

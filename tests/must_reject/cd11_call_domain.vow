@@ -1,0 +1,10 @@
+// callee-side domain failure: call sites no longer re-prove callee requires domains (the callee proves them)
+fn need(a: [i64], i: i64) -> i64
+  requires a[i] > 0
+{
+  return 1;
+}
+
+fn caller(a: [i64]) -> i64 {
+  return need(a, 0);
+}
