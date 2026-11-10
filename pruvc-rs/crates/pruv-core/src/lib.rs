@@ -21,6 +21,7 @@ pub mod abi;
 pub mod ast;
 pub mod bindings;
 pub mod check;
+pub mod codegen;
 pub mod diagnostic;
 pub mod dump;
 pub mod emit_common;

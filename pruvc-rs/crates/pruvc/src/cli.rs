@@ -4,7 +4,9 @@
 use pruvc::target::{Cpu, Target};
 use std::path::{Component, Path, PathBuf};
 
-pub const USAGE: &str = "usage: pruvc in.pruv -o OUT [--no-verify] [--trust-callers] [--backend rust|llvm] [--rust-bindings PATH] [--emit exe|obj|ll|rs] [--target TRIPLE] [-mcpu=CPU]";
+// stdout 의 usage 줄은 Python pruvc.py 와 (실행 파일 이름만 빼고) 같게 둔다(감사 필수 3). 새 옵션은 stderr 에 알린다.
+pub const USAGE: &str = "usage: pruvc in.pruv -o OUT [--no-verify] [--trust-callers] [--backend rust|llvm] [--rust-bindings PATH]";
+pub const USAGE_MORE: &str = "       [--emit exe|obj|ll|rs] [--target TRIPLE] [-mcpu=CPU]";
 
 /// 내부 출력 종류(backend×emit 결정표의 결과).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,7 +41,6 @@ pub struct Args {
     /// ll: 항상 Some(기본값 포함), obj: 명시했을 때만, 나머지 None.
     pub bindings: Option<String>,
     /// 7단계(Rust 소스 뒷단)가 들어오면 driver 가 읽는다. 지금은 검증된 경로 쌍만 보관.
-    #[allow(dead_code)]
     pub also_llvm: Option<(String, String)>,
     /// obj/exe 는 항상 Some(기본 호스트). rs/ll 은 --target 을 줬을 때만(검증만 하고 쓰지 않음).
     pub target: Option<Target>,
@@ -49,6 +50,7 @@ pub struct Args {
 /// 사용법 오류를 Python 과 같은 형식으로 낸다: stdout 에 USAGE, stderr 에 상세, 종료 코드 2.
 pub fn usage_error(msg: &str) -> i32 {
     println!("{USAGE}");
+    eprintln!("{USAGE_MORE}");
     eprintln!("pruvc: error: {msg}");
     2
 }

@@ -360,6 +360,7 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 - 시험 프로그램 29개 중 3개(s03·s09·s11)는 작업자가 증명할 수 없는 계산을 써서 Python 판에서도 검증이 실패했다. 범위 조건·출력식을 고쳐 의도대로 만들었다.
 - `pruv-core/src/pyio.rs`를 CLI 입력 읽기에도 써서 읽기·해독 실패 문장이 Python 판과 같다.
+- 감사(Claude Opus): 필수 3건 — (1) 출력 파일 쓰기·복사 실패의 internal 문장이 Python과 달랐다 → `pyio::io_error_message`로 `[Errno 2] No such file or directory: '…'`(두 판 같음 확인). (2) 괄호 30만 겹 같은 깊은 입력에서 1GB 스택을 넘어 JSON 없이 abort(134) → 파서에 AST 깊이 한도 50,000(재귀와 왼쪽으로 쌓이는 이항·접미 사슬을 함께 셈)을 두고 넘으면 Python RecursionError처럼 internal_error `maximum recursion depth exceeded`, exit 3. 괄호 4만 겹·덧셈 4만 5천 항은 통과, 30만·300만 겹과 100만 항은 exit 3 확인. Python은 약 1000 단계에서 멈추므로 대조 범위 밖이고 `diff_parse` 2263·2836건은 그대로 다름 0. (3) 사용법 오류의 stdout usage 줄이 새 옵션 때문에 Python과 달랐다 → stdout은 Python과 같은 줄(실행 파일 이름만 다름), 새 옵션 줄은 stderr로. 권고 반영: `link_failed` 진단에 링커의 `error`/`ld:` 줄을 요약. 남긴 권고: argparse의 공백 든 토큰·유니코드 숫자·`--t` 약어 모호(새 `--target` 때문), `-mcpu` 대상별 검증 없음(LLVM 경고 뒤 계속), obj/exe 출력의 원자적 쓰기, 닫힌 stdout에서 println 패닉, 런타임 객체의 macOS 최소 OS 경고, 비UTF-8 argv 거부, 확장자 없는 입력의 `-o` 생략 문장.
 
 ## 21. M3 = C4 6단계: Windows x64 대상별 wrapper 직접 출력 (2026-11-11)
 설계 7절 "Windows x64 대상별 wrapper". `pruv-core/src/abi.rs`에 `AbiTarget{SysV, WinX64}`, `llvmgen.rs`에 `gen_llvm_for`를 더했다. Windows x64 대상이면 Option/Result를 돌려주는 외부 `pruv_abi_*`만 처음부터 `void` + 첫 숨은 `ptr sret({ i64, i64 }) align 8`로 출력하고(entry 결과의 tag를 zext해 두 슬롯에 저장), IR 맨 앞에 datalayout·triple을 붙인다. 배열 반환·사용자 타입 out 포인터, Option/Result 인자 펼침, 내부 body/entry는 그대로. Rust 바인딩은 대상과 무관(`-> Pruv__Tagged` 값 반환 extern, MSVC C ABI가 숨은 인자를 만든다). 기본(macOS·Linux) 출력은 바뀌지 않는다. `pruvc --target x86_64-pc-windows-msvc`가 이 경로를 쓴다.
@@ -370,4 +371,20 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 | 0D 표본 `check_abi.py` | 5/5 통과 |
 | 기본 출력 불변 | `diff_llvm` 6548, `diff_compilers --backend llvm` 234 모두 Python과 바이트 동일, `cargo test -p pruv-core` 36 |
 
+- 감사(Claude Opus): 설계 표의 함수 경계 모두 맞음(섞인 인자 `g(c: C, a: [i64], o: Option<i64>, b: bool) -> Option<i64>`도 sret 맨 앞 하나), datalayout이 clang 22의 x86_64-pc-windows-msvc 값과 같음. 필수 1건 — Windows 호스트에서 `--target` 없이 `--emit ll`이면 SysV 모양이 나올 코드 경로(대상 None → SysV) → `--target`이 없으면 호스트 대상으로 ABI를 고르게 고침(비Windows 호스트의 Python 바이트 대조는 그대로). 남긴 권고: 개발 도구 `abi_lower`의 `--input-abi target` 서명 미검사(Python 대조 뒤 제거 예정), datalayout 상수를 TargetMachine 값과 비교하는 시험, 표본 확대(enum 반환·2인자 C 기준), rustc MSVC extern IR 실측(이 맥에 Windows rust-std 없음 — Win64 C ABI 규칙으로 판단).
 - **Windows에서 실제로 실행해 맞물리는지는 이 맥에서 확인할 수 없다.** Rust extern 호출·C 호출자와 링크해 Some/None·MIN/MAX·인자 0·1·5개·반복 호출·구조체 안 Option·배열 반환을 실행하는 것은 Windows CI(I 단계) 몫이다.
+
+## 22. M3 = C4 7단계: Rust 소스 출력 이식 — 두 판이 기존 시험 전부를 같게 통과 (2026-11-11)
+설계 4절 7단계. `codegen.py`(Gen·gen_rust·SAFE/CONTRACT prelude)를 `pruv-core/src/codegen.rs`로 옮기고(공통 함수는 4단계 `emit_common.rs` 재사용), 시험 바이너리 `pruv-rust-dump`·차분 도구 `tests/diff_rust.py`를 더했다. `pruvc`의 기본 출력(`.rs`)과 `--also-llvm`이 이제 Rust 판에서도 돈다(모든 텍스트를 만든 뒤에 파일을 쓰는 Python 원칙 그대로). 이로써 Rust 판 `pruvc`가 Python 판의 모든 출력 종류를 낸다. 이 맥에서만 확인했다.
+
+| 확인 | 결과 |
+|---|---|
+| `diff_rust.py`(입력 1636 × 모드 4 + budget) | 6548 사례 모두 .rs 바이트 동일(첫 대조부터) |
+| `run_all.py --compiler rs --backend both` | **363/363**(Rust 판 컴파일러로 기존 회귀 전부) |
+| `cli_also_llvm.py --compiler rs` | **186/186** |
+| `diff_compilers.py --backend both` | 468 사례(rust 234·llvm 234) 모두 same, 미구현 0 |
+| 퍼저 `bench/fuzz/run.py --compiler rs` | seed 41·56·57 각 40 프로그램 실패 0 |
+| 변이 `bench/mutate.py --backend llvm --compiler rs` | 83개(81 고유) 판정·단계·코드·시험 결과가 `mutants9_0a_llvm.json`(Python 판)과 모두 같음(299초) |
+| 기존 차분 재확인 | `diff_parse` parse 2263·check 2836, `diff_llvm` 6548 모두 다름 0, `cargo test -p pruv-core` 39 |
+
+- 남은 M3 일(I 단계): 4개 플랫폼 CI(Windows 실행 ABI 포함), 배포 LLVM 정적 직접 빌드(Homebrew `libzstd` 의존 떼기), 독립 exe 관문, 개발 도구 `abi_lower`·`--input-abi` 제거, 넓힌 퍼저 seed·bench 성능 측정.

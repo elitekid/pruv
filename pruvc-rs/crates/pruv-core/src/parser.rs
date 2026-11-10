@@ -13,7 +13,7 @@ const CMP_OPS: [&str; 6] = ["==", "!=", "<=", ">=", "<", ">"];
 pub fn parse_source(src: &str) -> R<Program> {
     let norm = src.replace("\r\n", "\n").replace('\r', "\n");
     let chars: Vec<char> = norm.chars().collect();
-    let mut p = Parser { t: lex(&chars)?, i: 0 };
+    let mut p = Parser { t: lex(&chars)?, i: 0, depth: 0 };
     p.program()
 }
 
@@ -35,12 +35,33 @@ fn is_upper(s: &str) -> bool {
 struct Parser {
     t: Vec<Tok>,
     i: usize,
+    /// 지금 만드는 AST 경로의 깊이(재귀 + 왼쪽으로 쌓이는 이항·접미 사슬). MAX_DEPTH 를 넘으면 Python 의
+    /// RecursionError 처럼 내부 오류로 멈춘다: 넘는 AST 는 파서·검사·검증·생성의 재귀가 1GB 스택도 넘길 수 있다.
+    depth: usize,
 }
+
+/// AST 깊이 한도. Python 은 약 1000 단계에서 RecursionError 로 멈추므로(비교 범위 밖) 이보다 훨씬 크게,
+/// 그러나 뒤 단계 재귀가 1GB 스택 안에 들도록 정했다(RESULTS 20절).
+pub const MAX_DEPTH: usize = 50_000;
 
 impl Parser {
     // ---- 보조 ----
     fn idx(&self, k: usize) -> usize {
         (self.i + k).min(self.t.len() - 1)
+    }
+
+    /// 깊이 한 단계 더하기(넘으면 내부 오류). 짝인 leave 로 되돌린다.
+    fn enter(&mut self, n: usize) -> R<()> {
+        self.depth += n;
+        if self.depth > MAX_DEPTH {
+            return Err(PruvError::new("internal", 0, 0, "internal_error", "maximum recursion depth exceeded", ""));
+        }
+        Ok(())
+    }
+
+    // 오류로 빠져나갈 때는 깊이를 되돌리지 않는다(파싱 전체가 멈추므로). 그래서 빼기는 포화로.
+    fn leave(&mut self, n: usize) {
+        self.depth = self.depth.saturating_sub(n);
     }
 
     fn peek(&self, k: usize) -> &Tok {
@@ -273,6 +294,13 @@ impl Parser {
     }
 
     fn block(&mut self) -> R<Vec<Stmt>> {
+        self.enter(1)?;
+        let r = self.block_inner();
+        self.leave(1);
+        r
+    }
+
+    fn block_inner(&mut self) -> R<Vec<Stmt>> {
         self.expect("{")?;
         let mut out = Vec::new();
         while !self.at("}", 0) {
@@ -479,36 +507,67 @@ impl Parser {
     }
 
     fn expr(&mut self) -> R<Expr> {
-        self.implies()
+        self.enter(1)?;
+        let r = self.implies();
+        self.leave(1);
+        r
     }
 
     fn implies(&mut self) -> R<Expr> {
         let l = self.or_()?;
         if self.at("==>", 0) {
             let t = self.next();
-            let r = self.implies()?;
-            return Ok(Self::bin(&t, "==>", l, r));
+            self.enter(1)?;
+            let r = self.implies();
+            self.leave(1);
+            return Ok(Self::bin(&t, "==>", l, r?));
         }
         Ok(l)
     }
 
     fn or_(&mut self) -> R<Expr> {
         let mut l = self.and_()?;
+        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
         while self.at("||", 0) {
             let t = self.next();
-            let r = self.and_()?;
+            if let Err(e) = self.enter(1) {
+                self.leave(chain + 1);
+                return Err(e);
+            }
+            chain += 1;
+            let r = match self.and_() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.leave(chain);
+                    return Err(e);
+                }
+            };
             l = Self::bin(&t, "||", l, r);
         }
+        self.leave(chain);
         Ok(l)
     }
 
     fn and_(&mut self) -> R<Expr> {
         let mut l = self.cmp()?;
+        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
         while self.at("&&", 0) {
             let t = self.next();
-            let r = self.cmp()?;
+            if let Err(e) = self.enter(1) {
+                self.leave(chain + 1);
+                return Err(e);
+            }
+            chain += 1;
+            let r = match self.cmp() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.leave(chain);
+                    return Err(e);
+                }
+            };
             l = Self::bin(&t, "&&", l, r);
         }
+        self.leave(chain);
         Ok(l)
     }
 
@@ -531,28 +590,57 @@ impl Parser {
 
     fn add(&mut self) -> R<Expr> {
         let mut l = self.mul()?;
+        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
         while self.at("+", 0) || self.at("-", 0) {
             let t = self.next();
-            let r = self.mul()?;
+            if let Err(e) = self.enter(1) {
+                self.leave(chain + 1);
+                return Err(e);
+            }
+            chain += 1;
+            let r = match self.mul() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.leave(chain);
+                    return Err(e);
+                }
+            };
             l = Self::bin(&t, &t.val, l, r);
         }
+        self.leave(chain);
         Ok(l)
     }
 
     fn mul(&mut self) -> R<Expr> {
         let mut l = self.unary()?;
+        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
         while self.at("*", 0) || self.at("/", 0) || self.at("%", 0) {
             let t = self.next();
-            let r = self.unary()?;
+            if let Err(e) = self.enter(1) {
+                self.leave(chain + 1);
+                return Err(e);
+            }
+            chain += 1;
+            let r = match self.unary() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.leave(chain);
+                    return Err(e);
+                }
+            };
             l = Self::bin(&t, &t.val, l, r);
         }
+        self.leave(chain);
         Ok(l)
     }
 
     fn unary(&mut self) -> R<Expr> {
         if self.at("-", 0) || self.at("!", 0) {
             let t = self.next();
-            let o = self.unary()?;
+            self.enter(1)?;
+            let o = self.unary();
+            self.leave(1);
+            let o = o?;
             if t.val == "-" {
                 if let Expr::IntLit(il) = &o {
                     return Ok(Expr::IntLit(IntLit { line: t.line, col: t.col, value: negate(&il.value), ty: None }));
@@ -565,6 +653,7 @@ impl Parser {
 
     fn postfix(&mut self) -> R<Expr> {
         let mut e = self.primary()?;
+        let mut chain = 0; // a[i][j].f 처럼 왼쪽으로 쌓이는 접미 사슬도 깊이로 센다
         loop {
             if self.at("[", 0) {
                 let t = self.next();
@@ -578,7 +667,10 @@ impl Parser {
             } else {
                 break;
             }
+            self.enter(1)?;
+            chain += 1;
         }
+        self.leave(chain);
         Ok(e)
     }
 

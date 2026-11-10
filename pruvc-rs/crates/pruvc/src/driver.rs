@@ -13,8 +13,6 @@ use std::path::Path;
 /// exe 의 C 진입 shim. `main__pruv_entry` 는 llvmgen::entry_of 가 내는 `define internal void` (인자 없는 unit main).
 const MAIN_SHIM: &str = "define i32 @main() {\n  call void @main__pruv_entry()\n  ret i32 0\n}\n";
 
-const RS_UNIMPLEMENTED: &str = "--backend rust (Rust source output) is not implemented yet in the Rust port";
-
 enum Fail {
     /// 언어·증명 오류(각각 한 줄, exit 1).
     Lang(Vec<PruvError>),
@@ -22,8 +20,6 @@ enum Fail {
     Build(PruvError, Option<String>),
     /// 내부 오류(exit 3).
     Internal(String),
-    /// Rust 소스 뒷단 미구현(exit 2).
-    NotImplemented,
 }
 
 fn out_line(s: &str) {
@@ -86,10 +82,6 @@ pub fn run(a: &Args) -> i32 {
             out_line(&e.to_cli_json());
             1
         }
-        Err(Fail::NotImplemented) => {
-            eprintln!("pruvc: error: {RS_UNIMPLEMENTED}");
-            2
-        }
         Err(Fail::Internal(m)) => {
             out_line(&internal_json(&m));
             3
@@ -97,16 +89,21 @@ pub fn run(a: &Args) -> i32 {
     }
 }
 
+// 실패 문장은 Python open(path, "w") 의 OSError 와 같게(감사 필수 1).
 fn write_text(path: &str, text: &str) -> Result<(), Fail> {
-    std::fs::write(path, text).map_err(|e| Fail::Internal(format!("{path}: {e}")))
+    std::fs::write(path, text).map_err(|e| Fail::Internal(pruv_core::pyio::io_error_message(Path::new(path), &e)))
 }
 
 fn generate(a: &Args, prog: &Program) -> Result<(String, String), Fail> {
     // 6단계: Windows x64 대상이면 외부 wrapper 를 처음부터 대상 ABI(sret)로, 그 밖은 기존(Python 과 바이트 동일) 출력.
-    let abi = match &a.target {
-        Some(t) if t.is_windows() => pruv_core::abi::AbiTarget::WinX64,
-        _ => pruv_core::abi::AbiTarget::SysV,
+    // --target 이 없으면 호스트 대상(설계 3절 "기본 호스트"). Windows 호스트의 ll 도 sret 형태여야 한다(6단계 감사 필수).
+    let host = pruvc::target::Target::host().ok();
+    let windows = match (&a.target, &host) {
+        (Some(t), _) => t.is_windows(),
+        (None, Some(h)) => h.is_windows(),
+        (None, None) => false,
     };
+    let abi = if windows { pruv_core::abi::AbiTarget::WinX64 } else { pruv_core::abi::AbiTarget::SysV };
     pruv_core::llvmgen::gen_llvm_for(prog, a.verify, a.trust_callers, a.budget, abi).map_err(Fail::Internal)
 }
 
@@ -130,8 +127,14 @@ fn link_fail(e: pruvc::Error) -> Fail {
         "io" | "no_main" | "invalid_argument" | "object_read" | "llvm_error" => Fail::Internal(e.to_string()),
         "link_spawn" => Fail::Build(PruvError::new("link", 0, 0, "linker_missing", e.message, ""), None),
         "link_failed" => {
-            // 진단에는 첫 줄만, 링커 원문은 stderr 로
-            let first = e.message.lines().next().unwrap_or("").to_string();
+            // 진단에는 원인 한 줄(링커의 error/ld: 줄, 경고 제외, 없으면 첫 줄), 링커 원문은 stderr 로(감사 권고)
+            let first = e
+                .message
+                .lines()
+                .find(|l| !l.contains("warning") && (l.contains("error") || l.trim_start().starts_with("ld:")))
+                .or_else(|| e.message.lines().next())
+                .unwrap_or("")
+                .to_string();
             Fail::Build(PruvError::new("link", 0, 0, "link_failed", first, ""), Some(e.message))
         }
         code => Fail::Build(PruvError::new("link", 0, 0, code, e.message, ""), None),
@@ -178,7 +181,8 @@ fn check_runtime(target: &Target) -> Result<(), Fail> {
 fn compile(a: &Args) -> Result<(), Fail> {
     // 읽기 실패·UTF-8 해독 실패는 내부 오류(Python open().read() 와 같은 취급)
     let src = pruv_core::pyio::read_source(Path::new(&a.input)).map_err(Fail::Internal)?;
-    let mut prog = pruv_core::parse(&src).map_err(|e| Fail::Lang(vec![e]))?;
+    // 깊이 한도 초과는 파서가 stage "internal" 로 알린다(Python RecursionError 처럼 exit 3).
+    let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
     let tt = pruv_core::check::check(&mut prog).map_err(|e| Fail::Lang(vec![e]))?;
     if a.verify {
         let errs = pruv_proof::verify_program(&prog, &tt, None).map_err(Fail::Internal)?;
@@ -187,8 +191,21 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
     }
     match a.kind {
-        // Rust 소스 뒷단(codegen)은 7단계. --also-llvm 도 rs 결과일 때만 허용되므로 같은 길.
-        Kind::Rs => Err(Fail::NotImplemented),
+        // 7단계: Rust 소스 뒷단. Python compile_file 처럼 모든 텍스트(rs, 그리고 --also-llvm 이면 ll·바인딩)를
+        // 먼저 만들고 나서 파일을 쓴다(생성기 오류면 아무 파일도 쓰지 않음). 쓰는 순서: OUT, LL, RS.
+        Kind::Rs => {
+            let rs_text = pruv_core::codegen::gen_rust(&prog, a.verify, a.trust_callers, a.budget).map_err(Fail::Internal)?;
+            let llvm_texts = match &a.also_llvm {
+                Some(_) => Some(generate(a, &prog)?),
+                None => None,
+            };
+            write_text(&a.out, &rs_text)?;
+            if let (Some((ll, rs)), Some((ir, bindings))) = (&a.also_llvm, llvm_texts) {
+                write_text(ll, &ir)?;
+                write_text(rs, &bindings)?;
+            }
+            Ok(())
+        }
         Kind::Ll => {
             let (ir, bindings) = generate(a, &prog)?;
             // Python 과 같은 순서: IR 먼저, 바인딩 다음
@@ -205,7 +222,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
             let tmp = tempfile::tempdir().map_err(|e| Fail::Internal(format!("tempdir: {e}")))?;
             let obj = tmp.path().join("out.o");
             pruvc::llvm::compile_ir_to_object(ir.as_bytes(), &a.input, target, &a.cpu, &obj).map_err(codegen_fail)?;
-            std::fs::copy(&obj, &a.out).map_err(|e| Fail::Internal(format!("{}: {e}", a.out)))?;
+            std::fs::copy(&obj, &a.out).map_err(|e| Fail::Internal(pruv_core::pyio::io_error_message(Path::new(&a.out), &e)))?;
             match &a.bindings {
                 Some(b) => write_text(b, &bindings),
                 None => Ok(()),
