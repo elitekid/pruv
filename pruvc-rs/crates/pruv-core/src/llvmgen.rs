@@ -677,22 +677,18 @@ impl<'a> FnGen<'a> {
     pub fn mk_struct(&mut self, e: &StructLit, c: bool) -> R<V> {
         let tt = self.tt;
         let ty = e.name.as_str();
-        let mut vals: Vec<(String, V)> = Vec::new();
+        // Python dict 처럼 이름으로 찾는다(감사: Vec 선형 탐색은 필드 수의 제곱). 같은 이름은 나중 값.
+        let mut vals: std::collections::HashMap<&str, V> = std::collections::HashMap::new();
         for fi in &e.fields {
             // 소스 순서 평가
             let v = self.evf(&fi.value, c)?;
-            if let Some(slot) = vals.iter_mut().find(|(n, _)| *n == fi.name) {
-                slot.1 = v;
-            } else {
-                vals.push((fi.name.clone(), v));
-            }
+            vals.insert(fi.name.as_str(), v);
         }
         let mut acc = "zeroinitializer".to_string();
         for (i, fd) in t_fields(tt, ty, None)?.iter().enumerate() {
             let v = vals
-                .iter()
-                .find(|(n, _)| *n == fd.name)
-                .map(|(_, v)| v.clone())
+                .get(fd.name.as_str())
+                .cloned()
                 .ok_or_else(|| format!("'{}'", fd.name))?;
             acc = self.put(&acc, ty, i, &v, &fd.ty, c)?;
         }
@@ -1154,7 +1150,6 @@ impl<'a> FnGen<'a> {
             for (i, (name, fd)) in a.binders.iter().zip(fds.iter()).enumerate() {
                 let pi = payload_index(tt, &ty, &a.ctor, i)?;
                 let v = self.get(sv, &ty, pi, &fd.ty, false)?;
-                bind.retain(|(n, _)| n != name);
                 bind.push((name.clone(), Bind::Ssa(v)));
             }
             if self.run_block(&a.body, bind)? {

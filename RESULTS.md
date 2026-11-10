@@ -344,3 +344,4 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 | 회귀 | `run_all --backend both` 363/363, `cli_also_llvm` 186/186, `cargo test -p pruv-core` 32, workspace `--locked` 빌드 |
 
 - 작업자 코드는 셋으로 나눠 동시에 썼고(본체 / 바인딩·공통 함수 / 차분 도구) 처음 빌드부터 컴파일 오류 없이 첫 대조에서 모두 같았다.
+- 감사(Claude Opus): 검사를 통과한 입력에서 Python과 다른 출력 없음(빈 struct, 필드 없는 변형만 있는 enum, 중첩 사용자 타입 안 Option/Result, sorted 패턴 변형, i64·i128 경계 × budget 7개, 입력 해독 경로를 직접 대조). 필수 2건 — 구조체 리터럴 값 모음(`mk_struct`)과 사용자 enum match 바인더(`user_match`의 retain)가 Python 선형 대비 제곱(필드 32000개 2.14초) → 해시맵·retain 삭제로 고쳐 같은 입력 0.72초(대부분 검사기 시간), 고친 뒤 `diff_llvm` 6548 사례 다름 0. 남긴 권고: 검사기가 막아 닿지 않는 경로의 내부 오류 문구(KeyError·`%r` 흉내), `cty`/`conv` unwrap(호출자는 시험뿐), `words` 중복 구현, 변수 조회·문자열 상수의 복제, 계약 문구 `show`의 깊은 사슬 문자열 복사(Python과 같은 차수), 시험 바이너리 `--budget` 범위 검사 없음(CLI는 검사).
