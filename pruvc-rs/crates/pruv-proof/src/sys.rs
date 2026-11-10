@@ -254,6 +254,13 @@ impl Z3 {
         // SAFETY: S1 S2 S4.
         unsafe { self.wrap(nn(z::Z3_mk_numeral(self.raw(), cs.as_ptr(), s.raw))) }
     }
+    /// z3py `z3.IntVal(str)`: 십진 문자열 numeral(임의 길이). 호출자가 정규화한 숫자 문자열을 준다.
+    pub fn int_str(&self, v: &str) -> Ast {
+        let cs = CString::new(v).unwrap_or_default();
+        let s = self.int_sort();
+        // SAFETY: S1 S2 S4 — 숫자 문자열(NUL 없음); 빈 문자열이면 z3 오류 처리기가 abort 한다.
+        unsafe { self.wrap(nn(z::Z3_mk_numeral(self.raw(), cs.as_ptr(), s.raw))) }
+    }
     pub fn bool_val(&self, v: bool) -> Ast {
         // SAFETY: S1 S2.
         unsafe {
@@ -438,6 +445,26 @@ impl Sort {
         // SAFETY: S1 S4.
         unsafe { take_string(z::Z3_sort_to_string(self.z.raw(), self.raw)) }
     }
+    /// `Z3_get_sort_kind` 의 값(BOOL=1, INT=2, ARRAY=5, DATATYPE=6).
+    pub fn kind_id(&self) -> u32 {
+        // SAFETY: S1.
+        unsafe { z::Z3_get_sort_kind(self.z.raw(), self.raw) as u32 }
+    }
+    pub fn is_int(&self) -> bool {
+        self.kind_id() == 2
+    }
+    pub fn is_bool(&self) -> bool {
+        self.kind_id() == 1
+    }
+    /// z3py `sort.name()`: 심볼 문자열.
+    pub fn name(&self) -> String {
+        let c = self.z.raw();
+        // SAFETY: S1 S2 S4 — 정렬의 이름 심볼은 컨텍스트 수명 동안 유효하고 문자열은 즉시 복사한다.
+        unsafe {
+            let sym = nn(z::Z3_get_sort_name(c, self.raw));
+            take_string(z::Z3_get_symbol_string(c, sym))
+        }
+    }
 }
 
 impl FuncDecl {
@@ -469,8 +496,15 @@ impl Ast {
     /// 반사 메서드가 먼저 불린다. z3py 에서 IntNumRef(수 리터럴)는 ArithRef 의 하위 클래스이므로
     /// `x >= IntVal(0)` 은 `IntVal(0).__le__(x)` = `(<= 0 x)` 가 된다. 수 리터럴 판정은 AST 종류
     /// NUMERAL(z3py `_to_expr_ref` 가 IntNumRef 를 고르는 기준)로 한다. 파이썬 int 와의 비교는 `*_i`.
+    // 일반화: Python 비교 연산자는 오른쪽 형이 왼쪽 형의 진짜 하위 클래스일 때 오른쪽의 반사 메서드를
+    // 먼저 부른다. 여기 쓰이는 짝은 ArithRef⊃IntNumRef(수 리터럴), BoolRef⊃QuantifierRef(양화식) 둘이다.
+    // 예: `BoolVal(False) == ForAll(..)` 은 `(= forall false)`.
     fn reflect(&self, o: &Ast) -> bool {
-        o.is_numeral() && !self.is_numeral()
+        (o.is_numeral() && !self.is_numeral())
+            || (o.is_quantifier() && !self.is_quantifier() && self.sort().is_bool())
+    }
+    pub fn is_quantifier(&self) -> bool {
+        self.kind() == 3 // Z3_QUANTIFIER_AST
     }
     pub fn eq(&self, o: &Ast) -> Ast {
         if self.reflect(o) { o.raw_eq(self) } else { self.raw_eq(o) }
@@ -536,6 +570,10 @@ impl Ast {
     }
     pub fn le_i(&self, v: i64) -> Ast {
         self.raw_le(&self.z.int(v))
+    }
+    /// Python `x != 0`(정수 리터럴, 반사 없음): `Z3_mk_distinct(x, IntVal(v))`.
+    pub fn ne_i(&self, v: i64) -> Ast {
+        self.z.distinct(&[self.clone(), self.z.int(v)])
     }
     pub fn gt_i(&self, v: i64) -> Ast {
         self.raw_gt(&self.z.int(v))
@@ -604,6 +642,41 @@ impl Ast {
     fn body(&self) -> Ast {
         // SAFETY: S1 S2 — kind()==QUANTIFIER.
         unsafe { self.z.wrap(nn(z::Z3_get_quantifier_body(self.z.raw(), self.raw))) }
+    }
+
+    /// z3py `z3.is_app`: APP 또는 NUMERAL 종류.
+    pub fn is_app(&self) -> bool {
+        let k = self.kind();
+        k == 0 || k == K_APP
+    }
+    /// z3py `children()`(APP 만; 수 리터럴·양화는 빈 목록).
+    pub fn children(&self) -> Vec<Ast> {
+        if self.kind() != K_APP {
+            return Vec::new();
+        }
+        (0..self.num_args()).map(|i| self.arg(i)).collect()
+    }
+    /// z3py `v.decl().name()`(APP 만).
+    pub fn decl_name(&self) -> Option<String> {
+        if self.kind() != K_APP {
+            return None;
+        }
+        let c = self.z.raw();
+        // SAFETY: S1 S2 S4 — kind()==APP 확인 뒤; 문자열은 즉시 복사한다.
+        unsafe {
+            let app = nn(z::Z3_to_app(c, self.raw));
+            let d = nn(z::Z3_get_app_decl(c, app));
+            let sym = nn(z::Z3_get_decl_name(c, d));
+            Some(take_string(z::Z3_get_symbol_string(c, sym)))
+        }
+    }
+    /// 수 리터럴의 십진 문자열(z3py `as_long()` 이 읽는 값, 임의 길이). 수 리터럴이 아니면 None.
+    pub fn numeral_string(&self) -> Option<String> {
+        if self.kind() != 0 {
+            return None;
+        }
+        // SAFETY: S1 S4 — NUMERAL 종류 확인 뒤; 문자열은 즉시 복사한다.
+        Some(unsafe { take_string(z::Z3_get_numeral_string(self.z.raw(), self.raw)) })
     }
 
     /// z3py `z3.substitute(t, (from_i, to_i)...)`.
@@ -701,6 +774,21 @@ impl Solver {
         // SAFETY: S1 S4.
         unsafe { take_string(z::Z3_solver_to_string(self.z.raw(), self.raw)) }
     }
+    /// z3py `Solver.model()`: 직전 check 가 sat 일 때만 부른다(아니면 z3 오류 처리기가 abort).
+    pub fn model(&self) -> ZModel {
+        let c = self.z.raw();
+        // SAFETY: S1 S5 — 모델은 생성 직후 inc_ref, `ZModel` 의 Drop 에서 dec_ref.
+        unsafe {
+            let m = nn(z::Z3_solver_get_model(c, self.raw));
+            z::Z3_model_inc_ref(c, m);
+            ZModel { z: self.z.clone(), raw: m }
+        }
+    }
+    /// z3py `Solver.reason_unknown()`.
+    pub fn reason_unknown(&self) -> String {
+        // SAFETY: S1 S4.
+        unsafe { take_string(z::Z3_solver_get_reason_unknown(self.z.raw(), self.raw)) }
+    }
     pub fn check(&mut self) -> Sat {
         // SAFETY: S1 — `as i32` 로 lbool 을 읽는다(enum/정수 별칭 모두 가능).
         let r = unsafe { z::Z3_solver_check(self.z.raw(), self.raw) } as i32;
@@ -717,6 +805,38 @@ impl Drop for Solver {
         unsafe { z::Z3_solver_dec_ref(self.z.raw(), self.raw) }
     }
 }
+
+type RawModel = z::Z3_model;
+
+/// z3 모델(z3py `ModelRef`).
+pub struct ZModel {
+    z: Z3,
+    raw: RawModel,
+}
+
+impl ZModel {
+    /// z3py `m.eval(a, model_completion=True)`. 평가에 실패하면 None(z3py 는 예외).
+    pub fn eval(&self, a: &Ast) -> Option<Ast> {
+        let c = self.z.raw();
+        // 출력 칸은 None 으로 초기화(NonNull niche: `Option<RawAst>` 와 `RawAst` 는 크기가 같다 — 아래 const 단언).
+        let mut out: Option<RawAst> = None;
+        // SAFETY: S1 S2 — 모델·식은 이 컨텍스트 소속; 출력 칸은 이 호출 동안 유효한 로컬이고 z3 가 채운다.
+        let ok = unsafe {
+            z::Z3_model_eval(c, self.raw, a.raw, true, &mut out as *mut Option<RawAst> as *mut RawAst)
+        };
+        if !ok {
+            return None;
+        }
+        out.map(|raw| Ast { z: self.z.clone(), raw })
+    }
+}
+impl Drop for ZModel {
+    fn drop(&mut self) {
+        // SAFETY: S1 S5 — `Solver::model` 의 inc_ref 와 짝.
+        unsafe { z::Z3_model_dec_ref(self.z.raw(), self.raw) }
+    }
+}
+const _: () = assert!(core::mem::size_of::<Option<RawAst>>() == core::mem::size_of::<RawAst>());
 
 /// null 기호를 허용하는 `Z3_mk_quantifier_const_ex` 선언(z3 C API 는 qid/skid 에 null 을 허용한다).
 #[allow(clashing_extern_declarations, non_snake_case)]

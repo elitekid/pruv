@@ -14,7 +14,13 @@ z3-src = "=503.3.0"
 # 버전이 어긋나면 z3-sys/z3-src 가 두 벌 빌드되므로 `cargo tree -d` 로 잡는다(README 3단계).
 z3-sys = { version = "=0.14.1", features = ["vendored"] }
 serde_json = "=1.0.154"
+# 3단계: 파서·검사기·오류/JSON 출력기(pyjson)
+pruv-core = { path = "../pruv-core" }
 
 [[bin]]
 name = "pruv-proof-spike"
 path = "src/bin/pruv-proof-spike.rs"
+
+[[bin]]
+name = "pruv-trace-dump"
+path = "src/bin/pruv-trace-dump.rs"

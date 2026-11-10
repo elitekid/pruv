@@ -5,10 +5,14 @@
 //! - 사용자 타입 i 번째(TypeTable 의존 순서)는 tag = `m{SEQ}t{i}!`.
 //!   struct: datatype 이름 = 생성자 이름 = `tag+Name`, 접근자 = `tag+Name+"."+field`.
 //!   enum: datatype = `tag+Name`, 변형 생성자 = `tag+Name+"::"+Variant`, 접근자 = 생성자 이름 + `"."+field`.
-//! - SEQ(`_MODEL_SEQ`)는 프로세스(여기서는 스레드)에서 `Model::new` 를 부를 때마다 1 씩 증가한다.
+//! - SEQ(`_MODEL_SEQ`)는 프로세스(여기서는 스레드)에서 `Model` 을 만들 때마다 1 씩 증가한다. Python 은 프로그램마다
+//!   Model 하나를 만들므로 `verify_program` 은 `next_seq()` 를 한 번만 부르고 함수마다 컨텍스트가 다르더라도
+//!   같은 번호로 `Model::with_seq` 를 부른다.
 
 use std::cell::Cell;
 use std::collections::HashMap;
+
+use pruv_core::ast as past;
 
 use crate::sys::{Ast, DtCtor, DtCtorSpec, DtSort, DtSpec, FuncDecl, Sort, Z3};
 
@@ -21,6 +25,14 @@ pub fn reset_model_seq() {
     MODEL_SEQ.with(|c| c.set(0));
 }
 
+/// `_MODEL_SEQ[0] += 1` 뒤의 값.
+pub fn next_seq() -> u32 {
+    MODEL_SEQ.with(|c| {
+        c.set(c.get() + 1);
+        c.get()
+    })
+}
+
 /// Pruv 타입(vast.Type). 사용자 타입은 이름 하나.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
@@ -31,6 +43,33 @@ pub enum Ty {
     Opt,
     Res,
     User(String),
+}
+
+impl Ty {
+    /// 파서/검사기의 타입 이름 문자열 → `Ty`.
+    pub fn from_name(n: &str) -> Ty {
+        match n {
+            "i64" => Ty::I64,
+            "bool" => Ty::Bool,
+            "unit" => Ty::Unit,
+            "array" => Ty::Array,
+            "option" => Ty::Opt,
+            "result" => Ty::Res,
+            other => Ty::User(other.to_string()),
+        }
+    }
+    /// vast `Type.name`.
+    pub fn name(&self) -> &str {
+        match self {
+            Ty::I64 => "i64",
+            Ty::Bool => "bool",
+            Ty::Unit => "unit",
+            Ty::Array => "array",
+            Ty::Opt => "option",
+            Ty::Res => "result",
+            Ty::User(n) => n,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -56,6 +95,31 @@ pub struct TypeDecl {
 
 fn fields_of(fs: &[(&str, Ty)]) -> Vec<FieldDecl> {
     fs.iter().map(|(n, t)| FieldDecl { name: (*n).to_string(), ty: t.clone() }).collect()
+}
+
+fn conv_fields(fs: &[past::FieldDecl]) -> Vec<FieldDecl> {
+    fs.iter().map(|f| FieldDecl { name: f.name.clone(), ty: Ty::from_name(&f.ty) }).collect()
+}
+
+/// pruv-core 의 선언 → 이 크레이트의 선언(선언 순서 유지).
+pub fn decls_from_ast(types: &[past::TypeDecl]) -> Vec<TypeDecl> {
+    types
+        .iter()
+        .map(|d| match d {
+            past::TypeDecl::Struct(s) => {
+                TypeDecl { name: s.name.clone(), kind: TypeKind::Struct(conv_fields(&s.fields)) }
+            }
+            past::TypeDecl::Enum(e) => TypeDecl {
+                name: e.name.clone(),
+                kind: TypeKind::Enum(
+                    e.variants
+                        .iter()
+                        .map(|v| VariantDecl { name: v.name.clone(), fields: conv_fields(&v.fields) })
+                        .collect(),
+                ),
+            },
+        })
+        .collect()
 }
 
 impl TypeDecl {
@@ -169,6 +233,8 @@ pub struct Model {
     sorts: HashMap<String, Sort>,
     structs: HashMap<String, StructFns>,
     enums: HashMap<String, Vec<(String, VariantFns)>>,
+    /// `by_sort`: z3 정렬 이름 → Pruv 타입(Opt/Res/사용자).
+    by_sort: HashMap<String, Ty>,
     opt_sort: Sort,
     res_sort: Sort,
     int_sort: Sort,
@@ -203,8 +269,17 @@ fn visit(i: usize, uniq: &[TypeDecl], seen: &mut [bool], order: &mut Vec<usize>)
 }
 
 impl Model {
-    /// `Model(prog)`. `decls` 는 프로그램 선언 순서(같은 이름이 반복되면 첫 선언만 쓴다).
+    /// `Model(prog)`: 순번을 새로 올린다(시제품·표본용).
     pub fn new(z: &Z3, pre: &Prelude, decls: &[TypeDecl]) -> Model {
+        match Model::with_seq(z, pre, decls, next_seq()) {
+            Ok(m) => m,
+            Err(e) => panic!("Model::new: {e}"),
+        }
+    }
+
+    /// 순번을 호출자가 정한 `Model(prog)`. `decls` 는 프로그램 선언 순서(같은 이름이 반복되면 첫 선언만 쓴다).
+    /// 필드 타입이 정렬을 갖지 못하면(Python `KeyError`) `Err("'이름'")`.
+    pub fn with_seq(z: &Z3, pre: &Prelude, decls: &[TypeDecl], seq: u32) -> Result<Model, String> {
         let mut uniq: Vec<TypeDecl> = Vec::new();
         for d in decls {
             if !uniq.iter().any(|u| u.name == d.name) {
@@ -218,17 +293,18 @@ impl Model {
         }
         let order: Vec<TypeDecl> = idx_order.iter().map(|&i| uniq[i].clone()).collect();
 
-        let seq = MODEL_SEQ.with(|c| {
-            c.set(c.get() + 1);
-            c.get()
-        });
         let pre_tag = format!("m{}", seq);
+
+        let mut by_sort: HashMap<String, Ty> = HashMap::new();
+        by_sort.insert(pre.opt.sort.name(), Ty::Opt);
+        by_sort.insert(pre.res.sort.name(), Ty::Res);
 
         let mut m = Model {
             order: Vec::new(),
             sorts: HashMap::new(),
             structs: HashMap::new(),
             enums: HashMap::new(),
+            by_sort,
             opt_sort: pre.opt.sort.clone(),
             res_sort: pre.res.sort.clone(),
             int_sort: z.int_sort(),
@@ -239,79 +315,106 @@ impl Model {
             match &d.kind {
                 TypeKind::Struct(fields) => {
                     let cn = format!("{}{}", tag, d.name);
-                    let spec = DtSpec {
-                        name: cn.clone(),
-                        ctors: vec![DtCtorSpec {
-                            name: cn.clone(),
-                            fields: fields
-                                .iter()
-                                .map(|fd| (format!("{}.{}", cn, fd.name), m.sort_of(&fd.ty)))
-                                .collect(),
-                        }],
-                    };
+                    let mut fs: Vec<(String, Sort)> = Vec::new();
+                    for fd in fields {
+                        fs.push((format!("{}.{}", cn, fd.name), m.try_sort_of(&fd.ty)?));
+                    }
+                    let spec = DtSpec { name: cn.clone(), ctors: vec![DtCtorSpec { name: cn.clone(), fields: fs }] };
                     let mut dt = z.create_datatypes(&[spec]);
-                    let DtSort { sort, mut ctors } = dt.pop().expect("datatype");
+                    let DtSort { sort, mut ctors } = dt.pop().ok_or("datatype")?;
+                    if ctors.is_empty() {
+                        return Err("datatype".to_string());
+                    }
                     let DtCtor { ctor, accs, .. } = ctors.remove(0);
+                    m.by_sort.insert(sort.name(), Ty::User(d.name.clone()));
                     m.structs.insert(d.name.clone(), StructFns { ctor, accs });
                     m.sorts.insert(d.name.clone(), sort);
                 }
                 TypeKind::Enum(variants) => {
                     let dn = format!("{}{}", tag, d.name);
-                    let ctors: Vec<DtCtorSpec> = variants
-                        .iter()
-                        .map(|v| {
-                            let cn = format!("{}{}::{}", tag, d.name, v.name);
-                            DtCtorSpec {
-                                name: cn.clone(),
-                                fields: v
-                                    .fields
-                                    .iter()
-                                    .map(|fd| (format!("{}.{}", cn, fd.name), m.sort_of(&fd.ty)))
-                                    .collect(),
-                            }
-                        })
-                        .collect();
-                    let mut dt = z.create_datatypes(&[DtSpec { name: dn, ctors }]);
-                    let DtSort { sort, ctors } = dt.pop().expect("datatype");
+                    let mut specs: Vec<DtCtorSpec> = Vec::new();
+                    for v in variants {
+                        let cn = format!("{}{}::{}", tag, d.name, v.name);
+                        let mut fs: Vec<(String, Sort)> = Vec::new();
+                        for fd in &v.fields {
+                            fs.push((format!("{}.{}", cn, fd.name), m.try_sort_of(&fd.ty)?));
+                        }
+                        specs.push(DtCtorSpec { name: cn, fields: fs });
+                    }
+                    let mut dt = z.create_datatypes(&[DtSpec { name: dn, ctors: specs }]);
+                    let DtSort { sort, ctors } = dt.pop().ok_or("datatype")?;
                     let fns: Vec<(String, VariantFns)> = variants
                         .iter()
                         .zip(ctors)
                         .map(|(v, c)| (v.name.clone(), VariantFns { ctor: c.ctor, rec: c.rec, accs: c.accs }))
                         .collect();
+                    m.by_sort.insert(sort.name(), Ty::User(d.name.clone()));
                     m.enums.insert(d.name.clone(), fns);
                     m.sorts.insert(d.name.clone(), sort);
                 }
             }
         }
         m.order = order;
-        m
+        Ok(m)
     }
 
-    /// `Model.sort_of`.
-    pub fn sort_of(&self, ty: &Ty) -> Sort {
+    /// `Model.sort_of`(Python 은 정렬이 없으면 `KeyError(이름)`).
+    pub fn try_sort_of(&self, ty: &Ty) -> Result<Sort, String> {
         match ty {
-            Ty::I64 => self.int_sort.clone(),
-            Ty::Bool => self.bool_sort.clone(),
-            Ty::Opt => self.opt_sort.clone(),
-            Ty::Res => self.res_sort.clone(),
-            Ty::User(n) => self.sorts[n].clone(),
-            Ty::Unit | Ty::Array => panic!("sort_of: {:?}", ty),
+            Ty::I64 => Ok(self.int_sort.clone()),
+            Ty::Bool => Ok(self.bool_sort.clone()),
+            Ty::Opt => Ok(self.opt_sort.clone()),
+            Ty::Res => Ok(self.res_sort.clone()),
+            Ty::User(n) => self.sorts.get(n).cloned().ok_or_else(|| format!("'{}'", n)),
+            Ty::Unit | Ty::Array => Err(format!("'{}'", ty.name())),
+        }
+    }
+
+    /// 시제품용(패닉). 새 경로는 `try_sort_of`.
+    pub fn sort_of(&self, ty: &Ty) -> Sort {
+        match self.try_sort_of(ty) {
+            Ok(s) => s,
+            Err(e) => panic!("sort_of: {e}"),
         }
     }
 
     pub fn sort(&self, name: &str) -> &Sort {
         &self.sorts[name]
     }
+    pub fn sort_opt(&self, name: &str) -> Option<&Sort> {
+        self.sorts.get(name)
+    }
+    /// `Model.is_user(ty)`: 사용자 정렬이 있는 타입인가.
+    pub fn is_user(&self, ty: &Ty) -> bool {
+        matches!(ty, Ty::User(n) if self.sorts.contains_key(n))
+    }
+    /// `Model.type_of(v)`: datatype 값의 정렬 이름으로 Pruv 타입을 찾는다(없으면 None).
+    pub fn type_of(&self, v: &Ast) -> Option<Ty> {
+        self.by_sort.get(&v.sort().name()).cloned()
+    }
+
     pub fn decl(&self, name: &str) -> &TypeDecl {
         self.order.iter().find(|d| d.name == name).unwrap_or_else(|| panic!("unknown type {name}"))
     }
+    pub fn decl_opt(&self, name: &str) -> Option<&TypeDecl> {
+        self.order.iter().find(|d| d.name == name)
+    }
     pub fn struct_fns(&self, name: &str) -> &StructFns {
         &self.structs[name]
+    }
+    pub fn struct_fns_opt(&self, name: &str) -> Option<&StructFns> {
+        self.structs.get(name)
     }
     pub fn struct_fields(&self, name: &str) -> &[FieldDecl] {
         match &self.decl(name).kind {
             TypeKind::Struct(fs) => fs,
             TypeKind::Enum(_) => panic!("{name} is an enum"),
+        }
+    }
+    pub fn struct_fields_opt(&self, name: &str) -> Option<&[FieldDecl]> {
+        match &self.decl_opt(name)?.kind {
+            TypeKind::Struct(fs) => Some(fs),
+            TypeKind::Enum(_) => None,
         }
     }
     pub fn field_index(&self, struct_name: &str, field: &str) -> usize {
@@ -320,7 +423,28 @@ impl Model {
             .position(|f| f.name == field)
             .unwrap_or_else(|| panic!("no field {field}"))
     }
+    pub fn field_index_opt(&self, struct_name: &str, field: &str) -> Option<usize> {
+        self.struct_fields_opt(struct_name)?.iter().position(|f| f.name == field)
+    }
     pub fn variant(&self, enum_name: &str, variant: &str) -> &VariantFns {
         &self.enums[enum_name].iter().find(|(n, _)| n == variant).unwrap_or_else(|| panic!("no variant {variant}")).1
+    }
+    pub fn variant_opt(&self, enum_name: &str, variant: &str) -> Option<&VariantFns> {
+        self.enums.get(enum_name)?.iter().find(|(n, _)| n == variant).map(|(_, f)| f)
+    }
+    /// 열거형의 변형 함수들(선언 순서).
+    pub fn enum_variants(&self, enum_name: &str) -> Option<&[(String, VariantFns)]> {
+        self.enums.get(enum_name).map(|v| v.as_slice())
+    }
+    /// 열거형 변형의 선언.
+    pub fn variant_decl(&self, enum_name: &str, variant: &str) -> Option<&VariantDecl> {
+        match &self.decl_opt(enum_name)?.kind {
+            TypeKind::Enum(vs) => vs.iter().find(|v| v.name == variant),
+            TypeKind::Struct(_) => None,
+        }
+    }
+    /// 열거형 변형 안의 필드 위치.
+    pub fn variant_field_index(&self, enum_name: &str, variant: &str, field: &str) -> Option<usize> {
+        self.variant_decl(enum_name, variant)?.fields.iter().position(|f| f.name == field)
     }
 }

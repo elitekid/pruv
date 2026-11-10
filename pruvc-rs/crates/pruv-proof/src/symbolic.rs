@@ -1,10 +1,17 @@
-//! verify.py 의 기호 실행 부품: `Arr`, `State`, `FnVerifier`(fresh, wf, rebuild, havoc, 집계, 양화 조각, ev 조각).
+//! verify.py 의 기호 실행: `Arr`, `State`, `FnVerifier`(fresh, wf, rebuild, havoc, 집계, 식 `ev`, 정의역 `dom`,
+//! 문 `exec`, 루프, `run`).
 //!
-//! 이 시제품에는 파서·AST 가 없으므로 `ev`/`exec` 전체가 아니라 표본 빌더가 부르는 "조각"만 있다.
-//! 각 조각은 verify.py 의 해당 분기를 그대로 옮겼고 주석에 줄 번호를 단다. 호출 순서(= `s.k` 증가 순서,
-//! 보조정리가 쌓이는 순서)는 빌더가 verify.py 의 평가 순서대로 부른다.
+//! 함수 구조·호출 순서·`s.k` 증가 순서·z3 식 생성 순서·보조정리 누적 순서는 verify.py 와 같게 둔다.
+//! 주석의 줄 번호는 verify.py 기준이다. 의무(`prove`)·반례·trace 는 obligation.rs.
+//!
+//! Python 은 `ev(e, st, g, code, env=None)` 에서 `env = st.env` 로 같은 dict 를 읽으면서 `st.pc` 에 덧붙인다.
+//! Rust 에서는 `ev` 가 `st: &mut State` 와 별도로 `env: &Env`(진입 때 복제한 스냅샷)를 받는다. `ev` 는 env 를 바꾸지
+//! 않으므로 의미가 같다. 반례(`cex`)는 `st.env` 를 읽는다.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
+
+use pruv_core::ast::{self as ast, Expr, Stmt};
+use pruv_core::diagnostic::PruvError;
 
 use crate::model::{Model, Prelude, Ty, TypeKind};
 use crate::obligation::Trace;
@@ -13,12 +20,15 @@ use crate::sys::{Ast, FuncDecl, Sort, Z3};
 /// (line, col), 1부터.
 pub type Pos = (u32, u32);
 
+/// 내부 실패(Python 예외)는 문자열로 올린다.
+pub type R<T> = Result<T, String>;
+
 /// verify.py 7행.
 pub const MAX_LEN: i64 = 1 << 40;
 /// verify.py 8행.
 pub const TIMEOUT_MS: u32 = 8000;
 
-/// verify.py `in_range` (168행).
+/// verify.py `in_range` (168행). `x >= I64_MIN` 은 파이썬 int 와의 비교라 뒤집지 않는다(raw).
 pub fn in_range(z: &Z3, x: &Ast) -> Ast {
     z.and(&[x.raw_ge(&z.int(i64::MIN)), x.raw_le(&z.int(i64::MAX))])
 }
@@ -38,6 +48,129 @@ pub fn imp(c: &Ast, d: Option<Ast>) -> Option<Ast> {
     d.map(|d| c.implies(&d))
 }
 
+/// 정수 리터럴(부호+십진 문자열)을 Python `str(int)` 꼴로: 앞의 `+`·0 제거, `-0` 은 `0`.
+pub fn norm_int(s: &str) -> String {
+    let (neg, rest) = match s.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, s.strip_prefix('+').unwrap_or(s)),
+    };
+    let d = rest.trim_start_matches('0');
+    if d.is_empty() {
+        "0".to_string()
+    } else if neg {
+        format!("-{}", d)
+    } else {
+        d.to_string()
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 식 모양 보조 (verify.py 83~132행)
+// ---------------------------------------------------------------------------------------------
+
+/// `_partial_here` 의 kind: None=전부, "variant", "other".
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PKind {
+    All,
+    Variant,
+    Other,
+}
+
+fn is_tag_fn(n: &str) -> bool {
+    matches!(n, "some_val" | "ok_val" | "err_val")
+}
+
+/// verify.py `_partial_here` (86행).
+fn partial_here(e: &Expr, kind: PKind) -> bool {
+    match e {
+        Expr::VariantField(_) => kind != PKind::Other,
+        _ if kind == PKind::Variant => false,
+        Expr::Index(_) => true,
+        Expr::Binary(b) => b.op == "/" || b.op == "%",
+        Expr::Call(c) => is_tag_fn(&c.name),
+        Expr::Quant(q) => q.kind == "max" || q.kind == "min",
+        _ => false,
+    }
+}
+
+/// verify.py `_kids` (103행).
+fn kids(e: &Expr) -> Vec<&Expr> {
+    match e {
+        Expr::Unary(x) => vec![&*x.operand],
+        Expr::Binary(x) => vec![&*x.left, &*x.right],
+        Expr::Index(x) => vec![&*x.array, &*x.index],
+        Expr::Ctor(x) => x.arg.iter().map(|a| &**a).collect(),
+        Expr::Quant(x) => vec![&*x.lo, &*x.hi, &*x.body],
+        Expr::Call(x) => x.args.iter().collect(),
+        Expr::StructLit(x) => x.fields.iter().map(|f| &f.value).collect(),
+        Expr::EnumCtor(x) => x.args.iter().collect(),
+        Expr::FieldAccess(x) => vec![&*x.base],
+        Expr::IsVariant(x) => vec![&*x.value],
+        Expr::VariantField(x) => vec![&*x.value],
+        _ => Vec::new(),
+    }
+}
+
+/// verify.py `_has_vf` (127행).
+pub fn has_vf(e: &Expr, kind: PKind) -> bool {
+    if partial_here(e, kind) {
+        return true;
+    }
+    kids(e).into_iter().any(|c| has_vf(c, kind))
+}
+
+fn pos(e: &Expr) -> Pos {
+    (e.line() as u32, e.col() as u32)
+}
+
+fn stmt_pos(s: &Stmt) -> Pos {
+    let (l, c) = match s {
+        Stmt::Let(x) => (x.line, x.col),
+        Stmt::Assign(x) => (x.line, x.col),
+        Stmt::IndexAssign(x) => (x.line, x.col),
+        Stmt::If(x) => (x.line, x.col),
+        Stmt::While(x) => (x.line, x.col),
+        Stmt::Return(x) => (x.line, x.col),
+        Stmt::Assert(x) => (x.line, x.col),
+        Stmt::ExprStmt(x) => (x.line, x.col),
+        Stmt::FieldAssign(x) => (x.line, x.col),
+        Stmt::Match(x) => (x.line, x.col),
+    };
+    (l as u32, c as u32)
+}
+
+/// verify.py `assigned` (671행): 대입되는 이름(Let 은 제외). 이름순 집합이라 havoc 순회가 정렬 순서가 된다.
+pub fn assigned(stmts: &[Stmt], out: &mut BTreeSet<String>) {
+    for st in stmts {
+        match st {
+            Stmt::Assign(a) => {
+                out.insert(a.name.clone());
+            }
+            Stmt::IndexAssign(a) => {
+                out.insert(a.name.clone());
+            }
+            Stmt::FieldAssign(a) => {
+                out.insert(a.name.clone());
+            }
+            Stmt::If(i) => {
+                assigned(&i.then, out);
+                assigned(&i.els, out);
+            }
+            Stmt::While(w) => assigned(&w.body, out),
+            Stmt::Match(m) => {
+                for a in &m.arms {
+                    assigned(&a.body, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// 값·환경·상태
+// ---------------------------------------------------------------------------------------------
+
 #[derive(Clone)]
 pub struct Arr {
     pub a: Ast,
@@ -53,19 +186,43 @@ pub enum Val {
     /// Opt/Res/사용자 struct·enum 값과 그 Pruv 타입(= `Model.type_of`).
     Dt(Ast, Ty),
     Arr(Arr),
+    /// Python `None`(print, unit 함수 호출).
+    Unit,
 }
 
 impl Val {
     pub fn ast(&self) -> &Ast {
         match self {
             Val::Int(a) | Val::Bool(a) | Val::Dt(a, _) => a,
-            Val::Arr(_) => panic!("array value has no single ast"),
+            Val::Arr(_) | Val::Unit => panic!("value has no single ast"),
         }
     }
     pub fn arr(&self) -> &Arr {
         match self {
             Val::Arr(a) => a,
             _ => panic!("not an array"),
+        }
+    }
+    pub fn try_ast(&self) -> R<&Ast> {
+        match self {
+            Val::Int(a) | Val::Bool(a) | Val::Dt(a, _) => Ok(a),
+            Val::Arr(_) => Err("expected a z3 value, got an array".to_string()),
+            Val::Unit => Err("expected a z3 value, got None".to_string()),
+        }
+    }
+    pub fn try_arr(&self) -> R<&Arr> {
+        match self {
+            Val::Arr(a) => Ok(a),
+            _ => Err("expected an array".to_string()),
+        }
+    }
+    /// 필드 타입이 `ty` 인 접근자 결과 `a` 의 값 태그(z3 sort 로 구분하는 Python 과 같은 분류).
+    pub fn from_field(ty: &Ty, a: Ast) -> R<Val> {
+        match ty {
+            Ty::I64 => Ok(Val::Int(a)),
+            Ty::Bool => Ok(Val::Bool(a)),
+            Ty::Opt | Ty::Res | Ty::User(_) => Ok(Val::Dt(a, ty.clone())),
+            Ty::Array | Ty::Unit => Err(format!("'{}'", ty.name())),
         }
     }
 }
@@ -88,6 +245,13 @@ impl Env {
         } else {
             self.0.push((name.to_string(), v));
         }
+    }
+    /// `del env[name]`.
+    pub fn remove(&mut self, name: &str) {
+        self.0.retain(|(k, _)| k != name);
+    }
+    pub fn contains(&self, name: &str) -> bool {
+        self.0.iter().any(|(k, _)| k == name)
     }
 }
 
@@ -115,6 +279,10 @@ pub enum Arith {
     Mul,
 }
 
+// ---------------------------------------------------------------------------------------------
+// FnVerifier
+// ---------------------------------------------------------------------------------------------
+
 /// verify.py `FnVerifier`(189행). 함수마다 하나, `k`/`seen`/`aggs`/`lemmas` 는 함수 단위.
 pub struct FnVerifier<'a> {
     pub z: Z3,
@@ -135,9 +303,16 @@ pub struct FnVerifier<'a> {
     pub(crate) lemma_text_keys: HashSet<String>,
     /// `s.params`
     pub params: Env,
+    /// `s.errors`(verify_program 이 함수 순서대로 모은다).
+    pub errors: Vec<PruvError>,
+    /// `s.funcs`: 이름 → 함수(같은 이름이면 뒤의 것).
+    pub(crate) funcs: HashMap<String, &'a ast::Function>,
+    /// `s.f`: 증명 대상 함수(시제품 경로에서는 None).
+    pub(crate) f: Option<&'a ast::Function>,
 }
 
 impl<'a> FnVerifier<'a> {
+    /// 시제품(손 빌더) 경로: 프로그램·함수 없이 조각만 쓴다.
     pub fn new(z: &Z3, prelude: &'a Prelude, model: &'a Model, trace: &'a mut Trace, fname: &str) -> Self {
         FnVerifier {
             z: z.clone(),
@@ -153,32 +328,59 @@ impl<'a> FnVerifier<'a> {
             lemma_fn_keys: HashSet::new(),
             lemma_text_keys: HashSet::new(),
             params: Env::default(),
+            errors: Vec::new(),
+            funcs: HashMap::new(),
+            f: None,
         }
+    }
+
+    /// `FnVerifier(prog, f, errors, model)`.
+    pub fn for_function(
+        z: &Z3,
+        prelude: &'a Prelude,
+        model: &'a Model,
+        trace: &'a mut Trace,
+        prog: &'a ast::Program,
+        f: &'a ast::Function,
+    ) -> Self {
+        let mut v = FnVerifier::new(z, prelude, model, trace, &f.name);
+        for g in &prog.functions {
+            v.funcs.insert(g.name.clone(), g);
+        }
+        v.f = Some(f);
+        v
     }
 
     // ---------- fresh (201행) ----------
     /// `fresh(base, ty)`: k 를 먼저 올린 뒤 이름 `base!k`; 배열 길이는 `base!k.len`.
-    pub fn fresh(&mut self, base: &str, ty: &Ty) -> Val {
+    pub fn try_fresh(&mut self, base: &str, ty: &Ty) -> R<Val> {
         self.k += 1;
         let n = format!("{}!{}", base, self.k);
         let z = &self.z;
         match ty {
-            Ty::I64 => Val::Int(z.int_const(&n)),
-            Ty::Bool => Val::Bool(z.bool_const(&n)),
-            Ty::Opt => Val::Dt(z.constant(&n, &self.prelude.opt.sort), ty.clone()),
-            Ty::Res => Val::Dt(z.constant(&n, &self.prelude.res.sort), ty.clone()),
+            Ty::I64 => Ok(Val::Int(z.int_const(&n))),
+            Ty::Bool => Ok(Val::Bool(z.bool_const(&n))),
+            Ty::Opt => Ok(Val::Dt(z.constant(&n, &self.prelude.opt.sort), ty.clone())),
+            Ty::Res => Ok(Val::Dt(z.constant(&n, &self.prelude.res.sort), ty.clone())),
             Ty::Array => {
                 let int = z.int_sort();
                 let arr_sort = z.array_sort(&int, &int);
-                Val::Arr(Arr {
+                Ok(Val::Arr(Arr {
                     a: z.constant(&n, &arr_sort),
                     n: z.int_const(&format!("{}.len", n)),
                     name: base.to_string(),
-                })
+                }))
             }
-            Ty::User(name) => Val::Dt(z.constant(&n, self.model.sort(name)), ty.clone()),
-            Ty::Unit => panic!("fresh: unit"),
+            Ty::User(name) => match self.model.sort_opt(name) {
+                Some(s) => Ok(Val::Dt(z.constant(&n, s), ty.clone())),
+                None => Err(format!("fresh: {}", name)),
+            },
+            Ty::Unit => Err("fresh: unit".to_string()),
         }
+    }
+    /// 시제품용: 실패하면 `Val::Unit`.
+    pub fn fresh(&mut self, base: &str, ty: &Ty) -> Val {
+        self.try_fresh(base, ty).unwrap_or(Val::Unit)
     }
     pub fn fresh_int(&mut self, base: &str) -> Ast {
         self.fresh(base, &Ty::I64).ast().clone()
@@ -201,15 +403,15 @@ impl<'a> FnVerifier<'a> {
                 p.is_ok(v).implies(&in_range(z, &p.oval(v))),
                 p.is_err(v).implies(&in_range(z, &p.eval(v))),
             ])),
-            Ty::User(name) => match &self.model.decl(name).kind {
+            Ty::User(name) => match &self.model.decl_opt(name)?.kind {
                 TypeKind::Struct(fields) => {
-                    let accs = &self.model.struct_fns(name).accs;
+                    let accs = &self.model.struct_fns_opt(name)?.accs;
                     conj(z, fields.iter().zip(accs).map(|(fd, acc)| self.wf(&fd.ty, &acc.apply1(v))).collect())
                 }
                 TypeKind::Enum(variants) => {
                     let mut parts: Vec<Option<Ast>> = Vec::new();
                     for vd in variants {
-                        let vf = self.model.variant(name, &vd.name);
+                        let vf = self.model.variant_opt(name, &vd.name)?;
                         let w = conj(
                             z,
                             vd.fields.iter().zip(&vf.accs).map(|(fd, acc)| self.wf(&fd.ty, &acc.apply1(v))).collect(),
@@ -226,21 +428,21 @@ impl<'a> FnVerifier<'a> {
     }
 
     /// `rebuild(ty, cur, path, new)` (242행): struct 값 `cur` 의 필드 경로를 `new` 로 바꾼 값.
-    pub fn rebuild(&self, ty: &Ty, cur: &Ast, path: &[&str], new: &Ast) -> Ast {
+    pub fn try_rebuild(&self, ty: &Ty, cur: &Ast, path: &[&str], new: &Ast) -> R<Ast> {
         if path.is_empty() {
-            return new.clone();
+            return Ok(new.clone());
         }
-        let Ty::User(name) = ty else { panic!("rebuild on non-struct") };
-        let i = self.model.field_index(name, path[0]);
-        let sf = self.model.struct_fns(name);
-        let fields = self.model.struct_fields(name);
+        let Ty::User(name) = ty else { return Err(format!("'{}'", ty.name())) };
+        let i = self.model.field_index_opt(name, path[0]).ok_or_else(|| format!("'{}'", path[0]))?;
+        let sf = self.model.struct_fns_opt(name).ok_or_else(|| format!("'{}'", name))?;
+        let fields = self.model.struct_fields_opt(name).ok_or_else(|| format!("'{}'", name))?;
         let mut vals: Vec<Ast> = sf.accs.iter().map(|a| a.apply1(cur)).collect();
-        let sub = self.rebuild(&fields[i].ty, &vals[i], &path[1..], new);
+        let sub = self.try_rebuild(&fields[i].ty, &vals[i], &path[1..], new)?;
         vals[i] = sub;
-        sf.ctor.apply(&vals)
+        Ok(sf.ctor.apply(&vals))
     }
 
-    // ---------- run() 앞부분 (835행) ----------
+    // ---------- run() 앞부분 (835행): 시제품용 ----------
     /// 매개변수마다 `fresh`, 배열은 `0 <= len <= MAX_LEN`, 그 밖은 `wf` 를 pc 에 넣는다. `self.params` 도 채운다.
     pub fn init_params(&mut self, params: &[(&str, Ty)]) -> State {
         let mut env = Env::default();
@@ -249,6 +451,7 @@ impl<'a> FnVerifier<'a> {
             let v = self.fresh(name, ty);
             match &v {
                 Val::Arr(a) => pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)])),
+                Val::Unit => {}
                 other => {
                     if let Some(w) = self.wf(ty, other.ast()) {
                         pc.push(w);
@@ -273,7 +476,7 @@ impl<'a> FnVerifier<'a> {
         env
     }
 
-    // ---------- ev 조각 (code=True) ----------
+    // ---------- ev 조각 (시제품용) ----------
     /// `assume(st, g, fact)` (340행).
     pub fn assume(&self, st: &mut State, g: &[Ast], fact: Ast) {
         if g.is_empty() {
@@ -331,7 +534,7 @@ impl<'a> FnVerifier<'a> {
         Arr { a: self.z.const_array(&self.z.int_sort(), init), n: n.clone(), name: "alloc".to_string() }
     }
 
-    // ---------- exec 조각 (st 는 호출자가 이미 fork 한 상태) ----------
+    // ---------- exec 조각 (시제품용; st 는 호출자가 이미 fork 한 상태) ----------
     /// IndexAssign (718~725행): 의무 `0 <= i < arr.n`("index_oob", node = 문장) 뒤 `Store`.
     pub fn index_assign(&mut self, st: &mut State, name: &str, i: &Ast, v: &Ast, node: Pos) {
         let arr = st.env.get(name).arr().clone();
@@ -343,7 +546,7 @@ impl<'a> FnVerifier<'a> {
     /// FieldAssign (761~766행): 오른쪽 값 `v` 는 호출자가 먼저 계산한다.
     pub fn field_assign(&mut self, st: &mut State, name: &str, path: &[&str], v: &Ast) {
         let Val::Dt(root, ty) = st.env.get(name).clone() else { panic!("field assign on non-struct") };
-        let new = self.rebuild(&ty, &root, path, v);
+        let new = self.try_rebuild(&ty, &root, path, v).unwrap_or_else(|_| v.clone());
         st.env.set(name, Val::Dt(new, ty));
     }
 
@@ -359,27 +562,26 @@ impl<'a> FnVerifier<'a> {
     }
 
     // ---------- havoc (684행) ----------
-    /// `names` 는 순서와 상관없이 받고, 안에서 이름순(바이트 순 = 코드포인트 순, Python `sorted`)으로 정렬해
-    /// 순회한다(SPEC 6절의 0A 정렬을 API 에 넣음; fresh 이름의 `k` 증가 순서가 Python 과 같아진다).
-    pub fn havoc(&mut self, st: &State, names: &[&str]) -> State {
+    /// 이름순(바이트 순 = 코드포인트 순, Python `sorted`)으로 순회한다(SPEC 6절의 0A 정렬).
+    pub fn havoc_set(&mut self, st: &State, names: &BTreeSet<String>) -> R<State> {
         let mut h = st.fork(None);
-        let mut sorted: Vec<&str> = names.to_vec();
-        sorted.sort();
-        for n in &sorted {
+        for n in names {
             let Some(old) = h.env.try_get(n).cloned() else { continue };
             match old {
                 Val::Arr(_) => {
-                    let Val::Arr(nv) = self.fresh(n, &Ty::Array) else { unreachable!() };
-                    h.pc.push(self.z.and(&[nv.n.ge_i(0), nv.n.le_i(MAX_LEN)]));
-                    h.env.set(n, Val::Arr(nv));
+                    let nv = self.try_fresh(n, &Ty::Array)?;
+                    let a = nv.try_arr()?.clone();
+                    h.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
+                    h.env.set(n, Val::Arr(a));
                 }
                 Val::Int(_) => {
-                    let nv = self.fresh_int(n);
-                    h.pc.push(in_range(&self.z, &nv));
-                    h.env.set(n, Val::Int(nv));
+                    let nv = self.try_fresh(n, &Ty::I64)?;
+                    let a = nv.try_ast()?.clone();
+                    h.pc.push(in_range(&self.z, &a));
+                    h.env.set(n, Val::Int(a));
                 }
                 Val::Bool(_) => {
-                    let nv = self.fresh(n, &Ty::Bool);
+                    let nv = self.try_fresh(n, &Ty::Bool)?;
                     h.env.set(n, nv);
                 }
                 Val::Dt(old_ast, ty) => {
@@ -391,12 +593,19 @@ impl<'a> FnVerifier<'a> {
                         h.pc.push(w);
                     }
                 }
+                Val::Unit => return Err("havoc: None".to_string()),
             }
         }
-        h
+        Ok(h)
     }
 
-    // ---------- 양화 조각 (401~417행) ----------
+    /// 시제품용: 순서와 상관없이 받고 안에서 정렬한다. 실패하면 forks 만 돌려준다.
+    pub fn havoc(&mut self, st: &State, names: &[&str]) -> State {
+        let set: BTreeSet<String> = names.iter().map(|s| s.to_string()).collect();
+        self.havoc_set(st, &set).unwrap_or_else(|_| st.fork(None))
+    }
+
+    // ---------- 양화 조각 (401~417행; 시제품용) ----------
     /// Quant 평가 중간: lo/hi 를 먼저 평가한 뒤 `s.k += 1`, 상수 `var!q{k}`, qstack push. 본문 평가 뒤 `quant_exit`.
     pub fn quant_enter(&mut self, var: &str) -> Ast {
         self.k += 1;
@@ -534,5 +743,777 @@ impl<'a> FnVerifier<'a> {
             }
         }
         app
+    }
+
+    // =========================================================================================
+    // 식 (345행 `ev`)
+    // =========================================================================================
+
+    /// `st.env` 를 스냅샷으로 `ev` (env=None 호출).
+    fn ev0(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool) -> R<Val> {
+        let env = st.env.clone();
+        self.ev(e, st, g, code, &env)
+    }
+
+    fn ev0_ast(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool) -> R<Ast> {
+        let v = self.ev0(e, st, g, code)?;
+        Ok(v.try_ast()?.clone())
+    }
+
+    fn ev_ast(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Ast> {
+        let v = self.ev(e, st, g, code, env)?;
+        Ok(v.try_ast()?.clone())
+    }
+
+    /// verify.py `ev(e, st, g, code, env)`. code=True: 증명 의무와 i64 의미 생성.
+    pub(crate) fn ev(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Val> {
+        let model: &'a Model = self.model;
+        match e {
+            Expr::IntLit(x) => Ok(Val::Int(self.z.int_str(&norm_int(&x.value)))),
+            Expr::BoolLit(x) => Ok(Val::Bool(self.z.bool_val(x.value))),
+            Expr::Var(x) => env.try_get(&x.name).cloned().ok_or_else(|| format!("'{}'", x.name)),
+            Expr::Unary(x) => {
+                let v = self.ev_ast(&x.operand, st, g, code, env)?;
+                if x.op == "!" {
+                    return Ok(Val::Bool(v.not()));
+                }
+                if code {
+                    let ob = in_range(&self.z, &v.neg());
+                    self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "overflow", "no overflow in unary -", None);
+                }
+                Ok(Val::Int(v.neg()))
+            }
+            Expr::Binary(x) => {
+                let op = x.op.as_str();
+                if op == "&&" || op == "||" || op == "==>" {
+                    let l = self.ev_ast(&x.left, st, g, code, env)?;
+                    let mut g2: Vec<Ast> = g.to_vec();
+                    g2.push(if op != "||" { l.clone() } else { l.not() });
+                    let r = self.ev_ast(&x.right, st, &g2, code, env)?;
+                    let res = if op == "&&" {
+                        self.z.and(&[l, r])
+                    } else if op == "||" {
+                        self.z.or(&[l, r])
+                    } else {
+                        l.implies(&r)
+                    };
+                    return Ok(Val::Bool(res));
+                }
+                let l = self.ev_ast(&x.left, st, g, code, env)?;
+                let r = self.ev_ast(&x.right, st, g, code, env)?;
+                let res = match op {
+                    "+" => l.add(&r),
+                    "-" => l.sub(&r),
+                    "*" => l.mul(&r),
+                    "/" | "%" => {
+                        if code {
+                            let ob = self.z.and(&[r.gt_i(0), l.ge_i(0)]);
+                            self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "div", "divisor > 0 and dividend >= 0", None);
+                        }
+                        return Ok(Val::Int(if op == "/" { l.div(&r) } else { l.modulo(&r) }));
+                    }
+                    // 두 쪽 모두 z3 식이므로 z3py 반사 규칙(오른쪽이 수 리터럴이면 뒤집힘)을 따르는 eq/ne/lt/..
+                    "==" => return Ok(Val::Bool(l.eq(&r))),
+                    "!=" => return Ok(Val::Bool(l.ne(&r))),
+                    "<" => return Ok(Val::Bool(l.lt(&r))),
+                    "<=" => return Ok(Val::Bool(l.le(&r))),
+                    ">" => return Ok(Val::Bool(l.gt(&r))),
+                    ">=" => return Ok(Val::Bool(l.ge(&r))),
+                    other => return Err(format!("local variable 'res' referenced before assignment ({})", other)),
+                };
+                if code {
+                    let ob = in_range(&self.z, &res);
+                    self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "overflow", &format!("no i64 overflow in `{}`", op), None);
+                }
+                Ok(Val::Int(res))
+            }
+            Expr::Index(x) => {
+                let arr = self.ev(&x.array, st, g, code, env)?;
+                let arr = arr.try_arr()?.clone();
+                let i = self.ev_ast(&x.index, st, g, code, env)?;
+                if code {
+                    // `i >= 0` 은 파이썬 int, `i < arr.n` 은 z3 식끼리(반사 규칙)
+                    let ob = self.z.and(&[i.ge_i(0), i.lt(&arr.n)]);
+                    self.prove_core(
+                        &st.env,
+                        &st.pc,
+                        g,
+                        &ob,
+                        pos(e),
+                        "index_oob",
+                        &format!("index in bounds for {}[...]", arr.name),
+                        None,
+                    );
+                }
+                let v = arr.a.select(&i);
+                if code {
+                    let w = in_range(&self.z, &v);
+                    self.assume(st, g, w);
+                }
+                Ok(Val::Int(v))
+            }
+            Expr::Ctor(x) => {
+                if x.name == "None" {
+                    return Ok(Val::Dt(self.prelude.none(), Ty::Opt));
+                }
+                let arg = x.arg.as_ref().ok_or_else(|| "None".to_string())?;
+                let v = self.ev_ast(arg, st, g, code, env)?;
+                match x.name.as_str() {
+                    "Some" => Ok(Val::Dt(self.prelude.some(&v), Ty::Opt)),
+                    "Ok" => Ok(Val::Dt(self.prelude.ok(&v), Ty::Res)),
+                    "Err" => Ok(Val::Dt(self.prelude.err(&v), Ty::Res)),
+                    other => Err(format!("'{}'", other)),
+                }
+            }
+            Expr::Quant(x) => {
+                let lo = self.ev_ast(&x.lo, st, g, false, env)?;
+                let hi = self.ev_ast(&x.hi, st, g, false, env)?;
+                self.k += 1;
+                let k = self.z.int_const(&format!("{}!q{}", x.var, self.k));
+                let mut env2 = env.clone();
+                env2.set(&x.var, Val::Int(k.clone()));
+                self.qstack.push(k.clone());
+                let body = self.ev_ast(&x.body, st, g, false, &env2);
+                self.qstack.pop();
+                let body = body?;
+                if matches!(x.kind.as_str(), "sum" | "count" | "max" | "min") {
+                    return Ok(Val::Int(self.aggregate(&x.kind, &k, &lo, &hi, &body)));
+                }
+                let rng = self.z.and(&[k.ge(&lo), k.lt(&hi)]);
+                if x.kind == "forall" {
+                    Ok(Val::Bool(self.z.forall(std::slice::from_ref(&k), &rng.implies(&body), &[])))
+                } else {
+                    Ok(Val::Bool(self.z.exists(std::slice::from_ref(&k), &self.z.and(&[rng, body]), &[])))
+                }
+            }
+            Expr::Call(x) => self.call(e, x, st, g, code, env),
+            Expr::StructLit(x) => {
+                let mut vals: Vec<Ast> = Vec::new();
+                for fi in &x.fields {
+                    vals.push(self.ev_ast(&fi.value, st, g, code, env)?);
+                }
+                let sf = model.struct_fns_opt(&x.name).ok_or_else(|| format!("'{}'", x.name))?;
+                Ok(Val::Dt(sf.ctor.apply(&vals), Ty::User(x.name.clone())))
+            }
+            Expr::EnumCtor(x) => {
+                let mut vals: Vec<Ast> = Vec::new();
+                for a in &x.args {
+                    vals.push(self.ev_ast(a, st, g, code, env)?);
+                }
+                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
+                Ok(Val::Dt(vf.ctor.apply(&vals), Ty::User(x.enum_name.clone())))
+            }
+            Expr::FieldAccess(x) => {
+                let v = self.ev(&x.base, st, g, code, env)?;
+                let Val::Dt(va, Ty::User(sname)) = &v else { return Err("field access on a non-struct value".to_string()) };
+                let sf = model.struct_fns_opt(sname).ok_or_else(|| format!("'{}'", sname))?;
+                let idx = model.field_index_opt(sname, &x.field).ok_or_else(|| format!("'{}'", x.field))?;
+                let fty = model
+                    .struct_fields_opt(sname)
+                    .and_then(|fs| fs.get(idx))
+                    .map(|f| f.ty.clone())
+                    .ok_or_else(|| format!("'{}'", x.field))?;
+                Val::from_field(&fty, sf.accs[idx].apply1(va))
+            }
+            Expr::IsVariant(x) => {
+                let v = self.ev_ast(&x.value, st, g, code, env)?;
+                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
+                Ok(Val::Bool(vf.rec.apply1(&v)))
+            }
+            Expr::VariantField(x) => {
+                let v = self.ev_ast(&x.value, st, g, code, env)?;
+                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
+                let idx = model
+                    .variant_field_index(&x.enum_name, &x.variant, &x.field)
+                    .ok_or_else(|| format!("'{}'", x.field))?;
+                let fty = model
+                    .variant_decl(&x.enum_name, &x.variant)
+                    .and_then(|vd| vd.fields.get(idx))
+                    .map(|f| f.ty.clone())
+                    .ok_or_else(|| format!("'{}'", x.field))?;
+                Val::from_field(&fty, vf.accs[idx].apply1(&v))
+            }
+        }
+    }
+
+    /// verify.py `call` (604행).
+    fn call(&mut self, e: &Expr, x: &ast::Call, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Val> {
+        let n = x.name.as_str();
+        let mut args: Vec<Val> = Vec::new();
+        for a in &x.args {
+            args.push(self.ev(a, st, g, code, env)?);
+        }
+        let arg = |i: usize| -> R<&Val> { args.get(i).ok_or_else(|| "tuple index out of range".to_string()) };
+        match n {
+            "len" => return Ok(Val::Int(arg(0)?.try_arr()?.n.clone())),
+            "alloc" => {
+                let a0 = arg(0)?.try_ast()?.clone();
+                let a1 = arg(1)?.try_ast()?.clone();
+                let ob = self.z.and(&[a0.ge_i(0), a0.le_i(MAX_LEN)]);
+                self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "alloc_negative", "alloc length in 0..2^40", None);
+                self.k += 1;
+                return Ok(Val::Arr(Arr {
+                    a: self.z.const_array(&self.z.int_sort(), &a1),
+                    n: a0,
+                    name: "alloc".to_string(),
+                }));
+            }
+            "copy" => {
+                let a = arg(0)?.try_arr()?;
+                return Ok(Val::Arr(Arr { a: a.a.clone(), n: a.n.clone(), name: "copy".to_string() }));
+            }
+            "print" => return Ok(Val::Unit),
+            "is_some" => return Ok(Val::Bool(self.prelude.is_some(arg(0)?.try_ast()?))),
+            "some_val" => return Ok(Val::Int(self.prelude.sval(arg(0)?.try_ast()?))),
+            "is_ok" => return Ok(Val::Bool(self.prelude.is_ok(arg(0)?.try_ast()?))),
+            "ok_val" => return Ok(Val::Int(self.prelude.oval(arg(0)?.try_ast()?))),
+            "err_val" => return Ok(Val::Int(self.prelude.eval(arg(0)?.try_ast()?))),
+            _ => {}
+        }
+        let f: &'a ast::Function = match self.funcs.get(n) {
+            Some(f) => f,
+            None => return Err(format!("'{}'", n)),
+        };
+        let mut cenv = Env::default();
+        for (p, a) in f.params.iter().zip(args.iter()) {
+            cenv.set(&p.name, a.clone());
+        }
+        if code {
+            // 호출 지점은 callee 의 requires 정의역을 증명하지 않는다(callee 자신의 run() 이 이미 증명).
+            for r in &f.requires {
+                let ob = self.ev_ast(r, st, g, false, &cenv)?;
+                self.prove_core(
+                    &st.env,
+                    &st.pc,
+                    g,
+                    &ob,
+                    pos(e),
+                    "call_requires",
+                    &format!("precondition of {} (line {})", n, r.line()),
+                    None,
+                );
+            }
+        }
+        let ret = Ty::from_name(&f.ret);
+        if ret == Ty::Unit {
+            return Ok(Val::Unit);
+        }
+        let res = self.try_fresh(&format!("ret_{}", n), &ret)?;
+        if let Val::Arr(ra) = &res {
+            let w = self.z.and(&[ra.n.ge_i(0), ra.n.le_i(MAX_LEN)]);
+            self.assume(st, g, w);
+        } else if let Some(w) = self.wf(&ret, res.try_ast()?) {
+            self.assume(st, g, w);
+        }
+        cenv.set("result", res.clone());
+        for en in &f.ensures {
+            let v = self.ev_ast(en, st, g, false, &cenv)?;
+            self.assume(st, g, v);
+        }
+        Ok(res)
+    }
+
+    // =========================================================================================
+    // 계약의 정의역 (440~543행)
+    // =========================================================================================
+
+    /// verify.py `dom(e, st, g, env, kind)`: 계약 e 의 모든 부분 연산이 정의되는 조건(단락 순서). None=자명.
+    pub(crate) fn dom(&mut self, e: &Expr, st: &mut State, g: &[Ast], env: &Env, kind: PKind) -> R<Option<Ast>> {
+        if !has_vf(e, kind) {
+            return Ok(None);
+        }
+        let wo = kind != PKind::Variant; // None / "other"
+        let wv = kind != PKind::Other; // None / "variant"
+        let model: &'a Model = self.model;
+        match e {
+            Expr::Unary(x) => self.dom(&x.operand, st, g, env, kind),
+            Expr::Binary(x) => {
+                let dl = self.dom(&x.left, st, g, env, kind)?;
+                if matches!(x.op.as_str(), "&&" | "||" | "==>") {
+                    let l = self.ev_ast(&x.left, st, g, false, env)?;
+                    let dr = self.dom(&x.right, st, g, env, kind)?;
+                    let guard = if x.op == "||" { l.not() } else { l };
+                    return Ok(conj(&self.z, vec![dl, imp(&guard, dr)]));
+                }
+                let dr = self.dom(&x.right, st, g, env, kind)?;
+                let mut parts = vec![dl, dr];
+                if wo && (x.op == "/" || x.op == "%") {
+                    let r = self.ev_ast(&x.right, st, g, false, env)?;
+                    parts.push(Some(r.ne_i(0)));
+                }
+                Ok(conj(&self.z, parts))
+            }
+            Expr::Index(x) => {
+                let p0 = self.dom(&x.array, st, g, env, kind)?;
+                let p1 = self.dom(&x.index, st, g, env, kind)?;
+                let mut parts = vec![p0, p1];
+                if wo {
+                    let arr = self.ev(&x.array, st, g, false, env)?;
+                    let arr = arr.try_arr()?.clone();
+                    let i = self.ev_ast(&x.index, st, g, false, env)?;
+                    parts.push(Some(self.z.and(&[i.ge_i(0), i.lt(&arr.n)])));
+                }
+                Ok(conj(&self.z, parts))
+            }
+            Expr::Ctor(x) => match &x.arg {
+                Some(a) => self.dom(a, st, g, env, kind),
+                None => Ok(None),
+            },
+            Expr::Call(x) => {
+                let mut parts: Vec<Option<Ast>> = Vec::new();
+                for a in &x.args {
+                    parts.push(self.dom(a, st, g, env, kind)?);
+                }
+                if wo && is_tag_fn(&x.name) {
+                    let a0 = x.args.first().ok_or_else(|| "tuple index out of range".to_string())?;
+                    let v = self.ev_ast(a0, st, g, false, env)?;
+                    parts.push(Some(match x.name.as_str() {
+                        "some_val" => self.prelude.is_some(&v),
+                        "ok_val" => self.prelude.is_ok(&v),
+                        _ => self.prelude.is_ok(&v).not(),
+                    }));
+                }
+                Ok(conj(&self.z, parts))
+            }
+            Expr::StructLit(x) => {
+                let mut parts: Vec<Option<Ast>> = Vec::new();
+                for fi in &x.fields {
+                    parts.push(self.dom(&fi.value, st, g, env, kind)?);
+                }
+                Ok(conj(&self.z, parts))
+            }
+            Expr::EnumCtor(x) => {
+                let mut parts: Vec<Option<Ast>> = Vec::new();
+                for a in &x.args {
+                    parts.push(self.dom(a, st, g, env, kind)?);
+                }
+                Ok(conj(&self.z, parts))
+            }
+            Expr::FieldAccess(x) => self.dom(&x.base, st, g, env, kind),
+            Expr::IsVariant(x) => self.dom(&x.value, st, g, env, kind),
+            Expr::VariantField(x) => {
+                let inner = self.dom(&x.value, st, g, env, kind)?;
+                if !wv {
+                    return Ok(inner);
+                }
+                let v = self.ev_ast(&x.value, st, g, false, env)?;
+                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
+                Ok(conj(&self.z, vec![inner, Some(vf.rec.apply1(&v))]))
+            }
+            Expr::Quant(x) => {
+                let lo = self.ev_ast(&x.lo, st, g, false, env)?;
+                let hi = self.ev_ast(&x.hi, st, g, false, env)?;
+                let dlo = self.dom(&x.lo, st, g, env, kind)?;
+                let dhi = self.dom(&x.hi, st, g, env, kind)?;
+                let mut outer = vec![dlo, dhi];
+                if wo && (x.kind == "max" || x.kind == "min") {
+                    outer.push(Some(lo.lt(&hi)));
+                }
+                let outer = conj(&self.z, outer);
+                self.k += 1;
+                let k = self.z.int_const(&format!("{}!dk{}", x.var, self.k));
+                let mut envk = env.clone();
+                envk.set(&x.var, Val::Int(k.clone()));
+                self.qstack.push(k.clone());
+                let dbody = self.dom(&x.body, st, g, &envk, kind);
+                self.qstack.pop();
+                let Some(dbody) = dbody? else { return Ok(outer) };
+                let mut rng = self.z.and(&[k.ge(&lo), k.lt(&hi)]);
+                if x.kind == "forall" || x.kind == "exists" {
+                    // k 에서의 본문은 앞선 본문이 모두 참(forall)/거짓(exists)일 때만 평가된다.
+                    // 이름의 번호는 dbody 계산 뒤의 현재 s.k (512행).
+                    let j = self.z.int_const(&format!("{}!dj{}", x.var, self.k));
+                    let mut envj = env.clone();
+                    envj.set(&x.var, Val::Int(j.clone()));
+                    self.qstack.push(j.clone());
+                    let bj = self.ev_ast(&x.body, st, g, false, &envj);
+                    self.qstack.pop();
+                    let bj = bj?;
+                    let cond = self.z.and(&[j.ge(&lo), j.lt(&k)]);
+                    let inner = if x.kind == "forall" { bj } else { bj.not() };
+                    let prior = self.z.forall(std::slice::from_ref(&j), &cond.implies(&inner), &[]);
+                    rng = self.z.and(&[rng, prior]);
+                }
+                let fa = self.z.forall(std::slice::from_ref(&k), &rng.implies(&dbody), &[]);
+                Ok(conj(&self.z, vec![outer, Some(fa)]))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// verify.py `dom_obligations` (524행): variant_field → variant_domain, 그 밖의 부분 연산 → contract_domain.
+    fn dom_obligations(&mut self, e: &Expr, st: &mut State, g: &[Ast], env: &Env) -> R<Vec<(Ast, &'static str)>> {
+        let mut out: Vec<(Ast, &'static str)> = Vec::new();
+        for (kind, code) in [(PKind::Variant, "variant_domain"), (PKind::Other, "contract_domain")] {
+            if !has_vf(e, kind) {
+                continue;
+            }
+            let Some(d) = self.dom(e, st, g, env, kind)? else { continue };
+            if d.simplify().is_true() {
+                continue;
+            }
+            out.push((d, code));
+        }
+        Ok(out)
+    }
+
+    /// verify.py `check_dom` (537행): 코드별로 D(e) 를 따로 증명하고 증명한 정의역들을 돌려준다.
+    pub(crate) fn check_dom_e(
+        &mut self,
+        st: &mut State,
+        g: &[Ast],
+        e: &Expr,
+        node: Pos,
+        what: &str,
+        env: Option<&Env>,
+    ) -> R<Vec<Ast>> {
+        let envc: Env = match env {
+            Some(x) => x.clone(),
+            None => st.env.clone(),
+        };
+        let obs = self.dom_obligations(e, st, g, &envc)?;
+        for (d, code) in &obs {
+            let w = if *code == "variant_domain" {
+                what.to_string()
+            } else {
+                what.replace(
+                    "variant_field lookups",
+                    "partial operations (index, /, %, some_val/ok_val/err_val, max/min)",
+                )
+            };
+            self.prove_core(&st.env, &st.pc, g, d, node, code, &w, None);
+        }
+        Ok(obs.into_iter().map(|(d, _)| d).collect())
+    }
+
+    // =========================================================================================
+    // 문 (647~833행)
+    // =========================================================================================
+
+    /// verify.py `ensures_ok` (647행).
+    fn ensures_ok(&mut self, st: &mut State, val: Option<Val>, node: Pos) -> R<()> {
+        let f = self.f.ok_or_else(|| "no function".to_string())?;
+        let mut env = st.env.clone();
+        for p in &f.params {
+            let v = self.params.try_get(&p.name).cloned().ok_or_else(|| format!("'{}'", p.name))?;
+            env.set(&p.name, v);
+        }
+        if let Some(v) = val {
+            if !matches!(v, Val::Unit) {
+                env.set("result", v);
+            }
+        }
+        let mut prev: Vec<Ast> = Vec::new(); // 앞선 절(정의역+값)은 위에서 증명되어 뒤 절의 조회를 정당화할 수 있다
+        for en in &f.ensures {
+            let what = format!("variant_field lookups in postcondition (line {}) are defined", en.line());
+            let ds = self.check_dom_e(st, &prev, en, node, &what, Some(&env))?;
+            prev.extend(ds);
+            let ob = self.ev_ast(en, st, &[], false, &env)?;
+            self.prove_core(&st.env, &st.pc, &[], &ob, node, "ensures", &format!("postcondition (line {})", en.line()), None);
+            prev.push(ob);
+        }
+        Ok(())
+    }
+
+    /// verify.py `exec_block` (660행).
+    pub(crate) fn exec_block(&mut self, stmts: &[Stmt], st: State) -> R<Vec<State>> {
+        let mut states = vec![st];
+        for stmt in stmts {
+            let mut nxt: Vec<State> = Vec::new();
+            for cur in states {
+                nxt.extend(self.exec(stmt, cur)?);
+            }
+            states = nxt;
+            if states.is_empty() {
+                break;
+            }
+        }
+        Ok(states)
+    }
+
+    /// Let / Assign (711~717행).
+    fn exec_bind(&mut self, name: &str, value: &Expr, st: State) -> R<Vec<State>> {
+        let mut st = st.fork(None);
+        let v = self.ev0(value, &mut st, &[], true)?;
+        let v = match v {
+            Val::Arr(a) => Val::Arr(Arr { a: a.a, n: a.n, name: name.to_string() }),
+            other => other,
+        };
+        st.env.set(name, v);
+        Ok(vec![st])
+    }
+
+    /// verify.py `exec` (710행).
+    fn exec(&mut self, stmt: &Stmt, st: State) -> R<Vec<State>> {
+        let model: &'a Model = self.model;
+        let spos = stmt_pos(stmt);
+        match stmt {
+            Stmt::Let(s) => self.exec_bind(&s.name, &s.value, st),
+            Stmt::Assign(s) => self.exec_bind(&s.name, &s.value, st),
+            Stmt::IndexAssign(s) => {
+                let mut st = st.fork(None);
+                let arr = st.env.try_get(&s.name).ok_or_else(|| format!("'{}'", s.name))?.try_arr()?.clone();
+                let i = self.ev0_ast(&s.index, &mut st, &[], true)?;
+                let v = self.ev0_ast(&s.value, &mut st, &[], true)?;
+                let ob = self.z.and(&[i.ge_i(0), i.lt(&arr.n)]);
+                self.prove_core(
+                    &st.env,
+                    &st.pc,
+                    &[],
+                    &ob,
+                    spos,
+                    "index_oob",
+                    &format!("index in bounds for {}[...] =", s.name),
+                    None,
+                );
+                st.env.set(&s.name, Val::Arr(Arr { a: arr.a.store(&i, &v), n: arr.n.clone(), name: s.name.clone() }));
+                Ok(vec![st])
+            }
+            Stmt::If(s) => {
+                let mut st = st.fork(None);
+                let c = self.ev0_ast(&s.cond, &mut st, &[], true)?;
+                let mut out = self.exec_block(&s.then, st.fork(Some(c.clone())))?;
+                out.extend(self.exec_block(&s.els, st.fork(Some(c.not())))?);
+                Ok(out)
+            }
+            Stmt::Match(s) => {
+                let mut st = st.fork(None);
+                let v = self.ev0_ast(&s.scrutinee, &mut st, &[], true)?;
+                let outer: HashSet<String> = st.env.0.iter().map(|(k, _)| k.clone()).collect();
+                let mut out: Vec<State> = Vec::new();
+                for a in &s.arms {
+                    let cond: Ast;
+                    let vals: Vec<Ast>;
+                    let ftys: Vec<Ty>;
+                    if let Some(en) = &a.enum_name {
+                        let vf = model.variant_opt(en, &a.ctor).ok_or_else(|| format!("'{}'", a.ctor))?;
+                        cond = vf.rec.apply1(&v);
+                        vals = vf.accs.iter().map(|acc| acc.apply1(&v)).collect();
+                        let vd = model.variant_decl(en, &a.ctor).ok_or_else(|| format!("'{}'", a.ctor))?;
+                        ftys = vd.fields.iter().map(|f| f.ty.clone()).collect();
+                    } else {
+                        let p = self.prelude;
+                        let (c, val) = match a.ctor.as_str() {
+                            "Some" => (p.is_some(&v), Some(p.sval(&v))),
+                            "None" => (p.is_none(&v), None),
+                            "Ok" => (p.is_ok(&v), Some(p.oval(&v))),
+                            _ => (p.is_err(&v), Some(p.eval(&v))),
+                        };
+                        cond = c;
+                        vals = val.into_iter().collect();
+                        ftys = vals.iter().map(|_| Ty::I64).collect();
+                    }
+                    let mut b = st.fork(Some(cond));
+                    for ((name, val), fty) in a.binders.iter().zip(vals.iter()).zip(ftys.iter()) {
+                        b.env.set(name, Val::from_field(fty, val.clone())?);
+                        if let Some(w) = self.wf(fty, val) {
+                            b.pc.push(w);
+                        }
+                    }
+                    for mut end in self.exec_block(&a.body, b)? {
+                        // 바인더와 팔의 지역 변수는 팔과 함께 끝난다; 바깥 변수의 갱신만 남는다
+                        let drop_keys: Vec<String> =
+                            end.env.0.iter().filter(|(k, _)| !outer.contains(k)).map(|(k, _)| k.clone()).collect();
+                        for k in drop_keys {
+                            end.env.remove(&k);
+                        }
+                        out.push(end);
+                    }
+                }
+                Ok(out)
+            }
+            Stmt::FieldAssign(s) => {
+                let mut st = st.fork(None);
+                let v = self.ev0_ast(&s.value, &mut st, &[], true)?; // 오른쪽 먼저, 저장 전의 상태에서
+                let (root, ty) = match st.env.try_get(&s.name) {
+                    Some(Val::Dt(r, t)) => (r.clone(), t.clone()),
+                    _ => return Err(format!("field assignment on '{}' which is not a struct value", s.name)),
+                };
+                let path: Vec<&str> = s.fields.iter().map(|f| f.as_str()).collect();
+                let new = self.try_rebuild(&ty, &root, &path, &v)?;
+                st.env.set(&s.name, Val::Dt(new, ty));
+                Ok(vec![st])
+            }
+            Stmt::Return(s) => {
+                let mut st = st.fork(None);
+                let v = match &s.value {
+                    Some(e) => Some(self.ev0(e, &mut st, &[], true)?),
+                    None => None,
+                };
+                self.ensures_ok(&mut st, v, spos)?;
+                Ok(Vec::new())
+            }
+            Stmt::Assert(s) => {
+                let mut st = st;
+                self.check_dom_e(&mut st, &[], &s.cond, spos, "variant_field lookups in assertion are defined", None)?;
+                let ob = self.ev0_ast(&s.cond, &mut st, &[], false)?;
+                self.prove_core(&st.env, &st.pc, &[], &ob, spos, "assert", "assertion", None);
+                Ok(vec![st.fork(Some(ob))])
+            }
+            Stmt::ExprStmt(s) => {
+                let mut st = st.fork(None);
+                self.ev0(&s.expr, &mut st, &[], true)?;
+                Ok(vec![st])
+            }
+            Stmt::While(w) => {
+                let mut st = st;
+                self.loop_(w, &mut st)
+            }
+        }
+    }
+
+    /// 루프 시작 상태: 대입되는 변수를 havoc 하고 각 불변식의 정의역(variant)과 값을 가정한다.
+    fn loop_assume_invariants(&mut self, w: &ast::While, h: &mut State) -> R<()> {
+        for inv in &w.invariants {
+            let envh = h.env.clone();
+            if let Some(d) = self.dom(inv, h, &[], &envh, PKind::Variant)? {
+                h.pc.push(d);
+            }
+            let v = self.ev0_ast(inv, h, &[], false)?;
+            h.pc.push(v);
+        }
+        Ok(())
+    }
+
+    /// verify.py `loop` (786행).
+    fn loop_(&mut self, w: &ast::While, st: &mut State) -> R<Vec<State>> {
+        let dpos = pos(&w.decreases);
+        let mut prev: Vec<Ast> = Vec::new(); // 불변식은 차례로: 앞의 것(여기서 증명됨)이 뒤의 조회를 정당화할 수 있다
+        for inv in &w.invariants {
+            let ds = self.check_dom_e(
+                st,
+                &prev,
+                inv,
+                pos(inv),
+                "variant_field lookups in loop invariant (entry) are defined",
+                None,
+            )?;
+            prev.extend(ds);
+            let ob = self.ev0_ast(inv, st, &[], false)?;
+            self.prove_core(&st.env, &st.pc, &[], &ob, pos(inv), "invariant_entry", "loop invariant on entry", None);
+            prev.push(ob);
+        }
+        let mut names: BTreeSet<String> = BTreeSet::new();
+        assigned(&w.body, &mut names);
+        // 임의의 한 번의 반복: 시작에서 불변식이 성립했고(정의되었고)
+        let mut b = self.havoc_set(st, &names)?;
+        self.loop_assume_invariants(w, &mut b)?;
+        let c = self.ev0_ast(&w.cond, &mut b, &[], true)?;
+        b.pc.push(c);
+        self.check_dom_e(&mut b, &[], &w.decreases, dpos, "variant_field lookups in decreases are defined", None)?;
+        let d0 = self.ev0_ast(&w.decreases, &mut b, &[], false)?;
+        let ob = d0.ge_i(0);
+        self.prove_core(&b.env, &b.pc, &[], &ob, dpos, "decreases_nonneg", "decreases >= 0", None);
+        for mut end in self.exec_block(&w.body, b)? {
+            let mut prev: Vec<Ast> = Vec::new();
+            for inv in &w.invariants {
+                let ds = self.check_dom_e(
+                    &mut end,
+                    &prev,
+                    inv,
+                    pos(inv),
+                    "variant_field lookups in loop invariant (preserved) are defined",
+                    None,
+                )?;
+                prev.extend(ds);
+                let ob = self.ev0_ast(inv, &mut end, &[], false)?;
+                self.prove_core(&end.env, &end.pc, &[], &ob, pos(inv), "invariant_preserved", "loop invariant preserved", None);
+                prev.push(ob);
+            }
+            if has_vf(&w.decreases, PKind::All) {
+                // decreases 는 본문 끝에서 읽힌다: 방금 증명한 불변식이 그 조회를 정당화할 수 있다
+                let mut extra: Vec<Ast> = Vec::new();
+                for inv in &w.invariants {
+                    let envp = end.env.clone();
+                    if let Some(d) = self.dom(inv, &mut end, &[], &envp, PKind::All)? {
+                        extra.push(d);
+                    }
+                    let v = self.ev0_ast(inv, &mut end, &[], false)?;
+                    extra.push(v);
+                }
+                self.check_dom_e(
+                    &mut end,
+                    &extra,
+                    &w.decreases,
+                    dpos,
+                    "variant_field lookups in decreases are defined",
+                    None,
+                )?;
+            }
+            let dv = self.ev0_ast(&w.decreases, &mut end, &[], false)?;
+            let ob = dv.lt(&d0);
+            self.prove_core(&end.env, &end.pc, &[], &ob, dpos, "decreases_decrease", "decreases strictly decreases", None);
+        }
+        // 루프 뒤
+        let mut a = self.havoc_set(st, &names)?;
+        self.loop_assume_invariants(w, &mut a)?;
+        let c = self.ev0_ast(&w.cond, &mut a, &[], true)?;
+        a.pc.push(c.not());
+        Ok(vec![a])
+    }
+
+    /// verify.py `run` (835행).
+    pub fn run(&mut self) -> R<()> {
+        let f = self.f.ok_or_else(|| "no function".to_string())?;
+        let mut env = Env::default();
+        let mut pc: Vec<Ast> = Vec::new();
+        for p in &f.params {
+            let pty = Ty::from_name(&p.ty);
+            let v = self.try_fresh(&p.name, &pty)?;
+            match &v {
+                Val::Arr(a) => pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)])),
+                other => {
+                    if let Some(w) = self.wf(&pty, other.try_ast()?) {
+                        pc.push(w);
+                    }
+                }
+            }
+            env.set(&p.name, v);
+        }
+        self.params = env.clone();
+        let mut st = State { env, pc };
+        for r in &f.requires {
+            // D(r) 는 앞선 requires 만으로 증명하고, 그 뒤 D(r) && r 을 선언 순서대로 가정한다
+            let what = format!("variant_field lookups in requires (line {}) are defined", r.line());
+            self.check_dom_e(&mut st, &[], r, pos(r), &what, None)?;
+            // variant_field 부분만 가정한다: 나머지 정의역은 위에서 증명했지만 가정하지 않는다
+            let envc = st.env.clone();
+            if let Some(d) = self.dom(r, &mut st, &[], &envc, PKind::Variant)? {
+                st.pc.push(d);
+            }
+            let v = self.ev0_ast(r, &mut st, &[], false)?;
+            st.pc.push(v);
+        }
+        let ret_unit = Ty::from_name(&f.ret) == Ty::Unit;
+        let node: Pos = (f.line as u32, f.col as u32);
+        for mut end in self.exec_block(&f.body, st)? {
+            if ret_unit {
+                self.ensures_ok(&mut end, None, node)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reflected_and_literal_comparisons() {
+        let z = Z3::new();
+        let x = z.int_const("x");
+        // z3 수 리터럴이 오른쪽이면 반사(`IntVal(0).__le__(x)`), 파이썬 int 면 그대로
+        assert_eq!(x.ge(&z.int(0)).sexpr(), "(<= 0 x)");
+        assert_eq!(x.ge_i(0).sexpr(), "(>= x 0)");
+        assert_eq!(x.ne_i(0).sexpr(), "(distinct x 0)");
+    }
+
+    #[test]
+    fn int_literals_normalize() {
+        assert_eq!(norm_int("+007"), "7");
+        assert_eq!(norm_int("-0"), "0");
+        assert_eq!(norm_int("-12"), "-12");
+        assert_eq!(norm_int("9223372036854775808"), "9223372036854775808");
     }
 }

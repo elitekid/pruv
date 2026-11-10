@@ -316,3 +316,18 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 - 감사(Claude Opus): 바이트 차이 결함 없음(미대조였던 code 경로 전부를 포함해 약 110개 입력을 두 쪽에 넣어 대조). 필수 2건 — enum 변형·필드 이름 중복 검사가 `Vec::contains`라 O(n²)(필드 10만 개에서 Python 0.92초, Rust 9.2초) → `HashSet`으로 바꿔 필드 10만+변형 10만 입력 0.16초. 남긴 권고: 블록마다 scope 복제(Python `dict(scope)`와 같은 차수지만 항목마다 String 할당), 항 100만 개 덧셈 사슬에서 1GB 스택도 넘침(Python은 항 400개에서 RecursionError라 대조 범위 밖), 식마다 타입 문자열 할당, TypeDecl 이중 복사.
 - 고친 뒤 확인(Claude Opus): 고친 2건은 Python과 같은 동작(이름 검사 → 중복 검사 → 넣기, 오류 위치·문장 같음)으로 통과. 같은 꼴의 목록 포함 검사가 match 팔(`need`·`seen`), 구조체 리터럴(`declared`·`given`), 타입 의존(`deps`)에 남았으나 Python도 같은 자리에서 list를 써 차수가 같으므로 권고로 남긴다(구조체 리터럴 중복 이름은 "두 번 이상 나온 이름 중 맨 앞"이라 고칠 때 개수 사전을 써야 결과가 같다).
+
+## 18. M3 = C4 3단계: 검증기 이식 (2026-11-11)
+설계 4절 3단계. `verify.py` 전체(Model, 상태·배열, fresh·wf·rebuild, prove·재시도·seen, cex·fmt_val, ev·dom·집계 보조정리·call·ensures, exec·havoc·loop·run, verify_program)를 0B 시제품 위에 `pruvc-rs/crates/pruv-proof/src/{lib,model,obligation,symbolic,sys}.rs`로 옮겼다. `pruv-proof`가 `pruv-core`를 path 의존으로 쓴다(외부 의존 추가 없음). 시험 바이너리 `pruv-trace-dump`(어댑터 `trace`와 같은 JSON), 차분 도구 `tests/diff_trace.py`(입력마다 두 판을 새 프로세스로). 공개 CLI는 아직 없다(I 단계). Python 정본은 바꾸지 않았다. 이 맥에서만 확인했다.
+
+| 확인 | 결과 |
+|---|---|
+| `diff_trace.py` (seed 41·56·57·1·2 × 150 포함) | 932건: SMT-LIB 텍스트·판정·오류(code·line·col·message·fix) 모두 같음. 849건은 바이트 동일, 83건은 반례 값만 다름 |
+| 의무 규모(정본 기준) | 의무 9649(skipped 371), 시도 9578, 보조정리 재시도 300, sat 1466·unsat 8112·unknown 0 |
+| 반례 | 다른 반례 148개(83건 안) 모두 키·모양(스칼라/배열/구조체 이름) 같음. 값만 다름 |
+| 시제품 대조 `ci/m3/compare_spike.py` | 의무 58/58 SMT·판정 같음, z3 5.3.3.0 두 판 같음 |
+| 회귀 | `run_all --backend both` 363/363, `cli_also_llvm` 186/186, `cargo build --release --locked`(workspace), `cargo tree -d` 중복 없음, `cargo test -p pruv-proof` 통과 |
+
+- 차분에서 찾아 고친 것: z3py 반사 비교 규칙을 수 리터럴(ArithRef⊃IntNumRef)만 보던 것을 클래스 계층으로 넓혔다. `BoolVal(False) == ForAll(..)`은 오른쪽이 BoolRef의 하위 클래스 QuantifierRef라 반사 메서드가 먼저 불려 `(= forall false)`가 된다(bench p03). 작업자 코드의 컴파일 오류 1건(`Sat` 열거 참조)도 고쳤다.
+- 반례 값 차이: 같은 SMT 텍스트인데 z3가 고르는 모델이 다르다. 프로그램 전체를 컨텍스트 하나로 바꿔도 그대로여서 되돌렸다(함수마다 비-rc 컨텍스트, 함수가 끝나면 통째로 버림). 원인은 z3py의 rc 컨텍스트(AST 번호 재사용)와의 차이로 추정하며 확인하지 않았다. 설계 5절대로 반례는 바이트 동일을 요구하지 않는다. 같은 질의의 모델이라 질의 기준으로는 유효하다고 보지만, 독립 oracle로 위반을 다시 평가하는 장치는 아직 없다(이정표 관문 몫).
+- 대조에서 아직 나오지 않은 경로: `verify_unknown`(시간 초과), 보조정리 재시도의 relaxed 반례 `_note` — 감사에서 줄 단위 대조로 본다.
