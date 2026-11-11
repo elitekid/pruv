@@ -749,4 +749,5 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
   - 새 표본 diff_trace 두 모드 same(결정 11), `tests/inference --regress` 두 판 254/254, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42
 - **감사(Claude Opus):** 필수 0·권고 6, 모두 반영: u8 표본에 해제 helper IR 글자 검사(횟수만으로는 i64 크기 해제 퇴행을 못 잡음), requires u8 읽기에 통과 경우 더함(정렬·정제 진입), 링크 시험 판정 조임(런타임 안 해제 ≥1, 옛 런타임 u8은 marker 필수), 명세의 링크 실패 문구를 실제 보장 범위로 좁힘, `alloc_balance` 예외 기록, 옮기는 반환·인자 전달 경로 표본.
 - **확인 감사(Claude Opus):** 필수 0, 반영 6건 중 5건 맞음. 권고 3: 해제·복사 helper 전체 .ll 검사가 u8 선언 줄 때문에 늘 참 → 함수 본문 `llvm_fn_contains`로 바꿈, 명세 링크 시험 표의 옛 균형 기준·기대 심볼 갱신, 명세 표본 설명에 새 경로 기록 → 모두 반영.
-- 측정 못 한 것: u8 함수의 증명 시간과 생성 코드 성능, Windows(MSVC 런타임 컴파일·실행 — 푸시 뒤 Windows CI)·Linux 실행.
+- **Windows CI(푸시 뒤, run 42986134593):** 통과 — 새 바인딩 12표본(u8 반환 `g2a_u8_ret` 포함)을 Windows에서 clang으로 객체화한 `runtime.c`(Rust allocator 판, v2 helper 포함)와 rustc(MSVC)로 링크·실행해 맥 기대 출력과 같음.
+- 측정 못 한 것: u8 함수의 증명 시간과 생성 코드 성능, MSVC(`cl /std:c11`)로 런타임을 직접 컴파일하는 길(pruvc-rs 를 Windows에서 빌드할 때), Linux 실행.
