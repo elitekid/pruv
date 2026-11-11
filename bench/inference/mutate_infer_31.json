@@ -1,0 +1,533 @@
+{
+ "command": "bench/inference/mutate_infer.py OUT.json bench/solutions/pruv_try1 bench/solutions/pruv_agg bench/inference/agg_noinv bench/g1/solutions/ref_pruv --jobs 8 --retry",
+ "versions": {
+  "git_head": "0350eebf11bff08c8d244135fd3e300486c7cd59",
+  "compiler_sources_dirty": false,
+  "rs_binary_sha256": "46059bc672fa38d15a5f4c5402463f1e418778ce88fab9a362db5cb15a1f82e3",
+  "rs_binary_mtime": "2026-11-11T12:50:48"
+ },
+ "retried_undecided": 13,
+ "py": {
+  "plain": {
+   "accepted": 20,
+   "rejected": 278,
+   "undecided": 0,
+   "crash": 0
+  },
+  "infer": {
+   "accepted": 21,
+   "rejected": 269,
+   "undecided": 8,
+   "crash": 0
+  },
+  "new_pass": [
+   [
+    "agg_noinv",
+    "p02",
+    13,
+    "if a[i] >= m {"
+   ]
+  ],
+  "lost_pass": [],
+  "undecided": [
+   [
+    "pruv_try1",
+    "p09",
+    8,
+    "if len(a) == len(b) {",
+    "infer"
+   ],
+   [
+    "pruv_try1",
+    "p09",
+    12,
+    "let mut i: i64 = 1;",
+    "infer"
+   ],
+   [
+    "pruv_agg",
+    "p06",
+    21,
+    "let c: i64 = cur - v;",
+    "infer"
+   ],
+   [
+    "pruv_agg",
+    "p06",
+    30,
+    "i = i + 2;",
+    "infer"
+   ],
+   [
+    "pruv_agg",
+    "p09",
+    9,
+    "if len(a) == len(b) {",
+    "infer"
+   ],
+   [
+    "pruv_agg",
+    "p09",
+    13,
+    "let mut i: i64 = 1;",
+    "infer"
+   ],
+   [
+    "agg_noinv",
+    "p09",
+    9,
+    "if len(a) == len(b) {",
+    "infer"
+   ],
+   [
+    "agg_noinv",
+    "p09",
+    13,
+    "let mut i: i64 = 1;",
+    "infer"
+   ]
+  ]
+ },
+ "rs": {
+  "plain": {
+   "accepted": 20,
+   "rejected": 278,
+   "undecided": 0,
+   "crash": 0
+  },
+  "infer": {
+   "accepted": 21,
+   "rejected": 272,
+   "undecided": 5,
+   "crash": 0
+  },
+  "new_pass": [
+   [
+    "agg_noinv",
+    "p02",
+    13,
+    "if a[i] >= m {"
+   ]
+  ],
+  "lost_pass": [],
+  "undecided": [
+   [
+    "pruv_agg",
+    "p06",
+    21,
+    "let c: i64 = cur - v;",
+    "infer"
+   ],
+   [
+    "pruv_agg",
+    "p06",
+    30,
+    "i = i + 2;",
+    "infer"
+   ],
+   [
+    "pruv_agg",
+    "p09",
+    9,
+    "if len(a) == len(b) {",
+    "infer"
+   ],
+   [
+    "agg_noinv",
+    "p09",
+    12,
+    "let mut s: i64 = 1;",
+    "infer"
+   ],
+   [
+    "agg_noinv",
+    "p09",
+    18,
+    "i = i + 2;",
+    "infer"
+   ]
+  ]
+ },
+ "py_rs_verdict_diff": [
+  [
+   "pruv_try1",
+   "p09",
+   8,
+   "infer"
+  ],
+  [
+   "pruv_try1",
+   "p09",
+   12,
+   "infer"
+  ],
+  [
+   "pruv_agg",
+   "p09",
+   13,
+   "infer"
+  ],
+  [
+   "agg_noinv",
+   "p09",
+   9,
+   "infer"
+  ],
+  [
+   "agg_noinv",
+   "p09",
+   12,
+   "infer"
+  ],
+  [
+   "agg_noinv",
+   "p09",
+   13,
+   "infer"
+  ],
+  [
+   "agg_noinv",
+   "p09",
+   18,
+   "infer"
+  ]
+ ],
+ "command_note": "도구가 남긴 argv 의 OUT 경로(저장소 밖)를 OUT.json 으로 바꿔 적음",
+ "undecided_or_diff_items": [
+  {
+   "set": "pruv_try1",
+   "pid": "p09",
+   "line": 8,
+   "from": "if len(a) != len(b) {",
+   "to": "if len(a) == len(b) {",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.13,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.21
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.15
+   }
+  },
+  {
+   "set": "pruv_try1",
+   "pid": "p09",
+   "line": 12,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.13
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.12,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.17
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.04
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.17
+   }
+  },
+  {
+   "set": "pruv_agg",
+   "pid": "p06",
+   "line": 21,
+   "from": "let c: i64 = cur + v;",
+   "to": "let c: i64 = cur - v;",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 32.95
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.14,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.23
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 33.11
+   },
+   "rs_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.06,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.07
+    }
+   }
+  },
+  {
+   "set": "pruv_agg",
+   "pid": "p06",
+   "line": 30,
+   "from": "i = i + 1;",
+   "to": "i = i + 2;",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 33.0
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.26,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.33
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 32.71
+   },
+   "rs_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.09,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.37
+    }
+   }
+  },
+  {
+   "set": "pruv_agg",
+   "pid": "p09",
+   "line": 9,
+   "from": "if len(a) != len(b) {",
+   "to": "if len(a) == len(b) {",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.35
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.15,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.28
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.18
+   },
+   "rs_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.08,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.16
+    }
+   }
+  },
+  {
+   "set": "pruv_agg",
+   "pid": "p09",
+   "line": 13,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.38
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.15,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.47
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.2
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.27
+   }
+  },
+  {
+   "set": "agg_noinv",
+   "pid": "p09",
+   "line": 9,
+   "from": "if len(a) != len(b) {",
+   "to": "if len(a) == len(b) {",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.41
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.12,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.5
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.3
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.62
+   }
+  },
+  {
+   "set": "agg_noinv",
+   "pid": "p09",
+   "line": 12,
+   "from": "let mut s: i64 = 0;",
+   "to": "let mut s: i64 = 1;",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.42
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.91
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.28
+   },
+   "rs_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.07,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.25
+    }
+   }
+  },
+  {
+   "set": "agg_noinv",
+   "pid": "p09",
+   "line": 13,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.43
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.13,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.4
+    }
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.26
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.66
+   }
+  },
+  {
+   "set": "agg_noinv",
+   "pid": "p09",
+   "line": 18,
+   "from": "i = i + 1;",
+   "to": "i = i + 2;",
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.36
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.6
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.22
+   },
+   "rs_infer": {
+    "verdict": "undecided",
+    "code": "inference_timeout",
+    "sec": 0.07,
+    "first": {
+     "verdict": "undecided",
+     "code": "inference_timeout",
+     "sec": 0.25
+    }
+   }
+  }
+ ]
+}

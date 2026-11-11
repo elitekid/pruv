@@ -596,17 +596,29 @@ Python 판 `--infer`(28절)를 Rust 판에 옮겼다: `pruv-proof/src/infer.rs`(
 
 ## 31. 1단계 마무리(건전성 회귀 측정)와 G2 설계 (2026-11-11)
 ### 31.1 `--infer` 건전성 회귀: 잘못된 변이의 새 통과 0
-STAGE1_SPEC 5.5의 마지막 지표 "건전성 회귀(잘못된 변이의 새 통과 수)"를 쟀다. 새 도구 `bench/inference/mutate_infer.py`는 `bench/mutate.py`의 변이 규칙(OPS·SKIP·`mutants`)을 소스에서 그대로 가져와 같은 변이를 만들고, 검증기만 네 번(Python 판·Rust 판 × `--infer` 없음·켬) 돌려 판정을 비교한다. 새 통과 = 없음에서 거부인데 켬에서 통과.
+STAGE1_SPEC 5.5의 마지막 지표 "건전성 회귀(잘못된 변이의 새 통과 수)"를 쟀다. 새 도구 `bench/inference/mutate_infer.py`는 `bench/mutate.py`의 변이 규칙(OPS·SKIP·`mutants`)을 소스에서 그대로 가져와 같은 변이를 만들고, 컴파일(검증+코드 생성)을 네 번(Python 판·Rust 판 × `--infer` 없음·켬) 돌려 판정을 비교한다. 판정: 통과 = 종료 0, 거부 = 종료 1 + 오류 JSON(stage≠internal), **미결** = 종료 1 + `inference_timeout`·`verify_unknown`, crash = 그 밖(종료 2·3, JSON 없는 종료 1, 시간 초과). 새 통과 = 없음에서 통과가 아닌데 켬에서 통과. 미결은 `--retry`로 병렬 1개로 다시 돌린다. 뒷단은 검증 뒤 단계라 판정에 영향이 없어 rust 뒷단만 쓴다(처음 llvm으로도 돌려 같은 판정을 봤지만 독립 증거는 아니다).
 
-| 입력(변이 수) | 뒷단 | 없음 통과 → 켬 통과 (두 판 같음) | 새 통과 | 잃은 통과 | py/rs 판정 차이 | crash·시간 초과 |
-|---|---|---|---|---|---|---|
-| `bench/solutions/pruv_try1`(83) + `pruv_agg`(83) + 불변식 지운 `bench/inference/agg_noinv`(83) | rust | 12 → 13 | 1 | 0 | 0 | 0 |
-| 같은 249개 | llvm | 12 → 13 | 1 | 0 | 0 | 0 |
-| `bench/g1/solutions/ref_pruv`(49) | llvm | 8 → 8 | 0 | 0 | 0 | 0 |
+명령: `mutate_infer.py OUT bench/solutions/pruv_try1 bench/solutions/pruv_agg bench/inference/agg_noinv bench/g1/solutions/ref_pruv --jobs 8 --retry`(HEAD 0350eeb, 2분 6초). 요약은 `bench/inference/mutate_infer_31.json`.
 
-- **새 통과 1건은 원래 참인 변이다.** `agg_noinv` p02(max)의 `if a[i] > m` → `if a[i] >= m`. 같은 값을 다시 고를 뿐 결과가 같고, 사람이 쓴 불변식이 있는 `pruv_agg` p02의 같은 변이는 추론 없이도 통과한다(두 판). 추론이 없을 때 거부된 까닭은 불변식이 없어서였다. 따라서 **잘못된 변이의 새 통과는 0**(두 판·두 뒷단).
-- 기준선 확인: `pruv_agg` 83개 변이의 추론 없음 판정은 예전 기록 `bench/mutants9_0a_llvm.json`(83개)과 통과/거부가 모두 같다.
-- 결과 파일: 결과 폴더 `mi/mi_rust.json`·`mi_llvm.json`·`mi_ref_llvm.json`(저장소 밖). 한 변이 검증은 최대 49초, 249개×4회 한 뒷단 약 2분(8병렬).
-- 한계: 변이는 `mutate.py`의 15가지 연산자 꼴뿐이고 불변식·계약 줄은 바꾸지 않는다. 시험 실행(`--no-verify` 빌드 뒤 정답 비교)은 이 도구에서 하지 않았다(판정이 추론과 무관해서).
+| 판 | 없음: 통과/거부/미결/crash | 켬: 통과/거부/미결/crash | 새 통과 | 잃은 통과 |
+|---|---|---|---|---|
+| Python | 20 / 278 / 0 / 0 | 21 / 269 / **8** / 0 | 1 | 0 |
+| Rust | 20 / 278 / 0 / 0 | 21 / 272 / **5** / 0 | 1 | 0 |
+
+- **새 통과 1건은 원래 참인 변이다.** `agg_noinv` p02(max)의 `if a[i] > m` → `if a[i] >= m`. 같은 값을 다시 고를 뿐 결과가 같다. 사람이 쓴 불변식이 있는 `pruv_agg` p02의 같은 변이는 추론 없이도 통과하고, 예전 기록 `bench/mutants9_0a_llvm.json`에서도 통과·시험 통과다. 따라서 **잘못된 변이의 새 통과는 0**(두 판). 참/거짓 변이 판정은 사람이 했다.
+- **미결 13건(Python 8·Rust 5)은 통과가 아니다**(종료 1, 컴파일 실패). 병렬 1개 재시도에서도 그대로였다. 그래서 "새 통과 0"은 이 13건을 통과가 아닌 것으로 센 결과다.
+- **새로 찾은 두 판 차이(고칠 일):** 미결은 모두 0.1초 안팎에 나는 `inference_timeout`이고 결정적으로 재현된다. 두 판에서 걸리는 변이가 달라 `--infer` 판정이 7건에서 어긋난다(한쪽 미결·다른 쪽 거부, 둘 다 통과 아님). 한 사례(`pruv_try1` p09 줄 8)에서 Python trace의 탐색 질의 하나가 `unknown`(reason `canceled`, 500ms보다 훨씬 짧음 → rlimit 쪽으로 보임)이었고, `query_status`가 `canceled`를 `timeout`으로 분류해 Houdini 전체를 멈췄다. Rust는 같은 자리에서 답을 냈다. 이는 명세(`docs/STAGE1_B_INFER.md` 질의 timeout → 함수 전체 `inference_timeout`)대로의 동작이고, 두 판 차이는 같은 rlimit 소진이 z3 글귀에 따라 `canceled`(→timeout, 추론 중단)와 `push canceled`·`max. resource limit exceeded`(→resource_unknown, 후보 탈락)로 갈리는 데서 온다(30절의 same_unknown 2건과 같은 뿌리). 질의 하나의 `unknown`은 그 후보만 버리면 되는데(건전) 함수 전체 추론을 멈추는 것이 문제다. 근거 자료: 미결·판정 차이 변이의 항목별 기록(초·코드·첫 시도)을 `bench/inference/mutate_infer_31.json`에 두었다. trace 확인은 p09 줄 8 한 사례만 했다. **다음 묶음 첫 일로 고친다**(탐색 질의의 unknown은 후보 탈락으로, 함수 중단은 벽시계 5초 기한만으로 — 명세 STAGE1_B_INFER 갱신, 두 판, `--infer` 회귀·대조 다시).
+- 기준선 확인: `pruv_agg` 83개 변이의 추론 없음 통과/거부는 예전 기록 `mutants9_0a_llvm.json`(83개)과 모두 같다.
+- 한계: 변이는 `mutate.py`의 15가지 연산자 꼴뿐이고 불변식·계약 줄은 바꾸지 않는다. 변이 프로그램 실행 시험은 이 도구에서 하지 않았다.
+- 확인 감사(Claude Opus): 앞 필수 7건 중 6건 해결, G2 표본 수 계산 오류(24 → 28, runtime 10 → 11) 필수 1건을 고침. 권고 반영: 미결 판정은 오류가 모두 미결 코드일 때만, z3 판(Python·`z3-src` 크레이트)·Cargo.lock 수정 여부 기록, 미결 항목 자료 저장, 원인 설명 정밀화, G2 결정 4 열거·결정 16 진단 이름·A6 끝 기준 보완.
+- 감사(Claude Opus) 필수 2건을 고쳤다: 종료 2·JSON 없는 종료 1을 거부로 세던 것(→ crash, crash가 있으면 도구 실패), `inference_timeout`을 거부로 세던 것(→ 미결, 재시도·따로 집계). 권고 반영: 컴파일러 판 기록(git HEAD·소스 수정 여부·Rust 바이너리 sha256), 임시 폴더 정리, 작업 예외를 crash로 기록, 입력 폴더 이름 겹침 거부, "검증만"·"두 뒷단" 문구 정정, 명령·요약을 저장소에.
 
 **1단계 완료.** 정제 타입(A), 템플릿 Houdini `--infer`(B·B+, 불변식 지운 pruv_agg 7/10)까지 하고 5.5 지표를 모두 쟀다. 구간 분석(C)은 보류, `--infer` 기본 켜기는 계속 끔.
+
+### 31.2 G2 설계 확정(`docs/G2_SPEC.md`)
+조사 → 초안 → 설계 논쟁 1회 → 메인 확정 → 감사 순으로 만들었다(구현은 다음 묶음부터, 측정값 없음).
+
+- **조사(Codex):** 지금 정수는 `i64` 하나, 배열은 `[i64]`만(파서가 `[` 뒤 `i64`만 받음), 문자열·문자 토큰 없음(따옴표는 `bad_char`). 증명은 `Array(Int,Int)`+길이, Rust 출력 `&[i64]`/`Vec<i64>`, LLVM `{ptr,i64}`·C 런타임 원소 8바이트 고정, `--rust-bindings`도 `*const i64`.
+- **초안(Codex):** 스칼라 정수 타입은 늘리지 않고 배열 원소 저장 타입만 연다. 좁은 원소를 읽으면 `i64`, 쓸 때 `elem_range` 증명. `str` = 유효 UTF-8이 보장된 읽기 전용 바이트열, 경계 증명된 `substr`(복사). `[u8]→str` 변환은 `Option<str>`이 없어 뒤로.
+- **설계 논쟁(Codex, 필수 9·권고 6) → 0.0절 확정 결정 14개:** 첫 판 `[u8]`·`[bool]`만(i32 뒤로), 범위 가정은 값이 바깥에서 들어오는 지점(진입·호출 결과·havoc)에서만, `--infer` 탐색이 건너뛰는 `elem_range`는 최종 검증에서 필수 관문, bool 배열 `Array(Int,Bool)`과 반례 JSON, `alloc` 원소 타입은 타입 적은 `let`·재대입·`return` 바로 오른쪽에서만, 내부 타입 이름 소스 사용 거부, 감사는 묶음마다, 444는 실행 행 목록으로 고정, 새 표본 대조는 `same`만 인정. 첫 구현 묶음은 **A0 기반**(새 문법 없이 기존 `[i64]` 기호 배열에 원소 타입 보존).
+- **감사(Claude Opus, 문서 몫 필수 5·권고 6):** A0 경계에 `samples.rs`(시제품 경로가 `Arr {..}`를 직접 만듦)·`run_all.py`(행 목록 내보내기) 누락, 결정 4가 후보 종류를 잘못 짚음(원소 범위는 종류 12가 아니라 **종류 5**, 그대로면 bool 배열에 `lo <= b[k]`가 생겨 z3 sort 오류), 코드 읽기 때의 `in_range(Select)` 가정 지점 미규정(좁히면 잘못 저장 뒤 읽기에서 공허한 증명), i32 미루기와 끝 기준(표본 26개·examples·변이·독립 사용) 모순 → 모두 0.0절에 반영(결정 2·4 보강, 15~17 추가, 묶음 표 경계 보강). 권고 반영: 다음 층 미구현 동안 G2 타입 명시 거부, G2 전용 변이 OPS, SMT 기준 입력 목록 고정, 줄 번호 인용 정정.
