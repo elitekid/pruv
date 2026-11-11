@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 # ---------- types ----------
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class Type:
     """name: "i64" | "bool" | "unit" | "array" | "option" | "result" | ... | a user nominal name | a parameter name.
     G3 A0 optional fields (all defaults leave every legacy type unchanged, so legacy equality/hash/print are as before):
@@ -19,6 +19,16 @@ class Type:
     args: tuple = ()
     owner: Optional[str] = None
     index: int = -1
+
+    def _key(self):
+        # a parameter's identity is (owner, index); its name is only for printing (same rule as gtype.rs)
+        return ("param", self.owner, self.index) if self.owner is not None else (self.name, self.args)
+
+    def __eq__(self, other):
+        return isinstance(other, Type) and self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
 
 I64 = Type("i64"); BOOL = Type("bool"); UNIT = Type("unit")
 ARRAY = Type("array"); OPTION = Type("option"); RESULT = Type("result")
