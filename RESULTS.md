@@ -487,7 +487,7 @@ B 묶음(템플릿 Houdini 불변식 추론)의 첫 작업(STAGE1_SPEC 0절 11·
 
 | 확인 | 결과 |
 |---|---|
-| `--infer` 없는 경로 SMT 불변: 코퍼스 231개 파일의 의무별 SMT 텍스트·판정·오류를 HEAD(aec7d1d)와 비교 | **바이트 동일** |
+| `--infer` 없는 경로 SMT 불변: 코퍼스 231개 파일의 의무별 SMT 텍스트·판정·오류를 HEAD(d2c649e)와 비교 | **바이트 동일** |
 | `tests/m3_all.py` | 8단계 모두 ok, trace 351입력 same 333·cex_only 18·same_unknown 0, verified 164 |
 | `run_all --backend both` Rust 판 / Python 판 | 444/444 / 444/444 |
 | `cli_also_llvm` | 213/213 |
@@ -598,7 +598,7 @@ Python 판 `--infer`(28절)를 Rust 판에 옮겼다: `pruv-proof/src/infer.rs`(
 ### 31.1 `--infer` 건전성 회귀: 잘못된 변이의 새 통과 0
 STAGE1_SPEC 5.5의 마지막 지표 "건전성 회귀(잘못된 변이의 새 통과 수)"를 쟀다. 새 도구 `bench/inference/mutate_infer.py`는 `bench/mutate.py`의 변이 규칙(OPS·SKIP·`mutants`)을 소스에서 그대로 가져와 같은 변이를 만들고, 컴파일(검증+코드 생성)을 네 번(Python 판·Rust 판 × `--infer` 없음·켬) 돌려 판정을 비교한다. 판정: 통과 = 종료 0, 거부 = 종료 1 + 오류 JSON(stage≠internal), **미결** = 종료 1 + `inference_timeout`·`verify_unknown`, crash = 그 밖(종료 2·3, JSON 없는 종료 1, 시간 초과). 새 통과 = 없음에서 통과가 아닌데 켬에서 통과. 미결은 `--retry`로 병렬 1개로 다시 돌린다. 뒷단은 검증 뒤 단계라 판정에 영향이 없어 rust 뒷단만 쓴다(처음 llvm으로도 돌려 같은 판정을 봤지만 독립 증거는 아니다).
 
-명령: `mutate_infer.py OUT bench/solutions/pruv_try1 bench/solutions/pruv_agg bench/inference/agg_noinv bench/g1/solutions/ref_pruv --jobs 8 --retry`(HEAD 0350eeb, 2분 6초). 요약은 `bench/inference/mutate_infer_31.json`.
+명령: `mutate_infer.py OUT bench/solutions/pruv_try1 bench/solutions/pruv_agg bench/inference/agg_noinv bench/g1/solutions/ref_pruv --jobs 8 --retry`(HEAD 8af89bf, 2분 6초). 요약은 `bench/inference/mutate_infer_31.json`.
 
 | 판 | 없음: 통과/거부/미결/crash | 켬: 통과/거부/미결/crash | 새 통과 | 잃은 통과 |
 |---|---|---|---|---|
@@ -830,7 +830,7 @@ B1까지 증명만 되던 `str`을 Rust 소스 뒷단·LLVM 뒷단·raw ABI·`--
   - m3_all 12단계 ok(llvm·rust 생성물 두 판 same, compilers 1050, standalone 50 same, abi_bool 16/16, abi_utf8 104/104), cli_also_llvm 두 판 373/373, `tests/inference --regress` 두 판 325/325, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1, winci `prepare.py --check` 60파일 동일
 - **감사(Claude Opus):** 필수 0·권고 6. (a) raw 선검사, (b) SMT·실행 경계 일치, (c) substr 바이트 관계·해제 모두 결함 없음. 반영: `pruv_check_utf8` 음수 길이·NULL 거부, 경계 끝값 UTF-8 표본 11, 2^64 계약 경계 표본, `pruv_str_boundary` 선언에 `willreturn memory(argmem: read)`, Py `uses_str` 한 번만 계산. `__typed` 공개 기호(A5 와 같은 설계)와 바인딩 반환 재검사(`--trust-callers` 에서의 방어)는 이유를 명세 5.5에 적고 유지.
 - **확인 감사(Claude Opus):** 필수 0, 고침 6건 확인(`memory(argmem: read)` 는 clang 22·Apple clang 17 이 받고 런타임 함수가 실제로 인자 메모리만 읽음). 권고 2 반영: 음수 길이·NULL 시험 추가, 런타임·시험 머리 주석 갱신.
-- **Windows CI:** runtime.c·winci 를 바꿔 실행됨. 푸시 뒤 run 43012869415(커밋 0600c22) success — windows-latest clang 이 `memory(argmem: read)` 선언과 str 생성물(`g2b_str_ret`·`g2a_bool_opt` 포함)을 받아 실행함.
+- **Windows CI:** runtime.c·winci 를 바꿔 실행됨. 푸시 뒤 run 43012869415(커밋 3260277) success — windows-latest clang 이 `memory(argmem: read)` 선언과 str 생성물(`g2b_str_ret`·`g2a_bool_opt` 포함)을 받아 실행함.
 - 남긴 것: `[i64]`·`[u8]`·`[bool]` raw 진입의 음수 길이·NULL 거부(B2 전부터 있던 공백, str 만 고침).
 - 측정 못 한 것: str 증명·실행 시간, Linux 실행.
 
@@ -870,7 +870,7 @@ G2_SPEC 8.3절(퍼저·변이) 관문을 닫는다. 컴파일러(`pruvc/`·`pruv
 
 ## 43. G2 Q2: 측정·독립 사용 6문제·SPEC 요약 — G2 완료 (2026-11-11)
 
-G2 마지막 관문(G2_SPEC 7.7·8.4). 명세 `docs/G2_Q2_IMPL.md`. **컴파일러(`pruvc/`·`pruvc-rs/`)는 바꾸지 않았다** — 측정 도구·풀이·문서만 더했다. 비교 기준은 G2 바로 앞 커밋 `3556f47`(워크트리를 따로 빌드), 지금은 HEAD 의 Rust 판 `pruvc`(다시 빌드해도 컴파일할 것이 없어 소스와 같음을 확인). 측정 내내 화면 녹화(ffmpeg)가 돌아 기계에 부하가 있었다(loadavg 5~13, 10코어).
+G2 마지막 관문(G2_SPEC 7.7·8.4). 명세 `docs/G2_Q2_IMPL.md`. **컴파일러(`pruvc/`·`pruvc-rs/`)는 바꾸지 않았다** — 측정 도구·풀이·문서만 더했다. 비교 기준은 G2 바로 앞 커밋 `5c65fe3`(워크트리를 따로 빌드), 지금은 HEAD 의 Rust 판 `pruvc`(다시 빌드해도 컴파일할 것이 없어 소스와 같음을 확인). 측정 내내 화면 녹화(ffmpeg)가 돌아 기계에 부하가 있었다(loadavg 5~13, 10코어).
 
 - **SPEC.md 6b절(G2 사용자 규칙 한 쪽):** `[u8]`·`[bool]`(저장 범위 `elem_range`, alloc 좁은 타입이 정해지는 세 자리, 정확한 타입 일치, bool 은 `count`), `str`(리터럴·이스케이프, 바이트 `len`/`s[i]`, 소유권은 배열과 같음, `is_char_boundary` 정의 식, `substr` 의무 `string_slice_range`→`utf8_boundary`, 없는 것, 증명기는 UTF-8 규칙을 모름), 안전 모드 문구와 raw 진입 검사. 표 2행 추가. 몇 규칙은 작은 프로그램으로 실제 동작을 확인했다(sum 의 bool 본문 거부, 인자 자리 alloc 은 `[i64]`, 첫 바이트 경계는 증명 안 됨, str 변수 대입은 `array_alias`).
 - **SPEC.md 8절 `verify_unknown` 안내(새로):** 반례가 아니라 시도마다 8초 벽시계 한도에 걸린 것, 증명을 쉽게 하는 법(한 위치 사실은 양화 없이, 중첩 양화는 비쌈, 작은 사실은 불변식으로). 독립 사용 중 명세 공백으로 드러나 넣었다(아래).
@@ -906,7 +906,7 @@ G2 마지막 관문(G2_SPEC 7.7·8.4). 명세 `docs/G2_Q2_IMPL.md`. **컴파일�
 - **감사(Claude Opus):** 필수 3 — (1) 8절 안내 예시가 q04 정답 불변식을 흘림 → 예시를 일반 문구로, 작성자 2 결과 무효 처리, 작성자 3 추가 (2) 문자열 복사 비용 단위 혼동 → 복사 바이트당으로 (3) 배열 시간 비에 시작 비용 섞임 → 뺀 비를 함께. 권고 반영: 8초 설명(시도마다·집계 시 두 번·부하 영향), str 대입 규칙·raw 진입 두 모드·`[bool]` 저장 값·raw 음수 길이 미검사 SPEC 에 추가, solver 통계는 Python 판이라고 명시·독립 풀이 통계 추가, `pruv_refine` bench 추가, 측정 바이너리 커밋 확인, 파일별 최대 비 기록.
 - **확인 감사(Claude Opus):** 필수 1 — llvm substr·copy 비용을 또 입력 바이트당 값으로 적음 → 복사 바이트당 0.33~0.73 으로 고치고 메인이 JSON 으로 다시 대조. 앞 필수 3건은 해결(1·3), 2는 이 고침으로 해결. 권고 6 반영: 작성자 3 판정의 단서, 작성자 3 solver 통계 추가, bench 입력 수·p04 범위·llvm RSS 숫자 정정, 첫 실행 시간, A6 로 미룬 i32 배열 측정, 감사 결과 기록 뒤 완료 판정. SPEC 6b/8 추가 규칙은 구현과 맞음(file:line 대조).
 - **회귀:** 컴파일러를 바꾸지 않아 `run_all` 833행·SMT 231·퍼저·변이는 다시 돌리지 않았다(Q1 기준값 그대로). 위 compile 시간 측정에서 231개 입력의 종료 코드가 G2 전과 모두 같았다.
-- **Windows CI:** CI 경로(winci·runtime.c·워크플로)를 건드리지 않아 실행되지 않음. 커밋 234c0d3 뒤 `winci/prepare.py --check` 60파일 동일.
+- **Windows CI:** CI 경로(winci·runtime.c·워크플로)를 건드리지 않아 실행되지 않음. 커밋 73204d7 뒤 `winci/prepare.py --check` 60파일 동일.
 
 ### G2 완료 판정
 

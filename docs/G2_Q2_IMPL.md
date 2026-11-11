@@ -4,9 +4,9 @@ G2_SPEC 7.7·8.4의 마지막 관문. 컴파일러(`pruvc/`·`pruvc-rs/`)는 바
 
 ## 0. 기준
 
-- **G2 이전 기준 커밋:** `3556f47`(G2 A0 `9821ac1` 바로 앞, 컴파일러 코드가 G2 전). 워크트리 `/tmp/q2/base`, Rust 판은
+- **G2 이전 기준 커밋:** `5c65fe3`(G2 A0 `ea4efb5` 바로 앞, 컴파일러 코드가 G2 전). 워크트리 `/tmp/q2/base`, Rust 판은
   `CARGO_TARGET_DIR=/tmp/q2/base-target` 로 빌드해 `/tmp/q2/base-target/release/pruvc`.
-- **지금:** `HEAD`(Q1 `373ad93` 뒤), `pruvc-rs/target/release/pruvc`.
+- **지금:** `HEAD`(Q1 `337ac05` 뒤), `pruvc-rs/target/release/pruvc`.
 - 정본은 Rust 판. Python 판은 대조용이라 시간 측정의 주 대상이 아니다(재면 따로 적는다).
 - 측정은 다른 무거운 작업과 동시에 돌리지 않는다(직렬, jobs 1). 기계 부하는 결과에 적는다.
 

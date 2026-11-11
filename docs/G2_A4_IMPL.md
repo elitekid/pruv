@@ -273,7 +273,7 @@ void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align) {
 
 ## 6. 링크 실패 시험(`tests/abi/check_runtime_v2.py`)
 
-호스트 대상에서 Rust 판 pruvc로 `.ll`+바인딩을 만들고 clang으로 `.ll`·런타임을 객체화한 뒤 rustc로 Rust 주 프로그램과 링크한다. `tests/abi/runtime_v1.c`는 A3 커밋(1b884b7)의 `runtime.c`를 그대로 얼린 사본이다.
+호스트 대상에서 Rust 판 pruvc로 `.ll`+바인딩을 만들고 clang으로 `.ll`·런타임을 객체화한 뒤 rustc로 Rust 주 프로그램과 링크한다. `tests/abi/runtime_v1.c`는 A3 커밋(bec0348)의 `runtime.c`를 그대로 얼린 사본이다.
 
 | 경우 | 바인딩 | 런타임 | 기대 |
 |---|---|---|---|

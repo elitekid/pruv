@@ -1,7 +1,7 @@
 {
  "command": "bench/inference/mutate_infer.py OUT.json bench/solutions/pruv_try1 bench/solutions/pruv_agg bench/inference/agg_noinv bench/g1/solutions/ref_pruv --jobs 8 --retry",
  "versions": {
-  "git_head": "0350eebf11bff08c8d244135fd3e300486c7cd59",
+  "git_head": "8af89bfe953e155762460f644cbee8ffab8dcbdd",
   "compiler_sources_dirty": false,
   "rs_binary_sha256": "46059bc672fa38d15a5f4c5402463f1e418778ce88fab9a362db5cb15a1f82e3",
   "rs_binary_mtime": "2026-11-11T12:50:48"

@@ -31,7 +31,7 @@
 `check_runtime_v2.py [--pruvc PATH]` 는 G2 A4(`docs/G2_A4_IMPL.md` 6절)의 6경우를 호스트 대상에서 실제로 링크해 본다:
 새 바인딩+새 런타임(`g2a_u8_ret`·`arr_ret`)은 성공(`[u8]` 쪽은 `pruv-alloc-balance` 확인), 새 바인딩+옛 런타임,
 v2 helper 를 뺀 옛 바인딩 흉내+새 런타임, 새 바인딩+malloc 런타임(marker 없음)은 `rustc` 링크 실패와 기대 심볼 이름을 요구한다.
-`runtime_v1.c` 는 A3 커밋(1b884b7)의 `pruvc/runtime.c` 를 그대로 얼린 사본이며 옛 런타임 역할만 한다(수정 금지).
+`runtime_v1.c` 는 A3 커밋(bec0348)의 `pruvc/runtime.c` 를 그대로 얼린 사본이며 옛 런타임 역할만 한다(수정 금지).
 경우마다 `ok <이름>` / `FAIL <이름>: 이유` 한 줄, 하나라도 FAIL 이면 exit 1. `tests/m3_all.py` 의 `abi_v2` 단계로도 돈다.
 
 ## Windows CI 에서 할 일 (이 맥에서는 불가)
