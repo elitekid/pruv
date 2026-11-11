@@ -506,6 +506,8 @@ class Gen:
         u8_used = uses_array_type(s.prog, "array_u8")
         bool_used = uses_array_type(s.prog, "array_bool")  # G2 A5
         str_used = uses_str(s.prog)  # G2 B2
+        if s.g6 and not str_used:   # G6: a String parameter can be indexed in a runtime requires (pruv_cidx_str)
+            str_used = uses_array_type(s.prog, "string")
         if str_used:
             s.out.append(STR_PRELUDE)
         if not s.verified:

@@ -458,7 +458,11 @@ impl<'a> Gen<'a> {
         }
         let u8_used = uses_array_type(self.prog, "array_u8");
         let bool_used = uses_array_type(self.prog, "array_bool"); // G2 A5
-        let str_used = uses_str(self.prog); // G2 B2
+        let mut str_used = uses_str(self.prog); // G2 B2
+        if self.g6 && !str_used {
+            // G6: a String parameter can be indexed in a runtime requires (pruv_cidx_str)
+            str_used = uses_array_type(self.prog, "string");
+        }
         if str_used {
             self.out.push(STR_PRELUDE.to_string());
         }

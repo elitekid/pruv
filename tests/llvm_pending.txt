@@ -31,3 +31,5 @@ tests/runtime/g6_v03_bool_flags.pruv
 tests/runtime/g6_v04_generic_append.pruv
 tests/runtime/g6_v05_option_elems.pruv
 tests/runtime/g6_v06_fresh_borrow.pruv
+tests/runtime/g6_x01_string_requires.pruv
+tests/runtime/g6_x02_budget.pruv

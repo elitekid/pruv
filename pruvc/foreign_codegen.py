@@ -113,6 +113,8 @@ class ForeignGen:
             if s.ens:
                 body += ["pruv_g6_charge(&mut pruv_budget, pruv_snap.len());"]
             body += s._ens("v[..pruv_snap.len()] == pruv_snap[..]", "result[..len(v)] == v")
+            if s.ens:
+                body += ["pruv_g6_charge(&mut pruv_budget, 1);"]   # one visited element (G6_SPEC 12.3)
             body += s._ens("v[pruv_snap.len()] == x", "result[len(v)] == x")
             body += ["v"]
             return s._fn(name, "mut v: %s, x: %s" % (V, T), V, body)
@@ -121,6 +123,8 @@ class ForeignGen:
             body += ["let pruv_k: usize = if i >= 0 && (i as u64) < (v.len() as u64) { i as usize } "
                      "else { pruv_g6_repr(\"index\") };",
                      "let pruv_r: %s = v[pruv_k];" % T]
+            if s.ens:
+                body += ["pruv_g6_charge(&mut pruv_budget, 1);"]   # one visited element (G6_SPEC 12.3)
             body += s._ens("v.get(pruv_k).copied() == Some(pruv_r)", "result == v[i]")
             body += ["pruv_r"]
             return s._fn(name, "v: &%s, i: i64" % V, T, body)
@@ -131,6 +135,8 @@ class ForeignGen:
             return s._fn(name, "", M, body)
         if op == "map_get":
             body = ["let pruv_r: %s = m.get(&k).copied();" % OPT]
+            if s.ens:
+                body += ["pruv_g6_charge(&mut pruv_budget, 1);"]   # one visited element (G6_SPEC 12.3)
             body += s._ens("m.contains_key(&k) == pruv_r.is_some() && m.get(&k).copied() == pruv_r",
                            "result == map_lookup(m, k)")
             body += ["pruv_r"]
@@ -141,6 +147,8 @@ class ForeignGen:
             body += ["let _ = m.insert(k, v);"]
             body += s._ens("m.len() == pruv_snap.len() + (if pruv_snap.contains_key(&k) { 0 } else { 1 })",
                            "len(result) == len(m) + (k absent ? 1 : 0)")
+            if s.ens:
+                body += ["pruv_g6_charge(&mut pruv_budget, 1);"]   # one visited element (G6_SPEC 12.3)
             body += s._ens("m.get(&k) == Some(&v)", "result[k] == v")
             if s.ens:
                 body += ["for (pruv_sk, pruv_sv) in pruv_snap.iter() {",
@@ -174,6 +182,8 @@ class ForeignGen:
             body += ["let pruv_k: usize = if i >= 0 && (i as u64) < (s.len() as u64) { i as usize } "
                      "else { pruv_g6_repr(\"index\") };",
                      "let pruv_r: i64 = s.as_bytes()[pruv_k] as i64;"]
+            if s.ens:
+                body += ["pruv_g6_charge(&mut pruv_budget, 1);"]   # one visited element (G6_SPEC 12.3)
             body += s._ens("s.as_bytes().get(pruv_k).map(|pruv_b| *pruv_b as i64) == Some(pruv_r)",
                            "result == s[i]")
             body += ["pruv_r"]

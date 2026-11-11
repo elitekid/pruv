@@ -1,0 +1,10 @@
+// A2 audit R2: under --foreign-checks all every compared element is charged, so a budget of 4 runs out on the third push
+fn run() -> i64 ! alloc
+  ensures result == 3
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  v = vec_push::<i64>(move v, 1);
+  v = vec_push::<i64>(move v, 2);
+  v = vec_push::<i64>(move v, 3);
+  return len(v);
+}

@@ -230,6 +230,9 @@ impl ForeignGen {
                     body.push("pruv_g6_charge(&mut pruv_budget, pruv_snap.len());".to_string());
                 }
                 body.extend(self.ens_line("v[..pruv_snap.len()] == pruv_snap[..]", "result[..len(v)] == v"));
+                if self.ens {
+                    body.push("pruv_g6_charge(&mut pruv_budget, 1);".to_string()); // one visited element (G6_SPEC 12.3)
+                }
                 body.extend(self.ens_line("v[pruv_snap.len()] == x", "result[len(v)] == x"));
                 body.push("v".to_string());
                 Ok(self.fn_text(name, &format!("mut v: {}, x: {}", v, t), Some(v.as_str()), &body))
@@ -243,6 +246,9 @@ impl ForeignGen {
                         .to_string(),
                 );
                 body.push(format!("let pruv_r: {} = v[pruv_k];", t));
+                if self.ens {
+                    body.push("pruv_g6_charge(&mut pruv_budget, 1);".to_string()); // one visited element (G6_SPEC 12.3)
+                }
                 body.extend(self.ens_line("v.get(pruv_k).copied() == Some(pruv_r)", "result == v[i]"));
                 body.push("pruv_r".to_string());
                 Ok(self.fn_text(name, &format!("v: &{}, i: i64", v), Some(t.as_str()), &body))
@@ -261,6 +267,9 @@ impl ForeignGen {
                 let m = rty_g(&GType::new("hashmap", vec![g(0)?.clone(), g(1)?.clone()]), false);
                 let opt = rty_g(&mk_option(g(1)?.clone()), false);
                 let mut body = vec![format!("let pruv_r: {} = m.get(&k).copied();", opt)];
+                if self.ens {
+                    body.push("pruv_g6_charge(&mut pruv_budget, 1);".to_string()); // one visited element (G6_SPEC 12.3)
+                }
                 body.extend(self.ens_line(
                     "m.contains_key(&k) == pruv_r.is_some() && m.get(&k).copied() == pruv_r",
                     "result == map_lookup(m, k)",
@@ -279,6 +288,9 @@ impl ForeignGen {
                     "m.len() == pruv_snap.len() + (if pruv_snap.contains_key(&k) { 0 } else { 1 })",
                     "len(result) == len(m) + (k absent ? 1 : 0)",
                 ));
+                if self.ens {
+                    body.push("pruv_g6_charge(&mut pruv_budget, 1);".to_string()); // one visited element (G6_SPEC 12.3)
+                }
                 body.extend(self.ens_line("m.get(&k) == Some(&v)", "result[k] == v"));
                 if self.ens {
                     body.push("for (pruv_sk, pruv_sv) in pruv_snap.iter() {".to_string());
@@ -325,6 +337,9 @@ impl ForeignGen {
                         .to_string(),
                 );
                 body.push("let pruv_r: i64 = s.as_bytes()[pruv_k] as i64;".to_string());
+                if self.ens {
+                    body.push("pruv_g6_charge(&mut pruv_budget, 1);".to_string()); // one visited element (G6_SPEC 12.3)
+                }
                 body.extend(self.ens_line(
                     "s.as_bytes().get(pruv_k).map(|pruv_b| *pruv_b as i64) == Some(pruv_r)",
                     "result == s[i]",

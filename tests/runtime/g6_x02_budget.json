@@ -1,0 +1,1 @@
+{"flags_matrix": [["--foreign-checks", "all"]], "contract_budget": 4, "exit": 101, "stderr_contains": "pruv: foreign contract undefined: vec_push: budget"}
