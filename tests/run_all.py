@@ -247,7 +247,7 @@ def g3_proof_jobs():
         name = "g3_proof/" + os.path.basename(f)
 
         def fn(f=f):
-            c = subprocess.run([sys.executable, script, f], capture_output=True, text=True, timeout=300)
+            c = subprocess.run([CD.pinned_python(), script, f], capture_output=True, text=True, timeout=300)
             return c.returncode == 0, "exit %d (expected 0) %s" % (c.returncode, (c.stdout + c.stderr)[-600:])
         jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": [], "mode": "verify_only",
                                      "group": "g3_proof"}))
