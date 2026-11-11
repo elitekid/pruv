@@ -1,0 +1,56 @@
+struct Pair<A, B> { first: A, second: B }
+
+fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>
+  ensures result.first == p.second
+  ensures result.second == p.first
+{
+  return Pair::<B, A> { first: p.second, second: p.first };
+}
+
+fn swap_ib_first(a: i64, b: bool) -> bool
+  ensures result == b
+{
+  let p: Pair<i64, bool> = Pair::<i64, bool> { first: a, second: b };
+  let q: Pair<bool, i64> = swap::<i64, bool>(p);
+  return q.first;
+}
+
+fn swap_ib_second(a: i64, b: bool) -> i64
+  ensures result == a
+{
+  let p: Pair<i64, bool> = Pair::<i64, bool> { first: a, second: b };
+  let q: Pair<bool, i64> = swap::<i64, bool>(p);
+  return q.second;
+}
+
+fn swap_bi_first(a: bool, b: i64) -> i64
+  ensures result == b
+{
+  let p: Pair<bool, i64> = Pair::<bool, i64> { first: a, second: b };
+  let q: Pair<i64, bool> = swap::<bool, i64>(p);
+  return q.first;
+}
+
+fn swap_bi_second(a: bool, b: i64) -> bool
+  ensures result == a
+{
+  let p: Pair<bool, i64> = Pair::<bool, i64> { first: a, second: b };
+  let q: Pair<i64, bool> = swap::<bool, i64>(p);
+  return q.second;
+}
+
+fn swap_ii_first(a: i64, b: i64) -> i64
+  ensures result == b
+{
+  let p: Pair<i64, i64> = Pair::<i64, i64> { first: a, second: b };
+  let q: Pair<i64, i64> = swap::<i64, i64>(p);
+  return q.first;
+}
+
+fn swap_bb_first(a: bool, b: bool) -> bool
+  ensures result == b
+{
+  let p: Pair<bool, bool> = Pair::<bool, bool> { first: a, second: b };
+  let q: Pair<bool, bool> = swap::<bool, bool>(p);
+  return q.first;
+}

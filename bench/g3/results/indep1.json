@@ -1,0 +1,94 @@
+{
+ "solutions": "/Users/spica4345/Projects/pruv/.indep",
+ "flags": [],
+ "results": {
+  "py-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 109,
+    "tests_total": 109
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 106,
+    "tests_total": 106
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 56,
+    "tests_total": 56
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 56,
+    "tests_total": 56
+   }
+  },
+  "py-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 109,
+    "tests_total": 109
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 106,
+    "tests_total": 106
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 54,
+    "tests_total": 54
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 56,
+    "tests_total": 56
+   }
+  },
+  "rs-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 109,
+    "tests_total": 109
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 106,
+    "tests_total": 106
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 56,
+    "tests_total": 56
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 56,
+    "tests_total": 56
+   }
+  },
+  "rs-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 109,
+    "tests_total": 109
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 106,
+    "tests_total": 106
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 54,
+    "tests_total": 54
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 56,
+    "tests_total": 56
+   }
+  }
+ }
+}

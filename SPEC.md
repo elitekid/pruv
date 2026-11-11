@@ -214,6 +214,9 @@ let o: Option<bool> = Some::<bool>(true);   // also None::<bool>, Ok::<bool>(x),
   with `==`/`!=` **in contracts only**. You cannot do arithmetic, ordering, run-time equality, field access, `match` or `print`
   on a `T`. (`match` on an `Option<T>` or `Choice<A, B>` is fine; the payload variable is a `T`.)
 - `Result<T>` keeps an `i64` error code: `Err::<T>(code)`.
+- `alloc`, `copy`, indexing and stores work on `[T]` (`T: Element`) as on `[i64]`; the verifier knows that
+  `copy(a)` has `len(a)` elements equal to `a`'s. Explicitly typed constructors may appear anywhere an expression may
+  (`o = Some::<T>(v);`).
 - **Contracts** may use abstract equality, guarded payload access (`is_some(o) ==> result == some_val(o)`) and
   `count` over abstract equality. `sum`/`max`/`min` need an `i64` body.
 - **No recursion**, direct or mutual, in generic code (a generic function's call graph is acyclic).

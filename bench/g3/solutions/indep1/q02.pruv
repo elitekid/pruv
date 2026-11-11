@@ -1,0 +1,31 @@
+fn get_or<T>(o: Option<T>, d: T) -> T
+  ensures is_some(o) ==> result == some_val(o)
+  ensures !is_some(o) ==> result == d
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return d; }
+  }
+}
+
+fn get_or_int(has: bool, v: i64, d: i64) -> i64
+  ensures has ==> result == v
+  ensures !has ==> result == d
+{
+  let mut o: Option<i64> = None::<i64>;
+  if has {
+    o = Some::<i64>(v);
+  }
+  return get_or::<i64>(o, d);
+}
+
+fn get_or_bool(has: bool, v: bool, d: bool) -> bool
+  ensures has ==> result == v
+  ensures !has ==> result == d
+{
+  let mut o: Option<bool> = None::<bool>;
+  if has {
+    o = Some::<bool>(v);
+  }
+  return get_or::<bool>(o, d);
+}
