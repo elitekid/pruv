@@ -12,6 +12,9 @@ class Type:
 
 I64 = Type("i64"); BOOL = Type("bool"); UNIT = Type("unit")
 ARRAY = Type("array"); OPTION = Type("option"); RESULT = Type("result")
+# G2 A0: internal-only types (never accepted as source spelling). ARRAY stays the [i64] array.
+U8 = Type("u8")
+ARRAY_U8 = Type("array_u8"); ARRAY_BOOL = Type("array_bool")
 
 # ---------- expressions ----------
 @dataclass

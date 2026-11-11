@@ -14,7 +14,7 @@ use std::time::Instant;
 use pruv_core::ast::{self as ast, Expr, Stmt};
 use pruv_core::diagnostic::PruvError;
 
-use crate::model::{Model, Prelude, Ty, TypeKind};
+use crate::model::{Elem, Model, Prelude, Ty, TypeKind};
 use crate::obligation::Trace;
 use crate::sys::{Ast, FuncDecl, Sort, Z3};
 
@@ -292,6 +292,14 @@ pub struct Arr {
     pub a: Ast,
     pub n: Ast,
     pub name: String,
+    pub elem: Elem,
+}
+
+impl Arr {
+    /// 순수 조립(fresh 카운터를 건드리지 않는다).
+    pub fn new(a: Ast, n: Ast, name: String, elem: Elem) -> Arr {
+        Arr { a, n, name, elem }
+    }
 }
 
 /// 환경 값. verify.py 는 z3 식의 sort 로 Int/Bool/Datatype 을 구분하지만 여기서는 태그로 든다.
@@ -338,7 +346,7 @@ impl Val {
             Ty::I64 => Ok(Val::Int(a)),
             Ty::Bool => Ok(Val::Bool(a)),
             Ty::Opt | Ty::Res | Ty::User(_) => Ok(Val::Dt(a, ty.clone())),
-            Ty::Array | Ty::Unit => Err(format!("'{}'", ty.name())),
+            Ty::Array(_) | Ty::Unit => Err(format!("'{}'", ty.name())),
         }
     }
 }
@@ -507,14 +515,16 @@ impl<'a> FnVerifier<'a> {
             Ty::Bool => Ok(Val::Bool(z.bool_const(&n))),
             Ty::Opt => Ok(Val::Dt(z.constant(&n, &self.prelude.opt.sort), ty.clone())),
             Ty::Res => Ok(Val::Dt(z.constant(&n, &self.prelude.res.sort), ty.clone())),
-            Ty::Array => {
+            Ty::Array(e) => {
                 let int = z.int_sort();
-                let arr_sort = z.array_sort(&int, &int);
-                Ok(Val::Arr(Arr {
-                    a: z.constant(&n, &arr_sort),
-                    n: z.int_const(&format!("{}.len", n)),
-                    name: base.to_string(),
-                }))
+                let esort = if *e == Elem::Bool { z.bool_sort() } else { z.int_sort() };
+                let arr_sort = z.array_sort(&int, &esort);
+                Ok(Val::Arr(Arr::new(
+                    z.constant(&n, &arr_sort),
+                    z.int_const(&format!("{}.len", n)),
+                    base.to_string(),
+                    *e,
+                )))
             }
             Ty::User(name) => match self.model.sort_opt(name) {
                 Some(s) => Ok(Val::Dt(z.constant(&n, s), ty.clone())),
@@ -568,7 +578,7 @@ impl<'a> FnVerifier<'a> {
                     conj(z, parts)
                 }
             },
-            Ty::Bool | Ty::Unit | Ty::Array => None,
+            Ty::Bool | Ty::Unit | Ty::Array(_) => None,
         }
     }
 
@@ -676,7 +686,7 @@ impl<'a> FnVerifier<'a> {
         let ob = self.z.and(&[n.ge_i(0), n.le_i(MAX_LEN)]);
         self.prove(st, g, &ob, node, "alloc_negative", None);
         self.k += 1;
-        Arr { a: self.z.const_array(&self.z.int_sort(), init), n: n.clone(), name: "alloc".to_string() }
+        Arr::new(self.z.const_array(&self.z.int_sort(), init), n.clone(), "alloc".to_string(), Elem::I64)
     }
 
     // ---------- exec 조각 (시제품용; st 는 호출자가 이미 fork 한 상태) ----------
@@ -685,7 +695,7 @@ impl<'a> FnVerifier<'a> {
         let arr = st.env.get(name).arr().clone();
         let ob = self.z.and(&[i.ge_i(0), i.lt(&arr.n)]);
         self.prove(st, &[], &ob, node, "index_oob", None);
-        st.env.set(name, Val::Arr(Arr { a: arr.a.store(i, v), n: arr.n.clone(), name: name.to_string() }));
+        st.env.set(name, Val::Arr(Arr::new(arr.a.store(i, v), arr.n.clone(), name.to_string(), arr.elem)));
     }
 
     /// FieldAssign (761~766행): 오른쪽 값 `v` 는 호출자가 먼저 계산한다.
@@ -713,8 +723,8 @@ impl<'a> FnVerifier<'a> {
         for n in names {
             let Some(old) = h.env.try_get(n).cloned() else { continue };
             match old {
-                Val::Arr(_) => {
-                    let nv = self.try_fresh(n, &Ty::Array)?;
+                Val::Arr(old_arr) => {
+                    let nv = self.try_fresh(n, &Ty::Array(old_arr.elem))?;
                     let a = nv.try_arr()?.clone();
                     h.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
                     h.env.set(n, Val::Arr(a));
@@ -1097,15 +1107,16 @@ impl<'a> FnVerifier<'a> {
                 let ob = self.z.and(&[a0.ge_i(0), a0.le_i(MAX_LEN)]);
                 self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "alloc_negative", "alloc length in 0..2^40", None);
                 self.k += 1;
-                return Ok(Val::Arr(Arr {
-                    a: self.z.const_array(&self.z.int_sort(), &a1),
-                    n: a0,
-                    name: "alloc".to_string(),
-                }));
+                return Ok(Val::Arr(Arr::new(
+                    self.z.const_array(&self.z.int_sort(), &a1),
+                    a0,
+                    "alloc".to_string(),
+                    Elem::I64,
+                )));
             }
             "copy" => {
                 let a = arg(0)?.try_arr()?;
-                return Ok(Val::Arr(Arr { a: a.a.clone(), n: a.n.clone(), name: "copy".to_string() }));
+                return Ok(Val::Arr(Arr::new(a.a.clone(), a.n.clone(), "copy".to_string(), a.elem)));
             }
             "print" => return Ok(Val::Unit),
             "is_some" => return Ok(Val::Bool(self.prelude.is_some(arg(0)?.try_ast()?))),
@@ -1400,7 +1411,7 @@ impl<'a> FnVerifier<'a> {
         let mut st = st.fork(None);
         let v = self.ev0(value, &mut st, &[], true)?;
         let v = match v {
-            Val::Arr(a) => Val::Arr(Arr { a: a.a, n: a.n, name: name.to_string() }),
+            Val::Arr(a) => Val::Arr(Arr::new(a.a, a.n, name.to_string(), a.elem)),
             other => other,
         };
         st.env.set(name, v);
@@ -1440,7 +1451,7 @@ impl<'a> FnVerifier<'a> {
                     let ob = self.z.and(&[v.ge_i(lo), v.le_i(hi)]);
                     self.prove_core(&st.env, &st.pc, &[], &ob, spos, "refinement_assign", what.as_str(), Some(what.as_str()));
                 }
-                st.env.set(&s.name, Val::Arr(Arr { a: arr.a.store(&i, &v), n: arr.n.clone(), name: s.name.clone() }));
+                st.env.set(&s.name, Val::Arr(Arr::new(arr.a.store(&i, &v), arr.n.clone(), s.name.clone(), arr.elem)));
                 Ok(vec![st])
             }
             Stmt::If(s) => {

@@ -10,6 +10,25 @@ _BUILTIN_PRINT = {"i64": "i64", "bool": "bool", "unit": "()", "array": "[i64]", 
                   "result": "Result<i64>"}
 
 
+# G2 A0: one place for array type queries (internal array types -> element type).
+ARRAY_ELEM = {"array": I64, "array_u8": U8, "array_bool": BOOL}
+_ARRAY_OF = {"i64": ARRAY, "u8": ARRAY_U8, "bool": ARRAY_BOOL}
+
+
+def is_array(ty: Type) -> bool:
+    return ty.name in ARRAY_ELEM
+
+
+def array_elem(ty: Type) -> Optional[Type]:
+    """Element type of an array type; None when ty is not an array type."""
+    return ARRAY_ELEM.get(ty.name)
+
+
+def array_of(elem: Type) -> Optional[Type]:
+    """Array type holding elem; None when no such array type exists."""
+    return _ARRAY_OF.get(elem.name)
+
+
 def is_user_type(ty: Type) -> bool:
     """True for a Type that names a user struct/enum (declared or not)."""
     return ty.name not in BUILTIN_TYPE_NAMES

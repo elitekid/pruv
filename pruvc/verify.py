@@ -2,7 +2,7 @@
 import time
 import z3
 from vast import *
-from typeinfo import TypeTable
+from typeinfo import TypeTable, is_array, array_elem, array_of
 
 I64_MIN, I64_MAX = -2 ** 63, 2 ** 63 - 1
 MAX_LEN = 2 ** 40
@@ -226,10 +226,15 @@ def _has_vf(e, kind=None):
 
 
 class Arr:
-    __slots__ = ("a", "n", "name")
+    __slots__ = ("a", "n", "name", "elem")
 
-    def __init__(s, a, n, name):
-        s.a, s.n, s.name = a, n, name
+    def __init__(s, a, n, name, elem):
+        s.a, s.n, s.name, s.elem = a, n, name, elem
+
+
+def mk_arr(a, n, name, elem):
+    """The only place an Arr is built; elem is the element Type (I64 / U8 / BOOL). Pure: touches no counter."""
+    return Arr(a, n, name, elem)
 
 
 class State:
@@ -311,8 +316,10 @@ class FnVerifier:
             return z3.Const(n, Opt)
         if ty == RESULT:
             return z3.Const(n, Res)
-        if ty == ARRAY:
-            return Arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".len"), base)
+        if is_array(ty):
+            elem = array_elem(ty)
+            esort = z3.BoolSort() if elem == BOOL else z3.IntSort()
+            return mk_arr(z3.Array(n, z3.IntSort(), esort), z3.Int(n + ".len"), base, elem)
         if s.model.is_user(ty):
             return z3.Const(n, s.model.sorts[ty.name])
         raise Exception("fresh: " + ty.name)
@@ -775,9 +782,9 @@ class FnVerifier:
             s.prove(st, g, z3.And(args[0] >= 0, args[0] <= MAX_LEN), e, "alloc_negative",
                     "alloc length in 0..2^40")
             s.k += 1
-            return Arr(z3.K(z3.IntSort(), args[1]), args[0], "alloc")
+            return mk_arr(z3.K(z3.IntSort(), args[1]), args[0], "alloc", I64)
         if n == "copy":
-            return Arr(args[0].a, args[0].n, "copy")
+            return mk_arr(args[0].a, args[0].n, "copy", args[0].elem)
         if n == "print":
             return None
         if n == "is_some": return Opt.is_some(args[0])
@@ -853,7 +860,7 @@ class FnVerifier:
                 continue
             old = h.env[n]
             if isinstance(old, Arr):
-                nv = s.fresh(n, ARRAY)
+                nv = s.fresh(n, array_of(old.elem))
                 h.pc.append(z3.And(nv.n >= 0, nv.n <= MAX_LEN))
                 h.env[n] = nv
             elif z3.is_int(old):
@@ -877,7 +884,7 @@ class FnVerifier:
             st = st.fork()
             v = s.ev(stmt.value, st, [], True)
             if isinstance(v, Arr):
-                v = Arr(v.a, v.n, stmt.name)
+                v = mk_arr(v.a, v.n, stmt.name, v.elem)
             st.env[stmt.name] = v
             return [st]
         if isinstance(stmt, IndexAssign):
@@ -891,7 +898,7 @@ class FnVerifier:
                 # domain check, no re-evaluation, no forall; not assumed afterwards (it is implied by the path).
                 lo, hi, what = stmt.elem_refine
                 s.prove(st, [], z3.And(v >= lo, v <= hi), stmt, "refinement_assign", what, what)
-            st.env[stmt.name] = Arr(z3.Store(arr.a, i, v), arr.n, stmt.name)
+            st.env[stmt.name] = mk_arr(z3.Store(arr.a, i, v), arr.n, stmt.name, arr.elem)
             return [st]
         if isinstance(stmt, If):
             st = st.fork()
@@ -1027,9 +1034,8 @@ class FnVerifier:
         f = s.f
         env, pc = {}, []
         for p in f.params:
-            v = s.fresh(p.name, p.type) if p.type != ARRAY else s.fresh(p.name, ARRAY)
+            v = s.fresh(p.name, p.type)
             if isinstance(v, Arr):
-                v.name = p.name
                 pc.append(z3.And(v.n >= 0, v.n <= MAX_LEN))
             else:
                 w = s.wf(p.type, v)

@@ -11,6 +11,31 @@ pub fn is_user_type(ty: &str) -> bool {
     !BUILTIN_TYPE_NAMES.contains(&ty)
 }
 
+/// 배열 내부 타입 이름("array"/"array_u8"/"array_bool")인가.
+pub fn is_array_name(n: &str) -> bool {
+    array_elem_name(n).is_some()
+}
+
+/// 배열 내부 타입 이름 → 원소 타입 이름.
+pub fn array_elem_name(n: &str) -> Option<&'static str> {
+    match n {
+        "array" => Some("i64"),
+        "array_u8" => Some("u8"),
+        "array_bool" => Some("bool"),
+        _ => None,
+    }
+}
+
+/// 원소 타입 이름 → 배열 내부 타입 이름.
+pub fn array_of_elem_name(e: &str) -> Option<&'static str> {
+    match e {
+        "i64" => Some("array"),
+        "u8" => Some("array_u8"),
+        "bool" => Some("array_bool"),
+        _ => None,
+    }
+}
+
 /// 소스 수준 철자. 사용자 타입은 자기 이름 그대로.
 pub fn type_name(ty: &str) -> String {
     match ty {

@@ -598,7 +598,7 @@ fn build_fill(
 
     // let mut out: [i64] = alloc(n, 0);  → 의무 alloc_negative 후 `s.k += 1`
     let arr = v.ev_alloc(&st, &[], &n, &z.int(0), pos.alloc);
-    st.env.set("out", Val::Arr(Arr { a: arr.a, n: arr.n, name: "out".to_string() }));
+    st.env.set("out", Val::Arr(Arr::new(arr.a, arr.n, "out".to_string(), arr.elem)));
     st.env.set("i", Val::Int(z.int(0)));
 
     let len_eq_n = |st: &State| -> Ast {

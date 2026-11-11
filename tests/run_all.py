@@ -1,6 +1,20 @@
 """Run all regression tests.
 python tests/run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both]
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
+                        [--list-rows [FILE]] [--compare-rows FILE]
+
+--list-rows [FILE]: build the job list, run nothing, and write one JSON row per line (sort_keys, sorted) to FILE
+(stdout if omitted); exit code 0. A row is {"sample", "backend", "flags", "mode", "group", "compiler"[, "name"][, "dup"]};
+the row key is json.dumps(row, sort_keys=True). "group" is must_reject|examples|runtime (the --only value).
+"mode" is default/no-verify/trust-callers/bad for examples rows, "spec_error" for a runtime row whose json
+spec could not be read (flags null), and null otherwise (runtime rows are told apart by "flags" alone).
+must_reject rows have "backend" null (the work does not depend on the backend). "name" is added only to rows
+whose key would otherwise collide (and "dup" if even that collides).
+--compare-rows FILE: run everything as usual, then compare FILE (a --list-rows output) with this run, using only
+the saved rows whose (group, backend) pair occurs among this run's rows. Prints MISSING/EXTRA/FAIL row lines and
+`rows: N saved (K outside this run's scope), M run, missing X, extra Y, failed Z`; exit code 1 if any
+row is missing, extra or failed. If the saved compiler differs from this run's, the "compiler" field is ignored.
+--list-rows and --compare-rows together: prints USAGE, exit code 2.
 
 --compiler/--compiler-path pick the compiler under test (tests/compiler_driver.py; default rs).
 --ir-tool PATH: make .ll objects with `PATH obj IN.ll -o OUT.o -mcpu=native` and the runtime object with
@@ -109,8 +123,13 @@ def llvm_objects(ll, stem, work, count_allocs=False):
     return ["-C", "link-arg=" + gen_o, "-C", "link-arg=" + rt_o], None
 
 
-def safe(name, fn):
-    """Wrap a job body so that it always returns (name, ok, detail)."""
+def rel_sample(p):
+    return os.path.relpath(p, ROOT).replace(os.sep, "/")
+
+
+def safe(name, fn, row=None):
+    """Wrap a job body so that it always returns (name, ok, detail).
+    row: {"sample", "backend", "flags", "mode"} describing this test row (stored as job.row)."""
     def job():
         try:
             ok, detail = fn()
@@ -119,6 +138,8 @@ def safe(name, fn):
             return (name, False, "timeout")
         except Exception as e:
             return (name, False, repr(e))
+    job.row = dict(row) if row else None
+    job.name = name
     return job
 
 
@@ -147,7 +168,8 @@ def must_reject_jobs():
                     want.get("stage"), want.get("code"),
                     [(d.get("stage"), d.get("code")) for d in diags])
             return ok, detail
-        jobs.append(safe(name, fn))
+        jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,"flags": [], "mode": None,
+                                     "group": "must_reject"}))
     return jobs
 
 
@@ -212,7 +234,8 @@ def example_job(f, mode, flags, llvm, name):
                             "--crate-name", stem, "-o", os.path.join(work, "lib%s_%s.rlib" % (stem, mode))],
                            capture_output=True, text=True, timeout=300)
         return r.returncode == 0, "rustc: " + r.stderr[-400:]
-    return safe(name, fn)
+    return safe(name, fn, {"sample": rel_sample(f), "backend": "llvm" if llvm else "rust",
+                           "flags": list(flags), "mode": mode, "group": "examples"})
 
 
 def examples_jobs(backend):
@@ -306,7 +329,8 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
                     if s not in gen_text:
                         problems.append("generated rs lacks %r" % s)
         return not problems, "; ".join(problems)
-    return safe(name, fn)
+    return safe(name, fn, {"sample": rel_sample(os.path.join(os.path.dirname(j), t + ".pruv")),
+                           "backend": "llvm" if llvm else "rust", "flags": list(flags), "mode": None, "group": "runtime"})
 
 
 def runtime_jobs(backend):
@@ -328,7 +352,10 @@ def runtime_jobs(backend):
                 rows.append((list(spec.get("flags", [])), "", ""))
         except Exception as e:
             err = repr(e)
-            jobs.append(safe("runtime/" + t + tag, lambda err=err: (False, err)))
+            jobs.append(safe("runtime/" + t + tag, lambda err=err: (False, err),
+                             {"sample": rel_sample(os.path.join(os.path.dirname(j), t + ".pruv")),
+                              "backend": backend, "flags": None, "mode": "spec_error",
+                              "group": "runtime"}))
             continue
         for flags, label, suffix in rows:
             name = "runtime/" + t + (" " + label if label else "") + tag
@@ -337,13 +364,71 @@ def runtime_jobs(backend):
 
 
 USAGE = ("usage: run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both] "
-         "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]")
+         "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
+
+
+def row_key(row, with_compiler=True):
+    r = dict(row)
+    if not with_compiler:
+        r.pop("compiler", None)
+    return json.dumps(r, sort_keys=True)
+
+
+def build_rows(jobs):
+    """One row dict per job (compiler added; name added only where keys would collide). Returns list parallel to jobs."""
+    rows = []
+    for job in jobs:
+        r = dict(job.row) if job.row else {"sample": None, "backend": None, "flags": None, "mode": None, "group": None}
+        r["compiler"] = DRIVER.name
+        rows.append(r)
+    count = {}
+    for r in rows:
+        count[row_key(r)] = count.get(row_key(r), 0) + 1
+    for job, r in zip(jobs, rows):
+        if count[row_key(r)] > 1 or r["sample"] is None:
+            r["name"] = job.name
+    # name may still collide if two jobs share a name; make it unique with an index
+    seen = {}
+    for r in rows:
+        k = row_key(r)
+        seen[k] = seen.get(k, 0) + 1
+        if seen[k] > 1:
+            r["dup"] = seen[k]
+    return rows
 
 
 def main():
     global WORK, DRIVER, IR_TOOL
     argv = sys.argv
     DRIVER = CD.from_argv(argv)  # removes --compiler/--compiler-path from sys.argv in place
+    if "--list-rows" in argv and "--compare-rows" in argv:
+        print(USAGE)
+        return 2
+    list_rows = False
+    list_file = None
+    if "--list-rows" in argv:
+        i = argv.index("--list-rows")
+        list_rows = True
+        if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+            list_file = argv[i + 1]
+            del argv[i:i + 2]
+        else:
+            del argv[i:i + 1]
+    compare_file = None
+    saved_rows = None
+    if "--compare-rows" in argv:
+        i = argv.index("--compare-rows")
+        compare_file = argv[i + 1] if i + 1 < len(argv) else None
+        if not compare_file or compare_file.startswith("--"):
+            print(USAGE)
+            return 2
+        del argv[i:i + 2]
+        try:
+            with open(compare_file, encoding="utf-8") as fh:
+                saved_rows = [json.loads(l) for l in fh.read().splitlines() if l.strip()]
+        except (OSError, ValueError) as e:
+            print("--compare-rows: cannot read %s: %r" % (compare_file, e))
+            return 2
     if "--ir-tool" in argv:
         i = argv.index("--ir-tool")
         tool = argv[i + 1] if i + 1 < len(argv) else None
@@ -382,13 +467,27 @@ def main():
                 jobs += examples_jobs(b)
             if only in (None, "runtime"):
                 jobs += runtime_jobs(b)
+        rows = build_rows(jobs)
+        if list_rows:
+            lines = sorted(row_key(r) for r in rows)
+            text = "".join(l + "\n" for l in lines)
+            if list_file:
+                with open(list_file, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            else:
+                sys.stdout.write(text)
+                sys.stdout.flush()
+            return 0
+        failed_rows = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
             futures = [pool.submit(job) for job in jobs]
             try:
-                for fut in futures:  # original order, streamed
+                for idx, fut in enumerate(futures):  # original order, streamed
                     name, ok, detail = fut.result()
                     total += 1
                     passed += 1 if ok else 0
+                    if not ok:
+                        failed_rows.append(rows[idx])
                     line = "%s %s" % ("PASS" if ok else "FAIL", name)
                     if not ok and detail:
                         line += "  -- " + detail.strip().replace("\n", " ")[:400]
@@ -401,7 +500,33 @@ def main():
     print("compiler: %s" % DRIVER.name)
     print("object path: %s" % ("pruvc-ir-tool (%s)" % IR_TOOL if IR_TOOL else "clang"))
     print("TOTAL %d/%d" % (passed, total))
-    return 0 if passed == total else 1
+    rc = 0 if passed == total else 1
+    if saved_rows is not None:
+        scope = set((r.get("group"), r.get("backend")) for r in rows)
+        in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
+        outside = len(saved_rows) - len(in_scope)
+        saved_compilers = set(r.get("compiler") for r in saved_rows)
+        with_c = saved_compilers == {DRIVER.name}
+        saved_keys = [row_key(r, with_c) for r in in_scope]
+        run_keys = [row_key(r, with_c) for r in rows]
+        saved_set, run_set = set(saved_keys), set(run_keys)
+        missing = sorted(saved_set - run_set)
+        extra = sorted(run_set - saved_set)
+        failed = sorted(set(row_key(r, with_c) for r in failed_rows))
+        if not with_c:
+            print("note: saved compiler %s != this run's %s; compiler field ignored" % (
+                sorted(str(c) for c in saved_compilers), DRIVER.name))
+        for k in missing:
+            print("MISSING row %s" % k)
+        for k in extra:
+            print("EXTRA row %s" % k)
+        for k in failed:
+            print("FAIL row %s" % k)
+        print("rows: %d saved (%d outside this run's scope), %d run, missing %d, extra %d, failed %d" % (
+            len(saved_rows), outside, len(run_keys), len(missing), len(extra), len(failed)))
+        if missing or extra or failed:
+            rc = 1
+    return rc
 
 
 if __name__ == "__main__":

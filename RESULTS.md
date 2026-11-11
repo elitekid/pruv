@@ -641,3 +641,24 @@ STAGE1_SPEC 5.5의 마지막 지표 "건전성 회귀(잘못된 변이의 새 �
 - **감사(Claude Opus):** 건전성 결함 없음, 두 판 흐름 같음, 필수 1(위 STAGE1_SPEC 위반) → 고침. 권고: 성능 최악 — 기한 직전에 시작한 질의가 500ms를 더 써 함수당 약 5.5초까지(재현 없음, 측정 안 함), 함수 단위 `timeout` 상태를 직접 보는 시험 없음(결정적으로 만들기 어려워 남김), 31.1·BLUEPRINT의 "남은 고침" 문구에 고쳤다는 표시(반영).
 - **확인 감사(Claude Opus):** 필수 0. 필수 1 해소(두 판 같은 판정 순서, STAGE1_SPEC 0절 6·282·283행과 맞음 — 옛 동작은 오히려 282행 "결정론적 자원 한계의 unknown은 후보 제거"에 어긋났다), `diff_trace` 새 분류는 재시도 뒤 다르면 diff로 남아 진짜 차이를 숨기지 않음. 권고 반영: 개정 전후 trace 구분 문구(명세). 남긴 권고: rlimit 소진으로 후보만 탈락하는 회귀 표본 없음(결정적 재현 입력을 아직 못 만듦), `dropped[].status`의 `timeout`이 rlimit 소진도 뜻하는 어휘 문제(다음 어휘 개정 때 `resource_unknown`으로 모으기 검토), 재판정으로 칸이 바뀐 수를 요약 줄에 따로 세기. z3 소스로 벽시계 초과가 `canceled`로 나올 수 없는지는 확인 못 함(짐작: 타이머는 이유를 `timeout`으로 덮어씀).
 - 측정 못 한 것: 실사용 크기 입력에서의 탐색 시간, 함수별 탐색 시간 최댓값.
+
+## 33. G2 A0: 원소 타입 배열의 구현 기반 (2026-11-11)
+G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 소스로 쓸 수 있는 배열은 여전히 `[i64]` 하나다(`docs/G2_SPEC.md` 0.0.1 A0 행).
+
+- **기호 배열에 원소 타입:** Python `pruvc/verify.py` `Arr`에 `elem`, 생성은 `mk_arr` 하나. Rust `pruv-proof/src/symbolic.rs` `Arr`에 `elem`, 생성은 `Arr::new` 하나(`samples.rs` 시제품 포함). fresh(진입 매개변수·호출 결과)·alloc(지금은 i64 고정)·copy·재바인딩·원소 저장·루프 havoc에서 원소 타입을 넘겨받는다. 두 판 대응은 감사가 경로마다 대조했다. fresh 번호 순서는 그대로다. bool 원소면 SMT `Array(Int, Bool)`을 만드는 갈래까지 들어 있지만 아직 도달할 수 없다.
+- **배열 질의 API와 내부 이름:** Python `typeinfo.py` `is_array`·`array_elem`·`array_of`(없으면 None), 내부 이름 `array`↔i64·`array_u8`↔u8·`array_bool`↔bool. Rust는 `pruv-core/src/typeinfo.rs` 이름 함수가 대응 표 한 벌이고, `model.rs` `Elem`·`Ty::Array(Elem)`가 그 표를 쓴다(왕복 단위 시험 1). 내부 이름은 소스에서 계속 거부한다: `[u8]`는 parse `syntax`, `array_u8`·`array_bool`은 type `unknown_type`(두 판 같음). 사용자 타입은 대문자로 시작해야 해서 소문자 내부 이름과 겹칠 수 없다.
+- **기준선 고정:** `tests/run_all.py --list-rows [FILE]`·`--compare-rows FILE`(행 = 표본·뒷단·플래그·모드·묶음·컴파일러, 비교는 이번 실행 범위 안의 저장 행만), 저장한 행 목록 `tests/run_all_rows.txt` 444행. SMT 기준 입력 231개 목록 `tests/smt_snapshot_inputs.txt`와 `tests/smt_snapshot.py run|compare`(`--abs-keys`면 옛 저장소 밖 스크립트와 바이트 같은 형식, crash가 있으면 실패).
+- **회귀(고친 뒤 마지막 실행):**
+  - run_all `--backend both` 두 판 444/444, 행 비교 결과 빠진 행·새 행·실패 모두 0
+  - `--infer` 없는 SMT 231파일: 옛 스크립트·새 스크립트 모두 기준과 바이트 동일
+  - `diff_trace --flags=--infer` 392 성공(same 364·cex_only 26·same_unknown 2. 첫 실행은 363·27·2였고, 반례 값만 실행마다 흔들리는 기존 현상), 플래그 없이 392 성공(363·29)
+  - `tests/inference --regress` 두 판 210/210(Python 판 첫 실행 하나는 알려진 `inf_budget` 시간 흔들림으로 209, 다시 돌리니 210)
+  - cli_also_llvm 213, m3_all 9단계 ok, 퍼저 seed 41×200 실패 0, cargo test pruv-core 41
+- **감사(Claude Opus):** 필수 0·권고 9. 반영: 행 비교 범위, runtime 행 키에서 flags_matrix 순번 제거, must_reject 행 뒷단 칸 비움, 행에 묶음 이름, 두 옵션을 함께 주면 거부, 스냅샷 crash를 실패로, Python API를 None 반환으로, Rust 대응 표 한 벌·왕복 시험, 중복 줄 정리. 남김: 내부 이름이 진단·`is_user_type`에 새는 것(A1에서 소스로 열 때 함께), Rust `Arr` 필드 비공개화(읽는 곳이 많아 grep 확인으로 대신).
+- **확인 감사(Claude Opus):** 필수 0, 반영 항목 모두 맞음. 남긴 권고 4:
+  - 비교 범위를 실행된 행에서 만들어, 한 묶음의 작업이 0개가 되면 그 묶음의 빠진 행을 못 잡는다(재현 없음).
+  - `group` 없는 옛 형식 행을 따로 알리지 않는다.
+  - compiler 일치 판정이 범위 밖 행까지 본다.
+  - Rust 왕복 시험이 `Elem` 변형 전체를 돌지 않는다(`unwrap`→`expect`).
+  - 다음 시험 도구를 손볼 때 고친다.
+- 측정 못 한 것: 없음(이번 묶음은 동작 불변이 기준이고, 성능 변화는 재지 않았다).

@@ -33,13 +33,40 @@ pub fn next_seq() -> u32 {
     })
 }
 
+/// 배열 원소 저장 타입(G2). 내부 이름 대응은 pruv_core::typeinfo 한 곳.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Elem {
+    I64,
+    U8,
+    Bool,
+}
+
+impl Elem {
+    /// 원소 타입 이름("i64"/"u8"/"bool").
+    pub fn name(self) -> &'static str {
+        match self {
+            Elem::I64 => "i64",
+            Elem::U8 => "u8",
+            Elem::Bool => "bool",
+        }
+    }
+    pub fn from_name(n: &str) -> Option<Elem> {
+        match n {
+            "i64" => Some(Elem::I64),
+            "u8" => Some(Elem::U8),
+            "bool" => Some(Elem::Bool),
+            _ => None,
+        }
+    }
+}
+
 /// Pruv 타입(vast.Type). 사용자 타입은 이름 하나.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     I64,
     Bool,
     Unit,
-    Array,
+    Array(Elem),
     Opt,
     Res,
     User(String),
@@ -52,10 +79,15 @@ impl Ty {
             "i64" => Ty::I64,
             "bool" => Ty::Bool,
             "unit" => Ty::Unit,
-            "array" => Ty::Array,
             "option" => Ty::Opt,
             "result" => Ty::Res,
-            other => Ty::User(other.to_string()),
+            other => {
+                if let Some(e) = pruv_core::typeinfo::array_elem_name(other).and_then(Elem::from_name) {
+                    Ty::Array(e)
+                } else {
+                    Ty::User(other.to_string())
+                }
+            }
         }
     }
     /// vast `Type.name`.
@@ -64,11 +96,23 @@ impl Ty {
             Ty::I64 => "i64",
             Ty::Bool => "bool",
             Ty::Unit => "unit",
-            Ty::Array => "array",
+            Ty::Array(e) => pruv_core::typeinfo::array_of_elem_name(e.name()).unwrap(),
             Ty::Opt => "option",
             Ty::Res => "result",
             Ty::User(n) => n,
         }
+    }
+    pub fn is_array(&self) -> bool {
+        matches!(self, Ty::Array(_))
+    }
+    pub fn array_elem(&self) -> Option<Elem> {
+        match self {
+            Ty::Array(e) => Some(*e),
+            _ => None,
+        }
+    }
+    pub fn array_of(e: Elem) -> Ty {
+        Ty::Array(e)
     }
 }
 
@@ -366,7 +410,7 @@ impl Model {
             Ty::Opt => Ok(self.opt_sort.clone()),
             Ty::Res => Ok(self.res_sort.clone()),
             Ty::User(n) => self.sorts.get(n).cloned().ok_or_else(|| format!("'{}'", n)),
-            Ty::Unit | Ty::Array => Err(format!("'{}'", ty.name())),
+            Ty::Unit | Ty::Array(_) => Err(format!("'{}'", ty.name())),
         }
     }
 
@@ -446,5 +490,20 @@ impl Model {
     /// 열거형 변형 안의 필드 위치.
     pub fn variant_field_index(&self, enum_name: &str, variant: &str, field: &str) -> Option<usize> {
         self.variant_decl(enum_name, variant)?.fields.iter().position(|f| f.name == field)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn array_type_names_round_trip() {
+        for n in ["array", "array_u8", "array_bool"] {
+            let t = Ty::from_name(n);
+            assert_eq!(t.name(), n);
+            assert!(t.is_array());
+        }
+        assert_eq!(Ty::from_name("u8"), Ty::User("u8".to_string()));
     }
 }
