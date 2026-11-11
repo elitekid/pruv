@@ -2144,6 +2144,7 @@ mod tests {
             ensures: vec![],
             body: vec![],
             ret_refine: None,
+            tparams: vec![],
         };
         let mut m = Mod::new();
         let mut g = FnGen::new(&mut m, &tt, &funcs, &f, false);
@@ -2168,6 +2169,7 @@ mod tests {
                 ensures: vec![],
                 body: vec![],
                 ret_refine: None,
+                tparams: vec![],
             }],
             refined: false,
         }

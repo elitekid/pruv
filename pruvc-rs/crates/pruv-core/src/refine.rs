@@ -147,7 +147,7 @@ fn expr_names(e: &Expr, out: &mut HashSet<String>) {
             out.insert(x.name.clone());
         }
         Expr::Call(x) => {
-            out.insert(g3_base(&x.name).to_string()); // G3: without the type-argument suffix
+            out.insert(x.name.to_string());
         }
         Expr::Quant(x) => {
             out.insert(x.var.clone());
@@ -277,7 +277,7 @@ impl At {
         Expr::Binary(Binary { line: self.line, col: self.col, op: op.to_string(), left: Box::new(l), right: Box::new(r), ty: None })
     }
     fn length(&self, n: &str) -> Expr {
-        Expr::Call(Call { line: self.line, col: self.col, name: "len".to_string(), args: vec![self.var(n)], ty: None })
+        Expr::Call(Call { line: self.line, col: self.col, name: "len".to_string(), args: vec![self.var(n)], ty: None, targs: None, inst: None })
     }
     /// L <= v && v <= U (v is a function that builds a fresh i64 expression each time)
     fn within(&self, v: &dyn Fn() -> Expr, r: &Refinement) -> Expr {

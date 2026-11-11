@@ -696,6 +696,8 @@ impl Bld {
             name: "len".to_string(),
             args: vec![self.var(n)],
             ty: None,
+            targs: None,
+            inst: None,
         })
     }
     fn index(&self, a: &str, i: Expr) -> Expr {
@@ -769,6 +771,8 @@ impl Bld {
                 name: x.name.clone(),
                 args: x.args.iter().map(|a| self.clone_e(a, sub)).collect(),
                 ty: x.ty.clone(),
+                targs: x.targs.clone(),
+                inst: x.inst.clone(),
             }),
             Expr::Index(x) => Expr::Index(ast::Index {
                 line,
@@ -783,6 +787,8 @@ impl Bld {
                 name: x.name.clone(),
                 arg: x.arg.as_ref().map(|a| Box::new(self.clone_e(a, sub))),
                 ty: x.ty.clone(),
+                targs: x.targs.clone(),
+                inst: x.inst.clone(),
             }),
             Expr::StructLit(x) => Expr::StructLit(ast::StructLit {
                 line,
@@ -794,6 +800,8 @@ impl Bld {
                     .map(|f| ast::FieldInit { line, col, name: f.name.clone(), value: self.clone_e(&f.value, sub) })
                     .collect(),
                 ty: x.ty.clone(),
+                targs: x.targs.clone(),
+                inst: x.inst.clone(),
             }),
             Expr::EnumCtor(x) => Expr::EnumCtor(ast::EnumCtor {
                 line,
@@ -802,6 +810,8 @@ impl Bld {
                 variant: x.variant.clone(),
                 args: x.args.iter().map(|a| self.clone_e(a, sub)).collect(),
                 ty: x.ty.clone(),
+                targs: x.targs.clone(),
+                inst: x.inst.clone(),
             }),
             Expr::FieldAccess(x) => Expr::FieldAccess(ast::FieldAccess {
                 line,
@@ -817,6 +827,7 @@ impl Bld {
                 enum_name: x.enum_name.clone(),
                 variant: x.variant.clone(),
                 ty: x.ty.clone(),
+                enum_ty: x.enum_ty.clone(),
             }),
             Expr::VariantField(x) => Expr::VariantField(ast::VariantField {
                 line,
@@ -826,6 +837,7 @@ impl Bld {
                 variant: x.variant.clone(),
                 field: x.field.clone(),
                 ty: x.ty.clone(),
+                enum_ty: x.enum_ty.clone(),
             }),
         }
     }

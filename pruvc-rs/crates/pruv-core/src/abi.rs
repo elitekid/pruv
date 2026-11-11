@@ -295,6 +295,7 @@ mod tests {
             ensures: vec![],
             body: vec![],
             ret_refine: None,
+            tparams: vec![],
         };
         assert_eq!(
             abi_of(&f, &tt, AbiTarget::SysV).unwrap(),
@@ -316,6 +317,7 @@ mod tests {
             ensures: vec![],
             body: vec![],
             ret_refine: None,
+            tparams: vec![],
         }
     }
 

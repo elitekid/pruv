@@ -457,7 +457,7 @@ mod tests {
         Function {
             line: 1, col: 1, name: name.into(),
             params: params.into_iter().map(|(n, t)| Param { name: n.into(), ty: t.into(), refine: None }).collect(),
-            ret: ret.into(), effects: vec![], requires: vec![], ensures: vec![], body: vec![], ret_refine: None,
+            ret: ret.into(), effects: vec![], requires: vec![], ensures: vec![], body: vec![], ret_refine: None, tparams: vec![],
         }
     }
 
@@ -488,6 +488,7 @@ mod tests {
                 FieldDecl { line: 1, col: 1, name: "x".into(), ty: "i64".into() },
                 FieldDecl { line: 1, col: 1, name: "b".into(), ty: "bool".into() },
             ],
+            tparams: vec![],
         });
         let tt = TypeTable::new(&[st]);
         let mut c = 0;

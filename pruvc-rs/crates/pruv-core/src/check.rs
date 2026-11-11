@@ -2,8 +2,8 @@
 //! Function structure, check order, code, stage, message and fix match Python character for character.
 //!
 //! G3 A1: types are `GType` inside the checker; the AST carries them as key strings (gtype.rs `to_key`/`from_key`),
-//! which are the plain legacy names for every non-generic program. Type parameters and type arguments are read from the
-//! name suffixes described in ast.rs.
+//! which are the plain legacy names for every non-generic program. Type parameters and written type arguments are
+//! real AST fields (ast.rs); the checker records the instantiation (`inst`) and `enum_ty` on the nodes (Python check.py).
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
@@ -181,9 +181,11 @@ fn set_ty(e: &mut Expr, t: &GType) {
     }
 }
 
-/// Type arguments written on a node (None = no type application).
-fn targs_of(name: &str) -> Option<Vec<GType>> {
-    name_targs(name).map(|v| v.iter().map(|k| GType::from_key(k)).collect())
+/// The instantiation recorded on a node: declaration identity, type arguments, and the substitution ordered by index.
+fn inst_of(decl: String, targs: &[GType], m: &Mapping) -> Inst {
+    let mut subst: Vec<(String, usize, GType)> = m.iter().map(|((o, i), t)| (o.clone(), *i, t.clone())).collect();
+    subst.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
+    Inst { decl, args: targs.to_vec(), subst }
 }
 
 /// Type of an element read from / stored into the array type `at`: T for [T]; bool for [bool]; else i64.
@@ -203,7 +205,7 @@ impl Checker {
         let mut funcs: HashMap<String, Rc<FuncInfo>> = HashMap::new();
         let mut func_order = Vec::new();
         for f in &prog.functions {
-            let name = g3_base(&f.name).to_string();
+            let name = f.name.clone();
             if funcs.contains_key(&name) {
                 return Err(terr(f.line, f.col, "dup_fn", format!("function {} defined twice", name), ""));
             }
@@ -218,7 +220,7 @@ impl Checker {
                     params: f.params.iter().map(|p| GType::from_key(&p.ty)).collect(),
                     ret: GType::from_key(&f.ret),
                     effects: f.effects.clone(),
-                    tparams: name_tparams(&f.name),
+                    tparams: f.tparams.clone(),
                 }),
             );
             func_order.push(name);
@@ -243,7 +245,7 @@ impl Checker {
     /// If the value is itself an alloc call and the expected type is an array, sets alloc's result type to that array type.
     fn want_alloc(&mut self, value: &Expr, ty: &GType) {
         if let Expr::Call(c) = value {
-            if g3_base(&c.name) == "alloc" && ty.is_array() {
+            if c.name == "alloc" && ty.is_array() {
                 self.alloc_want = Some(ty.clone());
             }
         }
@@ -366,8 +368,8 @@ impl Checker {
             self.tparam_list(&d.tparams())?;
         }
         for f in &prog.functions {
-            let tps = name_tparams(&f.name);
-            if g3_base(&f.name) == "main" && !tps.is_empty() {
+            let tps = &f.tparams;
+            if f.name == "main" && !tps.is_empty() {
                 return Err(terr(
                     f.line,
                     f.col,
@@ -376,7 +378,7 @@ impl Checker {
                     "make main a plain function; call generic functions from it with explicit type arguments",
                 ));
             }
-            self.tparam_list(&tps)?;
+            self.tparam_list(tps)?;
         }
         Ok(())
     }
@@ -625,7 +627,7 @@ impl Checker {
             }
         }
         for f in &prog.functions {
-            self.enter(&fn_owner(g3_base(&f.name)), &name_tparams(&f.name));
+            self.enter(&fn_owner(&f.name), &f.tparams);
             for p in &f.params {
                 self.check_type(f.line, f.col, &GType::from_key(&p.ty))?;
             }
@@ -723,9 +725,9 @@ impl Checker {
 
     // ---- functions ----
     fn fn_(&mut self, f: &mut Function) -> Res<()> {
-        let fname = g3_base(&f.name).to_string();
+        let fname = f.name.clone();
         let ret = GType::from_key(&f.ret);
-        self.enter(&fn_owner(&fname), &name_tparams(&f.name));
+        self.enter(&fn_owner(&fname), &f.tparams);
         self.cur_name = fname.clone();
         self.cur_ret = ret.clone();
         self.calls.insert(fname.clone(), BTreeSet::new());
@@ -1282,13 +1284,15 @@ impl Checker {
             }
             Expr::StructLit(x) => self.struct_lit(x, scope, c),
             Expr::EnumCtor(x) => {
-                let name = g3_base(&x.enum_name).to_string();
-                let targs = targs_of(&x.enum_name);
+                let name = x.enum_name.clone();
+                let targs = x.targs.clone();
                 let mut ety = self.enum_type(x.line, x.col, &name)?;
                 let tps = self.decls.get(&name).map(|d| d.tparams()).unwrap_or_default();
-                let m = self.instantiate(x.line, x.col, &format!("enum {}", name), &decl_owner(&name), &tps, &targs)?;
-                if m.is_some() {
-                    ety = mk_nominal(&name, targs.clone().unwrap_or_default());
+                let m = self.instantiate(x.line, x.col, &format!("enum {}", name), &decl_owner(&name), tps, &targs)?;
+                if let Some(m) = &m {
+                    let targs = targs.clone().unwrap_or_default();
+                    x.inst = Some(inst_of(decl_owner(&name), &targs, m));
+                    ety = mk_nominal(&name, targs);
                 }
                 self.variant_decl(x.line, x.col, &ety, &x.variant)?;
                 let fields = self.fields_of(&ety, Some(x.variant.as_str()))?;
@@ -1332,7 +1336,7 @@ impl Checker {
                 if !c {
                     return Err(terr(x.line, x.col, "contract_only", "is_variant is only allowed in contracts", "use match in code"));
                 }
-                self.variant_target(x.line, x.col, &mut x.value, &x.enum_name, &x.variant, scope, c)?;
+                x.enum_ty = Some(self.variant_target(x.line, x.col, &mut x.value, &x.enum_name, &x.variant, scope, c)?);
                 Ok(boolt())
             }
             Expr::VariantField(x) => {
@@ -1340,6 +1344,7 @@ impl Checker {
                     return Err(terr(x.line, x.col, "contract_only", "variant_field is only allowed in contracts", "use match in code"));
                 }
                 let ety = self.variant_target(x.line, x.col, &mut x.value, &x.enum_name, &x.variant, scope, c)?;
+                x.enum_ty = Some(ety.clone());
                 for (fname, ft) in self.fields_of(&ety, Some(x.variant.as_str()))? {
                     if fname == x.field {
                         return Ok(ft);
@@ -1361,20 +1366,31 @@ impl Checker {
     /// [(field name, field type)] of the struct / enum variant `ty` names, with the type arguments of `ty` substituted
     /// into the declared field types (G3_SPEC 3.4).
     fn fields_of(&self, ty: &GType, variant: Option<&str>) -> Res<Vec<(String, GType)>> {
-        let n = self.decls.get(&ty.name).map(|d| d.tparams().len()).unwrap_or(0);
-        let m = match bind_args(&decl_owner(&ty.name), n, &ty.args) {
-            Ok(m) => m,
-            Err(e) => return Err(terr(0, 0, "internal", e.to_string(), "")),
-        };
+        let m = self.bind_decl_args(ty)?;
         let fs = self.tt.fields(&ty.name, variant).unwrap_or(&[]);
         Ok(fs.iter().map(|fd| (fd.name.clone(), substitute(&GType::from_key(&fd.ty), &m))).collect())
     }
 
-    /// The type of a struct field.
+    /// The substitution of a nominal application's type arguments for its declaration's parameters.
+    fn bind_decl_args(&self, ty: &GType) -> Res<Mapping> {
+        let n = self.decls.get(&ty.name).map(|d| d.tparams().len()).unwrap_or(0);
+        match bind_args(&decl_owner(&ty.name), n, &ty.args) {
+            Ok(m) => Ok(m),
+            Err(e) => Err(terr(0, 0, "internal", e.to_string(), "")),
+        }
+    }
+
+    /// The type of a struct field: find the field first, then substitute only its type (substituting every field made
+    /// `x.f` O(fields)); a struct type without type arguments yields the declared type as is.
     fn field_type(&self, line: i64, col: i64, sty: &GType, name: &str) -> Res<GType> {
-        for (fname, ft) in self.fields_of(sty, None)? {
-            if fname == name {
-                return Ok(ft);
+        let fs = self.tt.fields(&sty.name, None).unwrap_or(&[]);
+        for fd in fs {
+            if fd.name == name {
+                let ft = GType::from_key(&fd.ty);
+                if sty.args.is_empty() {
+                    return Ok(ft);
+                }
+                return Ok(substitute(&ft, &self.bind_decl_args(sty)?));
             }
         }
         Err(terr(line, col, "unknown_field", format!("struct {} has no field {}", sty.name, name), ""))
@@ -1427,8 +1443,8 @@ impl Checker {
     }
 
     fn struct_lit(&mut self, e: &mut StructLit, scope: &Scope, c: bool) -> Res<GType> {
-        let name = g3_base(&e.name).to_string();
-        let targs = targs_of(&e.name);
+        let name = e.name.clone();
+        let targs = e.targs.clone();
         if !self.decls.contains_key(&name) {
             return Err(terr(e.line, e.col, "unknown_type", format!("unknown type {}", name), ""));
         }
@@ -1443,9 +1459,11 @@ impl Checker {
         }
         let mut sty = GType::new(&name, Vec::new());
         let tps = self.decls.get(&name).map(|d| d.tparams()).unwrap_or_default();
-        let m = self.instantiate(e.line, e.col, &format!("struct {}", name), &decl_owner(&name), &tps, &targs)?;
-        if m.is_some() {
-            sty = mk_nominal(&name, targs.clone().unwrap_or_default());
+        let m = self.instantiate(e.line, e.col, &format!("struct {}", name), &decl_owner(&name), tps, &targs)?;
+        if let Some(m) = &m {
+            let targs = targs.clone().unwrap_or_default();
+            e.inst = Some(inst_of(decl_owner(&name), &targs, m));
+            sty = mk_nominal(&name, targs);
         }
         let fields: Vec<(String, GType)> = self.fields_of(&sty, None)?;
         let declared: Vec<&str> = fields.iter().map(|f| f.0.as_str()).collect();
@@ -1483,8 +1501,8 @@ impl Checker {
     /// Some / None / Ok / Err. Without type arguments they keep the legacy i64 meaning (G3_SPEC 0.0 item 8);
     /// `Some::<X>(x)`, `None::<X>`, `Ok::<X>(x)`, `Err::<X>(code)` build Option<X> / Result<X> (3.5).
     fn ctor(&mut self, e: &mut Ctor, scope: &Scope, c: bool) -> Res<GType> {
-        let name = g3_base(&e.name).to_string();
-        let targs = match targs_of(&e.name) {
+        let name = e.name.clone();
+        let targs = match e.targs.clone() {
             None => {
                 if name == "None" {
                     return Ok(GType::option());
@@ -1508,6 +1526,10 @@ impl Checker {
         let x = targs[0].clone();
         self.check_type(e.line, e.col, &x)?;
         self.check_arg(e.line, e.col, &x, None)?;
+        let owner = format!("builtin:{}", name);
+        let mut m = Mapping::new();
+        m.insert((owner.clone(), 0), x.clone());
+        e.inst = Some(inst_of(owner, &targs, &m));
         if name == "None" {
             return Ok(mk_option(x));
         }
@@ -1519,8 +1541,8 @@ impl Checker {
     }
 
     fn call(&mut self, e: &mut Call, scope: &Scope, c: bool) -> Res<GType> {
-        let n = g3_base(&e.name).to_string();
-        let targs = targs_of(&e.name);
+        let n = e.name.clone();
+        let targs = e.targs.clone();
         let (line, col) = (e.line, e.col);
         let alen = e.args.len();
         let arity = |k: usize| -> Res<()> {
@@ -1645,7 +1667,11 @@ impl Checker {
             }
         };
         // G3_SPEC 3.4: resolve + arity + admissibility + bounds, substitute the signature, check the arguments
-        let m = self.instantiate(line, col, &format!("function {}", n), &fn_owner(&n), &f.tparams, &targs)?.unwrap_or_default();
+        let m = self.instantiate(line, col, &format!("function {}", n), &fn_owner(&n), &f.tparams, &targs)?;
+        if let Some(m) = &m {
+            e.inst = Some(inst_of(fn_owner(&n), targs.as_deref().unwrap_or(&[]), m));
+        }
+        let m = m.unwrap_or_default();
         arity(f.params.len())?;
         for (arg, p) in e.args.iter_mut().zip(f.params.iter()) {
             self.expect(arg, &substitute(p, &m), scope, c, None)?;

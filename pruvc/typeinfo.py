@@ -160,11 +160,16 @@ def is_value(ty: Type, decls, _seen=()) -> bool:
     if not _is_nominal(ty):
         return False
     info = _lookup(decls, ty.name)
-    if info is None or info[0] != len(ty.args) or ty.name in _seen:
+    # the cycle guard is keyed by the full applied type (Box<Box<i64>> is finite and must pass), with a depth cap
+    # for declarations that grow their arguments forever (S<T> { s: S<Option<T>> }); G3_SPEC 5.1 caps nesting at 128
+    if info is None or info[0] != len(ty.args) or ty in _seen or len(_seen) >= _MAX_VALUE_DEPTH:
         return False
     if not all(is_value(a, decls, _seen) for a in ty.args):
         return False
-    return all(is_value(f, decls, _seen + (ty.name,)) for f in nominal_fields(ty, decls))
+    return all(is_value(f, decls, _seen + (ty,)) for f in nominal_fields(ty, decls))
+
+
+_MAX_VALUE_DEPTH = 128
 
 
 def is_element(ty: Type, element_params=()) -> bool:

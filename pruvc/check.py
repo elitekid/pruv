@@ -617,9 +617,13 @@ class Checker:
         return [(fd, substitute(fd.type, m)) for fd in s.tt.fields(ty, variant)]
 
     def field_type(s, node, sty, name):
-        for fd, ft in s.fields_of(sty):
+        # find the field first, then substitute only its type (substituting every field made x.f O(fields))
+        for fd in s.tt.fields(sty, None):
             if fd.name == name:
-                return ft
+                if not sty.args:
+                    return fd.type
+                d = s.decls[sty.name]
+                return substitute(fd.type, bind_args(decl_owner(sty.name), len(d.tparams), sty.args))
         terr(node, "unknown_field", "struct %s has no field %s" % (sty.name, name))
 
     def enum_type(s, node, name):

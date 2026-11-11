@@ -1186,6 +1186,7 @@ mod tests {
             ensures: vec![],
             body: vec![Stmt::Return(Return { line: 1, col: 1, value: Some(bin("+", var("x", "i64"), int("1"))) })],
             ret_refine: None,
+            tparams: vec![],
         };
         Program { functions: vec![f], types: vec![], refined: false }
     }
@@ -1231,6 +1232,7 @@ mod tests {
             ensures: vec![],
             body: vec![Stmt::Return(Return { line: 1, col: 1, value: Some(idx) })],
             ret_refine: None,
+            tparams: vec![],
         };
         Program { functions: vec![f], types: vec![], refined: false }
     }

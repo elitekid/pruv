@@ -161,11 +161,24 @@ impl GType {
         format!("{}<{}>", self.name, inner)
     }
 
-    /// Inverse of `to_key` (a legacy plain name parses to the legacy type).
-    pub fn from_key(s: &str) -> GType {
+    /// Strict inverse of `to_key` (a legacy plain name parses to the legacy type).
+    /// Err on trailing input, an unterminated argument list or parameter, and a bad parameter index.
+    pub fn try_from_key(s: &str) -> Result<GType, String> {
         let b = s.as_bytes();
         let mut i = 0usize;
-        parse_key(b, &mut i)
+        let t = parse_key(b, &mut i, s)?;
+        if i != b.len() {
+            return Err(format!("malformed type key {:?}: trailing input at byte {}", s, i));
+        }
+        Ok(t)
+    }
+
+    /// `try_from_key` for keys produced by `to_key` (the AST only ever holds those); a malformed key is a bug.
+    pub fn from_key(s: &str) -> GType {
+        match GType::try_from_key(s) {
+            Ok(t) => t,
+            Err(e) => panic!("{}", e),
+        }
     }
 }
 
@@ -177,22 +190,36 @@ fn take_until(b: &[u8], i: &mut usize, stop: &dyn Fn(u8) -> bool) -> String {
     String::from_utf8_lossy(&b[start..*i]).to_string()
 }
 
-fn parse_key(b: &[u8], i: &mut usize) -> GType {
+/// Consumes the separator byte 1 of a parameter key.
+fn expect_sep(b: &[u8], i: &mut usize, whole: &str) -> Result<(), String> {
+    if *i < b.len() && b[*i] == 1 {
+        *i += 1;
+        Ok(())
+    } else {
+        Err(format!("malformed type key {:?}: unterminated parameter at byte {}", whole, *i))
+    }
+}
+
+fn parse_key(b: &[u8], i: &mut usize, whole: &str) -> Result<GType, String> {
     if *i < b.len() && b[*i] == 1 {
         *i += 1;
         let owner = take_until(b, i, &|c| c == 1);
-        *i += 1;
-        let index: usize = take_until(b, i, &|c| c == 1).parse().unwrap_or(0);
-        *i += 1;
+        expect_sep(b, i, whole)?;
+        let index_text = take_until(b, i, &|c| c == 1);
+        let index: usize = match index_text.parse() {
+            Ok(n) => n,
+            Err(_) => return Err(format!("malformed type key {:?}: bad parameter index {:?}", whole, index_text)),
+        };
+        expect_sep(b, i, whole)?;
         let name = take_until(b, i, &|c| c == b',' || c == b'>');
-        return GType { name, args: Vec::new(), owner: Some(owner), index };
+        return Ok(GType { name, args: Vec::new(), owner: Some(owner), index });
     }
     let name = take_until(b, i, &|c| c == b'<' || c == b',' || c == b'>');
     let mut args = Vec::new();
     if *i < b.len() && b[*i] == b'<' {
         *i += 1;
         loop {
-            args.push(parse_key(b, i));
+            args.push(parse_key(b, i, whole)?);
             if *i < b.len() && b[*i] == b',' {
                 *i += 1;
                 continue;
@@ -201,9 +228,11 @@ fn parse_key(b: &[u8], i: &mut usize) -> GType {
         }
         if *i < b.len() && b[*i] == b'>' {
             *i += 1;
+        } else {
+            return Err(format!("malformed type key {:?}: unterminated argument list at byte {}", whole, *i));
         }
     }
-    GType { name, args, owner: None, index: 0 }
+    Ok(GType { name, args, owner: None, index: 0 })
 }
 
 // ---------- constructors ----------
@@ -402,7 +431,11 @@ pub fn nominal_fields(ty: &GType, decls: Decls) -> Result<Vec<GType>, TypeArityE
 
 // ---------- admissibility ----------
 
-fn is_value_seen(ty: &GType, decls: Decls, seen: &[String]) -> bool {
+/// Nesting cap for declarations that grow their arguments forever (G3_SPEC 5.1 caps nesting at 128).
+const MAX_VALUE_DEPTH: usize = 128;
+
+// The cycle guard is keyed by the full applied type (Box<Box<i64>> is finite and must pass), plus a depth cap.
+fn is_value_seen(ty: &GType, decls: Decls, seen: &[GType]) -> bool {
     if *ty == GType::i64() || *ty == GType::bool() || ty.owner.is_some() {
         return true;
     }
@@ -413,14 +446,14 @@ fn is_value_seen(ty: &GType, decls: Decls, seen: &[String]) -> bool {
         return false;
     }
     match decls(&ty.name) {
-        Some((n, _)) if n == ty.args.len() && !seen.contains(&ty.name) => {}
+        Some((n, _)) if n == ty.args.len() && !seen.contains(ty) && seen.len() < MAX_VALUE_DEPTH => {}
         _ => return false,
     }
     if !ty.args.iter().all(|a| is_value_seen(a, decls, seen)) {
         return false;
     }
-    let mut inner: Vec<String> = seen.to_vec();
-    inner.push(ty.name.clone());
+    let mut inner: Vec<GType> = seen.to_vec();
+    inner.push(ty.clone());
     match nominal_fields(ty, decls) {
         Ok(fields) => fields.iter().all(|f| is_value_seen(f, decls, &inner)),
         Err(_) => false,
@@ -531,6 +564,8 @@ mod tests {
             "Bad" => Some((0, vec![GType::array()])),
             "Cyc" => Some((1, vec![mk_nominal("Cyc", vec![p("Cyc", 0, "T")])])),
             "Arr" => Some((1, vec![mk_array(p("Arr", 0, "T"))])),
+            "Box" => Some((1, vec![p("Box", 0, "T")])),
+            "Grow" => Some((1, vec![mk_nominal("Grow", vec![mk_option(p("Grow", 0, "T"))])])),
             _ => None,
         }
     }
@@ -765,6 +800,44 @@ mod tests {
         assert!(!is_value(&nom("Pair", vec![GType::i64()]), &decls)); // wrong arity
         assert!(!is_value(&nom("Nope", vec![]), &decls)); // unknown declaration
         assert!(!is_value(&nom("Cyc", vec![GType::i64()]), &decls)); // cycle guard
+    }
+
+    #[test]
+    fn key_round_trip_and_strict() {
+        let tys = [
+            GType::i64(),
+            GType::array(),
+            point(),
+            mk_option(GType::bool()),
+            nom("Pair", vec![GType::i64(), mk_option(GType::bool())]),
+            nom("Choice", vec![nom("Pair", vec![ft(), mk_array(ft())])]),
+            p("Pair", 1, "U"),
+        ];
+        for t in &tys {
+            let k = t.to_key();
+            let back = GType::try_from_key(&k).unwrap();
+            assert_eq!(&back, t);
+            assert_eq!(back.to_key(), k);
+            assert_eq!(GType::from_key(&k), *t);
+        }
+        assert_eq!(GType::try_from_key(&p("Pair", 1, "U").to_key()).unwrap().name, "U");
+        assert!(GType::try_from_key("Pair<i64>x").is_err()); // trailing input
+        assert!(GType::try_from_key("i64,bool").is_err());
+        assert!(GType::try_from_key("i64>").is_err());
+        assert!(GType::try_from_key("Pair<i64").is_err()); // unterminated list
+        assert!(GType::try_from_key("\u{1}type:Pair\u{1}x\u{1}T").is_err()); // bad index
+        assert!(GType::try_from_key("\u{1}type:Pair\u{1}-1\u{1}T").is_err());
+        assert!(GType::try_from_key("\u{1}type:Pair\u{1}0").is_err()); // unterminated parameter
+        assert!(GType::try_from_key("\u{1}type:Pair").is_err());
+    }
+
+    #[test]
+    fn nested_same_declaration_is_value() {
+        // struct Box<T> { value: T }; struct Grow<T> { g: Grow<Option<T>> }
+        let b1 = nom("Box", vec![GType::i64()]);
+        assert!(is_value(&nom("Box", vec![b1.clone()]), &decls));
+        assert!(is_value(&nom("Box", vec![nom("Box", vec![nom("Box", vec![GType::bool()])])]), &decls));
+        assert!(!is_value(&nom("Grow", vec![GType::i64()]), &decls)); // grows forever: depth cap
     }
 
     #[test]

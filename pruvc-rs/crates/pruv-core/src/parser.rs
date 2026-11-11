@@ -318,17 +318,6 @@ impl Parser {
         Ok(GType::new(&n.val, Vec::new()))
     }
 
-    /// The name string of a declaration/call/literal with its G3 suffix.
-    fn with_targs(name: &str, targs: &Option<Vec<GType>>) -> String {
-        match targs {
-            Some(v) => {
-                let keys: Vec<String> = v.iter().map(|t| t.to_key()).collect();
-                g3_join(name, &keys.join(&G3_SEP.to_string()))
-            }
-            None => name.to_string(),
-        }
-    }
-
     fn struct_decl(&mut self) -> R<StructDecl> {
         let kw = self.expect_tok("struct")?;
         let n = self.ident()?;
@@ -337,7 +326,7 @@ impl Parser {
         let fields = self.field_list("}")?;
         self.expect("}")?;
         self.scope = HashMap::new();
-        Ok(StructDecl { line: kw.line, col: kw.col, name: g3_join(&n.val, &encode_tparams(&tparams)), fields })
+        Ok(StructDecl { line: kw.line, col: kw.col, name: n.val, fields, tparams })
     }
 
     fn enum_decl(&mut self) -> R<EnumDecl> {
@@ -368,7 +357,7 @@ impl Parser {
         }
         self.expect("}")?;
         self.scope = HashMap::new();
-        Ok(EnumDecl { line: kw.line, col: kw.col, name: g3_join(&n.val, &encode_tparams(&tparams)), variants })
+        Ok(EnumDecl { line: kw.line, col: kw.col, name: n.val, variants, tparams })
     }
 
     /// A type in a position where refinement annotations are not allowed (fields, etc.)
@@ -627,8 +616,7 @@ impl Parser {
         }
         let body = self.block()?;
         self.scope = HashMap::new();
-        let name = g3_join(&name, &encode_tparams(&tparams));
-        Ok(Function { line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine })
+        Ok(Function { line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine, tparams })
     }
 
     fn block(&mut self) -> R<Vec<Stmt>> {
@@ -1051,7 +1039,7 @@ impl Parser {
             if self.at("::", 0) && self.at("<", 1) {
                 targs = Some(self.expr_targs()?); // G3: None::<T>
             }
-            return Ok(Expr::Ctor(Ctor { line, col, name: Self::with_targs("None", &targs), arg: None, ty: None }));
+            return Ok(Expr::Ctor(Ctor { line, col, name: "None".to_string(), arg: None, ty: None, targs, inst: None }));
         }
         if self.at("Some", 0) || self.at("Ok", 0) || self.at("Err", 0) {
             self.bump();
@@ -1059,7 +1047,7 @@ impl Parser {
             self.expect("(")?;
             let a = self.expr()?;
             self.expect(")")?;
-            return Ok(Expr::Ctor(Ctor { line, col, name: Self::with_targs(&t.val, &targs), arg: Some(Box::new(a)), ty: None }));
+            return Ok(Expr::Ctor(Ctor { line, col, name: t.val.clone(), arg: Some(Box::new(a)), ty: None, targs, inst: None }));
         }
         if self.at("result", 0) {
             self.bump();
@@ -1101,7 +1089,7 @@ impl Parser {
             self.expect(",")?;
             let (en, vt) = self.enum_ref()?;
             self.expect(")")?;
-            return Ok(Expr::IsVariant(IsVariant { line, col, value: Box::new(v), enum_name: en.val, variant: vt.val, ty: None }));
+            return Ok(Expr::IsVariant(IsVariant { line, col, value: Box::new(v), enum_name: en.val, variant: vt.val, ty: None, enum_ty: None }));
         }
         if self.at("variant_field", 0) {
             self.bump();
@@ -1113,7 +1101,7 @@ impl Parser {
             let f = self.ident()?;
             self.expect(")")?;
             return Ok(Expr::VariantField(VariantField {
-                line, col, value: Box::new(v), enum_name: en.val, variant: vt.val, field: f.val, ty: None,
+                line, col, value: Box::new(v), enum_name: en.val, variant: vt.val, field: f.val, ty: None, enum_ty: None,
             }));
         }
         if t.kind == Kind::Id {
@@ -1155,7 +1143,7 @@ impl Parser {
                     }
                     self.expect(")")?;
                 }
-                return Ok(Expr::EnumCtor(EnumCtor { line, col, enum_name: Self::with_targs(&t.val, &targs), variant: vt.val, args, ty: None }));
+                return Ok(Expr::EnumCtor(EnumCtor { line, col, enum_name: t.val.clone(), variant: vt.val, args, ty: None, targs, inst: None }));
             }
             if is_upper(&t.val) && self.at("{", 0) {
                 self.bump();
@@ -1170,7 +1158,7 @@ impl Parser {
                     }
                 }
                 self.expect("}")?;
-                return Ok(Expr::StructLit(StructLit { line, col, name: Self::with_targs(&t.val, &targs), fields: inits, ty: None }));
+                return Ok(Expr::StructLit(StructLit { line, col, name: t.val.clone(), fields: inits, ty: None, targs, inst: None }));
             }
             if self.at("(", 0) {
                 self.bump();
@@ -1182,7 +1170,7 @@ impl Parser {
                     }
                 }
                 self.expect(")")?;
-                return Ok(Expr::Call(Call { line, col, name: Self::with_targs(&t.val, &targs), args, ty: None }));
+                return Ok(Expr::Call(Call { line, col, name: t.val.clone(), args, ty: None, targs, inst: None }));
             }
             return Ok(Expr::Var(Var { line, col, name: t.val, ty: None }));
         }

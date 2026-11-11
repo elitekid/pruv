@@ -322,8 +322,8 @@ fn g3_ty(out: &mut G3Cands, line: i64, col: i64, ty: &str) {
 }
 
 fn g3_expr(e: &Expr, out: &mut G3Cands) {
-    let app = |out: &mut G3Cands, line: i64, col: i64, name: &str| {
-        if g3_extra(name).is_some() {
+    let app = |out: &mut G3Cands, line: i64, col: i64, targs: &Option<Vec<GType>>| {
+        if targs.is_some() {
             g3_push(out, line, col, "a type application".to_string());
         }
     };
@@ -335,7 +335,7 @@ fn g3_expr(e: &Expr, out: &mut G3Cands) {
             g3_expr(&x.right, out);
         }
         Expr::Call(x) => {
-            app(out, x.line, x.col, &x.name);
+            app(out, x.line, x.col, &x.targs);
             for a in &x.args {
                 g3_expr(a, out);
             }
@@ -345,7 +345,7 @@ fn g3_expr(e: &Expr, out: &mut G3Cands) {
             g3_expr(&x.index, out);
         }
         Expr::Ctor(x) => {
-            app(out, x.line, x.col, &x.name);
+            app(out, x.line, x.col, &x.targs);
             if let Some(a) = &x.arg {
                 g3_expr(a, out);
             }
@@ -356,13 +356,13 @@ fn g3_expr(e: &Expr, out: &mut G3Cands) {
             g3_expr(&x.body, out);
         }
         Expr::StructLit(x) => {
-            app(out, x.line, x.col, &x.name);
+            app(out, x.line, x.col, &x.targs);
             for f in &x.fields {
                 g3_expr(&f.value, out);
             }
         }
         Expr::EnumCtor(x) => {
-            app(out, x.line, x.col, &x.enum_name);
+            app(out, x.line, x.col, &x.targs);
             for a in &x.args {
                 g3_expr(a, out);
             }
@@ -430,8 +430,8 @@ pub fn first_g3_use(prog: &Program) -> Option<(i64, i64, String)> {
         }
     }
     for f in &prog.functions {
-        if !name_tparams(&f.name).is_empty() {
-            g3_push(&mut cands, f.line, f.col, format!("generic function {}", g3_base(&f.name)));
+        if !f.tparams.is_empty() {
+            g3_push(&mut cands, f.line, f.col, format!("generic function {}", f.name));
         }
         for p in &f.params {
             g3_ty(&mut cands, f.line, f.col, &p.ty);
@@ -473,18 +473,18 @@ pub fn g3_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diag
 }
 
 impl TypeDecl {
-    /// The declared name (without the G3 type-parameter suffix).
+    /// The declared name.
     pub fn name(&self) -> &str {
         match self {
-            TypeDecl::Struct(s) => g3_base(&s.name),
-            TypeDecl::Enum(e) => g3_base(&e.name),
+            TypeDecl::Struct(s) => &s.name,
+            TypeDecl::Enum(e) => &e.name,
         }
     }
     /// The declared type parameters (empty for a non-generic declaration).
-    pub fn tparams(&self) -> Vec<TParam> {
+    pub fn tparams(&self) -> &[TParam] {
         match self {
-            TypeDecl::Struct(s) => name_tparams(&s.name),
-            TypeDecl::Enum(e) => name_tparams(&e.name),
+            TypeDecl::Struct(s) => &s.tparams,
+            TypeDecl::Enum(e) => &e.tparams,
         }
     }
     pub fn line(&self) -> i64 {

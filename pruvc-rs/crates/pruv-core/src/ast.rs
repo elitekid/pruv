@@ -5,37 +5,15 @@
 pub type Type = String;
 pub type Ty = Option<String>;
 
-// ---------- G3 A1: generics carried inside existing strings ----------
-// The AST structs are shared with later layers that construct them literally, so they cannot grow fields. The G3 extras
-// therefore ride in plain strings (the later layers never see them: every program that uses G3 is rejected right after check):
-//  * a structured type is a `GType` key string (gtype.rs `to_key`/`from_key`); a legacy type is its plain name, as before;
-//  * the type parameters of a fn/struct/enum are a suffix of its `name`: `name` MARK `line:col:T:Bound` SEP ...;
-//  * the type arguments written on a Call / StructLit / EnumCtor / Ctor are a suffix of its name: `name` MARK key SEP key ...
-// Python keeps these as class attributes (vast.py `tparams`, `targs`).
-pub const G3_MARK: char = '\u{1}';
-pub const G3_SEP: char = '\u{2}';
-
-/// The plain name of a name string that may carry a G3 suffix.
-pub fn g3_base(s: &str) -> &str {
-    match s.find(G3_MARK) {
-        Some(i) => &s[..i],
-        None => s,
-    }
-}
-
-/// The G3 suffix of a name string (None when there is none).
-pub fn g3_extra(s: &str) -> Option<&str> {
-    s.find(G3_MARK).map(|i| &s[i + G3_MARK.len_utf8()..])
-}
-
-/// `base` with the suffix `extra` attached; `extra` None/empty leaves `base` unchanged.
-pub fn g3_join(base: &str, extra: &str) -> String {
-    if extra.is_empty() {
-        base.to_string()
-    } else {
-        format!("{}{}{}", base, G3_MARK, extra)
-    }
-}
+// ---------- G3: generics ----------
+// Names are always plain. The G3 extras are real optional fields (Python keeps them as class attributes, vast.py):
+//  * `tparams` on Function / StructDecl / EnumDecl (empty = not generic), filled by the parser;
+//  * `targs` on Call / StructLit / EnumCtor / Ctor (None = no type application written), filled by the parser;
+//  * `inst` on the same four nodes: the instantiation the checker recorded (declaration identity, type arguments, substitution);
+//  * `enum_ty` on IsVariant / VariantField: the checked type of the scrutinee, filled by the checker.
+// A structured type inside `ty` / `type` / `ret` strings is still a `GType` key (gtype.rs `to_key`/`try_from_key`);
+// a legacy type is its plain name, as before.
+use crate::gtype::GType;
 
 /// One entry of a type-parameter list (`T` or `T: Element`); `bound` is the bound's spelling.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,39 +24,13 @@ pub struct TParam {
     pub bound: Option<String>,
 }
 
-pub fn encode_tparams(tps: &[TParam]) -> String {
-    let parts: Vec<String> = tps
-        .iter()
-        .map(|t| format!("{}:{}:{}:{}", t.line, t.col, t.name, t.bound.clone().unwrap_or_default()))
-        .collect();
-    parts.join(&G3_SEP.to_string())
-}
-
-pub fn decode_tparams(s: &str) -> Vec<TParam> {
-    let mut out = Vec::new();
-    for part in s.split(G3_SEP) {
-        let f: Vec<&str> = part.splitn(4, ':').collect();
-        if f.len() != 4 {
-            continue;
-        }
-        out.push(TParam {
-            line: f[0].parse().unwrap_or(0),
-            col: f[1].parse().unwrap_or(0),
-            name: f[2].to_string(),
-            bound: if f[3].is_empty() { None } else { Some(f[3].to_string()) },
-        });
-    }
-    out
-}
-
-/// The type parameters a declaration name carries (empty when it is not generic).
-pub fn name_tparams(name: &str) -> Vec<TParam> {
-    g3_extra(name).map(decode_tparams).unwrap_or_default()
-}
-
-/// The type-argument keys a call/literal/constructor name carries (None = no type application written).
-pub fn name_targs(name: &str) -> Option<Vec<String>> {
-    g3_extra(name).map(|e| e.split(G3_SEP).map(|s| s.to_string()).collect())
+/// The instantiation recorded by the checker on a generic Call / StructLit / EnumCtor / Ctor (Python `node.inst`).
+/// `decl`: the declaration identity (`fn:f`, `type:S`, `builtin:Some`); `subst`: (owner, index, replacement) ordered by index.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Inst {
+    pub decl: String,
+    pub args: Vec<GType>,
+    pub subst: Vec<(String, usize, GType)>,
 }
 
 // ---------- expressions ----------
@@ -95,28 +47,43 @@ pub struct Unary { pub line: i64, pub col: i64, pub op: String, pub operand: Box
 #[derive(Debug, Clone, PartialEq)]
 pub struct Binary { pub line: i64, pub col: i64, pub op: String, pub left: Box<Expr>, pub right: Box<Expr>, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
-pub struct Call { pub line: i64, pub col: i64, pub name: String, pub args: Vec<Expr>, pub ty: Ty }
+pub struct Call {
+    pub line: i64, pub col: i64, pub name: String, pub args: Vec<Expr>, pub ty: Ty,
+    pub targs: Option<Vec<GType>>, pub inst: Option<Inst>,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct Index { pub line: i64, pub col: i64, pub array: Box<Expr>, pub index: Box<Expr>, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
-pub struct Ctor { pub line: i64, pub col: i64, pub name: String, pub arg: Option<Box<Expr>>, pub ty: Ty }
+pub struct Ctor {
+    pub line: i64, pub col: i64, pub name: String, pub arg: Option<Box<Expr>>, pub ty: Ty,
+    pub targs: Option<Vec<GType>>, pub inst: Option<Inst>,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct Quant {
     pub line: i64, pub col: i64, pub kind: String, pub var: String,
     pub lo: Box<Expr>, pub hi: Box<Expr>, pub body: Box<Expr>, pub ty: Ty,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct StructLit { pub line: i64, pub col: i64, pub name: String, pub fields: Vec<FieldInit>, pub ty: Ty }
+pub struct StructLit {
+    pub line: i64, pub col: i64, pub name: String, pub fields: Vec<FieldInit>, pub ty: Ty,
+    pub targs: Option<Vec<GType>>, pub inst: Option<Inst>,
+}
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnumCtor { pub line: i64, pub col: i64, pub enum_name: String, pub variant: String, pub args: Vec<Expr>, pub ty: Ty }
+pub struct EnumCtor {
+    pub line: i64, pub col: i64, pub enum_name: String, pub variant: String, pub args: Vec<Expr>, pub ty: Ty,
+    pub targs: Option<Vec<GType>>, pub inst: Option<Inst>,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccess { pub line: i64, pub col: i64, pub base: Box<Expr>, pub field: String, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
-pub struct IsVariant { pub line: i64, pub col: i64, pub value: Box<Expr>, pub enum_name: String, pub variant: String, pub ty: Ty }
+pub struct IsVariant {
+    pub line: i64, pub col: i64, pub value: Box<Expr>, pub enum_name: String, pub variant: String, pub ty: Ty,
+    pub enum_ty: Option<GType>,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantField {
     pub line: i64, pub col: i64, pub value: Box<Expr>, pub enum_name: String,
-    pub variant: String, pub field: String, pub ty: Ty,
+    pub variant: String, pub field: String, pub ty: Ty, pub enum_ty: Option<GType>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -185,9 +152,9 @@ pub struct FieldDecl { pub line: i64, pub col: i64, pub name: String, pub ty: Ty
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantDecl { pub line: i64, pub col: i64, pub name: String, pub fields: Vec<FieldDecl> }
 #[derive(Debug, Clone, PartialEq)]
-pub struct StructDecl { pub line: i64, pub col: i64, pub name: String, pub fields: Vec<FieldDecl> }
+pub struct StructDecl { pub line: i64, pub col: i64, pub name: String, pub fields: Vec<FieldDecl>, pub tparams: Vec<TParam> }
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnumDecl { pub line: i64, pub col: i64, pub name: String, pub variants: Vec<VariantDecl> }
+pub struct EnumDecl { pub line: i64, pub col: i64, pub name: String, pub variants: Vec<VariantDecl>, pub tparams: Vec<TParam> }
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInit { pub line: i64, pub col: i64, pub name: String, pub value: Expr }
 #[derive(Debug, Clone, PartialEq)]
@@ -264,7 +231,7 @@ pub enum Stmt {
 pub struct Function {
     pub line: i64, pub col: i64, pub name: String, pub params: Vec<Param>, pub ret: Type,
     pub effects: Vec<String>, pub requires: Vec<Expr>, pub ensures: Vec<Expr>, pub body: Vec<Stmt>,
-    pub ret_refine: Option<Refinement>,
+    pub ret_refine: Option<Refinement>, pub tparams: Vec<TParam>,
 }
 /// No line/col.
 #[derive(Debug, Clone, PartialEq, Default)]

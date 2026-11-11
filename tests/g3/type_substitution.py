@@ -164,6 +164,16 @@ def inadmissible_nominal():
             and not is_value(mk_nominal("Cyc", (I64,)), DECLS))          # cycle guard
 
 @case
+def nested_same_declaration_is_value():
+    # audit R1: Box<Box<i64>> is finite; the cycle guard must not confuse it with a declaration cycle
+    bt = P("Box", 0, "T")
+    grow = P("Grow", 0, "T")
+    d = dict(DECLS, Box=(1, [bt]), Grow=(1, [mk_nominal("Grow", (mk_option(grow),))]))
+    return (is_value(mk_nominal("Box", (mk_nominal("Box", (I64,)),)), d)
+            and is_value(mk_nominal("Box", (mk_nominal("Box", (mk_nominal("Box", (BOOL,)),)),)), d)
+            and not is_value(mk_nominal("Grow", (I64,)), d))
+
+@case
 def admissible_with_callable_decls():
     return is_value(mk_nominal("Pair", (I64, BOOL)), lambda n: DECLS.get(n))
 
