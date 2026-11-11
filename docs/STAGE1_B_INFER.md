@@ -115,12 +115,12 @@
 
 - 회차마다 새 `FnVerifier`(새 fresh·seen·집계·보조정리), `QueryConfig(phase="inference", round=r(1부터), timeout_ms=500, rlimit=100000, seed=0)`.
 - `cand`가 없는 의무는 질의·기록 없이 건너뛴다(최종 검증이 본다). 이번 회차에 이미 실패한 후보의 의무도 질의·기록 없이 건너뛴다.
-- 후보 의무: 기존 `prove`와 같은 두 단계(보조정리 없이 → unsat 아니고 보조정리가 있으면 보조정리와 함께). 시도마다 먼저 질의 수가 상한이면 **예산 소진**, 벽시계가 함수 시작 + 5초를 넘었으면 **시간 초과**; 아니면 질의 수 +1, 질의. 시도 상태가 `timeout`이면 시간 초과. z3 예외는 상태 `error`로 기록하고 그 후보 실패. 마지막 시도가 `proved`가 아니면(`not_proved`·`resource_unknown`·`error`) 그 후보는 이번 회차 실패: (ID, 의무 code, 상태)를 남긴다. 오류 목록·`seen`은 건드리지 않는다.
+- 후보 의무: 기존 `prove`와 같은 두 단계(보조정리 없이 → unsat 아니고 보조정리가 있으면 보조정리와 함께). 시도마다 먼저 질의 수가 상한이면 **예산 소진**, 벽시계가 함수 시작 + 5초를 넘었으면 **시간 초과**; 아니면 질의 수 +1, 질의. z3 예외는 상태 `error`로 기록하고 그 후보 실패. 시도 결과가 unknown 이고 z3 이유가 정확히 `timeout`(질의 500ms 벽시계 기한)이면 **시간 초과**. 마지막 시도가 `proved`가 아니면(`not_proved`·`resource_unknown`·`timeout`(위 예외 말고)·`error`) 그 후보는 이번 회차 실패: (ID, 의무 code, 상태)를 남긴다. 오류 목록·`seen`은 건드리지 않는다.
 - 회차 끝에 실패 후보를 한꺼번에 뺀다. 빠진 것이 없으면 끝. 후보가 하나도 없으면 회차를 돌지 않는다.
 - **예산 소진**: 그 함수의 자동 후보를 모두 버리고(상태 `budget_exhausted`) 최종 검증으로 간다.
 - **버전 1 되돌림(버전 2, 3.7):** 예산 소진이고 그 함수의 처음 후보 목록(3.4 자른 뒤)에 종류 12 이상이 하나라도 있었으면, 루프마다 처음 목록에서 종류 1~11만 남긴 목록(ID는 처음 것 그대로)으로 탐색을 처음부터 한 번 더 한다. 새 질의 예산 512, 벽시계 마감은 처음 그대로(함수 시작 + 5초), 회차 번호는 이어서 센다(r+1부터), 매 회차 새 `FnVerifier`. 첫 탐색에서 뺀 후보 기록(`dropped`)은 버린다. 되돌림이 끝나면 그 결과로 4.2에 간다. 되돌림도 예산 소진이면 `budget_exhausted`, 시간 초과면 시간 초과(아래). 시간 초과에는 되돌림이 없다. 보고: 되돌림을 했으면 그 함수의 모든 레코드에 키 `"fallback": "v1"`(안 했으면 키 없음), `rounds`는 마지막 회차 번호(두 탐색 합), `queries`는 두 탐색의 질의 합, `dropped`는 되돌림 탐색의 것, `generated`·`capped`는 처음 그대로. 되돌림 목록이 비면 회차 없이 `ok`(최종 검증 결과로 `verified`/`selected`, `kept` 0). 까닭: **질의 예산 면에서** 버전 2가 버전 1보다 나빠지지 않게(되돌림 목록은 3.4 정렬상 버전 1 목록과 같다). 시간 면은 보장하지 않는다: 되돌림은 첫 탐색이 쓰고 남은 시간만 쓰므로, 첫 탐색이 5초 가까이 쓰면 버전 1이면 통과했을 함수가 `inference_timeout`이 될 수 있다(재현 없음, 측정 대상).
 - **시간 초과**: 그 함수는 최종 검증 없이 오류 `verify/inference_timeout` 하나(위치 함수, 메시지 `invariant inference for <fn> hit the time safety limit (5 s per function, 500 ms per query)`, 안내 `write the loop invariants explicitly, or compile without --infer`). 다른 함수는 계속.
-- 후보 질의 하나가 500ms timeout 이면 함수 전체가 `inference_timeout`(측정 대상, 첫 판은 명세대로).
+- **B++ 개정(2026-11-11):** 후보 질의가 unknown 이면, z3 이유가 정확히 `timeout`(질의의 500ms 벽시계 기한)일 때만 함수 전체 시간 초과이고, 그 밖의 이유(rlimit 소진의 `canceled`·`push canceled`·`max. resource limit exceeded` 등)는 그 후보만 탈락시킨다. 까닭: rlimit 소진은 실행마다 같은 결정적 결과인데 z3 판에 따라 글귀가 `canceled`(옛 분류 → 시간 초과)와 `resource_unknown`으로 갈려 두 판 판정이 어긋났다(RESULTS 31.1, 32절). 벽시계에 걸린 경우는 STAGE1_SPEC 0절 6·283행대로 후보 제거로 바꾸지 않는다. 설정 값은 그대로라 설정 버전은 올리지 않는다. 판정 의미는 바뀌었으므로 trace를 비교할 때 커밋 8ec0faa 이전(rlimit `canceled`도 함수 중단)과 이후를 구분한다. 보고 키는 그대로이고, `dropped[].status`에 `timeout`(z3 이유가 `canceled`인 rlimit 소진)이 나올 수 있다.
 
 ### 4.2 최종 검증
 
@@ -129,6 +129,6 @@
 ## 5. 옵션·출력
 
 - `--infer`(기본 꺼짐): 위 추론. `--show-inferred`: `--infer` 없이 쓰면 사용법 오류(종료 2). `--no-verify --infer`면 추론하지 않고, `--show-inferred`면 stderr에 `{"status": "skipped_no_verify"}` 한 줄.
-- `--show-inferred` 출력: 루프 하나당 stderr JSON 한 줄(`sort_keys`, `ensure_ascii=False`). 키: `fn`, `loop`(번호), `line`, `col`, `status`(`verified` 최종 검증에서 이 함수 오류 0 / `selected` 오류 있음 / `budget_exhausted` / `timeout` / `none` 후보 없음), `invariants`(살아남은 후보의 `invariant TEXT` 목록, 순서대로), `generated`(중복 제거 뒤·자르기 전 수), `capped`, `kept`, `dropped`([{`cand`, `text`, `round`, `code`, `status`}], 회차·ID 순), `rounds`, `queries`(함수 전체). 함수 순서 → 루프 번호 순.
+- `--show-inferred` 출력: 루프 하나당 stderr JSON 한 줄(`sort_keys`, `ensure_ascii=False`). 키: `fn`, `loop`(번호), `line`, `col`, `status`(`verified` 최종 검증에서 이 함수 오류 0 / `selected` 오류 있음 / `budget_exhausted` / `timeout` / `none` 후보 없음), `invariants`(살아남은 후보의 `invariant TEXT` 목록, 순서대로), `generated`(중복 제거 뒤·자르기 전 수), `capped`, `kept`, `dropped`([{`cand`, `text`, `round`, `code`, `status`}](status 값: `not_proved`·`resource_unknown`·`timeout`·`error`), 회차·ID 순), `rounds`, `queries`(함수 전체). 함수 순서 → 루프 번호 순.
 - 시험 어댑터·`pruv-trace-dump`: `--infer`면 `options.infer=true`, 탐색·최종 질의가 모두 trace에 남고, 최상위 `inference`에 위 줄 목록(같은 객체)을 넣는다. 꺼져 있으면 `inference` 키 없음.
 - 생성 코드는 바뀌지 않는다(추론 불변식은 증명용이라 실행 코드에서 지워지는 기존 불변식과 같다).

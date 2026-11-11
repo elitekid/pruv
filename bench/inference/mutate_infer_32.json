@@ -1,0 +1,62 @@
+{
+ "command": "bench/inference/mutate_infer.py OUT.json bench/solutions/pruv_try1 bench/solutions/pruv_agg bench/inference/agg_noinv bench/g1/solutions/ref_pruv --jobs 8 --retry",
+ "versions": {
+  "git_head": "8ec0faad1daffb23c9df68369043a9758872bc7b",
+  "z3_python": "5.3.3",
+  "z3_src_crate": "503.3.0",
+  "compiler_sources_dirty": true,
+  "rs_binary_sha256": "eb2e9b3beb3b641dea9e4a41cc0644798e5c021e6ea2c5fd502f9c397119dc24",
+  "rs_binary_mtime": "2026-11-11T14:09:17"
+ },
+ "retried_undecided": 0,
+ "py": {
+  "plain": {
+   "accepted": 20,
+   "rejected": 278,
+   "undecided": 0,
+   "crash": 0
+  },
+  "infer": {
+   "accepted": 21,
+   "rejected": 277,
+   "undecided": 0,
+   "crash": 0
+  },
+  "new_pass": [
+   [
+    "agg_noinv",
+    "p02",
+    13,
+    "if a[i] >= m {"
+   ]
+  ],
+  "lost_pass": [],
+  "undecided": []
+ },
+ "rs": {
+  "plain": {
+   "accepted": 20,
+   "rejected": 278,
+   "undecided": 0,
+   "crash": 0
+  },
+  "infer": {
+   "accepted": 21,
+   "rejected": 277,
+   "undecided": 0,
+   "crash": 0
+  },
+  "new_pass": [
+   [
+    "agg_noinv",
+    "p02",
+    13,
+    "if a[i] >= m {"
+   ]
+  ],
+  "lost_pass": [],
+  "undecided": []
+ },
+ "py_rs_verdict_diff": [],
+ "note": "RESULTS 32: compiler sources = 8ec0faa + B++ fix (uncommitted at measure time)"
+}

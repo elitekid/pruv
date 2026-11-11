@@ -22,7 +22,8 @@
                 실패로 치지 않되 따로 보고
   cex_only      errors 의 counterexample 값만 다르고 나머지 동일, 단 어느 쪽에도 unknown/error/verify_unknown/
                 inference_timeout 이 없을 때(통과로 침, 수는 따로 보고). 있으면 same_unknown 으로 분류
-  flaky_unknown 어느 쪽 attempt result 가 "unknown" 이고 그 차이 때문에 다름 -> 그 입력만 직렬(--jobs 1)로
+  flaky_unknown 어느 쪽 attempt result 가 "unknown" 이고 그 차이 때문에 다름, 또는 어느 쪽 errors 에
+                inference_timeout(벽시계 5초 기한, 실행 시간에 달림)이 있고 그 때문에 다름 -> 그 입력만 직렬(--jobs 1)로
                 한 번 다시 돌려 재판정. same/cex_only 로 풀리면 이 칸에 센다(성공 칸 same 에는 더하지 않음;
                 첫 실행의 차이 요약은 보존해 "재시도로 풀린 차이(첫 결과)" 로 보고). 그래도 다르면 diff.
   py_recursion  Python 재귀 한도 internal_error(비교 대상 없음)
@@ -277,6 +278,9 @@ def classify(case, expected):
         return "same_unknown"   # resource_unknown 의 z3 글귀만 다름(그 attempt 가 unknown 이라 성공으로 세지 않음)
     if unknown_involved(case.py_obj, case.rs_obj):
         return "flaky_unknown"
+    if ("inference_timeout" in error_codes(case.py_obj) or "inference_timeout" in error_codes(case.rs_obj)) \
+            and case.py_obj.get("errors") != case.rs_obj.get("errors"):
+        return "flaky_unknown"   # 벽시계 기한(실행 시간에 달림)이 끼어 다름 -> 직렬 재시도
     return "diff"
 
 

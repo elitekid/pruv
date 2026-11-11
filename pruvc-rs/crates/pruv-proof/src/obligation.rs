@@ -315,7 +315,9 @@ impl<'a> FnVerifier<'a> {
 
     /// verify.py `_probe_attempts`: 후보 의무 하나의 탐색. `prove` 와 같은 두 단계(보조정리 없이 → 첫 시도가 unsat 이
     /// 아니고 보조정리가 있으면 함께). 시도마다 먼저 예산·벽시계를 본다(`Probe::tick`; 넘으면 abort 표시 후 끝).
-    /// 마지막 시도가 proved 가 아니면 이번 회차 실패로 남긴다. 시도 상태가 timeout 이면 시간 초과.
+    /// 시도 결과가 unknown 이고 z3 이유가 정확히 "timeout"(질의 500ms 벽시계 기한)이면 함수 전체 시간 초과(abort Timeout)로 끝낸다.
+    /// 그 밖에 마지막 시도가 proved 가 아니면(rlimit 소진 canceled 등 다른 unknown 글귀 포함) 그 후보만 이번 회차 실패로 남긴다(상태는 query_status 그대로).
+    /// 벽시계(`Probe::tick`)도 함수 전체를 멈춘다.
     /// Python 의 z3.Z3Exception → 상태 "error" 분기는 옮기지 않았다: Rust 의 `Solver::check` 는 예외를 던지지 않는다.
     fn probe_attempts(&mut self, pc: &[Ast], g: &[Ast], ob: &Ast, code: &str, cand: &str, idx: Option<usize>) {
         let mut status = String::new();
@@ -333,7 +335,7 @@ impl<'a> FnVerifier<'a> {
             let (sol, r) = self.run_attempt(pc, g, ob, with_lemmas, idx);
             let reason = if r == Sat::Unknown { Some(sol.reason_unknown()) } else { None };
             status = query_status(r, reason.as_deref()).to_string();
-            if status == "timeout" {
+            if reason.as_deref() == Some("timeout") {
                 if let Some(p) = self.probe.as_mut() {
                     p.abort = Some(crate::symbolic::ProbeAbort::Timeout);
                 }

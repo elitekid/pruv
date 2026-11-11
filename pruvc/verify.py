@@ -38,7 +38,9 @@ class BudgetExhausted(Exception):
 
 
 class InferenceTimeout(Exception):
-    """STAGE1 B2: wall-clock safety limit or a solver timeout during exploration (infer.py catches it)"""
+    """STAGE1 B2: wall-clock safety limit (function start + 5 s) during exploration, or an exploration query hitting
+    z3's own 500 ms limit (reason exactly "timeout"); rlimit exhaustion ("canceled" etc.) only drops the candidate
+    (infer.py catches it)"""
 
 
 class Probe:
@@ -426,7 +428,11 @@ class FnVerifier:
     def _probe_attempts(s, run, code, cand):
         """STAGE1 B2 exploration of one candidate obligation: the same two stages as prove (without lemmas, then
         with them if there are any and the first was not unsat); every attempt checks the budget and the clock
-        first. A last attempt that is not proved marks the candidate failed for this round."""
+        first. An attempt that is unknown with z3 reason exactly "timeout" (the query's own 500 ms wall-clock limit)
+        aborts the whole function (InferenceTimeout), as does the 5 s wall clock (Probe.tick). Any other last attempt
+        that is not proved (not_proved, resource_unknown, error, or unknown with another reason such as rlimit
+        exhaustion "canceled") marks only this candidate failed for this round; the status string is recorded
+        as query_status gives it."""
         pr = s.probe
         status = None
         for with_lemmas in (False, True):
@@ -438,8 +444,9 @@ class FnVerifier:
             except z3.Z3Exception:
                 status = "error"
                 break
-            status = query_status(r, sol.reason_unknown() if r == z3.unknown else None)
-            if status == "timeout":
+            reason = sol.reason_unknown() if r == z3.unknown else None
+            status = query_status(r, reason)
+            if reason == "timeout":
                 raise InferenceTimeout()
             if r == z3.unsat:
                 return
