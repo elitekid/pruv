@@ -183,7 +183,7 @@ The language today has only i64, bool, integer arrays, Option, and Result, so it
 
 **Order of progress (new plan, 2026-11-11 — rearranged for the final goal "replace Lair"):** instead of building an ecosystem from scratch, G6 is moved earlier to open the path of riding on the Rust ecosystem (§5) quickly.
 1. **G3 generics** — needed first to express Rust libraries (`Vec<T>`, `Option<T>`).
-2. **A performance-check batch** — find the cause of p03, p04, and p08 being 1.3–1.5× slower than Rust in bench (cause unconfirmed, presumed to be translator-generated code), and pass more proof facts (value ranges, non-overlap) to LLVM.
+2. **A performance-check batch** — find the cause of p03, p04, and p08 being 1.3–1.5× slower than Rust in bench (cause unconfirmed, presumed to be translator-generated code), and pass more proof facts (value ranges, non-overlap) to LLVM. **Done (2026-11-12, RESULTS §44):** p04 is the algorithm (hand-written Rust is equally slow), p08 is the zero-initialized `alloc` (calloc), p03 is the `while` shape on the Rust-source backend only; no compiler change, the LLVM backend already matches the reference shape.
 3. **G6 calling Rust** + trusted contracts on Rust standard collections — after this, L2 can start.
 4. **G9 recursion, recursive types, field extensions** — needed to handle real data (trees, JSON).
 5. **G4 modules** — before the code grows to Lair's size.

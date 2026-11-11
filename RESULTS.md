@@ -913,3 +913,24 @@ Each time the author was a fresh Claude sonnet write delegation (no knowledge of
 **G2 complete (G2a = `[u8]` and `[bool]`, G2b = `str`).** End criteria: two-implementation cross-check and regression (A0–B2), fuzzing and mutation (Q1), bench, measurements, independent use, and SPEC summary (Q2), one audit + one confirmation per batch. **A6 `[i32]` was deferred** (decisions 1 and 15: 2 i32 reject samples, 2 examples, 1 runtime, sign-extension mutants, an independent-use i32 problem, and the 8.4 i32 array execution time and memory measurement belong to the A6 end criteria). Unresolved audit-required items 0.
 
 Left over: no check of negative length and NULL at the raw `[i64]`, `[u8]`, and `[bool]` entries (the caller's responsibility per G2_SPEC 5.4, stated in SPEC 6b), the proof-undecided state of the two Q1 q04 26-line mutants, and the non-determinism of the Python implementation's q04 timeout. Not measured: Linux execution, time on an unloaded machine, inspection of the generated code (IR) of the array perf programs. Next candidate (proposal only): replace Lair's `src/backend/engine-import/tail.ts` `clipBytes` (cutting UTF-8 text at a character boundary under a byte limit) with a pruv `str` function.
+
+## 44. Performance check: why p03, p04 and p08 were 1.3–1.5× slower than Rust (2026-11-12)
+
+Measured with `bench/harness/run.py bench/solutions/pruv_agg --pruv --backend {rust,llvm} --trust-callers`, n=10⁶ (p04/p10: 10⁶ queries), median of 21 runs per execution, p03/p04/p08 repeated 3 times (ratio = median of the three). The machine was loaded (`uptime` load average 3–5), so single values move by up to ±30%; Apple arm64 only.
+
+| Problem | Rust backend sol/ref | LLVM backend sol/ref | Hand-written Rust (`rust_try1`) sol/ref |
+|---|---|---|---|
+| p03 `is_sorted` | 1.47 | 1.16 | ~1.0 (uses `for i in 1..len`) |
+| p04 `binary_search` | 1.44 | 1.50 | ~1.6 (same `lo < hi` algorithm) |
+| p08 `reverse` | 1.34 | 1.33 | 1.3–1.4 (`vec![0; n]` + index loop) |
+| p01, p10 (controls) | 1.00, 1.02 | 1.0, 1.00 | |
+
+Causes (evidence: generated `.rs`/`.ll`, `--emit asm`, micro-benchmarks):
+- **p04 is the algorithm, not the translator.** The generated loop has no bounds or overflow checks and compiles to branch-free `csel`. The reference (`partition_point`) halves a `size`, so the loop-carried dependency does not go through the loaded value; the Pruv solution moves both `lo` and `hi`. The same Pruv source rewritten in the halving form ran 23.8 ms vs reference 26.6 ms (n=10⁶). Hand-written Rust with `lo < hi` is equally slow. Option is returned in registers (x0/x1) on the LLVM backend, so the FFI boundary is not the cause (this disproves the earlier "FFI cannot be inlined" guess).
+- **p08 is the zero-initialized allocation.** `alloc(n, 0)` lowers to `vec![0; n]` (`__rust_alloc_zeroed`) on the Rust backend and to `pruv_alloc(len, 0)` → calloc in `pruvc/runtime.c` on the LLVM backend; the copy loop itself is NEON-vectorized like the reference. sol − ref ≈ 0.036 ms ≈ the measured calloc cost 0.033 ms. The reference uses an uninitialized `with_capacity` + `collect`.
+- **p03 is the only translator-shaped cause, and only on the Rust backend.** `while i < len { if a[i-1] > a[i] { return false; } i = i + 1; }` (emitted as is by `pruvc/codegen.py` `While` and `pruv-core/src/codegen.rs` `Stmt::While`) is compiled by rustc into a loop that materializes the return value inside the loop with two branches; a hand-written `usize` while loop of the same shape is equally slow, while `for i in 1..len` matches the reference. The LLVM backend output already has the reference shape (`ldp` + one compare branch); the remaining 1.16× is within the noise of this loaded machine (unconfirmed).
+
+Decisions:
+- No compiler change in this batch. p04 needs no compiler change (the faster form is a different algorithm a user can write). p08 would need a language-level "allocate without initialization" or a proof that the whole array is overwritten; the gain is ~0.035 ms per 10⁶ elements, so it is deferred to G8/G5 (owned containers). p03 would need a `while` → `for` rewrite in the Rust-source backend only; the LLVM backend (the long-term path) does not need it, so it is deferred.
+- Still open from the roadmap line: passing more proof facts (value ranges, non-overlap) to LLVM — not measured here because none of the three gaps came from missing facts.
+- Not measured: a quiet machine, x86-64/Linux/Windows, default mode (without `--trust-callers`).
