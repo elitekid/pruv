@@ -1,0 +1,9 @@
+// G9 A0 accept: recursion over an array with a cursor, decreases len(a) - i (contract builtin len in the measure)
+fn find_from(a: [i64], i: i64, x: i64) -> bool
+  requires 0 <= i && i <= len(a)
+  decreases len(a) - i
+{
+  if i == len(a) { return false; }
+  if a[i] == x { return true; }
+  return find_from(a, i + 1, x);
+}

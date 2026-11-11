@@ -1,0 +1,18 @@
+// G9 A0 accept: mutual recursion between functions over a mutually recursive struct and enum; decreases on both
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn node_sum(n: Node) -> i64
+  decreases size(n)
+{
+  return n.value + link_sum(n.next);
+}
+
+fn link_sum(l: Link) -> i64
+  decreases size(l)
+{
+  match l {
+    Link::End => { return 0; }
+    Link::More(n) => { return node_sum(n); }
+  }
+}

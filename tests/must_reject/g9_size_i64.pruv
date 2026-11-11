@@ -1,0 +1,6 @@
+// type/size_type: size() applied to a scalar
+fn f(n: i64) -> i64
+  requires size(n) >= 0
+{
+  return n;
+}

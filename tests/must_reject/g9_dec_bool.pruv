@@ -1,0 +1,7 @@
+// type/type_mismatch: a decreases expression of type bool (it must be i64)
+fn f(n: i64) -> i64
+  requires n >= 0
+  decreases n > 0
+{
+  return n;
+}

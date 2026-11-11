@@ -1,0 +1,9 @@
+// type/type_argument: an extended type as the argument of a user generic type
+struct Buf { items: [i64] }
+struct Wrap<T> {
+  value: T
+}
+
+fn f(w: Wrap<Buf>) -> i64 {
+  return 0;
+}

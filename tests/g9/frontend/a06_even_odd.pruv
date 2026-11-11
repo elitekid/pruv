@@ -1,0 +1,18 @@
+// G9 A0 accept: mutual recursion even/odd, decreases n on both members (G9_SPEC section 2)
+fn even(n: i64) -> bool
+  requires n >= 0
+  ensures result == (n % 2 == 0)
+  decreases n
+{
+  if n == 0 { return true; }
+  return odd(n - 1);
+}
+
+fn odd(n: i64) -> bool
+  requires n >= 0
+  ensures result == (n % 2 == 1)
+  decreases n
+{
+  if n == 0 { return false; }
+  return even(n - 1);
+}

@@ -53,7 +53,7 @@ import vast  # noqa: E402
 from vast import PruvError  # noqa: E402
 from vparser import parse as pruv_parse  # noqa: E402
 import check as check_mod  # noqa: E402
-from typeinfo import format_type  # noqa: E402
+from typeinfo import format_type, g9_unimplemented_error  # noqa: E402
 from foreign import g6_unimplemented_error  # noqa: E402
 
 AST_SCHEMA = "pruv-ast-v1"
@@ -178,6 +178,9 @@ def _g3_extras(v, out):
     fo = getattr(v, "foreign", None)
     if fo is not None:
         out["foreign"] = {"path": fo["path"], "line": str(fo["line"]), "col": str(fo["col"])}
+    # G9 A0, written only when present: Function.decreases (While.decreases is a dataclass field, not this)
+    if type(v).__name__ == "Function" and getattr(v, "decreases", None) is not None:
+        out["decreases"] = ser(v.decreases)
 
 
 def ser(v):
@@ -238,7 +241,12 @@ def type_table_json(tt):
     for d in tt.order:
         out.append({"name": d.name, "kind": "struct" if isinstance(d, vast.StructDecl) else "enum",
                     "deps": tt._deps(d)})
-    return {"order": [x["name"] for x in out], "entries": out}
+    res = {"order": [x["name"] for x in out], "entries": out}
+    g9 = getattr(tt, "g9", None)      # G9 A0: only when the program has a G9 feature
+    if g9 is not None:
+        res["g9"] = {"type_sccs": [list(x) for x in g9["type_sccs"]], "boxed": list(g9["boxed"]),
+                     "extended": list(g9["extended"]), "fn_sccs": [list(x) for x in g9["fn_sccs"]]}
+    return res
 
 
 def check_result(path, externs=()):
@@ -269,6 +277,12 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
     try:
         prog = pruv_parse(read_source(path))
         check_mod.check(prog, externs)
+        # G9 A0: same guard as pruvc.compile_file (the rust backend is the default code generator here)
+        g9err = g9_unimplemented_error(prog, "verify", "verifier") if verify_on else \
+            g9_unimplemented_error(prog, "codegen", "rust codegen layer")
+        if g9err is not None:
+            errors.append(err_dict(g9err))
+            return out
         # G6 A1: no guard here; G6 programs get real traces (G6_SPEC 11.1)
         if verify_on:
             import verify

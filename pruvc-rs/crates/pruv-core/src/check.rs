@@ -49,7 +49,143 @@ fn contract_only(n: &str) -> Option<(&'static str, CRes)> {
         "is_ok" => Some(("result", CRes::Bool)),
         "ok_val" => Some(("result", CRes::Payload)),
         "err_val" => Some(("result", CRes::I64)),
+        "size" => Some(("size", CRes::I64)), // G9 A0: structural size of a non-generic nominal value
         _ => None,
+    }
+}
+
+/// G9 A0: strongly connected components of the graph on nodes 0..n-1 (adj[i]: successors of i), iterative Tarjan.
+/// -> member lists (each ascending), ordered by their smallest member.
+fn sccs(n: usize, adj: &[Vec<usize>]) -> Vec<Vec<usize>> {
+    let mut index_of: Vec<i64> = vec![-1; n];
+    let mut low: Vec<i64> = vec![0; n];
+    let mut on_stack: Vec<bool> = vec![false; n];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut out: Vec<Vec<usize>> = Vec::new();
+    let mut counter: i64 = 0;
+    for root in 0..n {
+        if index_of[root] != -1 {
+            continue;
+        }
+        index_of[root] = counter;
+        low[root] = counter;
+        counter += 1;
+        stack.push(root);
+        on_stack[root] = true;
+        let mut work: Vec<(usize, usize)> = vec![(root, 0)];
+        while let Some(&(v, i)) = work.last() {
+            if i < adj[v].len() {
+                let last = work.len() - 1;
+                work[last] = (v, i + 1);
+                let w = adj[v][i];
+                if index_of[w] == -1 {
+                    index_of[w] = counter;
+                    low[w] = counter;
+                    counter += 1;
+                    stack.push(w);
+                    on_stack[w] = true;
+                    work.push((w, 0));
+                } else if on_stack[w] {
+                    low[v] = low[v].min(index_of[w]);
+                }
+            } else {
+                work.pop();
+                if let Some(&(p, _)) = work.last() {
+                    low[p] = low[p].min(low[v]);
+                }
+                if low[v] == index_of[v] {
+                    let mut comp: Vec<usize> = Vec::new();
+                    loop {
+                        let w = stack.pop().unwrap_or(v);
+                        on_stack[w] = false;
+                        comp.push(w);
+                        if w == v {
+                            break;
+                        }
+                    }
+                    comp.sort();
+                    out.push(comp);
+                }
+            }
+        }
+    }
+    out.sort_by_key(|c| c[0]);
+    out
+}
+
+/// G9 A0: shortest cycle start -> ... -> start inside `members` (breadth first, successors in adjacency order);
+/// -> nodes beginning and ending with start.
+fn cycle_through(start: usize, adj: &[Vec<usize>], members: &[usize]) -> Vec<usize> {
+    let members: HashSet<usize> = members.iter().cloned().collect();
+    let mut prev: HashMap<usize, Option<usize>> = HashMap::new();
+    prev.insert(start, None);
+    let mut queue: Vec<usize> = vec![start];
+    let mut qi = 0usize;
+    while qi < queue.len() {
+        let v = queue[qi];
+        qi += 1;
+        for &w in &adj[v] {
+            if !members.contains(&w) {
+                continue;
+            }
+            if w == start {
+                let mut chain: Vec<usize> = Vec::new();
+                let mut x: Option<usize> = Some(v);
+                while let Some(xv) = x {
+                    chain.push(xv);
+                    x = prev.get(&xv).cloned().unwrap_or(None);
+                }
+                chain.reverse(); // start ... v
+                chain.push(start);
+                return chain;
+            }
+            if !prev.contains_key(&w) {
+                prev.insert(w, Some(v));
+                queue.push(w);
+            }
+        }
+    }
+    vec![start, start]
+}
+
+/// G9 A0: [(variant name or None, field)] of a declaration in variant/field source order.
+fn decl_fields(d: &TypeDecl) -> Vec<(Option<&str>, &FieldDecl)> {
+    match d {
+        TypeDecl::Struct(s) => s.fields.iter().map(|f| (None, f)).collect(),
+        TypeDecl::Enum(e) => e
+            .variants
+            .iter()
+            .flat_map(|v| v.fields.iter().map(move |f| (Some(v.name.as_str()), f)))
+            .collect(),
+    }
+}
+
+fn field_label(d: &str, vname: Option<&str>, field: &str) -> String {
+    match vname {
+        None => format!("{}.{}", d, field),
+        Some(v) => format!("{}::{}.{}", d, v, field),
+    }
+}
+
+/// The checked type key of an expression (None before the checker has seen it).
+fn expr_ty(e: &Expr) -> &Ty {
+    match e {
+        Expr::Move(x) => &x.ty,
+        Expr::IntLit(x) => &x.ty,
+        Expr::BoolLit(x) => &x.ty,
+        Expr::StrLit(x) => &x.ty,
+        Expr::Var(x) => &x.ty,
+        Expr::Unary(x) => &x.ty,
+        Expr::Binary(x) => &x.ty,
+        Expr::Call(x) => &x.ty,
+        Expr::Index(x) => &x.ty,
+        Expr::Ctor(x) => &x.ty,
+        Expr::Quant(x) => &x.ty,
+        Expr::StructLit(x) => &x.ty,
+        Expr::EnumCtor(x) => &x.ty,
+        Expr::FieldAccess(x) => &x.ty,
+        Expr::IsVariant(x) => &x.ty,
+        Expr::VariantField(x) => &x.ty,
     }
 }
 
@@ -132,8 +268,6 @@ struct FuncInfo {
 
 struct Checker {
     funcs: HashMap<String, Rc<FuncInfo>>,
-    func_order: Vec<String>,
-    calls: HashMap<String, BTreeSet<String>>,
     decls: HashMap<String, TypeDecl>, // first declaration
     tt: TypeTable,
     cur_name: String,
@@ -151,6 +285,23 @@ struct Checker {
     externs: Vec<String>,
     /// G6: function name -> `take` flags of its parameters (for the ownership checker)
     takes: Takes,
+    // ---- G9 A0 metadata ----
+    /// recursive type SCCs (names in declaration order), SCC-number order
+    type_sccs: Vec<Vec<String>>,
+    /// "Decl.field" / "Enum::Variant.field" of every intra-SCC (boxed) field
+    boxed: Vec<String>,
+    /// (declaration name, variant name or None) holding at least one boxed field
+    boxed_decls: HashSet<(String, Option<String>)>,
+    /// names of extended declarations
+    extended: HashSet<String>,
+    /// declarations transitively containing a buffer (array/str) field
+    buffered: HashSet<String>,
+    /// recursive function SCCs (names in function order)
+    fn_sccs: Vec<Vec<String>>,
+    /// (caller name, call line, call col, call targs, callee name) of every checked user call
+    call_log: Vec<(String, i64, i64, Option<Vec<GType>>, String)>,
+    /// root variable names of the enclosing match arms on extended scrutinees
+    active_roots: Vec<String>,
 }
 
 /// Checks the program, fills in ty for every expression, and returns the type table.
@@ -220,7 +371,6 @@ impl Checker {
     fn new(prog: &Program, externs: &[String]) -> Res<Checker> {
         let mut funcs: HashMap<String, Rc<FuncInfo>> = HashMap::new();
         let mut takes: Takes = HashMap::new();
-        let mut func_order = Vec::new();
         for f in &prog.functions {
             let name = f.name.clone();
             if funcs.contains_key(&name) {
@@ -245,12 +395,9 @@ impl Checker {
                     foreign: f.foreign.is_some(),
                 }),
             );
-            func_order.push(name);
         }
         Ok(Checker {
             funcs,
-            func_order,
-            calls: HashMap::new(),
             decls: HashMap::new(),
             tt: TypeTable::default(),
             cur_name: String::new(),
@@ -263,6 +410,14 @@ impl Checker {
             arg_decls: HashMap::new(),
             externs: externs.to_vec(),
             takes,
+            type_sccs: Vec::new(),
+            boxed: Vec::new(),
+            boxed_decls: HashSet::new(),
+            extended: HashSet::new(),
+            buffered: HashSet::new(),
+            fn_sccs: Vec::new(),
+            call_log: Vec::new(),
+            active_roots: Vec::new(),
         })
     }
 
@@ -295,12 +450,17 @@ impl Checker {
         self.arg_decls = self.decls.iter().map(|(n, d)| (n.clone(), d.tparams().len())).collect();
         self.check_tparams(prog)?; // G3: type-parameter lists (type_parameter, generic_bound, generic_main)
         self.resolve_types(prog)?;
-        self.type_recursion(&prog.types)?;
+        self.type_graph(&prog.types)?; // G9 A0: type SCCs, generic/recursive field rules
+        self.inhabitance(&prog.types)?; // G9 A0: every declaration needs a finite value
+        self.compute_extended(&prog.types);
+        self.check_extended_uses(prog)?;
         self.tt = TypeTable::new(&prog.types);
         for f in prog.functions.iter_mut() {
             self.fn_(f)?;
         }
-        self.no_recursion()
+        self.check_fn_sccs(&prog.functions)?; // G9 A0: measures and stable type parameters of recursive call SCCs
+        self.record_g9(prog);
+        Ok(())
     }
 
     // ---- user type declarations ----
@@ -437,6 +597,9 @@ impl Checker {
             }
             for e in f.ensures.iter_mut() {
                 self.norm_expr(e);
+            }
+            if let Some(d) = f.decreases.as_mut() {
+                self.norm_expr(d); // G9 A0
             }
             self.norm_stmts(&mut f.body);
         }
@@ -875,6 +1038,7 @@ impl Checker {
         for (a, tp) in targs.iter().zip(tparams.iter()) {
             self.check_type(line, col, a)?;
             self.check_arg(line, col, a, Some(tp))?;
+            self.ext_misuse(line, col, a, Some("arg"))?; // G9 A0: extended types are never type arguments
         }
         match bind_args(owner, tparams.len(), targs) {
             Ok(m) => Ok(Some(m)),
@@ -892,7 +1056,19 @@ impl Checker {
             for fields in groups {
                 for f in fields {
                     let ft = GType::from_key(&f.ty);
-                    if ft == unitt() || ft.is_array() || ft == strt() {
+                    if !d.tparams().is_empty() && (ft.is_array() || ft == strt()) {
+                        // G9 A0
+                        return Err(terr(
+                            f.line,
+                            f.col,
+                            "field_type",
+                            format!("generic type {} cannot have the array/str field {}", d.name(), f.name),
+                            "use a dedicated non-generic declaration",
+                        ));
+                    }
+                    if ft == unitt()
+                        || (ft.is_array() && ft != GType::array() && ft != GType::array_u8() && ft != GType::array_bool())
+                    {
                         return Err(terr(
                             f.line,
                             f.col,
@@ -924,91 +1100,353 @@ impl Checker {
         Ok(())
     }
 
-    fn type_recursion(&self, types: &[TypeDecl]) -> Res<()> {
-        fn deps(decls: &HashMap<String, TypeDecl>, d: &TypeDecl) -> Vec<String> {
-            let mut out: Vec<String> = Vec::new();
-            for f in d.all_fields() {
+    // ---- G9 A0: type graph, inhabitance, extended types ----
+    /// A declared user type written without type arguments.
+    fn is_plain_nominal(&self, ty: &GType) -> bool {
+        ty.owner.is_none()
+            && ty.args.is_empty()
+            && self.decls.contains_key(&ty.name)
+            && !BUILTIN_TYPE_NAMES.contains(&ty.name.as_str())
+    }
+
+    fn type_graph(&mut self, types: &[TypeDecl]) -> Res<()> {
+        let mut index: HashMap<&str, usize> = HashMap::new();
+        for (i, d) in types.iter().enumerate() {
+            index.entry(d.name()).or_insert(i);
+        }
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); types.len()];
+        for (i, d) in types.iter().enumerate() {
+            for (_, fd) in decl_fields(d) {
                 // G3: nested type arguments count
-                for n in dependencies(&GType::from_key(&f.ty)) {
-                    if decls.contains_key(&n) && !out.contains(&n) {
-                        out.push(n);
+                for n in dependencies(&GType::from_key(&fd.ty)) {
+                    if let Some(&j) = index.get(n.as_str()) {
+                        if !adj[i].contains(&j) {
+                            adj[i].push(j);
+                        }
                     }
                 }
             }
-            out
         }
-        fn visit(decls: &HashMap<String, TypeDecl>, state: &mut HashMap<String, u8>, n: &str, path: &mut Vec<String>) -> Res<()> {
-            let d = match decls.get(n) {
-                Some(d) => d,
-                None => return Ok(()), // already guaranteed by resolve_types
-            };
-            match state.get(n).copied() {
-                Some(1) => {
-                    let at = path.iter().position(|p| p == n).unwrap_or(0);
-                    let mut cyc: Vec<String> = path[at..].to_vec();
-                    cyc.push(n.to_string());
+        for comp in sccs(types.len(), &adj) {
+            if !(comp.len() > 1 || adj[comp[0]].contains(&comp[0])) {
+                continue;
+            }
+            let names: Vec<String> = comp.iter().map(|&i| types[i].name().to_string()).collect();
+            let members: HashSet<&str> = names.iter().map(|n| n.as_str()).collect();
+            self.type_sccs.push(names.clone());
+            // (a) generic declarations cannot be recursive
+            for &i in &comp {
+                let d = &types[i];
+                if !d.tparams().is_empty() {
+                    let cyc: Vec<&str> = cycle_through(i, &adj, &comp).iter().map(|&k| types[k].name()).collect();
                     return Err(terr(
                         d.line(),
                         d.col(),
-                        "recursive_type",
-                        format!("recursive type is not allowed: {}", cyc.join(" -> ")),
-                        "types have fixed size; remove the cycle",
+                        "recursive_generic_type",
+                        format!("generic type {} cannot be recursive (cycle: {})", d.name(), cyc.join(" -> ")),
+                        "recursive types must be non-generic; write a dedicated enum for the element type",
                     ));
                 }
-                Some(2) => return Ok(()),
-                _ => {}
             }
-            state.insert(n.to_string(), 1);
-            path.push(n.to_string());
-            for c in deps(decls, d) {
-                visit(decls, state, &c, path)?;
+            // (b) intra-SCC fields must be direct nominal fields (these are the boxed edges)
+            for &i in &comp {
+                let d = &types[i];
+                for (vname, fd) in decl_fields(d) {
+                    let ft = GType::from_key(&fd.ty);
+                    if !dependencies(&ft).iter().any(|n| members.contains(n.as_str())) {
+                        continue;
+                    }
+                    if !(self.is_plain_nominal(&ft) && members.contains(ft.name.as_str())) {
+                        return Err(terr(
+                            fd.line,
+                            fd.col,
+                            "recursive_type",
+                            format!("recursive field {} must have the type itself, not hide it inside {}", fd.name, tn(&ft)),
+                            "use a direct field of a dedicated non-generic type",
+                        ));
+                    }
+                    self.boxed.push(field_label(d.name(), vname, &fd.name));
+                    self.boxed_decls.insert((d.name().to_string(), vname.map(|v| v.to_string())));
+                }
             }
-            path.pop();
-            state.insert(n.to_string(), 2);
-            Ok(())
-        }
-        let mut state: HashMap<String, u8> = HashMap::new();
-        for d in types {
-            let mut path: Vec<String> = Vec::new();
-            visit(&self.decls, &mut state, d.name(), &mut path)?;
         }
         Ok(())
     }
 
-    fn no_recursion(&self) -> Res<()> {
-        fn visit(s: &Checker, state: &mut HashMap<String, u8>, n: &str, path: &mut Vec<String>) -> Res<()> {
-            match state.get(n).copied() {
-                Some(1) => {
-                    let (line, col) = s.funcs.get(n).map(|f| (f.line, f.col)).unwrap_or((0, 0));
-                    let mut p = path.clone();
-                    p.push(n.to_string());
+    fn inhabitance(&self, types: &[TypeDecl]) -> Res<()> {
+        fn field_ok(s: &Checker, marked: &HashSet<String>, fd: &FieldDecl) -> bool {
+            let t = GType::from_key(&fd.ty);
+            !(s.is_plain_nominal(&t) && !marked.contains(&t.name))
+        }
+        let mut marked: HashSet<String> = HashSet::new();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for d in types {
+                if marked.contains(d.name()) {
+                    continue;
+                }
+                let ok = match d {
+                    TypeDecl::Struct(s) => s.fields.iter().all(|fd| field_ok(self, &marked, fd)),
+                    TypeDecl::Enum(e) => e.variants.iter().any(|v| v.fields.iter().all(|fd| field_ok(self, &marked, fd))),
+                };
+                if ok {
+                    marked.insert(d.name().to_string());
+                    changed = true;
+                }
+            }
+        }
+        for d in types {
+            if marked.contains(d.name()) {
+                continue;
+            }
+            let mut path: Vec<String> = vec![d.name().to_string()];
+            let mut cur: &TypeDecl = d;
+            loop {
+                let mut nxt: Option<String> = None;
+                for (_, fd) in decl_fields(cur) {
+                    let t = GType::from_key(&fd.ty);
+                    if self.is_plain_nominal(&t) && !marked.contains(&t.name) {
+                        nxt = Some(t.name.clone());
+                        break;
+                    }
+                }
+                let nxt = match nxt {
+                    Some(n) => n,
+                    None => break,
+                };
+                path.push(nxt.clone());
+                if path.iter().position(|p| *p == nxt) != Some(path.len() - 1) {
+                    break;
+                }
+                cur = match self.decls.get(&nxt) {
+                    Some(c) => c,
+                    None => break,
+                };
+            }
+            return Err(terr(
+                d.line(),
+                d.col(),
+                "recursive_type",
+                format!("recursive type has no finite value: {}", path.join(" -> ")),
+                "add a variant without recursive fields (a base case such as `Empty`)",
+            ));
+        }
+        Ok(())
+    }
+
+    /// extended = recursive, or with a buffer field, or with a field mentioning an extended declaration;
+    /// buffered = with a buffer field directly or through nested declarations.
+    fn compute_extended(&mut self, types: &[TypeDecl]) {
+        let rec: HashSet<String> = self.type_sccs.iter().flat_map(|names| names.iter().cloned()).collect();
+        let mut direct: HashSet<String> = HashSet::new();
+        for d in types {
+            if decl_fields(d).iter().any(|(_, fd)| {
+                let t = GType::from_key(&fd.ty);
+                t.is_array() || t == strt()
+            }) {
+                direct.insert(d.name().to_string());
+            }
+        }
+        let mut ext: HashSet<String> = rec.union(&direct).cloned().collect();
+        let mut buf: HashSet<String> = direct.clone();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for d in types {
+                let mut mentioned: HashSet<String> = HashSet::new();
+                for (_, fd) in decl_fields(d) {
+                    mentioned.extend(dependencies(&GType::from_key(&fd.ty)));
+                }
+                if !ext.contains(d.name()) && mentioned.iter().any(|n| ext.contains(n)) {
+                    ext.insert(d.name().to_string());
+                    changed = true;
+                }
+                if !buf.contains(d.name()) && mentioned.iter().any(|n| buf.contains(n)) {
+                    buf.insert(d.name().to_string());
+                    changed = true;
+                }
+            }
+        }
+        self.extended = ext;
+        self.buffered = buf;
+    }
+
+    fn is_extended(&self, ty: &GType) -> bool {
+        ty.owner.is_none() && ty.args.is_empty() && self.extended.contains(&ty.name)
+    }
+
+    /// An extended type may not be a type argument (type_argument) or a G6 collection payload (foreign_owned_type).
+    fn ext_misuse(&self, line: i64, col: i64, ty: &GType, inside: Option<&str>) -> Res<()> {
+        if ty.owner.is_some() {
+            return Ok(());
+        }
+        if ty.is_collection() {
+            for a in &ty.args {
+                self.ext_misuse(line, col, a, Some("coll"))?;
+            }
+            return Ok(());
+        }
+        if self.extended.contains(&ty.name) && ty.args.is_empty() && self.decls.contains_key(&ty.name) {
+            if inside == Some("coll") {
+                return Err(terr(
+                    line,
+                    col,
+                    "foreign_owned_type",
+                    format!("{} cannot be a Vec or HashMap element: it is recursive or holds an array/str", tn(ty)),
+                    "keep extended values in their own bindings",
+                ));
+            }
+            if inside == Some("arg") {
+                return Err(terr(
+                    line,
+                    col,
+                    "type_argument",
+                    format!(
+                        "{} cannot be a type argument or an Option/Result payload: it is recursive or holds an array/str",
+                        tn(ty)
+                    ),
+                    "use a dedicated non-generic enum instead",
+                ));
+            }
+            return Ok(());
+        }
+        let next = if inside == Some("coll") { "coll" } else { "arg" };
+        for a in &ty.args {
+            self.ext_misuse(line, col, a, Some(next))?;
+        }
+        Ok(())
+    }
+
+    fn check_extended_uses(&self, prog: &Program) -> Res<()> {
+        for d in &prog.types {
+            for (_, fd) in decl_fields(d) {
+                let ft = GType::from_key(&fd.ty);
+                if !d.tparams().is_empty() {
+                    let hit: Vec<String> = dependencies(&ft).into_iter().filter(|n| self.extended.contains(n)).collect();
+                    if let Some(first) = hit.first() {
+                        return Err(terr(
+                            fd.line,
+                            fd.col,
+                            "field_type",
+                            format!(
+                                "generic type {} cannot have the field {} of the extended type {}",
+                                d.name(),
+                                fd.name,
+                                first
+                            ),
+                            "use a dedicated non-generic declaration",
+                        ));
+                    }
+                }
+                self.ext_misuse(fd.line, fd.col, &ft, None)?;
+            }
+        }
+        for f in &prog.functions {
+            for p in &f.params {
+                self.ext_misuse(f.line, f.col, &GType::from_key(&p.ty), None)?;
+            }
+            self.ext_misuse(f.line, f.col, &GType::from_key(&f.ret), None)?;
+        }
+        Ok(())
+    }
+
+    fn check_fn_sccs(&mut self, functions: &[Function]) -> Res<()> {
+        let mut found: Vec<Vec<String>> = Vec::new();
+        let names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
+        let mut index: HashMap<&str, usize> = HashMap::new();
+        for (i, n) in names.iter().enumerate() {
+            index.insert(*n, i);
+        }
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); names.len()];
+        for (caller, _, _, _, callee) in &self.call_log {
+            if let (Some(&i), Some(&j)) = (index.get(caller.as_str()), index.get(callee.as_str())) {
+                if !adj[i].contains(&j) {
+                    adj[i].push(j);
+                }
+            }
+        }
+        for comp in sccs(names.len(), &adj) {
+            if !(comp.len() > 1 || adj[comp[0]].contains(&comp[0])) {
+                continue;
+            }
+            let members: HashSet<usize> = comp.iter().cloned().collect();
+            found.push(comp.iter().map(|&i| names[i].to_string()).collect());
+            for &i in &comp {
+                let f = &functions[i];
+                if f.decreases.is_none() {
+                    let cyc: Vec<&str> = cycle_through(i, &adj, &comp).iter().map(|&k| names[k]).collect();
+                    return Err(terr(
+                        f.line,
+                        f.col,
+                        "recursive_decreases",
+                        format!("recursive function {} needs a decreases clause (cycle: {})", f.name, cyc.join(" -> ")),
+                        "add `decreases <expr>` after requires/ensures, e.g. `decreases n`",
+                    ));
+                }
+            }
+            // (caller index, call line, call col, call targs, callee index), stable-sorted by (caller, line, col)
+            let mut edges: Vec<(usize, i64, i64, &Option<Vec<GType>>, usize)> = Vec::new();
+            for (caller, line, col, targs, callee) in &self.call_log {
+                if let (Some(&ci), Some(&ce)) = (index.get(caller.as_str()), index.get(callee.as_str())) {
+                    if members.contains(&ci) && members.contains(&ce) {
+                        edges.push((ci, *line, *col, targs, ce));
+                    }
+                }
+            }
+            edges.sort_by(|a, b| (a.0, a.1, a.2).cmp(&(b.0, b.1, b.2)));
+            for (ci, line, col, targs, ce) in edges {
+                let caller = &functions[ci];
+                let callee = &functions[ce];
+                let mut ok = caller.tparams.len() == callee.tparams.len()
+                    && caller.tparams.iter().zip(callee.tparams.iter()).all(|(a, b)| a.bound == b.bound);
+                if ok {
+                    let empty: Vec<GType> = Vec::new();
+                    let ta: &Vec<GType> = targs.as_ref().unwrap_or(&empty);
+                    let owner = fn_owner(&caller.name);
+                    ok = ta.len() == caller.tparams.len()
+                        && ta
+                            .iter()
+                            .enumerate()
+                            .all(|(k, t)| t.owner.as_deref() == Some(owner.as_str()) && t.index == k && t.args.is_empty());
+                }
+                if !ok {
+                    let tp_names: Vec<&str> = caller.tparams.iter().map(|tp| tp.name.as_str()).collect();
                     return Err(terr(
                         line,
                         col,
-                        "recursion",
-                        format!("recursion is not allowed: {}", p.join(" -> ")),
-                        "rewrite with a while loop",
+                        "recursive_polymorphism",
+                        format!(
+                            "recursive call to {} must pass the type parameters <{}> unchanged",
+                            callee.name,
+                            tp_names.join(", ")
+                        ),
+                        "call with ::<T, ...> in the same order",
                     ));
                 }
-                Some(2) => return Ok(()),
-                _ => {}
             }
-            state.insert(n.to_string(), 1);
-            path.push(n.to_string());
-            let callees: Vec<String> = s.calls.get(n).map(|c| c.iter().cloned().collect()).unwrap_or_default();
-            for c in callees {
-                visit(s, state, &c, path)?;
-            }
-            path.pop();
-            state.insert(n.to_string(), 2);
-            Ok(())
         }
-        let mut state: HashMap<String, u8> = HashMap::new();
-        for n in &self.func_order {
-            let mut path: Vec<String> = Vec::new();
-            visit(self, &mut state, n, &mut path)?;
-        }
+        self.fn_sccs = found;
         Ok(())
+    }
+
+    /// G9 A0: the metadata on the program and the type table, only when a G9 feature is present.
+    fn record_g9(&mut self, prog: &mut Program) {
+        if self.type_sccs.is_empty()
+            && self.extended.is_empty()
+            && self.fn_sccs.is_empty()
+            && !prog.functions.iter().any(|f| f.decreases.is_some())
+        {
+            return;
+        }
+        let meta = G9Meta {
+            type_sccs: self.type_sccs.clone(),
+            boxed: self.boxed.clone(),
+            extended: prog.types.iter().filter(|d| self.extended.contains(d.name())).map(|d| d.name().to_string()).collect(),
+            fn_sccs: self.fn_sccs.clone(),
+        };
+        prog.g9 = Some(meta.clone());
+        self.tt.g9 = Some(meta);
     }
 
     // ---- functions ----
@@ -1018,9 +1456,18 @@ impl Checker {
         self.enter(&fn_owner(&fname), &f.tparams);
         self.cur_name = fname.clone();
         self.cur_ret = ret.clone();
-        self.calls.insert(fname.clone(), BTreeSet::new());
         if f.foreign.is_some() {
             check_foreign_decl(f, &self.externs)?; // G6: signature, then path of a trusted rust fn
+            if let Some(d) = &f.decreases {
+                // G9 A0: foreign termination is trusted
+                return Err(terr(
+                    d.line(),
+                    d.col(),
+                    "recursive_decreases",
+                    "a trusted rust fn cannot have a decreases clause",
+                    "remove it; foreign termination is trusted",
+                ));
+            }
         } else if fname == "main" && (ret.is_collection() || f.params.iter().any(|p| key_is_collection(&p.ty))) {
             return Err(terr(
                 f.line,
@@ -1060,6 +1507,10 @@ impl Checker {
         }
         for e in f.ensures.iter_mut() {
             self.expect(e, &boolt(), &escope, true, None)?;
+        }
+        if let Some(d) = f.decreases.as_mut() {
+            // G9 A0: scalar measure over the parameters only (no result)
+            self.expect(d, &i64t(), &scope, true, None)?;
         }
         if f.foreign.is_some() {
             return Ok(()); // a trusted rust fn has no body to check
@@ -1143,15 +1594,18 @@ impl Checker {
                     return Err(terr(s.line, s.col, "unit_let", "cannot bind a () value", ""));
                 }
                 self.check_type(s.line, s.col, &sty)?;
+                self.ext_misuse(s.line, s.col, &sty, None)?; // G9 A0
                 self.want_alloc(&s.value, &sty);
                 self.expect(&mut s.value, &sty, scope, false, None)?;
                 if sty.is_array() || sty == strt() {
                     self.array_source(s.line, s.col, &s.value, scope, false, &sty)?;
                 }
+                self.own(&s.value);
                 scope.insert(s.name.clone(), Entry { ty: sty, mutable: s.mutable, kind: "local" });
             }
             Stmt::Assign(s) => {
                 let v = self.lookup(s.line, s.col, &s.name, scope)?;
+                self.check_borrow(s.line, s.col, &s.name, &[])?; // G9 A0
                 if !v.mutable {
                     return Err(terr(s.line, s.col, "immutable", format!("{} is not mutable", s.name), Self::immutable_fix(v.kind)));
                 }
@@ -1160,6 +1614,7 @@ impl Checker {
                 if v.ty.is_array() || v.ty == strt() {
                     self.array_source(s.line, s.col, &s.value, scope, false, &v.ty)?;
                 }
+                self.own(&s.value);
             }
             Stmt::IndexAssign(s) => {
                 let v = self.lookup(s.line, s.col, &s.name, scope)?;
@@ -1191,6 +1646,7 @@ impl Checker {
             }
             Stmt::FieldAssign(s) => {
                 let v = self.lookup(s.line, s.col, &s.name, scope)?;
+                self.check_borrow(s.line, s.col, &s.name, &s.fields)?; // G9 A0
                 let mut cur = v.ty.clone();
                 for fname in &s.fields {
                     if cur.owner.is_some() {
@@ -1217,6 +1673,11 @@ impl Checker {
                     return Err(terr(s.line, s.col, "immutable", format!("{} is not mutable", s.name), Self::immutable_fix(v.kind)));
                 }
                 self.expect(&mut s.value, &cur, scope, false, None)?;
+                if cur.is_array() || cur == strt() {
+                    // G9 A0: G2 explicit ownership for a buffer field
+                    self.array_source(s.line, s.col, &s.value, scope, false, &cur)?;
+                }
+                self.own(&s.value);
             }
             Stmt::If(s) => {
                 self.expect(&mut s.cond, &boolt(), scope, false, Some("a condition"))?;
@@ -1257,6 +1718,7 @@ impl Checker {
                         if ret.is_array() || ret == strt() {
                             self.array_source(s.line, s.col, v, scope, true, &ret)?;
                         }
+                        self.own(v);
                     }
                 }
             }
@@ -1293,6 +1755,7 @@ impl Checker {
         let (line, col) = (m.line, m.col);
         let t = self.expr(&mut m.scrutinee, scope, false)?;
         let user = self.is_enum(&t);
+        let root: Option<String> = self.match_root(&m.scrutinee, &t, scope); // G9 A0: root variable of an extended scrutinee path
         if t.owner.is_some() {
             return Err(terr(
                 line,
@@ -1376,9 +1839,80 @@ impl Checker {
                 if sc.contains_key(b) {
                     return Err(terr(nl, nc, "shadow", format!("{} is already defined", b), "use a new name"));
                 }
-                sc.insert(b.clone(), Entry { ty: bt.clone(), mutable: false, kind: "local" });
+                // G9 A0: a buffer payload is a read view (like a parameter): returning it needs copy()
+                let kind = if bt.is_array() || *bt == strt() { "param" } else { "local" };
+                sc.insert(b.clone(), Entry { ty: bt.clone(), mutable: false, kind });
+            }
+            if let Some(r) = &root {
+                self.active_roots.push(r.clone());
             }
             self.block(&mut a.body, &mut sc)?;
+            if root.is_some() {
+                self.active_roots.pop();
+            }
+        }
+        Ok(())
+    }
+
+    // ---- G9 A0: ownership of extended values, active-match borrows ----
+    /// `value` (already typed) is moved into an owning position (let, assignment, constructor field, return):
+    /// a non-fresh extended value is cloned, which needs `alloc`; constructors, literals and calls are fresh.
+    fn own(&mut self, value: &Expr) {
+        if let Some(k) = expr_ty(value) {
+            let t = GType::from_key(k);
+            if self.is_extended(&t) && !matches!(value, Expr::EnumCtor(_) | Expr::StructLit(_) | Expr::Call(_)) {
+                self.used_effects.insert("alloc".to_string());
+            }
+        }
+    }
+
+    /// A constructor / struct-literal field argument: owning position, G2 explicit ownership for buffers.
+    fn own_field(&mut self, value: &Expr, ftype: &GType, scope: &Scope, c: bool) -> Res<()> {
+        if c {
+            return Ok(());
+        }
+        if ftype.is_array() || *ftype == strt() {
+            self.array_source(value.line(), value.col(), value, scope, false, ftype)?;
+        }
+        self.own(value);
+        Ok(())
+    }
+
+    /// A constructor that initializes a boxed field allocates.
+    fn ctor_allocs(&mut self, decl_name: &str, variant: Option<&str>, c: bool) {
+        if !c && self.boxed_decls.contains(&(decl_name.to_string(), variant.map(|v| v.to_string()))) {
+            self.used_effects.insert("alloc".to_string());
+        }
+    }
+
+    /// Root variable of a match scrutinee that is a variable / field path over an extended type, else None.
+    fn match_root(&self, scrut: &Expr, t: &GType, scope: &Scope) -> Option<String> {
+        if !self.is_extended(t) {
+            return None;
+        }
+        let mut e: &Expr = scrut;
+        while let Expr::FieldAccess(x) = e {
+            e = &x.base;
+        }
+        if let Expr::Var(v) = e {
+            if scope.get(&v.name).map(|x| x.kind == "local" || x.kind == "param").unwrap_or(false) {
+                return Some(v.name.clone());
+            }
+        }
+        None
+    }
+
+    fn check_borrow(&self, line: i64, col: i64, name: &str, fields: &[String]) -> Res<()> {
+        if self.active_roots.iter().any(|r| r == name) {
+            let mut parts: Vec<&str> = vec![name];
+            parts.extend(fields.iter().map(|f| f.as_str()));
+            return Err(terr(
+                line,
+                col,
+                "recursive_borrow",
+                format!("cannot assign to {} while a match on it is active", parts.join(".")),
+                "copy the needed payload into a local, finish the match, then assign",
+            ));
         }
         Ok(())
     }
@@ -1539,6 +2073,16 @@ impl Checker {
                                 "compare lengths and bytes: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]",
                             ));
                         }
+                        if lt.owner.is_none() && dependencies(&lt).iter().any(|n| self.buffered.contains(n)) {
+                            // G9 A0
+                            return Err(terr(
+                                x.line,
+                                x.col,
+                                "eq_type",
+                                format!("values of {} contain arrays or str and cannot be compared with ==", tn(&lt)),
+                                "compare tags, lengths and indexed contents instead",
+                            ));
+                        }
                         if lt.owner.is_some() && !c {
                             return Err(terr(
                                 x.line,
@@ -1664,7 +2208,9 @@ impl Checker {
                 }
                 for (arg, fd) in x.args.iter_mut().zip(fields.iter()) {
                     self.expect(arg, &fd.1, scope, c, None)?;
+                    self.own_field(arg, &fd.1, scope, c)?; // G9 A0
                 }
+                self.ctor_allocs(&name, Some(x.variant.as_str()), c); // G9 A0
                 Ok(ety)
             }
             Expr::FieldAccess(x) => {
@@ -1851,7 +2397,9 @@ impl Checker {
         }
         for (fi, fd) in e.fields.iter_mut().zip(fields.iter()) {
             self.expect(&mut fi.value, &fd.1, scope, c, None)?;
+            self.own_field(&fi.value, &fd.1, scope, c)?; // G9 A0
         }
+        self.ctor_allocs(&name, None, c); // G9 A0
         Ok(sty)
     }
 
@@ -1883,6 +2431,7 @@ impl Checker {
         let x = targs[0].clone();
         self.check_type(e.line, e.col, &x)?;
         self.check_arg(e.line, e.col, &x, None)?;
+        self.ext_misuse(e.line, e.col, &x, Some("arg"))?; // G9 A0
         let owner = format!("builtin:{}", name);
         let mut m = Mapping::new();
         m.insert((owner.clone(), 0), x.clone());
@@ -2023,10 +2572,30 @@ impl Checker {
         }
         if let Some((kind, rt)) = contract_only(&n) {
             if !c {
-                return Err(terr(line, col, "contract_only", format!("{} is only allowed in contracts", n), "use match in code"));
+                return Err(terr(
+                    line,
+                    col,
+                    "contract_only",
+                    format!("{} is only allowed in contracts", n),
+                    if n == "size" { "size is a contract measure; use len or a counter in code" } else { "use match in code" },
+                ));
             }
             arity(1)?;
             let t = self.expr(&mut e.args[0], scope, c)?;
+            if n == "size" {
+                // G9 A0: a non-generic user struct/enum value
+                let generic = self.decls.get(&t.name).map(|d| !d.tparams().is_empty()).unwrap_or(false);
+                if !(self.is_plain_nominal(&t) && !generic) {
+                    return Err(terr(
+                        line,
+                        col,
+                        "size_type",
+                        format!("size needs a non-generic struct or enum value, got {}", tn(&t)),
+                        "size counts constructors; use len for arrays and strings",
+                    ));
+                }
+                return Ok(i64t());
+            }
             if t.owner.is_some() || t.name != kind {
                 let want = if kind == "option" { GType::option() } else { GType::result() };
                 return Err(terr(
@@ -2143,7 +2712,10 @@ impl Checker {
             ));
         }
         self.used_effects.extend(f.effects.iter().cloned());
-        self.calls.entry(self.cur_name.clone()).or_default().insert(n.clone());
+        if !f.foreign {
+            // G9 A0: foreign calls are leaves of the call graph
+            self.call_log.push((self.cur_name.clone(), line, col, targs.clone(), n.clone()));
+        }
         Ok(substitute(&f.ret, &m))
     }
 }
@@ -2171,8 +2743,9 @@ mod tests {
     fn recursive_type_message() {
         let e = run("struct A { b: B }\nstruct B { a: A }\n").unwrap_err();
         assert_eq!(e.code, "recursive_type");
-        assert_eq!(e.message, "recursive type is not allowed: A -> B -> A");
-        assert_eq!(e.fix, "types have fixed size; remove the cycle");
+        // G9 A0: a cycle without a base case has no finite value
+        assert_eq!(e.message, "recursive type has no finite value: A -> B -> A");
+        assert_eq!(e.fix, "add a variant without recursive fields (a base case such as `Empty`)");
     }
 
     #[test]

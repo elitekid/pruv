@@ -1,0 +1,15 @@
+// G9 A0 accept: an enum payload of an extended (buffer-bearing) enum type
+enum Blob { Empty, Ints(items: [i64]) }
+enum Msg { Quit, Data(body: Blob) }
+
+fn body_len(m: Msg) -> i64 {
+  match m {
+    Msg::Quit => { return 0; }
+    Msg::Data(b) => {
+      match b {
+        Blob::Empty => { return 0; }
+        Blob::Ints(a) => { return len(a); }
+      }
+    }
+  }
+}

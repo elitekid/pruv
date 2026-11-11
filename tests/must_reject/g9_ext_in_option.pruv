@@ -1,0 +1,6 @@
+// type/type_argument: an extended (buffer-bearing) type inside Option
+struct Buf { items: [i64] }
+
+fn f(o: Option<Buf>) -> i64 {
+  return 0;
+}

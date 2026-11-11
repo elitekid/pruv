@@ -1,0 +1,8 @@
+// type/recursive_type: an uninhabited struct (no base case)
+struct Node {
+  next: Node,
+}
+
+fn f(x: i64) -> i64 {
+  return x;
+}

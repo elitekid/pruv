@@ -1,0 +1,6 @@
+// type/contract_only: size() in executable code
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn f(t: Tree) -> i64 {
+  return size(t);
+}

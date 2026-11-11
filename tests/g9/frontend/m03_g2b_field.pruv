@@ -1,0 +1,2 @@
+// G9 A0 migration: formerly type/field_type (tests/must_reject/g2b_field); a str struct field is accepted
+struct P { name: str, n: i64 }

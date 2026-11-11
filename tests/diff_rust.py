@@ -6,7 +6,8 @@
                             [--fuzz-count 200] [--mutations 3] [--save-dir DIR]
                             [--modes VT,Vt,vT,vt,B]
 
-Groups: must_reject examples runtime bench edge fuzz mutate
+Groups: must_reject examples runtime bench g9 edge fuzz mutate
+  g9 = tests/g9/frontend/*.pruv (until batch A2 both compilers must agree on the downstream guard diagnostic).
   edge = tests/check_edge/ok_*.pruv plus all of tests/check_edge/*.pruv (deduplicated).
 Modes (case = input x mode): the first letter V/v = verified on/off, the second letter T/t = trust_callers on/off.
   Vt=(True,False) VT=(True,True) vt=(False,False) vT=(False,True), default budget 1<<30.
@@ -39,6 +40,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust  # noqa: E402
+from typeinfo import g9_unimplemented_error  # noqa: E402
 
 BATCH = 200
 RS_TIMEOUT = 300
@@ -51,9 +53,10 @@ GROUP_DIRS = [
     ("examples", "examples"),
     ("runtime", "tests/runtime"),
     ("bench", "bench/solutions/pruv_agg"),
+    ("g9", "tests/g9/frontend"),
 ]
 CHECK_EDGE_DIR = "tests/check_edge"
-ALL_GROUPS = ["must_reject", "examples", "runtime", "bench", "edge", "fuzz", "mutate"]
+ALL_GROUPS = ["must_reject", "examples", "runtime", "bench", "g9", "edge", "fuzz", "mutate"]
 
 # (label, verified, trust_callers). B is handled separately.
 MODE_TABLE = collections.OrderedDict([
@@ -261,6 +264,9 @@ def eval_python(c):
             src = fh.read()
         prog = parse(src)
         check(prog)
+        g9err = g9_unimplemented_error(prog, "codegen", "rust codegen layer")   # G9 A0 guard, as in pruvc
+        if g9err is not None:
+            raise g9err
         rs_src = gen_rust(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)
         obj = {"rs": rs_src}
     except UnicodeDecodeError:

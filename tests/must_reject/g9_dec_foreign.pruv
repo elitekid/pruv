@@ -1,0 +1,6 @@
+// type/recursive_decreases: a decreases clause on a trusted rust fn
+trusted rust fn external(n: i64) -> i64
+  requires n >= 0
+  ensures true
+  decreases n
+  = "::std::primitive::i64::abs";

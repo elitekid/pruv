@@ -1,0 +1,6 @@
+// type/eq_type: == on an aggregate that contains a buffer field
+struct Buf { items: [i64], tag: i64 }
+
+fn same(a: Buf, b: Buf) -> bool {
+  return a == b;
+}

@@ -1,0 +1,16 @@
+// G9 A0 accept: generic mutual recursion; both members have the same parameter vector and forward <T> unchanged
+fn ping<T>(x: T, n: i64) -> T
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return x; }
+  return pong::<T>(x, n - 1);
+}
+
+fn pong<T>(x: T, n: i64) -> T
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return x; }
+  return ping::<T>(x, n - 1);
+}

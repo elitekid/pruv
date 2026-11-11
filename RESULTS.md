@@ -1096,3 +1096,15 @@ Fourth G6 batch (`docs/G6_SPEC.md` §7.5, decisions in §13). Python reference f
 - **Confirmation audit:** R1, R3 and the harness fix confirmed. R2 still had one path: tests failing without any `pruv: foreign` diagnostic were classified as an undetectable trust violation. They are now wrong but verified, the self-test checks six `exec_class` cases, and option checking also covers `--list`/`--self-test`. No saved run took that path, so the results above are unchanged.
 - **q02 lesson** added to SPEC.md §6d: a map whose values grow needs a saturating update or an invariant that bounds every value.
 - **G9 design** written: `docs/G9_SPEC.md` covers recursion with `decreases`, recursive types with automatic boxing and `size`, and buffer fields. It plans batches A0–A4 and Q.
+
+## 54. G9 A0: frontend for recursion, recursive types and buffer fields (2026-11-12)
+
+- **Parser:** a function may carry a `decreases` clause after its contracts (`Function.decreases`).
+- **Checker** (both compilers, byte-identical dumps):
+  - Function call graph SCCs (Tarjan). A recursive function needs `decreases` (`recursive_decreases`); recursion that changes generic arguments is rejected (`recursive_polymorphism`).
+  - Type graph SCCs with inhabitance. Recursive types are allowed when they are inhabited and not generic (`recursive_generic_type`); the boxed edges and the extended set (types that hold a recursive type or a buffer field) are recorded in `Program.g9`.
+  - The `size` builtin, the `alloc` effect for building recursive values, buffer field ownership (a buffer field takes only a fresh value), recursive borrows in `match`, and equality on extended types.
+  - The old `type_recursion` and `no_recursion` rejections are gone.
+- **Guard:** later layers are not written yet. A program that uses a G9 construct stops after type checking with `unsupported_type` ("... not implemented by the verifier / rust codegen layer / llvm codegen layer yet"). `run_all` expects that message for the `g9_frontend` group (`G9_GUARD = True`); A2 flips it. The diff tools apply the same guard.
+- **Fixtures:** 37 frontend samples (`tests/g9/frontend`, 31 new programs and 6 migrated ones), 42 new must-reject pairs, and `tests/g9/legacy_migrations.json` (10 old rejections that are now accepted or reclassified). Four old must-reject pairs (`g1_array_field`, `g1_recursive_indirect`, `g2a_array_field`, `g2b_field`) moved to the frontend group; three old recursion fixtures now expect the new codes.
+- **Results:** must_reject 360/360, g9_frontend 37/37 on both compilers; diff_parse (parse, check) all same with coverage pass; diff_trace, diff_rust, diff_llvm all same; m3_all 12/12; cargo test 91; inference 41/41; run_all rows 1727 with Rust both backends 1098/1098.

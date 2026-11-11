@@ -1,0 +1,8 @@
+// type/eq_type: != on an enum that transitively contains a str payload, used in a contract
+enum Name { Anon, Known(text: str) }
+
+fn differ(a: Name, b: Name) -> bool
+  ensures result == (a != b)
+{
+  return false;
+}

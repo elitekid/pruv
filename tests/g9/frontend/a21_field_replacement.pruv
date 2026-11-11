@@ -1,0 +1,10 @@
+// G9 A0 accept: copy an extended struct into a mutable local and replace its buffer field with copy(local)
+struct Bag { items: [i64], tag: i64 }
+
+fn bump(b: Bag) -> i64 ! alloc {
+  let mut c: Bag = b;
+  let mut arr: [i64] = copy(c.items);
+  arr[0] = 5;
+  c.items = copy(arr);
+  return c.items[0];
+}

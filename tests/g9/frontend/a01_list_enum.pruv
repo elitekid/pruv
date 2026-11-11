@@ -1,0 +1,11 @@
+// G9 A0 accept: a recursive list enum with a base case and a structurally recursive function measured by size
+enum List { Nil, Cons(head: i64, tail: List) }
+
+fn total(l: List) -> i64
+  decreases size(l)
+{
+  match l {
+    List::Nil => { return 0; }
+    List::Cons(h, t) => { return h + total(t); }
+  }
+}

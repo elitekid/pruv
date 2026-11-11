@@ -1,0 +1,8 @@
+// type/recursive_polymorphism: a recursive call that permutes the type parameters (A, B to B, A)
+fn g<A, B>(x: A, y: B, n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return g::<B, A>(y, x, n - 1);
+}

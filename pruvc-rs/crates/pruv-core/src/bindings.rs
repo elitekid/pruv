@@ -505,13 +505,13 @@ mod tests {
             line: 1, col: 1, name: name.into(),
             params: params.into_iter().map(|(n, t)| Param { name: n.into(), ty: t.into(), refine: None, take: false }).collect(),
             ret: ret.into(), effects: vec![], requires: vec![], ensures: vec![], body: vec![], ret_refine: None, tparams: vec![],
-            foreign: None,
+            foreign: None, decreases: None,
         }
     }
 
     #[test]
     fn simple_function() {
-        let prog = Program { functions: vec![func("f", vec![("x", "i64"), ("a", "array")], "bool")], types: vec![], refined: false };
+        let prog = Program { functions: vec![func("f", vec![("x", "i64"), ("a", "array")], "bool")], types: vec![], refined: false, g9: None };
         let s = gen_bindings(&prog).unwrap();
         assert!(s.contains("    fn pruv_abi_f(p0: i64, p1: *const i64, p2: i64) -> i64;"));
         assert!(s.contains("pub fn f(x: i64, a: &[i64]) -> bool {"));
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn mangling_error() {
-        let prog = Program { functions: vec![func("f\u{e9}", vec![], "unit")], types: vec![], refined: false };
+        let prog = Program { functions: vec![func("f\u{e9}", vec![], "unit")], types: vec![], refined: false, g9: None };
         assert_eq!(
             gen_bindings(&prog).unwrap_err(),
             "llvmgen: function name f\u{e9} needs mangling; the bindings use the raw name"

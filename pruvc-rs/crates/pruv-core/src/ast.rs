@@ -249,8 +249,26 @@ pub struct Function {
     pub ret_refine: Option<Refinement>, pub tparams: Vec<TParam>,
     /// G6 A0: Some for a `trusted rust fn`.
     pub foreign: Option<ForeignInfo>,
+    /// G9 A0: the `decreases Expr` clause of the function header (None = absent).
+    pub decreases: Option<Expr>,
 }
+
+/// G9 A0: checker metadata recorded on the program and the type table, only when a G9 feature is present
+/// (Python `Program.g9` / `TypeTable.g9`, a dict with these four keys).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct G9Meta {
+    /// recursive type SCCs (names in declaration order), SCC-number order
+    pub type_sccs: Vec<Vec<String>>,
+    /// "Decl.field" / "Enum::Variant.field" of every intra-SCC (boxed) field
+    pub boxed: Vec<String>,
+    /// names of extended declarations, in declaration order
+    pub extended: Vec<String>,
+    /// recursive function SCCs (names in function order)
+    pub fn_sccs: Vec<Vec<String>>,
+}
+
 /// No line/col.
 #[derive(Debug, Clone, PartialEq, Default)]
 /// refined: a marker that refine::expand has already run (Python `_refined`). Not emitted in the dump.
-pub struct Program { pub functions: Vec<Function>, pub types: Vec<TypeDecl>, pub refined: bool }
+/// g9: G9 A0 checker metadata (Python `Program.g9`), None unless a G9 feature is present. Not emitted in the dump.
+pub struct Program { pub functions: Vec<Function>, pub types: Vec<TypeDecl>, pub refined: bool, pub g9: Option<G9Meta> }

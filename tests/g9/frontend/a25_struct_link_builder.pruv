@@ -1,0 +1,12 @@
+// G9 A0 accept: a struct literal with a boxed field (Link::End) needs alloc; a recursive builder through the enum
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn single(v: i64) -> Node ! alloc {
+  return Node { value: v, next: Link::End };
+}
+
+fn chain(v: i64) -> Node ! alloc {
+  let tail: Node = single(v);
+  return Node { value: v, next: Link::More(tail) };
+}

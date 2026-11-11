@@ -1,0 +1,9 @@
+// G9 A0 accept: a struct containing a struct with a buffer field (transitively extended); built with alloc
+struct Inner { data: [u8] }
+struct Outer { inner: Inner, tag: i64 }
+
+fn make_outer() -> Outer ! alloc {
+  let d: [u8] = alloc(1, 0);
+  let i: Inner = Inner { data: copy(d) };
+  return Outer { inner: i, tag: 1 };
+}

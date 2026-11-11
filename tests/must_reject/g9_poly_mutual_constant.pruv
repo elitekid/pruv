@@ -1,0 +1,16 @@
+// type/recursive_polymorphism: a mutual recursion edge that passes a constant type argument instead of the caller's T
+fn ping<T>(x: T, n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return pong::<i64>(5, n - 1);
+}
+
+fn pong<T>(x: T, n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return ping::<T>(x, n - 1);
+}

@@ -1,0 +1,7 @@
+// type/recursive_decreases: a directly recursive function without a decreases clause
+fn down(n: i64) -> i64
+  requires n >= 0
+{
+  if n == 0 { return 0; }
+  return down(n - 1);
+}

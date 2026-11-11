@@ -1,0 +1,7 @@
+// type/result_scope: a decreases expression that mentions result (only parameters are in scope)
+fn f(n: i64) -> i64
+  requires n >= 0
+  decreases result
+{
+  return n;
+}

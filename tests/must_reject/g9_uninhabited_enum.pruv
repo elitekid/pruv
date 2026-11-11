@@ -1,0 +1,6 @@
+// type/recursive_type: an enum whose only variant contains the enum itself
+enum E { X(e: E) }
+
+fn f(x: i64) -> i64 {
+  return x;
+}

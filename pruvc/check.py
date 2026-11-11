@@ -11,7 +11,8 @@ from foreign import (CATALOG, CATALOG_NAMES, CATALOG_CONTRACT_ONLY, check_foreig
 
 # name -> (argument kind, result: BOOL | I64 | "payload" = the Option/Result payload type)
 CONTRACT_ONLY = {"is_some": ("option", BOOL), "some_val": ("option", "payload"), "is_ok": ("result", BOOL),
-                 "ok_val": ("result", "payload"), "err_val": ("result", I64)}
+                 "ok_val": ("result", "payload"), "err_val": ("result", I64),
+                 "size": ("size", I64)}   # G9 A0: structural size of a non-generic nominal value
 BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr")
 RESERVED_TYPE_NAMES = ("Option", "Result", "Some", "None", "Ok", "Err")
 TYPE_NAME_RE = re.compile(r"[A-Z][A-Za-z0-9_]*\Z")
@@ -20,6 +21,82 @@ FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
 
 def terr(node, code, msg, fix="", stage="type"):
     raise PruvError(stage, node.line, node.col, code, msg, fix)
+
+
+def _sccs(n, adj):
+    """G9 A0: strongly connected components of the graph on nodes 0..n-1 (adj[i]: successors of i), iterative Tarjan.
+    -> list of member lists (each ascending), ordered by their smallest member."""
+    index_of = [-1] * n
+    low = [0] * n
+    on_stack = [False] * n
+    stack = []
+    out = []
+    counter = 0
+    for root in range(n):
+        if index_of[root] != -1:
+            continue
+        index_of[root] = low[root] = counter
+        counter += 1
+        stack.append(root)
+        on_stack[root] = True
+        work = [(root, 0)]
+        while work:
+            v, i = work[-1]
+            if i < len(adj[v]):
+                work[-1] = (v, i + 1)
+                w = adj[v][i]
+                if index_of[w] == -1:
+                    index_of[w] = low[w] = counter
+                    counter += 1
+                    stack.append(w)
+                    on_stack[w] = True
+                    work.append((w, 0))
+                elif on_stack[w]:
+                    low[v] = min(low[v], index_of[w])
+            else:
+                work.pop()
+                if work:
+                    p = work[-1][0]
+                    low[p] = min(low[p], low[v])
+                if low[v] == index_of[v]:
+                    comp = []
+                    while True:
+                        w = stack.pop()
+                        on_stack[w] = False
+                        comp.append(w)
+                        if w == v:
+                            break
+                    out.append(sorted(comp))
+    out.sort(key=lambda c: c[0])
+    return out
+
+
+def _cycle_through(start, adj, members):
+    """shortest cycle start -> ... -> start inside `members` (breadth first, successors in adjacency order);
+    -> list of nodes beginning and ending with start"""
+    members = set(members)
+    prev = {start: None}
+    queue = [start]
+    qi = 0
+    while qi < len(queue):
+        v = queue[qi]
+        qi += 1
+        for w in adj[v]:
+            if w not in members:
+                continue
+            if w == start:
+                path = [start]
+                x = v
+                chain = []
+                while x is not None:
+                    chain.append(x)
+                    x = prev[x]
+                chain.reverse()          # start ... v
+                return chain + [start]
+            if w not in prev:
+                prev[w] = v
+                queue.append(w)
+    return [start, start]
 
 
 class Checker:
@@ -42,6 +119,15 @@ class Checker:
         s.ctx_generic = False     # does the declaration declare type parameters?
         s.elem_params = set()     # identities (owner, index) of its Element-bounded parameters
         s.arg_decls = {}          # type name -> (number of type parameters, []) for typeinfo.check_arity/is_value
+        # G9 A0 metadata
+        s.type_sccs = []          # recursive type SCCs (lists of names in declaration order), SCC-number order
+        s.boxed = []              # "Decl.field" / "Enum::Variant.field" of every intra-SCC (boxed) field
+        s.boxed_decls = set()     # (declaration name, variant name or None) holding at least one boxed field
+        s.extended = set()        # names of extended declarations
+        s.buffered = set()        # declarations transitively containing a buffer (array/str) field
+        s.fn_sccs = []            # recursive function SCCs (lists of names in function order)
+        s.call_log = []           # (caller Function, Call node, callee Function) of every checked user call
+        s.active_roots = []       # root variable names of the enclosing match arms on extended scrutinees
 
     def run(s):
         refine_expand(s.prog)  # STAGE1 A: validate refinement annotations, desugar them into contracts/asserts
@@ -50,11 +136,15 @@ class Checker:
         s.arg_decls = {n: (len(d.tparams), []) for n, d in s.decls.items()}
         s.check_tparams()      # G3: type-parameter lists (type_parameter, generic_bound, generic_main)
         s.resolve_types()      # every type reference
-        s.type_recursion()
+        s.type_graph()         # G9 A0: type SCCs, generic/recursive field rules
+        s.inhabitance()        # G9 A0: every declaration needs a finite value
+        s.compute_extended()
+        s.check_extended_uses()
         s.tt = TypeTable(s.prog)
         for f in s.prog.functions:
             s.fn(f)
-        s.no_recursion()
+        s.check_fn_sccs()      # G9 A0: measures and stable type parameters of recursive call SCCs
+        s.record_g9()
 
     # ---- user type declarations ----
     def declare_types(s):
@@ -115,6 +205,8 @@ class Checker:
             f.ret = s.norm_type(f.ret)
             for e in f.requires + f.ensures:
                 s.norm_expr(e)
+            if f.decreases is not None:
+                s.norm_expr(f.decreases)
             s.norm_stmts(f.body)
 
     def norm_stmts(s, stmts):
@@ -295,6 +387,7 @@ class Checker:
         for a, tp in zip(targs, tparams):
             s.check_type(e, a)
             s.check_arg(e, a, tp)
+            s.ext_misuse(e, a, "arg")      # G9 A0: extended types are never type arguments
         return bind_args(owner, len(tparams), targs)
 
     def resolve_types(s):
@@ -303,7 +396,10 @@ class Checker:
             groups = [d.fields] if isinstance(d, StructDecl) else [v.fields for v in d.variants]
             for fields in groups:
                 for f in fields:
-                    if f.type == UNIT or is_array(f.type) or f.type == STR:
+                    if d.tparams and (is_array(f.type) or f.type == STR):   # G9 A0
+                        terr(f, "field_type", "generic type %s cannot have the array/str field %s" % (d.name, f.name),
+                             "use a dedicated non-generic declaration")
+                    if f.type == UNIT or (is_array(f.type) and f.type not in (ARRAY, ARRAY_U8, ARRAY_BOOL)):
                         terr(f, "field_type", "field %s cannot have type %s" % (f.name, type_name(f.type)),
                              "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum")
                     s.check_type(f, f.type)
@@ -317,48 +413,206 @@ class Checker:
                 s.check_type(f, p.type)
             s.check_type(f, f.ret)
 
-    def type_recursion(s):
-        state = {}
+    # ---- G9 A0: type graph, inhabitance, extended types ----
+    @staticmethod
+    def decl_fields(d):
+        """[(variant name or None, FieldDecl)] of a declaration in variant/field source order"""
+        if isinstance(d, StructDecl):
+            return [(None, fd) for fd in d.fields]
+        return [(v.name, fd) for v in d.variants for fd in v.fields]
 
-        def deps(d):
-            fields = d.fields if isinstance(d, StructDecl) else [x for v in d.variants for x in v.fields]
-            out = []
-            for f in fields:
-                for n in dependencies(f.type):    # G3: nested type arguments count
-                    if n in s.decls and n not in out:
-                        out.append(n)
-            return out
+    @staticmethod
+    def field_label(d, vname, fd):
+        return "%s.%s" % (d.name, fd.name) if vname is None else "%s::%s.%s" % (d.name, vname, fd.name)
 
-        def visit(n, path):
-            if state.get(n) == 1:
-                cyc = path[path.index(n):] + [n]
-                terr(s.decls[n], "recursive_type", "recursive type is not allowed: %s" % " -> ".join(cyc),
-                     "types have fixed size; remove the cycle")
-            if state.get(n) == 2:
-                return
-            state[n] = 1
-            for c in deps(s.decls[n]):
-                visit(c, path + [n])
-            state[n] = 2
+    def is_plain_nominal(s, ty):
+        """a declared user type written without type arguments"""
+        return ty.owner is None and not ty.args and ty.name in s.decls and ty.name not in BUILTIN_TYPE_NAMES
+
+    def type_graph(s):
+        types = s.prog.types
+        index = {}
+        for i, d in enumerate(types):
+            index.setdefault(d.name, i)
+        adj = [[] for _ in types]
+        for i, d in enumerate(types):
+            for _, fd in s.decl_fields(d):
+                for n in dependencies(fd.type):    # G3: nested type arguments count
+                    j = index.get(n)
+                    if j is not None and j not in adj[i]:
+                        adj[i].append(j)
+        for comp in _sccs(len(types), adj):
+            if not (len(comp) > 1 or comp[0] in adj[comp[0]]):
+                continue
+            names = [types[i].name for i in comp]
+            members = set(names)
+            s.type_sccs.append(names)
+            # (a) generic declarations cannot be recursive
+            for i in comp:
+                d = types[i]
+                if d.tparams:
+                    cyc = [types[k].name for k in _cycle_through(i, adj, comp)]
+                    terr(d, "recursive_generic_type", "generic type %s cannot be recursive (cycle: %s)" % (
+                        d.name, " -> ".join(cyc)),
+                         "recursive types must be non-generic; write a dedicated enum for the element type")
+            # (b) intra-SCC fields must be direct nominal fields (these are the boxed edges)
+            for i in comp:
+                d = types[i]
+                for vname, fd in s.decl_fields(d):
+                    if not any(n in members for n in dependencies(fd.type)):
+                        continue
+                    if not (s.is_plain_nominal(fd.type) and fd.type.name in members):
+                        terr(fd, "recursive_type", "recursive field %s must have the type itself, not hide it inside %s" % (
+                            fd.name, type_name(fd.type)),
+                             "use a direct field of a dedicated non-generic type")
+                    s.boxed.append(s.field_label(d, vname, fd))
+                    s.boxed_decls.add((d.name, vname))
+
+    def inhabitance(s):
+        marked = set()
+
+        def field_ok(fd):
+            return not (s.is_plain_nominal(fd.type) and fd.type.name not in marked)
+
+        changed = True
+        while changed:
+            changed = False
+            for d in s.prog.types:
+                if d.name in marked:
+                    continue
+                if isinstance(d, StructDecl):
+                    ok = all(field_ok(fd) for fd in d.fields)
+                else:
+                    ok = any(all(field_ok(fd) for fd in v.fields) for v in d.variants)
+                if ok:
+                    marked.add(d.name)
+                    changed = True
         for d in s.prog.types:
-            visit(d.name, [])
+            if d.name in marked:
+                continue
+            path = [d.name]
+            cur = d
+            while True:
+                nxt = None
+                for _, fd in s.decl_fields(cur):
+                    if s.is_plain_nominal(fd.type) and fd.type.name not in marked:
+                        nxt = fd.type.name
+                        break
+                if nxt is None:
+                    break
+                path.append(nxt)
+                if path.index(nxt) != len(path) - 1:
+                    break
+                cur = s.decls[nxt]
+            terr(d, "recursive_type", "recursive type has no finite value: %s" % " -> ".join(path),
+                 "add a variant without recursive fields (a base case such as `Empty`)")
 
-    def no_recursion(s):
-        state = {}
+    def compute_extended(s):
+        """extended = recursive, or with a buffer field, or with a field mentioning an extended declaration;
+        buffered = with a buffer field directly or through nested declarations"""
+        rec = set(n for names in s.type_sccs for n in names)
+        direct = set()
+        for d in s.prog.types:
+            if any(is_array(fd.type) or fd.type == STR for _, fd in s.decl_fields(d)):
+                direct.add(d.name)
+        ext = set(rec) | direct
+        buf = set(direct)
+        changed = True
+        while changed:
+            changed = False
+            for d in s.prog.types:
+                mentioned = set(n for _, fd in s.decl_fields(d) for n in dependencies(fd.type))
+                if d.name not in ext and mentioned & ext:
+                    ext.add(d.name)
+                    changed = True
+                if d.name not in buf and mentioned & buf:
+                    buf.add(d.name)
+                    changed = True
+        s.extended = ext
+        s.buffered = buf
 
-        def visit(n, path):
-            if state.get(n) == 1:
-                f = s.funcs[n]
-                terr(f, "recursion", "recursion is not allowed: %s" % " -> ".join(path + [n]),
-                     "rewrite with a while loop")
-            if state.get(n) == 2:
-                return
-            state[n] = 1
-            for c in sorted(s.calls.get(n, ())):
-                visit(c, path + [n])
-            state[n] = 2
-        for n in s.funcs:
-            visit(n, [])
+    def is_extended(s, ty):
+        return ty.owner is None and not ty.args and ty.name in s.extended
+
+    def ext_misuse(s, node, ty, inside=None):
+        """an extended type may not be a type argument (type_argument) or a G6 collection payload (foreign_owned_type)"""
+        if ty.owner is not None:
+            return
+        if is_collection(ty):
+            for a in ty.args:
+                s.ext_misuse(node, a, "coll")
+            return
+        if ty.name in s.extended and not ty.args and ty.name in s.decls:
+            if inside == "coll":
+                terr(node, "foreign_owned_type", "%s cannot be a Vec or HashMap element: it is recursive or holds an "
+                     "array/str" % type_name(ty), "keep extended values in their own bindings")
+            if inside == "arg":
+                terr(node, "type_argument", "%s cannot be a type argument or an Option/Result payload: it is "
+                     "recursive or holds an array/str" % type_name(ty),
+                     "use a dedicated non-generic enum instead")
+            return
+        for a in ty.args:
+            s.ext_misuse(node, a, "coll" if inside == "coll" else "arg")
+
+    def check_extended_uses(s):
+        for d in s.prog.types:
+            for _, fd in s.decl_fields(d):
+                if d.tparams:
+                    hit = [n for n in dependencies(fd.type) if n in s.extended]
+                    if hit:
+                        terr(fd, "field_type", "generic type %s cannot have the field %s of the extended type %s" % (
+                            d.name, fd.name, hit[0]), "use a dedicated non-generic declaration")
+                s.ext_misuse(fd, fd.type)
+        for f in s.prog.functions:
+            for p in f.params:
+                s.ext_misuse(f, p.type)
+            s.ext_misuse(f, f.ret)
+
+    def check_fn_sccs(s):
+        names = [f.name for f in s.prog.functions]
+        index = {n: i for i, n in enumerate(names)}
+        adj = [[] for _ in names]
+        for caller, _call, callee in s.call_log:
+            i, j = index[caller.name], index[callee.name]
+            if j not in adj[i]:
+                adj[i].append(j)
+        for comp in _sccs(len(names), adj):
+            if not (len(comp) > 1 or comp[0] in adj[comp[0]]):
+                continue
+            members = set(comp)
+            s.fn_sccs.append([names[i] for i in comp])
+            for i in comp:
+                f = s.prog.functions[i]
+                if f.decreases is None:
+                    cyc = [names[k] for k in _cycle_through(i, adj, comp)]
+                    terr(f, "recursive_decreases", "recursive function %s needs a decreases clause (cycle: %s)" % (
+                        f.name, " -> ".join(cyc)), "add `decreases <expr>` after requires/ensures, e.g. `decreases n`")
+            edges = [(index[c.name], call, callee) for c, call, callee in s.call_log
+                     if index[c.name] in members and index[callee.name] in members]
+            edges.sort(key=lambda x: (x[0], x[1].line, x[1].col))
+            for ci, call, callee in edges:
+                caller = s.prog.functions[ci]
+                ok = len(caller.tparams) == len(callee.tparams) and \
+                    all(a.bound == b.bound for a, b in zip(caller.tparams, callee.tparams))
+                if ok:
+                    targs = call.targs if call.targs is not None else []
+                    ok = len(targs) == len(caller.tparams) and all(
+                        t.owner == fn_owner(caller.name) and t.index == k and not t.args
+                        for k, t in enumerate(targs))
+                if not ok:
+                    terr(call, "recursive_polymorphism", "recursive call to %s must pass the type parameters <%s> "
+                         "unchanged" % (callee.name, ", ".join(tp.name for tp in caller.tparams)),
+                         "call with ::<T, ...> in the same order")
+
+    def record_g9(s):
+        """G9 metadata on the program and the type table, only when a G9 feature is present"""
+        if not (s.type_sccs or s.extended or s.fn_sccs or any(f.decreases is not None for f in s.prog.functions)):
+            return
+        meta = {"type_sccs": [list(x) for x in s.type_sccs], "boxed": list(s.boxed),
+                "extended": [d.name for d in s.prog.types if d.name in s.extended],
+                "fn_sccs": [list(x) for x in s.fn_sccs]}
+        s.prog.g9 = meta
+        s.tt.g9 = meta
 
     # ---- function ----
     def fn(s, f):
@@ -367,6 +621,9 @@ class Checker:
         s.calls[f.name] = set()
         if f.foreign is not None:
             check_foreign_decl(f, s.externs)
+            if f.decreases is not None:     # G9 A0: foreign termination is trusted
+                terr(f.decreases, "recursive_decreases", "a trusted rust fn cannot have a decreases clause",
+                     "remove it; foreign termination is trusted")
         elif f.name == "main" and (is_collection(f.ret) or any(is_collection(p.type) for p in f.params)):
             terr(f, "foreign_export", "main cannot have a collection parameter or result",
                  "give main plain value parameters and result; use collections inside it")
@@ -388,6 +645,8 @@ class Checker:
             escope["result"] = (f.ret, False, "result")
         for e in f.ensures:
             s.expect(e, BOOL, escope, contract=True)
+        if f.decreases is not None:      # G9 A0: scalar measure over the parameters only (no result)
+            s.expect(f.decreases, I64, scope, contract=True)
         if f.foreign is not None:
             return                       # a trusted rust fn has no body to check
         s.block(f.body, dict(scope))
@@ -427,13 +686,16 @@ class Checker:
             if st.type == UNIT:
                 terr(st, "unit_let", "cannot bind a () value")
             s.check_type(st, st.type)
+            s.ext_misuse(st, st.type)
             s.alloc_hint_for(st.value, st.type)
             s.expect(st.value, st.type, scope)
             if is_array(st.type) or st.type == STR:
                 s.array_source(st, st.value, scope)
+            s.own(st.value)
             scope[st.name] = (st.type, st.mutable, "local")
         elif isinstance(st, Assign):
             v = s.lookup(st, st.name, scope)
+            s.check_borrow(st, st.name, [])
             if not v[1]:
                 terr(st, "immutable", "%s is not mutable" % st.name,
                      "declare it with `let mut`" if v[2] == "local" else "parameters are immutable; copy into a `let mut` local")
@@ -441,6 +703,7 @@ class Checker:
             s.expect(st.value, v[0], scope)
             if is_array(v[0]) or v[0] == STR:
                 s.array_source(st, st.value, scope)
+            s.own(st.value)
         elif isinstance(st, IndexAssign):
             v = s.lookup(st, st.name, scope)
             if v[0] == STR:
@@ -456,6 +719,7 @@ class Checker:
             s.expect(st.value, s.elem_type(v[0]), scope)
         elif isinstance(st, FieldAssign):
             v = s.lookup(st, st.name, scope)
+            s.check_borrow(st, st.name, st.fields)
             cur = v[0]
             for fname in st.fields:
                 if cur.owner is not None:
@@ -469,6 +733,9 @@ class Checker:
                 terr(st, "immutable", "%s is not mutable" % st.name,
                      "declare it with `let mut`" if v[2] == "local" else "parameters are immutable; copy into a `let mut` local")
             s.expect(st.value, cur, scope)
+            if is_array(cur) or cur == STR:      # G9 A0: G2 explicit ownership for a buffer field
+                s.array_source(st, st.value, scope)
+            s.own(st.value)
         elif isinstance(st, If):
             s.expect(st.cond, BOOL, scope, op="a condition")
             s.block(st.then, dict(scope))
@@ -490,6 +757,7 @@ class Checker:
                 s.expect(st.value, f.ret, scope)
                 if is_array(f.ret) or f.ret == STR:
                     s.array_source(st, st.value, scope, allow_local_var=True)
+                s.own(st.value)
         elif isinstance(st, Assert):
             s.expect(st.cond, BOOL, scope, contract=True)
         elif isinstance(st, ExprStmt):
@@ -502,6 +770,7 @@ class Checker:
         elif isinstance(st, Match):
             t = s.expr(st.scrutinee, scope)
             user = s.tt.is_enum(t)
+            root = s.match_root(st.scrutinee, t, scope)   # G9 A0: root variable of an extended scrutinee path
             if t.owner is not None:
                 terr(st, "generic_operation", "cannot match a value of the abstract type %s" % t.name,
                      "a type parameter has no variants; match on an Option, Result or enum that contains it")
@@ -549,8 +818,13 @@ class Checker:
                 for b, bt in zip(a.binders, ftypes):
                     if b in sc:
                         terr(node, "shadow", "%s is already defined" % b, "use a new name")
-                    sc[b] = (bt, False, "local")
+                    # G9 A0: a buffer payload is a read view (like a parameter): returning it needs copy()
+                    sc[b] = (bt, False, "param" if (is_array(bt) or bt == STR) else "local")
+                if root is not None:
+                    s.active_roots.append(root)
                 s.block(a.body, sc)
+                if root is not None:
+                    s.active_roots.pop()
         else:
             terr(st, "internal", "unknown statement")
 
@@ -565,6 +839,43 @@ class Checker:
                  "write copy(x) to make an explicit copy (needs `! alloc`)")
         terr(st, "array_alias", "an array value here must come from alloc(), copy() or a function call",
              "write copy(x) to make an explicit copy (needs `! alloc`)")
+
+    # ---- G9 A0: ownership of extended values, active-match borrows ----
+    def own(s, value):
+        """`value` (already typed) is moved into an owning position (let, assignment, constructor field, return):
+        a non-fresh extended value is cloned, which needs `alloc`; constructors, literals and calls are fresh"""
+        t = value.ty
+        if t is not None and s.is_extended(t) and not isinstance(value, (EnumCtor, StructLit, Call)):
+            s.used_effects.add("alloc")
+
+    def own_field(s, value, ftype, scope, c):
+        """a constructor / struct-literal field argument: owning position, G2 explicit ownership for buffers"""
+        if c:
+            return
+        if is_array(ftype) or ftype == STR:
+            s.array_source(value, value, scope)
+        s.own(value)
+
+    def ctor_allocs(s, decl_name, variant, c):
+        """a constructor that initializes a boxed field allocates"""
+        if not c and (decl_name, variant) in s.boxed_decls:
+            s.used_effects.add("alloc")
+
+    def match_root(s, scrut, t, scope):
+        """root variable of a match scrutinee that is a variable / field path over an extended type, else None"""
+        if not s.is_extended(t):
+            return None
+        e = scrut
+        while isinstance(e, FieldAccess):
+            e = e.base
+        if isinstance(e, Var) and e.name in scope and scope[e.name][2] in ("local", "param"):
+            return e.name
+        return None
+
+    def check_borrow(s, st, name, fields):
+        if name in s.active_roots:
+            terr(st, "recursive_borrow", "cannot assign to %s while a match on it is active" % ".".join([name] + list(fields)),
+                 "copy the needed payload into a local, finish the match, then assign")
 
     def alloc_hint_for(s, value, expected):
         """G2: only a builtin alloc call that IS the right-hand side of a typed let / array reassignment /
@@ -650,6 +961,9 @@ class Checker:
                 if lt == STR:   # G2 B0
                     terr(e, "eq_type", "str values cannot be compared with ==",
                          "compare lengths and bytes: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]")
+                if lt.owner is None and any(n in s.buffered for n in dependencies(lt)):   # G9 A0
+                    terr(e, "eq_type", "values of %s contain arrays or str and cannot be compared with ==" % type_name(lt),
+                         "compare tags, lengths and indexed contents instead")
                 if lt.owner is not None and not c:
                     terr(e, "generic_operation", "== is not allowed on the abstract type %s in code" % lt.name,
                          "runtime equality only compares i64 or bool; == on a type parameter works in contracts")
@@ -714,6 +1028,8 @@ class Checker:
                     e.enum_name, e.variant, len(fields), len(e.args)))
             for arg, (fd, ft) in zip(e.args, fields):
                 s.expect(arg, ft, scope, c)
+                s.own_field(arg, ft, scope, c)
+            s.ctor_allocs(e.enum_name, e.variant, c)
             return ety
         if isinstance(e, FieldAccess):
             bt = s.expr(e.base, scope, c)
@@ -815,6 +1131,8 @@ class Checker:
                  "write every field exactly once, in declaration order")
         for fi, ft in zip(e.fields, ftypes):
             s.expect(fi.value, ft, scope, c)
+            s.own_field(fi.value, ft, scope, c)
+        s.ctor_allocs(e.name, None, c)
         return sty
 
     def ctor(s, e, scope, c):
@@ -831,6 +1149,7 @@ class Checker:
         x = e.targs[0]
         s.check_type(e, x)
         s.check_arg(e, x, None)
+        s.ext_misuse(e, x, "arg")      # G9 A0
         e.inst = {"decl": "builtin:" + e.name, "args": (x,), "subst": {("builtin:" + e.name, 0): x}}
         if e.name == "None":
             return mk_option(x)
@@ -893,10 +1212,16 @@ class Checker:
             s.used_effects.add("io"); return UNIT
         if n in CONTRACT_ONLY:
             if not c:
-                terr(e, "contract_only", "%s is only allowed in contracts" % n, "use match in code")
+                terr(e, "contract_only", "%s is only allowed in contracts" % n,
+                     "size is a contract measure; use len or a counter in code" if n == "size" else "use match in code")
             arity(1)
             kind, rt = CONTRACT_ONLY[n]
             t = s.expr(a[0], scope, c)
+            if n == "size":     # G9 A0: a non-generic user struct/enum value
+                if not (s.is_plain_nominal(t) and not s.decls[t.name].tparams):
+                    terr(e, "size_type", "size needs a non-generic struct or enum value, got %s" % type_name(t),
+                         "size counts constructors; use len for arrays and strings")
+                return I64
             if t.owner is not None or t.name != kind:
                 terr(a[0], "type_mismatch", "expected %s, found %s" % (type_name(OPTION if kind == "option" else RESULT),
                                                                          type_name(t)))
@@ -945,6 +1270,8 @@ class Checker:
                  "inline the property")
         s.used_effects.update(f.effects)
         s.calls[s.f.name].add(n)
+        if f.foreign is None:     # G9 A0: foreign calls are leaves of the call graph
+            s.call_log.append((s.f, e, f))
         return substitute(f.ret, m)
 
 

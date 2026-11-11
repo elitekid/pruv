@@ -1,0 +1,10 @@
+// G9 A0 accept: a recursive builder; constructing a boxed field needs the alloc effect, decreases n
+enum List { Nil, Cons(head: i64, tail: List) }
+
+fn count_up(n: i64) -> List ! alloc
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return List::Nil; }
+  return List::Cons(n, count_up(n - 1));
+}

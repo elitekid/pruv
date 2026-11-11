@@ -6,7 +6,8 @@
                              [--fuzz-count 40] [--jobs N] [--save-dir DIR] [--input FILE ...]
                              [--flags "STR"]
 
-Groups: must_reject examples runtime bench check_edge fuzz input
+Groups: must_reject examples runtime bench check_edge g6 g9 fuzz input
+  (g6 = tests/g6/*/*.pruv, g9 = tests/g9/{frontend,proof}/*.pruv)
   (if only --input is given and there is no --only, only the input group runs)
 For each input, Python (`PY tests/diff_py_adapter.py trace FILE`) and Rust (`pruv-trace-dump FILE`) are each
 run in a new process (no shell, timeout 300). The two runs for one input happen one after the other in the same worker.
@@ -67,6 +68,7 @@ GROUP_DIRS = [
     ("inference", "tests/inference", "inf_*.pruv"),
     ("bench_noinv", "bench/inference/agg_noinv", "*.pruv"),
     ("g6", "tests/g6", "*/*.pruv"),
+    ("g9", "tests/g9", "*/*.pruv"),
 ]
 ALL_GROUPS = [g for g, _, _ in GROUP_DIRS] + ["fuzz", "input"]
 COLS = ("inputs", "same", "same_unknown", "cex_only", "flaky_unknown", "py_recursion", "diff", "option_mismatch",

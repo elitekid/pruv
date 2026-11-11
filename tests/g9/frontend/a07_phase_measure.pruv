@@ -1,0 +1,15 @@
+// G9 A0 accept: mutual recursion with different scalar phase measures (2 * n + 1 versus 2 * n)
+fn ping(n: i64) -> i64
+  requires n >= 0
+  decreases 2 * n + 1
+{
+  if n == 0 { return 0; }
+  return pong(n);
+}
+
+fn pong(n: i64) -> i64
+  requires n >= 1
+  decreases 2 * n
+{
+  return ping(n - 1);
+}

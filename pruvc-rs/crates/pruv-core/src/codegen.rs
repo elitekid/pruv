@@ -1606,8 +1606,9 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
+            decreases: None,
         };
-        Program { functions: vec![f], types: vec![], refined: false }
+        Program { functions: vec![f], types: vec![], refined: false, g9: None }
     }
 
     #[test]
@@ -1653,8 +1654,9 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
+            decreases: None,
         };
-        Program { functions: vec![f], types: vec![], refined: false }
+        Program { functions: vec![f], types: vec![], refined: false, g9: None }
     }
 
     #[test]

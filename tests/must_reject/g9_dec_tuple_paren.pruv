@@ -1,0 +1,7 @@
+// parse/decreases_syntax: a parenthesized tuple measure
+fn f(a: i64, b: i64) -> i64
+  requires a >= 0 && b >= 0
+  decreases (a, b)
+{
+  return a;
+}

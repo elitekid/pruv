@@ -1,0 +1,2 @@
+// G9 A0 migration: formerly type/field_type (tests/check_edge/str_field_enum); a str enum payload is accepted
+enum E { A(s: str), B }

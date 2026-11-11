@@ -1,0 +1,6 @@
+// type/field_type: an array of a user type is not a buffer field (type resolution runs before the recursion check)
+enum Tree { Leaf, Node(kids: [Tree]) }
+
+fn f(x: i64) -> i64 {
+  return x;
+}

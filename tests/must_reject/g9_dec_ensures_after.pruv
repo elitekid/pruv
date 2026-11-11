@@ -1,0 +1,8 @@
+// parse/decreases_syntax: an ensures clause after decreases
+fn f(n: i64) -> i64
+  requires n >= 0
+  decreases n
+  ensures result == n
+{
+  return n;
+}

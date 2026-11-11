@@ -1,0 +1,8 @@
+// type/recursive_polymorphism: a recursive call that changes the type argument (T to bool)
+fn g<T>(x: T, n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return g::<bool>(true, n - 1);
+}

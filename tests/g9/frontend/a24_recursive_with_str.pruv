@@ -1,0 +1,11 @@
+// G9 A0 accept: a recursive enum with a str payload; recursion measured by size
+enum Chain { End, Link(label: str, rest: Chain) }
+
+fn depth(c: Chain) -> i64
+  decreases size(c)
+{
+  match c {
+    Chain::End => { return 0; }
+    Chain::Link(label, rest) => { return 1 + depth(rest); }
+  }
+}

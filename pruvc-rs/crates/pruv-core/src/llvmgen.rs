@@ -2861,6 +2861,7 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
+            decreases: None,
         };
         let mut m = Mod::new();
         let mut g = FnGen::new(&mut m, &tt, &funcs, &f, false);
@@ -2887,8 +2888,10 @@ mod tests {
                 ret_refine: None,
                 tparams: vec![],
                 foreign: None,
+                decreases: None,
             }],
             refined: false,
+            g9: None,
         }
     }
 

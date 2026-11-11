@@ -1,0 +1,15 @@
+// type/recursive_decreases: mutual recursion where only one member has a decreases clause
+fn even(n: i64) -> bool
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return true; }
+  return odd(n - 1);
+}
+
+fn odd(n: i64) -> bool
+  requires n >= 0
+{
+  if n == 0 { return false; }
+  return even(n - 1);
+}

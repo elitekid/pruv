@@ -1,0 +1,5 @@
+// type/recursive_decreases: a self call in a syntactically unreachable branch still makes the function recursive
+fn f(n: i64) -> i64 {
+  if false { return f(n); }
+  return n;
+}

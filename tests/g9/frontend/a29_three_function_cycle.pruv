@@ -1,0 +1,28 @@
+// G9 A0 accept: a three-function call cycle, every member carries decreases n; fa also calls a later declaration
+fn fa(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return base(); }
+  return fb(n - 1);
+}
+
+fn fb(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 1; }
+  return fc(n - 1);
+}
+
+fn fc(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 2; }
+  return fa(n - 1);
+}
+
+fn base() -> i64 {
+  return 0;
+}

@@ -1,0 +1,7 @@
+// parse/decreases_syntax: a requires clause after decreases
+fn f(n: i64) -> i64
+  decreases n
+  requires n >= 0
+{
+  return n;
+}

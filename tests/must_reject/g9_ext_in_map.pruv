@@ -1,0 +1,6 @@
+// type/foreign_owned_type: a recursive (extended) type as a G6 HashMap value
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn f(m: HashMap<i64, Tree>) -> i64 {
+  return 0;
+}

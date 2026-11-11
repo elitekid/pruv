@@ -1,0 +1,4 @@
+// G9 A0 migration: formerly type/field_type (tests/must_reject/g1_array_field); an [i64] struct field is accepted
+struct Boxed {
+  items: [i64],
+}

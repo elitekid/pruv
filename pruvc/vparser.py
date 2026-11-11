@@ -515,6 +515,7 @@ class Parser:
         while s.at("requires") or s.at("ensures"):
             k = s.next().val
             (req if k == "requires" else ens).append(s.expr())
+        decreases = s.decreases_clause()   # G9 A0: at most one measure, after all requires/ensures
         info = None
         if foreign is not None:
             if s.at("{"):
@@ -536,7 +537,53 @@ class Parser:
         f.tparams = tparams
         if info is not None:
             f.foreign = info
+        if decreases is not None:
+            f.decreases = decreases
         return f
+
+    def decreases_syntax(s, tok, msg, fix):
+        raise PruvError("parse", tok.line, tok.col, "decreases_syntax", msg, fix)
+
+    def decreases_clause(s):
+        """G9 A0: optional `decreases Expr` of a function header (after requires/ensures, before `{` or `=`).
+        -> the expression or None. Duplicate, empty, tuple and misplaced clauses are parse/decreases_syntax."""
+        expr = None
+        if s.at("decreases"):
+            s.next()
+            t = s.peek()
+            if (t.kind == "op" and t.val in ("{", "=", ";")) or t.kind == "eof":
+                s.decreases_syntax(t, "empty decreases clause", "write one scalar measure, e.g. `decreases n`")
+            if s.at("("):
+                # a parenthesized group with a top-level comma is a tuple measure
+                depth = 0
+                k = 0
+                while True:
+                    tk = s.peek(k)
+                    if tk.kind == "eof":
+                        break
+                    if tk.kind == "op" and tk.val in ("(", "["):
+                        depth += 1
+                    elif tk.kind == "op" and tk.val in (")", "]"):
+                        depth -= 1
+                        if depth <= 0:
+                            break
+                    elif tk.kind == "op" and tk.val == "," and depth == 1:
+                        s.decreases_syntax(tk, "a decreases clause takes one scalar measure, not a tuple",
+                                           "combine the measures into one i64 expression, e.g. `decreases 2 * n + 1`")
+                    elif tk.kind == "op" and tk.val in ("{", "}", ";"):
+                        break
+                    k += 1
+            expr = s.expr()
+            if s.at(","):
+                s.decreases_syntax(s.peek(), "a decreases clause takes one scalar measure, not a list",
+                                   "combine the measures into one i64 expression, e.g. `decreases 2 * n + 1`")
+        if s.at("decreases"):
+            s.decreases_syntax(s.peek(), "a function has at most one decreases clause",
+                               "keep a single `decreases <expr>` after requires/ensures")
+        if s.at("requires") or s.at("ensures"):
+            s.decreases_syntax(s.peek(), "%s must come before decreases" % s.peek().val,
+                               "move `decreases` after all requires/ensures clauses")
+        return expr
 
     def block(s):
         s.expect("{")

@@ -418,7 +418,73 @@ def g3_unimplemented_error(prog, stage="codegen"):
                      "avoid type parameters and type arguments for now")
 
 
+# ---------------------------------------------------------------------------
+# G9 A0 staging guard: the verifier and both code generators do not support recursion, decreases, size,
+# recursive types or aggregate buffer fields yet (G9_SPEC 10, 11-13 replace this guard batch by batch).
+# ---------------------------------------------------------------------------
+def _g9_size_calls(node, out):
+    """collect (line, col) of every `size(..)` call under node (generic walk over dataclass fields)"""
+    if isinstance(node, list):
+        for x in node:
+            _g9_size_calls(x, out)
+        return
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return
+    if isinstance(node, Call) and node.name == "size":
+        out.append((node.line, node.col))
+    for fname in node.__dataclass_fields__:
+        _g9_size_calls(getattr(node, fname), out)
+
+
+def first_g9_use(prog):
+    """first G9 construct of a checked program -> (line, col, what) or None: a function with a decreases clause,
+    a function of a recursive call-graph SCC, a recursive type declaration, an array/str field, a `size` call."""
+    cands = []
+    meta = getattr(prog, "g9", None)
+    rec_types = set()
+    rec_fns = set()
+    if meta is not None:
+        for scc in meta["type_sccs"]:
+            rec_types.update(scc)
+        for scc in meta["fn_sccs"]:
+            rec_fns.update(scc)
+    for d in prog.types:
+        if d.name in rec_types:
+            cands.append((d.line, d.col, "recursive type %s" % d.name))
+        fields = d.fields if isinstance(d, StructDecl) else [x for v in d.variants for x in v.fields]
+        for fd in fields:
+            if is_array(fd.type) or fd.type == STR:
+                cands.append((fd.line, fd.col, "buffer field %s" % fd.name))
+    for fn in prog.functions:
+        if fn.decreases is not None:
+            cands.append((fn.decreases.line, fn.decreases.col, "decreases clause"))
+        if fn.name in rec_fns:
+            cands.append((fn.line, fn.col, "recursive function %s" % fn.name))
+        sizes = []
+        _g9_size_calls(fn.requires, sizes)
+        _g9_size_calls(fn.ensures, sizes)
+        _g9_size_calls(fn.body, sizes)
+        if fn.decreases is not None:
+            _g9_size_calls(fn.decreases, sizes)
+        for lc in sizes:
+            cands.append((lc[0], lc[1], "size"))
+    return min(cands, key=lambda c: (c[0], c[1])) if cands else None
+
+
+def g9_unimplemented_error(prog, stage, layer):
+    """PruvError (unsupported_type) for the first G9 construct, or None. Run right after type checking."""
+    hit = first_g9_use(prog)
+    if hit is None:
+        return None
+    line, col, _what = hit
+    return PruvError(stage, line, col, "unsupported_type",
+                     "G9 recursive values and aggregate buffer fields are not implemented by the %s yet" % layer,
+                     "avoid recursion, decreases, size, recursive types and array/str fields for now")
+
+
 class TypeTable:
+    g9 = None     # G9 A0: checker metadata dict (type_sccs, boxed, extended, fn_sccs), only when a G9 feature exists
+
     def __init__(self, prog: Program):
         # first declaration wins if a name is repeated (the checker rejects duplicates)
         self.decls: Dict[str, TypeDecl] = {}

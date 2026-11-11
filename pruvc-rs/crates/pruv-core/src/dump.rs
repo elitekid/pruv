@@ -400,6 +400,9 @@ fn function(f: &Function) -> Json {
             ]),
         ));
     }
+    if let Some(d) = &f.decreases {
+        fields.push(("decreases", expr(d))); // G9 A0, written only when present
+    }
     node("Function", Some((f.line, f.col)), fields)
 }
 
@@ -446,7 +449,21 @@ fn type_table_json(tt: &crate::typeinfo::TypeTable) -> Json {
             ("deps".to_string(), strs(&tt.deps(d))),
         ]));
     }
-    Json::Obj(vec![("order".to_string(), Json::Arr(order)), ("entries".to_string(), Json::Arr(entries))])
+    let mut top = vec![("order".to_string(), Json::Arr(order)), ("entries".to_string(), Json::Arr(entries))];
+    if let Some(g) = &tt.g9 {
+        // G9 A0, only when the program has a G9 feature
+        let lists = |v: &Vec<Vec<String>>| Json::Arr(v.iter().map(|x| strs(x)).collect());
+        top.push((
+            "g9".to_string(),
+            Json::Obj(vec![
+                ("type_sccs".to_string(), lists(&g.type_sccs)),
+                ("boxed".to_string(), strs(&g.boxed)),
+                ("extended".to_string(), strs(&g.extended)),
+                ("fn_sccs".to_string(), lists(&g.fn_sccs)),
+            ]),
+        ));
+    }
+    Json::Obj(top)
 }
 
 /// One file's bytes -> one parse+check result line (without the newline). On success, the program with ty filled in and the type_table.

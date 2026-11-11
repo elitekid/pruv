@@ -1,0 +1,102 @@
+[
+  {
+    "old_path": "tests/must_reject/g1_array_field",
+    "old_stage": "type",
+    "old_code": "field_type",
+    "new_result": "accepted",
+    "new_stage": null,
+    "new_code": null,
+    "rule": "G9_SPEC 4 (primitive array fields in non-generic structs)",
+    "replacement": "g9_frontend/m01_g1_array_field.pruv [no-verify]"
+  },
+  {
+    "old_path": "tests/must_reject/g2a_array_field",
+    "old_stage": "type",
+    "old_code": "field_type",
+    "new_result": "accepted",
+    "new_stage": null,
+    "new_code": null,
+    "rule": "G9_SPEC 4 (primitive array fields in non-generic structs)",
+    "replacement": "g9_frontend/m02_g2a_array_field.pruv [no-verify]"
+  },
+  {
+    "old_path": "tests/must_reject/g2b_field",
+    "old_stage": "type",
+    "old_code": "field_type",
+    "new_result": "accepted",
+    "new_stage": null,
+    "new_code": null,
+    "rule": "G9_SPEC 4 (str fields in non-generic structs)",
+    "replacement": "g9_frontend/m03_g2b_field.pruv [no-verify]"
+  },
+  {
+    "old_path": "tests/must_reject/g1_unit_field",
+    "old_stage": "type",
+    "old_code": "field_type",
+    "new_result": "rejected",
+    "new_stage": "type",
+    "new_code": "field_type",
+    "rule": "G9_SPEC 4 (unit fields stay forbidden; unchanged)",
+    "replacement": "must_reject/g1_unit_field.pruv"
+  },
+  {
+    "old_path": "tests/must_reject/g1_recursive_direct",
+    "old_stage": "type",
+    "old_code": "recursive_type",
+    "new_result": "rejected",
+    "new_stage": "type",
+    "new_code": "recursive_type",
+    "rule": "G9_SPEC 3, 8 (uninhabited type without a base case; unchanged)",
+    "replacement": "must_reject/g1_recursive_direct.pruv"
+  },
+  {
+    "old_path": "tests/must_reject/g1_recursive_indirect",
+    "old_stage": "type",
+    "old_code": "recursive_type",
+    "new_result": "accepted",
+    "new_stage": null,
+    "new_code": null,
+    "rule": "G9_SPEC 3, 8 (productive cycle through Wrapper::Leaf)",
+    "replacement": "g9_frontend/m04_g1_recursive_indirect.pruv [no-verify]"
+  },
+  {
+    "old_path": "tests/must_reject/g3_rec_direct_fn",
+    "old_stage": "type",
+    "old_code": "recursion",
+    "new_result": "rejected",
+    "new_stage": "type",
+    "new_code": "recursive_decreases",
+    "rule": "G9_SPEC 2, 8 (recursive function without decreases)",
+    "replacement": "must_reject/g3_rec_direct_fn.pruv"
+  },
+  {
+    "old_path": "tests/must_reject/g3_rec_mutual_fn",
+    "old_stage": "type",
+    "old_code": "recursion",
+    "new_result": "rejected",
+    "new_stage": "type",
+    "new_code": "recursive_decreases",
+    "rule": "G9_SPEC 2, 8 (mutually recursive functions without decreases)",
+    "replacement": "must_reject/g3_rec_mutual_fn.pruv"
+  },
+  {
+    "old_path": "tests/must_reject/g3_rec_type_direct",
+    "old_stage": "type",
+    "old_code": "recursive_type",
+    "new_result": "rejected",
+    "new_stage": "type",
+    "new_code": "recursive_generic_type",
+    "rule": "G9_SPEC 3, 8, 10.2 (generic declaration in a recursive type SCC)",
+    "replacement": "must_reject/g3_rec_type_direct.pruv"
+  },
+  {
+    "old_path": "tests/must_reject/g3_rec_type_hidden_arg",
+    "old_stage": "type",
+    "old_code": "recursive_type",
+    "new_result": "rejected",
+    "new_stage": "type",
+    "new_code": "recursive_type",
+    "rule": "G9_SPEC 3 (recursion hidden inside a generic argument; unchanged)",
+    "replacement": "must_reject/g3_rec_type_hidden_arg.pruv"
+  }
+]

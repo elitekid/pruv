@@ -1,0 +1,9 @@
+// type/recursive_generic_type: a generic struct that contains itself
+struct Node<T> {
+  value: T,
+  next: Node<T>
+}
+
+fn f(x: i64) -> i64 {
+  return x;
+}

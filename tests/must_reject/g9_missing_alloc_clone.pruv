@@ -1,0 +1,7 @@
+// effect/missing_effect: copying an extended value (let c = b) without the alloc effect
+struct Buf { items: [i64], tag: i64 }
+
+fn dup(b: Buf) -> i64 {
+  let c: Buf = b;
+  return c.tag;
+}

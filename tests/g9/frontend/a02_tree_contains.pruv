@@ -1,0 +1,18 @@
+// G9 A0 accept: binary tree enum; recursive search with variant contracts and decreases size(t) (G9_SPEC section 3)
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn contains(t: Tree, x: i64) -> bool
+  ensures is_variant(t, Tree::Empty) ==> !result
+  ensures is_variant(t, Tree::Node) &&
+          variant_field(t, Tree::Node, value) == x ==> result
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return false; }
+    Tree::Node(v, l, r) => {
+      if v == x { return true; }
+      if contains(l, x) { return true; }
+      return contains(r, x);
+    }
+  }
+}

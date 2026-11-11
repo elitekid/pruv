@@ -1,0 +1,6 @@
+// type/foreign_owned_type: an extended type as a G6 Vec element
+struct Buf { items: [i64] }
+
+fn f(v: Vec<Buf>) -> i64 {
+  return 0;
+}

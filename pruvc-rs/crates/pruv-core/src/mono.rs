@@ -715,6 +715,7 @@ impl<'a> Mono<'a> {
             ret_refine: f.ret_refine.clone(),
             tparams: Vec::new(),
             foreign: f.foreign.clone(),
+            decreases: None, // G9 A0: G9 programs are rejected before specialization
         })
     }
 
@@ -842,7 +843,7 @@ impl<'a> Mono<'a> {
             }
         }
         keyed.sort_by(|a, b| a.0.cmp(&b.0));
-        let program = Program { functions, types: keyed.into_iter().map(|(_, d)| d).collect(), refined: prog.refined };
+        let program = Program { functions, types: keyed.into_iter().map(|(_, d)| d).collect(), refined: prog.refined, g9: None };
         Ok(SpecPlan { program, fn_stems, type_stems, roots: root_names })
     }
 }

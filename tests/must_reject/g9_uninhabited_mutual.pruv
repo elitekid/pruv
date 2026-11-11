@@ -1,0 +1,7 @@
+// type/recursive_type: two mutually recursive structs with no base case
+struct A { b: B }
+struct B { a: A }
+
+fn f(x: i64) -> i64 {
+  return x;
+}

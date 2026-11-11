@@ -1,0 +1,9 @@
+// G9 A0 accept: matching a recursive enum and reading scalar payloads; no assignment to the scrutinee root
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn root_value(t: Tree, fallback: i64) -> i64 {
+  match t {
+    Tree::Empty => { return fallback; }
+    Tree::Node(v, l, r) => { return v; }
+  }
+}

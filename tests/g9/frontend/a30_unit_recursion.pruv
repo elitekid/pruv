@@ -1,0 +1,9 @@
+// G9 A0 accept: a unit-returning recursive function (call statement) with decreases n
+fn tick(n: i64) -> ()
+  requires n >= 0
+  decreases n
+{
+  if n > 0 {
+    tick(n - 1);
+  }
+}

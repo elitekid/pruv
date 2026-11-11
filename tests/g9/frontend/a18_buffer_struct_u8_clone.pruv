@@ -1,0 +1,13 @@
+// G9 A0 accept: [u8] and str fields, clone of an aggregate with `let mut q = p`, whole-field replacement (G9_SPEC section 4)
+struct Packet { bytes: [u8], label: str }
+
+fn packet_demo() -> i64 ! alloc {
+  let bytes: [u8] = alloc(2, 7);
+  let p: Packet = Packet { bytes: copy(bytes), label: "ok" };
+  let mut q: Packet = p;
+  let mut changed: [u8] = copy(q.bytes);
+  changed[0] = 9;
+  q.bytes = copy(changed);
+  assert p.bytes[0] == 7;
+  return q.bytes[0];
+}

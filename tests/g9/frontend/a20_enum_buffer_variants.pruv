@@ -1,0 +1,21 @@
+// G9 A0 accept: enum payloads of type [i64], [u8], [bool] and str; fresh buffers and copy() initialization; read by match
+enum Blob { Empty, Ints(items: [i64]), Bytes(data: [u8]), Bits(flags: [bool]), Text(s: str) }
+
+fn make_ints() -> Blob ! alloc {
+  let a: [i64] = alloc(2, 1);
+  return Blob::Ints(copy(a));
+}
+
+fn make_text() -> Blob ! alloc {
+  return Blob::Text(copy("hello"));
+}
+
+fn blob_len(b: Blob) -> i64 {
+  match b {
+    Blob::Empty => { return 0; }
+    Blob::Ints(a) => { return len(a); }
+    Blob::Bytes(d) => { return len(d); }
+    Blob::Bits(f) => { return len(f); }
+    Blob::Text(s) => { return len(s); }
+  }
+}

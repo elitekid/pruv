@@ -1,0 +1,10 @@
+// type/array_alias: assigning a named buffer to a buffer field of a mutable local
+struct Bag { items: [i64] }
+
+fn replace() -> i64 ! alloc {
+  let a: [i64] = alloc(2, 0);
+  let mut b: Bag = Bag { items: copy(a) };
+  let c: [i64] = alloc(3, 1);
+  b.items = c;
+  return 0;
+}

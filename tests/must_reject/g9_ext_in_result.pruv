@@ -1,0 +1,6 @@
+// type/type_argument: a recursive (extended) type inside Result
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn f(r: Result<Tree>) -> i64 {
+  return 0;
+}

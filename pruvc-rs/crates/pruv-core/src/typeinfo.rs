@@ -475,6 +475,172 @@ pub fn g3_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diag
     ))
 }
 
+// ---------------------------------------------------------------------------
+// G9 A0 staging guard: the verifier and both code generators do not support recursion, decreases, size,
+// recursive types or aggregate buffer fields yet (G9_SPEC 10, 11-13 replace this guard batch by batch).
+// ---------------------------------------------------------------------------
+
+/// Collects (line, col) of every `size(..)` call under the expression (Python `_g9_size_calls`: a generic walk).
+fn g9_size_expr(e: &Expr, out: &mut Vec<(i64, i64)>) {
+    match e {
+        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+        Expr::Unary(x) => g9_size_expr(&x.operand, out),
+        Expr::Binary(x) => {
+            g9_size_expr(&x.left, out);
+            g9_size_expr(&x.right, out);
+        }
+        Expr::Call(x) => {
+            if x.name == "size" {
+                out.push((x.line, x.col));
+            }
+            for a in &x.args {
+                g9_size_expr(a, out);
+            }
+        }
+        Expr::Index(x) => {
+            g9_size_expr(&x.array, out);
+            g9_size_expr(&x.index, out);
+        }
+        Expr::Ctor(x) => {
+            if let Some(a) = &x.arg {
+                g9_size_expr(a, out);
+            }
+        }
+        Expr::Quant(x) => {
+            g9_size_expr(&x.lo, out);
+            g9_size_expr(&x.hi, out);
+            g9_size_expr(&x.body, out);
+        }
+        Expr::StructLit(x) => {
+            for f in &x.fields {
+                g9_size_expr(&f.value, out);
+            }
+        }
+        Expr::EnumCtor(x) => {
+            for a in &x.args {
+                g9_size_expr(a, out);
+            }
+        }
+        Expr::FieldAccess(x) => g9_size_expr(&x.base, out),
+        Expr::IsVariant(x) => g9_size_expr(&x.value, out),
+        Expr::VariantField(x) => g9_size_expr(&x.value, out),
+    }
+}
+
+fn g9_size_stmts(stmts: &[Stmt], out: &mut Vec<(i64, i64)>) {
+    for s in stmts {
+        match s {
+            Stmt::Let(l) => g9_size_expr(&l.value, out),
+            Stmt::Assign(a) => g9_size_expr(&a.value, out),
+            Stmt::IndexAssign(a) => {
+                g9_size_expr(&a.index, out);
+                g9_size_expr(&a.value, out);
+            }
+            Stmt::If(i) => {
+                g9_size_expr(&i.cond, out);
+                g9_size_stmts(&i.then, out);
+                g9_size_stmts(&i.els, out);
+            }
+            Stmt::While(w) => {
+                g9_size_expr(&w.cond, out);
+                for inv in &w.invariants {
+                    g9_size_expr(inv, out);
+                }
+                g9_size_expr(&w.decreases, out);
+                g9_size_stmts(&w.body, out);
+            }
+            Stmt::Return(r) => {
+                if let Some(v) = &r.value {
+                    g9_size_expr(v, out);
+                }
+            }
+            Stmt::Assert(a) => g9_size_expr(&a.cond, out),
+            Stmt::ExprStmt(e) => g9_size_expr(&e.expr, out),
+            Stmt::FieldAssign(f) => g9_size_expr(&f.value, out),
+            Stmt::Match(m) => {
+                g9_size_expr(&m.scrutinee, out);
+                for arm in &m.arms {
+                    g9_size_stmts(&arm.body, out);
+                }
+            }
+        }
+    }
+}
+
+/// First G9 construct of a checked program -> (line, col, what) or None: a function with a decreases clause,
+/// a function of a recursive call-graph SCC, a recursive type declaration, an array/str field, a `size` call.
+/// The smallest (line, col) wins (the first one seen on a tie), exactly like Python.
+pub fn first_g9_use(prog: &Program) -> Option<(i64, i64, String)> {
+    let mut cands: Vec<(i64, i64, String)> = Vec::new();
+    let mut rec_types: HashSet<&str> = HashSet::new();
+    let mut rec_fns: HashSet<&str> = HashSet::new();
+    if let Some(meta) = &prog.g9 {
+        for scc in &meta.type_sccs {
+            rec_types.extend(scc.iter().map(|s| s.as_str()));
+        }
+        for scc in &meta.fn_sccs {
+            rec_fns.extend(scc.iter().map(|s| s.as_str()));
+        }
+    }
+    for d in &prog.types {
+        if rec_types.contains(d.name()) {
+            cands.push((d.line(), d.col(), format!("recursive type {}", d.name())));
+        }
+        for fd in d.all_fields() {
+            let ft = GType::from_key(&fd.ty);
+            if ft.is_array() || ft == GType::str() {
+                cands.push((fd.line, fd.col, format!("buffer field {}", fd.name)));
+            }
+        }
+    }
+    for f in &prog.functions {
+        if let Some(d) = &f.decreases {
+            cands.push((d.line(), d.col(), "decreases clause".to_string()));
+        }
+        if rec_fns.contains(f.name.as_str()) {
+            cands.push((f.line, f.col, format!("recursive function {}", f.name)));
+        }
+        let mut sizes: Vec<(i64, i64)> = Vec::new();
+        for e in &f.requires {
+            g9_size_expr(e, &mut sizes);
+        }
+        for e in &f.ensures {
+            g9_size_expr(e, &mut sizes);
+        }
+        g9_size_stmts(&f.body, &mut sizes);
+        if let Some(d) = &f.decreases {
+            g9_size_expr(d, &mut sizes);
+        }
+        for (l, c) in sizes {
+            cands.push((l, c, "size".to_string()));
+        }
+    }
+    let mut best: Option<(i64, i64, String)> = None;
+    for c in cands {
+        let better = match &best {
+            None => true,
+            Some(b) => (c.0, c.1) < (b.0, b.1),
+        };
+        if better {
+            best = Some(c);
+        }
+    }
+    best
+}
+
+/// PruvError (unsupported_type) for the first G9 construct, or None. Run right after type checking.
+pub fn g9_unimplemented_error(prog: &Program, stage: &str, layer: &str) -> Option<crate::diagnostic::PruvError> {
+    let (line, col, _what) = first_g9_use(prog)?;
+    Some(crate::diagnostic::PruvError::new(
+        stage,
+        line,
+        col,
+        "unsupported_type",
+        format!("G9 recursive values and aggregate buffer fields are not implemented by the {} yet", layer),
+        "avoid recursion, decreases, size, recursive types and array/str fields for now",
+    ))
+}
+
 impl TypeDecl {
     /// The declared name.
     pub fn name(&self) -> &str {
@@ -520,6 +686,8 @@ pub struct TypeTable {
     pub order: Vec<usize>,
     /// Memo of llvmgen::words (word count of the external form) per type key.
     pub words_memo: std::cell::RefCell<HashMap<String, usize>>,
+    /// G9 A0: checker metadata (type_sccs, boxed, extended, fn_sccs), only when the program has a G9 feature.
+    pub g9: Option<G9Meta>,
 }
 
 impl TypeTable {

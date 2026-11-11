@@ -1,0 +1,8 @@
+// type/field_type: a unit field is still rejected
+struct Boxed {
+  item: (),
+}
+
+fn f(x: i64) -> i64 {
+  return x;
+}

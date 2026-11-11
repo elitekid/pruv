@@ -354,6 +354,11 @@ Param.take = False         # `take name: Type` (consuming collection parameter)
 Function.foreign = None    # trusted rust fn: {"path": "::std::cmp::min", "line": L, "col": C} (line/col of the path
                            # string token); the body is []
 
+# ---------- G9 A0: recursion, decreases, extended types ----------
+# Same convention: plain class attributes, set on an instance only when a G9 feature is present.
+Function.decreases = None  # the `decreases Expr` clause of a function header (None = absent)
+Program.g9 = None          # checker metadata dict (see check.Checker.g9_meta), only when a G9 feature exists
+
 
 class PruvError(Exception):
     """Raise for any compile error. stage: parse|type|effect|verify|rustc."""

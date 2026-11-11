@@ -1,0 +1,6 @@
+// type/recursive_generic_type: a generic enum with a recursive payload (a generic member of a recursive type SCC)
+enum List<T> { Nil, Cons(head: T, tail: List<T>) }
+
+fn f(x: i64) -> i64 {
+  return x;
+}

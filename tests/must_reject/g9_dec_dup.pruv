@@ -1,0 +1,8 @@
+// parse/decreases_syntax: a duplicate decreases clause
+fn f(n: i64) -> i64
+  requires n >= 0
+  decreases n
+  decreases n
+{
+  return n;
+}

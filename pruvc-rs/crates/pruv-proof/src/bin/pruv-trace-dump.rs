@@ -60,6 +60,15 @@ fn output(
     dumps_sorted(&Json::Obj(kv))
 }
 
+/// G9 A0: the adapter's guard right after the check (verify on -> stage "verify" / layer "verifier"; else the rust backend).
+fn g9_guard(prog: &pruv_core::ast::Program, no_verify: bool) -> Option<pruv_core::diagnostic::PruvError> {
+    if no_verify {
+        pruv_core::typeinfo::g9_unimplemented_error(prog, "codegen", "rust codegen layer")
+    } else {
+        pruv_core::typeinfo::g9_unimplemented_error(prog, "verify", "verifier")
+    }
+}
+
 fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
     // Like the adapter's trace_result, read/decode failures are also reported as internal_error (Python exception sentence) (audit must-fix 1).
     let src = match pruv_core::pyio::read_source(std::path::Path::new(path)) {
@@ -74,6 +83,13 @@ fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
         Err(e) => errors.push(e.to_json_value()),
         Ok(mut prog) => match pruv_core::check::check(&mut prog) {
             Err(e) => errors.push(e.to_json_value()),
+            // G9 A0: same guard as pruvc compile_file (the rust backend is the default code generator here): the
+            // error is the only entry, no obligations, no timeout_ms.
+            Ok(_) if g9_guard(&prog, no_verify).is_some() => {
+                if let Some(e) = g9_guard(&prog, no_verify) {
+                    errors.push(e.to_json_value());
+                }
+            }
             // --no-verify: do not run verification (obligations [], no timeout_ms).
             Ok(_) if no_verify => {}
             Ok(tt) => {

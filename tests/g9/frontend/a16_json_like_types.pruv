@@ -1,0 +1,19 @@
+// G9 A0 accept: JSON-like mutually recursive enums (Json, Items, Members) and a struct holding a root plus buffers
+struct Document { root: Json, source: str, offsets: [i64] }
+enum Json {
+  Null, Boolean(value: bool), Number(value: i64), Text(value: str),
+  Array(items: Items), Object(members: Members)
+}
+enum Items { End, Next(value: Json, rest: Items) }
+enum Members { End, Next(key: str, value: Json, rest: Members) }
+
+fn kind(j: Json) -> i64 {
+  match j {
+    Json::Null => { return 0; }
+    Json::Boolean(b) => { return 1; }
+    Json::Number(n) => { return 2; }
+    Json::Text(s) => { return 3; }
+    Json::Array(items) => { return 4; }
+    Json::Object(members) => { return 5; }
+  }
+}

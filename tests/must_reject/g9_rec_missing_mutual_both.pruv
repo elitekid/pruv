@@ -1,0 +1,8 @@
+// type/recursive_decreases: mutual recursion where no member has a decreases clause
+fn ping(n: i64) -> i64 {
+  return pong(n);
+}
+
+fn pong(n: i64) -> i64 {
+  return ping(n);
+}

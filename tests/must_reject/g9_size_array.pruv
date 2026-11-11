@@ -1,0 +1,6 @@
+// type/size_type: size() applied to a primitive array
+fn f(a: [i64]) -> i64
+  requires size(a) >= 0
+{
+  return 0;
+}

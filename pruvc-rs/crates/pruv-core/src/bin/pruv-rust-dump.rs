@@ -29,6 +29,10 @@ fn line_for(bytes: &[u8], o: &Opts) -> String {
     if let Err(e) = pruv_core::check::check(&mut prog) {
         return obj1("error", e.to_json_value());
     }
+    // G9 A0 guard, as in pruvc: G9 constructs stop before codegen
+    if let Some(e) = pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "rust codegen layer") {
+        return obj1("error", e.to_json_value());
+    }
     // like Python gen_rust (default foreign checks, no externs; a G6 program is lowered, the manifest is not part of the
     // dump): a generic program is specialized first (a specialization limit is a diagnostic)
     match pruv_core::codegen::gen_rust_any(&prog, o.verified, o.trust_callers, o.budget) {

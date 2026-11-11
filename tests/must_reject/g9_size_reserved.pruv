@@ -1,0 +1,4 @@
+// type/reserved: a user function named size
+fn size(x: i64) -> i64 {
+  return x;
+}

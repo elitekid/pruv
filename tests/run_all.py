@@ -1,7 +1,12 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof] [--backend rust|llvm|both]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof]
+                        [--backend rust|llvm|both]
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
+
+groups g9_frontend / g9_proof (G9 A0): tests/g9/frontend/*.pruv (mode no-verify, --no-verify) and tests/g9/proof/*.pruv
+(mode default); rows have backend null. While G9_GUARD is True (until batch A2) a g9_frontend row passes when pruvc
+exits 1 with the downstream guard unsupported_type / "rust codegen layer"; g9_proof rows expect exit 0.
 
 group g3_proof (G3 A2): tests/g3/proof/*.pruv must verify; they run through tests/g3/verify_only.py (Python verifier,
 no code generation, whatever --compiler says) because the code generators still reject generics. Rows have
@@ -274,6 +279,56 @@ def g6_frontend_jobs(group="g6_frontend", sub="frontend", modes=(("no-verify", [
                                          "group": group}))
     return jobs
 
+# G9 A0 (docs/G9_SPEC.md 9, 10): until the Rust backend lowers G9 (batch A2) the driver stops every program that uses a
+# G9 feature at the downstream guard. While G9_GUARD is True a g9_frontend row passes when pruvc exits 1 and reports
+# the guard (code unsupported_type, message naming the rust codegen layer), which also shows that the program
+# was accepted by parsing and checking. Batch A2 flips G9_GUARD to False: the rows then expect exit 0.
+G9_GUARD = True
+G9_GUARD_CODE = "unsupported_type"
+G9_GUARD_LAYER = "rust codegen layer"
+
+
+def g9_frontend_jobs(group="g9_frontend", sub="frontend", modes=(("no-verify", ["--no-verify"]),)):
+    """G9 A0: tests/g9/frontend/*.pruv are well-typed and pass checking (--no-verify only, Rust backend, rows have
+    backend null). With G9_GUARD the expected outcome is the downstream guard (see above); without it exit 0."""
+    jobs = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/g9", sub, "*.pruv"))):
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, os.path.basename(f), mode)
+
+            def fn(f=f, flags=flags, mode=mode):
+                stem = "g9_%s_%s_%s" % (sub, os.path.splitext(os.path.basename(f))[0], mode)
+                out = os.path.join(WORK, stem + ".rs")
+                c = pruvc(f, out, flags)
+                text = c.stdout + c.stderr
+                if G9_GUARD:
+                    ok = c.returncode == 1 and G9_GUARD_CODE in text and G9_GUARD_LAYER in text
+                    return ok, "pruvc exit %d (expected 1 with the G9 guard %s / %r) %s" % (
+                        c.returncode, G9_GUARD_CODE, G9_GUARD_LAYER, text[-400:])
+                return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, text[-400:])
+            jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": flags, "mode": mode,
+                                         "group": group}))
+    return jobs
+
+
+def g9_proof_jobs(group="g9_proof", sub="proof", modes=(("default", []),)):
+    """G9 A0: tests/g9/proof/*.pruv must also verify completely (default mode, exit 0, backend null rows).
+    The directory is empty in A0 (filled in A1)."""
+    jobs = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/g9", sub, "*.pruv"))):
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, os.path.basename(f), mode)
+
+            def fn(f=f, flags=flags, mode=mode):
+                stem = "g9_%s_%s_%s" % (sub, os.path.splitext(os.path.basename(f))[0], mode)
+                out = os.path.join(WORK, stem + ".rs")
+                c = pruvc(f, out, flags)
+                return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, (c.stdout + c.stderr)[-400:])
+            jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": flags, "mode": mode,
+                                         "group": group}))
+    return jobs
+
+
 EXAMPLE_MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 ARITH_OR_INDEX = re.compile(r"\b(add|sub|mul|getelementptr)\b")
 
@@ -485,7 +540,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -572,7 +627,8 @@ def main():
     if "--only" in sys.argv:
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
-        if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof"):
+        if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
+                        "g9_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -595,6 +651,10 @@ def main():
             jobs += g6_frontend_jobs()
         if only in (None, "g6_proof"):
             jobs += g6_frontend_jobs("g6_proof", "proof", (("default", []),))
+        if only in (None, "g9_frontend"):
+            jobs += g9_frontend_jobs()
+        if only in (None, "g9_proof"):
+            jobs += g9_proof_jobs()
         for b in backends:
             if only in (None, "examples"):
                 jobs += examples_jobs(b)
@@ -637,9 +697,10 @@ def main():
     if saved_rows is not None:
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
-        for g in ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "examples", "runtime"):
+        null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof")
+        for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
-                for b in ([None] if g in ("must_reject", "g3_proof", "g6_frontend", "g6_proof") else backends):
+                for b in ([None] if g in null_backend else backends):
                     scope.add((g, b))
         in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
         outside = len(saved_rows) - len(in_scope)

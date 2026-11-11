@@ -1,0 +1,11 @@
+// type/size_type: size() applied to a generic nominal application
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn f(p: Pair<i64, bool>) -> i64
+  requires size(p) >= 0
+{
+  return 0;
+}

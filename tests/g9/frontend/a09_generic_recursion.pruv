@@ -1,0 +1,12 @@
+// G9 A0 accept: a generic function recursing with its type parameter forwarded unchanged (::<T>)
+fn repeat_id<T>(x: T, n: i64) -> T
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return x; }
+  return repeat_id::<T>(x, n - 1);
+}
+
+fn use_it() -> i64 {
+  return repeat_id::<i64>(7, 3);
+}

@@ -1,0 +1,8 @@
+// type/array_alias: a struct field initialized from a named buffer instead of a fresh buffer or copy(view)
+struct Bag { items: [i64] }
+
+fn make() -> i64 ! alloc {
+  let a: [i64] = alloc(2, 0);
+  let b: Bag = Bag { items: a };
+  return 0;
+}

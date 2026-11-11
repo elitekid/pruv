@@ -1,0 +1,9 @@
+// G9 A0 migration: formerly type/recursive_type (tests/must_reject/g1_recursive_indirect); a productive cycle (Wrapper::Leaf is the base case)
+struct Holder {
+  item: Wrapper,
+}
+
+enum Wrapper {
+  Leaf,
+  Wrap(holder: Holder),
+}

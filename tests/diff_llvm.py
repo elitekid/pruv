@@ -6,7 +6,8 @@
                             [--fuzz-count 200] [--mutations 3] [--save-dir DIR]
                             [--modes VT,Vt,vT,vt,B]
 
-Groups: must_reject examples runtime bench edge fuzz mutate
+Groups: must_reject examples runtime bench g9 edge fuzz mutate
+  g9 = tests/g9/frontend/*.pruv (until batch A3 both compilers must agree on the llvm downstream guard diagnostic).
   edge = tests/check_edge/ok_*.pruv plus all of tests/check_edge/*.pruv (deduplicated).
 Modes (case = input x mode): the first letter V/v = verified on/off, the second letter T/t = trust_callers on/off.
   Vt=(True,False) VT=(True,True) vt=(False,False) vT=(False,True), default budget 1<<30.
@@ -51,9 +52,10 @@ GROUP_DIRS = [
     ("examples", "examples"),
     ("runtime", "tests/runtime"),
     ("bench", "bench/solutions/pruv_agg"),
+    ("g9", "tests/g9/frontend"),
 ]
 CHECK_EDGE_DIR = "tests/check_edge"
-ALL_GROUPS = ["must_reject", "examples", "runtime", "bench", "edge", "fuzz", "mutate"]
+ALL_GROUPS = ["must_reject", "examples", "runtime", "bench", "g9", "edge", "fuzz", "mutate"]
 
 # (label, verified, trust_callers). B is handled separately.
 MODE_TABLE = collections.OrderedDict([

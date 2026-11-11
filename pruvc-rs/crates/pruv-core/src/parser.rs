@@ -648,6 +648,7 @@ impl Parser {
                 ens.push(e);
             }
         }
+        let decreases = self.decreases_clause()?; // G9 A0: at most one measure, after all requires/ensures
         let mut info: Option<ForeignInfo> = None;
         let body;
         if foreign.is_some() {
@@ -680,7 +681,79 @@ impl Parser {
         Ok(Function {
             line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine, tparams,
             foreign: info,
+            decreases,
         })
+    }
+
+    fn decreases_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
+        PruvError::new("parse", tok.line, tok.col, "decreases_syntax", msg, fix)
+    }
+
+    /// G9 A0: optional `decreases Expr` of a function header (after requires/ensures, before `{` or `=`).
+    /// Duplicate, empty, tuple and misplaced clauses are parse/decreases_syntax.
+    fn decreases_clause(&mut self) -> R<Option<Expr>> {
+        let mut expr: Option<Expr> = None;
+        if self.at("decreases", 0) {
+            self.bump();
+            let t = self.peek(0).clone();
+            if (t.kind == Kind::Op && matches!(t.val.as_str(), "{" | "=" | ";")) || t.kind == Kind::Eof {
+                return Err(self.decreases_syntax(&t, "empty decreases clause", "write one scalar measure, e.g. `decreases n`"));
+            }
+            if self.at("(", 0) {
+                // a parenthesized group with a top-level comma is a tuple measure
+                let mut depth: i64 = 0;
+                let mut k: usize = 0;
+                loop {
+                    let tk = self.peek(k).clone();
+                    if tk.kind == Kind::Eof {
+                        break;
+                    }
+                    if tk.kind == Kind::Op && (tk.val == "(" || tk.val == "[") {
+                        depth += 1;
+                    } else if tk.kind == Kind::Op && (tk.val == ")" || tk.val == "]") {
+                        depth -= 1;
+                        if depth <= 0 {
+                            break;
+                        }
+                    } else if tk.kind == Kind::Op && tk.val == "," && depth == 1 {
+                        return Err(self.decreases_syntax(
+                            &tk,
+                            "a decreases clause takes one scalar measure, not a tuple",
+                            "combine the measures into one i64 expression, e.g. `decreases 2 * n + 1`",
+                        ));
+                    } else if tk.kind == Kind::Op && matches!(tk.val.as_str(), "{" | "}" | ";") {
+                        break;
+                    }
+                    k += 1;
+                }
+            }
+            expr = Some(self.expr()?);
+            if self.at(",", 0) {
+                let t = self.peek(0).clone();
+                return Err(self.decreases_syntax(
+                    &t,
+                    "a decreases clause takes one scalar measure, not a list",
+                    "combine the measures into one i64 expression, e.g. `decreases 2 * n + 1`",
+                ));
+            }
+        }
+        if self.at("decreases", 0) {
+            let t = self.peek(0).clone();
+            return Err(self.decreases_syntax(
+                &t,
+                "a function has at most one decreases clause",
+                "keep a single `decreases <expr>` after requires/ensures",
+            ));
+        }
+        if self.at("requires", 0) || self.at("ensures", 0) {
+            let t = self.peek(0).clone();
+            return Err(self.decreases_syntax(
+                &t,
+                &format!("{} must come before decreases", t.val),
+                "move `decreases` after all requires/ensures clauses",
+            ));
+        }
+        Ok(expr)
     }
 
     fn block(&mut self) -> R<Vec<Stmt>> {

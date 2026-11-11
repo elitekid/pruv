@@ -6,11 +6,12 @@
                              [--fuzz-count 200] [--mutations 6] [--save-dir DIR]
                              [--only GROUP[,GROUP...]]
 
-Groups: must_reject examples runtime bench edge g6 bytes fuzz mutate
+Groups: must_reject examples runtime bench edge g6 g9 bytes fuzz mutate
+  g6 = tests/g6/frontend, g9 = tests/g9/frontend (the g9_* must_reject sources are part of must_reject).
 --mode parse (default): expected line = diff_py_adapter.dumps(parse_result(FILE)), Rust = pruv-parse-dump,
   edge = tests/parse_edge.
 --mode check: expected line = diff_py_adapter.dumps(check_result(FILE)), Rust = pruv-check-dump,
-  edge = tests/check_edge (also used as mutate sources), coverage is the check one (45 error codes, etc.).
+  edge = tests/check_edge (also used as mutate sources), coverage is the check one (52 error codes, etc.).
 Expected line = diff_py_adapter.dumps(parse_result(FILE)) (called directly in the same process).
   UnicodeDecodeError -> {"adapter_error": "decode"}, RecursionError -> excluded from comparison (py_recursion),
   any other exception -> py_crash (fail).
@@ -52,16 +53,18 @@ GROUP_DIRS = [
     ("bench", "bench/solutions/pruv_agg"),
     ("edge", "tests/parse_edge"),
     ("g6", "tests/g6/frontend"),
+    ("g9", "tests/g9/frontend"),
 ]
 CHECK_EDGE_DIR = "tests/check_edge"
 PARSE_EDGE_DIR = "tests/parse_edge"
 ALL_GROUPS = [g for g, _ in GROUP_DIRS] + ["bytes", "fuzz", "mutate"]
 CHECK_CODES = (
-    "arity array_alias call_in_contract contract_only dup_field dup_fn dup_param dup_type dup_variant "
-    "effect_in_contract empty_enum eq_type field_name field_type immutable immutable_string int_range match_arity "
-    "match_arms match_type missing_effect missing_return name_collision not_array not_enum not_struct "
-    "print_type recursion recursive_type reserved result_scope return_type shadow struct_fields "
-    "type_mismatch type_name unit_let unit_param unknown_field unknown_fn unknown_name unknown_type "
+    "arity array_alias call_in_contract contract_only decreases_syntax dup_field dup_fn dup_param dup_type "
+    "dup_variant effect_in_contract empty_enum eq_type field_name field_type immutable immutable_string int_range "
+    "match_arity match_arms match_type missing_effect missing_return name_collision not_array not_enum not_struct "
+    "print_type recursive_borrow recursive_decreases recursive_generic_type recursive_polymorphism recursive_type "
+    "reserved result_scope return_type shadow size_type struct_fields "
+    "type_argument type_mismatch type_name unit_let unit_param unknown_field unknown_fn unknown_name unknown_type "
     "unknown_variant unused_value useless_expr variant_name").split()
 CHECK_TY_BUILTIN = ("i64", "bool", "unit", "array", "option", "result")
 
