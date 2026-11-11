@@ -105,9 +105,10 @@ jobs:
           # With crt-static, llvm-sys asks for its system libraries (psapi, shell32, ...) as static libraries,
           # and rustc only finds those on -L paths, so pass the Windows SDK library folder explicitly.
           sdk=$(ls -d "/c/Program Files (x86)/Windows Kits/10/Lib/"10.* | sort -V | tail -1)
-          sdk_win=$(cygpath -w "$sdk/um/x64")
-          ls "$sdk/um/x64/psapi.lib"
-          echo "RUSTFLAGS=-L native=C:\\xml2stub -L native=$sdk_win -C target-feature=+crt-static" >> "$GITHUB_ENV"
+          # RUSTFLAGS is split on spaces, so reach "Program Files (x86)" through a junction without spaces.
+          pwsh -NoProfile -Command "New-Item -ItemType Junction -Path 'C:\winsdk' -Target '$(cygpath -w "$sdk/um/x64")' | Out-Null"
+          ls /c/winsdk/psapi.lib
+          echo "RUSTFLAGS=-L native=C:\\xml2stub -L native=C:\\winsdk -C target-feature=+crt-static" >> "$GITHUB_ENV"
 
       # ---------- Python reference compiler ----------
       - name: Python reference environment (.venv + z3-solver)
