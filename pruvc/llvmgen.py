@@ -119,14 +119,44 @@ def mangle(n):
     return re.sub(r"[^A-Za-z0-9_]", lambda m: "$%04x" % ord(m.group()), n)
 
 
+# G3 A4 (docs/G3_SPEC.md 5.4/5.5): the back end consumes the concrete specialization plan (mono.py), so no type
+# parameter ever reaches it.  New built-in applications Option<X> / Result<X> with X != i64 are ordinary aggregates
+# (V.k == "agg", V.ty = the Option/Result type with its argument):
+#   Option<X>  { i1 present, L(X) payload }                 contract form { i1, Lc(X) }
+#   Result<X>  { i1 is_ok, L(X) ok_payload, i64 error }     contract form { i1, Lc(X), i128 }
+# Unused payload storage is zero (every constructor starts from zeroinitializer, deserialization masks inactive
+# words); equality and selectors look only at the active payload.  Legacy Option<i64>/Result<i64> are unchanged.
+G3_TYPE_PREFIX = "pruv_g3_t_"
+DECLS_REPR = "declare void @pruv_panic_repr(i64, ptr) noreturn cold nounwind\n"
+
+
+def gopt(t):
+    """True for a new built-in application Option<X> / Result<X> (X != i64); False for the legacy constants"""
+    return t.name in ("option", "result") and bool(t.args) and t.owner is None
+
+
+def is_agg(t):
+    """user struct/enum (incl. generated generic instances) or a new Option/Result application"""
+    return is_user_type(t) or gopt(t)
+
+
+def is_new_app(t):
+    """types whose external word form follows the G3 rules (tag normalization, inactive words zero, enum check)"""
+    return gopt(t) or (is_user_type(t) and t.name.startswith(G3_TYPE_PREFIX))
+
+
 def lty(t):
     """internal SSA type of a Pruv type"""
+    if gopt(t):
+        return st(t)
     r = {"i64": "i64", "bool": "i1", "unit": "void", "array": ARR, "array_u8": ARR, "array_bool": ARR,
          "str": ARR, "option": OPT, "result": OPT}.get(t.name)
     return r if r is not None else "%%pruv_t_%s" % t.name
 
 
 def vkind(t):
+    if gopt(t):
+        return "agg"
     return {"i64": "i64", "bool": "i1", "unit": "unit", "array": "arr", "array_u8": "arr", "array_bool": "arr",
             "str": "arr", "option": "opt", "result": "opt"}.get(t.name, "agg")
 
@@ -134,6 +164,11 @@ def vkind(t):
 def st(t, c=False):
     """storage type of a value of type t inside an aggregate (c: contract/i128 form)"""
     n = t.name
+    if gopt(t):
+        x = st(t.args[0], c)
+        if n == "option":
+            return "{ i1, %s }" % x
+        return "{ i1, %s, %s }" % (x, "i128" if c else "i64")
     if n == "i64":
         return "i128" if c else "i64"
     if n == "bool":
@@ -158,6 +193,8 @@ def words(tt, ty):
     n = ty.name
     if n in ("i64", "bool"):
         return 1
+    if gopt(ty):  # G3: 1 + W(X) (+ 1 for the Result error word)
+        return 1 + words(tt, ty.args[0]) + (1 if n == "result" else 0)
     if n in ("option", "result"):
         return 2
     d = tt.decl(ty)
@@ -199,6 +236,7 @@ class Mod:
         s.tt = tt
         s.strs = {}
         s.order = []
+        s.uses_repr = False     # G3: the wrappers reject an invalid enum ordinal through pruv_panic_repr
 
     def string(s, text):
         if text not in s.strs:
@@ -226,7 +264,7 @@ def ir_params(f):
             out.append(("i1", "%%p.%s" % n))
         elif p.type == I64:
             out.append(("i64", "%%p.%s" % n))
-        elif is_user_type(p.type):
+        elif is_agg(p.type):
             out.append((lty(p.type), "%%p.%s" % n))
         else:
             out.append((OPT, "%%p.%s" % n))
@@ -393,7 +431,7 @@ class FnGen:
     # ---------- user aggregates (G1) ----------
     def pack(s, v, ty, c):
         """SSA value of storage type st(ty, c) for the value v"""
-        if ty.name in ("option", "result"):
+        if ty.name in ("option", "result") and not gopt(ty):
             ot, pt = (COPT, "i128") if c else (OPT, "i64")
             a = s.op("insertvalue %s undef, i1 %s, 0" % (ot, v.a))
             return s.op("insertvalue %s %s, %s %s, 1" % (ot, a, pt, v.b))
@@ -405,7 +443,7 @@ class FnGen:
             return V("i128" if c else "i64", x)
         if n == "bool":
             return V("i1", x)
-        if n in ("option", "result"):
+        if n in ("option", "result") and not gopt(ty):
             ot = COPT if c else OPT
             t = s.op("extractvalue %s %s, 0" % (ot, x))
             p = s.op("extractvalue %s %s, 1" % (ot, x))
@@ -443,6 +481,46 @@ class FnGen:
             acc = s.put(acc, ty, payload_index(s.tt, ty, e.variant, i), vals[i], fd.type, c)
         return V("agg", acc, None, ty)
 
+    def mk_gctor(s, e, evf, c):
+        """Some/None/Ok/Err of a new Option<X>/Result<X> application (e.ty): zeroinitializer-based, so the unused
+        payload storage is always zero"""
+        ty = e.ty
+        if e.name == "None":
+            return V("agg", "zeroinitializer", None, ty)
+        x = evf(e.arg)
+        if e.name in ("Some", "Ok"):
+            acc = s.op("insertvalue %s zeroinitializer, i1 true, 0" % st(ty, c))
+            return V("agg", s.put(acc, ty, 1, x, ty.args[0], c), None, ty)
+        # Err: tag false (zero), error payload in slot 2
+        return V("agg", s.op("insertvalue %s zeroinitializer, %s %s, 2" % (st(ty, c), "i128" if c else "i64", x.a)),
+                 None, ty)
+
+    def gmatch(s, st_, sv):
+        """match on a new Option<X>/Result<X>: branch on the tag, bind the active payload only inside its arm"""
+        ty = sv.ty
+        X = ty.args[0]
+        pos = [a for a in st_.arms if a.ctor in ("Some", "Ok")][0]
+        neg = [a for a in st_.arms if a.ctor in ("None", "Err")][0]
+        tag = s.op("extractvalue %s %s, 0" % (st(ty), sv.a))
+        pl, nl_, end = s.label("armT"), s.label("armF"), s.label("endmatch")
+        s.condbr(tag, pl, nl_)
+        reach = False
+        for arm, lbl in ((pos, pl), (neg, nl_)):
+            s.place(lbl)
+            bind = None
+            if arm.binders:
+                if arm.ctor in ("Some", "Ok"):
+                    bind = {arm.binders[0]: ("ssa", s.get(sv, ty, 1, X, False))}
+                else:
+                    bind = {arm.binders[0]: ("ssa", V("i64", s.op("extractvalue %s %s, 2" % (st(ty), sv.a))))}
+            if s.run_block(arm.body, bind):
+                s.br(end)
+                reach = True
+        if reach:
+            s.place(end)
+        else:
+            s.dead = True
+
     def set_path(s, base, ty, path, v):
         """aggregate `base` (code form) with the nested struct field `path` replaced by v"""
         fds = s.tt.fields(ty)
@@ -462,6 +540,16 @@ class FnGen:
             return V("i128", s.op("sext i64 %s to i128" % x.a))
         if n == "bool":
             return x
+        if gopt(ty):  # G3: widen the payload (and the Result error); the unused payload stays zero
+            X = ty.args[0]
+            t = s.op("extractvalue %s %s, 0" % (st(ty), x.a))
+            acc = s.op("insertvalue %s zeroinitializer, i1 %s, 0" % (st(ty, True), t))
+            acc = s.put(acc, ty, 1, s.to_c(s.get(x, ty, 1, X, False), X), X, True)
+            if n == "result":
+                er = s.op("extractvalue %s %s, 2" % (st(ty), x.a))
+                ec = s.op("sext i64 %s to i128" % er)
+                acc = s.op("insertvalue %s %s, i128 %s, 2" % (st(ty, True), acc, ec))
+            return V("agg", acc, None, ty)
         if n in ("option", "result"):
             return V("opt", x.a, s.op("sext i64 %s to i128" % x.b))
         d = s.tt.decl(ty)
@@ -501,6 +589,21 @@ class FnGen:
             return s.op("icmp eq i128 %s, %s" % (l.a, r.a))
         if n == "bool":
             return s.op("icmp eq i1 %s, %s" % (l.a, r.a))
+        if gopt(ty):  # G3: only the active payload is compared
+            X = ty.args[0]
+            T = st(ty, True)
+            tl = s.op("extractvalue %s %s, 0" % (T, l.a))
+            tr = s.op("extractvalue %s %s, 0" % (T, r.a))
+            te = s.op("icmp eq i1 %s, %s" % (tl, tr))
+            pe = s.ceq(s.get(l, ty, 1, X, True), s.get(r, ty, 1, X, True), X)
+            nt = s.op("xor i1 %s, true" % tl)
+            if n == "option":
+                return s.op("and i1 %s, %s" % (te, s.op("or i1 %s, %s" % (nt, pe))))
+            el = s.op("extractvalue %s %s, 2" % (T, l.a))
+            er = s.op("extractvalue %s %s, 2" % (T, r.a))
+            ee = s.op("icmp eq i128 %s, %s" % (el, er))
+            act = s.op("or i1 %s, %s" % (s.op("and i1 %s, %s" % (tl, pe)), s.op("and i1 %s, %s" % (nt, ee))))
+            return s.op("and i1 %s, %s" % (te, act))
         if n in ("option", "result"):
             te = s.op("icmp eq i1 %s, %s" % (l.a, r.a))
             pe = s.op("icmp eq i128 %s, %s" % (l.b, r.b))
@@ -564,7 +667,7 @@ class FnGen:
                 names[p.name] = ("ssa", V("i1", "%%p.%s" % n))
             elif p.type == I64:
                 names[p.name] = ("ssa", V("i64", "%%p.%s" % n))
-            elif is_user_type(p.type):
+            elif is_agg(p.type):
                 names[p.name] = ("ssa", V("agg", "%%p.%s" % n, None, p.type))
             else:
                 t = s.op("extractvalue %s %%p.%s, 0" % (OPT, n))
@@ -710,6 +813,9 @@ class FnGen:
             s.begin_temps()
             sv = s.ev(st.scrutinee)
             s.end_temps()
+            if sv.k == "agg" and sv.ty is not None and gopt(sv.ty):  # G3: Option<X>/Result<X>, X != i64
+                s.gmatch(st, sv)
+                return
             if st.arms and st.arms[0].enum_name is not None:
                 s.user_match(st, sv)
                 return
@@ -827,6 +933,8 @@ class FnGen:
             p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (nm, ln))
             return s.temp_arr(V("arr", p, ln, STR), owned)
         if isinstance(e, Ctor):
+            if e.ty is not None and gopt(e.ty):  # G3
+                return s.mk_gctor(e, s.ev, False)
             if e.name == "None":
                 return V("opt", "false", "0")
             x = s.ev(e.arg)
@@ -951,7 +1059,7 @@ class FnGen:
         r = s.op("call %s %s(%s)" % (lty(f.ret), callee, ", ".join(args)))
         if f.ret in (I64, BOOL):
             return V(vkind(f.ret), r)
-        if is_user_type(f.ret):
+        if is_agg(f.ret):
             return V("agg", r, None, f.ret)
         x0 = s.op("extractvalue %s %s, 0" % (lty(f.ret), r))
         x1 = s.op("extractvalue %s %s, 1" % (lty(f.ret), r))
@@ -970,7 +1078,7 @@ class FnGen:
                 s.cenv[p.name] = V("i1", "%%p.%s" % n)
             elif p.type == I64:
                 s.cenv[p.name] = V("i128", s.op("sext i64 %%p.%s to i128" % n))
-            elif is_user_type(p.type):
+            elif is_agg(p.type):
                 s.cenv[p.name] = s.to_c(V("agg", "%%p.%s" % n, None, p.type), p.type)
             else:
                 t = s.op("extractvalue %s %%p.%s, 0" % (OPT, n))
@@ -1045,6 +1153,8 @@ class FnGen:
         if isinstance(e, StrLit):  # G2 B2: no copy
             return V("arr", s.m.string(e.value.decode("utf-8")), str(len(e.value)), STR)
         if isinstance(e, Ctor):
+            if e.ty is not None and gopt(e.ty):  # G3
+                return s.mk_gctor(e, s.cev, True)
             if e.name == "None":
                 return V("opt", "false", "0")
             x = s.cev(e.arg)
@@ -1085,9 +1195,20 @@ class FnGen:
                 r = s.op("call i32 @pruv_str_boundary(ptr %s, i64 %s, i64 %s)" % (sv.a, sv.b, u))
                 return V("i1", s.op("icmp ne i32 %s, 0" % r))
             if n in ("is_some", "is_ok"):
-                return V("i1", s.cev(a[0]).a)
+                o = s.cev(a[0])
+                if o.k == "agg":  # G3: tag of a new Option/Result
+                    return V("i1", s.op("extractvalue %s %s, 0" % (st(o.ty, True), o.a)))
+                return V("i1", o.a)
             if n in ("some_val", "ok_val", "err_val"):
                 o = s.cev(a[0])
+                if o.k == "agg":  # G3: selectors of a new Option/Result look only at the active payload
+                    T = st(o.ty, True)
+                    tag = s.op("extractvalue %s %s, 0" % (T, o.a))
+                    if n == "err_val":
+                        s.guard(tag, und("err_val of Ok"), True)
+                        return V("i128", s.op("extractvalue %s %s, 2" % (T, o.a)))
+                    s.guard(tag, und("some_val of None" if n == "some_val" else "ok_val of Err"), False)
+                    return s.get(o, o.ty, 1, o.ty.args[0], True)
                 if n == "err_val":
                     s.guard(o.a, und("err_val of Ok"), True)
                 else:
@@ -1260,6 +1381,7 @@ class Words:
 
     def __init__(s, tt):
         s.tt, s.lines, s.n = tt, [], 0
+        s.checks = []       # G3: (valid i1, raw tag word, type name) of every enum ordinal that must be rejected if invalid
 
     def op(s, text):
         s.n += 1
@@ -1278,8 +1400,12 @@ class Words:
         s.lines.append("store i64 %s, ptr %s" % (v, g))
 
     def de(s, ty, ptr, off):
-        """read a value of type ty from words at ptr[off..]; returns an SSA name of type st(ty)"""
+        """read a value of type ty from words at ptr[off..]; returns an SSA name of type st(ty).
+        Legacy types keep the G1 reading; a G3 application (new Option/Result, generated generic instance) and
+        everything below it is read by de_new (masked inactive words, enum ordinal checks)."""
         n = ty.name
+        if is_new_app(ty):
+            return s.de_new(ty, ptr, off, "true")
         if n == "i64":
             return s.rd(ptr, off)
         if n == "bool":
@@ -1310,6 +1436,77 @@ class Words:
                 idx += 1
         return acc
 
+    def de_new(s, ty, ptr, off, act):
+        """G3 reading of a value of type ty from words at ptr[off..].  act is "true" or an i1 SSA name telling
+        whether this value is semantically active: inactive words are read as zero (deterministic storage, ignored
+        semantically), bool/tag words normalize by nonzero-to-true, and the ordinal of every nominal enum that is
+        active must be < the variant count (recorded in s.checks; the wrapper rejects before requires/body)."""
+        n = ty.name
+        on = act != "true"
+        if n == "i64":
+            w = s.rd(ptr, off)
+            return s.op("select i1 %s, i64 %s, i64 0" % (act, w)) if on else w
+        if n == "bool":
+            c = s.op("icmp ne i64 %s, 0" % s.rd(ptr, off))
+            return s.op("and i1 %s, %s" % (act, c)) if on else c
+        if gopt(ty):
+            X = ty.args[0]
+            T = st(ty)
+            t = s.op("icmp ne i64 %s, 0" % s.rd(ptr, off))
+            if on:
+                t = s.op("and i1 %s, %s" % (act, t))
+            x = s.de_new(X, ptr, off + 1, t)
+            acc = s.op("insertvalue %s zeroinitializer, i1 %s, 0" % (T, t))
+            acc = s.op("insertvalue %s %s, %s %s, 1" % (T, acc, st(X), x))
+            if n == "result":
+                ew = s.rd(ptr, off + 1 + words(s.tt, X))
+                ea = s.op("xor i1 %s, true" % t)
+                if on:
+                    ea = s.op("and i1 %s, %s" % (act, ea))
+                e = s.op("select i1 %s, i64 %s, i64 0" % (ea, ew))
+                acc = s.op("insertvalue %s %s, i64 %s, 2" % (T, acc, e))
+            return acc
+        if n in ("option", "result"):       # legacy Option<i64>/Result<i64> nested in a G3 value
+            t = s.op("icmp ne i64 %s, 0" % s.rd(ptr, off))
+            if on:
+                t = s.op("and i1 %s, %s" % (act, t))
+            p = s.rd(ptr, off + 1)
+            pa = t if n == "option" else act
+            if pa != "true":
+                p = s.op("select i1 %s, i64 %s, i64 0" % (pa, p))
+            a = s.op("insertvalue %s undef, i1 %s, 0" % (OPT, t))
+            return s.op("insertvalue %s %s, i64 %s, 1" % (OPT, a, p))
+        d = s.tt.decl(ty)
+        T = st(ty)
+        acc = "zeroinitializer"
+        if isinstance(d, StructDecl):
+            o = off
+            for i, f in enumerate(d.fields):
+                x = s.de_new(f.type, ptr, o, act)
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, i))
+                o += words(s.tt, f.type)
+            return acc
+        w = s.rd(ptr, off)
+        ok = s.op("icmp ult i64 %s, %d" % (w, len(d.variants)))
+        if on:
+            ok = s.op("or i1 %s, %s" % (s.op("xor i1 %s, true" % act), ok))
+        s.checks.append((ok, w, ty.name))
+        tag = s.op("select i1 %s, i64 %s, i64 0" % (act, w)) if on else w
+        acc = s.op("insertvalue %s zeroinitializer, i64 %s, 0" % (T, tag))
+        o, idx = off + 1, 1
+        for k, v in enumerate(d.variants):
+            ak = None
+            if v.fields:
+                ak = s.op("icmp eq i64 %s, %d" % (w, k))
+                if on:
+                    ak = s.op("and i1 %s, %s" % (act, ak))
+            for f in v.fields:
+                x = s.de_new(f.type, ptr, o, ak)
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, idx))
+                o += words(s.tt, f.type)
+                idx += 1
+        return acc
+
     def ser(s, ty, x, ptr, off):
         """write the SSA value x (type st(ty)) as words at ptr[off..]"""
         n = ty.name
@@ -1317,6 +1514,13 @@ class Words:
             s.wr(ptr, off, x)
         elif n == "bool":
             s.wr(ptr, off, s.op("zext i1 %s to i64" % x))
+        elif gopt(ty):  # G3: tag word, payload words, (Result) error word; inactive words are zero by construction
+            X = ty.args[0]
+            T = st(ty)
+            s.wr(ptr, off, s.op("zext i1 %s to i64" % s.op("extractvalue %s %s, 0" % (T, x))))
+            s.ser(X, s.op("extractvalue %s %s, 1" % (T, x)), ptr, off + 1)
+            if n == "result":
+                s.wr(ptr, off + 1 + words(s.tt, X), s.op("extractvalue %s %s, 2" % (T, x)))
         elif n in ("option", "result"):
             t = s.op("extractvalue %s %s, 0" % (OPT, x))
             p = s.op("extractvalue %s %s, 1" % (OPT, x))
@@ -1345,13 +1549,13 @@ class Words:
                     idx += 1
 
 
-def abi_of(f, tt):
+def abi_of(f, tt, m=None):
     n = mangle(f.name)
     ext, pre, args = [], [], []
     w = Words(tt)
     for p in f.params:
         q = mangle(p.name)
-        if is_user_type(p.type):
+        if is_agg(p.type):
             ext.append("ptr %%a.%s" % q)
             args.append("%s %s" % (lty(p.type), w.de(p.type, "%%a.%s" % q, 0)))
             pre += w.lines
@@ -1379,6 +1583,15 @@ def abi_of(f, tt):
     rt = f.ret
     entry = "@%s__pruv_entry" % n
     body = ["  " + x for x in pre]
+    for k, (okv, wv, tname) in enumerate(w.checks):
+        # G3: an invalid nominal enum ordinal is rejected here, before the entry (requires) and the body run
+        msg = m.string("enum " + tname)
+        m.uses_repr = True
+        body.append("  br i1 %s, label %%enum.ok%d, label %%enum.bad%d" % (okv, k, k))
+        body.append("enum.bad%d:" % k)
+        body.append("  call void @pruv_panic_repr(i64 %s, ptr %s)" % (wv, msg))
+        body.append("  unreachable")
+        body.append("enum.ok%d:" % k)
     if is_arr(rt):
         ext.append("ptr %out")
         body.append("  %%r = call %s %s(%s)" % (lty(rt), entry, ", ".join(args)))
@@ -1400,7 +1613,7 @@ def abi_of(f, tt):
         body.append("  %t1 = insertvalue { i64, i64 } %t0, i64 %x1, 1")
         body.append("  ret { i64, i64 } %t1")
         ret = "{ i64, i64 }"
-    elif is_user_type(rt):
+    elif is_agg(rt):
         ext.append("ptr %out")
         body.append("  %%r = call %s %s(%s)" % (lty(rt), entry, ", ".join(args)))
         w.ser(rt, "%r", "%out", 0)
@@ -1475,6 +1688,8 @@ def typed_abi_name(f):
 
 
 def rust_ty(t, param):
+    if gopt(t):  # G3: ::std::option::Option<R(X)> / ::std::result::Result<R(X), i64>
+        return codegen.rty(t)
     if is_user_type(t):
         return t.name
     if t.name == "array_u8":
@@ -1498,6 +1713,15 @@ def rs_ser(tt, ty, expr, arr, off, ctr):
         return ["%s[%d] = %s;" % (arr, off, expr)]
     if n == "bool":
         return ["%s[%d] = (%s) as i64;" % (arr, off, expr)]
+    if gopt(ty):  # G3: the word array starts zeroed, so only the active words are written
+        ctr[0] += 1
+        v = "pruv__b%d" % ctr[0]
+        inner = " ".join(rs_ser(tt, ty.args[0], v, arr, off + 1, ctr))
+        if n == "option":
+            return ["match %s { Some(%s) => { %s[%d] = 1; %s } None => { %s[%d] = 0; } }"
+                    % (expr, v, arr, off, inner, arr, off)]
+        return ["match %s { Ok(%s) => { %s[%d] = 1; %s } Err(%s) => { %s[%d] = 0; %s[%d] = %s; } }"
+                % (expr, v, arr, off, inner, v, arr, off, arr, off + 1 + words(tt, ty.args[0]), v)]
     if n in ("option", "result"):
         ctr[0] += 1
         v = "pruv__b%d" % ctr[0]
@@ -1535,6 +1759,11 @@ def rs_de(tt, ty, arr, off):
         return "%s[%d]" % (arr, off)
     if n == "bool":
         return "(%s[%d] != 0)" % (arr, off)
+    if gopt(ty):  # G3
+        x = rs_de(tt, ty.args[0], arr, off + 1)
+        if n == "option":
+            return "(if %s[%d] != 0 { Some(%s) } else { None })" % (arr, off, x)
+        return "(if %s[%d] != 0 { Ok(%s) } else { Err(%s[%d]) })" % (arr, off, x, arr, off + 1 + words(tt, ty.args[0]))
     if n == "option":
         return "(if %s[%d] != 0 { Some(%s[%d]) } else { None })" % (arr, off, arr, off + 1)
     if n == "result":
@@ -1648,9 +1877,11 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
         unsafe { ::std::alloc::dealloc(data, layout) };
     }
 }""")
-    returns_array = any(is_arr(f.ret) for f in prog.functions)  # G2 B2: str counts
+    # G3: specializations of generic functions are private (no ABI symbol, not callable from the bindings)
+    pubs = [f for f in prog.functions if not getattr(f, "private", False)]
+    returns_array = any(is_arr(f.ret) for f in pubs)  # G2 B2: str counts
     decls = []
-    for f in prog.functions:
+    for f in pubs:
         if mangle(f.name) != f.name:
             raise Exception("llvmgen: function name %s needs mangling; the bindings use the raw name" % f.name)
         ps = []
@@ -1661,7 +1892,7 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
                 ps += ["*const i64", "i64"]
             elif p.type in (OPTION, RESULT):
                 ps += ["i64", "i64"]
-            elif is_user_type(p.type):
+            elif is_agg(p.type):
                 ps.append("*const i64")
             else:
                 ps.append("i64")
@@ -1673,19 +1904,19 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
             ps.append("*mut Pruv__Str")
         elif f.ret == ARRAY:
             ps.append("*mut Pruv__Array")
-        elif is_user_type(f.ret):
+        elif is_agg(f.ret):
             ps.append("*mut i64")
         ret = " -> i64" if f.ret in (I64, BOOL) else (" -> Pruv__Tagged" if f.ret in (OPTION, RESULT) else "")
         decls.append("    fn pruv_abi_%s(%s)%s;" % (typed_abi_name(f), ", ".join("p%d: %s" % (i, t) for i, t in enumerate(ps)), ret))
-    if any(f.ret.name == "array_bool" for f in prog.functions):  # G2 A5
+    if any(f.ret.name == "array_bool" for f in pubs):  # G2 A5
         decls.append("    fn pruv_check_bool(p0: *const u8, p1: i64);")
-    if any(f.ret.name == "str" for f in prog.functions):  # G2 B2
+    if any(f.ret.name == "str" for f in pubs):  # G2 B2
         decls.append("    fn pruv_check_utf8(p0: *const u8, p1: i64);")
     if returns_array:
         decls.append("    fn pruv_runtime_rust_allocator_v2();")
     o.append(ALLOW)
     o.append('extern "C" {\n%s\n}' % "\n".join(decls))
-    for f in prog.functions:
+    for f in pubs:
         ps = ", ".join("%s: %s" % (p.name, rust_ty(p.type, True)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rust_ty(f.ret, False)
         pre, args = [], []
@@ -1700,7 +1931,7 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
                 args += ["%s.as_ptr()" % p.name, "%s.len() as i64" % p.name]
             elif is_array(p.type):
                 args += ["%s.as_ptr()" % p.name, "%s.len() as i64" % p.name]
-            elif is_user_type(p.type):
+            elif is_agg(p.type):
                 w = "pruv__w_" + p.name
                 pre.append("let mut %s = [0i64; %d];" % (w, words(tt, p.type)))
                 pre += rs_ser(tt, p.type, p.name, w, 0, [0])
@@ -1745,7 +1976,7 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
             body.append(callo + ";")
             body.append("if pruv__out.len > 0 { ::std::vec::Vec::from_raw_parts(pruv__out.data, pruv__out.len as usize, "
                         "pruv__out.len as usize) } else { ::std::vec::Vec::new() }")
-        elif is_user_type(f.ret):
+        elif is_agg(f.ret):
             body.append("let mut pruv__out = [0i64; %d];" % words(tt, f.ret))
             body.append("pruv_abi_%s(%s);" % (typed_abi_name(f), ", ".join(args + ["pruv__out.as_mut_ptr()"])))
             body.append(rs_de(tt, f.ret, "pruv__out", 0))
@@ -1762,11 +1993,15 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
     return "\n".join(o) + "\n"
 
 
-def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30):
-    from typeinfo import g2_unimplemented_error, g3_unimplemented_error
-    g3err = g3_unimplemented_error(prog, "codegen")  # G3 A1: generics stop here until A3/A4
-    if g3err is not None:
-        raise RuntimeError("unsupported_type: %s" % g3err.message)
+def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None):
+    """plan: a mono.SpecPlan for a generic program (computed here when omitted; PruvError specialization_limit
+    propagates).  The generator works on the concrete plan.program only: no type parameter reaches LLVM."""
+    from typeinfo import g2_unimplemented_error, first_g3_use
+    if plan is None and first_g3_use(prog) is not None:
+        from mono import specialize
+        plan = specialize(prog)
+    if plan is not None:
+        prog = plan.program
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
@@ -1783,11 +2018,13 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30):
         params = ir_params(f)
         chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
         chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
-        chunks.append(abi_of(f, tt))
+        if not getattr(f, "private", False):  # G3: a generic specialization has no ABI symbol
+            chunks.append(abi_of(f, tt, m))
     has_str = uses_str(prog)  # G2 B2: walk the AST once
     ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + (
         DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool") or has_str)
         else "") + (
         DECLS_BOOL if uses_array_type(prog, "array_bool") else "") + (
-        DECLS_STR if has_str else "") + "\n" + "\n".join(chunks)  # G2 A5/B2
+        DECLS_STR if has_str else "") + (
+        DECLS_REPR if m.uses_repr else "") + "\n" + "\n".join(chunks)  # G2 A5/B2, G3
     return ir, gen_bindings(prog)

@@ -2,7 +2,8 @@
 //! The output must be byte-identical to Python's.
 
 use crate::ast::*;
-use crate::emit_common::emit_public_types;
+use crate::emit_common::{emit_public_types, is_spec_fn, rty};
+use crate::llvmgen::{g_arg, is_agg, is_gopt};
 use crate::typeinfo::{is_array_name, is_user_type, uses_array_type, uses_str, TypeTable};
 
 pub const ALLOW: &str = "#[allow(dead_code, non_snake_case, unused)]";
@@ -74,6 +75,10 @@ pub extern "C" fn pruv_host_free(data: *mut i64, len: i64) {
 
 /// Number of i64 words in the external (pruv_abi_*) form (llvmgen.words).
 fn words(tt: &TypeTable, ty: &str) -> Result<i64, String> {
+    if is_gopt(ty) {
+        // G3: 1 + W(X) (+ 1 for the Result error word)
+        return Ok(1 + words(tt, g_arg(ty))? + if ty.starts_with("result<") { 1 } else { 0 });
+    }
     match ty {
         "i64" | "bool" => return Ok(1),
         "option" | "result" => return Ok(2),
@@ -120,6 +125,10 @@ fn typed_abi_name(f: &Function) -> String {
 }
 
 fn rust_ty(t: &str, param: bool) -> String {
+    if is_gopt(t) {
+        // G3: ::std::option::Option<R(X)> / ::std::result::Result<R(X), i64>
+        return rty(t, false);
+    }
     if is_user_type(t) {
         return t.to_string();
     }
@@ -138,6 +147,33 @@ fn rust_ty(t: &str, param: bool) -> String {
 
 /// Rust statements that write the value `expr` (Copy) into the word array `arr` at `off`.
 fn rs_ser(tt: &TypeTable, ty: &str, expr: &str, arr: &str, off: i64, ctr: &mut i64) -> Result<Vec<String>, String> {
+    if is_gopt(ty) {
+        // G3: the word array starts zeroed, so only the active words are written
+        *ctr += 1;
+        let v = format!("pruv__b{}", *ctr);
+        let x = g_arg(ty);
+        let inner = rs_ser(tt, x, &v, arr, off + 1, ctr)?.join(" ");
+        if ty.starts_with("option<") {
+            return Ok(vec![format!(
+                "match {} {{ Some({}) => {{ {}[{}] = 1; {} }} None => {{ {}[{}] = 0; }} }}",
+                expr, v, arr, off, inner, arr, off
+            )]);
+        }
+        return Ok(vec![format!(
+            "match {} {{ Ok({}) => {{ {}[{}] = 1; {} }} Err({}) => {{ {}[{}] = 0; {}[{}] = {}; }} }}",
+            expr,
+            v,
+            arr,
+            off,
+            inner,
+            v,
+            arr,
+            off,
+            arr,
+            off + 1 + words(tt, x)?,
+            v
+        )]);
+    }
     match ty {
         "i64" => return Ok(vec![format!("{}[{}] = {};", arr, off, expr)]),
         "bool" => return Ok(vec![format!("{}[{}] = ({}) as i64;", arr, off, expr)]),
@@ -194,6 +230,22 @@ fn rs_ser(tt: &TypeTable, ty: &str, expr: &str, arr: &str, off: i64, ctr: &mut i
 
 /// Rust expression that rebuilds a ty value from the word array `arr` at `off` (safe constructors only).
 fn rs_de(tt: &TypeTable, ty: &str, arr: &str, off: i64) -> Result<String, String> {
+    if is_gopt(ty) {
+        // G3
+        let x = g_arg(ty);
+        let xe = rs_de(tt, x, arr, off + 1)?;
+        if ty.starts_with("option<") {
+            return Ok(format!("(if {}[{}] != 0 {{ Some({}) }} else {{ None }})", arr, off, xe));
+        }
+        return Ok(format!(
+            "(if {}[{}] != 0 {{ Ok({}) }} else {{ Err({}[{}]) }})",
+            arr,
+            off,
+            xe,
+            arr,
+            off + 1 + words(tt, x)?
+        ));
+    }
     match ty {
         "i64" => return Ok(format!("{}[{}]", arr, off)),
         "bool" => return Ok(format!("({}[{}] != 0)", arr, off)),
@@ -269,9 +321,11 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         o.push(ALLOW.to_string());
         o.push(h.to_string());
     }
-    let returns_array = prog.functions.iter().any(|f| is_array_name(&f.ret) || f.ret == "str"); // G2 B2: str returns are counted too
+    // G3: specializations of generic functions are private (no ABI symbol, not callable from the bindings)
+    let pubs: Vec<&Function> = prog.functions.iter().filter(|f| !is_spec_fn(&f.name)).collect();
+    let returns_array = pubs.iter().any(|f| is_array_name(&f.ret) || f.ret == "str"); // G2 B2: str returns are counted too
     let mut decls: Vec<String> = Vec::new();
-    for f in &prog.functions {
+    for f in &pubs {
         if needs_mangling(&f.name) {
             return Err(format!(
                 "llvmgen: function name {} needs mangling; the bindings use the raw name",
@@ -287,7 +341,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
                 ps.extend(["*const i64", "i64"]);
             } else if p.ty == "option" || p.ty == "result" {
                 ps.extend(["i64", "i64"]);
-            } else if is_user_type(&p.ty) {
+            } else if is_agg(&p.ty) {
                 ps.push("*const i64");
             } else {
                 ps.push("i64");
@@ -301,7 +355,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             ps.push("*mut Pruv__Str"); // G2 B2
         } else if f.ret == "array" {
             ps.push("*mut Pruv__Array");
-        } else if is_user_type(&f.ret) {
+        } else if is_agg(&f.ret) {
             ps.push("*mut i64");
         }
         let ret = if f.ret == "i64" || f.ret == "bool" {
@@ -314,11 +368,11 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         let plist: Vec<String> = ps.iter().enumerate().map(|(i, t)| format!("p{}: {}", i, t)).collect();
         decls.push(format!("    fn pruv_abi_{}({}){};", typed_abi_name(f), plist.join(", "), ret));
     }
-    if prog.functions.iter().any(|f| f.ret == "array_bool") {
+    if pubs.iter().any(|f| f.ret == "array_bool") {
         // G2 A5: after all pruv_abi_* lines, before the marker line
         decls.push("    fn pruv_check_bool(p0: *const u8, p1: i64);".to_string());
     }
-    if prog.functions.iter().any(|f| f.ret == "str") {
+    if pubs.iter().any(|f| f.ret == "str") {
         // G2 B2: after the check_bool line, before the marker line
         decls.push("    fn pruv_check_utf8(p0: *const u8, p1: i64);".to_string());
     }
@@ -327,7 +381,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
     }
     o.push(ALLOW.to_string());
     o.push(format!("extern \"C\" {{\n{}\n}}", decls.join("\n")));
-    for f in &prog.functions {
+    for f in &pubs {
         let ps: Vec<String> = f.params.iter().map(|p| format!("{}: {}", p.name, rust_ty(&p.ty, true))).collect();
         let ps = ps.join(", ");
         let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", rust_ty(&f.ret, false)) };
@@ -349,7 +403,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             } else if is_array_name(&p.ty) {
                 args.push(format!("{}.as_ptr()", p.name));
                 args.push(format!("{}.len() as i64", p.name));
-            } else if is_user_type(&p.ty) {
+            } else if is_agg(&p.ty) {
                 let w = format!("pruv__w_{}", p.name);
                 pre.push(format!("let mut {} = [0i64; {}];", w, words(&tt, &p.ty)?));
                 let mut ctr = 0i64;
@@ -420,7 +474,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
                  pruv__out.len as usize) } else { ::std::vec::Vec::new() }"
                     .to_string(),
             );
-        } else if is_user_type(&f.ret) {
+        } else if is_agg(&f.ret) {
             body.push(format!("let mut pruv__out = [0i64; {}];", words(&tt, &f.ret)?));
             let mut a2 = args.clone();
             a2.push("pruv__out.as_mut_ptr()".to_string());

@@ -55,12 +55,17 @@ def source_fns(src):
 
 
 def is_tagged(ret_ty):
-    return ret_ty.startswith("Option<") or ret_ty.startswith("Result<")
+    """Only the legacy Option<i64> / Result<i64> are returned as the tagged pair ({ i64, i64 } / sret on Windows).
+    G3 A4: Option<X> / Result<X> with X != i64 are word aggregates (void + trailing output pointer, no sret)."""
+    return ret_ty.replace(" ", "") in ("Option<i64>", "Result<i64>")
 
 
 def is_array(ret_ty):
-    """Array/str return (`[i64]`, `[u8]`, refined `[u8 | L..=U; <=N]`, `str`): trailing out pointer + void, no sret."""
-    return ret_ty.startswith("[") or ret_ty == "str"
+    """Return through a trailing out pointer + void, no sret: arrays/str (`[i64]`, `[u8]`, refined
+    `[u8 | L..=U; <=N]`, `str`) and, since G3 A4, any word aggregate (new Option/Result, generic nominal types)."""
+    if ret_ty.startswith("[") or ret_ty == "str":
+        return True
+    return not is_tagged(ret_ty) and ret_ty not in ("i64", "bool", "()")
 
 
 def expected_ret(ret_ty):

@@ -1,0 +1,16 @@
+// G3 A4 ABI 1/10: nested generic values. Pair<Option<bool>, Result<i64>> is 4 words (new Option<bool> = 2,
+// legacy Result<i64> = 2); aggregates go by pointer, the result through an explicit output pointer (void, no sret).
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn nest_id(p: Pair<Option<bool>, Result<i64>>) -> Pair<Option<bool>, Result<i64>>
+{
+  return p;
+}
+
+fn nest_pick(p: Pair<Option<bool>, Result<i64>>, q: Pair<bool, Option<bool>>) -> Pair<Option<bool>, bool>
+{
+  return Pair::<Option<bool>, bool> { first: q.second, second: q.first };
+}

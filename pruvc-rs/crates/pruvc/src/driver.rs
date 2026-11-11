@@ -104,7 +104,8 @@ fn generate(a: &Args, prog: &Program) -> Result<(String, String), Fail> {
         (None, None) => false,
     };
     let abi = if windows { pruv_core::abi::AbiTarget::WinX64 } else { pruv_core::abi::AbiTarget::SysV };
-    pruv_core::llvmgen::gen_llvm_for(prog, a.verify, a.trust_callers, a.budget, abi).map_err(Fail::Internal)
+    // `prog` is the CONCRETE program (the specialization plan of a generic program, see `compile`)
+    pruv_core::llvmgen::gen_llvm_concrete(prog, a.verify, a.trust_callers, a.budget, abi).map_err(Fail::Internal)
 }
 
 fn need_target(a: &Args) -> Result<&Target, Fail> {
@@ -210,15 +211,10 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    // G3 A3 (same place as in Python compile_file): the Rust source backend specializes generic programs (shared plan,
-    // mono.rs); the LLVM backend (also --also-llvm) rejects them explicitly until A4, also with --no-verify.
+    // G3 A3/A4 (same place as in Python compile_file): every backend (rust, llvm, also --also-llvm) specializes generic
+    // programs through the shared plan (mono.rs) and generates from the concrete program.
     let mut plan_prog: Option<Program> = None;
     if pruv_core::typeinfo::first_g3_use(&prog).is_some() {
-        if a.kind != Kind::Rs || a.also_llvm.is_some() {
-            if let Some(e) = pruv_core::mono::llvm_unsupported_error(&prog) {
-                return Err(Fail::Lang(vec![e]));
-            }
-        }
         match pruv_core::mono::specialize(&prog) {
             Ok(plan) => plan_prog = Some(plan.program),
             Err(pruv_core::mono::MonoError::Limit(e)) => return Err(Fail::Lang(vec![e])), // no output at all
@@ -239,7 +235,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
             let rs_text =
                 pruv_core::codegen::gen_rust_concrete(gprog, a.verify, a.trust_callers, a.budget).map_err(Fail::Internal)?;
             let llvm_texts = match &a.also_llvm {
-                Some(_) => Some(generate(a, &prog)?),
+                Some(_) => Some(generate(a, gprog)?),
                 None => None,
             };
             write_text(&a.out, &rs_text)?;
@@ -250,7 +246,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
             Ok(())
         }
         Kind::Ll => {
-            let (ir, bindings) = generate(a, &prog)?;
+            let (ir, bindings) = generate(a, gprog)?;
             // Same order as Python: IR first, then the bindings
             write_text(&a.out, &ir)?;
             match &a.bindings {
@@ -260,7 +256,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
         Kind::Obj => {
             let target = need_target(a)?;
-            let (ir, bindings) = generate(a, &prog)?;
+            let (ir, bindings) = generate(a, gprog)?;
             // The object is built in a temporary folder and moved to -o only on success (an existing file is not touched on failure)
             let tmp = tempfile::tempdir().map_err(|e| Fail::Internal(format!("tempdir: {e}")))?;
             let obj = tmp.path().join("out.o");
@@ -275,7 +271,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
             let target = need_target(a)?;
             check_entry(&prog)?;
             check_runtime(target)?;
-            let (mut ir, _) = generate(a, &prog)?;
+            let (mut ir, _) = generate(a, gprog)?;
             if !ir.ends_with('\n') {
                 ir.push('\n');
             }

@@ -41,7 +41,7 @@ from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust  # noqa: E402
 from typeinfo import g2_unimplemented_error, first_g3_use  # noqa: E402
-from mono import specialize, llvm_unsupported_error  # noqa: E402
+from mono import specialize  # noqa: E402
 
 USAGE = ("usage: pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers] "
          "[--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]")
@@ -74,13 +74,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    # G3 A3: the Rust source backend specializes generic programs (shared plan, pruvc/mono.py); the LLVM backend
-    # (also --also-llvm) rejects them explicitly until A4, also with --no-verify.
+    # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same
+    # shared specialization plan (pruvc/mono.py), also with --no-verify.
     plan = None
     gprog = prog
     if first_g3_use(prog) is not None:
-        if backend == "llvm" or also_llvm:
-            return [llvm_unsupported_error(prog)]
         try:
             plan = specialize(prog)   # does not mutate prog; PruvError specialization_limit -> no output at all
         except PruvError as e:
@@ -93,7 +91,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
         return [g2err]
     if backend == "llvm":
         from llvmgen import gen_llvm  # lazy: only the llvm backend needs it
-        ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget)
+        ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan)
         with open(out, "w") as fh:
             fh.write(ir)
         with open(rust_bindings or default_bindings_path(out), "w") as fh:
@@ -105,7 +103,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
         llvm_texts = None
         if also_llvm:
             from llvmgen import gen_llvm
-            llvm_texts = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget)
+            llvm_texts = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan)
         with open(out, "w") as fh:
             fh.write(rs_text)
         if llvm_texts is not None:

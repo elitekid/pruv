@@ -30,12 +30,14 @@ fn line_for(bytes: &[u8], o: &Opts) -> String {
     if let Err(e) = pruv_core::check::check(&mut prog) {
         return obj1("error", e.to_json_value());
     }
-    match pruv_core::llvmgen::gen_llvm_for(&prog, o.verified, o.trust_callers, o.budget, o.target) {
+    // like Python gen_llvm: a generic program is specialized first (a specialization limit is a diagnostic)
+    match pruv_core::llvmgen::gen_llvm_any(&prog, o.verified, o.trust_callers, o.budget, o.target) {
         Ok((ir, bindings)) => dumps_sorted(&Json::Obj(vec![
             ("ir".to_string(), Json::Str(ir)),
             ("bindings".to_string(), Json::Str(bindings)),
         ])),
-        Err(msg) => obj1("internal", Json::Str(msg)),
+        Err(pruv_core::codegen::GenError::Diag(e)) => obj1("error", e.to_json_value()),
+        Err(pruv_core::codegen::GenError::Msg(msg)) => obj1("internal", Json::Str(msg)),
     }
 }
 

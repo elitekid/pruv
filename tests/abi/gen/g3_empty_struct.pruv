@@ -1,0 +1,27 @@
+// G3 A4 ABI 2/10: empty structs inside generic values. W(struct {}) = max(1, 0) = 1 word (written as zero),
+// so Holder<Marker> is 1 word and Option<Marker> is 2 words.
+struct Marker {}
+
+struct Holder<T> {
+  value: T,
+}
+
+fn marker_id(m: Marker) -> Marker
+{
+  return m;
+}
+
+fn hold_marker(m: Marker) -> Holder<Marker>
+{
+  return Holder::<Marker> { value: m };
+}
+
+fn some_marker(m: Marker) -> Option<Marker>
+{
+  return Some::<Marker>(m);
+}
+
+fn no_marker() -> Option<Marker>
+{
+  return None::<Marker>;
+}

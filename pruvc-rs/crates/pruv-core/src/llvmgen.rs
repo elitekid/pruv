@@ -52,6 +52,33 @@ pub const DECLS_STR: &str = concat!(
     "declare void @pruv_check_utf8(ptr nocapture readonly, i64) nounwind\n",
 );
 
+/// G3 A4: declaration of the representation-check panic, only emitted when some wrapper rejects an invalid enum ordinal.
+pub const DECLS_REPR: &str = "declare void @pruv_panic_repr(i64, ptr) noreturn cold nounwind\n";
+
+/// Name prefix of a generated generic nominal instance (`pruv_g3_t_...`).
+pub const G3_TYPE_PREFIX: &str = "pruv_g3_t_";
+
+/// G3 A4: true for a structured built-in application key `option<X>` / `result<X>` (X != i64); the legacy
+/// `option` / `result` constants are not applications.
+pub fn is_gopt(t: &str) -> bool {
+    t.starts_with("option<") || t.starts_with("result<")
+}
+
+/// The argument key X of `option<X>` / `result<X>` (only for a key accepted by `is_gopt`).
+pub fn g_arg(t: &str) -> &str {
+    &t[7..t.len() - 1]
+}
+
+/// A user struct/enum (including generated generic instances) or a new Option/Result application.
+pub fn is_agg(t: &str) -> bool {
+    is_gopt(t) || (is_user_type(t) && !crate::gtype::is_g3_key(t))
+}
+
+/// Types whose external word form follows the G3 rules (tag normalization, inactive words zero, enum check).
+pub fn is_new_app(t: &str) -> bool {
+    is_gopt(t) || (is_user_type(t) && t.starts_with(G3_TYPE_PREFIX))
+}
+
 const ARRAY_U8: &str = "array_u8";
 const ARRAY_BOOL: &str = "array_bool"; // G2 A5
 const STR: &str = "str"; // G2 B2
@@ -113,6 +140,9 @@ pub fn mangle(n: &str) -> String {
 
 /// The internal SSA type of a Pruv type
 pub fn lty(t: &str) -> String {
+    if is_gopt(t) {
+        return st(t, false);
+    }
     match t {
         "i64" => "i64".to_string(),
         "bool" => "i1".to_string(),
@@ -149,6 +179,9 @@ impl Kind {
 }
 
 pub fn vkind(t: &str) -> Kind {
+    if is_gopt(t) {
+        return Kind::Agg;
+    }
     match t {
         "i64" => Kind::I64,
         "bool" => Kind::I1,
@@ -161,6 +194,13 @@ pub fn vkind(t: &str) -> Kind {
 
 /// Storage type of a value inside an aggregate (c: contract/i128 form)
 pub fn st(t: &str, c: bool) -> String {
+    if is_gopt(t) {
+        let x = st(g_arg(t), c);
+        if t.starts_with("option<") {
+            return format!("{{ i1, {} }}", x);
+        }
+        return format!("{{ i1, {}, {} }}", x, if c { "i128" } else { "i64" });
+    }
     match t {
         "i64" => {
             if c {
@@ -215,6 +255,11 @@ pub fn payload_index(tt: &TypeTable, ty: &str, variant: &str, i: usize) -> R<usi
 
 /// W(T): number of i64 words in the external (pruv_abi_*) form
 pub fn words(tt: &TypeTable, ty: &str) -> R<usize> {
+    if is_gopt(ty) {
+        // G3: 1 + W(X) (+ 1 for the Result error word)
+        let x = words(tt, g_arg(ty))?;
+        return Ok(1 + x + if ty.starts_with("result<") { 1 } else { 0 });
+    }
     match ty {
         "i64" | "bool" => Ok(1),
         "option" | "result" => Ok(2),
@@ -319,11 +364,13 @@ struct Scope {
 pub struct Mod {
     strs: HashMap<String, String>,
     order: Vec<String>,
+    /// G3: a wrapper rejects an invalid enum ordinal through pruv_panic_repr
+    pub uses_repr: bool,
 }
 
 impl Mod {
     pub fn new() -> Mod {
-        Mod { strs: HashMap::new(), order: Vec::new() }
+        Mod { strs: HashMap::new(), order: Vec::new(), uses_repr: false }
     }
 
     pub fn string(&mut self, text: &str) -> String {
@@ -376,7 +423,7 @@ pub fn ir_params(f: &Function) -> Vec<(String, String)> {
             out.push(("i1".to_string(), format!("%p.{}", n)));
         } else if p.ty == "i64" {
             out.push(("i64".to_string(), format!("%p.{}", n)));
-        } else if is_user_type(&p.ty) {
+        } else if is_agg(&p.ty) {
             out.push((lty(&p.ty), format!("%p.{}", n)));
         } else {
             out.push((OPT.to_string(), format!("%p.{}", n)));
@@ -786,6 +833,75 @@ impl<'a> FnGen<'a> {
         Ok(V::agg(acc, ty))
     }
 
+    /// Some/None/Ok/Err of a new Option<X>/Result<X> application (e.ty): zeroinitializer-based, so the unused
+    /// payload storage is always zero.
+    pub fn mk_gctor(&mut self, e: &Ctor, c: bool) -> R<V> {
+        let ty = need_ty(&e.ty)?.to_string();
+        if e.name == "None" {
+            return Ok(V::agg("zeroinitializer", &ty));
+        }
+        let a = e.arg.as_ref().ok_or_else(|| "llvmgen: constructor without argument".to_string())?;
+        let x = self.evf(a, c)?;
+        if e.name == "Some" || e.name == "Ok" {
+            let acc = self.op(format!("insertvalue {} zeroinitializer, i1 true, 0", st(&ty, c)))?;
+            let r = self.put(&acc, &ty, 1, &x, g_arg(&ty), c)?;
+            return Ok(V::agg(r, &ty));
+        }
+        // Err: tag false (zero), error payload in slot 2
+        let r = self.op(format!(
+            "insertvalue {} zeroinitializer, {} {}, 2",
+            st(&ty, c),
+            if c { "i128" } else { "i64" },
+            x.a
+        ))?;
+        Ok(V::agg(r, &ty))
+    }
+
+    /// match on a new Option<X>/Result<X>: branch on the tag, bind the active payload only inside its arm
+    pub fn gmatch(&mut self, st_: &Match, sv: &V) -> R<()> {
+        let ty = need_ty(&sv.ty)?.to_string();
+        let x = g_arg(&ty).to_string();
+        let pos = st_
+            .arms
+            .iter()
+            .find(|a| a.ctor == "Some" || a.ctor == "Ok")
+            .ok_or_else(|| IDX_ERR.to_string())?;
+        let neg = st_
+            .arms
+            .iter()
+            .find(|a| a.ctor == "None" || a.ctor == "Err")
+            .ok_or_else(|| IDX_ERR.to_string())?;
+        let tag = self.op(format!("extractvalue {} {}, 0", st(&ty, false), sv.a))?;
+        let pl = self.label("armT");
+        let nl = self.label("armF");
+        let end = self.label("endmatch");
+        self.condbr(&tag, &pl, &nl)?;
+        let mut reach = false;
+        for (arm, lbl) in [(pos, &pl), (neg, &nl)] {
+            self.place(lbl);
+            let mut bind: Vec<(String, Bind)> = Vec::new();
+            if let Some(b0) = arm.binders.first() {
+                if arm.ctor == "Some" || arm.ctor == "Ok" {
+                    let v = self.get(sv, &ty, 1, &x, false)?;
+                    bind.push((b0.clone(), Bind::Ssa(v)));
+                } else {
+                    let r = self.op(format!("extractvalue {} {}, 2", st(&ty, false), sv.a))?;
+                    bind.push((b0.clone(), Bind::Ssa(V::new(Kind::I64, r))));
+                }
+            }
+            if self.run_block(&arm.body, bind)? {
+                self.br(&end)?;
+                reach = true;
+            }
+        }
+        if reach {
+            self.place(&end);
+        } else {
+            self.dead = true;
+        }
+        Ok(())
+    }
+
     /// The aggregate `base` (code form) with the nested struct field `path` replaced by v
     pub fn set_path(&mut self, base: &V, ty: &str, path: &[String], v: &V) -> R<V> {
         let tt = self.tt;
@@ -817,6 +933,21 @@ impl<'a> FnGen<'a> {
                 return Ok(V::with_b(Kind::Opt, x.a.clone(), r));
             }
             _ => {}
+        }
+        if is_gopt(ty) {
+            // G3: widen the payload (and the Result error); the unused payload stays zero
+            let xt = g_arg(ty).to_string();
+            let t = self.op(format!("extractvalue {} {}, 0", st(ty, false), x.a))?;
+            let mut acc = self.op(format!("insertvalue {} zeroinitializer, i1 {}, 0", st(ty, true), t))?;
+            let px = self.get(x, ty, 1, &xt, false)?;
+            let pc = self.to_c(&px, &xt)?;
+            acc = self.put(&acc, ty, 1, &pc, &xt, true)?;
+            if ty.starts_with("result<") {
+                let er = self.op(format!("extractvalue {} {}, 2", st(ty, false), x.a))?;
+                let ec = self.op(format!("sext i64 {} to i128", er))?;
+                acc = self.op(format!("insertvalue {} {}, i128 {}, 2", st(ty, true), acc, ec))?;
+            }
+            return Ok(V::agg(acc, ty));
         }
         let d = t_decl(tt, ty)?;
         match d {
@@ -902,6 +1033,29 @@ impl<'a> FnGen<'a> {
             }
             _ => {}
         }
+        if is_gopt(ty) {
+            // G3: only the active payload is compared
+            let xt = g_arg(ty).to_string();
+            let tc = st(ty, true);
+            let tl = self.op(format!("extractvalue {} {}, 0", tc, l.a))?;
+            let tr = self.op(format!("extractvalue {} {}, 0", tc, r.a))?;
+            let te = self.op(format!("icmp eq i1 {}, {}", tl, tr))?;
+            let lx = self.get(l, ty, 1, &xt, true)?;
+            let rx = self.get(r, ty, 1, &xt, true)?;
+            let pe = self.ceq(&lx, &rx, &xt)?;
+            let nt = self.op(format!("xor i1 {}, true", tl))?;
+            if ty.starts_with("option<") {
+                let o = self.op(format!("or i1 {}, {}", nt, pe))?;
+                return self.op(format!("and i1 {}, {}", te, o));
+            }
+            let el = self.op(format!("extractvalue {} {}, 2", tc, l.a))?;
+            let er = self.op(format!("extractvalue {} {}, 2", tc, r.a))?;
+            let ee = self.op(format!("icmp eq i128 {}, {}", el, er))?;
+            let a1 = self.op(format!("and i1 {}, {}", tl, pe))?;
+            let a2 = self.op(format!("and i1 {}, {}", nt, ee))?;
+            let act = self.op(format!("or i1 {}, {}", a1, a2))?;
+            return self.op(format!("and i1 {}, {}", te, act));
+        }
         let d = t_decl(tt, ty)?;
         match d {
             TypeDecl::Struct(sd) => self.fields_eq(l, r, ty, &sd.fields, None),
@@ -974,7 +1128,7 @@ impl<'a> FnGen<'a> {
                 names.insert(p.name.clone(), Bind::Ssa(V::new(Kind::I1, format!("%p.{}", n))));
             } else if p.ty == "i64" {
                 names.insert(p.name.clone(), Bind::Ssa(V::new(Kind::I64, format!("%p.{}", n))));
-            } else if is_user_type(&p.ty) {
+            } else if is_agg(&p.ty) {
                 names.insert(p.name.clone(), Bind::Ssa(V::agg(format!("%p.{}", n), &p.ty)));
             } else {
                 let t = self.op(format!("extractvalue {} %p.{}, 0", OPT, n))?;
@@ -1173,6 +1327,10 @@ impl<'a> FnGen<'a> {
                 self.begin_temps();
                 let sv = self.ev(&x.scrutinee, false)?;
                 self.end_temps()?;
+                if sv.k == Kind::Agg && sv.ty.as_deref().map_or(false, is_gopt) {
+                    // G3: Option<X>/Result<X>, X != i64
+                    return self.gmatch(x, &sv);
+                }
                 if let Some(first) = x.arms.first() {
                     if first.enum_name.is_some() {
                         return self.user_match(x, &sv);
@@ -1357,6 +1515,9 @@ impl<'a> FnGen<'a> {
                 Ok(V::new(Kind::I64, r))
             }
             Expr::Ctor(x) => {
+                if x.ty.as_deref().map_or(false, is_gopt) {
+                    return self.mk_gctor(x, false); // G3
+                }
                 if x.name == "None" {
                     return Ok(V::with_b(Kind::Opt, "false", "0"));
                 }
@@ -1548,7 +1709,7 @@ impl<'a> FnGen<'a> {
         if f.ret == "i64" || f.ret == "bool" {
             return Ok(V::new(vkind(&f.ret), r));
         }
-        if is_user_type(&f.ret) {
+        if is_agg(&f.ret) {
             return Ok(V::agg(r, &f.ret));
         }
         let x0 = self.op(format!("extractvalue {} {}, 0", lty(&f.ret), r))?;
@@ -1580,7 +1741,7 @@ impl<'a> FnGen<'a> {
             } else if p.ty == "i64" {
                 let r = self.op(format!("sext i64 %p.{} to i128", n))?;
                 self.cenv.insert(p.name.clone(), V::new(Kind::I128, r));
-            } else if is_user_type(&p.ty) {
+            } else if is_agg(&p.ty) {
                 let c = self.to_c(&V::agg(format!("%p.{}", n), &p.ty), &p.ty)?;
                 self.cenv.insert(p.name.clone(), c);
             } else {
@@ -1697,6 +1858,9 @@ impl<'a> FnGen<'a> {
                 Ok(V::new(Kind::I128, r))
             }
             Expr::Ctor(x) => {
+                if x.ty.as_deref().map_or(false, is_gopt) {
+                    return self.mk_gctor(x, true); // G3
+                }
                 if x.name == "None" {
                     return Ok(V::with_b(Kind::Opt, "false", "0"));
                 }
@@ -1762,10 +1926,30 @@ impl<'a> FnGen<'a> {
                 }
                 if n == "is_some" || n == "is_ok" {
                     let v = self.cev(arg(a, 0)?)?;
+                    if v.k == Kind::Agg {
+                        // G3: tag of a new Option/Result
+                        let ty = need_ty(&v.ty)?.to_string();
+                        let r = self.op(format!("extractvalue {} {}, 0", st(&ty, true), v.a))?;
+                        return Ok(V::new(Kind::I1, r));
+                    }
                     return Ok(V::new(Kind::I1, v.a));
                 }
                 if n == "some_val" || n == "ok_val" || n == "err_val" {
                     let o = self.cev(arg(a, 0)?)?;
+                    if o.k == Kind::Agg {
+                        // G3: selectors of a new Option/Result look only at the active payload
+                        let oty = need_ty(&o.ty)?.to_string();
+                        let tc = st(&oty, true);
+                        let tag = self.op(format!("extractvalue {} {}, 0", tc, o.a))?;
+                        if n == "err_val" {
+                            self.guard(&tag, und("err_val of Ok".to_string()), true)?;
+                            let r = self.op(format!("extractvalue {} {}, 2", tc, o.a))?;
+                            return Ok(V::new(Kind::I128, r));
+                        }
+                        let msg = if n == "some_val" { "some_val of None" } else { "ok_val of Err" };
+                        self.guard(&tag, und(msg.to_string()), false)?;
+                        return self.get(&o, &oty, 1, g_arg(&oty), true);
+                    }
                     if n == "err_val" {
                         self.guard(&o.a, und("err_val of Ok".to_string()), true)?;
                     } else {
@@ -2053,9 +2237,35 @@ const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-
 
 /// Generation with a chosen target ABI. SysV is byte-identical to gen_llvm.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
-    if let Some(e) = crate::typeinfo::g3_unimplemented_error(prog, "codegen") { // G3 A1: generics stop here until A4
-        return Err(format!("unsupported_type: {}", e.message));
+    gen_llvm_any(prog, verified, trust_callers, budget, target).map_err(|e| match e {
+        crate::codegen::GenError::Msg(m) => m,
+        crate::codegen::GenError::Diag(p) => format!("{}: {}", p.code, p.message),
+    })
+}
+
+/// Python `gen_llvm`: a program that uses generics is specialized first (shared plan, mono.rs; a specialization limit is
+/// a diagnostic) and lowered from the concrete program; any other program is lowered directly.
+pub fn gen_llvm_any(
+    prog: &Program,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    target: AbiTarget,
+) -> Result<(String, String), crate::codegen::GenError> {
+    use crate::codegen::GenError;
+    if crate::typeinfo::first_g3_use(prog).is_some() {
+        let plan = crate::mono::specialize(prog).map_err(|e| match e {
+            crate::mono::MonoError::Limit(p) => GenError::Diag(p),
+            crate::mono::MonoError::Internal(m) => GenError::Msg(m),
+        })?;
+        return gen_llvm_concrete(&plan.program, verified, trust_callers, budget, target).map_err(GenError::Msg);
     }
+    gen_llvm_concrete(prog, verified, trust_callers, budget, target).map_err(GenError::Msg)
+}
+
+/// The generator proper, for a CONCRETE program (a plan.program of mono.rs, or a program without G3): no type parameter
+/// reaches it.
+pub fn gen_llvm_concrete(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) {
         // G2 B2: str also opens the generation layer
         return Err(format!("unsupported_type: {}", e.message));
@@ -2082,11 +2292,14 @@ pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget:
             sig_text(&params)
         )));
         chunks.push(entry_of(&mut m, &tt, &funcs, f, trust_callers || f.requires.is_empty(), budget)?);
-        chunks.push(abi_of(f, &tt, target)?);
+        if !crate::emit_common::is_spec_fn(&f.name) {
+            // G3: a generic specialization has no ABI symbol
+            chunks.push(abi_of(f, &tt, target, &mut m)?);
+        }
     }
     let has_str = crate::typeinfo::uses_str(prog); // G2 B2
     let ir = format!(
-        "{}{}\n{}{}{}{}{}{}\n{}",
+        "{}{}\n{}{}{}{}{}{}{}\n{}",
         if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
         type_defs(&tt),
@@ -2097,6 +2310,7 @@ pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget:
         if uses_array_type(prog, "array_u8") || uses_array_type(prog, "array_bool") || has_str { DECLS_U8 } else { "" },
         if uses_array_type(prog, "array_bool") { DECLS_BOOL } else { "" },
         if has_str { DECLS_STR } else { "" },
+        if m.uses_repr { DECLS_REPR } else { "" }, // G3
         chunks.join("\n")
     );
     let bindings = crate::bindings::gen_bindings(prog)?;

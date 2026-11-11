@@ -1,18 +1,4 @@
 # Samples whose llvm rows expect pruvc exit 1 with codegen/unsupported_type ("the llvm codegen layer").
-# G3 A3: generics run on the Rust source backend only; the LLVM lowering lands in A4, which deletes these lines.
-tests/runtime/g3_r01_identity.pruv
-tests/runtime/g3_r02_pair_swap.pruv
-tests/runtime/g3_r03_option_get_or.pruv
-tests/runtime/g3_r04_result_unwrap.pruv
-tests/runtime/g3_r05_enum_flip.pruv
-tests/runtime/g3_r06_array_first.pruv
-tests/runtime/g3_r07_spec_requires_noverify.pruv
-tests/runtime/g3_r08_eq_bool_requires.pruv
-tests/runtime/g3_r09_eq_bool_spec_noverify.pruv
-tests/runtime/g3_r10_eq_nested_requires.pruv
-tests/runtime/g3_r11_eq_nested_spec_noverify.pruv
-tests/runtime/g3_r12_nested_calls.pruv
-tests/runtime/g3_r13_array_fill.pruv
-tests/runtime/g3_r14_phantom_unused.pruv
-tests/runtime/g3_r15_option_point.pruv
-tests/runtime/g3_r16_enum_requires.pruv
+# G3 A4: the Python compiler lowers generics to LLVM, so the sixteen tests/runtime/g3_r*.pruv samples left this list.
+# (Rust-compiler LLVM lowering is a separate A4 task; until it lands the rs llvm rows of those samples still need
+# the entries back when run against pruvc-rs.)

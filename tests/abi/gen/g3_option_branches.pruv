@@ -1,0 +1,40 @@
+// G3 A4 ABI 3/10: every new Option<X> branch (X != i64): bool payload, user struct payload, legacy Result<i64>
+// payload. Tag word 1 = Some, 0 = None; the inactive payload words are zero. Not tagged-register returns:
+// void + trailing output pointer.
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn opt_bool(x: Option<bool>) -> Option<bool>
+{
+  return x;
+}
+
+fn some_bool(b: bool) -> Option<bool>
+{
+  return Some::<bool>(b);
+}
+
+fn none_bool() -> Option<bool>
+{
+  return None::<bool>;
+}
+
+fn flag(o: Option<bool>) -> bool
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return false; }
+  }
+}
+
+fn opt_point(o: Option<Point>) -> Option<Point>
+{
+  return o;
+}
+
+fn opt_res(o: Option<Result<i64>>) -> Option<Result<i64>>
+{
+  return o;
+}

@@ -1,0 +1,32 @@
+// G3 A4 ABI 8/10: an invalid ordinal of a generic enum instance (also one nested in a new Option) must be
+// rejected by the wrapper before `requires` and the body run ("pruv: invalid representation: <n> (enum ...)").
+// An inactive Option payload is never checked.
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B),
+}
+
+fn left_bool(c: Choice<bool, i64>) -> bool
+  requires is_variant(c, Choice::Left)
+{
+  match c {
+    Choice::Left(x) => { return x; }
+    Choice::Right(y) => { return false; }
+  }
+}
+
+fn is_left(c: Choice<bool, i64>) -> bool
+{
+  match c {
+    Choice::Left(x) => { return true; }
+    Choice::Right(y) => { return false; }
+  }
+}
+
+fn opt_is_left(o: Option<Choice<bool, i64>>) -> bool
+{
+  match o {
+    Some(c) => { return is_left(c); }
+    None => { return false; }
+  }
+}

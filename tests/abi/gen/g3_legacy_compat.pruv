@@ -1,0 +1,30 @@
+// G3 A4 ABI 9/10: legacy Option<i64> / Result<i64> keep their two-word form and the { i64, i64 } register return
+// (sret on Windows) next to the new Option<bool> (void + output pointer).
+fn get_opt(x: i64) -> Option<i64>
+  requires x >= -1_000_000 && x <= 1_000_000
+  ensures is_some(result) ==> x > 0
+{
+  if x > 0 {
+    return Some(x);
+  }
+  return None;
+}
+
+fn get_res(a: i64, b: i64) -> Result<i64>
+  requires a >= 0 && a <= 1_000_000
+  requires b >= 0 && b <= 1_000_000
+  ensures is_ok(result) ==> b > 0
+{
+  if b == 0 {
+    return Err(1);
+  }
+  return Ok(a / b);
+}
+
+fn mix(o: Option<i64>, p: Option<bool>) -> Option<bool>
+{
+  match o {
+    Some(v) => { return p; }
+    None => { return None::<bool>; }
+  }
+}

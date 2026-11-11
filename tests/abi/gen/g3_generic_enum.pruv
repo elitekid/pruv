@@ -1,0 +1,19 @@
+// G3 A4 ABI 5/10: generic nominal enums. W(enum) = 1 + sum of all payload words; the generated type names
+// (pruv_g3_t_...) appear in the bindings. Choice<bool, Option<bool>> = 1 + 1 + 2 words.
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B),
+}
+
+fn choice_id(c: Choice<bool, i64>) -> Choice<bool, i64>
+{
+  return c;
+}
+
+fn choice_flip(c: Choice<bool, Option<bool>>) -> Choice<Option<bool>, bool>
+{
+  match c {
+    Choice::Left(x) => { return Choice::<Option<bool>, bool>::Right(x); }
+    Choice::Right(y) => { return Choice::<Option<bool>, bool>::Left(y); }
+  }
+}

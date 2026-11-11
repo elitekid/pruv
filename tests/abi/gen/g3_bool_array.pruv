@@ -1,0 +1,48 @@
+// G3 A4 ABI 6/10: [bool] through generic code. The specializations are the existing G2 [bool] layouts: the
+// public wrapper keeps the pruv_check_bool entry check (also under --trust-callers) and the __typed entry.
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return a[0];
+}
+
+fn first_bool(a: [bool]) -> bool
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return first::<bool>(a);
+}
+
+fn head_opt(a: [bool]) -> Option<bool>
+{
+  if len(a) > 0 {
+    return Some::<bool>(a[0]);
+  }
+  return None::<bool>;
+}
+
+fn fill<T: Element>(n: i64, v: T) -> [T] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let mut out: [T] = alloc(n, v);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(out) == n
+    decreases n - i
+  {
+    out[i] = v;
+    i = i + 1;
+  }
+  return out;
+}
+
+fn fill_bool(n: i64, v: bool) -> [bool] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let out: [bool] = fill::<bool>(n, v);
+  return out;
+}

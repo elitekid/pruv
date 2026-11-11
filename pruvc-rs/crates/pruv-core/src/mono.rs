@@ -51,19 +51,6 @@ pub fn is_generic_program(prog: &Program) -> bool {
     first_g3_use(prog).is_some()
 }
 
-/// codegen/unsupported_type for a generic program on the LLVM backend (until A4); None for other programs.
-pub fn llvm_unsupported_error(prog: &Program) -> Option<PruvError> {
-    let (line, col, what) = first_g3_use(prog)?;
-    Some(PruvError::new(
-        "codegen",
-        line,
-        col,
-        "unsupported_type",
-        format!("generics are not supported yet ({}): the llvm codegen layer is not implemented", what),
-        "use --backend rust for generic programs for now",
-    ))
-}
-
 /// One specialization of a generic function (the concrete Function is taken out when the plan is assembled).
 struct FnSpec {
     name: String,

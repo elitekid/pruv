@@ -1,0 +1,19 @@
+// G3 A4 ABI 10/10: equality in `requires` compares only the ACTIVE payload. None == None and Err(c) == Err(c)
+// hold whatever the inactive payload words contain; Some(true) != Some(false); Ok(x) != Err(c).
+fn same<T>(a: T, b: T) -> T
+  requires a == b
+{
+  return a;
+}
+
+fn same_opt(a: Option<bool>, b: Option<bool>) -> Option<bool>
+  requires a == b
+{
+  return same::<Option<bool>>(a, b);
+}
+
+fn same_res(a: Result<bool>, b: Result<bool>) -> Result<bool>
+  requires a == b
+{
+  return same::<Result<bool>>(a, b);
+}

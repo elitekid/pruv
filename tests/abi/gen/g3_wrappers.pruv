@@ -1,0 +1,27 @@
+// G3 A4 ABI 7/10: concrete wrappers. The generic definitions (make, swap) have no ABI symbol and are not in
+// the bindings; only build / swap_ib are public, and Pair<i64, bool> / Pair<bool, i64> appear in the bindings
+// under their generated names (pruv_g3_t_4_Pair_2_i_b / pruv_g3_t_4_Pair_2_b_i).
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn make<A, B>(a: A, b: B) -> Pair<A, B>
+{
+  return Pair::<A, B> { first: a, second: b };
+}
+
+fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>
+{
+  return make::<B, A>(p.second, p.first);
+}
+
+fn build(a: i64, b: bool) -> Pair<i64, bool>
+{
+  return make::<i64, bool>(a, b);
+}
+
+fn swap_ib(p: Pair<i64, bool>) -> Pair<bool, i64>
+{
+  return swap::<i64, bool>(p);
+}
