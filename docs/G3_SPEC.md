@@ -1,6 +1,6 @@
 # G3: Generics — Type Parameters and Parametric Contracts
 
-Status: **Design proposal, 2026-11-12. Not implemented or execution-tested by this document.**
+Status: **Implemented (G3a A0–A5), 2026-11-12; Q (fuzzing/mutation/measurements/independent use) pending**
 
 This document defines the first release of G3, called **G3a**. Its implementation batches are A0–A5 and Q. All test counts below are acceptance requirements, not measured results.
 
@@ -603,7 +603,8 @@ Resource limits are fixed for G3a:
 
 - at most 4,096 distinct generic function specializations;
 - at most 4,096 distinct generic nominal type applications;
-- maximum instantiated type nesting depth of 128, counting the root as depth one.
+- maximum instantiated type nesting depth of 128, counting the root as depth one;
+- at most 65,536 type nodes in a single instantiated type.
 
 Exceeding a limit gives `codegen/specialization_limit`, identifying the triggering declaration or application. It must not produce a partial output artifact or an internal recursion error.
 
@@ -1114,3 +1115,13 @@ G3a establishes type application, parametric proof, and deterministic specializa
 That later work may widen the admissible type-argument universe or add capabilities. It must not silently reinterpret G3a’s copyable parameters.
 
 A6 narrow storage expansion remains independent: supporting `[i32]` does not by itself make i32 a scalar type, and neither `[u8]` nor `[i32]` should become `[T]` through an implicit storage-to-value conversion.
+
+## 10. Implementation notes
+
+Deviations decided during implementation (A0–A5):
+
+- Legacy `Option<i64>` / `Result<i64>` constants count as nesting depth 2.
+- The Rust AST carries `tparams`, `targs`, `inst` and `enum_ty` as real fields.
+- `is_value` checks each declaration's declared fields once, with type parameters left abstract (linear in the program size).
+- Unconstrained generic instances skip the well-formedness walk.
+- ABI (de)serialization propagates the active-payload condition and zeroes the inactive words of generic-type outputs.

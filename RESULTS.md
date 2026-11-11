@@ -934,3 +934,51 @@ Decisions:
 - No compiler change in this batch. p04 needs no compiler change (the faster form is a different algorithm a user can write). p08 would need a language-level "allocate without initialization" or a proof that the whole array is overwritten; the gain is ~0.035 ms per 10⁶ elements, so it is deferred to G8/G5 (owned containers). p03 would need a `while` → `for` rewrite in the Rust-source backend only; the LLVM backend (the long-term path) does not need it, so it is deferred.
 - Still open from the roadmap line: passing more proof facts (value ranges, non-overlap) to LLVM — not measured here because none of the three gaps came from missing facts.
 - Not measured: a quiet machine, x86-64/Linux/Windows, default mode (without `--trust-callers`).
+
+## 45. G3: generics (2026-11-12)
+
+G3a (spec `docs/G3_SPEC.md`): type parameters on `fn`/`struct`/`enum`, the `Element` bound, explicit type arguments, parametric proof once per generic definition, and per-instance specialization in both compilers (`pruvc/`, `pruvc-rs/`) and both backends (Rust source, LLVM). The Q batch (fuzzing, mutation, measurements, independent use) is not done yet.
+
+### Batches and commits
+
+| Batch | Content | Commits |
+|---|---|---|
+| A0 | foundation | b479150, 3841821 |
+| A1 | frontend | 3edefd3 (+ audit fixes fee5513, 7ad1f1b) |
+| A2 | proof | 1ba6e18 (+ e8e7816) |
+| A3 | specialization plan | bbe38f0 |
+| A4 | LLVM lowering, bindings and concrete ABI | db3610d (+ review fixes 78037c2) |
+| A5 | tests | bc89341 |
+
+### Results
+
+- **run_all:** 1192/1192 on both compilers and both backends (row compare).
+- **m3_all:** 12/12 stages.
+- **diff_parse:** parse/check identical (≈8,800 inputs).
+- **diff_trace:** identical on all inputs plus the 24 G3 proofs (also with `--infer`).
+- **diff_rust and diff_llvm:** identical (11,797 cases).
+- **G3 rejection files:** 64 (33 frontend + 29 proof-level + 2 specialization limits).
+- **Positive and runtime:** 24 positive proof programs, 24 runtime programs, 22 examples (`examples/g3_*.pruv`).
+- **Inference:** 8 G3 inference cases (41/41 in the inference suite).
+- **Type API:** 31→32 cases. **Specialization plan:** 12 cases.
+- **`check_g3_abi`:** 90/90 host-execution cases (45 per compiler).
+- **Windows:** fixtures prepared; execution is done by the `windows-abi` workflow (not run here).
+
+### Audits
+
+- **A1:** 3 required fixed; the confirmation audit found 2 new (recursion, and an exponential `is_value`), both fixed.
+- **A2:** no correctness defect; an exponential well-formedness walk was fixed (16-deep `Dup<T>`: 1.86 s → 0.06 s).
+- **A3:** no required items.
+- **A4:** 2 ABI defects, a Windows fixture gap and a quadratic word count were fixed.
+
+### CI incidents (fixed)
+
+- `run_all_rows.txt` was not refreshed.
+- The `g3_proof` group needed the `.venv` Python.
+- `diff_trace` now tolerates solver wall-clock timeouts on busy runners (a timeout on one side is not a compiler difference).
+
+### Remaining
+
+- The Q batch: fuzzing, mutation, measurements, independent use.
+- Advisory items: boundary tests at 4096 / 65536, and repeated encoding in specialization.
+- SPEC.md §6c (user rules) and the `docs/G3_SPEC.md` implementation notes were written with this section.

@@ -184,6 +184,51 @@ return a parameter with `copy`). Refinements: `[u8 | L..=U; <=N]` with `0 <= L <
 `--trust-callers`. Raw `[i64]`/`[u8]`/`[bool]` entries do not check for a negative length or a null pointer (the caller's
 duty); raw `str` entries do.
 
+## 6c. Generics (G3)
+Full contract: `docs/G3_SPEC.md`. Examples: `examples/g3_*.pruv`.
+```
+struct Pair<A, B> { first: A, second: B }
+enum Choice<A, B> { Left(value: A), Right(value: B) }
+
+fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>
+  ensures result.first == p.second
+{ return Pair::<B, A> { first: p.second, second: p.first }; }
+
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[0]
+{ return a[0]; }
+
+let q: Pair<bool, i64> = swap::<i64, bool>(p);
+let c: Choice<bool, i64> = Choice::<bool, i64>::Left(true);
+let o: Option<bool> = Some::<bool>(true);   // also None::<bool>, Ok::<bool>(x), Err::<bool>(code)
+```
+- **Type parameters** go on `fn`, `struct` and `enum`: `fn f<T, U: Element>(...)`. The only bound is `Element`; it is
+  required wherever `[T]` is written. `Element` means `i64` or `bool`.
+- **Type arguments** may be `i64`, `bool`, `Option<V>`, `Result<V>`, and structs/enums of values (also generic
+  applications such as `Pair<i64, bool>`). Not allowed: arrays, `str`, `()`, `u8`. A `T: Element` argument must be `i64` or `bool`.
+- **Explicit type arguments** are written at every generic call and constructor: `f::<T>(x)`, `Pair::<A, B> { .. }`,
+  `Choice::<A, B>::Left(x)`, `Some::<T>(x)`, `None::<T>`, `Ok::<T>(x)`, `Err::<T>(code)`. There is no inference of
+  type arguments. Unqualified `Some`, `None`, `Ok`, `Err` keep their old meaning (`Option<i64>`, `Result<i64>`).
+- **On an abstract `T` you can** copy it, pass it, store it (locals, fields, payloads, `[T]` elements) and compare it
+  with `==`/`!=` **in contracts only**. You cannot do arithmetic, ordering, run-time equality, field access, `match` or `print`
+  on a `T`. (`match` on an `Option<T>` or `Choice<A, B>` is fine; the payload variable is a `T`.)
+- `Result<T>` keeps an `i64` error code: `Err::<T>(code)`.
+- **Contracts** may use abstract equality, guarded payload access (`is_some(o) ==> result == some_val(o)`) and
+  `count` over abstract equality. `sum`/`max`/`min` need an `i64` body.
+- **No recursion**, direct or mutual, in generic code (a generic function's call graph is acyclic).
+- **Proof:** a generic definition is proved once, for an abstract `T`. A counterexample prints abstract values as `opaque#N`.
+- **Code generation** specializes per concrete instance (`first::<i64>`, `first::<bool>` are separate functions).
+  Generic functions are **not exported** (no `--rust-bindings` entry, no raw ABI symbol): expose instances through
+  non-generic wrappers (`fn head_int(a: [i64]) -> i64 { return first::<i64>(a); }`, `examples/g3_wrapper_instances.pruv`).
+- **Specialization limits:** at most 4096 function instances, 4096 type applications, type nesting depth 128 and 65536
+  type nodes; beyond that `codegen/specialization_limit` (no partial output).
+- **New error codes:** `generic_syntax` (malformed `<..>`/`::<..>`), `type_parameter` (unknown, duplicate or misused
+  parameter), `type_arity` (wrong number of type arguments), `type_argument` (inadmissible type argument),
+  `generic_operation` (operation not allowed on an abstract `T`), `generic_bound` (`[T]` without `T: Element`, or a
+  non-`Element` argument for an `Element` parameter), `generic_main` (`main` may not be generic), and
+  `specialization_limit` (above).
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.
@@ -275,6 +320,9 @@ Do not read an annotation as a run-time guarantee of local variables or results 
 ## 8. Errors
 Compiler prints JSON lines: `{"stage": "parse|type|effect|verify|rustc", "line": n, "col": n,
 "code": "...", "message": "...", "fix": "...", "counterexample": {...}}`. Exit code 1 on any error.
+
+G3 added the error codes `generic_syntax`, `type_parameter`, `type_arity`, `type_argument`, `generic_operation`,
+`generic_bound`, `generic_main` and `specialization_limit` (section 6c).
 
 `verify_unknown` is not a counterexample: the solver gave up on that one obligation (the message usually ends in
 `(timeout)`). Each attempt gets 8 seconds of wall time (a second attempt with aggregate lemmas when aggregates are
