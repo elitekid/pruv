@@ -9,6 +9,7 @@
 //! 않으므로 의미가 같다. 반례(`cex`)는 `st.env` 를 읽는다.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::time::Instant;
 
 use pruv_core::ast::{self as ast, Expr, Stmt};
 use pruv_core::diagnostic::PruvError;
@@ -42,6 +43,104 @@ pub struct QueryConfig {
 impl Default for QueryConfig {
     fn default() -> Self {
         QueryConfig { phase: "verification".to_string(), round: None, timeout_ms: TIMEOUT_MS, rlimit: None, seed: None }
+    }
+}
+
+/// STAGE1 B2: 추론이 루프에 더하는 후보 한 개 = (후보 ID, 식, 문자열). verify.py `extra` 의 항목.
+pub type ExtraInv = (String, Expr, String);
+/// STAGE1 B2: 루프 번호 → 그 루프의 후보들(정렬 순서). 비어 있으면 기존 경로.
+pub type Extra = HashMap<usize, std::rc::Rc<Vec<ExtraInv>>>;
+
+/// verify.py `BudgetExhausted` / `InferenceTimeout`. Python 은 예외로 `prove` 깊은 곳에서 빠져나오지만 Rust 의
+/// `prove` 는 값을 돌려주지 않으므로 `Probe.abort` 에 표시하고, 이후 의무는 질의·기록 없이 지나가며 `exec_block` 이 멈춘다.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ProbeAbort {
+    Budget,
+    Timeout,
+}
+
+/// verify.py `Probe`: 한 함수의 탐색 상태(모든 회차가 공유).
+pub struct Probe {
+    pub max_queries: usize,
+    pub deadline: Instant,
+    /// 지금까지 한 시도 수(예산 계수기)
+    pub queries: usize,
+    /// 이번 회차에 실패한 후보 {ID: (의무 code, 시도 상태)}
+    pub failed: HashMap<String, (String, String)>,
+    pub abort: Option<ProbeAbort>,
+}
+
+impl Probe {
+    pub fn new(max_queries: usize, deadline: Instant) -> Probe {
+        Probe { max_queries, deadline, queries: 0, failed: HashMap::new(), abort: None }
+    }
+    pub fn begin_round(&mut self) {
+        self.failed.clear();
+    }
+    /// verify.py `Probe.tick`: 시도 전에 예산 → 벽시계 → 계수. 넘으면 abort 를 세우고 false.
+    pub fn tick(&mut self) -> bool {
+        if self.queries >= self.max_queries {
+            self.abort = Some(ProbeAbort::Budget);
+            return false;
+        }
+        if Instant::now() > self.deadline {
+            self.abort = Some(ProbeAbort::Timeout);
+            return false;
+        }
+        self.queries += 1;
+        true
+    }
+}
+
+/// verify.py `walk_loops`: (While, 그것이 든 블록, 블록 안 인덱스), 선위 순서(문장 순서, While 은 본문보다 먼저,
+/// If then → els, Match 팔 순서). 루프 번호 = 이 열에서의 자리.
+pub fn walk_loops(stmts: &[Stmt]) -> Vec<(&ast::While, &[Stmt], usize)> {
+    fn go<'s>(stmts: &'s [Stmt], out: &mut Vec<(&'s ast::While, &'s [Stmt], usize)>) {
+        for (i, st) in stmts.iter().enumerate() {
+            match st {
+                Stmt::While(w) => {
+                    out.push((w, stmts, i));
+                    go(&w.body, out);
+                }
+                Stmt::If(x) => {
+                    go(&x.then, out);
+                    go(&x.els, out);
+                }
+                Stmt::Match(m) => {
+                    for a in &m.arms {
+                        go(&a.body, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    go(stmts, &mut out);
+    out
+}
+
+/// `loop_` 의 불변식 한 항: (후보 ID 또는 None, 식, 후보 문자열 또는 None).
+type InvRef<'x> = (Option<&'x str>, &'x Expr, Option<&'x str>);
+
+/// verify.py `loop` 안의 문구: (정의역 what, 의무 what).
+fn inv_what(cid: Option<&str>, text: Option<&str>, phase: &str) -> (String, String) {
+    match cid {
+        None => (
+            format!("variant_field lookups in loop invariant ({}) are defined", phase),
+            if phase == "entry" { "loop invariant on entry".to_string() } else { "loop invariant preserved".to_string() },
+        ),
+        Some(_) => {
+            let t = text.unwrap_or("");
+            (
+                format!("partial operations in inferred loop invariant `{}` ({}) are defined", t, phase),
+                if phase == "entry" {
+                    format!("inferred loop invariant `{}` on entry", t)
+                } else {
+                    format!("inferred loop invariant `{}` preserved", t)
+                },
+            )
+        }
     }
 }
 
@@ -328,6 +427,12 @@ pub struct FnVerifier<'a> {
     pub(crate) f: Option<&'a ast::Function>,
     /// solver 질의 설정(기본: verification, TIMEOUT_MS, rlimit/seed 없음).
     pub qcfg: QueryConfig,
+    /// STAGE1 B2 `extra`: 루프 번호 → 후보들. 비면 기존 경로(fresh 번호·SMT·오류 불변).
+    pub extra: Extra,
+    /// 루프(While 노드 주소) → 루프 번호. `extra` 가 비어 있지 않을 때만 채운다(`set_extra`).
+    pub(crate) loop_no: HashMap<usize, usize>,
+    /// STAGE1 B2 탐색 상태. Some 이면 후보 의무만 질의하고 오류는 만들지 않는다.
+    pub probe: Option<&'a mut Probe>,
 }
 
 impl<'a> FnVerifier<'a> {
@@ -351,7 +456,27 @@ impl<'a> FnVerifier<'a> {
             funcs: HashMap::new(),
             f: None,
             qcfg: QueryConfig::default(),
+            extra: HashMap::new(),
+            loop_no: HashMap::new(),
+            probe: None,
         }
+    }
+
+    /// verify.py `FnVerifier(.., extra=..)`: 후보를 정하고, 비어 있지 않으면 루프 번호표를 만든다.
+    pub fn set_extra(&mut self, extra: Extra) {
+        self.loop_no.clear();
+        if !extra.is_empty() {
+            if let Some(f) = self.f {
+                for (n, (w, _, _)) in walk_loops(&f.body).into_iter().enumerate() {
+                    self.loop_no.insert(w as *const ast::While as usize, n);
+                }
+            }
+        }
+        self.extra = extra;
+    }
+
+    pub(crate) fn probe_aborted(&self) -> bool {
+        matches!(&self.probe, Some(p) if p.abort.is_some())
     }
 
     /// `FnVerifier(prog, f, errors, model)`.
@@ -1187,6 +1312,21 @@ impl<'a> FnVerifier<'a> {
         what: &str,
         env: Option<&Env>,
     ) -> R<Vec<Ast>> {
+        self.check_dom_cand(st, g, e, node, what, env, None)
+    }
+
+    /// `check_dom_e` + STAGE1 B2 후보 ID(`cand`: 중복 억제 키이자 기록 꼬리표).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn check_dom_cand(
+        &mut self,
+        st: &mut State,
+        g: &[Ast],
+        e: &Expr,
+        node: Pos,
+        what: &str,
+        env: Option<&Env>,
+        cand: Option<&str>,
+    ) -> R<Vec<Ast>> {
         let envc: Env = match env {
             Some(x) => x.clone(),
             None => st.env.clone(),
@@ -1201,7 +1341,7 @@ impl<'a> FnVerifier<'a> {
                     "partial operations (index, /, %, some_val/ok_val/err_val, max/min)",
                 )
             };
-            self.prove_core(&st.env, &st.pc, g, d, node, code, &w, None);
+            self.prove_core_cand(&st.env, &st.pc, g, d, node, code, &w, cand, cand);
         }
         Ok(obs.into_iter().map(|(d, _)| d).collect())
     }
@@ -1239,6 +1379,10 @@ impl<'a> FnVerifier<'a> {
     pub(crate) fn exec_block(&mut self, stmts: &[Stmt], st: State) -> R<Vec<State>> {
         let mut states = vec![st];
         for stmt in stmts {
+            // STAGE1 B2: 예산 소진·시간 초과가 나면 Python 은 예외로 여기서 빠져나간다.
+            if self.probe_aborted() {
+                return Ok(Vec::new());
+            }
             let mut nxt: Vec<State> = Vec::new();
             for cur in states {
                 nxt.extend(self.exec(stmt, cur)?);
@@ -1265,6 +1409,9 @@ impl<'a> FnVerifier<'a> {
 
     /// verify.py `exec` (710행).
     fn exec(&mut self, stmt: &Stmt, st: State) -> R<Vec<State>> {
+        if self.probe_aborted() {
+            return Ok(Vec::new());
+        }
         let model: &'a Model = self.model;
         let spos = stmt_pos(stmt);
         match stmt {
@@ -1398,8 +1545,8 @@ impl<'a> FnVerifier<'a> {
     }
 
     /// 루프 시작 상태: 대입되는 변수를 havoc 하고 각 불변식의 정의역(variant)과 값을 가정한다.
-    fn loop_assume_invariants(&mut self, w: &ast::While, h: &mut State) -> R<()> {
-        for inv in &w.invariants {
+    fn loop_assume_invariants(&mut self, invs: &[InvRef<'_>], h: &mut State) -> R<()> {
+        for &(_cid, inv, _text) in invs {
             let envh = h.env.clone();
             if let Some(d) = self.dom(inv, h, &[], &envh, PKind::Variant)? {
                 h.pc.push(d);
@@ -1412,27 +1559,41 @@ impl<'a> FnVerifier<'a> {
 
     /// verify.py `loop` (786행).
     fn loop_(&mut self, w: &ast::While, st: &mut State) -> R<Vec<State>> {
+        if self.probe_aborted() {
+            return Ok(Vec::new());
+        }
         let dpos = pos(&w.decreases);
+        // STAGE1 B2: 쓴 불변식(정제 필수 → 사용자) 뒤에 이 루프의 후보(정렬 순서)를 잇는다.
+        let extra_here: std::rc::Rc<Vec<ExtraInv>> = if self.extra.is_empty() {
+            std::rc::Rc::new(Vec::new())
+        } else {
+            let n = *self
+                .loop_no
+                .get(&(w as *const ast::While as usize))
+                .ok_or_else(|| "loop number not found".to_string())?;
+            match self.extra.get(&n) {
+                Some(v) => std::rc::Rc::clone(v),
+                None => std::rc::Rc::new(Vec::new()),
+            }
+        };
+        let mut invs: Vec<InvRef<'_>> = w.invariants.iter().map(|i| (None, i, None)).collect();
+        for (id, e, t) in extra_here.iter() {
+            invs.push((Some(id.as_str()), e, Some(t.as_str())));
+        }
         let mut prev: Vec<Ast> = Vec::new(); // 불변식은 차례로: 앞의 것(여기서 증명됨)이 뒤의 조회를 정당화할 수 있다
-        for inv in &w.invariants {
-            let ds = self.check_dom_e(
-                st,
-                &prev,
-                inv,
-                pos(inv),
-                "variant_field lookups in loop invariant (entry) are defined",
-                None,
-            )?;
+        for &(cid, inv, text) in &invs {
+            let (w_dom, w_ob) = inv_what(cid, text, "entry");
+            let ds = self.check_dom_cand(st, &prev, inv, pos(inv), &w_dom, None, cid)?;
             prev.extend(ds);
             let ob = self.ev0_ast(inv, st, &[], false)?;
-            self.prove_core(&st.env, &st.pc, &[], &ob, pos(inv), "invariant_entry", "loop invariant on entry", None);
+            self.prove_core_cand(&st.env, &st.pc, &[], &ob, pos(inv), "invariant_entry", &w_ob, cid, cid);
             prev.push(ob);
         }
         let mut names: BTreeSet<String> = BTreeSet::new();
         assigned(&w.body, &mut names);
         // 임의의 한 번의 반복: 시작에서 불변식이 성립했고(정의되었고)
         let mut b = self.havoc_set(st, &names)?;
-        self.loop_assume_invariants(w, &mut b)?;
+        self.loop_assume_invariants(&invs, &mut b)?;
         let c = self.ev0_ast(&w.cond, &mut b, &[], true)?;
         b.pc.push(c);
         self.check_dom_e(&mut b, &[], &w.decreases, dpos, "variant_field lookups in decreases are defined", None)?;
@@ -1441,24 +1602,18 @@ impl<'a> FnVerifier<'a> {
         self.prove_core(&b.env, &b.pc, &[], &ob, dpos, "decreases_nonneg", "decreases >= 0", None);
         for mut end in self.exec_block(&w.body, b)? {
             let mut prev: Vec<Ast> = Vec::new();
-            for inv in &w.invariants {
-                let ds = self.check_dom_e(
-                    &mut end,
-                    &prev,
-                    inv,
-                    pos(inv),
-                    "variant_field lookups in loop invariant (preserved) are defined",
-                    None,
-                )?;
+            for &(cid, inv, text) in &invs {
+                let (w_dom, w_ob) = inv_what(cid, text, "preserved");
+                let ds = self.check_dom_cand(&mut end, &prev, inv, pos(inv), &w_dom, None, cid)?;
                 prev.extend(ds);
                 let ob = self.ev0_ast(inv, &mut end, &[], false)?;
-                self.prove_core(&end.env, &end.pc, &[], &ob, pos(inv), "invariant_preserved", "loop invariant preserved", None);
+                self.prove_core_cand(&end.env, &end.pc, &[], &ob, pos(inv), "invariant_preserved", &w_ob, cid, cid);
                 prev.push(ob);
             }
             if has_vf(&w.decreases, PKind::All) {
                 // decreases 는 본문 끝에서 읽힌다: 방금 증명한 불변식이 그 조회를 정당화할 수 있다
                 let mut extra: Vec<Ast> = Vec::new();
-                for inv in &w.invariants {
+                for &(_cid, inv, _text) in &invs {
                     let envp = end.env.clone();
                     if let Some(d) = self.dom(inv, &mut end, &[], &envp, PKind::All)? {
                         extra.push(d);
@@ -1481,7 +1636,7 @@ impl<'a> FnVerifier<'a> {
         }
         // 루프 뒤
         let mut a = self.havoc_set(st, &names)?;
-        self.loop_assume_invariants(w, &mut a)?;
+        self.loop_assume_invariants(&invs, &mut a)?;
         let c = self.ev0_ast(&w.cond, &mut a, &[], true)?;
         a.pc.push(c.not());
         Ok(vec![a])

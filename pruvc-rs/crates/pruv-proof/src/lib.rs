@@ -18,6 +18,7 @@
 #[allow(unsafe_code)]
 pub mod sys;
 
+pub mod infer;
 pub mod model;
 pub mod obligation;
 pub mod samples;
@@ -44,7 +45,28 @@ pub fn z3_full_version() -> String {
 /// - `tt` 는 쓰지 않는다: Python 도 `Model(prog)` 안에서 `TypeTable(prog)` 를 새로 만든다(검사기가 만든 것과 같은 표).
 /// - `rec`: 어댑터 trace 기록(`Trace::adapter()`). None 이면 기록하지 않는다.
 /// - Python 의 예외(내부 실패)는 `Err(메시지)` — 그때까지 모은 오류는 버려진다(Python 도 예외로 반환값이 없다).
-pub fn verify_program(prog: &Program, _tt: &TypeTable, rec: Option<&mut Trace>) -> Result<Vec<PruvError>, String> {
+pub fn verify_program(prog: &Program, tt: &TypeTable, rec: Option<&mut Trace>) -> Result<Vec<PruvError>, String> {
+    verify_program_opts(prog, tt, rec, &VerifyOptions { infer: false }, None)
+}
+
+/// STAGE1 B2 옵션.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VerifyOptions {
+    /// `--infer`: 함수마다 템플릿 Houdini 불변식 추론(infer.rs) 뒤 살아남은 후보와 함께 검증한다.
+    pub infer: bool,
+}
+
+/// verify.py `verify_program(prog, rec, infer, report)`. `infer=false` 는 기존 경로 그대로.
+/// `report` 가 Some 이면 루프별 보고 레코드(docs/STAGE1_B_INFER.md 5절)를 함수 순서·루프 번호 순으로 push 한다
+/// (함수 하나를 끝낼 때마다: 뒤 함수에서 내부 실패가 나도 앞 함수의 레코드는 남는다).
+/// 추론 모드에서는 함수마다 탐색 회차마다·최종 검증마다 새 z3 컨텍스트(+Prelude, 같은 seq 의 Model)를 만든다.
+pub fn verify_program_opts(
+    prog: &Program,
+    _tt: &TypeTable,
+    rec: Option<&mut Trace>,
+    opts: &VerifyOptions,
+    mut report: Option<&mut Vec<pruv_core::pyjson::Json>>,
+) -> Result<Vec<PruvError>, String> {
     let mut local = Trace::off();
     let trace: &mut Trace = match rec {
         Some(t) => t,
@@ -59,6 +81,38 @@ pub fn verify_program(prog: &Program, _tt: &TypeTable, rec: Option<&mut Trace>) 
         Model::with_seq(&z, &pre, &decls, seq)?;
     }
     let mut errors: Vec<PruvError> = Vec::new();
+    if opts.infer {
+        for f in &prog.functions {
+            let res = infer::infer_function(prog, f, &decls, seq, &mut *trace)?;
+            let before = errors.len();
+            if res.status == infer::InferStatus::Timeout {
+                errors.push(PruvError {
+                    stage: "verify".to_string(),
+                    line: f.line,
+                    col: f.col,
+                    code: "inference_timeout".to_string(),
+                    message: format!(
+                        "invariant inference for {} hit the time safety limit (5 s per function, 500 ms per query)",
+                        f.name
+                    ),
+                    fix: "write the loop invariants explicitly, or compile without --infer".to_string(),
+                    counterexample: None,
+                });
+            } else {
+                let z = Z3::new();
+                let pre = Prelude::new(&z);
+                let model = Model::with_seq(&z, &pre, &decls, seq)?;
+                let mut fv = FnVerifier::for_function(&z, &pre, &model, &mut *trace, prog, f);
+                fv.set_extra(res.extra());
+                fv.run()?;
+                errors.append(&mut fv.errors);
+            }
+            if let Some(rep) = report.as_mut() {
+                rep.extend(res.records(errors.len() - before));
+            }
+        }
+        return Ok(errors);
+    }
     for f in &prog.functions {
         // 함수마다 새 컨텍스트(논-rc 컨텍스트는 AST 를 지우지 않으므로 함수가 끝나면 통째로 버린다).
         // 반례 모델 값은 Python 과 다를 수 있다(SMT 텍스트·판정은 같음). 원인 추정: z3py 는 rc 컨텍스트라 AST 번호가 재사용돼

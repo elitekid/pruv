@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "note": "감사 재현 2: max 틀의 항에 든 호출(callee requires 위반 가능)이 후보로 가정되면 거짓 ensures 가 통과하던 구멍"}

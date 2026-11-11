@@ -1,0 +1,15 @@
+fn sum_array(a: [i64]) -> i64
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): a[k] >= -1_000_000_000 && a[k] <= 1_000_000_000
+  ensures result == sum(k in 0..len(a): a[k])
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    s = s + a[i];
+    i = i + 1;
+  }
+  return s;
+}

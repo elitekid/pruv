@@ -185,10 +185,30 @@ fn compile(a: &Args) -> Result<(), Fail> {
     let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
     let tt = pruv_core::check::check(&mut prog).map_err(|e| Fail::Lang(vec![e]))?;
     if a.verify {
-        let errs = pruv_proof::verify_program(&prog, &tt, None).map_err(Fail::Internal)?;
+        let errs = if a.infer {
+            let opts = pruv_proof::VerifyOptions { infer: true };
+            let mut report: Vec<pruv_core::pyjson::Json> = Vec::new();
+            let r = pruv_proof::verify_program_opts(
+                &prog,
+                &tt,
+                None,
+                &opts,
+                if a.show_inferred { Some(&mut report) } else { None },
+            );
+            // 내부 오류(Err)면 Python 은 예외로 아무것도 찍지 않는다. Ok 일 때만(검증 오류가 있어도) 기록을 남긴다.
+            let errs = r.map_err(Fail::Internal)?;
+            for rec in &report {
+                eprintln!("{}", pruv_core::pyjson::dumps_sorted(rec));
+            }
+            errs
+        } else {
+            pruv_proof::verify_program(&prog, &tt, None).map_err(Fail::Internal)?
+        };
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
+    } else if a.infer && a.show_inferred {
+        eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
     match a.kind {
         // 7단계: Rust 소스 뒷단. Python compile_file 처럼 모든 텍스트(rs, 그리고 --also-llvm 이면 ll·바인딩)를

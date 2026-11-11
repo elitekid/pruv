@@ -59,6 +59,8 @@
 
 식 꼴 규칙: c0=0이면 `c0 +`를 뺀다. 계수 L=0이면 `L * N` 대신 `0`, L=1이면 `N`. 항은 위 표의 모양 그대로(왼쪽에 누적 변수).
 
+**호출 금지(건전성):** 완성된 후보 식 안에 `len` 말고 `Call` 노드(사용자 함수·`alloc`·`copy`·`print`·`is_some`·`some_val` 등)가 하나라도 있으면 그 후보는 만들지 않는다(정렬·중복 제거·64 자르기 **전에** 거르므로 `generated`와 ID가 두 판에서 같다). 까닭: 계약 문맥(`code=False`)의 호출은 callee의 `requires`를 검사하지 않고 `ensures`를 가정하므로, 후보에 호출이 들어가면 경로 조건이 오염되어 거짓 `ensures`가 통과할 수 있다.
+
 ### 3.4 정렬·번호·위치
 
 루프마다 후보를 (종류 번호, 출력 문자열) 순으로 정렬하고 같은 문자열은 첫 것만 남긴 뒤 64개로 자른다. 후보 ID는 `L<루프번호>#<순위>`(순위 0부터). 후보 식의 모든 노드 위치는 `w`의 위치(`w.line, w.col`)다.
@@ -96,6 +98,7 @@
 - 회차 끝에 실패 후보를 한꺼번에 뺀다. 빠진 것이 없으면 끝. 후보가 하나도 없으면 회차를 돌지 않는다.
 - **예산 소진**: 그 함수의 자동 후보를 모두 버리고(상태 `budget_exhausted`) 최종 검증으로 간다.
 - **시간 초과**: 그 함수는 최종 검증 없이 오류 `verify/inference_timeout` 하나(위치 함수, 메시지 `invariant inference for <fn> hit the time safety limit (5 s per function, 500 ms per query)`, 안내 `write the loop invariants explicitly, or compile without --infer`). 다른 함수는 계속.
+- 후보 질의 하나가 500ms timeout 이면 함수 전체가 `inference_timeout`(측정 대상, 첫 판은 명세대로).
 
 ### 4.2 최종 검증
 

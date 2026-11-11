@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "note": "감사 재현 1: 누적 항의 사용자 함수 호출(requires false ensures false)이 후보에 들어가면 거짓 ensures 가 통과하던 구멍; 호출이 든 후보는 만들지 않음"}

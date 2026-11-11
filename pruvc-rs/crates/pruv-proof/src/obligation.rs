@@ -207,21 +207,6 @@ impl<'a> FnVerifier<'a> {
         self.prove_core(&st.env, &st.pc, g, ob, node, code, "", key_extra);
     }
 
-    /// 후보 식별자(`cand`)를 기록에 남기는 `prove`(추론 질의용).
-    #[allow(clippy::too_many_arguments)]
-    pub fn prove_cand(
-        &mut self,
-        st: &State,
-        g: &[Ast],
-        ob: &Ast,
-        node: Pos,
-        code: &str,
-        key_extra: Option<&str>,
-        cand: Option<&str>,
-    ) {
-        self.prove_core_cand(&st.env, &st.pc, g, ob, node, code, "", key_extra, cand);
-    }
-
     /// verify.py `prove(st, g, ob, node, code, what, key_extra)` (254행). 상태는 (env, pc) 로 받는다.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prove_core(
@@ -252,8 +237,15 @@ impl<'a> FnVerifier<'a> {
         key_extra: Option<&str>,
         cand: Option<&str>,
     ) {
+        // STAGE1 B2: 탐색 중에는 아직 실패하지 않은 후보의 의무만 본다(중단 표시가 선 뒤에는 아무것도 보지 않는다).
+        let probing = self.probe.is_some();
+        if let Some(p) = &self.probe {
+            if p.abort.is_some() || cand.is_none() || cand.map_or(false, |c| p.failed.contains_key(c)) {
+                return;
+            }
+        }
         let key = (node.0, node.1, code.to_string(), key_extra.map(|s| s.to_string()));
-        let skipped = self.seen.contains(&key);
+        let skipped = if probing { false } else { self.seen.contains(&key) };
         let idx = self.trace.begin(
             &self.fname,
             node,
@@ -264,6 +256,10 @@ impl<'a> FnVerifier<'a> {
             cand.map(|s| s.to_string()),
         );
         if skipped {
+            return;
+        }
+        if probing {
+            self.probe_attempts(pc, g, ob, code, cand.unwrap_or(""), idx);
             return;
         }
         // 먼저 집계 보조정리 없이: 가정이 적으므로 여기서 unsat 이면 건전한 증명이고,
@@ -315,6 +311,41 @@ impl<'a> FnVerifier<'a> {
             fix,
             counterexample: cex,
         });
+    }
+
+    /// verify.py `_probe_attempts`: 후보 의무 하나의 탐색. `prove` 와 같은 두 단계(보조정리 없이 → 첫 시도가 unsat 이
+    /// 아니고 보조정리가 있으면 함께). 시도마다 먼저 예산·벽시계를 본다(`Probe::tick`; 넘으면 abort 표시 후 끝).
+    /// 마지막 시도가 proved 가 아니면 이번 회차 실패로 남긴다. 시도 상태가 timeout 이면 시간 초과.
+    /// Python 의 z3.Z3Exception → 상태 "error" 분기는 옮기지 않았다: Rust 의 `Solver::check` 는 예외를 던지지 않는다.
+    fn probe_attempts(&mut self, pc: &[Ast], g: &[Ast], ob: &Ast, code: &str, cand: &str, idx: Option<usize>) {
+        let mut status = String::new();
+        for with_lemmas in [false, true] {
+            if with_lemmas && self.lemmas.is_empty() {
+                break;
+            }
+            let ok = match self.probe.as_mut() {
+                Some(p) => p.tick(),
+                None => return,
+            };
+            if !ok {
+                return;
+            }
+            let (sol, r) = self.run_attempt(pc, g, ob, with_lemmas, idx);
+            let reason = if r == Sat::Unknown { Some(sol.reason_unknown()) } else { None };
+            status = query_status(r, reason.as_deref()).to_string();
+            if status == "timeout" {
+                if let Some(p) = self.probe.as_mut() {
+                    p.abort = Some(crate::symbolic::ProbeAbort::Timeout);
+                }
+                return;
+            }
+            if r == Sat::Unsat {
+                return;
+            }
+        }
+        if let Some(p) = self.probe.as_mut() {
+            p.failed.insert(cand.to_string(), (code.to_string(), status));
+        }
     }
 
     /// verify.py 내부 `run(with_lemmas)` (258~269행): (solver, 판정).

@@ -1,0 +1,24 @@
+// audit repro 1: a call in the accumulated term. If `s == sum(k in 0..i: never(k))` were a candidate, evaluating it
+// in contract mode would assume never's `ensures false` without checking its `requires false` and make every later
+// obligation vacuous. Candidates whose expression contains a call other than len are not generated.
+fn never(x: i64) -> i64
+  requires false
+  ensures false
+{
+  return 0;
+}
+
+fn boom(n: i64) -> i64
+  requires 0 <= n && n <= 10
+  ensures result == 12345
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    s = s + never(i);
+    i = i + 1;
+  }
+  return 7;
+}

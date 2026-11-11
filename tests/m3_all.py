@@ -5,10 +5,11 @@
     python tests/m3_all.py [--only NAME[,NAME]] [--skip NAME[,NAME]] [--quick]
                            [--rs-dir DIR] [--log-dir DIR] [--timeout SEC]
 
-단계(순서대로): parse, check, trace, llvm, rust, compilers, standalone, abi
+단계(순서대로): parse, check, trace, trace_infer, llvm, rust, compilers, standalone, abi
   parse      tests/diff_parse.py --mode parse   (pruv-parse-dump)
   check      tests/diff_parse.py --mode check   (pruv-check-dump)
   trace      tests/diff_trace.py                (pruv-trace-dump)
+  trace_infer tests/diff_trace.py --flags=--infer (불변식 추론 탐색·최종 질의까지)
   llvm       tests/diff_llvm.py                 (pruv-llvm-dump)
   rust       tests/diff_rust.py                 (pruv-rust-dump)
   compilers  tests/diff_compilers.py --b rs --backend both (pruvc)
@@ -17,7 +18,7 @@
 
 옵션:
   --only/--skip  단계 이름 쉼표 목록(둘 다 주면 only 에서 skip 을 뺌)
-  --quick        작은 입력: parse/check/llvm/rust 는 --fuzz-count 20, trace 는 --fuzz-count 5
+  --quick        작은 입력: parse/check/llvm/rust 는 --fuzz-count 20, trace·trace_infer 는 --fuzz-count 5
                  (diff_compilers·standalone·abi 는 해당 옵션이 없어 그대로)
   --rs-dir       Rust 바이너리 폴더(기본 pruvc-rs/target/release, 상대 경로는 저장소 루트 기준)
   --log-dir      단계별 NAME.log(stdout+stderr, 실행 중 바로 기록) 저장 폴더
@@ -45,6 +46,7 @@ STAGES = [
     ("parse", "tests/diff_parse.py", "pruv-parse-dump", "--rs-path", ["--mode", "parse"], ["--fuzz-count", "20"]),
     ("check", "tests/diff_parse.py", "pruv-check-dump", "--rs-path", ["--mode", "check"], ["--fuzz-count", "20"]),
     ("trace", "tests/diff_trace.py", "pruv-trace-dump", "--rs-path", [], ["--fuzz-count", "5"]),
+    ("trace_infer", "tests/diff_trace.py", "pruv-trace-dump", "--rs-path", ["--flags=--infer"], ["--fuzz-count", "5"]),
     ("llvm", "tests/diff_llvm.py", "pruv-llvm-dump", "--rs-path", [], ["--fuzz-count", "20"]),
     ("rust", "tests/diff_rust.py", "pruv-rust-dump", "--rs-path", [], ["--fuzz-count", "20"]),
     ("compilers", "tests/diff_compilers.py", "pruvc", "--b-path", ["--b", "rs", "--backend", "both"], []),

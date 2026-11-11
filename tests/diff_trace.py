@@ -12,13 +12,16 @@
 새 프로세스로 돌린다(셸 없음, timeout 300). 한 입력의 두 실행은 같은 작업자에서 차례로 한다.
 
 분류 (입력 하나당 하나):
-  option_mismatch 두 출력의 "options" 가 기대값(expected = {"infer": "--infer" in --flags})과 다름(실패).
+  option_mismatch 두 출력의 "options" 가 기대값(expected = {"infer": "--infer" in --flags,
+                  "no_verify": "--no-verify" in --flags})과 다름(실패).
                   다른 분류보다 먼저 검사한다.
   same          두 stdout 한 줄이 바이트 동일, 어느 attempt result 도 unknown/error 가 아니고 errors 에
                 verify_unknown·inference_timeout 이 없음
-  same_unknown  바이트 동일하나 위 unknown/error/verify_unknown/inference_timeout 이 있음. 성공으로 세지 않는다.
-                errors 에 inference_timeout 이 있으면 실패, 그 밖에는 실패로 치지 않되 따로 보고
-  cex_only      errors 의 counterexample 값만 다르고 나머지 동일(통과로 침, 수는 따로 보고)
+  same_unknown  바이트 동일(또는 counterexample 값만 다름)하나 위 unknown/error/verify_unknown/inference_timeout 이
+                있음. 성공으로 세지 않는다. py 또는 rs errors 에 inference_timeout 이 있으면 실패, 그 밖에는
+                실패로 치지 않되 따로 보고
+  cex_only      errors 의 counterexample 값만 다르고 나머지 동일, 단 어느 쪽에도 unknown/error/verify_unknown/
+                inference_timeout 이 없을 때(통과로 침, 수는 따로 보고). 있으면 same_unknown 으로 분류
   flaky_unknown 어느 쪽 attempt result 가 "unknown" 이고 그 차이 때문에 다름 -> 그 입력만 직렬(--jobs 1)로
                 한 번 다시 돌려 재판정. same/cex_only 로 풀리면 이 칸에 센다(성공 칸 same 에는 더하지 않음;
                 첫 실행의 차이 요약은 보존해 "재시도로 풀린 차이(첫 결과)" 로 보고). 그래도 다르면 diff.
@@ -57,6 +60,8 @@ GROUP_DIRS = [
     ("bench", "bench/solutions/pruv_agg", "*.pruv"),
     ("bench_refine", "bench/solutions/pruv_refine", "*.pruv"),
     ("check_edge", "tests/check_edge", "ok_*.pruv"),
+    ("inference", "tests/inference", "inf_*.pruv"),
+    ("bench_noinv", "bench/inference/agg_noinv", "*.pruv"),
 ]
 ALL_GROUPS = [g for g, _, _ in GROUP_DIRS] + ["fuzz", "input"]
 COLS = ("inputs", "same", "same_unknown", "cex_only", "flaky_unknown", "py_recursion", "diff", "option_mismatch",
@@ -246,6 +251,8 @@ def classify(case, expected):
     if py_recursion(case.py_obj):
         return "py_recursion"
     if canon(strip_cex(case.py_obj)) == canon(strip_cex(case.rs_obj)):
+        if has_unknown_or_error(case.py_obj) or has_unknown_or_error(case.rs_obj):
+            return "same_unknown"
         return "cex_only"
     if unknown_involved(case.py_obj, case.rs_obj):
         return "flaky_unknown"
@@ -396,7 +403,7 @@ def main(argv):
     ap.add_argument("--flags", default="", help="두 판에 똑같이 넘길 옵션(공백 구분), 예: --flags=--infer")
     args = ap.parse_args(argv)
     flag_toks = args.flags.split()
-    expected = {"infer": "--infer" in flag_toks}
+    expected = {"infer": "--infer" in flag_toks, "no_verify": "--no-verify" in flag_toks}
 
     args.seeds = [parse_seed(t) for t in args.seeds.split(",") if t.strip() != ""]
     if args.fuzz_count < 0 or args.jobs < 1:
@@ -463,7 +470,8 @@ def main(argv):
             return c.status in ("same", "cex_only") and c.py_obj is not None and c.py_obj.get("errors") == []
 
         def inf_timeout(c):
-            return c.status == "same_unknown" and "inference_timeout" in error_codes(c.py_obj)
+            return c.status == "same_unknown" and any(
+                "inference_timeout" in error_codes(o) for o in (c.py_obj, c.rs_obj) if o is not None)
 
         diffs = [c for c in all_cases if c.status == "diff"]
         crashes = [c for c in all_cases if c.status in ("py_crash", "rs_crash", "timeout")]
@@ -478,7 +486,7 @@ def main(argv):
         print("jobs: %d" % args.jobs)
         print("")
         print("flags: %s (기대 options=%s)" % (args.flags or "(없음)", json.dumps(expected, sort_keys=True)))
-        print("%-12s" % "group" + "".join("%15s" % c for c in COLS) + "%15s" % "| verified")
+        print("%-12s" % "group" + "".join("%16s" % c for c in COLS) + "%15s" % "| verified")
         total = collections.Counter()
         for g in ALL_GROUPS:
             if g not in selected:
@@ -486,9 +494,9 @@ def main(argv):
             st = collections.Counter(c.status for c in per_group[g])
             st["inputs"] = len(per_group[g])
             st["verified"] = sum(1 for c in per_group[g] if verified(c))
-            print("%-12s" % g + "".join("%15d" % st[c] for c in COLS) + "%15d" % st["verified"])
+            print("%-12s" % g + "".join("%16d" % st[c] for c in COLS) + "%15d" % st["verified"])
             total.update(st)
-        print("%-12s" % "TOTAL" + "".join("%15d" % total[c] for c in COLS) + "%15d" % total["verified"])
+        print("%-12s" % "TOTAL" + "".join("%16d" % total[c] for c in COLS) + "%15d" % total["verified"])
         print("(cex_only %d건은 통과로 친다; flaky_unknown 은 직렬 재시도로 풀린 수, 성공 칸에 안 더한다)" % total["cex_only"])
         print("(verified = same 또는 cex_only 이고 py errors 가 빈 입력: 두 판이 같고 검증까지 끝남)")
         print("(same_unknown %d건: 두 판 바이트 동일하나 unknown/error/verify_unknown/inference_timeout 이 있음, "

@@ -113,6 +113,13 @@ def _free(e, bound, out):
     return out
 
 
+def _has_foreign_call(e):
+    """True if e contains a Call node other than `len` (user functions, alloc, copy, print, is_some, ...)"""
+    if isinstance(e, Call) and e.name != "len":
+        return True
+    return any(_has_foreign_call(c) for c in _kids(e))
+
+
 def _assign_stmts(stmts, out):
     """every Assign / IndexAssign / FieldAssign, nested blocks included"""
     for st in stmts:
@@ -342,6 +349,10 @@ def _gen(f, w, block, idx, kname, ranges):
     def add(kind, build):
         try:
             e = build()
+            # soundness: in contract context a call assumes the callee's ensures without checking its
+            # requires, so only `len` calls are allowed (dropped before sorting / de-duplication / cap)
+            if _has_foreign_call(e):
+                return
             out.append((kind, show(e), e))
         except _Skip:
             pass

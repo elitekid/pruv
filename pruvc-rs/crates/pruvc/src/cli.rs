@@ -5,7 +5,7 @@ use pruvc::target::{Cpu, Target};
 use std::path::{Component, Path, PathBuf};
 
 // stdout 의 usage 줄은 Python pruvc.py 와 (실행 파일 이름만 빼고) 같게 둔다(감사 필수 3). 새 옵션은 stderr 에 알린다.
-pub const USAGE: &str = "usage: pruvc in.pruv -o OUT [--no-verify] [--trust-callers] [--backend rust|llvm] [--rust-bindings PATH]";
+pub const USAGE: &str = "usage: pruvc in.pruv -o OUT [--no-verify] [--trust-callers] [--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]";
 pub const USAGE_MORE: &str = "       [--emit exe|obj|ll|rs] [--target TRIPLE] [-mcpu=CPU]";
 
 /// 내부 출력 종류(backend×emit 결정표의 결과).
@@ -37,6 +37,10 @@ pub struct Args {
     pub kind: Kind,
     pub verify: bool,
     pub trust_callers: bool,
+    /// --infer: Houdini 불변식 추론을 켠다.
+    pub infer: bool,
+    /// --show-inferred: 루프별 추론 기록을 stderr 에(--infer 필요).
+    pub show_inferred: bool,
     pub budget: u64,
     /// ll: 항상 Some(기본값 포함), obj: 명시했을 때만, 나머지 None.
     pub bindings: Option<String>,
@@ -56,12 +60,14 @@ pub fn usage_error(msg: &str) -> i32 {
 }
 
 // 옵션 이름과 받는 값 개수. 선언 순서는 argparse 의 약어 모호성 메시지 순서이기도 하다.
-static OPTS: [(&str, usize); 9] = [
+static OPTS: [(&str, usize); 11] = [
     ("-o", 1),
     ("--no-verify", 0),
     ("--trust-callers", 0),
     ("--backend", 1),
     ("--rust-bindings", 1),
+    ("--infer", 0),
+    ("--show-inferred", 0),
     ("--contract-budget", 1),
     ("--also-llvm", 2),
     ("--emit", 1),
@@ -75,6 +81,8 @@ struct Raw {
     out: Option<String>,
     no_verify: bool,
     trust_callers: bool,
+    infer: bool,
+    show_inferred: bool,
     backend: Option<&'static str>,
     rust_bindings: Option<String>,
     budget: Option<i128>,
@@ -232,6 +240,8 @@ fn parse_raw(argv: &[String]) -> Result<Raw, String> {
             }
             match name {
                 "--no-verify" => r.no_verify = true,
+                "--infer" => r.infer = true,
+                "--show-inferred" => r.show_inferred = true,
                 _ => r.trust_callers = true,
             }
             continue;
@@ -381,6 +391,10 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
     let kind = kind_res?;
     let input = r.input.clone().ok_or_else(|| "the following arguments are required: input".to_string())?;
 
+    // pruvc.py main 의 첫 검사: --show-inferred 는 --infer 가 있어야 한다
+    if r.show_inferred && !r.infer {
+        return Err("--show-inferred requires --infer".to_string());
+    }
     // 이 아래 순서는 pruvc.py main 과 같다: also-llvm → 예산 → rust-bindings → 바인딩 경로
     if let Some((ll, rs)) = &r.also_llvm {
         if kind != Kind::Rs {
@@ -469,6 +483,8 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         kind,
         verify: !r.no_verify,
         trust_callers: r.trust_callers,
+        infer: r.infer,
+        show_inferred: r.show_inferred,
         budget,
         bindings,
         also_llvm: r.also_llvm,

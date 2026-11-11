@@ -1,0 +1,15 @@
+fn reverse(a: [i64]) -> [i64] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[len(a) - 1 - k]
+{
+  let n: i64 = len(a);
+  let mut out: [i64] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    out[i] = a[n - 1 - i];
+    i = i + 1;
+  }
+  return out;
+}

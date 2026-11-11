@@ -1,0 +1,25 @@
+// audit repro 2: a call in a max template. f's requires (y >= 1) fails for n = 0; a candidate
+// `forall k in 0..i: f(k, n) <= m` would assume f's ensures (y >= 1, i.e. n >= 1) without checking it.
+fn f(x: i64, y: i64) -> i64
+  requires y >= 1
+  ensures result == 0 && y >= 1
+{
+  return 0;
+}
+
+fn boom3(n: i64) -> i64
+  requires 0 <= n && n <= 10
+  ensures n >= 1
+{
+  let mut m: i64 = 0;
+  let mut i: i64 = 0;
+  while i < 3
+    decreases 3 - i
+  {
+    if f(i, n) > m {
+      m = f(i, n);
+    }
+    i = i + 1;
+  }
+  return m;
+}

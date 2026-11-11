@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "index_oob"}, "status": {"many": "budget_exhausted"}, "note": "탐색 질의 512 예산 소진: 자동 후보를 모두 버리고(budget_exhausted) 최종 검증, 경계 후보가 없어 a[i] 가 증명되지 않음"}

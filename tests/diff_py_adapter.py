@@ -9,13 +9,14 @@
 
 Only --no-verify, --trust-callers, --contract-budget N, --infer are known trace options; anything else
 -> stderr "diff_py_adapter: unknown option(s): ..." and exit code 2.
---infer (STAGE1 B2, docs/STAGE1_B_INFER.md): options {"infer": true}; verification runs with template
+--infer (STAGE1 B2, docs/STAGE1_B_INFER.md): options {"infer": true, "no_verify": ...}; verification runs with template
 invariant inference, so the exploration queries (phase "inference", round r, cand set) and the final
 queries are all in "obligations"; the top-level key "inference" holds the per-loop report records (the
 --show-inferred lines, same objects). Without --infer there is no "inference" key.
 
 Trace schema "pruv-trace-v2" (one JSON object):
-  schema, options {"infer": bool}, errors [error dicts], obligations [...], timeout_ms (only if verification ran),
+  schema, options {"infer": bool, "no_verify": bool} (no_verify true iff --no-verify; with it obligations is [],
+  there is no timeout_ms, and with --infer inference is []; --trust-callers/--contract-budget are not recorded), errors [error dicts], obligations [...], timeout_ms (only if verification ran),
   inference (only with --infer: list of per-loop report records)
   obligation: seq, fn, line, col, code, attempts [...], phase ("verification"|...), round (int|null),
               cand (null|candidate id), and "skipped": true only when the (line,col,code[,extra]) key was
@@ -213,7 +214,8 @@ def check_result(path):
 def trace_result(path, verify_on=True, infer=False):
     errors = []
     rec = None
-    out = {"schema": "pruv-trace-v2", "options": {"infer": bool(infer)}, "errors": errors, "obligations": []}
+    out = {"schema": "pruv-trace-v2", "options": {"infer": bool(infer), "no_verify": not verify_on},
+           "errors": errors, "obligations": []}
     rep = None
     if infer:
         rep = []
@@ -480,10 +482,10 @@ def cmd_seeds(out_dir, mode, py):
 
 # ---------------------------------------------------------------------------
 def main(argv):
-    ap = argparse.ArgumentParser(prog="diff_py_adapter.py")
+    ap = argparse.ArgumentParser(prog="diff_py_adapter.py", allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("parse", "check", "trace", "_all"):
-        p = sub.add_parser(n)
+        p = sub.add_parser(n, allow_abbrev=False)
         p.add_argument("file")
         if n in ("trace", "_all"):
             # the only known trace options; trust-callers / contract-budget do not change the proof
