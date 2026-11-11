@@ -4,6 +4,8 @@
 //! 추가 루프 불변식으로 주고 함수 전체를 검증해, 진입·보존 의무가 증명되지 않은 후보를 뺀다. 아무것도 안 빠지면 끝.
 //! 그 뒤 `verify_program_opts` 가 살아남은 후보로 한 번 더 검증한다(4.2).
 //!
+//! B+ (명세 3.7, 추론 설정 버전 2): 종류 12(값 범위)·13(출력 배열 접두)·14(조기 반환 접두)를 더했다.
+//!
 //! Python 과 다르게 옮긴 곳:
 //! - 정수 계산은 i128(포화 연산). Python 은 임의 정밀도지만 i64 밖의 값은 어차피 후보를 만들지 않는다.
 //! - `_Skip` 예외는 `Option` 으로(`None` = 후보를 만들지 않음).
@@ -587,6 +589,15 @@ impl Bld {
             ty: None,
         })
     }
+    fn not(&self, e: Expr) -> Expr {
+        Expr::Unary(ast::Unary {
+            line: self.line,
+            col: self.col,
+            op: "!".to_string(),
+            operand: Box::new(e),
+            ty: None,
+        })
+    }
     fn length(&self, n: &str) -> Expr {
         Expr::Call(ast::Call {
             line: self.line,
@@ -839,7 +850,125 @@ fn maxmin(x: &Expr, m: &str, t: &Expr) -> Option<&'static str> {
 }
 
 /// 루프 w 의 후보 [(종류, 문자열, 식)] (정렬 전, 중복 있을 수 있음).
-fn gen(w: &ast::While, block: &[Stmt], idx: usize, kname: &str, ranges: &[(String, Rng)]) -> Vec<Cand> {
+/// 3.1 카운터 정의: (pos(v), 증가폭 c, lo = init(v)). 아니면 None.
+fn counter_info<'a>(
+    w: &'a ast::While,
+    asg: &[Asg<'a>],
+    m: &BTreeSet<String>,
+    block: &'a [Stmt],
+    idx: usize,
+    v: &str,
+) -> Option<(usize, i128, &'a Expr)> {
+    let mine: Vec<Asg<'a>> = asg.iter().filter(|s| s.name() == v).copied().collect();
+    if mine.len() != 1 {
+        return None;
+    }
+    let st = match mine[0] {
+        Asg::A(a) => a,
+        _ => return None,
+    };
+    let mut pos: Option<usize> = None;
+    for (j, bs) in w.body.iter().enumerate() {
+        if let Stmt::Assign(x) = bs {
+            if std::ptr::eq(x, st) {
+                pos = Some(j);
+            }
+        }
+    }
+    let pos = pos?;
+    let c = match &st.value {
+        Expr::Binary(bv) if bv.op == "+" && is_var(&bv.left, v) => match &*bv.right {
+            Expr::IntLit(x) => lit_val(x).filter(|n| *n >= 1)?,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let lo = init(block, idx, v, false)?;
+    if !invariant_expr(lo, m) {
+        return None;
+    }
+    Some((pos, c, lo))
+}
+
+/// 3.7 srng(p): f.requires 의 최상위 && 항에서 p 의 (하한, 상한), 각각 처음 찾은 것.
+fn srng(p: &str, f: &ast::Function) -> (Option<i128>, Option<i128>) {
+    let mut lo: Option<i128> = None;
+    let mut hi: Option<i128> = None;
+    for r in &f.requires {
+        for t in conj_terms(r) {
+            let tb = match t {
+                Expr::Binary(x) => x,
+                _ => continue,
+            };
+            let lp = is_var(&tb.left, p);
+            let rp = is_var(&tb.right, p);
+            let lv = lit(&tb.left);
+            let rv = lit(&tb.right);
+            // (하한이면 true, 값)
+            let found: Option<(bool, i128)> = match tb.op.as_str() {
+                ">=" => match (lp, rv, rp, lv) {
+                    (true, Some(c), _, _) => Some((true, c)),
+                    (_, _, true, Some(c)) => Some((false, c)),
+                    _ => None,
+                },
+                ">" => match (lp, rv, rp, lv) {
+                    (true, Some(c), _, _) => Some((true, c.saturating_add(1))),
+                    (_, _, true, Some(c)) => Some((false, c.saturating_sub(1))),
+                    _ => None,
+                },
+                "<=" => match (lp, rv, rp, lv) {
+                    (true, Some(c), _, _) => Some((false, c)),
+                    (_, _, true, Some(c)) => Some((true, c)),
+                    _ => None,
+                },
+                "<" => match (lp, rv, rp, lv) {
+                    (true, Some(c), _, _) => Some((false, c.saturating_sub(1))),
+                    (_, _, true, Some(c)) => Some((true, c.saturating_add(1))),
+                    _ => None,
+                },
+                _ => None,
+            };
+            match found {
+                Some((true, c)) if lo.is_none() => lo = Some(c),
+                Some((false, c)) if hi.is_none() => hi = Some(c),
+                _ => {}
+            }
+        }
+    }
+    (lo, hi)
+}
+
+/// 3.7 irng(e): 시작값 식의 (하한, 상한).
+fn irng(
+    e: &Expr,
+    f: &ast::Function,
+    ranges: &[(String, Rng)],
+    m: &BTreeSet<String>,
+) -> (Option<i128>, Option<i128>) {
+    if let Some(n) = lit(e) {
+        return (Some(n), Some(n));
+    }
+    match e {
+        Expr::Var(p) if !m.contains(&p.name) => srng(&p.name, f),
+        Expr::Index(x) => match &*x.array {
+            Expr::Var(a) if !m.contains(&a.name) => match ranges.iter().find(|(n, _)| *n == a.name) {
+                Some((_, (l, u))) => (Some(*l), Some(*u)),
+                None => (None, None),
+            },
+            _ => (None, None),
+        },
+        _ => (None, None),
+    }
+}
+
+fn gen(
+    w: &ast::While,
+    block: &[Stmt],
+    idx: usize,
+    kname: &str,
+    ranges: &[(String, Rng)],
+    f: &ast::Function,
+) -> Vec<Cand> {
     let b = Bld { line: w.line, col: w.col, k: kname.to_string() };
     let m = assigned(&w.body);
     let mut loc: BTreeSet<String> = BTreeSet::new();
@@ -1090,6 +1219,98 @@ fn gen(w: &ast::While, block: &[Stmt], idx: usize, kname: &str, ranges: &[(Strin
         }
     }
 
+    // ---- B+ (명세 3.7, 버전 2): 종류 12, 13, 14 ----
+    // 카운터 집합 CTR (3.1 정의 전부, 이름 정렬 순)
+    let mut ctr: Vec<(&String, usize, i128, &Expr)> = Vec::new();
+    for v in &m {
+        if let Some((pos, c, lo)) = counter_info(w, &asg, &m, block, idx, v) {
+            ctr.push((v, pos, c, lo));
+        }
+    }
+
+    // 종류 12: 카운터가 아닌 스칼라의 시작 범위
+    for v in &m {
+        if ctr.iter().any(|(n, _, _, _)| *n == v) {
+            continue;
+        }
+        if !asg.iter().filter(|s| s.name() == v.as_str()).all(|s| matches!(s, Asg::A(_))) {
+            continue;
+        }
+        let iv = match init(block, idx, v, false) {
+            Some(e) => e,
+            None => continue,
+        };
+        let (lb, ub) = irng(iv, f, ranges, &m);
+        if let Some(l) = lb {
+            push(&mut out, 12, b.lit(l).map(|x| b.bin(">=", b.var(v), x)));
+        }
+        if let Some(u) = ub {
+            push(&mut out, 12, b.lit(u).map(|x| b.bin("<=", b.var(v), x)));
+        }
+    }
+
+    // 종류 13, 14
+    for (v, pos, c, lo) in &ctr {
+        if *c != 1 {
+            continue;
+        }
+        let v: &str = v.as_str();
+        for st2 in &w.body[..*pos] {
+            match st2 {
+                // 13: 출력 배열 접두 `b[v] = E;`
+                Stmt::IndexAssign(ia) if is_var(&ia.index, v) => {
+                    let bn = ia.name.as_str();
+                    if count_of(bn) != 1 {
+                        continue;
+                    }
+                    if !asg.iter().filter(|s| s.name() == bn).all(|s| matches!(s, Asg::I(_))) {
+                        continue;
+                    }
+                    let init_ok = match init(block, idx, bn, true) {
+                        Some(Expr::Call(cl)) => {
+                            (cl.name == "alloc" && cl.args.len() == 2 && invariant_expr(&cl.args[0], &m))
+                                || (cl.name == "copy"
+                                    && cl.args.len() == 1
+                                    && matches!(&cl.args[0], Expr::Var(x) if !m.contains(&x.name)))
+                        }
+                        _ => false,
+                    };
+                    if !init_ok {
+                        continue;
+                    }
+                    let fe = free_set(&ia.value);
+                    if fe.iter().any(|n| n != v && ns.contains(n)) {
+                        continue;
+                    }
+                    push(
+                        &mut out,
+                        13,
+                        Some(b.quant(
+                            "forall",
+                            kname,
+                            b.cl(lo),
+                            b.var(v),
+                            b.bin("==", b.index(bn, b.var(kname)), b.at_k(&ia.value, v)),
+                        )),
+                    );
+                }
+                // 14: 조기 반환 접두 `if C { return R; }`
+                Stmt::If(i2)
+                    if i2.els.is_empty() && i2.then.len() == 1 && matches!(i2.then[0], Stmt::Return(_)) =>
+                {
+                    if stable(&i2.cond, v) {
+                        push(
+                            &mut out,
+                            14,
+                            Some(b.quant("forall", kname, b.cl(lo), b.var(v), b.not(b.at_k(&i2.cond, v)))),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // ---- 원소 저장으로만 쓰이는 배열 (종류 4, 5) ----
     for bn in &m {
         let all_index = asg.iter().filter(|s| s.name() == bn.as_str()).all(|s| matches!(s, Asg::I(_)));
@@ -1161,8 +1382,9 @@ fn candidates_for_loop(
     idx: usize,
     kname: &str,
     ranges: &[(String, Rng)],
+    f: &ast::Function,
 ) -> (Vec<Cand>, usize, usize) {
-    let mut raw = gen(w, block, idx, kname, ranges);
+    let mut raw = gen(w, block, idx, kname, ranges, f);
     raw.sort_by(|a, b| (a.kind, &a.text).cmp(&(b.kind, &b.text)));
     let mut seen: HashSet<String> = HashSet::new();
     let mut uniq: Vec<Cand> = Vec::new();
@@ -1198,6 +1420,8 @@ pub struct LoopInfo {
     /// 살아 있는 후보 (ID, 식, 문자열)
     pub alive: Vec<ExtraInv>,
     pub dropped: Vec<Dropped>,
+    /// 처음 후보 목록(자른 뒤, 순위 순)의 (종류 번호, 후보). 버전 1 되돌림(4.1)이 쓴다.
+    pub initial: Vec<(u32, ExtraInv)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1223,6 +1447,8 @@ pub struct InferResult {
     pub status: InferStatus,
     pub rounds: u32,
     pub queries: usize,
+    /// 버전 1 되돌림을 했는가(4.1)
+    pub fallback: bool,
 }
 
 impl InferResult {
@@ -1265,7 +1491,7 @@ impl InferResult {
                     ])
                 })
                 .collect();
-            out.push(Json::Obj(vec![
+            let mut rec = vec![
                 ("fn".to_string(), Json::Str(self.fname.clone())),
                 ("loop".to_string(), Json::int(l.n as i64)),
                 ("line".to_string(), Json::int(l.line)),
@@ -1278,39 +1504,34 @@ impl InferResult {
                 ("dropped".to_string(), Json::Arr(dropped)),
                 ("rounds".to_string(), Json::int(self.rounds as i64)),
                 ("queries".to_string(), Json::int(self.queries as i64)),
-            ]));
+            ];
+            if self.fallback {
+                rec.push(("fallback".to_string(), Json::str("v1")));
+            }
+            out.push(Json::Obj(rec));
         }
         out
     }
 }
 
-/// infer.py `infer_function`: 함수 하나의 후보 + Houdini 회차. 오류 목록은 건드리지 않는다.
-/// 회차마다 새 z3 컨텍스트·Prelude·Model(같은 `seq`)을 만든다.
-pub fn infer_function(
+/// Houdini 회차 반복(4.1). `r` 은 지금까지의 회차 번호(이어서 센다). 예산 소진·시간 초과면 `res.status` 를 정하고
+/// 후보를 모두 비운다. 첫 탐색과 되돌림 탐색이 같이 쓴다.
+fn houdini_rounds(
     prog: &ast::Program,
     f: &ast::Function,
     decls: &[TypeDecl],
     seq: u32,
     rec: &mut Trace,
-) -> R<InferResult> {
-    let kname = pick_bound_name(&fn_names(f));
-    let ranges = elem_ranges(f);
-    let mut loops: Vec<LoopInfo> = Vec::new();
-    for (n, (w, block, idx)) in walk_loops(&f.body).into_iter().enumerate() {
-        let (cands, generated, capped) = candidates_for_loop(w, block, idx, &kname, &ranges);
-        let alive: Vec<ExtraInv> =
-            cands.into_iter().enumerate().map(|(i, c)| (format!("L{}#{}", n, i), c.expr, c.text)).collect();
-        loops.push(LoopInfo { n, line: w.line, col: w.col, generated, capped, alive, dropped: Vec::new() });
-    }
-    let mut res = InferResult { fname: f.name.clone(), loops, status: InferStatus::Ok, rounds: 0, queries: 0 };
-    let mut probe = Probe::new(MAX_QUERIES, Instant::now() + Duration::from_secs(MAX_SECONDS));
-    let mut r: u32 = 0;
+    res: &mut InferResult,
+    probe: &mut Probe,
+    r: &mut u32,
+) -> R<()> {
     loop {
         let extra = res.extra();
         if extra.is_empty() {
             break; // 후보가 (더) 없다: 회차 없음
         }
-        r += 1;
+        *r += 1;
         probe.begin_round();
         let run_result: R<()> = {
             let z = Z3::new();
@@ -1319,13 +1540,13 @@ pub fn infer_function(
             let mut fv = FnVerifier::for_function(&z, &pre, &model, &mut *rec, prog, f);
             fv.qcfg = QueryConfig {
                 phase: "inference".to_string(),
-                round: Some(r),
+                round: Some(*r),
                 timeout_ms: TIMEOUT_MS,
                 rlimit: Some(RLIMIT),
                 seed: Some(SEED),
             };
             fv.set_extra(extra);
-            fv.probe = Some(&mut probe);
+            fv.probe = Some(&mut *probe);
             let out = fv.run();
             drop(fv);
             out
@@ -1352,7 +1573,7 @@ pub fn infer_function(
                     l.dropped.push(Dropped {
                         cand: c.0.clone(),
                         text: c.2.clone(),
-                        round: r,
+                        round: *r,
                         code: code.clone(),
                         status: status.clone(),
                     });
@@ -1363,7 +1584,59 @@ pub fn infer_function(
             l.alive = keep;
         }
     }
+    Ok(())
+}
+
+/// infer.py `infer_function`: 함수 하나의 후보 + Houdini 회차(+ 4.1 버전 1 되돌림). 오류 목록은 건드리지 않는다.
+/// 회차마다 새 z3 컨텍스트·Prelude·Model(같은 `seq`)을 만든다.
+pub fn infer_function(
+    prog: &ast::Program,
+    f: &ast::Function,
+    decls: &[TypeDecl],
+    seq: u32,
+    rec: &mut Trace,
+) -> R<InferResult> {
+    let kname = pick_bound_name(&fn_names(f));
+    let ranges = elem_ranges(f);
+    let mut loops: Vec<LoopInfo> = Vec::new();
+    for (n, (w, block, idx)) in walk_loops(&f.body).into_iter().enumerate() {
+        let (cands, generated, capped) = candidates_for_loop(w, block, idx, &kname, &ranges, f);
+        let initial: Vec<(u32, ExtraInv)> = cands
+            .into_iter()
+            .enumerate()
+            .map(|(i, c)| (c.kind, (format!("L{}#{}", n, i), c.expr, c.text)))
+            .collect();
+        let alive: Vec<ExtraInv> = initial.iter().map(|(_, e)| e.clone()).collect();
+        loops.push(LoopInfo { n, line: w.line, col: w.col, generated, capped, alive, dropped: Vec::new(), initial });
+    }
+    let mut res = InferResult {
+        fname: f.name.clone(),
+        loops,
+        status: InferStatus::Ok,
+        rounds: 0,
+        queries: 0,
+        fallback: false,
+    };
+    let deadline = Instant::now() + Duration::from_secs(MAX_SECONDS);
+    let mut probe = Probe::new(MAX_QUERIES, deadline);
+    let mut r: u32 = 0;
+    houdini_rounds(prog, f, decls, seq, rec, &mut res, &mut probe, &mut r)?;
+    let mut queries = probe.queries;
+
+    // 4.1 버전 1 되돌림: 예산 소진이고 처음 후보에 종류 12 이상이 있었으면 종류 1~11 만으로 다시.
+    let had_new_kind = res.loops.iter().any(|l| l.initial.iter().any(|(k, _)| *k >= 12));
+    if res.status == InferStatus::BudgetExhausted && had_new_kind {
+        res.fallback = true;
+        res.status = InferStatus::Ok;
+        for l in res.loops.iter_mut() {
+            l.alive = l.initial.iter().filter(|(k, _)| *k <= 11).map(|(_, e)| e.clone()).collect();
+            l.dropped.clear();
+        }
+        let mut probe2 = Probe::new(MAX_QUERIES, deadline);
+        houdini_rounds(prog, f, decls, seq, rec, &mut res, &mut probe2, &mut r)?;
+        queries += probe2.queries;
+    }
     res.rounds = r;
-    res.queries = probe.queries;
+    res.queries = queries;
     Ok(res)
 }

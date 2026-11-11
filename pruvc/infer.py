@@ -1,4 +1,5 @@
-"""STAGE1 B2: template Houdini loop-invariant inference (--infer). Normative spec: docs/STAGE1_B_INFER.md.
+"""STAGE1 B2 (+ B+ kinds 12-14, config version 2): template Houdini loop-invariant inference (--infer).
+Normative spec: docs/STAGE1_B_INFER.md (3.7 for the B+ kinds: value ranges, output-array prefix, early-return prefix).
 
 Per function: generate candidate invariants from fixed templates (section 3), then run Houdini rounds
 (section 4.1): every round verifies the whole function with all surviving candidates as extra loop
@@ -14,7 +15,7 @@ from refine import pick_bound_name, _fn_names, _kids
 from verify import (FnVerifier, QueryConfig, Probe, BudgetExhausted, InferenceTimeout, walk_loops)
 
 INFER_CONFIG = {
-    "version": 1,
+    "version": 2,
     "max_candidates": 64,     # per loop, after sorting and de-duplication (the cut-off count is `capped`)
     "max_queries": 512,       # per function, every solver attempt (also lemma retries) counts 1
     "rlimit": 100000,
@@ -522,7 +523,109 @@ def _gen(f, w, block, idx, kname, ranges):
                 "forall", kname, B.lit(0), B.length(b),
                 B.bin("&&", B.bin("<=", B.lit(lo_), B.index(b, B.var(kname))),
                       B.bin("<=", B.index(b, B.var(kname)), B.lit(hi_)))))
+
+    # ---- B+ kinds 12, 13, 14 (3.7) ----
+    ctr = {}   # CTR: every variable meeting the counter definition of 3.1 -> (pos, lo, step)
+    for v in sorted(M):
+        mine = [st for st in asg if st.name == v]
+        if len(mine) != 1 or not isinstance(mine[0], Assign):
+            continue
+        pos = None
+        for j, b_ in enumerate(w.body):
+            if b_ is mine[0]:
+                pos = j
+        val = mine[0].value
+        if pos is None or not (isinstance(val, Binary) and val.op == "+" and _isvar(val.left, v)
+                               and isinstance(val.right, IntLit) and val.right.value >= 1):
+            continue
+        lo0 = _init(block, idx, v)
+        if lo0 is None or not _invariant_expr(lo0, M):
+            continue
+        ctr[v] = (pos, lo0, val.right.value)
+
+    # kind 12: value range of a non-counter scalar that only receives plain assignments
+    for v in sorted(M):
+        if v in ctr:
+            continue
+        mine = [st for st in asg if st.name == v]
+        if not mine or not all(isinstance(st, Assign) for st in mine):
+            continue
+        iv = _init(block, idx, v)
+        if iv is None:
+            continue
+        L = U = None
+        n = _lit(iv)
+        if n is not None:
+            L = U = n
+        elif isinstance(iv, Var) and iv.name not in M:
+            L, U = _srng(f, iv.name)
+        elif isinstance(iv, Index) and isinstance(iv.array, Var) and iv.array.name not in M \
+                and iv.array.name in ranges:
+            L, U = ranges[iv.array.name]
+        if L is not None:
+            add(12, lambda v=v, L=L: B.bin(">=", B.var(v), B.lit(L)))
+        if U is not None:
+            add(12, lambda v=v, U=U: B.bin("<=", B.var(v), B.lit(U)))
+
+    for v in sorted(ctr):
+        pos, lo, step = ctr[v]
+        if step != 1:
+            continue
+        for st3 in w.body[:pos]:
+            # kind 13: output array prefix  b[v] = E;
+            if isinstance(st3, IndexAssign) and _isvar(st3.index, v):
+                b = st3.name
+                mine = [st for st in asg if st.name == b]
+                if len(mine) != 1 or mine[0] is not st3:
+                    continue
+                init = _init(block, idx, b, True)
+                if not isinstance(init, Call):
+                    continue
+                if init.name == "alloc" and len(init.args) == 2 and _invariant_expr(init.args[0], M):
+                    pass
+                elif init.name == "copy" and len(init.args) == 1 and isinstance(init.args[0], Var) \
+                        and init.args[0].name not in M:
+                    pass
+                else:
+                    continue
+                E = st3.value
+                if (_free(E, set(), set()) - {v}) & NS:
+                    continue
+                add(13, lambda b=b, E=E, lo=lo, v=v: B.quant(
+                    "forall", kname, B.clone(lo), B.var(v),
+                    B.bin("==", B.index(b, B.var(kname)), B.at_k(E, v))))
+            # kind 14: early-return prefix  if C { return R; }
+            elif isinstance(st3, If) and not st3.els and len(st3.then) == 1 \
+                    and isinstance(st3.then[0], Return) and stable(st3.cond, v):
+                add(14, lambda C=st3.cond, lo=lo, v=v: B.quant(
+                    "forall", kname, B.clone(lo), B.var(v),
+                    Unary(w.line, w.col, "!", B.at_k(C, v))))
     return out
+
+
+def _srng(f, p):
+    """(low, high) of scalar parameter p from f.requires (3.7 srng); None for a missing side"""
+    lo = hi = None
+    for r in f.requires:
+        for t in _conj_terms(r):
+            if not isinstance(t, Binary) or t.op not in (">=", "<=", ">", "<"):
+                continue
+            if _isvar(t.left, p) and _lit(t.right) is not None:
+                c, op = _lit(t.right), t.op
+            elif _isvar(t.right, p) and _lit(t.left) is not None:
+                # c op p  ->  p (flipped op) c
+                c, op = _lit(t.left), {">=": "<=", "<=": ">=", ">": "<", "<": ">"}[t.op]
+            else:
+                continue
+            if op == ">=" and lo is None:
+                lo = c
+            elif op == ">" and lo is None:
+                lo = c + 1
+            elif op == "<=" and hi is None:
+                hi = c
+            elif op == "<" and hi is None:
+                hi = c - 1
+    return lo, hi
 
 
 def _acc(st):
@@ -573,7 +676,14 @@ class _Loop:
     def __init__(s, n, w, cands, generated, capped):
         s.n, s.w, s.generated, s.capped = n, w, generated, capped
         s.cands = [("L%d#%d" % (n, i), e, text) for i, (_, text, e) in enumerate(cands)]
+        # kind number of every first-list candidate (parallel to s.cands); extra() keeps (id, expr, text)
+        s.kinds = [k for (k, _, _) in cands]
         s.alive = list(s.cands)
+        s.dropped = []
+
+    def restart_v1(s):
+        """4.1 version 1 fall-back: alive = the first list restricted to kinds 1..11 (IDs unchanged)"""
+        s.alive = [c for c, k in zip(s.cands, s.kinds) if k <= 11]
         s.dropped = []
 
 
@@ -583,6 +693,7 @@ class InferResult:
         s.status = "ok"          # ok | budget_exhausted | timeout
         s.rounds = 0
         s.queries = 0
+        s.fallback = False
 
     def extra(s):
         """{loop number: [(id, expr, text)]} of the surviving candidates; {} when there are none"""
@@ -598,11 +709,14 @@ class InferResult:
                 status = s.status
             else:
                 status = "verified" if new_errors == 0 else "selected"
-            out.append({
+            rec = {
                 "fn": s.f.name, "loop": l.n, "line": l.w.line, "col": l.w.col, "status": status,
                 "invariants": ["invariant " + text for (_, _, text) in l.alive],
                 "generated": l.generated, "capped": l.capped, "kept": len(l.alive),
-                "dropped": l.dropped, "rounds": s.rounds, "queries": s.queries})
+                "dropped": l.dropped, "rounds": s.rounds, "queries": s.queries}
+            if s.fallback:
+                rec["fallback"] = "v1"
+            out.append(rec)
         return out
 
 
@@ -617,8 +731,27 @@ def infer_function(prog, f, model, rec=None):
         cands, generated, capped = candidates_for_loop(f, w, block, idx, kname, ranges)
         loops.append(_Loop(n, w, cands, generated, capped))
     res = InferResult(f, loops)
-    probe = Probe(cfg["max_queries"], time.monotonic() + cfg["max_seconds"])
-    r = 0
+    deadline = time.monotonic() + cfg["max_seconds"]
+    probe = Probe(cfg["max_queries"], deadline)
+    status, r = _explore(prog, f, model, rec, res, probe, 0)
+    res.status, res.rounds, res.queries = status, r, probe.queries
+    # 4.1 version 1 fall-back: budget exhausted and a kind >= 12 candidate was in the first lists
+    if status == "budget_exhausted" and any(k >= 12 for l in loops for k in l.kinds):
+        for l in loops:
+            l.restart_v1()
+        probe2 = Probe(cfg["max_queries"], deadline)
+        status, r = _explore(prog, f, model, rec, res, probe2, r)
+        res.fallback = True
+        res.status, res.rounds, res.queries = status, r, probe.queries + probe2.queries
+    return res
+
+
+def _explore(prog, f, model, rec, res, probe, r):
+    """Houdini rounds (4.1) from round number r+1 on, over the loops' alive lists. Returns (status, last round
+    number); on budget exhaustion / timeout every alive list is emptied."""
+    cfg = INFER_CONFIG
+    loops = res.loops
+    status = "ok"
     try:
         while True:
             extra = res.extra()
@@ -636,20 +769,18 @@ def infer_function(prog, f, model, rec=None):
                 keep = []
                 for c in l.alive:
                     if c[0] in failed:
-                        code, status = failed[c[0]]
+                        code, st = failed[c[0]]
                         l.dropped.append({"cand": c[0], "text": c[2], "round": r, "code": code,
-                                          "status": status})
+                                          "status": st})
                     else:
                         keep.append(c)
                 l.alive = keep
     except BudgetExhausted:
-        res.status = "budget_exhausted"
+        status = "budget_exhausted"
         for l in loops:
             l.alive = []
     except InferenceTimeout:
-        res.status = "timeout"
+        status = "timeout"
         for l in loops:
             l.alive = []
-    res.rounds = r
-    res.queries = probe.queries
-    return res
+    return status, r

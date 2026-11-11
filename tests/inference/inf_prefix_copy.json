@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant forall k in 0..i: out[k] == a[k] * 2", "invariant len(out) == len(a)"], "note": "종류 13 의 시작값이 copy(a) 인 경우: 길이 후보 4(len(out) == len(a))와 접두 관계가 남아 ensures 두 개 증명(ensures 의 묶인 이름을 j 로 써서 후보 이름이 k)"}

@@ -1,0 +1,16 @@
+fn g(a: i64, b: i64) -> i64
+  requires (a > -5 && a < 100) && b >= 0 && b <= 10
+  ensures result > -5
+{
+  let mut x: i64 = a;
+  let mut i: i64 = 0;
+  while i < b
+    decreases b - i
+  {
+    if x > 50 {
+      x = x - 1;
+    }
+    i = i + 1;
+  }
+  return x;
+}

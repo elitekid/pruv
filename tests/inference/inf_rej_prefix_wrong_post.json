@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "noinfer": "reject", "kept": ["invariant forall k in 0..i: out[k] == a[n - 1 - k]"], "note": "종류 13 후보(뒤집기 접두)는 참이라 남지만, ensures 가 뒤집지 않은 관계(result[j] == a[j])를 약속해 거부돼야 함"}

@@ -1,0 +1,16 @@
+fn double_all(a: [i64]) -> [i64] ! alloc
+  requires len(a) <= 1_000_000
+  requires forall j in 0..len(a): a[j] >= -1000 && a[j] <= 1000
+  ensures len(result) == len(a)
+  ensures forall j in 0..len(a): result[j] == a[j] * 2
+{
+  let mut out: [i64] = copy(a);
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    out[i] = a[i] * 2;
+    i = i + 1;
+  }
+  return out;
+}

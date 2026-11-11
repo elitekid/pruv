@@ -1,0 +1,52 @@
+fn chain(n: i64) -> i64
+  requires 0 <= n && n <= 1000
+  ensures result == n
+{
+  let mut i: i64 = 0;
+  let mut a0: i64 = 0;
+  let mut a1: i64 = 0;
+  let mut a2: i64 = 0;
+  let mut a3: i64 = 0;
+  let mut a4: i64 = 0;
+  let mut a5: i64 = 0;
+  let mut a6: i64 = 0;
+  let mut a7: i64 = 0;
+  let mut a8: i64 = 0;
+  let mut a9: i64 = 0;
+  let mut a10: i64 = 0;
+  let mut a11: i64 = 0;
+  let mut a12: i64 = 0;
+  let mut a13: i64 = 0;
+  let mut a14: i64 = 0;
+  let mut a15: i64 = 0;
+  let mut a16: i64 = 0;
+  let mut a17: i64 = 0;
+  let mut a18: i64 = 0;
+  let mut a19: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    a0 = a1;
+    a1 = a2;
+    a2 = a3;
+    a3 = a4;
+    a4 = a5;
+    a5 = a6;
+    a6 = a7;
+    a7 = a8;
+    a8 = a9;
+    a9 = a10;
+    a10 = a11;
+    a11 = a12;
+    a12 = a13;
+    a13 = a14;
+    a14 = a15;
+    a15 = a16;
+    a16 = a17;
+    a17 = a18;
+    a18 = a19;
+    a19 = i + 1;
+    i = i + 1;
+  }
+  return i;
+}

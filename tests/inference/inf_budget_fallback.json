@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "fallback": {"chain": true}, "kept": ["invariant 0 <= i", "invariant i <= n"], "absent": ["a0 >= 0", "a19 <= 0"], "note": "버전 1 되돌림: 12 후보 사슬(a0 = a1; …)이 첫 탐색의 질의 512 를 소진 -> 종류 1~11 만으로 다시 탐색해 0 <= i, i <= n 이 남아 ok. 되돌림 탐색 후보에 종류 12 없음(absent 는 되돌림 결과 기준: 첫 탐색에서는 생성됨)"}

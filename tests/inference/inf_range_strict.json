@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant x >= -4", "invariant x <= 99"], "absent": ["x >= -5", "x <= 100"], "note": "srng: 엄격 부등호(a > -5 -> 하한 -4, a < 100 -> 상한 99), -리터럴, 괄호 속 중첩 && 를 _conj_terms 가 재귀로 펼침. 종류 12 의 x >= -4 가 남아 result > -5 증명"}

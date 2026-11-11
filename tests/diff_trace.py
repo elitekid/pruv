@@ -17,7 +17,7 @@
                   다른 분류보다 먼저 검사한다.
   same          두 stdout 한 줄이 바이트 동일, 어느 attempt result 도 unknown/error 가 아니고 errors 에
                 verify_unknown·inference_timeout 이 없음
-  same_unknown  바이트 동일(또는 counterexample 값만 다름)하나 위 unknown/error/verify_unknown/inference_timeout 이
+  same_unknown  바이트 동일(또는 counterexample 값이나 resource_unknown attempt 의 reason_unknown 글귀만 다름)하나 위 unknown/error/verify_unknown/inference_timeout 이
                 있음. 성공으로 세지 않는다. py 또는 rs errors 에 inference_timeout 이 있으면 실패, 그 밖에는
                 실패로 치지 않되 따로 보고
   cex_only      errors 의 counterexample 값만 다르고 나머지 동일, 단 어느 쪽에도 unknown/error/verify_unknown/
@@ -196,6 +196,25 @@ def strip_cex(obj):
     return o
 
 
+RLIMIT_REASONS = ("max. resource limit exceeded", "push canceled")   # z3 rlimit 소진 글귀(같은 원인)
+
+
+def strip_reason(obj):
+    """rlimit 소진(RLIMIT_REASONS) resource_unknown attempt 의 reason_unknown 글귀를 자리표시자로 바꾼 복사본. 같은 SMT 에서 rlimit 소진 위치에 따라
+    z3 가 "max. resource limit exceeded" / "push canceled" 처럼 다른 글귀를 내기 때문(상태·결과는 그대로 비교된다)"""
+    o = dict(obj)
+    obs = []
+    for ob in o.get("obligations", []):
+        if isinstance(ob, dict) and ob.get("attempts"):
+            ob = dict(ob)
+            ob["attempts"] = [dict(a, reason_unknown="<reason>") if isinstance(a, dict) and a.get("result") == "unknown"
+                              and a.get("status") == "resource_unknown" and a.get("reason_unknown") in RLIMIT_REASONS
+                              else a for a in ob["attempts"]]
+        obs.append(ob)
+    o["obligations"] = obs
+    return o
+
+
 def canon(obj):
     return json.dumps(obj, sort_keys=True, ensure_ascii=False)
 
@@ -254,6 +273,8 @@ def classify(case, expected):
         if has_unknown_or_error(case.py_obj) or has_unknown_or_error(case.rs_obj):
             return "same_unknown"
         return "cex_only"
+    if canon(strip_reason(strip_cex(case.py_obj))) == canon(strip_reason(strip_cex(case.rs_obj))):
+        return "same_unknown"   # resource_unknown 의 z3 글귀만 다름(그 attempt 가 unknown 이라 성공으로 세지 않음)
     if unknown_involved(case.py_obj, case.rs_obj):
         return "flaky_unknown"
     return "diff"

@@ -101,6 +101,19 @@ def run_case(drv, pruv):
         for d in spec.get("dropped", []):
             if d not in have_drop:
                 fails.append("dropped 없음: %r (실제 %s)" % (d, sorted(x for x in have_drop if x)))
+        for t in spec.get("absent", []):
+            if "invariant " + t in have_inv or t in have_drop:
+                fails.append("absent 인데 생성됨: %r" % t)
+        for fn, want in (spec.get("fallback") or {}).items():
+            mine = [r for r in records if r.get("fn") == fn]
+            got = bool(mine) and all(r.get("fallback") == "v1" for r in mine)
+            has_any = any("fallback" in r for r in mine)
+            if not mine:
+                fails.append("fallback[%s]: 그 함수 레코드 없음" % fn)
+            elif want and not got:
+                fails.append("fallback[%s] 기대 true 인데 \"fallback\": \"v1\" 키가 없음" % fn)
+            elif not want and has_any:
+                fails.append("fallback[%s] 기대 false 인데 fallback 키가 있음" % fn)
         rounds = {}
         for r in records:
             for d in r.get("dropped", []):
@@ -112,8 +125,9 @@ def run_case(drv, pruv):
             got = sorted(set(r.get("status") for r in records if r.get("fn") == fn))
             if got != [st]:
                 fails.append("status[%s] 기대 %s 실제 %s" % (fn, st, got))
-    elif spec.get("kept") or spec.get("dropped") or spec.get("status"):
-        fails.append("flags 에 --show-inferred 가 없어 kept/dropped/status 를 볼 수 없음")
+    elif spec.get("kept") or spec.get("dropped") or spec.get("status") or spec.get("absent") \
+            or spec.get("fallback"):
+        fails.append("flags 에 --show-inferred 가 없어 kept/dropped/status/absent/fallback 을 볼 수 없음")
 
     ni = spec.get("noinfer")
     if ni:

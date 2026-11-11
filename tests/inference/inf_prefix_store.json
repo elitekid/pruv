@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant forall k in 0..i: out[k] == a[n - 1 - k]", "invariant len(out) == n"], "note": "종류 13: 출력 배열 접두 관계(뒤집기)와 길이 후보 4 가 함께 남아 ensures 두 개가 증명됨(ensures 의 묶인 이름을 j 로 써서 후보 이름이 k)"}

@@ -1,0 +1,44 @@
+fn a_else(a: [i64]) -> bool
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    if a[i] < 0 {
+      return false;
+    } else {
+      let t: i64 = a[i];
+    }
+    i = i + 1;
+  }
+  return true;
+}
+
+fn b_step2(a: [i64]) -> [i64] ! alloc
+  requires len(a) <= 1_000_000
+{
+  let mut out: [i64] = alloc(len(a), 0);
+  let mut i: i64 = 0;
+  while i < len(a) - 1
+    decreases len(a) - i
+  {
+    out[i] = 7;
+    i = i + 2;
+  }
+  return out;
+}
+
+fn c_two(a: [i64]) -> bool
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    if a[i] > 100 {
+      let t: i64 = 1;
+      return false;
+    }
+    i = i + 1;
+  }
+  return true;
+}

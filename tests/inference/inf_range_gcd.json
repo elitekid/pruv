@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant x >= 0", "invariant y >= 0"], "note": "종류 12: x = a; y = b 처럼 매개변수에서 시작해 서로 주고받는 값의 하한(requires 0 <= a, 0 <= b)이 보존돼 ensures result >= 0 이 증명됨"}

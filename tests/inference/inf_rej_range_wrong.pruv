@@ -1,0 +1,19 @@
+fn drift(a: i64, n: i64) -> i64
+  requires 0 <= a && a <= 100
+  requires 0 <= n && n <= 10
+  ensures result <= 100
+{
+  let mut x: i64 = a;
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    if x > 0 {
+      x = x - 1;
+    } else {
+      x = 0 - 3;
+    }
+    i = i + 1;
+  }
+  return x;
+}

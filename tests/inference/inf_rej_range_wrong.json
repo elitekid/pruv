@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant x <= 100"], "dropped": ["x >= 0"], "note": "종류 12 거짓 후보: x = a 에서 시작한 값이 루프에서 -3 이 되므로 하한 후보 x >= 0 은 보존에서 탈락, 참인 상한 x <= 100 만 남아 ensures result <= 100 이 증명됨"}

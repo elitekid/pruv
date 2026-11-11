@@ -1,0 +1,14 @@
+fn no_big_ratio(a: [i64]) -> bool
+{
+  let mut i: i64 = 0;
+  while i < len(a) && a[i] > 0
+    invariant 0 <= i
+    decreases len(a) - i
+  {
+    if 10 / a[i] > 3 {
+      return false;
+    }
+    i = i + 1;
+  }
+  return true;
+}
