@@ -315,26 +315,41 @@ enum V {
     Maybe,
 }
 
+/// Insertion-ordered map with O(1) lookups: `slots` keeps the order (a popped entry leaves a `None`
+/// tombstone, a re-inserted name goes to the end, as in a Python dict), `idx` maps a name to its slot.
 #[derive(Clone, Default, Debug)]
 struct St {
-    items: Vec<(String, V)>,
+    slots: Vec<Option<(String, V)>>,
+    idx: HashMap<String, usize>,
 }
 
 impl St {
     fn get(&self, n: &str) -> Option<V> {
-        self.items.iter().find(|(k, _)| k == n).map(|(_, v)| *v)
+        self.idx.get(n).and_then(|&i| self.slots[i].as_ref()).map(|(_, v)| *v)
     }
     fn set(&mut self, n: &str, v: V) {
-        match self.items.iter_mut().find(|(k, _)| k == n) {
-            Some(slot) => slot.1 = v,
-            None => self.items.push((n.to_string(), v)),
+        match self.idx.get(n) {
+            Some(&i) => {
+                if let Some(slot) = self.slots[i].as_mut() {
+                    slot.1 = v;
+                }
+            }
+            None => {
+                self.idx.insert(n.to_string(), self.slots.len());
+                self.slots.push(Some((n.to_string(), v)));
+            }
         }
     }
     fn pop(&mut self, n: &str) {
-        self.items.retain(|(k, _)| k != n);
+        if let Some(i) = self.idx.remove(n) {
+            self.slots[i] = None;
+        }
     }
     fn contains(&self, n: &str) -> bool {
-        self.items.iter().any(|(k, _)| k == n)
+        self.idx.contains_key(n)
+    }
+    fn iter(&self) -> impl Iterator<Item = &(String, V)> {
+        self.slots.iter().flatten()
     }
 }
 
@@ -347,12 +362,13 @@ fn join(a: Option<St>, b: Option<St>) -> Option<St> {
         None => return Some(a),
         Some(b) => b,
     };
-    let items = a
-        .items
-        .iter()
-        .filter_map(|(n, v)| b.get(n).map(|bv| (n.clone(), if bv == *v { *v } else { V::Maybe })))
-        .collect();
-    Some(St { items })
+    let mut out = St::default();
+    for (n, v) in a.iter() {
+        if let Some(bv) = b.get(n) {
+            out.set(n, if bv == *v { *v } else { V::Maybe });
+        }
+    }
+    Some(out)
 }
 
 fn is_coll(ty: &Option<String>) -> bool {
@@ -368,6 +384,8 @@ pub type Takes = HashMap<String, Vec<bool>>;
 struct Ownership<'a> {
     funcs: &'a Takes,
     bor: HashSet<String>,
+    /// name -> "move" | "borrow" of the outermost call being checked (shared by nested calls)
+    track: Option<Track>,
 }
 
 type Track = HashMap<String, &'static str>;
@@ -438,7 +456,7 @@ impl<'a> Ownership<'a> {
                 self.expr(&w.cond, &mut st)?;
                 let end = self.block(&w.body, st.clone())?;
                 if let Some(end) = &end {
-                    for (n, v) in &entry.items {
+                    for (n, v) in entry.iter() {
                         if *v == V::Live && end.get(n) != Some(V::Live) {
                             return Err(err(
                                 w.line,
@@ -503,7 +521,7 @@ impl<'a> Ownership<'a> {
         }
     }
 
-    fn mv(&mut self, e: &Move, st: &mut St, consuming: bool, track: Option<&mut Track>) -> Res<()> {
+    fn mv(&mut self, e: &Move, st: &mut St, consuming: bool, tracked: bool) -> Res<()> {
         let (line, col) = (e.line, e.col);
         if !is_coll(&e.ty) {
             return Err(err(
@@ -515,8 +533,7 @@ impl<'a> Ownership<'a> {
             ));
         }
         let n = e.name.as_str();
-        let mut track = track;
-        if let Some(t) = track.as_mut() {
+        if let (true, Some(t)) = (tracked, self.track.as_ref()) {
             if let Some(kind) = t.get(n) {
                 if *kind == "move" {
                     return Err(err(
@@ -556,7 +573,7 @@ impl<'a> Ownership<'a> {
             ));
         }
         st.set(n, V::Dead);
-        if let Some(t) = track {
+        if let (true, Some(t)) = (tracked, self.track.as_mut()) {
             t.insert(n.to_string(), "move");
         }
         Ok(())
@@ -565,7 +582,7 @@ impl<'a> Ownership<'a> {
     /// let initializer / assignment / return value
     fn consume(&mut self, e: &Expr, st: &mut St, pos: &str) -> Res<()> {
         match e {
-            Expr::Move(m) => self.mv(m, st, true, None),
+            Expr::Move(m) => self.mv(m, st, true, false),
             Expr::Var(v) if is_coll(&v.ty) => {
                 self.use_(&v.name, v.line, v.col, st)?;
                 if self.bor.contains(&v.name) {
@@ -616,7 +633,7 @@ impl<'a> Ownership<'a> {
                 }
                 Ok(())
             }
-            Expr::Move(m) => self.mv(m, st, false, None),
+            Expr::Move(m) => self.mv(m, st, false, false),
             Expr::Call(c) => self.call(c, st),
             Expr::Binary(b) if b.op == "&&" || b.op == "||" => {
                 self.expr(&b.left, st)?;
@@ -646,11 +663,23 @@ impl<'a> Ownership<'a> {
                 None => vec![false; e.args.len()],
             },
         };
-        let mut track: Track = HashMap::new();
+        // nested calls share the outermost call's track (audit R1)
+        let outer = self.track.is_some();
+        if !outer {
+            self.track = Some(HashMap::new());
+        }
+        let r = self.call_args(e, st, &takes);
+        if !outer {
+            self.track = None;
+        }
+        r
+    }
+
+    fn call_args(&mut self, e: &Call, st: &mut St, takes: &[bool]) -> Res<()> {
         for (arg, take) in e.args.iter().zip(takes.iter()) {
             if *take {
                 match arg {
-                    Expr::Move(m) => self.mv(m, st, true, Some(&mut track))?,
+                    Expr::Move(m) => self.mv(m, st, true, true)?,
                     Expr::Var(v) if is_coll(&v.ty) => {
                         self.use_(&v.name, v.line, v.col, st)?;
                         if self.bor.contains(&v.name) {
@@ -674,9 +703,9 @@ impl<'a> Ownership<'a> {
                 }
             } else {
                 match arg {
-                    Expr::Move(m) => self.mv(m, st, false, Some(&mut track))?,
+                    Expr::Move(m) => self.mv(m, st, false, true)?,
                     Expr::Var(v) if is_coll(&v.ty) => {
-                        if track.get(&v.name) == Some(&"move") {
+                        if self.track.as_ref().and_then(|t| t.get(&v.name)) == Some(&"move") {
                             return Err(err(
                                 v.line,
                                 v.col,
@@ -686,7 +715,9 @@ impl<'a> Ownership<'a> {
                             ));
                         }
                         self.use_(&v.name, v.line, v.col, st)?;
-                        track.entry(v.name.clone()).or_insert("borrow");
+                        if let Some(t) = self.track.as_mut() {
+                            t.entry(v.name.clone()).or_insert("borrow");
+                        }
                     }
                     _ => self.expr(arg, st)?,
                 }
@@ -698,7 +729,7 @@ impl<'a> Ownership<'a> {
 
 /// ownership/liveness of one typed, non-foreign function; funcs: name -> `take` flags of the program's functions
 pub fn check_ownership(f: &Function, funcs: &Takes) -> Res<()> {
-    Ownership { funcs, bor: HashSet::new() }.run(f)
+    Ownership { funcs, bor: HashSet::new(), track: None }.run(f)
 }
 
 // ---------------------------------------------------------------------------
@@ -888,6 +919,6 @@ mod tests {
         b.set("y", V::Dead);
         b.set("x", V::Dead);
         let j = join(Some(a), Some(b)).unwrap();
-        assert_eq!(j.items, vec![("x".to_string(), V::Maybe), ("y".to_string(), V::Dead)]);
+        assert_eq!(j.iter().cloned().collect::<Vec<_>>(), vec![("x".to_string(), V::Maybe), ("y".to_string(), V::Dead)]);
     }
 }

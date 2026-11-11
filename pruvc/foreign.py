@@ -143,6 +143,7 @@ class _Ownership:
     def __init__(s, funcs):
         s.funcs = funcs
         s.bor = set()
+        s.track = None   # name -> "move" | "borrow" of the outermost call being checked (shared by nested calls)
 
     def run(s, f):
         s.bor = set(p.name for p in f.params if is_collection(p.type) and not p.take)
@@ -280,7 +281,15 @@ class _Ownership:
     def call(s, e, st):
         f = CATALOG.get(e.name) or s.funcs.get(e.name)
         takes = [bool(p.take) for p in f.params] if f is not None else [False] * len(e.args)
-        track = {}
+        outer = s.track
+        track = outer if outer is not None else {}   # nested calls share the outermost call's track (R1)
+        s.track = track
+        try:
+            s.call_args(e, st, takes, track)
+        finally:
+            s.track = outer
+
+    def call_args(s, e, st, takes, track):
         for arg, take in zip(e.args, takes):
             if take:
                 if isinstance(arg, Move):

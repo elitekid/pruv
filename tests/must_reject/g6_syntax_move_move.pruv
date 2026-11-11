@@ -1,0 +1,2 @@
+// foreign_syntax: move move (audit R4)
+fn f(take v: Vec<i64>) -> Vec<i64> { return move move; }

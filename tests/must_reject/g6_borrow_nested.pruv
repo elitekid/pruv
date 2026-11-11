@@ -1,0 +1,10 @@
+// foreign_borrow: a nested call consumes a value the outer call borrows (audit R1)
+fn eat(take v: Vec<i64>) -> i64 {
+  return 0;
+}
+fn read(v: Vec<i64>, n: i64) -> i64 {
+  return len(v);
+}
+fn bad(take v: Vec<i64>) -> i64 {
+  return read(v, eat(move v));
+}

@@ -215,7 +215,8 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
                 pos += 1;
             }
             let v: String = src[start..pos].iter().collect();
-            if v == "move" && move_token(src, pos, &toks) {
+            // `move move`: the second one is a Move token too, so the parser reports foreign_syntax
+            if v == "move" && (toks.last().map_or(false, |t| t.kind == Kind::Move) || move_token(src, pos, &toks)) {
                 let end = col + (pos - start) as i64;
                 toks.push(Tok { kind: Kind::Move, val: v, line, col, end });
                 continue;

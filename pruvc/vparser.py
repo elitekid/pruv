@@ -132,7 +132,8 @@ def lex(src):
                 raise PruvError("parse", line, col, "bad_int", "integer literal ends with _", "")
             toks.append(Tok("int", int(v.replace("_", "")), line, col, col + len(v)))
         elif k == "id":
-            if v == "move" and _move_token(src, m.end(), toks):
+            # `move move`: the second one is a Move token too, so the parser reports foreign_syntax
+            if v == "move" and ((toks and toks[-1].kind == "move") or _move_token(src, m.end(), toks)):
                 toks.append(Tok("move", v, line, col, col + len(v)))
                 pos = m.end()
                 continue
