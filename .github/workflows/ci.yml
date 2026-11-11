@@ -102,7 +102,12 @@ jobs:
           /c/llvm/bin/llvm-lib.exe -out:"C:\\xml2stub\\xml2s.lib" "C:\\xml2stub\\stub.obj"
           # The official Windows LLVM is built with the static C runtime (/MT). Build Rust and vendored z3 with
           # the same runtime (crt-static), otherwise link.exe stops with LNK2038 RuntimeLibrary mismatch.
-          echo "RUSTFLAGS=-L native=C:\\xml2stub -C target-feature=+crt-static" >> "$GITHUB_ENV"
+          # With crt-static, llvm-sys asks for its system libraries (psapi, shell32, ...) as static libraries,
+          # and rustc only finds those on -L paths, so pass the Windows SDK library folder explicitly.
+          sdk=$(ls -d "/c/Program Files (x86)/Windows Kits/10/Lib/"10.* | sort -V | tail -1)
+          sdk_win=$(cygpath -w "$sdk/um/x64")
+          ls "$sdk/um/x64/psapi.lib"
+          echo "RUSTFLAGS=-L native=C:\\xml2stub -L native=$sdk_win -C target-feature=+crt-static" >> "$GITHUB_ENV"
 
       # ---------- Python reference compiler ----------
       - name: Python reference environment (.venv + z3-solver)
