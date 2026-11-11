@@ -104,8 +104,26 @@ fn generate(a: &Args, prog: &Program) -> Result<(String, String), Fail> {
         (None, None) => false,
     };
     let abi = if windows { pruv_core::abi::AbiTarget::WinX64 } else { pruv_core::abi::AbiTarget::SysV };
-    // `prog` is the CONCRETE program (the specialization plan of a generic program, see `compile`)
-    pruv_core::llvmgen::gen_llvm_concrete(prog, a.verify, a.trust_callers, a.budget, abi).map_err(Fail::Internal)
+    // `prog` is the CONCRETE program (the specialization plan of a generic program, see `compile`).
+    // G6 A3: foreign_checks reaches the shim helpers; a G6 construct outside G6_SPEC 13.1 is a codegen/unsupported_type
+    // diagnostic (nothing is written), like Python's PruvError from gen_llvm.
+    pruv_core::llvmgen::gen_llvm_concrete_ex(prog, a.verify, a.trust_callers, a.budget, abi, &a.foreign_checks).map_err(|e| match e {
+        pruv_core::codegen::GenError::Diag(p) => Fail::Lang(vec![p]),
+        pruv_core::codegen::GenError::Msg(m) => Fail::Internal(m),
+    })
+}
+
+/// G6_SPEC 13.1: `--emit exe|obj` of a G6 program needs the Rust host build (the shim lives in the generated bindings).
+fn foreign_target_error(prog: &Program) -> Option<PruvError> {
+    pruv_core::foreign::first_g6_use(prog)?;
+    Some(PruvError::new(
+        "codegen",
+        0,
+        0,
+        "foreign_target",
+        "a G6 program on the LLVM backend needs the Rust host build (generated bindings compiled by rustc)",
+        "emit LLVM IR and Rust bindings (--backend llvm --rust-bindings PATH) and compile the bindings with rustc",
+    ))
 }
 
 fn need_target(a: &Args) -> Result<&Target, Fail> {
@@ -185,12 +203,14 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // Exceeding the depth limit is reported by the parser as stage "internal" (exit 3, like Python RecursionError).
     let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
     let tt = pruv_core::check::check_with_externs(&mut prog, &a.rust_extern).map_err(|e| Fail::Lang(vec![e]))?;
-    // G6 (same place as in Python compile_file): the Rust source backend lowers foreign calls and collections (A2); the
-    // LLVM backend (and --also-llvm) still rejects them. With --no-verify the guard fires right after the check;
-    // otherwise after verification (G6_SPEC 11.1: verification errors win over the guard).
-    let g6_llvm = a.kind != Kind::Rs || a.also_llvm.is_some();
-    if !a.verify && g6_llvm {
-        if let Some(e) = pruv_core::foreign::g6_unimplemented_error(&prog, "codegen") {
+    // G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm) lowers
+    // the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type inside the LLVM generator
+    // (after verification, so verification errors win; same as Python compile_file). The native paths (--emit obj|exe),
+    // which Python does not have, cannot link the Rust shim: codegen/foreign_target (G6_SPEC 13.1). With --no-verify
+    // that check fires right after the check; otherwise after verification.
+    let g6_native = matches!(a.kind, Kind::Obj | Kind::Exe);
+    if !a.verify && g6_native {
+        if let Some(e) = foreign_target_error(&prog) {
             return Err(Fail::Lang(vec![e]));
         }
     }
@@ -217,8 +237,8 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
-        if g6_llvm {
-            if let Some(e) = pruv_core::foreign::g6_unimplemented_error(&prog, "codegen") {
+        if g6_native {
+            if let Some(e) = foreign_target_error(&prog) {
                 return Err(Fail::Lang(vec![e]));
             }
         }

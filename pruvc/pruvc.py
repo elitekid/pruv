@@ -72,13 +72,8 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     prog = parse(src)
     check(prog, externs=externs)
     # G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm)
-    # still rejects them. With --no-verify the guard fires right after the check; otherwise after verification
-    # (G6_SPEC 11.1).
-    g6_llvm = backend == "llvm" or bool(also_llvm)
-    if not verify and g6_llvm:
-        g6err = g6_unimplemented_error(prog)
-        if g6err is not None:
-            return [g6err]
+    # lowers the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type: that decision
+    # is made inside llvmgen.gen_llvm (after verification, so verification errors win).
     if verify:
         from verify import verify_program
         if infer:
@@ -90,10 +85,6 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             errs = verify_program(prog)
         if errs:
             return errs
-        if g6_llvm:
-            g6err = g6_unimplemented_error(prog)
-            if g6err is not None:
-                return [g6err]
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same
@@ -113,7 +104,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
         return [g2err]
     if backend == "llvm":
         from llvmgen import gen_llvm  # lazy: only the llvm backend needs it
-        ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan)
+        try:
+            ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan,
+                                    foreign_checks=foreign_checks)
+        except PruvError as e:   # G6 A3: codegen/unsupported_type outside G6_SPEC 13.1
+            return [e]
         with open(out, "w") as fh:
             fh.write(ir)
         with open(rust_bindings or default_bindings_path(out), "w") as fh:
@@ -127,7 +122,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
         llvm_texts = None
         if also_llvm:
             from llvmgen import gen_llvm
-            llvm_texts = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan)
+            try:
+                llvm_texts = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan,
+                                      foreign_checks=foreign_checks)
+            except PruvError as e:   # G6 A3: nothing is written when the LLVM side rejects
+                return [e]
         with open(out, "w") as fh:
             fh.write(rs_text)
         if manifest is not None:   # G6_SPEC 12.4

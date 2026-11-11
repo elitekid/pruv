@@ -36,6 +36,13 @@ from vast import *
 import codegen
 from codegen import show
 from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str  # G2 B2: uses_str
+from typeinfo import is_collection, contains_collection, encode  # G6 A3
+from foreign import CATALOG, CATALOG_CONTRACT_ONLY, first_g6_use  # G6 A3
+import foreign_shim  # G6 A3
+
+G6_UNSUPPORTED_MSG = "G6 foreign calls and collections are not implemented by the llvm codegen layer yet"
+G6_UNSUPPORTED_FIX = "avoid trusted rust fn, Vec, HashMap, String, take and move for now"
+G6_BRIDGE_DECL = "@pruv_g6_bridge_v1 = external global i8\n"
 
 SIGNED_MIN128 = -170141183460469231731687303715884105728
 OPT = "{ i1, i64 }"
@@ -147,6 +154,8 @@ def is_new_app(t):
 
 def lty(t):
     """internal SSA type of a Pruv type"""
+    if is_collection(t):  # G6 A3: opaque handle
+        return "ptr"
     if gopt(t):
         return st(t)
     r = {"i64": "i64", "bool": "i1", "unit": "void", "array": ARR, "array_u8": ARR, "array_bool": ARR,
@@ -155,6 +164,8 @@ def lty(t):
 
 
 def vkind(t):
+    if is_collection(t):  # G6 A3
+        return "coll"
     if gopt(t):
         return "agg"
     return {"i64": "i64", "bool": "i1", "unit": "unit", "array": "arr", "array_u8": "arr", "array_bool": "arr",
@@ -226,7 +237,8 @@ def type_defs(tt):
 
 class V:
     """an SSA value: k in i64 | i1 | i128 | arr (a=ptr, b=len) | opt (a=tag i1, b=payload) | unit |
-    agg (a=aggregate SSA of a user struct/enum, ty=its Type; %pruv_t_* in code, %pruv_c_* in requires)"""
+    agg (a=aggregate SSA of a user struct/enum, ty=its Type; %pruv_t_* in code, %pruv_c_* in requires) |
+    coll (G6: a=ptr, an opaque handle of a Vec/HashMap/String box, ty=its Type)"""
     __slots__ = ("k", "a", "b", "ty")
 
     def __init__(s, k, a=None, b=None, ty=None):
@@ -246,6 +258,9 @@ class Mod:
         s.strs = {}
         s.order = []
         s.uses_repr = False     # G3: the wrappers reject an invalid enum ordinal through pruv_panic_repr
+        s.g6_decls = {}         # G6 A3: shim symbol -> declare line
+        s.g6_v2 = False         # G6 A3: string_to_str needs the v2 copy/free declarations
+        s.g6_bridge = False     # G6 A3: some function references @pruv_g6_bridge_v1
 
     def string(s, text):
         if text not in s.strs:
@@ -273,6 +288,8 @@ def ir_params(f):
             out.append(("i1", "%%p.%s" % n))
         elif p.type == I64:
             out.append(("i64", "%%p.%s" % n))
+        elif is_collection(p.type):  # G6 A3: plain opaque handle %p.NAME.h (no readonly/noalias attributes)
+            out.append(("ptr", "%%p.%s.h" % n))
         elif is_agg(p.type):
             out.append((lty(p.type), "%%p.%s" % n))
         else:
@@ -281,8 +298,10 @@ def ir_params(f):
 
 
 def sig_text(params):
-    """definition parameter list of an internal function: array pointers are read-only borrows"""
-    return ", ".join("%s %s" % ("ptr noalias nocapture readonly" if t == "ptr" else t, n) for t, n in params)
+    """definition parameter list of an internal function: array pointers are read-only borrows (their IR names
+    end in .a; a G6 collection handle %p.NAME.h is a plain ptr)"""
+    return ", ".join("%s %s" % ("ptr noalias nocapture readonly" if t == "ptr" and n.endswith(".a") else t, n)
+                     for t, n in params)
 
 
 class FnGen:
@@ -297,6 +316,7 @@ class FnGen:
         s.temps = []
         s.cenv = {}
         s.tt = m.tt
+        s.bridge = False    # G6 A3: this function references @pruv_g6_bridge_v1
 
     # ---------- emission ----------
     def ins(s, text):
@@ -352,7 +372,13 @@ class FnGen:
 
     def render(s, header):
         out = [header + " {", "entry:"] + ["  " + a for a in s.allocas] + ["  br label %start"]
-        out += s.lines
+        lines = s.lines
+        if s.bridge:
+            # G6 A3: a (volatile) read of the shim's bridge marker keeps the reference alive: linking without the
+            # shim fails.  lines[0] is the `start:` label.
+            lines = lines[:1] + ["  %g6.bridge = load volatile i8, ptr @pruv_g6_bridge_v1"] + lines[1:]
+            s.m.g6_bridge = True
+        out += lines
         out.append("}")
         return "\n".join(out) + "\n"
 
@@ -368,6 +394,10 @@ class FnGen:
         if kind == "i1":
             s.allocas.append("%s = alloca i1" % a)
             return Slot("i1", a)
+        if kind == "coll":  # G6 A3: owner slot, null-initialized
+            s.allocas.append("%s = alloca ptr" % a)
+            s.allocas.append("store ptr null, ptr %s" % a)
+            return Slot("coll", a, None, ty)
         if kind == "arr":
             s.allocas.append("%s = alloca ptr" % a)
             s.allocas.append("%s = alloca i64" % b)
@@ -384,6 +414,8 @@ class FnGen:
             return V(sl.k, s.op("load %s, ptr %s" % (sl.k, sl.a)))
         if sl.k == "agg":
             return V("agg", s.op("load %s, ptr %s" % (lty(sl.ty), sl.a)), None, sl.ty)
+        if sl.k == "coll":
+            return V("coll", s.op("load ptr, ptr %s" % sl.a), None, sl.ty)
         if sl.k == "arr":
             p = s.op("load ptr, ptr %s" % sl.a)
             n = s.op("load i64, ptr %s" % sl.b)
@@ -397,6 +429,8 @@ class FnGen:
             s.ins("store %s %s, ptr %s" % (sl.k, v.a, sl.a))
         elif sl.k == "agg":
             s.ins("store %s %s, ptr %s" % (lty(sl.ty), v.a, sl.a))
+        elif sl.k == "coll":
+            s.ins("store ptr %s, ptr %s" % (v.a, sl.a))
         elif sl.k == "arr":
             s.ins("store ptr %s, ptr %s" % (v.a, sl.a))
             s.ins("store i64 %s, ptr %s" % (v.b, sl.b))
@@ -414,14 +448,47 @@ class FnGen:
         s.scopes.append({"names": {}, "arrays": []})
 
     def free_val(s, v):
-        if is_bytes(v):  # G2 A5
+        if v.k == "coll":  # G6 A3: a fresh (non-null) collection temporary
+            s.g6_drop(v)
+        elif is_bytes(v):  # G2 A5
             s.ins("call void @pruv_free_v2(ptr %s, i64 %s, i64 1, i64 1)" % (v.a, v.b))
         else:
             s.ins("call void @pruv_free(ptr %s, i64 %s)" % (v.a, v.b))
 
     def free_scope(s, sc):
         for sl in reversed(sc["arrays"]):
-            s.free_val(s.load(sl))
+            if sl.k == "coll":
+                s.drop_slot(sl)
+            else:
+                s.free_val(s.load(sl))
+
+    # ---------- G6 A3: shim calls, owner slots ----------
+    def g6_decl(s, sym, ret, argtys):
+        s.m.g6_decls[sym] = "declare %s @%s(%s) nounwind" % (ret, sym, ", ".join(argtys))
+        s.bridge = True
+
+    def g6_call(s, sym, ret, args):
+        """call a bridge symbol; args: [(llvm type, value)]; returns the SSA result (None for void)"""
+        s.g6_decl(sym, ret, [t for t, _ in args])
+        a = ", ".join("%s %s" % (t, v) for t, v in args)
+        if ret == "void":
+            s.ins("call void @%s(%s)" % (sym, a))
+            return None
+        return s.op("call %s @%s(%s)" % (ret, sym, a))
+
+    def g6_drop(s, v):
+        s.g6_call(foreign_shim.drop_sym(v.ty), "void", [("ptr", v.a)])
+
+    def drop_slot(s, sl):
+        """drop the owner slot's collection if it is non-null (moved-out slots hold null)"""
+        p = s.op("load ptr, ptr %s" % sl.a)
+        nn = s.op("icmp ne ptr %s, null" % p)
+        dl, el = s.label("gdrop"), s.label("gdone")
+        s.condbr(nn, dl, el)
+        s.place(dl)
+        s.g6_drop(V("coll", p, None, sl.ty))
+        s.br(el)
+        s.place(el)
 
     def pop_scope(s):
         sc = s.scopes.pop()
@@ -668,6 +735,7 @@ class FnGen:
     def bind_params(s):
         s.place("start")
         names = {}
+        owned = []
         for p in s.f.params:
             n = mangle(p.name)
             if is_arr(p.type):
@@ -676,19 +744,28 @@ class FnGen:
                 names[p.name] = ("ssa", V("i1", "%%p.%s" % n))
             elif p.type == I64:
                 names[p.name] = ("ssa", V("i64", "%%p.%s" % n))
+            elif is_collection(p.type):  # G6 A3
+                s.bridge = True
+                if p.take:   # consuming parameter: an owner slot (the callee drops it unless it is moved out)
+                    sl = s.new_slot(p.name, p.type)
+                    s.ins("store ptr %%p.%s.h, ptr %s" % (n, sl.a))
+                    names[p.name] = ("slot", sl)
+                    owned.append(sl)
+                else:        # borrowed: never dropped here
+                    names[p.name] = ("ssa", V("coll", "%%p.%s.h" % n, None, p.type))
             elif is_agg(p.type):
                 names[p.name] = ("ssa", V("agg", "%%p.%s" % n, None, p.type))
             else:
                 t = s.op("extractvalue %s %%p.%s, 0" % (OPT, n))
                 v = s.op("extractvalue %s %%p.%s, 1" % (OPT, n))
                 names[p.name] = ("ssa", V("opt", t, v))
-        s.scopes.append({"names": names, "arrays": []})
+        s.scopes.append({"names": names, "arrays": owned})
 
     def emit_ret(s, v):
         rt = s.f.ret
         if rt == UNIT:
             s.term("ret void")
-        elif rt in (I64, BOOL):
+        elif rt in (I64, BOOL) or is_collection(rt):
             s.term("ret %s %s" % (lty(rt), v.a))
         else:
             g = s.agg(v)
@@ -712,6 +789,7 @@ class FnGen:
         falls = s.run_block(s.f.body)
         if falls:
             if s.f.ret == UNIT:
+                s.free_scope(s.scopes[0])   # G6 A3: owned (take) parameters; empty for every other program
                 s.term("ret void")
             else:
                 s.term("unreachable")
@@ -724,7 +802,7 @@ class FnGen:
             s.store(sl, v)
             sc = s.scopes[-1]
             sc["names"][st.name] = ("slot", sl)
-            if sl.k == "arr":
+            if sl.k == "arr" or sl.k == "coll":
                 sc["arrays"].append(sl)
             s.end_temps()
         elif isinstance(st, Assign):
@@ -733,6 +811,8 @@ class FnGen:
             v = s.ev(st.value, True)
             if sl.k == "arr":
                 s.free_val(s.load(sl))
+            elif sl.k == "coll":   # G6 A3: drop the old value (null when moved out) after the right side
+                s.drop_slot(sl)
             s.store(sl, v)
             s.end_temps()
         elif isinstance(st, FieldAssign):
@@ -916,6 +996,11 @@ class FnGen:
         if isinstance(e, Var):
             kind, x = s.lookup(e.name)
             return x if kind == "ssa" else s.load(x)
+        if isinstance(e, Move):   # G6 A3: load the owner slot, then null it
+            kind, x = s.lookup(e.name)
+            v = s.load(x)
+            s.ins("store ptr null, ptr %s" % x.a)
+            return v
         if isinstance(e, Unary):
             x = s.ev(e.operand)
             if e.op == "!":
@@ -994,7 +1079,12 @@ class FnGen:
     def ev_call(s, e, owned):
         n, a = e.name, e.args
         if n == "len":
-            return V("i64", s.ev(a[0]).b)
+            x = s.ev(a[0])
+            if x.k == "coll":   # G6 A3
+                return V("i64", s.g6_call(foreign_shim.len_sym(x.ty), "i64", [("ptr", x.a)]))
+            return V("i64", x.b)
+        if n in CATALOG and n not in CATALOG_CONTRACT_ONLY and n not in s.funcs:   # G6 A3: reserved names
+            return s.catalog_call(e, owned)
         if n == "alloc":
             cnt = s.ev(a[0])        # source order in every mode: n then v
             v = s.ev(a[1])
@@ -1050,10 +1140,14 @@ class FnGen:
         if n not in s.funcs:
             raise Exception("llvmgen: unsupported call in code: %s" % n)
         f = s.funcs[n]
+        if f.foreign is not None:   # G6 A3: trusted rust fn through its bridge adapter
+            return s.trusted_call(f, e)
         args = []
-        for x in a:
-            v = s.ev(x)
-            if v.k == "arr":
+        for i, x in enumerate(a):
+            v = s.ev(x, f.params[i].take)
+            if v.k == "coll":   # G6 A3: opaque handle
+                args.append("ptr %s" % v.a)
+            elif v.k == "arr":
                 args += ["ptr %s" % v.a, "i64 %s" % v.b]
             elif v.k == "opt":
                 args.append("%s %s" % (OPT, s.agg(v)))
@@ -1068,6 +1162,8 @@ class FnGen:
         r = s.op("call %s %s(%s)" % (lty(f.ret), callee, ", ".join(args)))
         if f.ret in (I64, BOOL):
             return V(vkind(f.ret), r)
+        if is_collection(f.ret):   # G6 A3: fresh owned handle; a temporary unless the caller takes it
+            return s.temp_arr(V("coll", r, None, f.ret), owned)
         if is_agg(f.ret):
             return V("agg", r, None, f.ret)
         x0 = s.op("extractvalue %s %s, 0" % (lty(f.ret), r))
@@ -1075,6 +1171,75 @@ class FnGen:
         if is_arr(f.ret):
             return s.temp_arr(V("arr", x0, x1, elem_ty(f.ret)), owned)
         return V("opt", x0, x1)
+
+    # ---------- G6 A3: catalog operations and trusted rust fn through the bridge ----------
+    def g6_arg(s, v):
+        """bridge arguments [(type, value)] of an evaluated value: handle ptr, bool as i64 0/1, (ptr, len), i64"""
+        if v.k == "coll":
+            return [("ptr", v.a)]
+        if v.k == "i1":
+            return [("i64", s.op("zext i1 %s to i64" % v.a))]
+        if v.k == "arr":
+            return [("ptr", v.a), ("i64", v.b)]
+        return [("i64", v.a)]
+
+    def g6_out(s, kind):
+        """fresh entry-block out slot of the given llvm type; returns its name"""
+        base = "%%g%d" % s.nslot
+        s.nslot += 1
+        s.allocas.append("%s = alloca %s" % (base, kind))
+        return base
+
+    def catalog_call(s, e, owned):
+        n = e.name
+        cat = CATALOG[n]
+        low, src = foreign_shim.inst_types(e)
+        sym = foreign_shim.adapter_sym(foreign_shim.helper_name(n, src))
+        args = []
+        for p, x in zip(cat.params, e.args):   # arguments once, in source order; take arguments are owned values
+            args += s.g6_arg(s.ev(x, bool(p.take)))
+        if n in ("vec_new", "map_new", "string_new", "vec_push", "map_insert", "string_push_str"):
+            r = s.g6_call(sym, "ptr", args)     # a fresh box, or the very same box pointer of a consuming update
+            return s.temp_arr(V("coll", r, None, e.ty), owned)
+        if n in ("vec_get", "string_byte"):
+            r = s.g6_call(sym, "i64", args)
+            if e.ty == BOOL:
+                return V("i1", s.op("icmp ne i64 %s, 0" % r))
+            return V("i64", r)
+        if n == "map_get":
+            tag, val = s.g6_out("i64"), s.g6_out("i64")
+            s.g6_call(sym, "void", args + [("ptr", tag), ("ptr", val)])
+            t = s.op("load i64, ptr %s" % tag)
+            x = s.op("load i64, ptr %s" % val)
+            t1 = s.op("icmp ne i64 %s, 0" % t)
+            if e.ty == OPTION:
+                return V("opt", t1, x)
+            x1 = s.op("icmp ne i64 %s, 0" % x)      # Option<bool>: { i1, i1 }
+            T = st(e.ty)
+            a0 = s.op("insertvalue %s zeroinitializer, i1 %s, 0" % (T, t1))
+            return V("agg", s.op("insertvalue %s %s, i1 %s, 1" % (T, a0, x1)), None, e.ty)
+        if n == "string_to_str":
+            s.m.g6_v2 = True
+            d, l = s.g6_out("ptr"), s.g6_out("i64")
+            s.g6_call(foreign_shim.STRING_BYTES_SYM, "void", args + [("ptr", d), ("ptr", l)])
+            dp = s.op("load ptr, ptr %s" % d)
+            ln = s.op("load i64, ptr %s" % l)
+            p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (dp, ln))
+            return s.temp_arr(V("arr", p, ln, STR), owned)
+        raise Exception("llvmgen: unsupported catalog operation %s" % n)
+
+    def trusted_call(s, f, e):
+        args = []
+        for x in e.args:
+            args += s.g6_arg(s.ev(x))
+        sym = foreign_shim.adapter_sym(f.name)
+        if f.ret == UNIT:
+            s.g6_call(sym, "void", args)
+            return V("unit")
+        r = s.g6_call(sym, "i64", args)
+        if f.ret == BOOL:
+            return V("i1", s.op("icmp ne i64 %s, 0" % r))
+        return V("i64", r)
 
     # ---------- contract evaluation (requires), i128 ----------
     def bind_contract_params(s):
@@ -1087,6 +1252,8 @@ class FnGen:
                 s.cenv[p.name] = V("i1", "%%p.%s" % n)
             elif p.type == I64:
                 s.cenv[p.name] = V("i128", s.op("sext i64 %%p.%s to i128" % n))
+            elif is_collection(p.type):   # G6 A3: only len(c) is evaluable in a requires on LLVM
+                s.cenv[p.name] = V("coll", "%%p.%s.h" % n, None, p.type)
             elif is_agg(p.type):
                 s.cenv[p.name] = s.to_c(V("agg", "%%p.%s" % n, None, p.type), p.type)
             else:
@@ -1142,6 +1309,8 @@ class FnGen:
             cmp = {"==": "eq", "!=": "ne", "<": "slt", "<=": "sle", ">": "sgt", ">=": "sge"}[op]
             return V("i1", s.op("icmp %s %s %s, %s" % (cmp, "i1" if l.k == "i1" else "i128", l.a, r.a)))
         if isinstance(e, Index):
+            if e.array.ty is not None and is_collection(e.array.ty):   # G6 A3: not evaluable on LLVM yet
+                raise PruvError("codegen", e.line, e.col, "unsupported_type", G6_UNSUPPORTED_MSG, G6_UNSUPPORTED_FIX)
             a = s.cev(e.array)
             i = s.cev(e.index)
             ln = s.op("zext i64 %s to i128" % a.b)
@@ -1193,7 +1362,13 @@ class FnGen:
         if isinstance(e, Call):
             n, a = e.name, e.args
             if n == "len":
-                return V("i128", s.op("zext i64 %s to i128" % s.cev(a[0]).b))
+                x = s.cev(a[0])
+                if x.k == "coll":   # G6 A3
+                    ln = s.g6_call(foreign_shim.len_sym(x.ty), "i64", [("ptr", x.a)])
+                    return V("i128", s.op("zext i64 %s to i128" % ln))
+                return V("i128", s.op("zext i64 %s to i128" % x.b))
+            if n in CATALOG_CONTRACT_ONLY:   # G6 A3: map_lookup / map_updated: not evaluable on LLVM yet
+                raise PruvError("codegen", e.line, e.col, "unsupported_type", G6_UNSUPPORTED_MSG, G6_UNSUPPORTED_FIX)
             if n == "is_char_boundary":  # G2 B2
                 sv = s.cev(a[0])
                 iv = s.cev(a[1])
@@ -1894,7 +2069,8 @@ def rs_de(tt, ty, arr, off):
     return "(match %s[%d] { %s _ => ::std::unreachable!() })" % (arr, off, " ".join(arms))
 
 
-def gen_bindings(prog):
+def gen_bindings(prog, shim=None):
+    """shim: the `mod pruv_g6_shim` text of a G6 program (foreign_shim.build_shim); None for every other program"""
     tt = TypeTable(prog)
     o = []
     o.append("// generated by pruvc llvmgen -- Rust bindings for the LLVM back end (include with #[path] mod sol;)")
@@ -1987,7 +2163,9 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
     }
 }""")
     # G3: specializations of generic functions are private (no ABI symbol, not callable from the bindings)
-    pubs = [f for f in prog.functions if not getattr(f, "private", False)]
+    # G6 A3: trusted declarations and collection-bearing functions have no binding
+    pubs = [f for f in prog.functions if not getattr(f, "private", False) and f.foreign is None
+            and not _is_coll_fn(f)]
     returns_array = any(is_arr(f.ret) for f in pubs)  # G2 B2: str counts
     decls = []
     for f in pubs:
@@ -2099,22 +2277,89 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
         o.append(ALLOW)
         o.append("#[inline]\npub fn %s(%s)%s {\n    unsafe {\n%s\n    }\n}" %
                  (f.name, ps, ret, "\n".join("        " + b for b in body)))
+    if shim is not None:   # G6 A3: the bridge shim module, exactly once, last
+        o.append(shim.rstrip("\n"))
     return "\n".join(o) + "\n"
 
 
-def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None):
+def _g6_scalar(t):
+    return t == I64 or t == BOOL
+
+
+def _g6_coll_ok(t):
+    """G6_SPEC 13.1: Vec<i64|bool>, HashMap<i64|bool, i64|bool>, String"""
+    if t.name == "vec":
+        return _g6_scalar(t.args[0])
+    if t.name == "hashmap":
+        return _g6_scalar(t.args[0]) and _g6_scalar(t.args[1])
+    return t.name == "string"
+
+
+def _g6_type_ok(t):
+    """a type that may occur in a G6 program on LLVM: no collection, or a supported one (never nested)"""
+    if is_collection(t):
+        return _g6_coll_ok(t)
+    return not contains_collection(t)
+
+
+def g6_llvm_error(prog):
+    """PruvError codegen/unsupported_type for the first G6 construct outside G6_SPEC 13.1, or None.  Source order:
+    functions in order, the signature before the body, inside a body the earliest position."""
+    if first_g6_use(prog) is None:
+        return None
+
+    def err(line, col):
+        return PruvError("codegen", line, col, "unsupported_type", G6_UNSUPPORTED_MSG, G6_UNSUPPORTED_FIX)
+
+    for f in prog.functions:
+        if f.foreign is not None:
+            ok = f.ret in (I64, BOOL, UNIT) and all(
+                p.type in (I64, BOOL, ARRAY, ARRAY_U8, ARRAY_BOOL, STR) and not p.take for p in f.params)
+            if not ok:
+                return err(f.line, f.col)
+            continue
+        if any(not _g6_type_ok(p.type) for p in f.params) or not _g6_type_ok(f.ret):
+            return err(f.line, f.col)
+        bad = []
+
+        def visit(n):
+            if isinstance(n, Let) and not _g6_type_ok(n.type):
+                bad.append((n.line, n.col))
+            ty = getattr(n, "ty", None)
+            if ty is not None and not _g6_type_ok(ty):
+                bad.append((n.line, n.col))
+            if isinstance(n, Call) and n.name in CATALOG and n.name not in CATALOG_CONTRACT_ONLY and n.inst:
+                if not all(_g6_scalar(a) for a in n.inst["args"]):
+                    bad.append((n.line, n.col))
+
+        foreign_shim._walk(f.body, visit)
+        if bad:
+            line, col = min(bad)
+            return err(line, col)
+    return None
+
+
+def _is_coll_fn(f):
+    return any(is_collection(p.type) for p in f.params) or is_collection(f.ret)
+
+
+def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None, foreign_checks="requires"):
     """plan: a mono.SpecPlan for a generic program (computed here when omitted; PruvError specialization_limit
-    propagates).  The generator works on the concrete plan.program only: no type parameter reaches LLVM."""
+    propagates).  The generator works on the concrete plan.program only: no type parameter reaches LLVM.
+    foreign_checks: G6 boundary check mode of the shim helpers (requires|all|off, docs/G6_SPEC.md 12.3).
+    A G6 program outside the supported subset (G6_SPEC 13.1) raises PruvError codegen/unsupported_type."""
     from typeinfo import g2_unimplemented_error, first_g3_use
-    from foreign import g6_unimplemented_error
-    g6err = g6_unimplemented_error(prog)   # G6: no code generator lowers G6 yet (the drivers reject earlier)
-    if g6err is not None:
-        raise g6err
+    if foreign_checks not in ("requires", "all", "off"):
+        raise ValueError("foreign_checks must be requires, all or off")
     if plan is None and first_g3_use(prog) is not None:
         from mono import specialize
         plan = specialize(prog)
     if plan is not None:
         prog = plan.program
+    g6err = g6_llvm_error(prog)
+    if g6err is not None:
+        raise g6err
+    is_g6 = first_g6_use(prog) is not None
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
@@ -2122,22 +2367,32 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     m = Mod(tt)
     funcs = {f.name: f for f in prog.functions}
     chunks = []
-    if not trust_callers and any(f.requires for f in prog.functions):
+    if not trust_callers and any(f.requires and f.foreign is None for f in prog.functions):
         chunks.append(cdivrem(m, True))
         chunks.append(cdivrem(m, False))
     for f in prog.functions:
+        if f.foreign is not None:   # G6 A3: a trusted rust fn has no body; its calls go to the shim adapter
+            continue
+        coll = _is_coll_fn(f)       # G6 A3: collection-bearing functions are internal (no ABI wrapper, no binding)
         g = FnGen(m, funcs, f, verified)
         g.body()
         params = ir_params(f)
         chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
-        chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
-        if not getattr(f, "private", False):  # G3: a generic specialization has no ABI symbol
+        if not (coll and verified):   # verified callers call the body; the entry only serves safe-mode callers
+            chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
+        if not getattr(f, "private", False) and not coll:  # G3: a generic specialization has no ABI symbol
             chunks.append(abi_of(f, tt, m))
     has_str = uses_str(prog)  # G2 B2: walk the AST once
+    g6decls = ""
+    if m.g6_bridge or m.g6_decls:   # G6 A3: bridge marker and the shim symbols used, sorted by symbol
+        g6decls = G6_BRIDGE_DECL + "".join(m.g6_decls[k] + "\n" for k in sorted(m.g6_decls))
     ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + (
-        DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool") or has_str)
+        DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool") or has_str or m.g6_v2)
         else "") + (
         DECLS_BOOL if uses_array_type(prog, "array_bool") else "") + (
         DECLS_STR if has_str else "") + (
-        DECLS_REPR if m.uses_repr else "") + "\n" + "\n".join(chunks)  # G2 A5/B2, G3
-    return ir, gen_bindings(prog)
+        DECLS_REPR if m.uses_repr else "") + g6decls + "\n" + "\n".join(chunks)  # G2 A5/B2, G3, G6 A3
+    shim = None
+    if is_g6:
+        shim = foreign_shim.build_shim(prog, verified, trust_callers, budget, foreign_checks)
+    return ir, gen_bindings(prog, shim)

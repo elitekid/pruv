@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--foreign-checks", "all"], ["--foreign-checks", "off"], ["--no-verify"], ["--no-verify", "--foreign-checks", "all"], ["--trust-callers"]], "exit": 0, "stdout_lines": ["true", "false", "true", "true"]}
+{"flags_matrix": [[], ["--foreign-checks", "all"], ["--foreign-checks", "off"], ["--no-verify"], ["--no-verify", "--foreign-checks", "all"], ["--trust-callers"]], "exit": 0, "stdout_lines": ["true", "false", "true", "true"], "g6_drop_balance": true}

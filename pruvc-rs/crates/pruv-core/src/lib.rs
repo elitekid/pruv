@@ -27,6 +27,7 @@ pub mod dump;
 pub mod emit_common;
 pub mod foreign;
 pub mod foreign_codegen;
+pub mod foreign_shim;
 pub mod gtype;
 pub mod lexer;
 pub mod llvmgen;

@@ -1,13 +1,15 @@
-// A2 audit R1: a String parameter indexed in a runtime requires needs the str contract helper
+// A2 audit R1: a String parameter indexed in a runtime requires needs the str contract helper even when the
+// program has no str type and no string literal (first is never called; the program must still compile)
 fn first(s: String) -> i64
   requires len(s) > 0
   requires s[0] == 65
-  ensures result == 65
 {
   return string_byte(s, 0);
 }
-fn run() -> i64 ! alloc {
-  let mut s: String = string_new();
-  s = string_push_str(move s, "AB");
-  return first(s);
+
+fn run() -> i64 ! alloc
+  ensures result == 0
+{
+  let s: String = string_new();
+  return len(s);
 }

@@ -61,6 +61,11 @@ impl ForeignGen {
         self.items.iter().map(|(_, t)| t.clone()).collect()
     }
 
+    /// G6 A3: (helper name, text) of every emitted helper, in first-use order
+    pub fn items(&self) -> &[(String, String)] {
+        &self.items
+    }
+
     pub fn has_item(&self, name: &str) -> bool {
         self.items.iter().any(|(n, _)| n == name)
     }

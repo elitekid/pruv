@@ -548,3 +548,39 @@ When the program uses any G6 construct, both drivers also write `<out>.foreign.j
 ### 12.5 Tests
 
 `tests/runtime/g6_*.pruv` + `.json` + driver `.rs` (24: 4 scalar/Option/Result adapter, 6 Vec, 6 map, 4 String, 4 ownership/effect/evaluation order), each with a flags matrix over `[]`, `["--foreign-checks","all"]`, `["--foreign-checks","off"]`, `["--no-verify"]`, `["--no-verify","--foreign-checks","all"]` and the same with `--trust-callers` where meaningful. A runtime `.json` may name extern crates: `"rust_externs": {"NAME": "tests/runtime/FILE.rs"}`; the harness builds each as an rlib, passes `--rust-extern NAME=RLIB` to pruvc and `--extern NAME=RLIB` to rustc. Injected-wrong-Rust fixtures use such an adapter crate to exercise false ensures (caught only with `all`), panic, i128/budget failures and single evaluation of arguments.
+
+## 13. A3 implementation decisions (fixed 2026-11-12, before implementation)
+
+These narrow §5.3–§5.4 to a first LLVM bridge that both compilers emit byte-identically. Deviations from §5.3/§5.4/§7.5 are listed in 13.6.
+
+### 13.1 Supported on LLVM in A3
+
+- Collections whose element, key and value types are `i64` or `bool`: `Vec<i64|bool>`, `HashMap<i64|bool, i64|bool>`, `String`; `map_get` results `Option<i64|bool>`.
+- `trusted rust fn` with parameters `i64`, `bool`, `[i64]`, `[u8]`, `[bool]`, `str` and results `i64`, `bool`, `()`.
+- Anything else G6 on LLVM (other element types, Option/Result in trusted signatures) keeps `codegen/unsupported_type` with the message "G6 foreign calls and collections are not implemented by the llvm codegen layer yet" at the first such construct (those runtime fixtures stay in `tests/llvm_pending.txt`).
+- The supported build is the **Rust host build**: the generated bindings file (`--rust-bindings`), compiled by rustc together with the LLVM object and the runtime object (exactly how `tests/run_all.py` links LLVM rows). The canonical driver's `--emit exe|obj` for a G6 program reports `codegen/foreign_target` "a G6 program on the LLVM backend needs the Rust host build (generated bindings compiled by rustc)".
+
+### 13.2 Shim (in the generated bindings file)
+
+- The bindings file gains, only for G6 programs, a module `pruv_g6_shim` containing exactly the A2 Rust helpers the program uses (same text, same check mode, same budget, same preludes they need) and, for each, one `#[no_mangle] pub extern "C"` adapter named `pruv_g6_v1_<helper name>`, plus `#[no_mangle] pub static pruv_g6_bridge_v1: u8 = 1;`. The LLVM module declares `@pruv_g6_bridge_v1 = external global i8` and references it from every G6 function, so linking without the shim fails.
+- Representations: `i64` as i64; `bool` as i64 0/1 (anything else → `pruv: invalid representation: bool`); a collection handle as `ptr` to a `Box` of the concrete Rust collection; a borrowed array/str as `(ptr, i64 len)` (the adapter checks `0 <= len <= 2^40`, uses an empty slice for len 0, checks bool bytes 0/1 and UTF-8 for str → `pruv: invalid representation: ...`); `Option<i64|bool>` results through two out-pointers `(ptr tag_out, ptr val_out)` (tag 0/1; val 0 for None).
+- Consuming updates (`vec_push`, `map_insert`, `string_push_str`) take the handle, replace the boxed value in place (`std::mem::take` + helper + store back) and return the **same** pointer (no allocation per update). Constructors return a fresh `Box::into_raw`. Reads borrow (`&*p`). `pruv_g6_v1_drop__<C>(ptr)` frees once (`<C>` = `vec__i`, `vec__b`, `hashmap__i__i`, …, `string`; the G3 encoding of the full collection type). `string_to_str` becomes `pruv_g6_v1_string_bytes(h, ptr data_out, ptr len_out)` (borrowed view) followed on the LLVM side by the existing `pruv_copy` into a fresh G2 `str`.
+- Every adapter runs its body under `catch_unwind`; on a panic (the panic hook has already printed the `pruv: ...` message) it calls C `fflush(NULL)` and `std::process::exit(101)`. No unwinding crosses into LLVM frames.
+
+### 13.3 LLVM code generation
+
+- A collection value is an SSA `ptr`. Each owned collection binding (`let` local, `take` parameter) has an `alloca ptr` slot initialized to null. Reading a binding in a borrow position loads the slot. `move x` loads the slot and stores null. Assignment evaluates the right side, then drops the old slot value if non-null, then stores. At every scope exit (end of block, each loop iteration's body end for loop-local bindings, and before `ret` for all enclosing scopes, innermost first, reverse declaration order) each owned slot is loaded and dropped if non-null. A fresh collection result used only in a borrow position is a temporary dropped at the end of its statement (existing temporary machinery). Borrowed parameters are never dropped. Returning a collection moves it out (slot nulled) before the drops.
+- Collection-bearing functions are internal and get no `pruv_abi_*` wrapper and no binding.
+- `len(c)` calls `pruv_g6_v1_len__<C>`.
+
+### 13.4 Tests
+
+The A2 runtime fixtures run on LLVM unless they use something outside 13.1 (those stay pending and are listed). The shim always keeps a count of live boxes in a static atomic (incremented on every `Box::into_raw` of a new collection, decremented on drop). When the environment variable `PRUV_G6_COUNT=1` is set, the first constructor registers a C `atexit` handler that prints `pruv-g6-live: N` to stderr. A runtime `.json` may set `"g6_drop_balance": true`; the harness then sets the variable on LLVM rows and requires `N == 0`.
+
+### 13.5 Python/Rust parity
+
+Both compilers emit identical `.ll` and bindings text for G6 programs (`tests/diff_llvm.py`).
+
+### 13.6 Deferred from §5.3–§5.4/§7.5
+
+Bundle digest symbol `pruv_g6_bundle_<sha256>`, aggregate (G3 value) payloads across the bridge, `--emit exe/obj` link driver via rustc, `--rust-search`, the 16-probe ABI suite and other targets than the host. They are follow-ups after A4 and do not block the Rust-source path.

@@ -399,8 +399,14 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
                            capture_output=True, text=True, timeout=300)
         if r.returncode != 0:
             return False, "rustc: " + r.stderr[-400:]
-        p = subprocess.run([exe], capture_output=True, text=True, timeout=60)
+        g6_count = bool(llvm and spec.get("g6_drop_balance"))   # G6 A3 (G6_SPEC 13.4)
+        env = dict(os.environ, PRUV_G6_COUNT="1") if g6_count else None
+        p = subprocess.run([exe], capture_output=True, text=True, timeout=60, env=env)
         problems = []
+        if g6_count:
+            m = re.search(r"pruv-g6-live: (-?\d+)", p.stderr)
+            if m is None or m.group(1) != "0":
+                problems.append("g6 live boxes at exit: %s (expected 0)" % (m.group(1) if m else "no report"))
         if p.returncode != spec["exit"]:
             problems.append("exit %d (expected %d)" % (p.returncode, spec["exit"]))
         so, se = spec.get("stdout_contains"), spec.get("stderr_contains")

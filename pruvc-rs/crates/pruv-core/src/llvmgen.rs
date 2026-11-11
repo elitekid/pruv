@@ -6,9 +6,38 @@
 use crate::abi::{abi_of, AbiTarget};
 use crate::ast::*;
 use crate::typeinfo::{is_array_name, is_user_type, uses_array_type, TypeTable};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub type R<T> = Result<T, String>;
+
+// ---------- G6 A3 (docs/G6_SPEC.md section 13): collections and trusted calls through the shim ----------
+
+pub const G6_UNSUPPORTED_MSG: &str = "G6 foreign calls and collections are not implemented by the llvm codegen layer yet";
+pub const G6_UNSUPPORTED_FIX: &str = "avoid trusted rust fn, Vec, HashMap, String, take and move for now";
+pub const G6_BRIDGE_DECL: &str = "@pruv_g6_bridge_v1 = external global i8\n";
+/// A PruvError (codegen/unsupported_type) raised in the middle of a function body travels through `R<T>` as a string
+/// with this prefix and `line:col`; `gen_llvm_concrete_ex` turns it back into the diagnostic.
+const G6_DIAG_TAG: &str = "\u{0}g6diag:";
+
+fn g6_diag_err(line: i64, col: i64) -> String {
+    format!("{}{}:{}", G6_DIAG_TAG, line, col)
+}
+
+/// G6: an owned collection type key (`vec<..>`, `hashmap<..>`, `string`); never a bound parameter.
+pub fn is_collection(t: &str) -> bool {
+    if t.starts_with('\u{1}') {
+        return false;
+    }
+    matches!(crate::emit_common::key_name(t), "vec" | "hashmap" | "string")
+}
+
+/// G6: a collection type or one anywhere inside its type arguments.
+pub fn contains_collection(t: &str) -> bool {
+    match crate::gtype::GType::try_from_key(t) {
+        Ok(g) => g.contains_collection(),
+        Err(_) => false,
+    }
+}
 
 pub const SIGNED_MIN128: i128 = i128::MIN;
 pub const OPT: &str = "{ i1, i64 }";
@@ -140,6 +169,10 @@ pub fn mangle(n: &str) -> String {
 
 /// The internal SSA type of a Pruv type
 pub fn lty(t: &str) -> String {
+    if is_collection(t) {
+        // G6 A3: opaque handle
+        return "ptr".to_string();
+    }
     if is_gopt(t) {
         return st(t, false);
     }
@@ -162,11 +195,14 @@ pub enum Kind {
     Opt,
     Unit,
     Agg,
+    /// G6 A3: opaque handle of a Vec/HashMap/String box (a = ptr, ty = the collection type)
+    Coll,
 }
 
 impl Kind {
     pub fn name(self) -> &'static str {
         match self {
+            Kind::Coll => "coll",
             Kind::I64 => "i64",
             Kind::I1 => "i1",
             Kind::I128 => "i128",
@@ -179,6 +215,10 @@ impl Kind {
 }
 
 pub fn vkind(t: &str) -> Kind {
+    if is_collection(t) {
+        // G6 A3
+        return Kind::Coll;
+    }
     if is_gopt(t) {
         return Kind::Agg;
     }
@@ -373,11 +413,24 @@ pub struct Mod {
     order: Vec<String>,
     /// G3: a wrapper rejects an invalid enum ordinal through pruv_panic_repr
     pub uses_repr: bool,
+    /// G6 A3: shim symbol -> declare line (iterated sorted by symbol)
+    pub g6_decls: BTreeMap<String, String>,
+    /// G6 A3: string_to_str needs the v2 copy/free declarations
+    pub g6_v2: bool,
+    /// G6 A3: some function references @pruv_g6_bridge_v1
+    pub g6_bridge: bool,
 }
 
 impl Mod {
     pub fn new() -> Mod {
-        Mod { strs: HashMap::new(), order: Vec::new(), uses_repr: false }
+        Mod {
+            strs: HashMap::new(),
+            order: Vec::new(),
+            uses_repr: false,
+            g6_decls: BTreeMap::new(),
+            g6_v2: false,
+            g6_bridge: false,
+        }
     }
 
     pub fn string(&mut self, text: &str) -> String {
@@ -430,6 +483,9 @@ pub fn ir_params(f: &Function) -> Vec<(String, String)> {
             out.push(("i1".to_string(), format!("%p.{}", n)));
         } else if p.ty == "i64" {
             out.push(("i64".to_string(), format!("%p.{}", n)));
+        } else if is_collection(&p.ty) {
+            // G6 A3: plain opaque handle %p.NAME.h (no readonly/noalias attributes)
+            out.push(("ptr".to_string(), format!("%p.{}.h", n)));
         } else if is_agg(&p.ty) {
             out.push((lty(&p.ty), format!("%p.{}", n)));
         } else {
@@ -439,12 +495,17 @@ pub fn ir_params(f: &Function) -> Vec<(String, String)> {
     out
 }
 
-/// Parameter list of an internal function definition: array pointers are read-only borrows
+/// Parameter list of an internal function definition: array pointers (names ending in `.a`) are read-only borrows;
+/// a G6 collection handle `%p.NAME.h` is a plain ptr
 pub fn sig_text(params: &[(String, String)]) -> String {
     params
         .iter()
         .map(|(t, n)| {
-            format!("{} {}", if t == "ptr" { "ptr noalias nocapture readonly" } else { t.as_str() }, n)
+            format!(
+                "{} {}",
+                if t == "ptr" && n.ends_with(".a") { "ptr noalias nocapture readonly" } else { t.as_str() },
+                n
+            )
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -459,7 +520,7 @@ pub enum Fail {
     Elem(String, &'static str),
 }
 
-fn expr_ty(e: &Expr) -> &Option<String> {
+pub(crate) fn expr_ty(e: &Expr) -> &Option<String> {
     match e {
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
@@ -506,6 +567,8 @@ pub struct FnGen<'a> {
     temps: Vec<Vec<V>>,
     cenv: HashMap<String, V>,
     budget: Option<String>,
+    /// G6 A3: this function references @pruv_g6_bridge_v1
+    bridge: bool,
 }
 
 impl<'a> FnGen<'a> {
@@ -534,6 +597,7 @@ impl<'a> FnGen<'a> {
             temps: Vec::new(),
             cenv: HashMap::new(),
             budget: None,
+            bridge: false,
         }
     }
 
@@ -613,13 +677,24 @@ impl<'a> FnGen<'a> {
         Ok(())
     }
 
-    pub fn render(&self, header: &str) -> String {
+    pub fn render(&mut self, header: &str) -> String {
         let mut out: Vec<String> = vec![format!("{} {{", header), "entry:".to_string()];
         for a in &self.allocas {
             out.push(format!("  {}", a));
         }
         out.push("  br label %start".to_string());
-        out.extend(self.lines.iter().cloned());
+        if self.bridge {
+            // G6 A3: a (volatile) read of the shim's bridge marker keeps the reference alive: linking without the shim
+            // fails. lines[0] is the `start:` label.
+            if let Some(first) = self.lines.first() {
+                out.push(first.clone());
+            }
+            out.push("  %g6.bridge = load volatile i8, ptr @pruv_g6_bridge_v1".to_string());
+            out.extend(self.lines.iter().skip(1).cloned());
+            self.m.g6_bridge = true;
+        } else {
+            out.extend(self.lines.iter().cloned());
+        }
         out.push("}".to_string());
         let mut s = out.join("\n");
         s.push('\n');
@@ -641,6 +716,12 @@ impl<'a> FnGen<'a> {
             Kind::I1 => {
                 self.allocas.push(format!("{} = alloca i1", a));
                 V::new(Kind::I1, a)
+            }
+            Kind::Coll => {
+                // G6 A3: owner slot, null-initialized
+                self.allocas.push(format!("{} = alloca ptr", a));
+                self.allocas.push(format!("store ptr null, ptr {}", a));
+                V { k: Kind::Coll, a, b: "None".to_string(), ty: Some(ty.to_string()) }
             }
             Kind::Arr => {
                 self.allocas.push(format!("{} = alloca ptr", a));
@@ -672,6 +753,10 @@ impl<'a> FnGen<'a> {
                 let r = self.op(format!("load {}, ptr {}", lty(&ty), sl.a))?;
                 Ok(V::agg(r, &ty))
             }
+            Kind::Coll => {
+                let r = self.op(format!("load ptr, ptr {}", sl.a))?;
+                Ok(V { k: Kind::Coll, a: r, b: "None".to_string(), ty: sl.ty.clone() })
+            }
             Kind::Arr => {
                 let p = self.op(format!("load ptr, ptr {}", sl.a))?;
                 let n = self.op(format!("load i64, ptr {}", sl.b))?;
@@ -694,6 +779,7 @@ impl<'a> FnGen<'a> {
                 let ty = need_ty(&sl.ty)?.to_string();
                 self.ins(format!("store {} {}, ptr {}", lty(&ty), v.a, sl.a))
             }
+            Kind::Coll => self.ins(format!("store ptr {}, ptr {}", v.a, sl.a)),
             Kind::Arr => {
                 self.ins(format!("store ptr {}, ptr {}", v.a, sl.a))?;
                 self.ins(format!("store i64 {}, ptr {}", v.b, sl.b))
@@ -719,6 +805,10 @@ impl<'a> FnGen<'a> {
     }
 
     pub fn free_val(&mut self, v: &V) -> R<()> {
+        if v.k == Kind::Coll {
+            // G6 A3: a fresh (non-null) collection temporary
+            return self.g6_drop(v);
+        }
         if is_bytes_ty(&v.ty) {
             return self.ins(format!("call void @pruv_free_v2(ptr {}, i64 {}, i64 1, i64 1)", v.a, v.b));
         }
@@ -727,9 +817,54 @@ impl<'a> FnGen<'a> {
 
     fn free_scope(&mut self, arrays: &[Slot]) -> R<()> {
         for sl in arrays.iter().rev() {
-            let v = self.load(sl)?;
-            self.free_val(&v)?;
+            if sl.k == Kind::Coll {
+                self.drop_slot(sl)?;
+            } else {
+                let v = self.load(sl)?;
+                self.free_val(&v)?;
+            }
         }
+        Ok(())
+    }
+
+    // ---------- G6 A3: shim calls, owner slots ----------
+    fn g6_decl(&mut self, sym: &str, ret: &str, argtys: &[&str]) {
+        self.m.g6_decls.insert(sym.to_string(), format!("declare {} @{}({}) nounwind", ret, sym, argtys.join(", ")));
+        self.bridge = true;
+    }
+
+    /// Calls a bridge symbol; args: (llvm type, value). Returns the SSA result ("" for void).
+    fn g6_call(&mut self, sym: &str, ret: &str, args: &[(String, String)]) -> R<String> {
+        let tys: Vec<&str> = args.iter().map(|(t, _)| t.as_str()).collect();
+        self.g6_decl(sym, ret, &tys);
+        let a: Vec<String> = args.iter().map(|(t, v)| format!("{} {}", t, v)).collect();
+        let a = a.join(", ");
+        if ret == "void" {
+            self.ins(format!("call void @{}({})", sym, a))?;
+            return Ok(String::new());
+        }
+        self.op(format!("call {} @{}({})", ret, sym, a))
+    }
+
+    fn g6_drop(&mut self, v: &V) -> R<()> {
+        let ty = need_ty(&v.ty)?.to_string();
+        let sym = crate::foreign_shim::drop_sym(&ty)?;
+        self.g6_call(&sym, "void", &[("ptr".to_string(), v.a.clone())])?;
+        Ok(())
+    }
+
+    /// Drops the owner slot's collection if it is non-null (moved-out slots hold null).
+    fn drop_slot(&mut self, sl: &Slot) -> R<()> {
+        let p = self.op(format!("load ptr, ptr {}", sl.a))?;
+        let nn = self.op(format!("icmp ne ptr {}, null", p))?;
+        let dl = self.label("gdrop");
+        let el = self.label("gdone");
+        self.condbr(&nn, &dl, &el)?;
+        self.place(&dl);
+        let v = V { k: Kind::Coll, a: p, b: "None".to_string(), ty: sl.ty.clone() };
+        self.g6_drop(&v)?;
+        self.br(&el)?;
+        self.place(&el);
         Ok(())
     }
 
@@ -1124,6 +1259,7 @@ impl<'a> FnGen<'a> {
         self.place("start");
         let f = self.f;
         let mut names: HashMap<String, Bind> = HashMap::new();
+        let mut owned: Vec<Slot> = Vec::new();
         for p in &f.params {
             let n = mangle(&p.name);
             if is_arr_name(&p.ty) {
@@ -1136,6 +1272,22 @@ impl<'a> FnGen<'a> {
                 names.insert(p.name.clone(), Bind::Ssa(V::new(Kind::I1, format!("%p.{}", n))));
             } else if p.ty == "i64" {
                 names.insert(p.name.clone(), Bind::Ssa(V::new(Kind::I64, format!("%p.{}", n))));
+            } else if is_collection(&p.ty) {
+                // G6 A3
+                self.bridge = true;
+                if p.take {
+                    // consuming parameter: an owner slot (the callee drops it unless it is moved out)
+                    let sl = self.new_slot(&p.name, &p.ty);
+                    self.ins(format!("store ptr %p.{}.h, ptr {}", n, sl.a))?;
+                    names.insert(p.name.clone(), Bind::Slot(sl.clone()));
+                    owned.push(sl);
+                } else {
+                    // borrowed: never dropped here
+                    names.insert(
+                        p.name.clone(),
+                        Bind::Ssa(V { k: Kind::Coll, a: format!("%p.{}.h", n), b: "None".to_string(), ty: Some(p.ty.clone()) }),
+                    );
+                }
             } else if is_agg(&p.ty) {
                 names.insert(p.name.clone(), Bind::Ssa(V::agg(format!("%p.{}", n), &p.ty)));
             } else {
@@ -1144,7 +1296,7 @@ impl<'a> FnGen<'a> {
                 names.insert(p.name.clone(), Bind::Ssa(V::with_b(Kind::Opt, t, v)));
             }
         }
-        self.scopes.push(Scope { names, arrays: Vec::new() });
+        self.scopes.push(Scope { names, arrays: owned });
         Ok(())
     }
 
@@ -1153,7 +1305,7 @@ impl<'a> FnGen<'a> {
         let rt = f.ret.as_str();
         if rt == "unit" {
             self.term("ret void".to_string())
-        } else if rt == "i64" || rt == "bool" {
+        } else if rt == "i64" || rt == "bool" || is_collection(rt) {
             self.term(format!("ret {} {}", lty(rt), v.a))
         } else {
             let g = self.agg(v)?;
@@ -1187,6 +1339,9 @@ impl<'a> FnGen<'a> {
         let falls = self.run_block(&f.body, Vec::new())?;
         if falls {
             if f.ret == "unit" {
+                // G6 A3: owned (take) parameters; empty for every other program
+                let arrays = self.scopes.first().map(|s| s.arrays.clone()).ok_or_else(|| IDX_ERR.to_string())?;
+                self.free_scope(&arrays)?;
                 self.term("ret void".to_string())?;
             } else {
                 self.term("unreachable".to_string())?;
@@ -1204,7 +1359,7 @@ impl<'a> FnGen<'a> {
                 self.store(&sl, &v)?;
                 let sc = self.scopes.last_mut().ok_or_else(|| IDX_ERR.to_string())?;
                 sc.names.insert(x.name.clone(), Bind::Slot(sl.clone()));
-                if sl.k == Kind::Arr {
+                if sl.k == Kind::Arr || sl.k == Kind::Coll {
                     sc.arrays.push(sl);
                 }
                 self.end_temps()
@@ -1216,6 +1371,9 @@ impl<'a> FnGen<'a> {
                 if sl.k == Kind::Arr {
                     let old = self.load(&sl)?;
                     self.free_val(&old)?;
+                } else if sl.k == Kind::Coll {
+                    // G6 A3: drop the old value (null when moved out) after the right side
+                    self.drop_slot(&sl)?;
                 }
                 self.store(&sl, &v)?;
                 self.end_temps()
@@ -1490,6 +1648,13 @@ impl<'a> FnGen<'a> {
                 Bind::Ssa(v) => Ok(v),
                 Bind::Slot(s) => self.load(&s),
             },
+            Expr::Move(x) => {
+                // G6 A3: load the owner slot, then null it
+                let sl = self.lookup(&x.name)?.val().clone();
+                let v = self.load(&sl)?;
+                self.ins(format!("store ptr null, ptr {}", sl.a))?;
+                Ok(v)
+            }
             Expr::Unary(x) => {
                 let v = self.ev(&x.operand, false)?;
                 if x.op == "!" {
@@ -1605,7 +1770,18 @@ impl<'a> FnGen<'a> {
         let a = &e.args;
         if n == "len" {
             let x = self.ev(arg(a, 0)?, false)?;
+            if x.k == Kind::Coll {
+                // G6 A3
+                let ty = need_ty(&x.ty)?.to_string();
+                let sym = crate::foreign_shim::len_sym(&ty)?;
+                let r = self.g6_call(&sym, "i64", &[("ptr".to_string(), x.a.clone())])?;
+                return Ok(V::new(Kind::I64, r));
+            }
             return Ok(V::new(Kind::I64, x.b));
+        }
+        if crate::foreign::is_catalog(n) && !crate::foreign::is_catalog_contract_only(n) && !self.funcs.contains_key(n) {
+            // G6 A3: reserved names
+            return self.catalog_call(e, owned);
         }
         if n == "alloc" {
             let cnt = self.ev(arg(a, 0)?, false)?; // source order in all modes: n, then v
@@ -1688,10 +1864,16 @@ impl<'a> FnGen<'a> {
             Some(f) => *f,
             None => return Err(format!("llvmgen: unsupported call in code: {}", n)),
         };
+        if f.foreign.is_some() {
+            // G6 A3: trusted rust fn through its bridge adapter
+            return self.trusted_call(f, e);
+        }
         let mut args: Vec<String> = Vec::new();
-        for x in a {
-            let v = self.ev(x, false)?;
+        for (i, x) in a.iter().enumerate() {
+            let take = f.params.get(i).ok_or_else(|| IDX_ERR.to_string())?.take;
+            let v = self.ev(x, take)?;
             match v.k {
+                Kind::Coll => args.push(format!("ptr {}", v.a)), // G6 A3: opaque handle
                 Kind::Arr => {
                     args.push(format!("ptr {}", v.a));
                     args.push(format!("i64 {}", v.b));
@@ -1717,6 +1899,11 @@ impl<'a> FnGen<'a> {
         if f.ret == "i64" || f.ret == "bool" {
             return Ok(V::new(vkind(&f.ret), r));
         }
+        if is_collection(&f.ret) {
+            // G6 A3: fresh owned handle; a temporary unless the caller takes it
+            let rv = V { k: Kind::Coll, a: r, b: "None".to_string(), ty: Some(f.ret.clone()) };
+            return self.temp_arr(rv, owned);
+        }
         if is_agg(&f.ret) {
             return Ok(V::agg(r, &f.ret));
         }
@@ -1730,6 +1917,112 @@ impl<'a> FnGen<'a> {
             return self.temp_arr(rv, owned);
         }
         Ok(V::with_b(Kind::Opt, x0, x1))
+    }
+
+    // ---------- G6 A3: catalog operations and trusted rust fn through the bridge ----------
+    /// Bridge arguments (type, value) of an evaluated value: handle ptr, bool as i64 0/1, (ptr, len), i64.
+    fn g6_arg(&mut self, v: &V) -> R<Vec<(String, String)>> {
+        if v.k == Kind::Coll {
+            return Ok(vec![("ptr".to_string(), v.a.clone())]);
+        }
+        if v.k == Kind::I1 {
+            let z = self.op(format!("zext i1 {} to i64", v.a))?;
+            return Ok(vec![("i64".to_string(), z)]);
+        }
+        if v.k == Kind::Arr {
+            return Ok(vec![("ptr".to_string(), v.a.clone()), ("i64".to_string(), v.b.clone())]);
+        }
+        Ok(vec![("i64".to_string(), v.a.clone())])
+    }
+
+    /// Fresh entry-block out slot of the given llvm type; returns its name.
+    fn g6_out(&mut self, kind: &str) -> String {
+        let base = format!("%g{}", self.nslot);
+        self.nslot += 1;
+        self.allocas.push(format!("{} = alloca {}", base, kind));
+        base
+    }
+
+    fn catalog_call(&mut self, e: &Call, owned: bool) -> R<V> {
+        let n = e.name.as_str();
+        let cat = crate::foreign::catalog_fn(n).ok_or_else(|| format!("'{}'", n))?;
+        let (_low, src) = crate::foreign_shim::inst_types(e);
+        let sym = crate::foreign_shim::adapter_sym(&crate::foreign_shim::helper_name(n, &src)?);
+        let mut args: Vec<(String, String)> = Vec::new();
+        // arguments once, in source order; take arguments are owned values
+        for (p, x) in cat.params.iter().zip(e.args.iter()) {
+            let v = self.ev(x, p.take)?;
+            args.extend(self.g6_arg(&v)?);
+        }
+        if matches!(n, "vec_new" | "map_new" | "string_new" | "vec_push" | "map_insert" | "string_push_str") {
+            // a fresh box, or the very same box pointer of a consuming update
+            let r = self.g6_call(&sym, "ptr", &args)?;
+            let rv = V { k: Kind::Coll, a: r, b: "None".to_string(), ty: e.ty.clone() };
+            return self.temp_arr(rv, owned);
+        }
+        if n == "vec_get" || n == "string_byte" {
+            let r = self.g6_call(&sym, "i64", &args)?;
+            if e.ty.as_deref() == Some("bool") {
+                let c = self.op(format!("icmp ne i64 {}, 0", r))?;
+                return Ok(V::new(Kind::I1, c));
+            }
+            return Ok(V::new(Kind::I64, r));
+        }
+        if n == "map_get" {
+            let tag = self.g6_out("i64");
+            let val = self.g6_out("i64");
+            let mut a2 = args.clone();
+            a2.push(("ptr".to_string(), tag.clone()));
+            a2.push(("ptr".to_string(), val.clone()));
+            self.g6_call(&sym, "void", &a2)?;
+            let t = self.op(format!("load i64, ptr {}", tag))?;
+            let x = self.op(format!("load i64, ptr {}", val))?;
+            let t1 = self.op(format!("icmp ne i64 {}, 0", t))?;
+            if e.ty.as_deref() == Some("option") {
+                return Ok(V::with_b(Kind::Opt, t1, x));
+            }
+            let x1 = self.op(format!("icmp ne i64 {}, 0", x))?; // Option<bool>: { i1, i1 }
+            let ety = need_ty(&e.ty)?.to_string();
+            let tt_ = st(&ety, false);
+            let a0 = self.op(format!("insertvalue {} zeroinitializer, i1 {}, 0", tt_, t1))?;
+            let a1 = self.op(format!("insertvalue {} {}, i1 {}, 1", tt_, a0, x1))?;
+            return Ok(V::agg(a1, &ety));
+        }
+        if n == "string_to_str" {
+            self.m.g6_v2 = true;
+            let d = self.g6_out("ptr");
+            let l = self.g6_out("i64");
+            let mut a2 = args.clone();
+            a2.push(("ptr".to_string(), d.clone()));
+            a2.push(("ptr".to_string(), l.clone()));
+            self.g6_call(crate::foreign_shim::STRING_BYTES_SYM, "void", &a2)?;
+            let dp = self.op(format!("load ptr, ptr {}", d))?;
+            let ln = self.op(format!("load i64, ptr {}", l))?;
+            let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", dp, ln))?;
+            let mut rv = V::with_b(Kind::Arr, p, ln);
+            rv.ty = Some(STR.to_string());
+            return self.temp_arr(rv, owned);
+        }
+        Err(format!("llvmgen: unsupported catalog operation {}", n))
+    }
+
+    fn trusted_call(&mut self, f: &Function, e: &Call) -> R<V> {
+        let mut args: Vec<(String, String)> = Vec::new();
+        for x in &e.args {
+            let v = self.ev(x, false)?;
+            args.extend(self.g6_arg(&v)?);
+        }
+        let sym = crate::foreign_shim::adapter_sym(&f.name);
+        if f.ret == "unit" {
+            self.g6_call(&sym, "void", &args)?;
+            return Ok(V::unit());
+        }
+        let r = self.g6_call(&sym, "i64", &args)?;
+        if f.ret == "bool" {
+            let c = self.op(format!("icmp ne i64 {}, 0", r))?;
+            return Ok(V::new(Kind::I1, c));
+        }
+        Ok(V::new(Kind::I64, r))
     }
 
     // ---------- contract (requires) evaluation, i128 ----------
@@ -1749,6 +2042,12 @@ impl<'a> FnGen<'a> {
             } else if p.ty == "i64" {
                 let r = self.op(format!("sext i64 %p.{} to i128", n))?;
                 self.cenv.insert(p.name.clone(), V::new(Kind::I128, r));
+            } else if is_collection(&p.ty) {
+                // G6 A3: only len(c) is evaluable in a requires on LLVM
+                self.cenv.insert(
+                    p.name.clone(),
+                    V { k: Kind::Coll, a: format!("%p.{}.h", n), b: "None".to_string(), ty: Some(p.ty.clone()) },
+                );
             } else if is_agg(&p.ty) {
                 let c = self.to_c(&V::agg(format!("%p.{}", n), &p.ty), &p.ty)?;
                 self.cenv.insert(p.name.clone(), c);
@@ -1841,6 +2140,10 @@ impl<'a> FnGen<'a> {
                 Ok(V::new(Kind::I1, v))
             }
             Expr::Index(x) => {
+                if expr_ty(&x.array).as_deref().map_or(false, is_collection) {
+                    // G6 A3: not evaluable on LLVM yet
+                    return Err(g6_diag_err(x.line, x.col));
+                }
                 let a = self.cev(&x.array)?;
                 let i = self.cev(&x.index)?;
                 let ln = self.op(format!("zext i64 {} to i128", a.b))?;
@@ -1919,8 +2222,20 @@ impl<'a> FnGen<'a> {
                 let a = &x.args;
                 if n == "len" {
                     let v = self.cev(arg(a, 0)?)?;
+                    if v.k == Kind::Coll {
+                        // G6 A3
+                        let vty = need_ty(&v.ty)?.to_string();
+                        let sym = crate::foreign_shim::len_sym(&vty)?;
+                        let ln = self.g6_call(&sym, "i64", &[("ptr".to_string(), v.a.clone())])?;
+                        let r = self.op(format!("zext i64 {} to i128", ln))?;
+                        return Ok(V::new(Kind::I128, r));
+                    }
                     let r = self.op(format!("zext i64 {} to i128", v.b))?;
                     return Ok(V::new(Kind::I128, r));
+                }
+                if crate::foreign::is_catalog_contract_only(n) {
+                    // G6 A3: map_lookup / map_updated: not evaluable on LLVM yet
+                    return Err(g6_diag_err(x.line, x.col));
                 }
                 if n == "is_char_boundary" {
                     // G2 B2
@@ -2245,6 +2560,88 @@ pub fn gen_llvm(prog: &Program, verified: bool, trust_callers: bool, budget: u64
 
 const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-pc-windows-msvc\"\n\n";
 
+fn g6_scalar(t: &str) -> bool {
+    t == "i64" || t == "bool"
+}
+
+/// G6_SPEC 13.1: Vec<i64|bool>, HashMap<i64|bool, i64|bool>, String
+fn g6_coll_ok(t: &str) -> bool {
+    use crate::gtype::GType;
+    match GType::try_from_key(t) {
+        Ok(g) => match g.name.as_str() {
+            "vec" => g.args.first().map_or(false, |a| g6_scalar(&a.to_key())),
+            "hashmap" => g.args.len() >= 2 && g6_scalar(&g.args[0].to_key()) && g6_scalar(&g.args[1].to_key()),
+            _ => g.name == "string",
+        },
+        Err(_) => false,
+    }
+}
+
+/// a type that may occur in a G6 program on LLVM: no collection, or a supported one (never nested)
+fn g6_type_ok(t: &str) -> bool {
+    if is_collection(t) {
+        return g6_coll_ok(t);
+    }
+    !contains_collection(t)
+}
+
+/// PruvError codegen/unsupported_type for the first G6 construct outside G6_SPEC 13.1, or None. Source order:
+/// functions in order, the signature before the body, inside a body the earliest position.
+pub fn g6_llvm_error(prog: &Program) -> Option<crate::diagnostic::PruvError> {
+    use crate::foreign_shim::{walk_stmts, Node};
+    crate::foreign::first_g6_use(prog)?;
+    let err = |line: i64, col: i64| {
+        crate::diagnostic::PruvError::new("codegen", line, col, "unsupported_type", G6_UNSUPPORTED_MSG, G6_UNSUPPORTED_FIX)
+    };
+    for f in &prog.functions {
+        if f.foreign.is_some() {
+            let ok = matches!(f.ret.as_str(), "i64" | "bool" | "unit")
+                && f.params.iter().all(|p| {
+                    matches!(p.ty.as_str(), "i64" | "bool" | "array" | "array_u8" | "array_bool" | "str") && !p.take
+                });
+            if !ok {
+                return Some(err(f.line, f.col));
+            }
+            continue;
+        }
+        if f.params.iter().any(|p| !g6_type_ok(&p.ty)) || !g6_type_ok(&f.ret) {
+            return Some(err(f.line, f.col));
+        }
+        let mut bad: Vec<(i64, i64)> = Vec::new();
+        walk_stmts(&f.body, &mut |n: Node<'_>| match n {
+            Node::Let(l) => {
+                if !g6_type_ok(&l.ty) {
+                    bad.push((l.line, l.col));
+                }
+            }
+            Node::Expr(e) => {
+                if let Some(t) = expr_ty(e) {
+                    if !g6_type_ok(t) {
+                        bad.push((e.line(), e.col()));
+                    }
+                }
+                if let Expr::Call(c) = e {
+                    if crate::foreign::is_catalog(&c.name) && !crate::foreign::is_catalog_contract_only(&c.name) {
+                        if let Some(inst) = &c.inst {
+                            if !inst.args.iter().all(|a| g6_scalar(&a.to_key())) {
+                                bad.push((c.line, c.col));
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        if let Some(&(line, col)) = bad.iter().min() {
+            return Some(err(line, col));
+        }
+    }
+    None
+}
+
+fn is_coll_fn(f: &Function) -> bool {
+    f.params.iter().any(|p| is_collection(&p.ty)) || is_collection(&f.ret)
+}
+
 /// Generation with a chosen target ABI. SysV is byte-identical to gen_llvm.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
     gen_llvm_any(prog, verified, trust_callers, budget, target).map_err(|e| match e {
@@ -2262,24 +2659,85 @@ pub fn gen_llvm_any(
     budget: u64,
     target: AbiTarget,
 ) -> Result<(String, String), crate::codegen::GenError> {
+    gen_llvm_any_ex(prog, verified, trust_callers, budget, target, "requires")
+}
+
+/// `gen_llvm_any` with the G6 boundary check mode of the shim helpers (requires|all|off, docs/G6_SPEC.md 12.3).
+/// A G6 program outside the supported subset (G6_SPEC 13.1) is a codegen/unsupported_type diagnostic.
+pub fn gen_llvm_any_ex(
+    prog: &Program,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    target: AbiTarget,
+    foreign_checks: &str,
+) -> Result<(String, String), crate::codegen::GenError> {
     use crate::codegen::GenError;
-    // G6: no code generator lowers G6 yet (the drivers reject earlier)
-    if let Some(e) = crate::foreign::g6_unimplemented_error(prog, "codegen") {
-        return Err(GenError::Diag(e));
+    if !matches!(foreign_checks, "requires" | "all" | "off") {
+        return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
     if crate::typeinfo::first_g3_use(prog).is_some() {
         let plan = crate::mono::specialize(prog).map_err(|e| match e {
             crate::mono::MonoError::Limit(p) => GenError::Diag(p),
             crate::mono::MonoError::Internal(m) => GenError::Msg(m),
         })?;
-        return gen_llvm_concrete(&plan.program, verified, trust_callers, budget, target).map_err(GenError::Msg);
+        return gen_llvm_concrete_ex(&plan.program, verified, trust_callers, budget, target, foreign_checks);
     }
-    gen_llvm_concrete(prog, verified, trust_callers, budget, target).map_err(GenError::Msg)
+    gen_llvm_concrete_ex(prog, verified, trust_callers, budget, target, foreign_checks)
 }
 
 /// The generator proper, for a CONCRETE program (a plan.program of mono.rs, or a program without G3): no type parameter
 /// reaches it.
 pub fn gen_llvm_concrete(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
+    gen_llvm_concrete_ex(prog, verified, trust_callers, budget, target, "requires").map_err(|e| match e {
+        crate::codegen::GenError::Msg(m) => m,
+        crate::codegen::GenError::Diag(p) => format!("{}: {}", p.code, p.message),
+    })
+}
+
+/// `gen_llvm_concrete` with the G6 check mode; a diagnostic (G6 outside 13.1) is `GenError::Diag`.
+pub fn gen_llvm_concrete_ex(
+    prog: &Program,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    target: AbiTarget,
+    foreign_checks: &str,
+) -> Result<(String, String), crate::codegen::GenError> {
+    use crate::codegen::GenError;
+    if !matches!(foreign_checks, "requires" | "all" | "off") {
+        return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
+    }
+    if let Some(e) = g6_llvm_error(prog) {
+        return Err(GenError::Diag(e));
+    }
+    gen_llvm_body(prog, verified, trust_callers, budget, target, foreign_checks).map_err(|s| match s.strip_prefix(G6_DIAG_TAG) {
+        Some(rest) => {
+            let mut it = rest.split(':');
+            let line: i64 = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+            let col: i64 = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+            GenError::Diag(crate::diagnostic::PruvError::new(
+                "codegen",
+                line,
+                col,
+                "unsupported_type",
+                G6_UNSUPPORTED_MSG,
+                G6_UNSUPPORTED_FIX,
+            ))
+        }
+        None => GenError::Msg(s),
+    })
+}
+
+fn gen_llvm_body(
+    prog: &Program,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    target: AbiTarget,
+    foreign_checks: &str,
+) -> R<(String, String)> {
+    let is_g6 = crate::foreign::first_g6_use(prog).is_some();
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) {
         // G2 B2: str also opens the generation layer
         return Err(format!("unsupported_type: {}", e.message));
@@ -2291,11 +2749,17 @@ pub fn gen_llvm_concrete(prog: &Program, verified: bool, trust_callers: bool, bu
         funcs.insert(f.name.clone(), f);
     }
     let mut chunks: Vec<String> = Vec::new();
-    if !trust_callers && prog.functions.iter().any(|f| !f.requires.is_empty()) {
+    if !trust_callers && prog.functions.iter().any(|f| !f.requires.is_empty() && f.foreign.is_none()) {
         chunks.push(cdivrem(&mut m, true));
         chunks.push(cdivrem(&mut m, false));
     }
     for f in &prog.functions {
+        if f.foreign.is_some() {
+            // G6 A3: a trusted rust fn has no body; its calls go to the shim adapter
+            continue;
+        }
+        // G6 A3: collection-bearing functions are internal (no ABI wrapper, no binding)
+        let coll = is_coll_fn(f);
         let mut g = FnGen::new(&mut m, &tt, &funcs, f, verified);
         g.body()?;
         let params = ir_params(f);
@@ -2305,15 +2769,27 @@ pub fn gen_llvm_concrete(prog: &Program, verified: bool, trust_callers: bool, bu
             mangle(&f.name),
             sig_text(&params)
         )));
-        chunks.push(entry_of(&mut m, &tt, &funcs, f, trust_callers || f.requires.is_empty(), budget)?);
-        if !crate::emit_common::is_spec_fn(&f.name) {
+        if !(coll && verified) {
+            // verified callers call the body; the entry only serves safe-mode callers
+            chunks.push(entry_of(&mut m, &tt, &funcs, f, trust_callers || f.requires.is_empty(), budget)?);
+        }
+        if !crate::emit_common::is_spec_fn(&f.name) && !coll {
             // G3: a generic specialization has no ABI symbol
             chunks.push(abi_of(f, &tt, target, &mut m)?);
         }
     }
     let has_str = crate::typeinfo::uses_str(prog); // G2 B2
+    // G6 A3: bridge marker and the shim symbols used, sorted by symbol
+    let mut g6decls = String::new();
+    if m.g6_bridge || !m.g6_decls.is_empty() {
+        g6decls.push_str(G6_BRIDGE_DECL);
+        for line in m.g6_decls.values() {
+            g6decls.push_str(line);
+            g6decls.push('\n');
+        }
+    }
     let ir = format!(
-        "{}{}\n{}{}{}{}{}{}{}\n{}",
+        "{}{}\n{}{}{}{}{}{}{}{}\n{}",
         if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
         type_defs(&tt),
@@ -2321,13 +2797,24 @@ pub fn gen_llvm_concrete(prog: &Program, verified: bool, trust_callers: bool, bu
         DECLS,
         // G2 A5: DECLS_U8 if u8 or bool is used, and DECLS_BOOL after it if bool is used
         // G2 B2: DECLS_U8 if u8, bool or str is used, and DECLS_STR at the very end if str is used
-        if uses_array_type(prog, "array_u8") || uses_array_type(prog, "array_bool") || has_str { DECLS_U8 } else { "" },
+        // G6 A3: DECLS_U8 also when string_to_str copies through pruv_copy_v2
+        if uses_array_type(prog, "array_u8") || uses_array_type(prog, "array_bool") || has_str || m.g6_v2 {
+            DECLS_U8
+        } else {
+            ""
+        },
         if uses_array_type(prog, "array_bool") { DECLS_BOOL } else { "" },
         if has_str { DECLS_STR } else { "" },
         if m.uses_repr { DECLS_REPR } else { "" }, // G3
+        g6decls,
         chunks.join("\n")
     );
-    let bindings = crate::bindings::gen_bindings(prog)?;
+    let shim = if is_g6 {
+        Some(crate::foreign_shim::build_shim(prog, verified, trust_callers, budget, foreign_checks)?)
+    } else {
+        None
+    };
+    let bindings = crate::bindings::gen_bindings_with(prog, shim.as_deref())?;
     Ok((ir, bindings))
 }
 

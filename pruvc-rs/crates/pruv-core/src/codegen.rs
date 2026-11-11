@@ -1477,6 +1477,20 @@ impl<'a> Gen<'a> {
     }
 }
 
+/// G6 A3 (foreign_shim.py build_shim): the A2 boundary helpers of a concrete G6 program, discovered by generating every
+/// function with a Gen created for the same program and check mode (trust=True: the entry checks of the Rust source
+/// backend are not emitted, the LLVM entries evaluate requires themselves): (helper name, text) in first-use order.
+pub fn shim_helpers(prog: &Program, verified: bool, budget: u64, foreign_checks: &str) -> R<Vec<(String, String)>> {
+    let mut g = Gen::new(prog, verified, true, budget, foreign_checks);
+    for f in &prog.functions {
+        g.func(f)?;
+    }
+    match g.fg.as_ref() {
+        Some(fg) => Ok(fg.items().to_vec()),
+        None => Ok(Vec::new()),
+    }
+}
+
 /// Failure of `gen_rust_any`: a diagnostic (PruvError, the specialization limit) or Python's str(Exception).
 #[derive(Debug, Clone)]
 pub enum GenError {

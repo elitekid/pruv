@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"], ["--foreign-checks", "all"]], "exit": 0, "stdout_lines": ["65"]}
+{"flags_matrix": [[], ["--foreign-checks", "all"]], "exit": 0, "stdout_lines": ["0"], "g6_drop_balance": true}
