@@ -1,0 +1,11 @@
+// [bool] built with alloc and stores, read back (provable), and returned.
+fn build(n: i64) -> [bool] ! alloc
+  requires n >= 2 && n <= 8
+  ensures len(result) == n
+{
+  let mut a: [bool] = alloc(n, false);
+  a[0] = true;
+  a[1] = a[0] && n > 2;
+  assert a[0];
+  return a;
+}

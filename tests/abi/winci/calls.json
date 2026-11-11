@@ -43,6 +43,10 @@
     "bytes(&[])", "bytes(&[1u8, 2, 200])", "bytes(&[0u8, 255, 128])",
     {"repeat": "bytes", "args": "&[(i % 256) as u8, 0, 255]", "n": 20000}
   ],
+  "g2a_bool_ret.pruv": [
+    "bools(&[])", "bools(&[true, false, true])", "bools(&[false])",
+    {"repeat": "bools", "args": "&[i % 2 == 0, i % 3 == 0, true]", "n": 20000}
+  ],
   "arr_ret.pruv": [
     "arr(&[])", "arr(&[1, 2, 3])", "arr(&[i64::MIN, 0, i64::MAX])",
     {"repeat": "arr", "args": "&[i, i + 1, i + 2]", "n": 20000}

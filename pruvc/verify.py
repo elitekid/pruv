@@ -474,7 +474,11 @@ class FnVerifier:
             try:
                 if isinstance(v, Arr):
                     n = m.eval(v.n, model_completion=True).as_long()
-                    els = [m.eval(z3.Select(v.a, i), model_completion=True).as_long() for i in range(min(max(n, 0), 8))]
+                    if v.elem == BOOL:   # G2 A5: bool elements print as true/false
+                        els = [z3.is_true(m.eval(z3.Select(v.a, i), model_completion=True))
+                               for i in range(min(max(n, 0), 8))]
+                    else:
+                        els = [m.eval(z3.Select(v.a, i), model_completion=True).as_long() for i in range(min(max(n, 0), 8))]
                     out[name] = {"len": n, "first": els}
                 elif z3.is_int(v):
                     out[name] = m.eval(v, model_completion=True).as_long()
@@ -569,7 +573,7 @@ class FnVerifier:
                 s.prove(st, g, z3.And(i >= 0, i < arr.n), e, "index_oob",
                         "index in bounds for %s[...]" % arr.name)
             v = z3.Select(arr.a, i)
-            if code:
+            if code and arr.elem != BOOL:   # G2 A5: a bool element is a Bool; no in_range assumption
                 s.assume(st, g, in_range(v))
             return v
         if isinstance(e, Ctor):
@@ -790,7 +794,9 @@ class FnVerifier:
         if n == "alloc":
             s.prove(st, g, z3.And(args[0] >= 0, args[0] <= MAX_LEN), e, "alloc_negative",
                     "alloc length in 0..2^40")
-            aelem = U8 if getattr(e.ty, "name", None) == "array_u8" else I64
+            tname = getattr(e.ty, "name", None)
+            # G2 A5: array_bool -> BOOL elements, no elem_range obligation
+            aelem = U8 if tname == "array_u8" else BOOL if tname == "array_bool" else I64
             if aelem == U8:
                 s.prove(st, g, z3.And(args[1] >= 0, args[1] <= 255), e, "elem_range",
                         "u8 element range 0..=255 for the alloc fill value")

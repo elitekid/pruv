@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["1", "0"], "alloc_balance": true, "llvm_fn_contains": {"run": ["zext i1", "store i8", "icmp ne i8", "@pruv_copy_v2(", "@pruv_free_v2("]}}

@@ -253,31 +253,48 @@ def _elem_ranges(f):
 _ELEM_NAME = {"array": "i64", "array_u8": "u8", "array_bool": "bool"}
 
 
-def _elem_types(f):
-    """G2 A2: {array name: "i64" | "u8" | "bool"} from the parameters and every (nested) Let of array type"""
-    out = {}
-
-    def put(name, ty):
-        t = _ELEM_NAME.get(getattr(ty, "name", None))
-        if t is not None and name not in out:
-            out[name] = t
-
-    def walk(stmts):
+def _elem_types(f, w):
+    """G2 A5: {array name: "i64" | "u8" | "bool"} visible at the head of loop `w` (same node object).
+    Position-based: start from the parameters, walk statements in order; an array `let` sets the name, a
+    non-array `let` (shadowing) removes it; if/while/match bodies get a copy of the environment and their
+    lets do not leak out; match binders are not arrays and are removed. The environment at `w` is returned."""
+    def walk(stmts, env):
         for st in stmts:
+            if st is w:
+                return dict(env)
             if isinstance(st, Let):
-                put(st.name, st.type)
+                t = _ELEM_NAME.get(getattr(st.type, "name", None))
+                if t is not None:
+                    env[st.name] = t
+                else:
+                    env.pop(st.name, None)
             elif isinstance(st, If):
-                walk(st.then); walk(st.els)
+                r = walk(st.then, dict(env))
+                if r is None:
+                    r = walk(st.els, dict(env))
+                if r is not None:
+                    return r
             elif isinstance(st, While):
-                walk(st.body)
+                r = walk(st.body, dict(env))
+                if r is not None:
+                    return r
             elif isinstance(st, Match):
                 for a in st.arms:
-                    walk(a.body)
+                    e2 = dict(env)
+                    for bn in a.binders:
+                        e2.pop(bn, None)
+                    r = walk(a.body, e2)
+                    if r is not None:
+                        return r
+        return None
 
+    env0 = {}
     for p in f.params:
-        put(p.name, p.type)
-    walk(f.body)
-    return out
+        t = _ELEM_NAME.get(getattr(p.type, "name", None))
+        if t is not None:
+            env0[p.name] = t
+    r = walk(f.body, dict(env0))
+    return r if r is not None else env0   # same fallback as the Rust port (parameters only)
 
 
 def _reads_bool_array(e, et):
@@ -383,7 +400,7 @@ def _gen(f, w, block, idx, kname, ranges):
     NS = M | loc
     asg = _assign_stmts(w.body, [])
     out = []
-    et = _elem_types(f)
+    et = _elem_types(f, w)   # G2 A5: position-based table at loop w
 
     def add(kind, build):
         try:

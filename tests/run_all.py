@@ -220,6 +220,13 @@ def must_reject_jobs():
                 detail = "expected stage=%s code=%s; got %s" % (
                     want.get("stage"), want.get("code"),
                     [(d.get("stage"), d.get("code")) for d in diags])
+                cex = want.get("cex_contains")  # optional: every string must appear in the diagnostic output text
+                if ok and isinstance(cex, list):
+                    text = c.stdout + c.stderr
+                    missing = [s for s in cex if isinstance(s, str) and s not in text]
+                    if missing:
+                        ok = False
+                        detail = "cex_contains missing %s in %s" % (missing, text[-600:])
             return ok, detail
         jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": list(flags), "mode": None,
                                      "group": "must_reject"}))

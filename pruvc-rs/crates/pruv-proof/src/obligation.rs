@@ -415,7 +415,12 @@ impl<'a> FnVerifier<'a> {
                 let mut els: Vec<Json> = Vec::new();
                 for i in 0..cnt {
                     let sel = a.a.select(&self.z.int(i as i64));
-                    els.push(Json::Num(m.eval(&sel)?.numeral_string()?));
+                    // G2 A5: bool 원소는 JSON true/false
+                    if a.elem == crate::model::Elem::Bool {
+                        els.push(Json::Bool(m.eval(&sel)?.is_true()));
+                    } else {
+                        els.push(Json::Num(m.eval(&sel)?.numeral_string()?));
+                    }
                 }
                 Some(Json::Obj(vec![("len".to_string(), Json::Num(n)), ("first".to_string(), Json::Arr(els))]))
             }

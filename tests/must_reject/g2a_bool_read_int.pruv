@@ -1,0 +1,7 @@
+// a [bool] element is bool; binding it to an i64 local is a type error (length guaranteed by requires).
+fn f(a: [bool]) -> i64
+  requires len(a) >= 1
+{
+  let x: i64 = a[0];
+  return x;
+}

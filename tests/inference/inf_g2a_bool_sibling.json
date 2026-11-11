@@ -1,0 +1,1 @@
+{"expect": "ok", "absent": ["forall k_1 in 0..len(a): 0 <= a[k_1] && a[k_1] <= 5", "forall k_1 in 0..i: a[k_1] == (p[k_1] > 2)"], "kept": ["invariant len(a) == 4"], "status": {"f": "verified"}, "note": "G2 A5: 형제 블록의 같은 이름 a 가 [i64]/[bool]. 옛 평평한 이름 표는 [bool] a 에 정수 범위 후보와 원소 후보를 만들었다(위치 기준 표가 막음)"}

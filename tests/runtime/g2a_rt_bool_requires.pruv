@@ -1,0 +1,7 @@
+// a requires reading [bool] elements (guarded by the length): [true, false, true] passes, [true, true] violates the requires.
+
+fn f(a: [bool]) -> i64
+  requires len(a) >= 2 && a[0] && a[1] == false
+{
+  return len(a);
+}

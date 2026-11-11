@@ -41,6 +41,10 @@
  * pruv_panic_elem(v, range) prints
  *   pruv: element out of range: <v> (<range>)
  * and exits 101 like the other panics.
+ * pruv_panic_repr(v, what) (G2 A5) prints
+ *   pruv: invalid representation: <v> (<what>)
+ * and exits 101; pruv_check_bool(data, len) (G2 A5) calls it for the first byte
+ * of a [bool] array that is not 0 or 1 (raw ABI entry check).
  */
 #include <stdint.h>
 #include <inttypes.h>
@@ -61,6 +65,7 @@ void *pruv_alloc_u8(int64_t len, int64_t value);
 void *pruv_copy_v2(const void *src, int64_t len, int64_t size, int64_t align);
 void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align);
 _Noreturn void pruv_panic_elem(int64_t v, const char *range);
+_Noreturn void pruv_panic_repr(int64_t v, const char *what);
 
 #ifdef PRUV_RUST_ALLOCATOR
 extern int64_t *pruv_host_alloc(int64_t len);
@@ -109,6 +114,14 @@ _Noreturn void pruv_panic_elem(int64_t v, const char *range) {
     PRUV_HOST_FLUSH();
     fflush(stdout);
     fprintf(stderr, "pruv: element out of range: %" PRId64 " (%s)\n", v, range);
+    exit(101);
+}
+
+/* G2 A5 */
+_Noreturn void pruv_panic_repr(int64_t v, const char *what) {
+    PRUV_HOST_FLUSH();
+    fflush(stdout);
+    fprintf(stderr, "pruv: invalid representation: %" PRId64 " (%s)\n", v, what);
     exit(101);
 }
 
@@ -220,6 +233,15 @@ void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align) {
     (void)align;
     free(data);
 #endif
+}
+
+/* G2 A5 */
+void pruv_check_bool(const uint8_t *data, int64_t len) {
+    if (data == NULL || len <= 0)
+        return;
+    for (int64_t k = 0; k < len; k++)
+        if (data[k] > 1)
+            pruv_panic_repr((int64_t)data[k], "bool 0..=1");
 }
 
 void pruv_print_i64(int64_t v) {

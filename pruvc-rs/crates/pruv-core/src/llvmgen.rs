@@ -42,15 +42,33 @@ pub const DECLS_U8: &str = concat!(
     "declare void @pruv_panic_elem(i64, ptr) noreturn cold nounwind\n",
 );
 
+/// G2 A5: `[bool]` 을 쓰는 프로그램에만 DECLS_U8 뒤에 붙는 선언.
+pub const DECLS_BOOL: &str = "declare void @pruv_check_bool(ptr nocapture readonly, i64) nounwind\n";
+
 const ARRAY_U8: &str = "array_u8";
+const ARRAY_BOOL: &str = "array_bool"; // G2 A5
 
 fn is_u8_ty(t: &Option<String>) -> bool {
     t.as_deref() == Some(ARRAY_U8)
 }
 
-/// 원소 IR 타입 E (u8 배열이면 i8, 아니면 i64)
+/// G2 A5: 바이트 배열(u8 또는 bool) — GEP i8, copy/free v2 (1,1)
+fn is_bytes_ty(t: &Option<String>) -> bool {
+    matches!(t.as_deref(), Some(ARRAY_U8) | Some(ARRAY_BOOL))
+}
+
+/// G2 A5: 배열 타입 이름 → V/Slot 에 싣는 ty (u8·bool 만 Some)
+fn elem_ty(t: &str) -> Option<String> {
+    match t {
+        ARRAY_U8 => Some(ARRAY_U8.to_string()),
+        ARRAY_BOOL => Some(ARRAY_BOOL.to_string()),
+        _ => None,
+    }
+}
+
+/// 원소 IR 타입 E (바이트 배열이면 i8, 아니면 i64)
 fn elem_ir(v: &V) -> &'static str {
-    if is_u8_ty(&v.ty) {
+    if is_bytes_ty(&v.ty) {
         "i8"
     } else {
         "i64"
@@ -80,7 +98,7 @@ pub fn lty(t: &str) -> String {
         "i64" => "i64".to_string(),
         "bool" => "i1".to_string(),
         "unit" => "void".to_string(),
-        "array" | "array_u8" => ARR.to_string(),
+        "array" | "array_u8" | "array_bool" => ARR.to_string(), // G2 A5
         "option" | "result" => OPT.to_string(),
         _ => format!("%pruv_t_{}", t),
     }
@@ -116,7 +134,7 @@ pub fn vkind(t: &str) -> Kind {
         "i64" => Kind::I64,
         "bool" => Kind::I1,
         "unit" => Kind::Unit,
-        "array" | "array_u8" => Kind::Arr,
+        "array" | "array_u8" | "array_bool" => Kind::Arr, // G2 A5
         "option" | "result" => Kind::Opt,
         _ => Kind::Agg,
     }
@@ -553,9 +571,7 @@ impl<'a> FnGen<'a> {
                 self.allocas.push(format!("{} = alloca ptr", a));
                 self.allocas.push(format!("{} = alloca i64", b));
                 let mut sl = V::with_b(Kind::Arr, a, b);
-                if ty == ARRAY_U8 {
-                    sl.ty = Some(ARRAY_U8.to_string());
-                }
+                sl.ty = elem_ty(ty); // G2 A5: u8·bool 만 Some, 그 밖 None(기본값 그대로)
                 sl
             }
             Kind::Agg => {
@@ -628,7 +644,7 @@ impl<'a> FnGen<'a> {
     }
 
     pub fn free_val(&mut self, v: &V) -> R<()> {
-        if is_u8_ty(&v.ty) {
+        if is_bytes_ty(&v.ty) {
             return self.ins(format!("call void @pruv_free_v2(ptr {}, i64 {}, i64 1, i64 1)", v.a, v.b));
         }
         self.ins(format!("call void @pruv_free(ptr {}, i64 {})", v.a, v.b))
@@ -930,8 +946,8 @@ impl<'a> FnGen<'a> {
             let n = mangle(&p.name);
             if is_array_name(&p.ty) {
                 let mut av = V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n));
-                if p.ty == ARRAY_U8 {
-                    av.ty = Some(ARRAY_U8.to_string());
+                if let Some(t) = elem_ty(&p.ty) {
+                    av.ty = Some(t); // G2 A5
                 }
                 names.insert(p.name.clone(), Bind::Ssa(av));
             } else if p.ty == "bool" {
@@ -1042,7 +1058,11 @@ impl<'a> FnGen<'a> {
                 let v = self.ev(&x.value, false)?;
                 let a = self.load(&sl)?;
                 let g = self.index_ptr(&a, &i)?;
-                if is_u8_ty(&a.ty) {
+                if a.ty.as_deref() == Some(ARRAY_BOOL) {
+                    // G2 A5: 값 범위 검사 없음
+                    let z = self.op(format!("zext i1 {} to i8", v.a))?;
+                    self.ins(format!("store i8 {}, ptr {}", z, g))?;
+                } else if is_u8_ty(&a.ty) {
                     if !self.verified {
                         let ok = self.op(format!("icmp ule i64 {}, 255", v.a))?;
                         self.guard(&ok, Fail::Elem(v.a.clone(), "u8 0..=255"), false)?;
@@ -1287,6 +1307,12 @@ impl<'a> FnGen<'a> {
                 let a = self.ev(&x.array, false)?;
                 let i = self.ev(&x.index, false)?;
                 let g = self.index_ptr(&a, &i)?;
+                if a.ty.as_deref() == Some(ARRAY_BOOL) {
+                    // G2 A5
+                    let x8 = self.op(format!("load i8, ptr {}", g))?;
+                    let r = self.op(format!("icmp ne i8 {}, 0", x8))?;
+                    return Ok(V::new(Kind::I1, r));
+                }
                 if is_u8_ty(&a.ty) {
                     let x8 = self.op(format!("load i8, ptr {}", g))?;
                     let r = self.op(format!("zext i8 {} to i64", x8))?;
@@ -1389,6 +1415,14 @@ impl<'a> FnGen<'a> {
                     self.guard(&ok2, Fail::Elem(v.a.clone(), "u8 0..=255"), false)?;
                 }
             }
+            if e.ty.as_deref() == Some(ARRAY_BOOL) {
+                // G2 A5: zext i1 → i64, pruv_alloc_u8 로 할당
+                let z = self.op(format!("zext i1 {} to i64", v.a))?;
+                let p = self.op(format!("call ptr @pruv_alloc_u8(i64 {}, i64 {})", cnt.a, z))?;
+                let mut rv = V::with_b(Kind::Arr, p, cnt.a.clone());
+                rv.ty = Some(ARRAY_BOOL.to_string());
+                return self.temp_arr(rv, owned);
+            }
             if u8a {
                 let p = self.op(format!("call ptr @pruv_alloc_u8(i64 {}, i64 {})", cnt.a, v.a))?;
                 let mut rv = V::with_b(Kind::Arr, p, cnt.a.clone());
@@ -1400,7 +1434,7 @@ impl<'a> FnGen<'a> {
         }
         if n == "copy" {
             let src = self.ev(arg(a, 0)?, false)?;
-            if is_u8_ty(&src.ty) {
+            if is_bytes_ty(&src.ty) {
                 let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", src.a, src.b))?;
                 let mut rv = V::with_b(Kind::Arr, p, src.b.clone());
                 rv.ty = src.ty.clone();
@@ -1460,8 +1494,8 @@ impl<'a> FnGen<'a> {
         let x1 = self.op(format!("extractvalue {} {}, 1", lty(&f.ret), r))?;
         if is_array_name(&f.ret) {
             let mut rv = V::with_b(Kind::Arr, x0, x1);
-            if f.ret == ARRAY_U8 {
-                rv.ty = Some(ARRAY_U8.to_string());
+            if let Some(t) = elem_ty(&f.ret) {
+                rv.ty = Some(t); // G2 A5
             }
             return self.temp_arr(rv, owned);
         }
@@ -1476,8 +1510,8 @@ impl<'a> FnGen<'a> {
             let n = mangle(&p.name);
             if is_array_name(&p.ty) {
                 let mut av = V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n));
-                if p.ty == ARRAY_U8 {
-                    av.ty = Some(ARRAY_U8.to_string());
+                if let Some(t) = elem_ty(&p.ty) {
+                    av.ty = Some(t); // G2 A5
                 }
                 self.cenv.insert(p.name.clone(), av);
             } else if p.ty == "bool" {
@@ -1578,6 +1612,13 @@ impl<'a> FnGen<'a> {
                 let ok = self.op(format!("icmp ult i128 {}, {}", i.a, ln))?;
                 self.guard(&ok, und("array index out of range".to_string()), false)?;
                 let ii = self.op(format!("trunc i128 {} to i64", i.a))?;
+                if a.ty.as_deref() == Some(ARRAY_BOOL) {
+                    // G2 A5
+                    let g = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", a.a, ii))?;
+                    let x8 = self.op(format!("load i8, ptr {}", g))?;
+                    let b = self.op(format!("icmp ne i8 {}, 0", x8))?;
+                    return Ok(V::new(Kind::I1, b));
+                }
                 if is_u8_ty(&a.ty) {
                     let g = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", a.a, ii))?;
                     let x8 = self.op(format!("load i8, ptr {}", g))?;
@@ -1930,7 +1971,7 @@ const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-
 
 /// 대상 ABI 를 고른 생성. SysV 는 gen_llvm 과 바이트 동일.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
-    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8"], None) {
+    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool"], None) {
         return Err(format!("unsupported_type: {}", e.message));
     }
     let tt = TypeTable::new(&prog.types);
@@ -1958,13 +1999,15 @@ pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget:
         chunks.push(abi_of(f, &tt, target)?);
     }
     let ir = format!(
-        "{}{}\n{}{}{}{}\n{}",
+        "{}{}\n{}{}{}{}{}\n{}",
         if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
         type_defs(&tt),
         if prog.types.is_empty() { "" } else { "\n" },
         DECLS,
-        if uses_array_type(prog, "array_u8") { DECLS_U8 } else { "" },
+        // G2 A5: u8 또는 bool 을 쓰면 DECLS_U8, bool 을 쓰면 그 뒤 DECLS_BOOL
+        if uses_array_type(prog, "array_u8") || uses_array_type(prog, "array_bool") { DECLS_U8 } else { "" },
+        if uses_array_type(prog, "array_bool") { DECLS_BOOL } else { "" },
         chunks.join("\n")
     );
     let bindings = crate::bindings::gen_bindings(prog)?;

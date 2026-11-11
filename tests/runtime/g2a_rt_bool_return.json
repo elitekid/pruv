@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"]], "exit": 0, "stdout_lines": ["4", "true", "false", "false", "true"], "llvm_fn_contains": {"make": ["zext i1", "store i8", "call ptr @pruv_alloc_u8("]}}

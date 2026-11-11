@@ -169,6 +169,10 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
             ext.push(format!("i64 %a.{}.n", q));
             args.push(format!("ptr %a.{}.a", q));
             args.push(format!("i64 %a.{}.n", q));
+            if p.ty == "array_bool" {
+                // G2 A5: raw 진입에서 모든 바이트가 0/1 인지 먼저 검사
+                pre.push(format!("call void @pruv_check_bool(ptr %a.{}.a, i64 %a.{}.n)", q, q));
+            }
         } else if is_user_type(&p.ty) {
             ext.push(format!("ptr %a.{}", q));
             let x = w.de(&p.ty, &format!("%a.{}", q), 0)?;
@@ -252,7 +256,17 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
         body.push("  ret i64 %r".to_string());
         ret = "i64";
     }
-    Ok(format!("define {} @pruv_abi_{}({}) {{\nentry:\n{}\n}}\n", ret, n, ext.join(", "), body.join("\n")))
+    let mut out = format!("define {} @pruv_abi_{}({}) {{\nentry:\n{}\n}}\n", ret, n, ext.join(", "), body.join("\n"));
+    if f.params.iter().any(|p| p.ty == "array_bool") {
+        // G2 A5: typed Rust 바인딩은 타입으로 유효한 &[bool] 을 바이트 검사 없는 이 진입으로 넘긴다
+        let tb: Vec<&str> = body
+            .iter()
+            .map(|x| x.as_str())
+            .filter(|x| !x.starts_with("  call void @pruv_check_bool("))
+            .collect();
+        out.push_str(&format!("\ndefine {} @pruv_abi_{}__typed({}) {{\nentry:\n{}\n}}\n", ret, n, ext.join(", "), tb.join("\n")));
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

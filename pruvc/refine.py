@@ -37,6 +37,11 @@ def _validate(r):
         _terr(r, "refinement_base",
               "a refinement `| L..=U` applies only to i64 or [i64], not to %s" % r.base,
               "remove the annotation and state the condition with requires/ensures/assert")
+    # G2 A5: a bool array has no element range; only its length can be bounded
+    if r.shape == "array" and r.base == "bool" and r.lo is not None:
+        _terr(r, "refinement_base",
+              "a refinement `| L..=U` does not apply to [bool]; only its length can be bounded",
+              "remove `| L..=U`; keep `; <=N` if a length bound is needed")
     for what, v in (("lower bound", r.lo), ("upper bound", r.hi)):
         if v is not None and not I64_MIN <= v <= I64_MAX:
             _terr(r, "refinement_bounds", "refinement %s %d is outside the i64 range" % (what, v),

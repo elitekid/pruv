@@ -541,8 +541,10 @@ impl Checker {
                         format!("use `let mut b: {} = copy({});` (needs alloc)", type_name(&v.ty), s.name),
                     ));
                 }
+                // G2 A5: 원소가 bool 이면 값 기대 타입 bool
+                let want_val: &str = if v.ty == "array_bool" { BOOL } else { I64 };
                 self.expect(&mut s.index, I64, scope, false)?;
-                self.expect(&mut s.value, I64, scope, false)?;
+                self.expect(&mut s.value, want_val, scope, false)?;
             }
             Stmt::FieldAssign(s) => {
                 let v = self.lookup(s.line, s.col, &s.name, scope)?;
@@ -848,6 +850,10 @@ impl Checker {
                     ));
                 }
                 self.expect(&mut x.index, I64, scope, c)?;
+                // G2 A5: bool 배열 읽기는 bool
+                if at == "array_bool" {
+                    return Ok(BOOL.to_string());
+                }
                 Ok(I64.to_string())
             }
             Expr::Ctor(x) => {
@@ -1086,7 +1092,9 @@ impl Checker {
                 }
                 arity(2)?;
                 self.expect(&mut e.args[0], I64, scope, c)?;
-                self.expect(&mut e.args[1], I64, scope, c)?;
+                // G2 A5: 힌트가 array_bool 이면 값 기대 타입 bool
+                let vwant: &str = if want.as_deref() == Some("array_bool") { BOOL } else { I64 };
+                self.expect(&mut e.args[1], vwant, scope, c)?;
                 self.used_effects.insert("alloc".to_string());
                 return Ok(want.unwrap_or_else(|| ARRAY.to_string()));
             }

@@ -150,6 +150,30 @@ def is_u8_array(t):
     return t is not None and t.name == "array_u8"
 
 
+# G2 A5: [bool] preludes (emitted only for programs that use [bool])
+SAFE_PRELUDE_BOOL = """\
+#[allow(dead_code)]
+#[inline]
+fn pruv_get_bool(a: &[bool], i: i64) -> bool { a[pruv_idx(i, a.len())] }
+#[allow(dead_code)]
+#[inline]
+fn pruv_set_bool(a: &mut [bool], i: i64, v: bool) { let k = pruv_idx(i, a.len()); a[k] = v; }
+#[allow(dead_code)]
+#[inline]
+fn pruv_alloc_bool(n: i64, v: bool) -> ::std::vec::Vec<bool> { if n < 0 || n > (1i64 << 40) { pruv_ovf("alloc length outside 0..2^40") } vec![v; n as usize] }
+"""
+
+CONTRACT_PRELUDE_BOOL = """\
+#[allow(dead_code)]
+#[inline]
+fn pruv_cidx_bool(a: &[bool], i: i128) -> bool { if i >= 0 && i < (a.len() as i128) { a[i as usize] } else { pruv_ud("array index out of range") } }
+"""
+
+
+def is_bool_array(t):
+    return t is not None and t.name == "array_bool"
+
+
 SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div", "%": "pruv_rem"}
 CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
 
@@ -163,6 +187,8 @@ def rty(t, param=False):
         return "&[i64]" if param else "::std::vec::Vec<i64>"
     if t.name == "array_u8":
         return "&[u8]" if param else "::std::vec::Vec<u8>"
+    if t.name == "array_bool":  # G2 A5
+        return "&[bool]" if param else "::std::vec::Vec<bool>"
     if is_user_type(t):
         return t.name
     raise Exception("codegen: unsupported type %r" % (t,))
@@ -322,14 +348,19 @@ class Gen:
         if types:
             s.out.append(types)
         u8_used = uses_array_type(s.prog, "array_u8")
+        bool_used = uses_array_type(s.prog, "array_bool")  # G2 A5
         if not s.verified:
             s.out.append(SAFE_PRELUDE)
             if u8_used:
                 s.out.append(SAFE_PRELUDE_U8)
+            if bool_used:
+                s.out.append(SAFE_PRELUDE_BOOL)
         if s.has_req and not s.trust:
             s.out.append(CONTRACT_PRELUDE)
             if u8_used:
                 s.out.append(CONTRACT_PRELUDE_U8)
+            if bool_used:
+                s.out.append(CONTRACT_PRELUDE_BOOL)
             ctypes = s.contract_types()
             if ctypes:
                 s.out.append(ctypes)
@@ -438,6 +469,8 @@ class Gen:
                 return "%s(%s, %s)" % (CONTRACT_ARITH[op], s.c(e.left), s.c(e.right))
             return "(%s %s %s)" % (s.c(e.left), op, s.c(e.right))
         if isinstance(e, Index):
+            if is_bool_array(e.array.ty):  # G2 A5
+                return "pruv_cidx_bool(%s, %s)" % (s.carr(e.array), s.c(e.index))
             if is_u8_array(e.array.ty):
                 return "pruv_cidx_u8(%s, %s)" % (s.carr(e.array), s.c(e.index))
             return "pruv_cidx(%s, %s)" % (s.carr(e.array), s.c(e.index))
@@ -547,7 +580,14 @@ class Gen:
             decl = "let pruv_v: %s = " % rty(vty) if vty is not None else "let pruv_v = "
             s.emit(ind, "{ %s%s; %s.%s = pruv_v; }" % (decl, s.e(st.value), st.name, ".".join(st.fields)))
         elif isinstance(st, IndexAssign):
-            if is_u8_array(s.vt.get(st.name)):
+            if is_bool_array(s.vt.get(st.name)):  # G2 A5
+                if s.verified:
+                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: bool = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x; } }" %
+                           (s.e(st.index), s.e(st.value), st.name))
+                else:
+                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: bool = %s; pruv_set_bool(&mut %s, pruv_i, pruv_x); }" %
+                           (s.e(st.index), s.e(st.value), st.name))
+            elif is_u8_array(s.vt.get(st.name)):
                 if s.verified:
                     s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x as u8; } }" %
                            (s.e(st.index), s.e(st.value), st.name))
@@ -614,6 +654,10 @@ class Gen:
                 return "%s(%s, %s)" % (SAFE_ARITH[e.op], s.e(e.left), s.e(e.right))
             return "(%s %s %s)" % (s.e(e.left), e.op, s.e(e.right))
         if isinstance(e, Index):
+            if is_bool_array(e.array.ty):  # G2 A5
+                if not s.verified:
+                    return "pruv_get_bool(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
+                return "(unsafe { *%s.get_unchecked((%s) as usize) })" % (s.e(e.array), s.e(e.index))
             if is_u8_array(e.array.ty):
                 if not s.verified:
                     return "pruv_get_u8(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
@@ -640,6 +684,10 @@ class Gen:
             if n == "len":
                 return "(%s.len() as i64)" % s.e(a[0])
             if n == "alloc":
+                if is_bool_array(e.ty):  # G2 A5
+                    if not s.verified:
+                        return "pruv_alloc_bool(%s, %s)" % (s.e(a[0]), s.e(a[1]))
+                    return "{ let pruv_n: i64 = %s; let pruv_v: bool = %s; vec![pruv_v; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]))
                 if is_u8_array(e.ty):
                     if not s.verified:
                         return "pruv_alloc_u8(%s, %s)" % (s.e(a[0]), s.e(a[1]))
@@ -661,7 +709,7 @@ class Gen:
 
 def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30):
     from typeinfo import g2_unimplemented_error
-    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8",))
+    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool"))  # G2 A5
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
     g = Gen(prog, verified, trust_callers, budget)

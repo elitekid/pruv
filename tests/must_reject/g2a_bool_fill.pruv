@@ -1,0 +1,5 @@
+// alloc with an integer fill value for a [bool] binding is a type error.
+fn f() -> i64 ! alloc {
+  let a: [bool] = alloc(1, 0);
+  return 0;
+}

@@ -109,6 +109,15 @@ fn needs_mangling(n: &str) -> bool {
     n.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '_'))
 }
 
+/// G2 A5: [bool] 매개변수가 있으면 바인딩은 바이트 검사 없는 pruv_abi_<f>__typed 를 부른다.
+fn typed_abi_name(f: &Function) -> String {
+    if f.params.iter().any(|p| p.ty == "array_bool") {
+        format!("{}__typed", f.name)
+    } else {
+        f.name.clone()
+    }
+}
+
 fn rust_ty(t: &str, param: bool) -> String {
     if is_user_type(t) {
         return t.to_string();
@@ -120,6 +129,7 @@ fn rust_ty(t: &str, param: bool) -> String {
         "option" => "::std::option::Option<i64>".to_string(),
         "result" => "::std::result::Result<i64, i64>".to_string(),
         "array_u8" => (if param { "&[u8]" } else { "::std::vec::Vec<u8>" }).to_string(),
+        "array_bool" => (if param { "&[bool]" } else { "::std::vec::Vec<bool>" }).to_string(), // G2 A5
         _ => (if param { "&[i64]" } else { "::std::vec::Vec<i64>" }).to_string(),
     }
 }
@@ -241,6 +251,11 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         o.push(ALLOW.to_string());
         o.push("#[repr(C)]\npub struct Pruv__ArrayU8 { pub data: *mut u8, pub len: i64 }".to_string());
     }
+    if uses_array_type(prog, "array_bool") {
+        // G2 A5
+        o.push(ALLOW.to_string());
+        o.push("#[repr(C)]\npub struct Pruv__ArrayBool { pub data: *mut u8, pub len: i64 }".to_string());
+    }
     o.push(ALLOW.to_string());
     o.push("#[repr(C)]\npub struct Pruv__Tagged { pub tag: i64, pub value: i64 }".to_string());
     for h in [HOST_ALLOC, HOST_ALLOC_ZEROED, HOST_FLUSH, HOST_FREE, HOST_ALLOC_V2, HOST_ALLOC_ZEROED_V2, HOST_FREE_V2] {
@@ -258,7 +273,8 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         }
         let mut ps: Vec<&str> = Vec::new();
         for p in &f.params {
-            if p.ty == "array_u8" {
+            if p.ty == "array_u8" || p.ty == "array_bool" {
+                // G2 A5: bool 도 *const u8
                 ps.extend(["*const u8", "i64"]);
             } else if p.ty == "array" {
                 ps.extend(["*const i64", "i64"]);
@@ -272,6 +288,8 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         }
         if f.ret == "array_u8" {
             ps.push("*mut Pruv__ArrayU8");
+        } else if f.ret == "array_bool" {
+            ps.push("*mut Pruv__ArrayBool"); // G2 A5
         } else if f.ret == "array" {
             ps.push("*mut Pruv__Array");
         } else if is_user_type(&f.ret) {
@@ -285,7 +303,11 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             ""
         };
         let plist: Vec<String> = ps.iter().enumerate().map(|(i, t)| format!("p{}: {}", i, t)).collect();
-        decls.push(format!("    fn pruv_abi_{}({}){};", f.name, plist.join(", "), ret));
+        decls.push(format!("    fn pruv_abi_{}({}){};", typed_abi_name(f), plist.join(", "), ret));
+    }
+    if prog.functions.iter().any(|f| f.ret == "array_bool") {
+        // G2 A5: 모든 pruv_abi_* 줄 뒤, marker 줄 앞
+        decls.push("    fn pruv_check_bool(p0: *const u8, p1: i64);".to_string());
     }
     if returns_array {
         decls.push("    fn pruv_runtime_rust_allocator_v2();".to_string());
@@ -303,6 +325,10 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
                 args.push(p.name.clone());
             } else if p.ty == "bool" {
                 args.push(format!("{} as i64", p.name));
+            } else if p.ty == "array_bool" {
+                // G2 A5
+                args.push(format!("{}.as_ptr() as *const u8", p.name));
+                args.push(format!("{}.len() as i64", p.name));
             } else if is_array_name(&p.ty) {
                 args.push(format!("{}.as_ptr()", p.name));
                 args.push(format!("{}.len() as i64", p.name));
@@ -338,16 +364,26 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             );
         }
         body.extend(pre);
-        let call = format!("pruv_abi_{}({})", f.name, args.join(", "));
+        let call = format!("pruv_abi_{}({})", typed_abi_name(f), args.join(", "));
         let mut args_out = args.clone();
         args_out.push("&mut pruv__out".to_string());
-        let callo = format!("pruv_abi_{}({})", f.name, args_out.join(", "));
+        let callo = format!("pruv_abi_{}({})", typed_abi_name(f), args_out.join(", "));
         if f.ret == "unit" {
             body.push(format!("{};", call));
         } else if f.ret == "i64" {
             body.push(call);
         } else if f.ret == "bool" {
             body.push(format!("{} != 0", call));
+        } else if f.ret == "array_bool" {
+            // G2 A5: 검사 뒤에 Rust bool 로 인수
+            body.push("let mut pruv__out = Pruv__ArrayBool { data: ::std::ptr::null_mut(), len: 0 };".to_string());
+            body.push(format!("{};", callo));
+            body.push("pruv_check_bool(pruv__out.data, pruv__out.len);".to_string());
+            body.push(
+                "if pruv__out.len > 0 { ::std::vec::Vec::from_raw_parts(pruv__out.data as *mut bool, pruv__out.len as usize, \
+                 pruv__out.len as usize) } else { ::std::vec::Vec::new() }"
+                    .to_string(),
+            );
         } else if is_array_name(&f.ret) {
             let out_ty = if f.ret == "array_u8" { "Pruv__ArrayU8" } else { "Pruv__Array" };
             body.push(format!("let mut pruv__out = {} {{ data: ::std::ptr::null_mut(), len: 0 }};", out_ty));
@@ -361,7 +397,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             body.push(format!("let mut pruv__out = [0i64; {}];", words(&tt, &f.ret)?));
             let mut a2 = args.clone();
             a2.push("pruv__out.as_mut_ptr()".to_string());
-            body.push(format!("pruv_abi_{}({});", f.name, a2.join(", ")));
+            body.push(format!("pruv_abi_{}({});", typed_abi_name(f), a2.join(", ")));
             body.push(rs_de(&tt, &f.ret, "pruv__out", 0)?);
         } else {
             body.push(format!("let pruv__out = {};", call));

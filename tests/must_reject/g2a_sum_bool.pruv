@@ -1,0 +1,6 @@
+// sum needs an integer body; a [bool] element body is a type error (count is the bool aggregate).
+fn f(a: [bool]) -> i64
+  ensures result == sum(k in 0..len(a): a[k])
+{
+  return 0;
+}

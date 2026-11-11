@@ -103,6 +103,24 @@ pub const CONTRACT_PRELUDE_U8: &str = r##"#[allow(dead_code)]
 fn pruv_cidx_u8(a: &[u8], i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a[i as usize] as i128 } else { pruv_ud("array index out of range") } }
 "##;
 
+// G2 A5: `[bool]` 를 쓰는 프로그램의 안전 모드에만 SAFE_PRELUDE_U8(있으면) 다음에 덧붙는다.
+pub const SAFE_PRELUDE_BOOL: &str = r##"#[allow(dead_code)]
+#[inline]
+fn pruv_get_bool(a: &[bool], i: i64) -> bool { a[pruv_idx(i, a.len())] }
+#[allow(dead_code)]
+#[inline]
+fn pruv_set_bool(a: &mut [bool], i: i64, v: bool) { let k = pruv_idx(i, a.len()); a[k] = v; }
+#[allow(dead_code)]
+#[inline]
+fn pruv_alloc_bool(n: i64, v: bool) -> ::std::vec::Vec<bool> { if n < 0 || n > (1i64 << 40) { pruv_ovf("alloc length outside 0..2^40") } vec![v; n as usize] }
+"##;
+
+// G2 A5: `[bool]` 를 쓰는 프로그램의 requires 실행 검사에만 CONTRACT_PRELUDE_U8(있으면) 다음에 덧붙는다.
+pub const CONTRACT_PRELUDE_BOOL: &str = r##"#[allow(dead_code)]
+#[inline]
+fn pruv_cidx_bool(a: &[bool], i: i128) -> bool { if i >= 0 && i < (a.len() as i128) { a[i as usize] } else { pruv_ud("array index out of range") } }
+"##;
+
 /// 식의 배열 원소 타입 이름(배열이 아니면 "i64").
 fn elem_of(e: &Expr) -> &'static str {
     expr_ty(e).as_deref().and_then(array_elem_name).unwrap_or("i64")
@@ -275,16 +293,23 @@ impl<'a> Gen<'a> {
             self.out.push(types);
         }
         let u8_used = uses_array_type(self.prog, "array_u8");
+        let bool_used = uses_array_type(self.prog, "array_bool"); // G2 A5
         if !self.verified {
             self.out.push(SAFE_PRELUDE.to_string());
             if u8_used {
                 self.out.push(SAFE_PRELUDE_U8.to_string());
+            }
+            if bool_used {
+                self.out.push(SAFE_PRELUDE_BOOL.to_string());
             }
         }
         if !self.has_req.is_empty() && !self.trust {
             self.out.push(CONTRACT_PRELUDE.to_string());
             if u8_used {
                 self.out.push(CONTRACT_PRELUDE_U8.to_string());
+            }
+            if bool_used {
+                self.out.push(CONTRACT_PRELUDE_BOOL.to_string());
             }
             let ctypes = self.contract_types()?;
             if !ctypes.is_empty() {
@@ -493,6 +518,10 @@ impl<'a> Gen<'a> {
                 let i = self.c(&x.index)?;
                 if elem_of(&x.array) == "u8" {
                     return Ok(format!("pruv_cidx_u8({}, {})", a, i));
+                }
+                if elem_of(&x.array) == "bool" {
+                    // G2 A5
+                    return Ok(format!("pruv_cidx_bool({}, {})", a, i));
                 }
                 Ok(format!("pruv_cidx({}, {})", a, i))
             }
@@ -746,7 +775,26 @@ impl<'a> Gen<'a> {
                 let i = self.e(&x.index)?;
                 let v = self.e(&x.value)?;
                 let is_u8 = self.vars.get(&x.name).map(|t| t.as_str()) == Some("array_u8");
-                if is_u8 {
+                let is_bool = self.vars.get(&x.name).map(|t| t.as_str()) == Some("array_bool"); // G2 A5
+                if is_bool {
+                    if self.verified {
+                        self.emit(
+                            ind,
+                            &format!(
+                                "{{ let pruv_i: i64 = {}; let pruv_x: bool = {}; unsafe {{ *{}.get_unchecked_mut(pruv_i as usize) = pruv_x; }} }}",
+                                i, v, x.name
+                            ),
+                        );
+                    } else {
+                        self.emit(
+                            ind,
+                            &format!(
+                                "{{ let pruv_i: i64 = {}; let pruv_x: bool = {}; pruv_set_bool(&mut {}, pruv_i, pruv_x); }}",
+                                i, v, x.name
+                            ),
+                        );
+                    }
+                } else if is_u8 {
                     if self.verified {
                         self.emit(
                             ind,
@@ -871,9 +919,13 @@ impl<'a> Gen<'a> {
             }
             Expr::Index(x) => {
                 let u8r = elem_of(&x.array) == "u8";
+                let boolr = elem_of(&x.array) == "bool"; // G2 A5
                 if !self.verified {
                     let a = self.arr_ref(&x.array)?;
                     let i = self.e(&x.index)?;
+                    if boolr {
+                        return Ok(format!("pruv_get_bool({}, {})", a, i));
+                    }
                     if u8r {
                         return Ok(format!("pruv_get_u8({}, {})", a, i));
                     }
@@ -929,14 +981,28 @@ impl<'a> Gen<'a> {
                 }
                 if n == "alloc" {
                     let u8a = x.ty.as_deref() == Some("array_u8");
+                    let boola = x.ty.as_deref() == Some("array_bool"); // G2 A5
                     if !self.verified {
                         let n0 = self.e(arg(a, 0)?)?;
                         let v0 = self.e(arg(a, 1)?)?;
-                        return Ok(format!("{}({}, {})", if u8a { "pruv_alloc_u8" } else { "pruv_alloc" }, n0, v0));
+                        let f = if boola {
+                            "pruv_alloc_bool"
+                        } else if u8a {
+                            "pruv_alloc_u8"
+                        } else {
+                            "pruv_alloc"
+                        };
+                        return Ok(format!("{}({}, {})", f, n0, v0));
                     }
                     // 소스 순서: n 먼저, v 나중(vec![v; n] 은 v 를 먼저 평가한다)
                     let n0 = self.e(arg(a, 0)?)?;
                     let v0 = self.e(arg(a, 1)?)?;
+                    if boola {
+                        return Ok(format!(
+                            "{{ let pruv_n: i64 = {}; let pruv_v: bool = {}; vec![pruv_v; pruv_n as usize] }}",
+                            n0, v0
+                        ));
+                    }
                     return Ok(format!(
                         "{{ let pruv_n: i64 = {}; let pruv_v: i64 = {}; vec![pruv_v{}; pruv_n as usize] }}",
                         n0,
@@ -971,7 +1037,7 @@ impl<'a> Gen<'a> {
 
 /// Pruv -> Rust 소스. Err 는 Python 이 Exception 을 내는 자리의 str(e).
 pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
-    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8"], None) {
+    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool"], None) {
         return Err(format!("unsupported_type: {}", e.message));
     }
     let mut g = Gen::new(prog, verified, trust_callers, budget);

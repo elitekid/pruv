@@ -83,7 +83,9 @@ def binding_tagged(rs_text):
     """바인딩 .rs 의 extern 선언에서 {pruv_abi_이름: 반환이 Pruv__Tagged 인가}."""
     out = {}
     for m in re.finditer(r"fn\s+(pruv_abi_\w+)\s*\(([^)]*)\)\s*(->\s*[\w:<>\s*]+)?;", rs_text):
-        out[m.group(1)] = bool(m.group(3) and "Pruv__Tagged" in m.group(3))
+        # G2 A5: a function with a [bool] parameter is bound through pruv_abi_<f>__typed (same ABI, no byte check)
+        name = m.group(1)[:-len("__typed")] if m.group(1).endswith("__typed") else m.group(1)
+        out[name] = bool(m.group(3) and "Pruv__Tagged" in m.group(3))
     return out
 
 

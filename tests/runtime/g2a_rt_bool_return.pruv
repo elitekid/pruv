@@ -1,0 +1,11 @@
+// a function builds a [bool] with stores and returns it (Vec<bool> in Rust); the driver prints its length and elements.
+
+fn make(n: i64) -> [bool] ! alloc
+  requires n >= 2 && n <= 8
+  ensures len(result) == n
+{
+  let mut a: [bool] = alloc(n, false);
+  a[0] = true;
+  a[n - 1] = true;
+  return a;
+}

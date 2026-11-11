@@ -1,0 +1,4 @@
+bools(&[]) = []
+bools(&[true, false, true]) = [true, false, true]
+bools(&[false]) = [false]
+repeat bools n=20000 sum=-6983013194796601479

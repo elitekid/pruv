@@ -309,13 +309,20 @@ impl Parser {
         if self.at("[", 0) {
             self.bump();
             let e = self.ident()?;
-            if e.val != "i64" && e.val != "u8" {
+            // G2 A5: [bool] 허용, 오류 글자 갱신
+            if e.val != "i64" && e.val != "u8" && e.val != "bool" {
                 if is_upper(&e.val) {
                     return Err(self.unsupported(&format!("[{}]", e.val), &e));
                 }
-                return Err(self.err("only [i64] and [u8] arrays exist", "use [i64] or [u8]", Some(&e)));
+                return Err(self.err("only [i64], [u8] and [bool] arrays exist", "use [i64], [u8] or [bool]", Some(&e)));
             }
-            let arr_name: &str = if e.val == "u8" { "array_u8" } else { "array" };
+            let arr_name: &str = if e.val == "u8" {
+                "array_u8"
+            } else if e.val == "bool" {
+                "array_bool"
+            } else {
+                "array"
+            };
             let (mut lo, mut hi, mut maxlen): (Option<String>, Option<String>, Option<String>) = (None, None, None);
             if self.at("|", 0) {
                 if !allow {

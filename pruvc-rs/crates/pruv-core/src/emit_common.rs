@@ -18,6 +18,10 @@ pub fn rty(t: &str, param: bool) -> String {
         "array_u8" => {
             if param { "&[u8]".to_string() } else { "::std::vec::Vec<u8>".to_string() }
         }
+        // G2 A5: 폴백에 기대지 않고 명시
+        "array_bool" => {
+            if param { "&[bool]".to_string() } else { "::std::vec::Vec<bool>".to_string() }
+        }
         other => other.to_string(),
     }
 }

@@ -751,3 +751,21 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
 - **확인 감사(Claude Opus):** 필수 0, 반영 6건 중 5건 맞음. 권고 3: 해제·복사 helper 전체 .ll 검사가 u8 선언 줄 때문에 늘 참 → 함수 본문 `llvm_fn_contains`로 바꿈, 명세 링크 시험 표의 옛 균형 기준·기대 심볼 갱신, 명세 표본 설명에 새 경로 기록 → 모두 반영.
 - **Windows CI(푸시 뒤, run 42986134593):** 통과 — 새 바인딩 12표본(u8 반환 `g2a_u8_ret` 포함)을 Windows에서 clang으로 객체화한 `runtime.c`(Rust allocator 판, v2 helper 포함)와 rustc(MSVC)로 링크·실행해 맥 기대 출력과 같음.
 - 측정 못 한 것: u8 함수의 증명 시간과 생성 코드 성능, MSVC(`cl /std:c11`)로 런타임을 직접 컴파일하는 길(pruvc-rs 를 Windows에서 빌드할 때), Linux 실행.
+
+## 38. G2 A5: `[bool]` 배열 전 층 (2026-11-11)
+`[bool]`(`[bool; <=N]` 포함)을 앞단·증명·Rust 소스 뒷단·LLVM 뒷단·`--rust-bindings`·런타임에서 한 묶음으로 열었다. 이로써 G2a 첫 판 원소 타입 `[u8]`·`[bool]`이 전 층에서 동작한다(`[i32]`는 A6으로 미룸, G2_SPEC 결정 1). 두 판이 같은 글자를 내도록 진단·생성 코드·IR·바인딩·런타임 글자를 `docs/G2_A5_IMPL.md`에 먼저 고정했고, bool 프로그램의 Rust 소스·IR·바인딩은 첫 비교에서 두 판 바이트가 같았다.
+
+- **앞단:** 원소 이름 `bool` 허용(그 밖 이름 오류 문구 `only [i64], [u8] and [bool] arrays exist`), `[bool | L..=U]`는 `type/refinement_base`. `a[i]`는 bool, 저장 값은 bool, `alloc(n, v)`는 결정 6 힌트가 `[bool]`일 때만 `v: bool`(힌트 없는 `len(alloc(4, false))`는 `type_mismatch`). `sum` bool 본문 거부, `count(k in ..: a[k])` 허용.
+- **증명:** SMT `Array(Int, Bool)`. bool 원소 읽기는 i64 범위 가정 없이 Bool 값(Python 범위 가정·Rust `Val::Int` 고정 자리를 바꿈), alloc은 `K(Int, v)`, 저장은 `Store`, `elem_range` 의무·정의역 가정 없음. **반례 JSON의 bool 배열 원소가 `true/false`로 나온다**(전에는 이 변수가 반례에서 통째로 빠졌다). 표본 `g2a_bool_cex`가 두 판에서 `"first": [true]`를 확인한다.
+- **`--infer`:** 원소 타입 표를 이름 기반 평평한 표에서 **루프 위치 기준 표**로 바꿨다(A2 감사에서 미룬 권고). 형제 블록이 같은 이름을 `[i64]`·`[bool]`로 쓸 때 옛 표는 bool 배열에 정수 범위 후보(`0 <= a[k] && a[k] <= 5`)를 만들었다(옛 infer.py 사본으로 재현). 새 시험 `tests/inference/inf_g2a_bool_sibling`·`inf_g2a_infer_bool`이 그런 후보가 없는지 본다.
+- **실행:** 메모리는 원소 1바이트 0/1(비트 압축 없음). Rust 소스 뒷단 `&[bool]`/`Vec<bool>`(안전 모드 helper `pruv_get_bool`·`pruv_set_bool`·`pruv_alloc_bool`, 계약 읽기 `pruv_cidx_bool`). LLVM은 저장 `zext i1 → i8`, 읽기 `load i8` 뒤 `icmp ne i8 0`, alloc은 `pruv_alloc_u8(n, zext v)` 재사용, copy·free는 v2 (1,1). bool 선언·prelude·구조체는 bool 프로그램에만 붙어 **`[i64]`·`[u8]` 프로그램 출력은 바이트 그대로**.
+- **raw ABI 표현 검사:** 런타임에 `pruv_check_bool`·`pruv_panic_repr`을 더했다. C가 직접 부르는 `pruv_abi_<f>`는 `[bool]` 인자의 모든 바이트를 requires보다 먼저 검사하고, 0/1이 아니면 `pruv: invalid representation: 2 (bool 0..=1)`(종료 101). `--trust-callers`에서도 돈다. 바인딩의 `[bool]` 반환은 검사한 뒤 `Vec<bool>`로 인수(`Pruv__ArrayBool`). typed Rust 바인딩의 `&[bool]`은 타입이 0/1을 보장하므로 검사 줄만 뺀 `pruv_abi_<f>__typed`를 부른다(감사 필수 2: 매 호출 O(n) 중복 검사 제거). 새 시험 `tests/abi/check_bool_repr.py`(m3_all `abi_bool`): 두 컴파일러 × 8경우 = 16/16(정상, 바이트 2·255, trust 빌드, 표현 오류가 requires보다 먼저).
+- **표본:** must_reject 9(`g2a_bool_fill`·`_store`·`_read_int`·`_refine`·`_alloc_nohint`·`_cex`, `g2a_sum_bool`·`g2a_mixed_bool`·`g2a_infer_bool`), examples 5, runtime 7(반환 값, 복사 독립성, 안전 모드 색인 panic, requires 원소 읽기와 `--trust-callers`, 해제 경로·균형, `--infer` 형제 블록), ABI gen `g2a_bool_ret` + winci 호출 목록(52파일 재생성). 행 목록 594 → 663.
+- **회귀(마지막 실행):**
+  - run_all `--backend both` 두 판 663/663(행 목록 663, 빠진 행·실패 0)
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - m3_all 11단계 ok(parse·check·trace·trace_infer·llvm·rust·compilers 838·standalone·abi·abi_v2·abi_bool), cli_also_llvm 두 판 304/304, check_generated 통과, winci `--check` 52파일 동일
+  - 새 표본 diff_trace `--infer` 켬/끔 성공(결정 11), `tests/inference --regress` 두 판 271/271(새 examples·시험 포함), 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1
+- **감사(Claude Opus):** 필수 2·권고 5, 모두 반영. 필수: 형제 블록 표본이 옛 표에서도 통과해 회귀를 못 잡음 → inference `absent` 시험, 바인딩 `&[bool]` 인자 O(n) 중복 검사 → `__typed` 진입. 권고: 루프를 못 찾을 때 두 판 대체값 통일, 낡은 주석, 반례 확인 글자 조임, infer 시험 보강, 명세 숫자.
+- **확인 감사(Claude Opus):** 필수 0, 1차 지적 7건 해소. 권고 2(남김): `check_generated.py`가 `__typed` 정의 자체의 서명·COFF 기호는 보지 않음(Windows CI 링크에서야 드러남), winci에 `[bool]` 인자 + Option/Result 반환(Windows sret) 조합 표본 없음.
+- 측정 못 한 것: bool 배열 증명 시간·생성 코드 성능, Linux 실행. Windows CI는 푸시 뒤 확인.

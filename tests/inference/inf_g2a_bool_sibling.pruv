@@ -1,0 +1,22 @@
+// G2 A5: sibling blocks declare `a` as [i64] and as [bool]. The else-block loop stores into the [bool] one,
+// so no integer-range candidate may be built over its elements (the per-loop element-type table, docs/G2_A5_IMPL.md 2.3).
+fn f(p: [i64 | 0..=5], c: i64) -> i64 ! alloc
+  requires len(p) == 4
+{
+  let mut n: i64 = 0;
+  if c > 0 {
+    let a: [i64] = alloc(4, 1);
+    n = len(a);
+  } else {
+    let mut a: [bool] = alloc(4, false);
+    let mut i: i64 = 0;
+    while i < 4
+      decreases 4 - i
+    {
+      a[i] = p[i] > 2;
+      i = i + 1;
+    }
+    n = len(a);
+  }
+  return n;
+}

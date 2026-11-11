@@ -1,0 +1,41 @@
+// [bool] free paths: loop reassignment, early return with a live copy, call-result temporaries and a copy of a temporary; every array is freed (alloc balance).
+fn mk(n: i64) -> [bool] ! alloc
+  requires n >= 1 && n <= 8
+  ensures len(result) == n
+{
+  return alloc(n, true);
+}
+
+fn pick(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 6
+{
+  let mut a: [bool] = alloc(2, false);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(a) >= 2
+    decreases n - i
+  {
+    a = alloc(i + 2, true);
+    if i == 2 {
+      let c: [bool] = copy(a);
+      return len(c);
+    }
+    i = i + 1;
+  }
+  return len(a);
+}
+
+fn tmp(n: i64) -> i64 ! alloc
+  requires n >= 1 && n <= 8
+{
+  let x: i64 = len(mk(n));
+  let mut r: i64 = 0;
+  if mk(n)[0] {
+    r = 1;
+  }
+  if copy(mk(n))[n - 1] {
+    r = r + 1;
+  }
+  return x + r;
+}

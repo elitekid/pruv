@@ -1,0 +1,9 @@
+// 경계: [bool] 인자·반환 (out 포인터, 진입에서 pruv_check_bool, 중간 copy)
+fn bools(a: [bool]) -> [bool] ! alloc
+  requires len(a) <= 1_000_000
+  ensures len(result) == len(a)
+{
+  let t: [bool] = copy(a);
+  let c: [bool] = copy(t);
+  return c;
+}

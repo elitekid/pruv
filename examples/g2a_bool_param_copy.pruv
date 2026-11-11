@@ -1,0 +1,28 @@
+// [bool] parameter, call result and copy: stores go into a copy (a parameter is not storable) and are read back provably.
+fn make(n: i64) -> [bool] ! alloc
+  requires n >= 1 && n <= 8
+  ensures len(result) == n
+{
+  return alloc(n, true);
+}
+
+fn flip(a: [bool]) -> [bool] ! alloc
+  requires len(a) >= 1 && len(a) <= 8
+  ensures len(result) == len(a)
+{
+  let mut c: [bool] = copy(a);
+  if a[0] {
+    c[0] = false;
+  } else {
+    c[0] = true;
+  }
+  return c;
+}
+
+fn g() -> i64 ! alloc {
+  let r: [bool] = make(3);
+  let mut s: [bool] = flip(r);
+  s[1] = false;
+  assert s[1] == false;
+  return 0;
+}

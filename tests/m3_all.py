@@ -5,7 +5,7 @@
     python tests/m3_all.py [--only NAME[,NAME]] [--skip NAME[,NAME]] [--quick]
                            [--rs-dir DIR] [--log-dir DIR] [--timeout SEC]
 
-단계(순서대로): parse, check, trace, trace_infer, llvm, rust, compilers, standalone, abi, abi_v2
+단계(순서대로): parse, check, trace, trace_infer, llvm, rust, compilers, standalone, abi, abi_v2, abi_bool
   parse      tests/diff_parse.py --mode parse   (pruv-parse-dump)
   check      tests/diff_parse.py --mode check   (pruv-check-dump)
   trace      tests/diff_trace.py                (pruv-trace-dump)
@@ -16,6 +16,7 @@
   standalone tests/standalone/run.py            (pruvc)
   abi        tests/abi/check_generated.py       (pruvc)
   abi_v2     tests/abi/check_runtime_v2.py      (pruvc; 런타임 v2 링크 성공·실패 6경우)
+  abi_bool   tests/abi/check_bool_repr.py       (pruvc; [bool] raw ABI 표현 검사 pruv_check_bool)
 
 옵션:
   --only/--skip  단계 이름 쉼표 목록(둘 다 주면 only 에서 skip 을 뺌)
@@ -54,6 +55,7 @@ STAGES = [
     ("standalone", "tests/standalone/run.py", "pruvc", "--rs-path", [], []),
     ("abi", "tests/abi/check_generated.py", "pruvc", "--pruvc", [], []),
     ("abi_v2", "tests/abi/check_runtime_v2.py", "pruvc", "--pruvc", [], []),
+    ("abi_bool", "tests/abi/check_bool_repr.py", "pruvc", "--pruvc", [], []),
 ]
 NAMES = [s[0] for s in STAGES]
 

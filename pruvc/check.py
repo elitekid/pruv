@@ -1,7 +1,7 @@
 """Pruv type / effect / structure checker. Fills Expr.ty."""
 import re
 from vast import *
-from typeinfo import TypeTable, type_name, is_user_type, is_array
+from typeinfo import TypeTable, type_name, is_user_type, is_array, array_elem  # G2 A5: array_elem
 from refine import expand as refine_expand
 
 CONTRACT_ONLY = {"is_some": (OPTION, BOOL), "some_val": (OPTION, I64), "is_ok": (RESULT, BOOL),
@@ -217,7 +217,8 @@ class Checker:
                 terr(st, "immutable", "array %s is read-only" % st.name,
                      "use `let mut b: %s = copy(%s);` (needs alloc)" % (type_name(v[0]), st.name))
             s.expect(st.index, I64, scope)
-            s.expect(st.value, I64, scope)
+            # G2 A5: stored value is bool for a bool array
+            s.expect(st.value, BOOL if v[0] == ARRAY_BOOL else I64, scope)
         elif isinstance(st, FieldAssign):
             v = s.lookup(st, st.name, scope)
             cur = v[0]
@@ -386,9 +387,9 @@ class Checker:
                     terr(e, "contract_only", "==> is only allowed in contracts")
                 s.expect(e.left, BOOL, scope, c); s.expect(e.right, BOOL, scope, c); return BOOL
         if isinstance(e, Index):
-            s.expect_array(e.array, scope, c)
+            at = s.expect_array(e.array, scope, c)
             s.expect(e.index, I64, scope, c)
-            return I64
+            return array_elem(at) if at == ARRAY_BOOL else I64  # G2 A5: bool array reads bool
         if isinstance(e, Ctor):
             if e.name == "None":
                 return OPTION
@@ -511,9 +512,11 @@ class Checker:
             arity(1); s.expect_array(a[0], scope, c); return I64
         if n == "alloc":
             if c: terr(e, "effect_in_contract", "alloc not allowed in contracts")
-            arity(2); s.expect(a[0], I64, scope, c); s.expect(a[1], I64, scope, c)
-            s.used_effects.add("alloc")
+            arity(2); s.expect(a[0], I64, scope, c)
             h = s.alloc_hint
+            # G2 A5: the fill value is bool when the hinted type is [bool]
+            s.expect(a[1], BOOL if h is not None and h[0] is e and h[1] == ARRAY_BOOL else I64, scope, c)
+            s.used_effects.add("alloc")
             return h[1] if h is not None and h[0] is e else ARRAY
         if n == "copy":
             if c: terr(e, "effect_in_contract", "copy not allowed in contracts")

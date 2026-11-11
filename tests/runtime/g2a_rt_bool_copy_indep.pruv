@@ -1,0 +1,17 @@
+// copy of a [bool] is independent: a store into the copy does not change the original (balanced alloc/free, v2 copy/free in IR).
+
+fn run() -> () ! io, alloc {
+  let a: [bool] = alloc(2, true);
+  let mut c: [bool] = copy(a);
+  c[0] = false;
+  if a[0] {
+    print(1);
+  } else {
+    print(0);
+  }
+  if c[0] {
+    print(1);
+  } else {
+    print(0);
+  }
+}

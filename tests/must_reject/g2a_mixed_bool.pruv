@@ -1,0 +1,8 @@
+// passing a [u8] where a [bool] parameter is expected is a type error (no implicit array conversion).
+fn take(a: [bool]) -> i64 {
+  return 0;
+}
+
+fn f(b: [u8]) -> i64 {
+  return take(b);
+}

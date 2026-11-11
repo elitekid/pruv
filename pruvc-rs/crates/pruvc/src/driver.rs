@@ -211,8 +211,8 @@ fn compile(a: &Args) -> Result<(), Fail> {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
     // G2: verify 뒤에도, 아직 코드 생성 층이 없는 배열 타입은 거부.
-    // A4: [u8] 은 모든 길(rust·llvm·ll·obj·exe·also_llvm)에서 허용. [bool] 은 거부.
-    let g2_err = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen", None, &["array_u8"], None);
+    // A4·A5: [u8]·[bool] 은 모든 길(rust·llvm·ll·obj·exe·also_llvm)에서 허용.
+    let g2_err = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen", None, &["array_u8", "array_bool"], None); // G2 A5
     if let Some(e) = g2_err {
         return Err(Fail::Lang(vec![e]));
     }

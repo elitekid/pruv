@@ -459,43 +459,68 @@ fn arr_elem_of(ty: &str) -> Option<&'static str> {
     }
 }
 
-fn let_elem_types(stmts: &[Stmt], out: &mut Vec<(String, &'static str)>) {
+// G2 A5: 루프 위치 기준 표. 환경을 문장 순서로 갱신하며(배열이 아닌 Let 은 이름을 지운다),
+// 대상 루프 노드(포인터 동일성)에 닿을 때의 환경이 그 루프의 표다. 안쪽 블록은 복사한 환경으로 들어간다.
+fn env_set(env: &mut Vec<(String, &'static str)>, name: &str, e: Option<&'static str>) {
+    env.retain(|(n, _)| n != name);
+    if let Some(e) = e {
+        env.push((name.to_string(), e));
+    }
+}
+
+fn find_loop_env(stmts: &[Stmt], env: &mut Vec<(String, &'static str)>, w: &ast::While) -> bool {
     for st in stmts {
         match st {
-            Stmt::Let(x) => {
-                if let Some(e) = arr_elem_of(&x.ty) {
-                    if !out.iter().any(|(n, _)| *n == x.name) {
-                        out.push((x.name.clone(), e));
+            Stmt::Let(x) => env_set(env, &x.name, arr_elem_of(&x.ty)),
+            Stmt::If(x) => {
+                for blk in [&x.then, &x.els] {
+                    let mut e2 = env.clone();
+                    if find_loop_env(blk, &mut e2, w) {
+                        *env = e2;
+                        return true;
                     }
                 }
             }
-            Stmt::If(x) => {
-                let_elem_types(&x.then, out);
-                let_elem_types(&x.els, out);
+            Stmt::While(x) => {
+                if std::ptr::eq(x, w) {
+                    return true;
+                }
+                let mut e2 = env.clone();
+                if find_loop_env(&x.body, &mut e2, w) {
+                    *env = e2;
+                    return true;
+                }
             }
-            Stmt::While(x) => let_elem_types(&x.body, out),
             Stmt::Match(m) => {
                 for a in &m.arms {
-                    let_elem_types(&a.body, out);
+                    let mut e2 = env.clone();
+                    for bn in &a.binders {
+                        env_set(&mut e2, bn, None);
+                    }
+                    if find_loop_env(&a.body, &mut e2, w) {
+                        *env = e2;
+                        return true;
+                    }
                 }
             }
             _ => {}
         }
     }
+    false
 }
 
-/// 함수의 배열 이름 → 원소 타입 표(매개변수, 그 뒤 본문의 Let 선언; 같은 이름은 먼저 나온 것).
-fn elem_types(f: &ast::Function) -> Vec<(String, &'static str)> {
-    let mut out: Vec<(String, &'static str)> = Vec::new();
+/// 루프 `w` 머리에서 보이는 배열 이름 → 원소 타입 표(매개변수에서 시작).
+fn elem_types(f: &ast::Function, w: &ast::While) -> Vec<(String, &'static str)> {
+    let mut env: Vec<(String, &'static str)> = Vec::new();
     for p in &f.params {
-        if let Some(e) = arr_elem_of(&p.ty) {
-            if !out.iter().any(|(n, _)| *n == p.name) {
-                out.push((p.name.clone(), e));
-            }
-        }
+        env_set(&mut env, &p.name, arr_elem_of(&p.ty));
     }
-    let_elem_types(&f.body, &mut out);
-    out
+    let mut e2 = env.clone();
+    if find_loop_env(&f.body, &mut e2, w) {
+        e2
+    } else {
+        env
+    }
 }
 
 fn elem_type_of<'t>(tab: &'t [(String, &'static str)], name: &str) -> Option<&'t str> {
@@ -1035,7 +1060,7 @@ fn gen(
     f: &ast::Function,
 ) -> Vec<Cand> {
     let b = Bld { line: w.line, col: w.col, k: kname.to_string() };
-    let etab = elem_types(f);
+    let etab = elem_types(f, w); // G2 A5: 루프 위치 기준 표
     let m = assigned(&w.body);
     let mut loc: BTreeSet<String> = BTreeSet::new();
     locals(&w.body, &mut loc);

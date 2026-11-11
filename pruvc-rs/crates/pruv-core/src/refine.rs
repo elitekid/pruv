@@ -57,6 +57,15 @@ fn validate(r: &Refinement) -> Res<()> {
             "remove the annotation and state the condition with requires/ensures/assert",
         ));
     }
+    // G2 A5: [bool | L..=U] 거부 (스칼라 refinement_base 바로 다음)
+    if r.shape == "array" && r.base == "bool" && r.lo.is_some() {
+        return Err(terr(
+            r,
+            "refinement_base",
+            "a refinement `| L..=U` does not apply to [bool]; only its length can be bounded".to_string(),
+            "remove `| L..=U`; keep `; <=N` if a length bound is needed",
+        ));
+    }
     for (what, v) in [("lower bound", &r.lo), ("upper bound", &r.hi)] {
         if let Some(v) = v {
             if !in_i64(v) {

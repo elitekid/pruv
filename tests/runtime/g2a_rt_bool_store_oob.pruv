@@ -1,0 +1,8 @@
+// safe mode: a [bool] store at index 5 of a length-2 array panics with the index message (after the print before the store).
+
+fn f(i: i64) -> i64 ! io, alloc {
+  let mut a: [bool] = alloc(2, false);
+  print(1);
+  a[i] = true;
+  return 0;
+}

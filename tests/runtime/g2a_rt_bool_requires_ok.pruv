@@ -1,0 +1,7 @@
+// the same [bool] requires with only valid inputs, run in every flag combination including --trust-callers.
+
+fn f(a: [bool]) -> i64
+  requires len(a) >= 2 && a[0] && a[1] == false
+{
+  return len(a);
+}

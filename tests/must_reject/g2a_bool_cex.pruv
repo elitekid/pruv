@@ -1,0 +1,7 @@
+// a false ensures over a length-1 [bool] parameter: the counterexample is a = {len: 1, first: [true]} (bool elements print as true/false).
+fn f(a: [bool]) -> bool
+  requires len(a) == 1
+  ensures result == false
+{
+  return a[0];
+}

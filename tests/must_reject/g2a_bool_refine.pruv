@@ -1,0 +1,4 @@
+// a value-range refinement does not apply to [bool]; only the length can be bounded.
+fn f(a: [bool | 0..=1]) -> i64 {
+  return 0;
+}

@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "assert"}, "absent": ["forall k in 0..i: b[k] == (k > 1)"], "note": "G2 A5: [i64]·[bool] 을 함께 도는 루프. bool 배열 원소를 읽는 후보(종류 13)는 만들지 않고, 뒤 거짓 assert 는 그대로 거부"}

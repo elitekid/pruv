@@ -236,11 +236,12 @@ class Parser:
         if s.at("["):
             s.next()
             e = s.ident()
-            if e.val not in ("i64", "u8"):
+            if e.val not in ("i64", "u8", "bool"):
                 if e.val[0].isupper():
                     s.unsupported("[%s]" % e.val, e)
-                s.err("only [i64] and [u8] arrays exist", "use [i64] or [u8]", e)
-            aty = ARRAY if e.val == "i64" else ARRAY_U8
+                # G2 A5: [bool] joins the element names
+                s.err("only [i64], [u8] and [bool] arrays exist", "use [i64], [u8] or [bool]", e)
+            aty = {"i64": ARRAY, "u8": ARRAY_U8, "bool": ARRAY_BOOL}[e.val]  # G2 A5
             lo = hi = maxlen = None
             if s.at("|"):
                 if not allow:

@@ -1014,6 +1014,10 @@ impl<'a> FnVerifier<'a> {
                     );
                 }
                 let v = arr.a.select(&i);
+                // G2 A5: bool 배열은 in_range 가정 없이 Bool 값
+                if arr.elem == Elem::Bool {
+                    return Ok(Val::Bool(v));
+                }
                 if code {
                     let w = in_range(&self.z, &v);
                     self.assume(st, g, w);
@@ -1121,6 +1125,7 @@ impl<'a> FnVerifier<'a> {
                 self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "alloc_negative", "alloc length in 0..2^40", None);
                 let aelem = match x.ty.as_deref() {
                     Some("array_u8") => Elem::U8,
+                    Some("array_bool") => Elem::Bool, // G2 A5
                     _ => Elem::I64,
                 };
                 if aelem == Elem::U8 {

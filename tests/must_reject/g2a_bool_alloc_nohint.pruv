@@ -1,0 +1,4 @@
+// alloc without an expected array type defaults to [i64], so a bool fill value is a type error.
+fn f() -> i64 ! alloc {
+  return len(alloc(4, false));
+}

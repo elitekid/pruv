@@ -1,0 +1,10 @@
+// [bool; <=N] length refinement: only the length is bounded (a value range is rejected for [bool]).
+fn f(a: [bool; <=4]) -> i64
+  ensures 0 <= result && result <= 4
+{
+  return len(a);
+}
+
+fn g(a: [bool; <=4]) -> [bool; <=4] ! alloc {
+  return copy(a);
+}

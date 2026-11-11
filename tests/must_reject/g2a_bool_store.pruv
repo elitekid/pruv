@@ -1,0 +1,6 @@
+// storing the integer 1 into a [bool] element is a type error.
+fn f() -> i64 ! alloc {
+  let mut a: [bool] = alloc(1, false);
+  a[0] = 1;
+  return 0;
+}
