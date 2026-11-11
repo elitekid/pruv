@@ -313,7 +313,8 @@ def exec_class(it, r0, r1):
         return CA, "foreign failure already in default mode: %s" % r0.get("first_panic"), "requires"
     if foreign_panic(r1):
         return CA, "wrong results by default; all mode: %s" % r1.get("first_panic"), "all"
-    return UT, "tests observe wrong results, not caught by --foreign-checks all: %s" % r0.get("first_failure"), None
+    # wrong results that no runtime check reports: the verified program computes wrong answers
+    return WV, "tests fail without a foreign diagnostic in default or all mode: %s" % r0.get("first_failure"), None
 
 
 # worst class wins when configurations disagree
@@ -425,6 +426,16 @@ def self_test():
         except (ValueError, OSError) as e:
             bad += 1
             print("FAIL %s %s: %s" % (it["id"], it["desc"], e))
+    # exec_class: failures without a `pruv: foreign` diagnostic are never caught or trust limitations
+    fk = {"kind": "foreign", "unobservable": False}
+    for r0, r1, want in (({"status": "wrong"}, {"status": "wrong"}, WV), ({"status": "wrong"}, {"status": "ok"}, WV),
+                         ({"status": "ok"}, {"status": "wrong"}, WV), ({"status": "ok"}, {"status": "timeout"}, "crash"),
+                         ({"status": "ok"}, {"status": "wrong", "first_panic": "pruv: foreign x"}, CA),
+                         ({"status": "wrong"}, {"status": "wrong", "stderr": "pruv: foreign x"}, CA)):
+        got = exec_class(fk, r0, r1)[0]
+        if got != want:
+            bad += 1
+            print("FAIL exec_class %s %s -> %s, want %s" % (r0, r1, got, want))
     c = counts()
     floor = {"pruv": 30, "foreign": 20, "ownership": 10}
     for k, n in floor.items():
@@ -442,6 +453,10 @@ def self_test():
 
 def main():
     args = sys.argv[1:]
+    known = ("--self-test", "--list", "--jobs", "--only", "--kind")
+    flags = [a for i, a in enumerate(args) if a.startswith("-") and not (i and args[i - 1] in known[2:])]
+    if any(a not in known for a in flags):
+        sys.exit("usage: mutate_ops.py [--self-test] [--list] [--jobs N] [--only ID|TEXT] [--kind K] [OUT.json]")
     if "--self-test" in args:
         self_test()
     if "--list" in args:
@@ -460,8 +475,6 @@ def main():
                 only = v
             else:
                 kind = v
-    if any(a.startswith("-") for a in args):
-        sys.exit("usage: mutate_ops.py [--self-test] [--list] [--jobs N] [--only ID|TEXT] [--kind K] [OUT.json]")
     out = args[0] if args else os.path.join(HERE, "results", "mutants.json")
     items = [it for it in ITEMS if (not kind or it["kind"] == kind) and (not only or only in it["desc"] or only == it["id"])]
 
