@@ -1,0 +1,7 @@
+fn f(c: bool) -> i64 {
+  let mut x: i64 | 0..=10 = 0;
+  if c {
+    x = 11;
+  }
+  return x;
+}

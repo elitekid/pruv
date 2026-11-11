@@ -1266,6 +1266,13 @@ impl<'a> FnVerifier<'a> {
                     &format!("index in bounds for {}[...] =", s.name),
                     None,
                 );
+                if let Some((lo, hi, what)) = &s.elem_refine {
+                    // refine.rs: 저장 값(이미 계산됨)의 범위 의무 하나. 정의역 검사·재평가·forall 없음, 뒤에 가정하지 않는다.
+                    let lo: i64 = lo.parse().map_err(|_| format!("refinement bound '{}'", lo))?;
+                    let hi: i64 = hi.parse().map_err(|_| format!("refinement bound '{}'", hi))?;
+                    let ob = self.z.and(&[v.ge_i(lo), v.le_i(hi)]);
+                    self.prove_core(&st.env, &st.pc, &[], &ob, spos, "refinement_assign", what.as_str(), Some(what.as_str()));
+                }
                 st.env.set(&s.name, Val::Arr(Arr { a: arr.a.store(&i, &v), n: arr.n.clone(), name: s.name.clone() }));
                 Ok(vec![st])
             }
@@ -1347,7 +1354,15 @@ impl<'a> FnVerifier<'a> {
                 let mut st = st;
                 self.check_dom_e(&mut st, &[], &s.cond, spos, "variant_field lookups in assertion are defined", None)?;
                 let ob = self.ev0_ast(&s.cond, &mut st, &[], false)?;
-                self.prove_core(&st.env, &st.pc, &[], &ob, spos, "assert", "assertion", None);
+                match &s.origin_code {
+                    None => self.prove_core(&st.env, &st.pc, &[], &ob, spos, "assert", "assertion", None),
+                    Some(code) => {
+                        // refine.rs 가 합성한 assert: 자기 code 와 원천 설명. 설명이 중복 억제 키에도 들어가
+                        // 한 주석의 여러 지점이 모두 보고된다.
+                        let what = s.origin_what.as_deref().unwrap_or("");
+                        self.prove_core(&st.env, &st.pc, &[], &ob, spos, code, what, Some(what));
+                    }
+                }
                 Ok(vec![st.fork(Some(ob))])
             }
             Stmt::ExprStmt(s) => {

@@ -1,0 +1,13 @@
+fn f(n: i64 | 0..=50) -> i64 | 0..=50 {
+  let mut x: i64 | 0..=50 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant x == i
+    decreases n - i
+  {
+    x = x + 1;
+    i = i + 1;
+  }
+  return x;
+}

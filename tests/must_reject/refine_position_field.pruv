@@ -1,0 +1,7 @@
+struct P {
+  x: i64 | 0..=5,
+}
+
+fn f() -> i64 {
+  return 0;
+}

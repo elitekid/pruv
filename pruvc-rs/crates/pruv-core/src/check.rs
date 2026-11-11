@@ -180,6 +180,7 @@ impl Checker {
     }
 
     fn run(&mut self, prog: &mut Program) -> Res<()> {
+        crate::refine::expand(prog)?; // STAGE1 A: 정제 주석 검증 후 계약/assert 로 펼치기
         self.declare_types(&prog.types)?;
         self.resolve_types(prog)?;
         self.type_recursion(&prog.types)?;

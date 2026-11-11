@@ -1,0 +1,8 @@
+fn f(o: Option<i64>) -> i64 {
+  let mut x: i64 | 0..=10 = 0;
+  match o {
+    Some(v) => { x = v; }
+    None => { x = 0; }
+  }
+  return x;
+}

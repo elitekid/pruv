@@ -32,6 +32,7 @@ pub mod pyio;
 pub mod pyjson;
 pub mod pyrepr;
 pub mod pyrepr_table;
+pub mod refine;
 pub mod typeinfo;
 
 /// 공개 진입: 소스 문자열을 파싱한다(개행 정규화 포함).

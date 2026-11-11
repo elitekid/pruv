@@ -1,0 +1,5 @@
+fn f(v: i64) -> i64 ! alloc {
+  let mut a: [i64 | 0..=10; <=5] = alloc(5, 0);
+  a[2] = v;
+  return a[2];
+}

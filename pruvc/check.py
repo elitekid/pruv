@@ -2,6 +2,7 @@
 import re
 from vast import *
 from typeinfo import TypeTable, type_name, is_user_type
+from refine import expand as refine_expand
 
 CONTRACT_ONLY = {"is_some": (OPTION, BOOL), "some_val": (OPTION, I64), "is_ok": (RESULT, BOOL),
                  "ok_val": (RESULT, I64), "err_val": (RESULT, I64)}
@@ -29,6 +30,7 @@ class Checker:
         s.tt = None
 
     def run(s):
+        refine_expand(s.prog)  # STAGE1 A: validate refinement annotations, desugar them into contracts/asserts
         s.declare_types()      # names, duplicates
         s.resolve_types()      # every type reference
         s.type_recursion()

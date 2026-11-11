@@ -460,3 +460,21 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 - 한계: 생성기 재료(`bench/fuzz/README.md` 생성기 절) 밖의 구문 — 중첩 반복문 깊이 2 초과, 재귀, 큰 배열 — 은 이 퍼징이 덮지 않는다. 입력은 경계 근처 위주 12개다. 실행 검사 i128 넘침은 자원 한계로 남긴 그대로다(M0_CONTRACTS).
 - 컴파일러 코드는 바꾸지 않아 이 묶음의 코드 감사는 하지 않았다(측정만).
 - 결론: **0단계(검증기 신뢰)를 닫는다.** 독립 감사·확인 감사·거부 회귀(must_reject)·안전 모드·계약 정의역·실행 예산·대규모 퍼징이 모두 끝났다.
+
+## 26. 1단계 A: 정제 타입 (2026-11-11)
+설계 `docs/STAGE1_SPEC.md`(설계 위임 → 설계 논쟁 15건 반영 → 확정 0절). 1단계를 A 정제 타입 → B 템플릿 Houdini 불변식 추론(`--infer`) → C 구간 분석(B 측정 뒤 결정)으로 나누고, 묶음마다 Python 판 → Rust 판 → 대조를 한 번에 끝낸다.
+
+1. **문법**(SPEC 7a): 매개변수·반환·`let` 타입 자리에만 `x: i64 | 0..=100`, `a: [i64 | -1_000_000_000..=1_000_000_000; <=1_000_000]`(값 범위는 닫힌 `..=`, 길이는 `<=N` — 반열린 `forall k in 0..n`과 표기로 구별). 경계는 십진 정수 리터럴만(`1e9`·`0x10`·식은 `parse/refinement_syntax`), 필드·payload·Option 안은 `parse/refinement_position`, `bool` 등은 `type/refinement_base`, 역전·i64 밖·`N>2^40`은 `type/refinement_bounds`.
+2. **의미 = 기존 계약으로 펼치기**(`pruvc/refine.py`, `pruv-core/src/refine.rs`): 매개변수 → 합성 `requires`(길이 → 원소 `forall` → 사용자 requires 순, 실행 검사·예산 2^30 공유는 기존 경로 그대로), 반환 → 합성 `ensures`, 지역 → 선언·재대입 뒤 합성 `assert`(`verify/refinement_init`·`refinement_assign`), 정제 지역을 바꾸는 `while` → 필수 불변식(진입·보존 모두 증명). 원소 저장은 저장 값 하나만 범위 의무. 합성 묶인 변수 이름은 함수 안 식별자와 겹치지 않게(`k`, `k_1`, …). 타입·ABI·생성기는 바꾸지 않음. 안전 모드는 지역·반환 정제를 실행 검사하지 않음(문서에 명시).
+3. **Rust 판 이식**: 첫 빌드에 컴파일 오류 없음. 덤프 필드 이름 충돌(`kind`가 노드 이름을 덮음) 하나를 `shape`로 바꿔 두 판을 맞춤.
+
+| 확인 | 결과 |
+|---|---|
+| `run_all --backend both` Rust 판 / Python 판 | **444/444 / 444/444**(기존 363 + 정제 거부 시험 27·실행 시험 12 × 뒷단·모드) |
+| `cli_also_llvm` | 213/213 |
+| `tests/m3_all.py` | 8단계 모두 같음(parse 2445 입력·check·trace·llvm·rust·compilers 572·standalone 50) |
+| 퍼저 seed 41 × 200(Rust 판) | 증명 통과 209, 실패 0 |
+| bench 사용성: `pruv_agg`의 입력 조건을 정제 타입으로 옮긴 `bench/solutions/pruv_refine` | 10개 중 5개 변환, 서명+requires 글자 1,043 → 714(−32%), 10/10 증명·정답 시험 통과, `--trust-callers` LLVM IR이 원본과 바이트 동일(검사를 켜면 검사 내용 같고 순서·메시지 글자만 다름) |
+
+- 감사(Claude Opus): 두 판에 직접 넣어 본 사례 20여 개(재대입·원소 저장·`copy`/`alloc` 재대입·if·match·루프 안 대입 뒤 return·중첩 while·형제 블록·havoc 뒤 옛 길이·이름 포획·정수 경계·실행 모드)에서 **건전성 구멍 0**, 두 판 판정 같음. 필수 1 — 원소 저장마다 배열 전체 `forall` 합성 assert가 경로에 쌓여 저장 200개에 18.1초(정제 없이 0.13초) → 저장 노드에 원소 범위를 달고 이미 평가한 저장 값만 한 번 증명하게 바꿈: **0.18초**(Python 판 0.30초). 같이 고침: 범위 밖 저장 뒤 엉뚱한 연쇄 오류 없어짐(오류 정확히 1개), Rust 이중 펼침 표식, 경계 뒤 식·`[i64; 3]`·`0x10` 진단, 감사 수동 사례를 회귀 시험 11개 + 성능 표본(`refine_many_stores`, 직선 저장 62개)으로. 남긴 권고: 합성 requires/ensures/invariant 메시지에 출처 문구 없음(B에서), 실행 검사에서 원소를 두 번 읽음, 항상 참인 i64 전체 범위 검사도 생성, 정제 오류 위치가 주석 위치(원소 저장만 저장문 위치).
+- 확인 감사(Claude Opus): 필수 0. 저장 값을 증명만 하고 경로에 가정하지 않아도 같은 경로 조건이 범위를 함의해 건전함을 루프·분기·호출·비선형 저장 사례로 두 판에서 확인(trace sha1 같음), 새 거부 시험이 의도한 code·줄로 거부됨. 권고 2 반영: 루프·분기 안 저장 뒤 정제 불변식·합계가 증명되는 실행 시험 `refine_loop_store` 추가, `diff_trace` 대조에 `bench/solutions/pruv_refine` 그룹 추가(trace·llvm·rust·compilers 다시 모두 같음, compilers 576).

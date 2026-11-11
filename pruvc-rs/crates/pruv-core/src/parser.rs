@@ -198,11 +198,113 @@ impl Parser {
         Ok(EnumDecl { line: kw.line, col: kw.col, name: n.val, variants })
     }
 
+    /// 정제 주석을 허용하지 않는 자리의 타입(필드 등)
     fn type_(&mut self) -> R<Type> {
+        Ok(self.type_r(false)?.0)
+    }
+
+    // ---- STAGE1 A: 정제 주석 ----
+    fn ref_position(&self, tok: &Tok) -> PruvError {
+        PruvError::new(
+            "parse",
+            tok.line,
+            tok.col,
+            "refinement_position",
+            "a refinement annotation is only allowed on a parameter, a return type or a let/let mut type",
+            "move the condition into requires/ensures/invariant, or annotate the parameter/local instead",
+        )
+    }
+
+    /// fix 가 비면 기본 안내문.
+    fn ref_syntax(&self, tok: &Tok, msg: String, fix: &str) -> PruvError {
+        let fix = if fix.is_empty() {
+            "write bounds as signed decimal integer literals, e.g. -1_000_000_000..=1_000_000_000"
+        } else {
+            fix
+        };
+        PruvError::new("parse", tok.line, tok.col, "refinement_syntax", msg, fix)
+    }
+
+    /// 부호 있는 십진 정수 리터럴(임의 길이 정규화 문자열; 범위 검사는 refine.rs)
+    fn ref_int(&mut self, what: &str) -> R<String> {
+        let t = self.peek(0).clone();
+        let mut neg = false;
+        if self.at("-", 0) || self.at("+", 0) {
+            neg = t.val == "-";
+            self.bump();
+        }
+        let n = self.peek(0).clone();
+        if n.kind != Kind::Int {
+            let found = if n.kind == Kind::Eof { "end of file".to_string() } else { n.repr() };
+            return Err(self.ref_syntax(&n, format!("refinement {} must be a decimal integer literal, found {}", what, found), ""));
+        }
+        self.bump();
+        let nx = self.peek(0).clone();
+        if nx.kind == Kind::Id && nx.line == n.line && nx.col == n.end {
+            let mut cs = nx.val.chars(); // 지수 표기(e/E + 숫자들)일 때만 지수 문구
+            let first = cs.next();
+            let fix = if matches!(first, Some('e') | Some('E')) && cs.all(|c| c.is_ascii_digit()) {
+                "exponent notation is not supported: write the full decimal number, e.g. 1_000_000_000 for 1e9"
+            } else {
+                "only plain decimal integer literals are allowed: write the full decimal number, e.g. 16 instead of 0x10"
+            };
+            return Err(self.ref_syntax(
+                &nx,
+                format!("refinement {} must be a decimal integer literal; `{}{}` is not one", what, n.val, nx.val),
+                fix,
+            ));
+        }
+        for op in ["*", "+", "-", "/", "%"] {
+            if self.at(op, 0) {
+                return Err(self.ref_syntax(
+                    &nx,
+                    format!("refinement {} must be a single integer literal, found an expression with `{}`", what, op),
+                    "bounds are integer literals only: compute the value and write it out, e.g. 0..=6 instead of 0..=2*3",
+                ));
+            }
+        }
+        Ok(if neg { negate(&n.val) } else { n.val })
+    }
+
+    /// `|` 뒤의 `L..=U`
+    fn ref_range(&mut self) -> R<(String, String)> {
+        let lo = self.ref_int("lower bound")?;
+        if !self.at("..", 0) {
+            let t = self.peek(0).clone();
+            return Err(self.ref_syntax(
+                &t,
+                "expected '..=' after the lower bound of a refinement".to_string(),
+                "a value range is written closed: `L..=U` (both ends included)",
+            ));
+        }
+        let dd = self.next();
+        let eq = self.peek(0).clone();
+        if !(self.at("=", 0) && eq.line == dd.line && eq.col == dd.col + 2) {
+            return Err(self.ref_syntax(
+                &eq,
+                "expected '..=' (closed range) in a refinement, found '..'".to_string(),
+                "a value range is written `L..=U`; `L..U` is only used by forall/exists/sum/count/max/min and excludes U",
+            ));
+        }
+        self.bump();
+        let hi = self.ref_int("upper bound")?;
+        Ok((lo, hi))
+    }
+
+    /// `; <= N` (`;` 는 아직 소비 전)
+    fn ref_len(&mut self) -> R<String> {
+        self.expect(";")?;
+        self.expect("<=")?;
+        self.ref_int("length bound")
+    }
+
+    /// -> (Type, Refinement 또는 None). allow: 이 자리에서 정제 주석이 합법인가.
+    fn type_r(&mut self, allow: bool) -> R<(Type, Option<Refinement>)> {
+        let t = self.peek(0).clone();
         if self.at("(", 0) {
             self.bump();
             self.expect(")")?;
-            return Ok("unit".to_string());
+            return Ok(("unit".to_string(), None));
         }
         if self.at("[", 0) {
             self.bump();
@@ -213,19 +315,53 @@ impl Parser {
                 }
                 return Err(self.err("only [i64] arrays exist", "use [i64]", Some(&e)));
             }
+            let (mut lo, mut hi, mut maxlen): (Option<String>, Option<String>, Option<String>) = (None, None, None);
+            if self.at("|", 0) {
+                if !allow {
+                    return Err(self.ref_position(&self.peek(0).clone()));
+                }
+                self.bump();
+                let (l, h) = self.ref_range()?;
+                lo = Some(l);
+                hi = Some(h);
+            }
+            if self.at(";", 0) && self.at("<=", 1) {
+                if !allow {
+                    return Err(self.ref_position(&self.peek(0).clone()));
+                }
+                maxlen = Some(self.ref_len()?);
+            } else if lo.is_some() && self.at(";", 0) {
+                let p = self.peek(0).clone();
+                return Err(self.ref_syntax(&p, "expected ']' or '; <=N' after the element range".to_string(), ""));
+            } else if self.at(";", 0) {
+                let p = self.peek(0).clone();
+                return Err(self.ref_syntax(
+                    &p,
+                    "expected '<=' after ';' in an array length bound".to_string(),
+                    "write the length bound as `<=N`, e.g. [i64; <=8]",
+                ));
+            }
             self.expect("]")?;
-            return Ok("array".to_string());
+            if lo.is_none() && maxlen.is_none() {
+                return Ok(("array".to_string(), None));
+            }
+            return Ok((
+                "array".to_string(),
+                Some(Refinement { line: t.line, col: t.col, shape: "array".to_string(), base: "i64".to_string(), lo, hi, maxlen }),
+            ));
         }
         let n = self.ident()?;
+        let ty: Type;
         if n.val == "i64" {
-            return Ok("i64".to_string());
-        }
-        if n.val == "bool" {
-            return Ok("bool".to_string());
-        }
-        if n.val == "Option" || n.val == "Result" {
+            ty = "i64".to_string();
+        } else if n.val == "bool" {
+            ty = "bool".to_string();
+        } else if n.val == "Option" || n.val == "Result" {
             self.expect("<")?;
             let e = self.ident()?;
+            if self.at("|", 0) {
+                return Err(self.ref_position(&self.peek(0).clone()));
+            }
             if e.val != "i64" {
                 if is_upper(&e.val) {
                     return Err(self.unsupported(&format!("{}<{}>", n.val, e.val), &e));
@@ -233,18 +369,32 @@ impl Parser {
                 return Err(self.err(format!("{} only holds i64", n.val), format!("use {}<i64>", n.val), Some(&e)));
             }
             self.expect(">")?;
-            let name = if n.val == "Option" { "option" } else { "result" };
-            return Ok(name.to_string());
+            let tn = if n.val == "Option" { "option" } else { "result" };
+            ty = tn.to_string();
+        } else {
+            // 사용자 타입: 이름 해석은 검사기가 한다. 내장 Type 이름의 소문자 철자는 별칭이 되면 안 된다.
+            if matches!(n.val.as_str(), "unit" | "array" | "option" | "result") {
+                return Err(self.err(
+                    format!("unknown type {}", repr_str(&n.val)),
+                    "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum",
+                    Some(&n),
+                ));
+            }
+            ty = n.val.clone();
         }
-        // 사용자 타입: 이름 해석은 검사기가 한다. 내장 Type 이름의 소문자 철자는 별칭이 되면 안 된다.
-        if matches!(n.val.as_str(), "unit" | "array" | "option" | "result") {
-            return Err(self.err(
-                format!("unknown type {}", repr_str(&n.val)),
-                "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum",
-                Some(&n),
+        if self.at("|", 0) {
+            if !allow {
+                return Err(self.ref_position(&self.peek(0).clone()));
+            }
+            self.bump();
+            let (lo, hi) = self.ref_range()?;
+            // i64 이 아닌 기본 타입은 refine.rs 가 type/refinement_base 로 보고한다
+            return Ok((
+                ty,
+                Some(Refinement { line: t.line, col: t.col, shape: "scalar".to_string(), base: n.val, lo: Some(lo), hi: Some(hi), maxlen: None }),
             ));
         }
-        Ok(n.val)
+        Ok((ty, None))
     }
 
     fn function(&mut self) -> R<Function> {
@@ -255,15 +405,15 @@ impl Parser {
         while !self.at(")", 0) {
             let pn = self.ident()?.val;
             self.expect(":")?;
-            let ty = self.type_()?;
-            params.push(Param { name: pn, ty });
+            let (ty, refine) = self.type_r(true)?;
+            params.push(Param { name: pn, ty, refine });
             if !self.at(")", 0) {
                 self.expect(",")?;
             }
         }
         self.expect(")")?;
         self.expect("->")?;
-        let ret = self.type_()?;
+        let (ret, ret_refine) = self.type_r(true)?;
         let mut effects = Vec::new();
         if self.at("!", 0) {
             self.bump();
@@ -290,7 +440,7 @@ impl Parser {
             }
         }
         let body = self.block()?;
-        Ok(Function { line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body })
+        Ok(Function { line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine })
     }
 
     fn block(&mut self) -> R<Vec<Stmt>> {
@@ -329,11 +479,11 @@ impl Parser {
                 return Err(self.err("let needs a type annotation", format!("write `let {}: i64 = ...;`", n), None));
             }
             self.bump();
-            let ty = self.type_()?;
+            let (ty, refine) = self.type_r(true)?;
             self.expect("=")?;
             let value = self.expr()?;
             self.expect(";")?;
-            return Ok(Stmt::Let(Let { line: l, col: c, name: n, mutable, ty, value }));
+            return Ok(Stmt::Let(Let { line: l, col: c, name: n, mutable, ty, value, refine }));
         }
         if self.at("if", 0) {
             return Ok(Stmt::If(self.if_()?));
@@ -381,7 +531,7 @@ impl Parser {
             self.bump();
             let v = self.expr()?;
             self.expect(";")?;
-            return Ok(Stmt::Assert(Assert { line: l, col: c, cond: v }));
+            return Ok(Stmt::Assert(Assert { line: l, col: c, cond: v, origin_code: None, origin_what: None }));
         }
         if self.at("match", 0) {
             self.bump();
@@ -459,7 +609,7 @@ impl Parser {
                 self.bump();
                 let v = self.expr()?;
                 self.expect(";")?;
-                return Ok(Stmt::IndexAssign(IndexAssign { line: l, col: c, name: n, index: idx, value: v }));
+                return Ok(Stmt::IndexAssign(IndexAssign { line: l, col: c, name: n, index: idx, value: v, elem_refine: None }));
             }
             self.i = save;
         }

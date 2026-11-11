@@ -1,0 +1,5 @@
+fn f() -> i64 ! alloc {
+  let mut a: [i64; <=5] = alloc(3, 0);
+  a = alloc(6, 0);
+  return len(a);
+}

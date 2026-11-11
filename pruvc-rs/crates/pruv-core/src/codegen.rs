@@ -915,14 +915,15 @@ mod tests {
             line: 1,
             col: 1,
             name: "f".into(),
-            params: vec![Param { name: "x".into(), ty: "i64".into() }],
+            params: vec![Param { name: "x".into(), ty: "i64".into(), refine: None }],
             ret: "i64".into(),
             effects: vec![],
             requires,
             ensures: vec![],
             body: vec![Stmt::Return(Return { line: 1, col: 1, value: Some(bin("+", var("x", "i64"), int("1"))) })],
+            ret_refine: None,
         };
-        Program { functions: vec![f], types: vec![] }
+        Program { functions: vec![f], types: vec![], refined: false }
     }
 
     #[test]

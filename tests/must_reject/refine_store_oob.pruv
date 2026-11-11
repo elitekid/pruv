@@ -1,0 +1,7 @@
+// the store index is out of bounds (3 elements, index 5): exactly one error, index_oob. The stored value 1 is in
+// range, so no refinement_assign / contract_domain follow-up errors.
+fn f() -> i64 ! alloc {
+  let mut a: [i64 | 0..=9; <=3] = alloc(3, 0);
+  a[5] = 1;
+  return a[0];
+}

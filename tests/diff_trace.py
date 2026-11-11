@@ -44,6 +44,7 @@ GROUP_DIRS = [
     ("examples", "examples", "*.pruv"),
     ("runtime", "tests/runtime", "*.pruv"),
     ("bench", "bench/solutions/pruv_agg", "*.pruv"),
+    ("bench_refine", "bench/solutions/pruv_refine", "*.pruv"),
     ("check_edge", "tests/check_edge", "ok_*.pruv"),
 ]
 ALL_GROUPS = [g for g, _, _ in GROUP_DIRS] + ["fuzz", "input"]

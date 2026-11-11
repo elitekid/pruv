@@ -1,0 +1,7 @@
+fn g(x: i64 | 0..=10) -> i64 {
+  return x;
+}
+
+fn f(y: i64) -> i64 {
+  return g(y);
+}

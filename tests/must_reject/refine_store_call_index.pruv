@@ -1,0 +1,12 @@
+fn g(x: i64) -> i64
+  requires 0 <= x && x <= 3
+  ensures result == x
+{
+  return x;
+}
+
+fn f() -> i64 ! alloc {
+  let mut a: [i64 | 0..=5; <=4] = alloc(4, 0);
+  a[g(1)] = 9;
+  return a[0];
+}

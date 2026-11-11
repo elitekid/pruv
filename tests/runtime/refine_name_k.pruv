@@ -1,0 +1,6 @@
+fn f(a: [i64 | 0..=9; <=4], k: i64) -> i64
+  requires 0 <= k && k < len(a)
+{
+  let k_1: i64 = a[k];
+  return k_1;
+}

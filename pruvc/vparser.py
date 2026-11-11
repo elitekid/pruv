@@ -14,18 +14,29 @@ TOKEN_RE = re.compile(r"""
  (?P<ws>[ \t\r]+) | (?P<nl>\n) | (?P<comment>//[^\n]*)
 |(?P<int>[0-9][0-9_]*)
 |(?P<id>[A-Za-z_][A-Za-z0-9_]*)
-|(?P<op>==>|==|!=|<=|>=|&&|\|\||->|=>|::|\.\.|\.|[-+*/%<>=!(){}\[\],:;])
+|(?P<op>==>|==|!=|<=|>=|&&|\|\||->|=>|::|\.\.|\.|\||[-+*/%<>=!(){}\[\],:;])
 """, re.X)
 
 
 class Tok:
-    __slots__ = ("kind", "val", "line", "col")
+    __slots__ = ("kind", "val", "line", "col", "end")
 
-    def __init__(s, kind, val, line, col):
-        s.kind, s.val, s.line, s.col = kind, val, line, col
+    def __init__(s, kind, val, line, col, end=None):
+        s.kind, s.val, s.line, s.col, s.end = kind, val, line, col, end   # end: column after the token (same line)
 
     def __repr__(s):
         return "%s(%r)" % (s.kind, s.val)
+
+
+def _bar_after_type(toks):
+    """STAGE1 A: `|` is a token only right after a type-looking name in a type position
+    (`x: i64 |`, `-> i64 |`, `[i64 |`, `Option<i64 |`); everywhere else it is the old bad_char."""
+    if len(toks) < 2:
+        return False
+    a, b = toks[-1], toks[-2]
+    if a.kind != "id" or b.kind != "op" or b.val not in (":", "->", "[", "<"):
+        return False
+    return a.val in ("i64", "bool", "Option", "Result") or a.val[:1].isupper()
 
 
 def lex(src):
@@ -44,15 +55,18 @@ def lex(src):
         elif k == "int":
             if v.endswith("_"):
                 raise PruvError("parse", line, col, "bad_int", "integer literal ends with _", "")
-            toks.append(Tok("int", int(v.replace("_", "")), line, col))
+            toks.append(Tok("int", int(v.replace("_", "")), line, col, col + len(v)))
         elif k == "id":
             if v not in KEYWORDS and (v.startswith("pruv_") or "__" in v or v in RUST_KEYWORDS):
                 raise PruvError("parse", line, col, "reserved_name",
                                "name %r is reserved for the compiler" % v,
                                "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved")
-            toks.append(Tok("kw" if v in KEYWORDS else "id", v, line, col))
+            toks.append(Tok("kw" if v in KEYWORDS else "id", v, line, col, col + len(v)))
         elif k == "op":
-            toks.append(Tok("op", v, line, col))
+            if v == "|" and not _bar_after_type(toks):
+                # a lone `|` outside a type position stays the lexical error it always was
+                raise PruvError("parse", line, col, "bad_char", "unexpected character %r" % v, "remove it")
+            toks.append(Tok("op", v, line, col, col + len(v)))
         pos = m.end()
     toks.append(Tok("eof", None, line, pos - lstart + 1))
     return toks
@@ -154,9 +168,71 @@ class Parser:
         return EnumDecl(kw.line, kw.col, n.val, variants)
 
     def type_(s):
+        """a type in a position where refinements are not allowed (fields, ...)"""
+        return s.type_r(False)[0]
+
+    # ---- STAGE1 A: refinement annotations ----
+    def ref_position(s, tok):
+        raise PruvError("parse", tok.line, tok.col, "refinement_position",
+                        "a refinement annotation is only allowed on a parameter, a return type or a let/let mut type",
+                        "move the condition into requires/ensures/invariant, or annotate the parameter/local instead")
+
+    def ref_syntax(s, tok, msg, fix=""):
+        raise PruvError("parse", tok.line, tok.col, "refinement_syntax", msg,
+                        fix or "write bounds as signed decimal integer literals, e.g. -1_000_000_000..=1_000_000_000")
+
+    def ref_int(s, what):
+        """signed decimal integer literal (unbounded Python int; the range is checked by refine.py)"""
+        t = s.peek()
+        sign = 1
+        if s.at("-") or s.at("+"):
+            sign = -1 if t.val == "-" else 1
+            s.next()
+        n = s.peek()
+        if n.kind != "int":
+            s.ref_syntax(n, "refinement %s must be a decimal integer literal, found %s" % (
+                what, "end of file" if n.kind == "eof" else repr(n.val)))
+        s.next()
+        nx = s.peek()
+        if nx.kind == "id" and nx.line == n.line and nx.col == n.end:
+            if nx.val[0] in "eE" and all(c in "0123456789" for c in nx.val[1:]):
+                fix = "exponent notation is not supported: write the full decimal number, e.g. 1_000_000_000 for 1e9"
+            else:
+                fix = "only plain decimal integer literals are allowed: write the full decimal number, e.g. 16 instead of 0x10"
+            s.ref_syntax(nx, "refinement %s must be a decimal integer literal; `%s%s` is not one" % (
+                what, n.val, nx.val), fix)
+        for op in ("*", "+", "-", "/", "%"):
+            if s.at(op):
+                s.ref_syntax(nx, "refinement %s must be a single integer literal, found an expression with `%s`" % (
+                    what, op), "bounds are integer literals only: compute the value and write it out, e.g. 0..=6 instead of 0..=2*3")
+        return sign * n.val
+
+    def ref_range(s):
+        """`L..=U` after `|`"""
+        lo = s.ref_int("lower bound")
+        if not s.at(".."):
+            s.ref_syntax(s.peek(), "expected '..=' after the lower bound of a refinement",
+                         "a value range is written closed: `L..=U` (both ends included)")
+        dd = s.next()
+        eq = s.peek()
+        if not (s.at("=") and eq.line == dd.line and eq.col == dd.col + 2):
+            s.ref_syntax(eq, "expected '..=' (closed range) in a refinement, found '..'",
+                         "a value range is written `L..=U`; `L..U` is only used by forall/exists/sum/count/max/min and excludes U")
+        s.next()
+        hi = s.ref_int("upper bound")
+        return lo, hi
+
+    def ref_len(s):
+        """`; <= N` (the `;` not consumed yet)"""
+        s.expect(";")
+        s.expect("<=")
+        return s.ref_int("length bound")
+
+    def type_r(s, allow):
+        """-> (Type, Refinement or None). `allow`: refinement annotations are legal here."""
         t = s.peek()
         if s.at("("):
-            s.next(); s.expect(")"); return UNIT
+            s.next(); s.expect(")"); return UNIT, None
         if s.at("["):
             s.next()
             e = s.ident()
@@ -164,24 +240,53 @@ class Parser:
                 if e.val[0].isupper():
                     s.unsupported("[%s]" % e.val, e)
                 s.err("only [i64] arrays exist", "use [i64]", e)
-            s.expect("]"); return ARRAY
+            lo = hi = maxlen = None
+            if s.at("|"):
+                if not allow:
+                    s.ref_position(s.peek())
+                s.next()
+                lo, hi = s.ref_range()
+            if s.at(";") and s.at("<=", 1):
+                if not allow:
+                    s.ref_position(s.peek())
+                maxlen = s.ref_len()
+            elif lo is not None and s.at(";"):
+                s.ref_syntax(s.peek(), "expected ']' or '; <=N' after the element range")
+            elif s.at(";"):
+                s.ref_syntax(s.peek(), "expected '<=' after ';' in an array length bound",
+                             "write the length bound as `<=N`, e.g. [i64; <=8]")
+            s.expect("]")
+            if lo is None and maxlen is None:
+                return ARRAY, None
+            return ARRAY, Refinement(t.line, t.col, "array", "i64", lo, hi, maxlen)
         n = s.ident()
-        if n.val == "i64": return I64
-        if n.val == "bool": return BOOL
-        if n.val in ("Option", "Result"):
+        if n.val == "i64": ty = I64
+        elif n.val == "bool": ty = BOOL
+        elif n.val in ("Option", "Result"):
             s.expect("<")
             e = s.ident()
+            if s.at("|"):
+                s.ref_position(s.peek())
             if e.val != "i64":
                 if e.val[0].isupper():
                     s.unsupported("%s<%s>" % (n.val, e.val), e)
                 s.err("%s only holds i64" % n.val, "use %s<i64>" % n.val, e)
             s.expect(">")
-            return OPTION if n.val == "Option" else RESULT
-        # a user type: the checker resolves the name. Lower-case spellings of the
-        # built-in Type names must not alias them.
-        if n.val in ("unit", "array", "option", "result"):
-            s.err("unknown type %r" % n.val, "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum", n)
-        return Type(n.val)
+            ty = OPTION if n.val == "Option" else RESULT
+        else:
+            # a user type: the checker resolves the name. Lower-case spellings of the
+            # built-in Type names must not alias them.
+            if n.val in ("unit", "array", "option", "result"):
+                s.err("unknown type %r" % n.val, "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum", n)
+            ty = Type(n.val)
+        if s.at("|"):
+            if not allow:
+                s.ref_position(s.peek())
+            s.next()
+            lo, hi = s.ref_range()
+            # a non-i64 base is reported by refine.py as type/refinement_base
+            return ty, Refinement(t.line, t.col, "scalar", n.val, lo, hi, None)
+        return ty, None
 
     def function(s):
         kw = s.expect("fn")
@@ -191,12 +296,13 @@ class Parser:
         while not s.at(")"):
             pn = s.ident().val
             s.expect(":")
-            params.append(Param(pn, s.type_()))
+            pt, pr = s.type_r(True)
+            params.append(Param(pn, pt, pr))
             if not s.at(")"):
                 s.expect(",")
         s.expect(")")
         s.expect("->")
-        ret = s.type_()
+        ret, ret_refine = s.type_r(True)
         effects = []
         if s.at("!"):
             s.next()
@@ -213,7 +319,7 @@ class Parser:
             k = s.next().val
             (req if k == "requires" else ens).append(s.expr())
         body = s.block()
-        return Function(kw.line, kw.col, name, params, ret, effects, req, ens, body)
+        return Function(kw.line, kw.col, name, params, ret, effects, req, ens, body, ret_refine)
 
     def block(s):
         s.expect("{")
@@ -237,11 +343,11 @@ class Parser:
             if not s.at(":"):
                 s.err("let needs a type annotation", "write `let %s: i64 = ...;`" % n)
             s.next()
-            ty = s.type_()
+            ty, rf = s.type_r(True)
             s.expect("=")
             v = s.expr()
             s.expect(";")
-            return Let(L, C, n, mut, ty, v)
+            return Let(L, C, n, mut, ty, v, rf)
         if s.at("if"):
             return s.if_()
         if s.at("while"):

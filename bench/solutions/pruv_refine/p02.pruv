@@ -1,0 +1,22 @@
+fn max_element(a: [i64]) -> Option<i64>
+  ensures len(a) == 0 ==> !is_some(result)
+  ensures len(a) > 0 ==> (is_some(result) && (forall k in 0..len(a): a[k] <= some_val(result)) && (exists k in 0..len(a): a[k] == some_val(result)))
+{
+  if len(a) == 0 {
+    return None;
+  }
+  let mut m: i64 = a[0];
+  let mut i: i64 = 1;
+  while i < len(a)
+    invariant 1 <= i && i <= len(a)
+    invariant forall k in 0..i: a[k] <= m
+    invariant exists k in 0..i: a[k] == m
+    decreases len(a) - i
+  {
+    if a[i] > m {
+      m = a[i];
+    }
+    i = i + 1;
+  }
+  return Some(m);
+}

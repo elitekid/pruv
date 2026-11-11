@@ -1,0 +1,7 @@
+fn f(x: i64 | 0..=100) -> i64 {
+  return x;
+}
+
+fn g(a: [i64 | 0..=9; <=3]) -> i64 {
+  return len(a);
+}

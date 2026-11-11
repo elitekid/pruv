@@ -168,6 +168,66 @@ inner start `i + 1`; any bound names, same array `a`, exactly this shape) is che
 or i64 overflow), and `/` `%` use the verifier's domain (divisor > 0 and dividend >= 0, otherwise panic).
 `--trust-callers` makes the public entry skip the `requires` checks (for benchmarking; callers must be trusted).
 
+## 7a. Refinement types (STAGE 1, bundle A)
+A refinement is an annotation on a type that the compiler expands into the contracts of section 6; it adds no new
+type. `Type` and ABI stay `i64` / `[i64]`, and a program without annotations is compiled byte for byte as before.
+```
+x: i64 | 0..=100                                   scalar value range
+a: [i64 | -1_000_000_000..=1_000_000_000; <=1_000_000]   element range and length bound
+a: [i64 | -10..=10]      a: [i64; <=100]           either part alone
+```
+**Closed value range vs half-open loop range.** In an annotation `L..=U` includes both ends. The `lo..hi` of
+`forall/exists/sum/count/max/min` still excludes `hi`. `; <=N` means `len(a) <= N`. Writing `L..U` in an annotation is
+`parse/refinement_syntax`.
+
+**Where.** Only the type of a parameter, a return type, and the type of `let` / `let mut`. Struct fields, enum payloads,
+`Option<..>` / `Result<..>` contents and any other place give `parse/refinement_position`. A lone `|` anywhere else is the
+old `parse/bad_char`.
+
+**Bounds** are signed decimal integer literals (`_` allowed, sign applied first; `-9223372036854775808` is fine). Exponent
+notation (`1e9`), other spellings (`0x10`), expressions (a binary operator `* + - / %` after a bound, e.g. `0..=2*3`)
+and variables are `parse/refinement_syntax`; so is an array length written without `<=` (`[i64; 3]`, fix: `<=N`). After parsing:
+`L > U`, a bound outside i64, or `N` outside `0..=2^40` is `type/refinement_bounds`; `|` on `bool` or a user type is
+`type/refinement_base` (reported after the whole file parsed). These checks run before the type checker.
+
+**Expansion** (done by `pruvc/refine.py` at the start of the checker; the synthesized nodes sit at the line/col of the
+annotation and are type-checked like user code):
+| written | becomes |
+|---|---|
+| parameter `p: i64\|L..=U` | `requires L <= p && p <= U`, before the user's `requires`, in parameter order |
+| parameter `a: [i64\|L..=U; <=N]` | `requires len(a) <= N`, then `requires forall K in 0..len(a): L <= a[K] && a[K] <= U` |
+| return `-> T\|R` | the same conditions on `result` as `ensures`, before the user's `ensures` |
+| `let x: T\|R = e;` | an `assert` of the condition right after the binding (`verify/refinement_init`) |
+| `x = e;` on a refined local | an `assert` right after (`verify/refinement_assign`) |
+| `x[i] = e;` on an element-refined array | no assert: the store node carries `elem_refine = [L, U, origin]`, and the verifier proves `L <= v && v <= U` for the already evaluated stored value `v` right after the `index_oob` obligation (`verify/refinement_assign`; one query, no re-evaluation of `i`, no `forall`) |
+| a `while` that assigns a refined local alive at the loop head | that local's conditions are put first in the loop's `invariant` list |
+`K` is the first of `k`, `k_1`, `k_2`, ... that occurs nowhere in the function, so a user variable named `k` is never
+captured. Obligations are also checked on the path where the function returns right after the statement.
+
+**Current behaviour worth knowing.**
+* The line/col of an error from a synthesized `requires` / `ensures` / `invariant` / `assert` is the annotation's position
+  (the comment position), not the statement that broke it; the one exception is an element store, whose
+  `refinement_assign` error sits at the store statement. A store into a refined array checks only the stored value: the
+  rest of the array is covered by the elements' own earlier obligations, so an out-of-range index gives just `index_oob`
+  and no follow-up error.
+* Synthesized `requires` / `ensures` / `invariant` conditions do not yet carry a source phrase in their messages (they read
+  like ordinary contract failures); only the synthesized `assert`s and element stores name their origin. A phrase for them
+  is planned for stage 1 B.
+* The proven store-value fact is not added to the path afterwards (it is already implied by the path).
+* Expansion runs once per parsed program (a done-marker on the program); calling the checker twice does not expand twice.
+  The marker and `elem_refine` are not part of the source language; `elem_refine` appears in the checked-AST dump only on
+  a store into an element-refined array.
+
+**Meaning and run-time policy.** A refinement is a proof obligation, not an enforced type. Proof mode checks every
+obligation statically (callers prove parameter refinements as `call_requires`; a return refinement fails as
+`ensures`; invariants as `invariant_entry` / `invariant_preserved`). An unrefined `i64` can be passed where a refinement
+is expected when the path facts (an `if`, a `requires`) prove it. The parameter conditions are ordinary `requires`: they
+are checked at a public entry before the user's `requires`, share its 2^30 iteration budget (length bound first, so a too
+long array fails before any element is visited; each visited element costs 1), and are skipped by `--trust-callers`.
+Return and local refinements, like `assert`, `ensures` and `invariant`, are erased from the generated code; `--no-verify`
+therefore does not check them (it still keeps the entry `requires` checks and the safe indexing/arithmetic).
+Do not read an annotation as a run-time guarantee of local variables or results under `--no-verify`.
+
 ## 8. Errors
 Compiler prints JSON lines: `{"stage": "parse|type|effect|verify|rustc", "line": n, "col": n,
 "code": "...", "message": "...", "fix": "...", "counterexample": {...}}`. Exit code 1 on any error.

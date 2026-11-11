@@ -177,6 +177,8 @@ FIX = {
     "call_requires": "make the callee's requires hold before the call",
     "ensures": "fix the code, or strengthen loop invariants so the postcondition follows",
     "assert": "strengthen invariants or fix the code",
+    "refinement_init": "make the initial value satisfy the declared range/length, or widen the refinement; it is a proof obligation, not a run-time check",
+    "refinement_assign": "make the stored value satisfy the declared range, or widen the refinement; a loop that updates it needs invariants that imply the range",
     "invariant_entry": "the invariant must hold before the first iteration; check initial values",
     "invariant_preserved": "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
     "decreases_nonneg": "the decreases expression must be >= 0 whenever the loop condition holds; add an invariant",
@@ -721,6 +723,11 @@ class FnVerifier:
             i = s.ev(stmt.index, st, [], True)
             v = s.ev(stmt.value, st, [], True)
             s.prove(st, [], z3.And(i >= 0, i < arr.n), stmt, "index_oob", "index in bounds for %s[...] =" % stmt.name)
+            if stmt.elem_refine is not None:
+                # refine.py: the stored value (already evaluated) must lie in the element range. One query, no
+                # domain check, no re-evaluation, no forall; not assumed afterwards (it is implied by the path).
+                lo, hi, what = stmt.elem_refine
+                s.prove(st, [], z3.And(v >= lo, v <= hi), stmt, "refinement_assign", what, what)
             st.env[stmt.name] = Arr(z3.Store(arr.a, i, v), arr.n, stmt.name)
             return [st]
         if isinstance(stmt, If):
@@ -772,7 +779,12 @@ class FnVerifier:
         if isinstance(stmt, Assert):
             s.check_dom(st, [], stmt.cond, stmt, "variant_field lookups in assertion are defined")
             ob = s.ev(stmt.cond, st, [], False)
-            s.prove(st, [], ob, stmt, "assert", "assertion")
+            if stmt.origin_code is None:
+                s.prove(st, [], ob, stmt, "assert", "assertion")
+            else:
+                # synthesized by refine.py: own code and a source description; the description also keys
+                # the duplicate suppression, so different sites of one annotation are all reported
+                s.prove(st, [], ob, stmt, stmt.origin_code, stmt.origin_what, stmt.origin_what)
             st = st.fork(ob)
             return [st]
         if isinstance(stmt, ExprStmt):

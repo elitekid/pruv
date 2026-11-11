@@ -1,0 +1,15 @@
+fn gcd(a: i64 | 0..=1_000_000_000_000, b: i64 | 0..=1_000_000_000_000) -> i64
+  ensures result >= 0
+{
+  let mut x: i64 = a;
+  let mut y: i64 = b;
+  while y != 0
+    invariant x >= 0 && y >= 0
+    decreases y
+  {
+    let t: i64 = x % y;
+    x = y;
+    y = t;
+  }
+  return x;
+}

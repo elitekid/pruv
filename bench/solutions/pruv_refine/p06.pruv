@@ -1,0 +1,32 @@
+fn max_subarray(a: [i64 | -1_000_000_000..=1_000_000_000; <=1_000_000]) -> i64
+  requires len(a) >= 1
+  ensures forall p in 0..len(a): forall q in p + 1..len(a) + 1: result >= sum(k in p..q: a[k])
+  ensures exists p in 0..len(a): exists q in p + 1..len(a) + 1: result == sum(k in p..q: a[k])
+{
+  let mut best: i64 = a[0];
+  let mut cur: i64 = a[0];
+  let mut i: i64 = 1;
+  while i < len(a)
+    invariant 1 <= i && i <= len(a)
+    invariant cur >= -1_000_000_000 && cur <= 1_000_000_000 * i
+    invariant best >= -1_000_000_000 && best <= 1_000_000_000 * i
+    invariant forall p in 0..i: cur >= sum(k in p..i: a[k])
+    invariant exists p in 0..i: cur == sum(k in p..i: a[k])
+    invariant forall p in 0..i: forall q in p + 1..i + 1: best >= sum(k in p..q: a[k])
+    invariant exists p in 0..i: exists q in p + 1..i + 1: best == sum(k in p..q: a[k])
+    decreases len(a) - i
+  {
+    let v: i64 = a[i];
+    let c: i64 = cur + v;
+    if c > v {
+      cur = c;
+    } else {
+      cur = v;
+    }
+    if cur > best {
+      best = cur;
+    }
+    i = i + 1;
+  }
+  return best;
+}

@@ -1,0 +1,3 @@
+fn f(x: Option<i64 | 0..=5>) -> i64 {
+  return 0;
+}

@@ -1,0 +1,10 @@
+fn g(x: i64 | 0..=100) -> i64 {
+  return x;
+}
+
+fn f(y: i64) -> i64 {
+  if 0 <= y && y <= 100 {
+    return g(y);
+  }
+  return -1;
+}

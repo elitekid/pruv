@@ -159,6 +159,7 @@ class Let(Stmt):
     mutable: bool
     type: Type
     value: Expr
+    refine: Optional["Refinement"] = None   # STAGE1 A: refinement annotation (None = plain type)
 
 @dataclass
 class Assign(Stmt):
@@ -170,6 +171,9 @@ class IndexAssign(Stmt):
     name: str
     index: Expr
     value: Expr
+    # set only by refine.py on a store into a refined array with an element range:
+    # [lo, hi, origin_what] (ints, str). verify proves `lo <= value <= hi` after the index_oob obligation.
+    elem_refine: Optional[list] = None
 
 @dataclass
 class If(Stmt):
@@ -191,6 +195,10 @@ class Return(Stmt):
 @dataclass
 class Assert(Stmt):
     cond: Expr
+    # set only on assertions synthesized by refine.py: the verify error code
+    # ("refinement_init" | "refinement_assign") and a source description for the message
+    origin_code: Optional[str] = None
+    origin_what: Optional[str] = None
 
 @dataclass
 class ExprStmt(Stmt):
@@ -216,11 +224,27 @@ class Match(Stmt):
     scrutinee: Expr
     arms: List[MatchArm]   # Option/Result: exactly 2; user enum: one per variant; order as written
 
+# ---------- STAGE1 A: refinement annotations ----------
+@dataclass
+class Refinement:
+    """Position (line, col) = first token of the annotated type. Pure metadata: Type stays the base type.
+    shape "scalar": `i64 | lo..=hi` (base = the written base type name; only "i64" is valid).
+    shape "array":  `[i64 | lo..=hi; <=maxlen]`; lo/hi both None (no element range), maxlen None (no length bound).
+    Bounds are unchecked Python ints here; refine.py reports type/refinement_bounds."""
+    line: int
+    col: int
+    shape: str
+    base: str
+    lo: Optional[int]
+    hi: Optional[int]
+    maxlen: Optional[int]
+
 # ---------- top level ----------
 @dataclass
 class Param:
     name: str
     type: Type
+    refine: Optional[Refinement] = None
 
 @dataclass
 class Function:
@@ -233,6 +257,7 @@ class Function:
     requires: List[Expr]
     ensures: List[Expr]
     body: List[Stmt]
+    ret_refine: Optional[Refinement] = None
 
 @dataclass
 class Program:

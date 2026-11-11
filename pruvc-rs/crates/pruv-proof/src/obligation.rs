@@ -102,6 +102,8 @@ fn fix_for(code: &str) -> &'static str {
         "call_requires" => "make the callee's requires hold before the call",
         "ensures" => "fix the code, or strengthen loop invariants so the postcondition follows",
         "assert" => "strengthen invariants or fix the code",
+        "refinement_init" => "make the initial value satisfy the declared range/length, or widen the refinement; it is a proof obligation, not a run-time check",
+        "refinement_assign" => "make the stored value satisfy the declared range, or widen the refinement; a loop that updates it needs invariants that imply the range",
         "invariant_entry" => "the invariant must hold before the first iteration; check initial values",
         "invariant_preserved" => "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
         "decreases_nonneg" => "the decreases expression must be >= 0 whenever the loop condition holds; add an invariant",

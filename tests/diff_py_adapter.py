@@ -79,6 +79,22 @@ NODE_FIELDS = {
     "FieldAssign": ("name", "fields", "value"),
     "Match": ("scrutinee", "arms"),
 }
+# STAGE1 A (refinement types). New node and optional keys: an optional key is written ONLY when its value
+# is not None, so the dump of an input without refinements is byte-identical to before.
+#   Refinement: shape "scalar"|"array", base (written base type name), lo/hi (decimal strings or null),
+#               maxlen (decimal string or null); line/col = first token of the annotated type
+#   Param.refine, Let.refine, Function.ret_refine: a Refinement node
+#   Assert.origin_code / origin_what: set only on assertions synthesized by refine.py (check dump only)
+#   IndexAssign.elem_refine: [lo, hi, origin_what] (decimal strings), only on a store into a refined array
+#               with an element range (check dump only)
+NODE_FIELDS["Refinement"] = ("shape", "base", "lo", "hi", "maxlen")
+OPTIONAL_FIELDS = {
+    "Param": ("refine",),
+    "Function": ("ret_refine",),
+    "Let": ("refine",),
+    "Assert": ("origin_code", "origin_what"),
+    "IndexAssign": ("elem_refine",),
+}
 # abstract bases / value types of vast.py that are not nodes
 _NON_NODES = {"Type", "Expr", "Stmt", "TypeDecl"}
 _checked = []
@@ -96,8 +112,9 @@ def _verify_schema():
         raise RuntimeError("vast.py nodes differ from adapter schema: only in vast=%s only in adapter=%s" % (
             sorted(set(actual) - set(NODE_FIELDS)), sorted(set(NODE_FIELDS) - set(actual))))
     for name, flds in actual.items():
-        if set(flds) != set(NODE_FIELDS[name]):
-            raise RuntimeError("fields of %s differ: vast=%s adapter=%s" % (name, flds, NODE_FIELDS[name]))
+        want = tuple(NODE_FIELDS[name]) + tuple(OPTIONAL_FIELDS.get(name, ()))
+        if set(flds) != set(want):
+            raise RuntimeError("fields of %s differ: vast=%s adapter=%s" % (name, flds, want))
     _checked.append(True)
 
 
@@ -120,6 +137,10 @@ def ser(v):
         out["col"] = ser(v.col)
     for f in NODE_FIELDS[name]:
         out[f] = ser(getattr(v, f))
+    for f in OPTIONAL_FIELDS.get(name, ()):
+        x = getattr(v, f)
+        if x is not None:
+            out[f] = ser(x)
     return out
 
 

@@ -1,0 +1,5 @@
+fn f() -> i64 {
+  let mut x: i64 | 0..=10 = 0;
+  x = 11;
+  return x;
+}

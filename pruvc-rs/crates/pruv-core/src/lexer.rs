@@ -33,6 +33,8 @@ pub struct Tok {
     pub val: String,
     pub line: i64,
     pub col: i64,
+    /// 토큰 뒤의 열(같은 줄). 정제 경계 뒤 `1e9` 같은 붙은 식별자를 알아보는 데 쓴다(eof 는 col).
+    pub end: i64,
 }
 
 impl Tok {
@@ -47,7 +49,21 @@ impl Tok {
 }
 
 const OPS2: &[&str] = &["==", "!=", "<=", ">=", "&&", "||", "->", "=>", "::", ".."];
-const OPS1_LIST: &[&str] = &[".", "-", "+", "*", "/", "%", "<", ">", "=", "!", "(", ")", "{", "}", "[", "]", ",", ":", ";"];
+const OPS1_LIST: &[&str] = &[".", "|", "-", "+", "*", "/", "%", "<", ">", "=", "!", "(", ")", "{", "}", "[", "]", ",", ":", ";"];
+
+/// STAGE1 A: `|` 는 타입 자리의 타입처럼 보이는 이름 바로 뒤에서만 토큰이다
+/// (`x: i64 |`, `-> i64 |`, `[i64 |`, `Option<i64 |`). 그 밖에는 예전의 bad_char.
+fn bar_after_type(toks: &[Tok]) -> bool {
+    if toks.len() < 2 {
+        return false;
+    }
+    let (a, b) = (&toks[toks.len() - 1], &toks[toks.len() - 2]);
+    if a.kind != Kind::Id || b.kind != Kind::Op || !matches!(b.val.as_str(), ":" | "->" | "[" | "<") {
+        return false;
+    }
+    matches!(a.val.as_str(), "i64" | "bool" | "Option" | "Result")
+        || a.val.chars().next().map_or(false, |c| c.is_ascii_uppercase())
+}
 
 /// pos 에서 시작하는 연산자 토큰(정규식 순서: 3글자, 2글자, 1글자).
 fn match_op(src: &[char], pos: usize) -> Option<&'static str> {
@@ -94,7 +110,7 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
             let digits: String = src[start..pos].iter().filter(|&&d| d != '_').collect();
             let trimmed = digits.trim_start_matches('0');
             let val = if trimmed.is_empty() { "0".to_string() } else { trimmed.to_string() };
-            toks.push(Tok { kind: Kind::Int, val, line, col });
+            toks.push(Tok { kind: Kind::Int, val, line, col, end: col + (pos - start) as i64 });
         } else if c.is_ascii_alphabetic() || c == '_' {
             let start = pos;
             while pos < n && (src[pos].is_ascii_alphanumeric() || src[pos] == '_') {
@@ -112,10 +128,15 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
                     "rename it; names starting with pruv_, containing __, `_` and Rust keywords are reserved",
                 ));
             }
-            toks.push(Tok { kind: if is_kw { Kind::Kw } else { Kind::Id }, val: v, line, col });
+            let end = col + (pos - start) as i64;
+            toks.push(Tok { kind: if is_kw { Kind::Kw } else { Kind::Id }, val: v, line, col, end });
         } else if let Some(op) = match_op(src, pos) {
+            if op == "|" && !bar_after_type(&toks) {
+                // 타입 자리 밖의 외톨이 `|` 는 예전부터의 어휘 오류로 남는다
+                return Err(PruvError::new("parse", line, col, "bad_char", format!("unexpected character {}", repr_str("|")), "remove it"));
+            }
             pos += op.len();
-            toks.push(Tok { kind: Kind::Op, val: op.to_string(), line, col });
+            toks.push(Tok { kind: Kind::Op, val: op.to_string(), line, col, end: col + op.len() as i64 });
         } else {
             return Err(PruvError::new(
                 "parse",
@@ -127,7 +148,8 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
             ));
         }
     }
-    toks.push(Tok { kind: Kind::Eof, val: String::new(), line, col: (pos - lstart + 1) as i64 });
+    let eof_col = (pos - lstart + 1) as i64;
+    toks.push(Tok { kind: Kind::Eof, val: String::new(), line, col: eof_col, end: eof_col });
     Ok(toks)
 }
 

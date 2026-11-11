@@ -114,9 +114,16 @@ pub struct MatchArm {
     pub line: i64, pub col: i64, pub enum_name: Option<String>, pub ctor: String,
     pub binders: Vec<String>, pub body: Vec<Stmt>,
 }
+/// STAGE1 A 정제 주석(vast.Refinement). 위치 = 주석이 붙은 타입의 첫 토큰. Type 은 기본 타입 그대로.
+/// shape "scalar" | "array". lo/hi/maxlen 은 부호+정규화 십진 문자열(임의 길이, 범위 검사는 refine.rs).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Refinement {
+    pub line: i64, pub col: i64, pub shape: String, pub base: String,
+    pub lo: Option<String>, pub hi: Option<String>, pub maxlen: Option<String>,
+}
 /// line/col 없음.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Param { pub name: String, pub ty: Type }
+pub struct Param { pub name: String, pub ty: Type, pub refine: Option<Refinement> }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDecl {
@@ -126,11 +133,18 @@ pub enum TypeDecl {
 
 // ---------- 문 ----------
 #[derive(Debug, Clone, PartialEq)]
-pub struct Let { pub line: i64, pub col: i64, pub name: String, pub mutable: bool, pub ty: Type, pub value: Expr }
+pub struct Let {
+    pub line: i64, pub col: i64, pub name: String, pub mutable: bool, pub ty: Type, pub value: Expr,
+    pub refine: Option<Refinement>,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assign { pub line: i64, pub col: i64, pub name: String, pub value: Expr }
 #[derive(Debug, Clone, PartialEq)]
-pub struct IndexAssign { pub line: i64, pub col: i64, pub name: String, pub index: Expr, pub value: Expr }
+/// elem_refine: (lo, hi, origin_what) — refine.rs 가 원소 범위가 있는 정제 배열에 저장할 때만 단다.
+pub struct IndexAssign {
+    pub line: i64, pub col: i64, pub name: String, pub index: Expr, pub value: Expr,
+    pub elem_refine: Option<(String, String, String)>,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct If { pub line: i64, pub col: i64, pub cond: Expr, pub then: Vec<Stmt>, pub els: Vec<Stmt> }
 #[derive(Debug, Clone, PartialEq)]
@@ -138,7 +152,11 @@ pub struct While { pub line: i64, pub col: i64, pub cond: Expr, pub invariants: 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Return { pub line: i64, pub col: i64, pub value: Option<Expr> }
 #[derive(Debug, Clone, PartialEq)]
-pub struct Assert { pub line: i64, pub col: i64, pub cond: Expr }
+/// origin_code/origin_what: refine.rs 가 합성한 assert 에만 있다(검증 오류 code 와 원천 설명).
+pub struct Assert {
+    pub line: i64, pub col: i64, pub cond: Expr,
+    pub origin_code: Option<String>, pub origin_what: Option<String>,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprStmt { pub line: i64, pub col: i64, pub expr: Expr }
 #[derive(Debug, Clone, PartialEq)]
@@ -165,7 +183,9 @@ pub enum Stmt {
 pub struct Function {
     pub line: i64, pub col: i64, pub name: String, pub params: Vec<Param>, pub ret: Type,
     pub effects: Vec<String>, pub requires: Vec<Expr>, pub ensures: Vec<Expr>, pub body: Vec<Stmt>,
+    pub ret_refine: Option<Refinement>,
 }
 /// line/col 없음.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Program { pub functions: Vec<Function>, pub types: Vec<TypeDecl> }
+/// refined: refine::expand 가 이미 돌았다는 표식(Python `_refined`). 덤프에는 내보내지 않는다.
+pub struct Program { pub functions: Vec<Function>, pub types: Vec<TypeDecl>, pub refined: bool }

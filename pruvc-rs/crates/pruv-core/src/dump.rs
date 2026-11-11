@@ -184,17 +184,21 @@ fn match_arm(a: &MatchArm) -> Json {
 
 pub fn stmt(s: &Stmt) -> Json {
     match s {
-        Stmt::Let(x) => node(
-            "Let",
-            Some((x.line, x.col)),
-            vec![("name", js(&x.name)), ("mutable", Json::Bool(x.mutable)), ("type", js(&x.ty)), ("value", expr(&x.value))],
-        ),
+        Stmt::Let(x) => {
+            let mut f = vec![("name", js(&x.name)), ("mutable", Json::Bool(x.mutable)), ("type", js(&x.ty)), ("value", expr(&x.value))];
+            if let Some(r) = &x.refine {
+                f.push(("refine", refinement(r)));
+            }
+            node("Let", Some((x.line, x.col)), f)
+        }
         Stmt::Assign(x) => node("Assign", Some((x.line, x.col)), vec![("name", js(&x.name)), ("value", expr(&x.value))]),
-        Stmt::IndexAssign(x) => node(
-            "IndexAssign",
-            Some((x.line, x.col)),
-            vec![("name", js(&x.name)), ("index", expr(&x.index)), ("value", expr(&x.value))],
-        ),
+        Stmt::IndexAssign(x) => {
+            let mut f = vec![("name", js(&x.name)), ("index", expr(&x.index)), ("value", expr(&x.value))];
+            if let Some((lo, hi, what)) = &x.elem_refine {
+                f.push(("elem_refine", Json::Arr(vec![js(lo), js(hi), js(what)])));
+            }
+            node("IndexAssign", Some((x.line, x.col)), f)
+        }
         Stmt::If(x) => if_node(x),
         Stmt::While(x) => node(
             "While",
@@ -214,7 +218,16 @@ pub fn stmt(s: &Stmt) -> Json {
                 None => Json::Null,
             })],
         ),
-        Stmt::Assert(x) => node("Assert", Some((x.line, x.col)), vec![("cond", expr(&x.cond))]),
+        Stmt::Assert(x) => {
+            let mut f = vec![("cond", expr(&x.cond))];
+            if let Some(c) = &x.origin_code {
+                f.push(("origin_code", js(c)));
+            }
+            if let Some(w) = &x.origin_what {
+                f.push(("origin_what", js(w)));
+            }
+            node("Assert", Some((x.line, x.col)), f)
+        }
         Stmt::ExprStmt(x) => node("ExprStmt", Some((x.line, x.col)), vec![("expr", expr(&x.expr))]),
         Stmt::FieldAssign(x) => node(
             "FieldAssign",
@@ -237,24 +250,51 @@ fn if_node(x: &If) -> Json {
     )
 }
 
+/// 정수 문자열 또는 null(값이 None 이면 null).
+fn opt_num(v: &Option<String>) -> Json {
+    match v {
+        Some(s) => js(s),
+        None => Json::Null,
+    }
+}
+
+/// Refinement 노드. 필드 shape("scalar"|"array"). 노드 이름 kind 는 "Refinement".
+fn refinement(r: &Refinement) -> Json {
+    node(
+        "Refinement",
+        Some((r.line, r.col)),
+        vec![
+            ("shape", js(&r.shape)),
+            ("base", js(&r.base)),
+            ("lo", opt_num(&r.lo)),
+            ("hi", opt_num(&r.hi)),
+            ("maxlen", opt_num(&r.maxlen)),
+        ],
+    )
+}
+
 fn param(p: &Param) -> Json {
-    node("Param", None, vec![("name", js(&p.name)), ("type", js(&p.ty))])
+    let mut f = vec![("name", js(&p.name)), ("type", js(&p.ty))];
+    if let Some(r) = &p.refine {
+        f.push(("refine", refinement(r)));
+    }
+    node("Param", None, f)
 }
 
 fn function(f: &Function) -> Json {
-    node(
-        "Function",
-        Some((f.line, f.col)),
-        vec![
-            ("name", js(&f.name)),
-            ("params", list(&f.params, param)),
-            ("ret", js(&f.ret)),
-            ("effects", strs(&f.effects)),
-            ("requires", list(&f.requires, expr)),
-            ("ensures", list(&f.ensures, expr)),
-            ("body", list(&f.body, stmt)),
-        ],
-    )
+    let mut fields = vec![
+        ("name", js(&f.name)),
+        ("params", list(&f.params, param)),
+        ("ret", js(&f.ret)),
+        ("effects", strs(&f.effects)),
+        ("requires", list(&f.requires, expr)),
+        ("ensures", list(&f.ensures, expr)),
+        ("body", list(&f.body, stmt)),
+    ];
+    if let Some(r) = &f.ret_refine {
+        fields.push(("ret_refine", refinement(r)));
+    }
+    node("Function", Some((f.line, f.col)), fields)
 }
 
 pub fn program(p: &Program) -> Json {
