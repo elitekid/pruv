@@ -1,260 +1,260 @@
-# Pruv 청사진
+# Pruv Blueprint
 
-> AI가 코드를 쓰고, 사람은 약속(계약)만 읽고, 컴파일러가 그 코드가 약속을 지킨다고 증명한다.
-> 증명된 안전장치는 지워서 빠르게 돌린다.
+> AI writes the code, humans read only the promises (contracts), and the compiler proves that the code keeps those promises.
+> Proven safeguards are erased so the code runs fast.
 
-최종 갱신: 2026-11-11
+Last updated: 2026-11-11
 
-> **이름 결정(2026-11-10): 언어 이름은 Pruv**(읽기 /pruːv/ 프루브, prove의 소리 철자이자 에스페란토 어근 `pruv-` = 증명하다). 컴파일러 `pruvc`, 확장자 `.pruv`, 도메인 `pruvlang.org`(2027-11-10까지). "Vow"는 같은 성격의 언어(vow-lang: AI용 계약 검증 언어)가 이미 있어 바꿨다. 저장소 안 이름 바꾸기 끝남(2026-11-10, RESULTS 14절: 코드·생성 기호·실행 오류 접두사 `pruv:`까지 모두 바꿈, 지난 결과 기록만 옛 이름).
-> 확인한 것: 같은 이름의 프로그래밍 언어 없음, crates.io·npm 비어 있음, `pruv.org` 미등록, 기본 명령어 충돌 없음, 영어·주요 언어에서 나쁜 뜻 찾지 못함(perv와 동음 아님). 작은 겹침: PyPI `pruv`(검증 도구, 별 1·월 18 내려받기), 제약 첨가제 PRUV®, 크립토 서비스 pruv.finance. 약점: 말로는 prove와 같은 소리 → 소개할 때 철자를 함께 말한다.
+> **Name decision (2026-11-10): the language is named Pruv** (pronounced /pruːv/ "proov"; a phonetic spelling of prove, and also the Esperanto root `pruv-` = to prove). The compiler is `pruvc`, the extension is `.pruv`, the domain is `pruvlang.org` (until 2027-11-10). It was renamed from "Vow" because a language of the same kind (vow-lang: a contract-verification language for AI) already exists. The in-repository rename is finished (2026-11-10, RESULTS §14: code, generated symbols, and the runtime error prefix `pruv:` were all changed; only past result records keep the old name).
+> Checked: no programming language of the same name, crates.io and npm are empty, `pruv.org` is unregistered, no conflict with basic commands, no bad meaning found in English or major languages (not a homophone of perv). Minor overlaps: PyPI `pruv` (a verification tool, 1 star, 18 downloads a month), the pharmaceutical excipient PRUV®, the crypto service pruv.finance. Weakness: spoken, it sounds the same as prove → say the spelling along with it when introducing it.
 
-## 1. 왜 만드나
+## 1. Why build this
 
-- AI가 코드를 많이 쓰게 됐지만, AI가 쓴 코드를 믿기 어렵다. 사람이 전부 읽고 검토하는 방식은 규모가 커지면 무너진다.
-- 계약과 증명(Dafny, SPARK, Liquid Haskell)은 오래전부터 있었다. 사람이 쓰기 너무 번거로워서 퍼지지 않았을 뿐이다. 이 번거로운 일을 AI가 대신하면 걸림돌이 사라진다.
-- 기계어에 가깝다고 빨라지지는 않는다. 컴파일러가 아는 정보가 많을수록 최적화가 세진다. 증명은 컴파일러에게 가장 강한 정보다.
+- AI now writes a lot of code, but it is hard to trust code that AI wrote. Having humans read and review everything breaks down as scale grows.
+- Contracts and proofs (Dafny, SPARK, Liquid Haskell) have existed for a long time. They did not spread only because they were too tedious for humans to write. If AI does this tedious work instead, the obstacle disappears.
+- Being close to machine code does not make things fast. The more the compiler knows, the stronger the optimization. A proof is the strongest information a compiler can get.
 
-목표 문장: **"AI가 짜면 버그가 거의 없고, Rust만큼 빠르고, 코드가 커져도 성능이 무너지지 않는 언어."**
+Target sentence: **"A language where code written by AI has almost no bugs, is as fast as Rust, and whose performance does not collapse as the code grows."**
 
-최종 모습은 Rust 같은 **범용 독립 언어**다. 자기 문법과 자기 컴파일러(앞단)를 갖고, 기계어 생성만 LLVM을 빌린다.
-기존 언어 위에 얹히는 것(5절)은 처음 퍼뜨리는 방법이지 언어의 한계가 아니다.
+The final shape is a **general-purpose standalone language** like Rust. It has its own syntax and its own compiler (frontend), and borrows only machine-code generation from LLVM.
+Sitting on top of an existing language (§5) is the first way to spread, not a limit of the language.
 
-**최종 목표(2026-11-11 사용자 결정): Lair 를 Pruv 로 "거의 전부" 대체한다.** 핵심 함수 몇 개를 끼우는 데서 멈추지 않는다.
-- 끝 모습: Lair 고유 코드(상태·규칙·파일·위임·원격·화면 로직)는 100% Pruv(증명). 가져다 쓰는 부품은 처음엔 Rust 라이브러리에 "믿는 계약"을 붙여 쓰고, 틀리면 위험하고 작은 것(파서·경로/권한 검사·프로토콜·터미널 문자 해석·문서 변환)부터 Pruv 판으로 바꾼다. 끝까지 바깥에 남는 것은 OS 입구(창·파일·프로세스·GPU 호출)와 브라우저 엔진 정도다. 거대한 부품은 Pruv 로 쓰더라도 핵심만 증명하고 나머지는 안전 모드(실행 중 검사)로 둘 수 있다.
-- 바꾸는 이유는 속도가 아니라 "틀리지 않음의 보장"이다. 속도 목표는 "Rust 와 같거나, 증명 덕분에 부분적으로 더 빠름"이다(C 경로 참고).
-- 몇 달 안에 끝내는 것을 목표로 한다(2026-11-11 사용자 판단). 단계마다 Lair 가 계속 돌아가고 쓸모 있게 끝나도록 순서를 짠다(4절 L 트랙).
+**Final goal (user decision, 2026-11-11): replace "almost all" of Lair with Pruv.** We do not stop at slotting in a few core functions.
+- End state: Lair's own code (state, rules, files, delegation, remote, screen logic) is 100% Pruv (proven). For borrowed components, we first use Rust libraries with a "trusted contract" attached, and replace with Pruv implementations starting from the small pieces that are dangerous if wrong (parsers, path/permission checks, protocols, terminal-character interpretation, document conversion). What stays outside to the very end is about the OS entry points (windows, files, processes, GPU calls) and the browser engine. For huge components, even if written in Pruv, only the core may be proven and the rest left in safe mode (checks during execution).
+- The reason for replacing is not speed but "a guarantee of not being wrong". The speed target is "the same as Rust, or partly faster thanks to proofs" (see the C path).
+- The goal is to finish within a few months (user judgment, 2026-11-11). The order is arranged so that at each stage Lair keeps running and ends up useful (§4 L track).
 
-## 2. 설계 원칙
+## 2. Design principles
 
-1. **방법은 하나**: 반복문, 오류 처리, 포맷이 각각 한 가지다. AI가 고를 일을 줄인다.
-2. **지역성**: 함수 머리에 효과(io, alloc)와 계약이 다 보인다. 전역 상태, 암묵 변환, 오버로딩, 매크로가 없다.
-3. **실수할 자리 제거**: null 대신 Option, 예외 대신 Result를 쓴다. 불변이 기본이다. 오버플로와 범위 밖 접근은 증명 대상이다.
-4. **계약 내장**: requires, ensures, invariant, decreases를 쓴다. SMT(z3)로 증명되면 런타임 검사를 지운다. 안전장치가 곧 속도 장치다.
-5. **비용이 보임**: 할당과 복사가 문법에 드러난다. 앞으로는 호출 비용과 읽는 상태까지 드러낸다.
-6. **컴파일러는 AI의 대화 상대**: 오류를 JSON으로 내고, 반례와 고칠 방법을 같이 낸다.
-7. **짧은 명세**: 언어 명세 전체가 AI 맥락에 들어간다. 문법은 Rust와 비슷하게 해서 학습 데이터가 없다는 약점을 메운다.
+1. **One way**: loops, error handling, and formatting each have exactly one form. This reduces what the AI has to choose.
+2. **Locality**: effects (io, alloc) and the contract are all visible in the function header. No global state, implicit conversions, overloading, or macros.
+3. **Remove places to slip**: use Option instead of null, Result instead of exceptions. Immutability is the default. Overflow and out-of-range access are proof targets.
+4. **Built-in contracts**: use requires, ensures, invariant, decreases. If SMT (z3) proves it, the runtime check is erased. A safeguard is also a speed device.
+5. **Costs are visible**: allocation and copying show up in the syntax. In the future, even call cost and the state being read will show.
+6. **The compiler is the AI's conversation partner**: it emits errors as JSON, with counterexamples and ways to fix.
+7. **A short spec**: the whole language spec fits in the AI's context. The syntax is made similar to Rust to make up for the weakness of having no training data.
 
-## 3. 현재 상태 (v0.1)
+## 3. Current state (v0.1)
 
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| 명세 | `SPEC.md`(약 7쪽): i64, bool, 배열, Option, Result, 구조체·열거형, 계약(집계 sum/count/max/min 포함), 효과 |
-| 컴파일러 | `pruvc/`(Python): 파서 → 타입·효과 검사 → z3 검증 → Rust 생성(증명된 접근은 `get_unchecked`) |
-| 시험 장치 | `bench/`: 문제 10개, 참조 구현, 무작위 시험 300개, 성능 측정, 변이 시험 |
-| 회귀 시험 | `tests/run_all.py`: 거부 24개(`tests/must_reject/`), examples 세 모드, 런타임 23개(`tests/runtime/`) |
-| 실행 안전 | 공개 함수는 requires를 실행 중 검사(`--trust-callers`로 끔), `--no-verify`는 검사 있는 안전 모드 |
+| Spec | `SPEC.md` (about 7 pages): i64, bool, arrays, Option, Result, structs and enums, contracts (including the aggregates sum/count/max/min), effects |
+| Compiler | `pruvc/` (Python): parser → type and effect check → z3 verification → Rust generation (proven accesses use `get_unchecked`) |
+| Test rig | `bench/`: 10 problems, reference implementations, 300 random tests, performance measurement, mutation testing |
+| Regression tests | `tests/run_all.py`: 24 rejections (`tests/must_reject/`), examples in three modes, 23 runtime tests (`tests/runtime/`) |
+| Runtime safety | public functions check requires at runtime (turned off with `--trust-callers`), `--no-verify` is a safe mode with checks |
 
-### 실험 결과 요약 (`RESULTS.md`)
-- 처음 보는 AI(Claude sonnet)가 명세만 읽고 Pruv(당시 이름 Vow)로 9/10을 첫 시도에 통과했고, JSON 오류 한 번으로 10/10이 됐다. Rust로는 첫 시도에 10/10이었다.
-- 변이 시험: 테스트에서 틀린 버그 79개 중 73개(92%)를 컴파일 단계에서 잡았다. 놓친 6개는 모두 동작 계약이 없는 함수의 값 버그다.
-- 속도: 손으로 짠 Rust와 측정 오차 안에서 비슷하다.
-- 한계: 문제가 쉽다. 작업자 모델이 하나뿐이다. 변이 시험은 작성자 풀이에만 돌렸다.
+### Summary of experiment results (`RESULTS.md`)
+- An AI seeing it for the first time (Claude sonnet) read only the spec and passed 9/10 in Pruv (then named Vow) on the first attempt, and one JSON error brought it to 10/10. In Rust it was 10/10 on the first attempt.
+- Mutation testing: of 79 bugs that tests got wrong, 73 (92%) were caught at the compile stage. The 6 missed were all value bugs in functions with no behavior contract.
+- Speed: comparable to hand-written Rust within measurement error.
+- Limits: the problems are easy. There is only one worker model. Mutation testing was run only on the author's solutions.
 
-### 검증기 감사 (0단계 진행 중)
-- 독립 감사(Claude sonnet)에서 건전성 버그 3개를 찾았고, 재현한 뒤 고쳤다.
-  1. `&&`/`||` 오른쪽 호출의 ensures를 실행되지 않은 경로에서도 가정한 문제 → 단락 조건으로 감쌌다.
-  2. 계약 안 배열 `==`가 z3 식이 아니라 Python 객체 비교였던 문제 → 배열 `==`를 금지했다.
-  3. alloc 크기에 상한이 없어 가정끼리 모순된 문제 → `0 <= n <= 2^40`을 증명하게 했다.
-- Codex 감사는 OpenAI 보안 필터에 두 번 막혔다(`unsafe`, `get_unchecked`가 든 코드 때문으로 보인다). 이 프로젝트의 감사는 Claude로 한다.
+### Verifier audit (Stage 0 in progress)
+- An independent audit (Claude sonnet) found 3 soundness bugs, which were reproduced and then fixed.
+  1. The ensures of a call on the right of `&&`/`||` was assumed even on paths where it was not executed → wrapped in a short-circuit condition.
+  2. Array `==` inside a contract was a Python object comparison rather than a z3 expression → array `==` was banned.
+  3. The alloc size had no upper bound, so the assumptions contradicted each other → made it prove `0 <= n <= 2^40`.
+- The Codex audit was blocked twice by the OpenAI security filter (apparently because of code containing `unsafe` and `get_unchecked`). Audits in this project are done with Claude.
 
-## 4. 단계별 계획
+## 4. Plan by stage
 
-각 단계는 시험 숫자(첫 시도 통과율, 변이 잡는 비율, 속도)가 실제로 오를 때만 다음 단계로 넘어간다.
+Each stage moves to the next only when the test numbers (first-attempt pass rate, fraction of mutants caught, speed) actually go up.
 
-### 단기 목표: 독립 실행 (2026-11-10 정함, M1·M2 완료, 다음 M3)
-**목표:** `pruvc` 실행 파일 하나로 `.pruv` → 실행 파일. 사용자가 Python도 rustc도 깔 필요가 없다.
-- 남는 의존(정직하게): z3·LLVM은 실행 파일 안에 넣는다(정적 링크, 파일이 커짐). 시스템 링커(macOS `ld`, Windows `link.exe`)는 Rust처럼 빌린다.
-- 이 목표의 가치는 배포와 속도 상한(증명 결과를 LLVM에 직접 넘김)이다. 우리 개발 속도를 올리는 일은 아니다 — 개발 속도는 0·1·3단계 도구가 올린다.
+### Short-term goal: standalone execution (decided 2026-11-10, M1 and M2 done, next is M3)
+**Goal:** one `pruvc` executable turns `.pruv` into an executable. Users need to install neither Python nor rustc.
+- Remaining dependencies (honestly): z3 and LLVM go inside the executable (static linking, the file gets large). The system linker (macOS `ld`, Windows `link.exe`) is borrowed, as Rust does.
+- The value of this goal is distribution and the speed ceiling (passing proof results directly to LLVM). It does not speed up our own development — development speed is raised by the Stage 0, 1, and 3 tools.
 
-| 이정표 | 내용 | 끝났다는 기준 |
+| Milestone | Content | Done criterion |
 |---|---|---|
-| M1 = C2 | 뒷단: Rust 대신 LLVM IR(텍스트 `.ll`) 출력, 작은 실행 지원 코드(print·alloc·copy·범위 밖 중단) 직접 작성 | bench 10문제·examples·변이 시험 숫자가 Rust 출력판과 같고, 속도가 측정 오차 안이거나 더 빠름. 생성 IR에 증명 사실(`nsw`, 범위) 표시 |
-| M2 = G1 | 구조체·열거형을 넣어 언어 모양을 굳힌다(건전성 관문 5개 통과) | 4절 범용 트랙 관문 기준 |
-| M3 = C4 | 앞단 재작성: Python → Rust(또는 Go), z3·LLVM 정적 링크, 단일 실행 파일 | 같은 시험 묶음이 새 컴파일러에서 같은 결과. Python판은 기준 구현으로 남겨 두 컴파일러 결과를 대조 |
+| M1 = C2 | Backend: emit LLVM IR (text `.ll`) instead of Rust, with a small runtime support code (print, alloc, copy, out-of-range abort) written directly | the bench 10 problems, examples, and mutation-testing numbers are the same as the Rust-output implementation, and speed is within measurement error or faster. Proof facts (`nsw`, ranges) are marked in the generated IR |
+| M2 = G1 | Add structs and enums to firm up the shape of the language (pass 5 soundness gates) | the §4 general-purpose-track gate criteria |
+| M3 = C4 | Frontend rewrite: Python → Rust (or Go), z3 and LLVM statically linked, a single executable | the same test suite gives the same results on the new compiler. The Python implementation stays as the reference implementation and the two compilers' results are cross-checked |
 
-순서 이유: 뒷단(codegen 111줄)은 작고 얻는 게 분명하니 먼저. 앞단은 언어가 바뀔 때마다 두 번 고치지 않게 G1 뒤에.
-M1 동안 IR을 기계어로 바꾸는 건 임시로 clang(`clang x.ll -O2`)에 맡긴다. M3에서 LLVM 라이브러리를 직접 링크해 clang도 뗀다.
+Reason for the order: the backend (codegen, 111 lines) is small and the gain is clear, so it goes first. The frontend goes after G1 so we do not fix it twice every time the language changes.
+During M1, turning IR into machine code is temporarily left to clang (`clang x.ll -O2`). In M3 we link the LLVM library directly and drop clang too.
 
-**시작 준비 점검 (2026-11-10, 이 맥 기준)**
-- 있음: Apple clang 17(arm64, `.ll` 컴파일 가능), Python 3.9 + z3 5.3.3, rustc(비교 기준용).
-- 없음: `llc`·`opt`·`llvm-config`(독립 LLVM), Python `llvmlite`. M1은 텍스트 IR + clang으로 시작하면 설치 없이 된다.
-- 공개판 주의: Windows·Linux에는 clang이 기본이 아니다 → M1 산출물은 개발용, 사용자 배포는 M3부터.
-- 시험 장치: `bench/harness/run.py`가 rustc를 직접 부른다 → 뒷단 선택 옵션(`--backend rust|llvm`)이 먼저 필요. 두 뒷단을 같은 시험으로 대조한다.
+**Readiness check for starting (2026-11-10, on this Mac)**
+- Present: Apple clang 17 (arm64, can compile `.ll`), Python 3.9 + z3 5.3.3, rustc (for comparison baselines).
+- Absent: `llc`, `opt`, `llvm-config` (standalone LLVM), Python `llvmlite`. M1 can start with text IR + clang without installing anything.
+- Public-release caveat: clang is not default on Windows and Linux → M1 outputs are for development, user distribution starts at M3.
+- Test rig: `bench/harness/run.py` calls rustc directly → a backend selection option (`--backend rust|llvm`) is needed first. The two backends are cross-checked with the same tests.
 
-**M1 첫 묶음(착수할 때)**
-1. 설계: Pruv 값 → LLVM 타입(i64, i1, 배열 = {ptr, i64 len}, Option/Result = {i1/i64 태그, i64}), 호출 규약, 메모리(할당만 하고 해제는 함수 끝 — 지금 Rust `Vec`의 drop과 같은 의미 유지).
-2. 구현: `pruvc/llvmgen.py`(새 파일, codegen.py는 그대로 둠), `pruvc.py`에 `--backend` 옵션, 실행 지원 코드 `pruvc/runtime.c` 또는 IR로 작성.
-3. 확인: examples·bench 10문제를 두 뒷단으로 돌려 출력 대조, 변이 시험, 속도 비교.
-4. 감사 1회 + 확인 1회. 결과를 RESULTS에 기록.
-- **M1 첫 묶음 결과(2026-11-10, RESULTS 7절):** `--backend llvm`·`llvmgen.py`·`runtime.c` 완료. 회귀 102/102(두 뒷단), bench 10/10, 변이 판정 Rust판과 같음, 증명 IR에 nsw·inbounds·noalias. p04는 Option·Result를 레지스터로 반환하게 바꾼 뒤 Rust판과 측정 오차 안이다(부하 높은 기계에서 잼, RESULTS 7절). **M1 완료.** 남은 일: Windows x64 ABI 하강은 M3에서. 명세 `docs/M1_LLVM_SPEC.md`. 메모리 해제는 함수 끝이 아니라 Rust `Vec` drop과 같게(블록 끝·재대입·임시).
-- **M2 결과(2026-11-10, RESULTS 8절):** 구조체·열거형(G1) 완료. 관문 5개 통과: SPEC 6a절, G1 거부 시험 36개, 회귀 250/250(두 뒷단)·변이 판정 M1과 같음, 감사 필수 0, 독립 AI 첫 시도 4/5→고친 뒤 5/5. 설계 `docs/M2_G1_SPEC.md`. **M2 완료.**
-- **M3 첫 묶음(2026-11-10, RESULTS 13절):** 설계 확정 `docs/M3_C4_SPEC.md`(설계 논쟁 반영). Rust + z3 0.22 vendored(z3 5.3.3, Python판과 같음) + llvm-sys 221 force-static, 시스템 링커 빌림. 시제품으로 z3·LLVM 정적 링크와 IR→객체→링크→실행을 이 맥에서 확인(393초·105MB, Homebrew zstd 의존은 배포 LLVM 직접 빌드로 뗌). **다음: 0A~0D**(Python 비결정 순회 정렬·기준 스냅샷 / z3 실의무 시제품과 SMT-LIB 대조 / Python .ll을 LLVM 라이브러리로 객체화해 시험 장치의 clang 의존 떼기 / Windows ABI 표본) → 검토 뒤 파서부터 이식.
-- **M3 0A~0D+T(2026-11-11, RESULTS 15절):** Python 비결정 순회 2곳 정렬(hash seed 4개에서 220입력 동일, 판정 불변)·기준 스냅샷, `pruvc-rs/` workspace 정확 잠금, Rust z3 시제품이 의무 58개의 SMT-LIB·판정을 Python과 글자 단위로 재현, `pruvc-ir-tool`로 시험 장치의 IR 객체화를 clang 없이(LLVM 행 222/222), Windows sret 표본 cross 객체·서명 5/5(실행은 CI), 두 컴파일러 차분 장치. 회귀 363·CLI 186·변이 81·퍼저 통과. **다음: 1 파서 이식**(사용자 확인 뒤).
-- **M3 1단계 파서(2026-11-11, RESULTS 16절):** `pruv-core`에 ast·lexer·parser 이식(외부 크레이트 없음). parse AST·오류 JSON이 Python과 2263건(넓힌 판 10943건) 바이트 동일, 33 노드·오류 code 5종·극대 정수·유니코드 열 위치 대응, 회귀 363·CLI 186. **다음: 2 검사기(typeinfo·check) 이식.**
-- **M3 2단계 검사기(2026-11-11, RESULTS 17절):** `pruv-core`에 typeinfo·check 이식. typed AST·type_table·검사 오류 JSON이 Python과 2836건(넓힌 판 13652건) 바이트 동일, 검사 오류 code 45종 모두 대조, 회귀 363·CLI 186. **다음: 3 검증기(pruv-proof) 이식.**
-- **M3 3단계 검증기(2026-11-11, RESULTS 18절):** `pruv-proof`에 verify.py 전체 이식. 932건(의무 9649)에서 SMT-LIB 텍스트·판정·오류가 Python과 같음, 반례 값만 83건 다름(모양 같음, 설계상 허용). 회귀 363·CLI 186. **다음: 4 LLVM 출력·공통 함수 이식.**
-- **M3 4단계 LLVM 출력(2026-11-11, RESULTS 19절):** `pruv-core`에 llvmgen·abi·bindings·emit_common 이식. IR·Rust 바인딩이 Python과 27400 사례(입력 6849 × 증명·안전 × trust 켬·끔 + budget) 바이트 동일. 회귀 363·CLI 186. **다음: 5 객체·링크 통합(Rust 판 단독 실행 파일).**
-- **M3 5단계 `pruvc` 명령(2026-11-11, RESULTS 20절):** Rust 판 CLI(ll·obj·exe, 진입점 검사·main shim·내장 런타임·시스템 링크). 두 CLI 대조 234 same, 회귀 LLVM 행 222/222를 Rust 판으로 통과, 단독 실행 파일 50 사례가 기준과 같음. Rust 소스 출력은 7단계. **다음: 6 Windows ABI 통합(대상별 wrapper 직접 출력).**
-- **M3 6단계 Windows wrapper(2026-11-11, RESULTS 21절):** Windows x64 대상이면 Option/Result 반환 wrapper를 처음부터 sret로 출력. 교차 COFF·verify·C 기준 서명 검사 통과, 기본 출력 불변. Windows 실행은 CI(I 단계). **다음: 7 Rust 소스 출력 이식.**
-- **M3 7단계 Rust 소스 출력(2026-11-11, RESULTS 22절):** `pruv-core`에 codegen 이식(.rs 6548 사례 바이트 동일). **Rust 판 `pruvc`로 기존 회귀 363/363·CLI 186/186·두 판 대조 468 same·퍼저 3 seed·변이 83 판정 동일.** 1~7단계 끝. **다음: I 통합·배포(4개 플랫폼 CI, 배포 LLVM 정적 빌드, 독립 exe 관문).**
-- **M3 I 일부 Windows ABI CI(2026-11-11, RESULTS 23절):** 비용 때문에 Windows 실행 확인만 CI(사용자 결정). 맥에서 만든 Windows IR·기대 출력을 Windows 러너에서 링크·실행해 12/12 통과. 4개 플랫폼 배포 빌드는 보류.
-- **M3 뒷정리(2026-11-11, RESULTS 24절):** 대조 묶음 명령 `tests/m3_all.py`(8단계 모두 같음), 개발 도구 `abi_lower`·`--input-abi` 제거, Rust 판 퍼저 seed 5개×400(증명 통과 2,051 실패 0), bench 생성물 성능 두 판 같음(IR 바이트 동일)·컴파일 약 1.8배 빠름. **결정: Rust 판 `pruvc`가 정본**(시험 도구 기본값), Python 판은 대조 기준으로 유지하고 새 기능은 Python 판에 먼저 넣어 같은 묶음에서 Rust 판으로 이식·대조한다.
-- 정함(2026-11-10): 실행 지원 코드는 C(`pruvc/runtime.c`, clang으로 함께 컴파일, M3에선 미리 컴파일해 넣음). 범위 밖·requires 위반은 Rust판과 같은 메시지와 종료 코드 101. LLVM판도 두 모드(증명/안전)와 공개 함수 requires 검사·`--trust-callers`를 Rust판과 똑같이 따른다.
+**M1 first batch (when starting)**
+1. Design: Pruv value → LLVM type (i64, i1, array = {ptr, i64 len}, Option/Result = {i1/i64 tag, i64}), calling convention, memory (allocate only and free at function end — keep the same semantics as the current Rust `Vec` drop).
+2. Implementation: `pruvc/llvmgen.py` (new file, codegen.py left as is), a `--backend` option in `pruvc.py`, runtime support code written as `pruvc/runtime.c` or IR.
+3. Verification: run examples and the bench 10 problems on both backends and compare output, mutation testing, speed comparison.
+4. One audit + one confirmation. Record the results in RESULTS.
+- **M1 first batch result (2026-11-10, RESULTS §7):** `--backend llvm`, `llvmgen.py`, and `runtime.c` done. Regression 102/102 (both backends), bench 10/10, mutation verdicts the same as the Rust implementation, nsw, inbounds, and noalias in the proof IR. After changing p04 to return Option and Result in registers, it is within measurement error of the Rust implementation (measured on a heavily loaded machine, RESULTS §7). **M1 done.** Remaining: lowering the Windows x64 ABI goes to M3. Spec `docs/M1_LLVM_SPEC.md`. Memory is freed not at function end but the same as Rust `Vec` drop (block end, reassignment, temporaries).
+- **M2 result (2026-11-10, RESULTS §8):** structs and enums (G1) done. 5 gates passed: SPEC §6a, 36 G1 reject tests, regression 250/250 (both backends) and mutation verdicts the same as M1, audit required 0, independent AI first attempt 4/5 → 5/5 after fixing. Design `docs/M2_G1_SPEC.md`. **M2 done.**
+- **M3 first batch (2026-11-10, RESULTS §13):** design fixed in `docs/M3_C4_SPEC.md` (design debate reflected). Rust + z3 0.22 vendored (z3 5.3.3, same as the Python implementation) + llvm-sys 221 force-static, system linker borrowed. A prototype confirmed static linking of z3 and LLVM and IR→object→link→run on this Mac (393 seconds, 105MB; the Homebrew zstd dependency is removed by building the distribution LLVM directly). **Next: 0A–0D** (sorting Python's nondeterministic traversals and a reference snapshot / z3 real-obligation prototype and SMT-LIB cross-check / objectifying the Python .ll with the LLVM library to remove the test rig's clang dependency / Windows ABI samples) → after review, port starting from the parser.
+- **M3 0A–0D+T (2026-11-11, RESULTS §15):** two Python nondeterministic traversals sorted (identical on 220 inputs with 4 hash seeds, verdicts unchanged) and a reference snapshot, `pruvc-rs/` workspace with exact locking, the Rust z3 prototype reproduced the SMT-LIB and verdicts of 58 obligations character for character against Python, the test rig's IR objectification without clang via `pruvc-ir-tool` (LLVM rows 222/222), Windows sret sample cross objects and signatures 5/5 (execution in CI), a two-compiler differential rig. Regression 363, CLI 186, mutation 81, fuzzer passed. **Next: 1 port the parser** (after user confirmation).
+- **M3 Stage 1 parser (2026-11-11, RESULTS §16):** ast, lexer, and parser ported to `pruv-core` (no external crates). The parse AST and error JSON are byte-identical to Python on 2263 cases (widened set 10943 cases), with correspondence for 33 nodes, 5 error codes, maximal integers, and Unicode column positions, regression 363, CLI 186. **Next: 2 port the checker (typeinfo, check).**
+- **M3 Stage 2 checker (2026-11-11, RESULTS §17):** typeinfo and check ported to `pruv-core`. The typed AST, type_table, and check-error JSON are byte-identical to Python on 2836 cases (widened set 13652 cases), all 45 check-error codes cross-checked, regression 363, CLI 186. **Next: 3 port the verifier (pruv-proof).**
+- **M3 Stage 3 verifier (2026-11-11, RESULTS §18):** all of verify.py ported to `pruv-proof`. On 932 cases (9649 obligations), the SMT-LIB text, verdicts, and errors match Python; only counterexample values differ in 83 cases (same shape, allowed by design). Regression 363, CLI 186. **Next: 4 port LLVM output and common functions.**
+- **M3 Stage 4 LLVM output (2026-11-11, RESULTS §19):** llvmgen, abi, bindings, and emit_common ported to `pruv-core`. IR and Rust bindings are byte-identical to Python on 27400 cases (inputs 6849 × proof and safe × trust on and off + budget). Regression 363, CLI 186. **Next: 5 object and link integration (a standalone executable for the Rust implementation).**
+- **M3 Stage 5 `pruvc` command (2026-11-11, RESULTS §20):** the Rust implementation's CLI (ll, obj, exe, entry-point check, main shim, built-in runtime, system link). Two-CLI cross-check 234 same, regression LLVM rows 222/222 passed with the Rust implementation, 50 standalone-executable cases match the baseline. Rust source output is Stage 7. **Next: 6 Windows ABI integration (emit per-target wrappers directly).**
+- **M3 Stage 6 Windows wrapper (2026-11-11, RESULTS §21):** for the Windows x64 target, Option/Result-returning wrappers are emitted as sret from the start. Cross COFF, verify, and C-reference signature checks passed, default output unchanged. Windows execution is CI (stage I). **Next: 7 port Rust source output.**
+- **M3 Stage 7 Rust source output (2026-11-11, RESULTS §22):** codegen ported to `pruv-core` (.rs 6548 cases byte-identical). **With the Rust implementation `pruvc`, the existing regression 363/363, CLI 186/186, two-implementation cross-check 468 same, fuzzer 3 seeds, mutation 83 verdicts identical.** Stages 1–7 done. **Next: I integration and distribution (CI for 4 platforms, static build of the distribution LLVM, standalone-exe gate).**
+- **M3 I partial: Windows ABI CI (2026-11-11, RESULTS §23):** for cost reasons only Windows execution checks run in CI (user decision). Windows IR and expected output made on the Mac were linked and run on a Windows runner, 12/12 passed. The 4-platform distribution build is on hold.
+- **M3 cleanup (2026-11-11, RESULTS §24):** cross-check batch command `tests/m3_all.py` (all 8 stages same), development tools `abi_lower` and `--input-abi` removed, Rust-implementation fuzzer 5 seeds×400 (proof passes 2,051, failures 0), bench generated-code performance the same in both implementations (IR bytes identical), compile about 1.8× faster. **Decision: the Rust implementation `pruvc` is canonical** (default for the test tools); the Python implementation is kept as the cross-check reference, and new features go into the Python implementation first and are ported and cross-checked in the Rust implementation in the same batch.
+- Decided (2026-11-10): the runtime support code is C (`pruvc/runtime.c`, compiled together with clang, precompiled and embedded in M3). Out-of-range and requires violations use the same message and exit code 101 as the Rust implementation. The LLVM implementation also follows the two modes (proof/safe), the public-function requires check, and `--trust-callers` exactly as the Rust implementation does.
 
-### 0단계: 검증기 신뢰 (완료, 2026-11-11)
-- 독립 감사, 고친 뒤 확인 감사, 거부 회귀 시험을 한다.
-- ~~무작위 프로그램 퍼징~~ 완료(2026-11-11, RESULTS 25절): Rust 판으로 증명 통과 프로그램 12,000개·requires 만족 입력 114,204건에서 약속 위반 0(20 seed, Rust·LLVM × 증명·안전 4모드, 독립 오라클). 24절 2,051개·앞선 기록까지 1만 6천 개 이상에서 위반 0.
-- ~~안전 모드 빌드 옵션~~ 완료(2026-11-10): `--no-verify`는 검사 있는 인덱싱·산술, 공개 함수 경계에서 requires 실행 검사(RESULTS 6절).
-- ~~무거운 requires의 O(n) 검사 변환, 수 범위 한정자 상한, 계약 정의역을 검증기 의무로~~ 완료(2026-11-10, RESULTS 9절, `docs/M0_CONTRACTS.md`): 계약 정의역 증명(`contract_domain`), 실행 requires 반복 예산 2^30, 정렬 전제 O(n) 실행 검사.
-- 남긴 것: 실행 검사 i128 넘침(자원 한계), 퍼저 생성기 밖 구문(재귀·깊은 중첩 반복)은 덮지 않음.
+### Stage 0: verifier trust (done, 2026-11-11)
+- Independent audit, a confirmation audit after fixing, and reject regression tests.
+- ~~Random-program fuzzing~~ done (2026-11-11, RESULTS §25): with the Rust implementation, 12,000 proof-passing programs and 114,204 requires-satisfying inputs, 0 promise violations (20 seeds, Rust and LLVM × proof and safe = 4 modes, independent oracle). Together with the 2,051 programs of §24 and earlier records, 0 violations in over 16 thousand programs.
+- ~~Safe-mode build option~~ done (2026-11-10): `--no-verify` does checked indexing and arithmetic, and checks requires at execution on public-function boundaries (RESULTS §6).
+- ~~O(n) check conversion for heavy requires, upper bound on numeric-range qualifiers, contract domain as a verifier obligation~~ done (2026-11-10, RESULTS §9, `docs/M0_CONTRACTS.md`): contract domain proof (`contract_domain`), runtime requires loop budget 2^30, O(n) runtime check for the sortedness precondition.
+- Left over: runtime-check i128 overflow (resource limit), syntax outside the fuzzer generator (recursion, deeply nested loops) is not covered.
 
-### 1단계: 정제 타입과 불변식 자동 추론 (Liquid Haskell에서)
-- `a: [i64 | -1e9..1e9; ..1e6]`처럼 조건을 타입에 붙인다.
-- 흔한 불변식 후보를 만들고 z3로 참인 것만 남긴다(Houdini 방식). 구간 분석을 쓰고, 그래도 안 되면 AI에게 반례를 주고 제안받는다.
-- 효과: AI가 쓸 양이 줄고, "맞는데 증명 실패"가 준다.
-- 설계 확정(2026-11-11, `docs/STAGE1_SPEC.md`): A 정제 타입 → B 템플릿 Houdini(`--infer`, 처음엔 명시 켜기) → C 구간 분석(B 측정 뒤). 문법은 `a: [i64 | -1_000_000_000..=1_000_000_000; <=1_000_000]`(닫힌 `..=`, 길이 `<=N`, `1e9` 표기는 안 받음).
-- **A 정제 타입 완료(2026-11-11, RESULTS 26절):** 기존 계약으로 펼쳐 두 판에 넣음, 회귀 444/444(두 판)·대조 8단계 같음, 감사 건전성 구멍 0, bench 입력 조건 글자 −32%. **다음: B 불변식 추론**(대조기 timeout 분리부터).
-- **B1 질의 기록 경계·대조기(2026-11-11, RESULTS 27절):** 모든 z3 질의가 공통 경계를 지나 상태·timeout·rlimit·reason_unknown 기록(trace v2), 대조기가 같음·검증 완료·미결을 분리하고 옵션 전달을 검사, `--infer` 없는 SMT는 HEAD와 바이트 동일. 
-- **B2 Python 판 `--infer`(2026-11-11, RESULTS 28절):** 템플릿 11종 + Houdini + 최종 재검증, 불변식을 지운 p01·p07·p09(그리고 p02) 증명, 거부 표본 9종·건전성 회귀 197/197. 
-- **B3 Rust 이식·대조·측정·감사(2026-11-11, RESULTS 29절):** 두 판 `--infer` trace 바이트 동일(276입력), 불변식 지운 pruv_agg 4/10 증명(p01·p07·p09 목표 + p02), 감사 건전성 구멍 1(후보 속 함수 호출) 고침·확인 감사 필수 0. **B 완료. C(구간 분석)는 보류**(남은 실패 대부분이 관계형 불변식 필요). **다음: 값 범위·관계 템플릿 검토.**
-- **B+ 추론 템플릿 확장(2026-11-11, RESULTS 30절):** 종류 12 값 범위·13 출력 배열 접두·14 조기 반환 접두 + 예산 소진 때 버전 1 되돌림(추론 설정 버전 2), 불변식 지운 pruv_agg **7/10**(p03·p08·p10 새로), 두 판 대조 392입력 성공(2개는 z3 rlimit 글귀만 다름), 감사 필수 1(예산 소진으로 v1 후퇴)·확인 감사 필수 1(시험 검사 구멍) 고침. `--infer` 기본 켜기는 계속 끔. 남은 실패 p04(구간 관계)·p05(누적값-배열 관계)·p06(부분합 양화).
-- **1단계 완료(2026-11-11, RESULTS 31.1):** 건전성 회귀 측정 — 변이 298개(pruv_try1·pruv_agg·불변식 지운 agg·g1 ref)를 두 판에서 `--infer` 끔/켬으로 컴파일, 잘못된 변이의 새 통과 0(새 통과 1건은 참인 변이 `>`→`>=`, 미결 13건은 통과 아님). 남은 고침 1: 탐색 질의의 z3 `canceled`가 추론 전체를 멈춰 두 판 `--infer` 판정이 7건 어긋남(둘 다 통과 아님) → **고침(2026-11-11, RESULTS 32):** rlimit 소진(`canceled` 등)은 그 후보만 탈락, 벽시계 `timeout`만 함수 중단 — 변이 298개 미결 13→0, 두 판 판정 차이 0, 잘못된 변이 새 통과 0. C(구간 분석)는 보류, `--infer` 기본 켜기는 끔.
+### Stage 1: refinement types and automatic invariant inference (from Liquid Haskell)
+- Attach conditions to types as in `a: [i64 | -1e9..1e9; ..1e6]`.
+- Generate common invariant candidates and keep only those z3 finds true (the Houdini method). Use interval analysis, and if that still fails, give the AI a counterexample and take its suggestions.
+- Effect: the AI writes less, and "correct but proof failed" decreases.
+- Design fixed (2026-11-11, `docs/STAGE1_SPEC.md`): A refinement types → B template Houdini (`--infer`, explicit opt-in at first) → C interval analysis (after measuring B). The syntax is `a: [i64 | -1_000_000_000..=1_000_000_000; <=1_000_000]` (closed `..=`, length `<=N`, the `1e9` notation is not accepted).
+- **A refinement types done (2026-11-11, RESULTS §26):** expanded into existing contracts and added to both implementations, regression 444/444 (both implementations), cross-check 8 stages same, audit soundness holes 0, bench input conditions −32% in characters. **Next: B invariant inference** (starting with splitting out the cross-checker's timeout).
+- **B1 query-record boundary and cross-checker (2026-11-11, RESULTS §27):** every z3 query passes through a common boundary that records status, timeout, rlimit, and reason_unknown (trace v2), the cross-checker separates same, verification-complete, and undecided and checks option passing, and SMT without `--infer` is byte-identical to HEAD.
+- **B2 Python implementation `--infer` (2026-11-11, RESULTS §28):** 11 templates + Houdini + final re-verification, proved p01, p07, p09 (and p02) with invariants removed, 9 reject-sample kinds and soundness regression 197/197.
+- **B3 Rust port, cross-check, measurement, audit (2026-11-11, RESULTS §29):** `--infer` traces byte-identical in both implementations (276 inputs), pruv_agg with invariants removed 4/10 proved (p01, p07, p09 targets + p02), audit soundness hole 1 (function call inside a candidate) fixed, confirmation audit required 0. **B done. C (interval analysis) on hold** (most remaining failures need relational invariants). **Next: review value-range and relation templates.**
+- **B+ inference template expansion (2026-11-11, RESULTS §30):** kinds 12 value range, 13 output-array prefix, 14 early-return prefix + rollback to version 1 when the budget is exhausted (inference config version 2), pruv_agg with invariants removed **7/10** (p03, p08, p10 newly), two-implementation cross-check succeeded on 392 inputs (2 differ only in z3 rlimit wording), audit required 1 (retreat to v1 on budget exhaustion) and confirmation audit required 1 (hole in the test check) fixed. Turning `--infer` on by default stays off. Remaining failures: p04 (interval relation), p05 (accumulator–array relation), p06 (partial-sum quantification).
+- **Stage 1 done (2026-11-11, RESULTS §31.1):** soundness-regression measurement — 298 mutants (pruv_try1, pruv_agg, agg with invariants removed, g1 ref) compiled in both implementations with `--infer` off/on, new passes of wrong mutants 0 (the 1 new pass is a true mutant `>`→`>=`, 13 undecided are not passes). 1 fix remained: a z3 `canceled` in an exploration query stopped all of inference, causing 7 mismatches in `--infer` verdicts between the two implementations (neither a pass) → **fixed (2026-11-11, RESULTS §32):** rlimit exhaustion (`canceled`, etc.) drops only that candidate, only a wall-clock `timeout` aborts the function — over the 298 mutants undecided 13→0, two-implementation verdict differences 0, new passes of wrong mutants 0. C (interval analysis) on hold, turning `--infer` on by default stays off.
 
-### 2단계: 계약용 집계 함수 (1차 완료, 2026-11-10)
-- `sum/count/max/min(k in lo..hi: e)`를 계약에 쓴다. 컴파일러가 한 칸 펼치기 보조정리를 자동으로 넣는다.
-- 결과: 집계 계약판에서 테스트에서 틀린 변이 79개를 모두(100%) 컴파일 때 거부, 오탐은 1개 그대로(`RESULTS.md` 5절).
-- 남은 것: 독립 AI가 명세만 보고 집계 계약을 스스로 쓰는지 재측정, `sorted`·`permutation`, 구간 중간 원소·분할 같은 추가 보조정리, 집계 불변식 자동 추론(1단계와 묶음).
+### Stage 2: aggregate functions for contracts (first pass done, 2026-11-10)
+- Write `sum/count/max/min(k in lo..hi: e)` in contracts. The compiler automatically inserts a one-step unfolding lemma.
+- Result: with the aggregate-contract version, all (100%) of the 79 mutants that tests got wrong were rejected at compile time, with 1 false positive unchanged (`RESULTS.md` §5).
+- Remaining: re-measure whether an independent AI writes aggregate contracts by itself from the spec alone, `sorted` and `permutation`, additional lemmas such as middle-of-interval elements and partitioning, automatic inference of aggregate invariants (bundled with Stage 1).
 
-### 3단계: 증명 실패 시 자동 시험 (QuickCheck에서)
-- 증명이 안 된 계약은 requires를 만족하는 무작위 입력으로 시험하고, "증명됨 / 시험 통과 / 실패"로 표시한다.
-- 시험 등급인 부분은 런타임 검사를 남긴다.
+### Stage 3: automatic testing on proof failure (from QuickCheck)
+- A contract that could not be proved is tested with random inputs satisfying requires, and marked "proved / test passed / failed".
+- The parts at test grade keep their runtime checks.
 
-### 4단계: 알고리즘과 최적화 분리 (Halide에서)
-- 알고리즘은 단순하게 쓰고, `schedule` 블록에 SIMD, 병렬 블록, 타일링, 데이터 배치를 따로 쓴다.
-- 허용된 변환은 결과를 바꾸지 않는다고 미리 증명해 둔다. AI가 조합을 탐색하고 실측으로 고른다.
-- 효과: 최적화를 아무리 세게 해도 정확성이 유지된다.
+### Stage 4: separate algorithm from optimization (from Halide)
+- Write the algorithm simply, and write SIMD, parallel blocks, tiling, and data layout separately in a `schedule` block.
+- Permitted transformations are proved in advance not to change the result. The AI searches combinations and picks by measurement.
+- Effect: correctness is preserved no matter how aggressively it is optimized.
 
-### 5단계: 구조 성능 (규모가 커져도 안 무너지게)
-코드가 커지면서 생기는 "각 조각은 정상인데 합치면 느린" 문제를 막는다. 같은 호출이 여러 번 일어나거나, 그리기 중에 비싼 호출을 하거나, 감시자와 타이머가 쌓이는 경우다. 리팩토링 때 특히 많이 생긴다.
-1. 순수 함수 자동 캐시와 의존성 추적(증분 계산: Salsa, Adapton, 시그널)
-2. 읽는 상태와 io 금지를 계약으로: `reads state.x`, `io none`
-3. 자원 수명 타입: 감시자, 타이머, 구독은 소유자가 사라지면 자동 정리
-4. 계산량 상한 계약: `cost O(n)`(자원 상한 분석, RAML)
-- 효과: 리팩토링으로 호출 위치가 바뀌어도 구조적 성능 버그를 컴파일 단계에서 막는다.
-- 한계: 실제 사용 패턴은 프로파일링이 계속 필요하다.
+### Stage 5: structural performance (so it does not collapse as it scales)
+This prevents the problem, which arises as code grows, of "each piece is fine but the combination is slow". Examples: the same call happening many times, expensive calls during drawing, accumulating watchers and timers. It occurs especially often during refactoring.
+1. Automatic caching of pure functions and dependency tracking (incremental computation: Salsa, Adapton, signals)
+2. State reads and a ban on io as contracts: `reads state.x`, `io none`
+3. Resource-lifetime types: watchers, timers, and subscriptions are cleaned up automatically when the owner disappears
+4. Computation-bound contracts: `cost O(n)` (resource-bound analysis, RAML)
+- Effect: even when refactoring moves call sites, structural performance bugs are blocked at compile time.
+- Limit: real usage patterns still need continued profiling.
 
-### 6단계: 여러 언어로 출력 (TypeScript가 이긴 방식)
-- `--target rust | ts | java | cpp`로 사람이 읽을 수 있는 코드와 계약 주석, 테스트를 함께 낸다.
-- 팀은 언어를 바꾸지 않고, 핵심 로직만 "증명된 모듈"로 넣는다.
-- 주의: JS 정수 범위(BigInt), Java Optional 같은 언어별 차이를 맞춰야 한다.
+### Stage 6: output in several languages (the way TypeScript won)
+- `--target rust | ts | java | cpp` emits human-readable code together with contract comments and tests.
+- Teams do not change languages, and only put the core logic in as a "proven module".
+- Caution: language-specific differences such as JS integer range (BigInt) and Java Optional must be reconciled.
 
-### 7단계: 확장
-(메모리 모델(Hylo)·참조 권한(Pony)은 범용 기능 트랙 G5·G7로 옮겼다.)
-| 가져올 것 | 출처 | 효과 |
+### Stage 7: extension
+(The memory model (Hylo) and reference permissions (Pony) were moved to the general-feature tracks G5 and G7.)
+| What to bring | Source | Effect |
 |---|---|---|
-| GPU 자동 병렬화 | Futhark | 큰 데이터에서 수십 배 |
-| 내용 해시 코드 | Unison | 고쳐도 안 깨지고, 증명 결과를 캐시 |
-| 컴파일 때 실행 | Zig comptime | 실행 중 비용 감소 |
+| Automatic GPU parallelization | Futhark | tens of times faster on large data |
+| Content-hash code | Unison | does not break when edited, and caches proof results |
+| Compile-time execution | Zig comptime | reduced runtime cost |
 
-### 범용 기능 트랙 (G, 증명 단계와 번갈아 진행)
-지금 언어는 i64·bool·정수 배열·Option·Result뿐이라 실제 프로그램을 통째로 못 쓴다. 아래를 차례로 넣는다.
-| 순서 | 기능 | 증명에서 할 일 |
+### General-feature track (G, interleaved with the proof stages)
+The language today has only i64, bool, integer arrays, Option, and Result, so it cannot be used for a real program as a whole. The following are added in turn.
+| Order | Feature | What to do in proofs |
 |---|---|---|
-| G1 | 구조체·열거형(합 타입), `match` 확장 | 필드·태그를 z3 데이터타입으로, 계약에서 필드 사용 |
-| G2 | 문자열·바이트 배열, 여러 원소 타입의 배열 | 길이·범위 증명을 배열과 같은 방식으로, UTF-8 경계 — **설계 확정(2026-11-11, `docs/G2_SPEC.md`, RESULTS 31.2):** 첫 판 `[u8]`·`[bool]`(i32 뒤로), 다음 `str`(유효 UTF-8 읽기 전용 바이트열·경계 증명된 `substr`). 묶음 A0 기반 → A1~A4 u8 → A5 bool → B0~B2 str → Q. **A0 기반 완료(2026-11-11, RESULTS 33):** 기호 배열 원소 타입·질의 API·내부 이름 대응(두 판), run_all 444 행 목록·SMT 231 기준 저장소 고정, 동작 불변. **A1 u8 앞단 완료(2026-11-11, RESULTS 34):** `[u8]`·정제 문법·타입 검사·alloc 좁은 타입(결정 6)·내부 이름 거부(두 판), 증명·생성 층은 `unsupported_type`으로 명시 거부(결정 16), 거부 표본 21·행 목록 465. **A2 u8 증명 완료(2026-11-11, RESULTS 35):** 정의역은 진입·호출 결과·havoc 세 곳에만, alloc·저장에 `elem_range` 의무(최종 검증에서만 판정), 추론 원소 타입 필터(두 판), 검증 통과 뒤 codegen `unsupported_type`, 표본 23·행 목록 488, SMT 231 불변. **A3 u8 Rust 실행 완료(2026-11-11, RESULTS 36):** Rust 소스 뒷단에서 `[u8]` 생성(증명 모드 증명된 값만 축소, 안전 모드 범위 검사 뒤 축소, 두 판 바이트 동일), LLVM 길은 A4까지 `unsupported_type`, `runtime.c` 일반화는 A4로, examples 11·runtime 15·행 목록 590 **A4 u8 LLVM·ABI 완료(2026-11-11, RESULTS 37):** LLVM 뒷단·`--rust-bindings`에서 `[u8]`(i8 저장·zext 읽기, 안전 모드 검사 순서·문구 Rust 뒷단과 같음, 두 판 IR·바인딩 바이트 동일, `[i64]` IR 불변), 런타임 v2(크기·정렬 인자 할당·복사·해제, v2 host helper·marker), 옛 런타임/옛 바인딩 잘못된 링크 실패 시험 6경우, 할당/해제 균형 표본, 행 목록 594; **A5 bool 완료(2026-11-11, RESULTS 38):** `[bool]` 전 층(SMT `Array(Int, Bool)`, 반례 `true/false`, i8 0/1 저장, raw ABI 진입 바이트 검사 `pruv: invalid representation:`·typed 바인딩은 검사 없는 `__typed` 진입, `--infer` 원소 타입 표를 루프 위치 기준으로), 두 판 바이트 동일, 행 목록 663; **B0 str 앞단 완료(2026-11-11, RESULTS 39):** `str` 타입·문자열 리터럴(이스케이프 6종, `string_escape`·`string_unterminated`·`string_character`), `len`·색인·`copy`·`is_char_boundary`·`substr` 타입·효과, `immutable_string`, 소유권(리터럴도 출처), 증명·생성 층은 리터럴까지 보는 가드로 `unsupported_type`(증명 층 진입 가드 새로), 두 판 dump 바이트 동일, 행 목록 694; **B1 str 증명 완료(2026-11-11, RESULTS 40):** `str` 은 u8 바이트 배열 모델(진입·호출 결과·havoc 바이트 0..255), 리터럴 상수 배열, `is_char_boundary` 경계 식, `substr` 의무 `string_slice_range`→`utf8_boundary`(최종 검증에서만)와 결과 바이트 관계, 증명 가드 해제(생성 층은 계속 거부), 새 trace 두 판 same, SMT 231 불변, 행 목록 719; **B2 str 실행·raw ABI 완료(2026-11-11, RESULTS 41):** Rust 소스(`&str`/`String`)·LLVM(`{ptr,i64}` 바이트)·바인딩에서 `str` 생성, 리터럴 이스케이프 고정, `is_char_boundary`·`substr` 실행(안전 모드 범위→경계 검사, 새 버퍼), raw 진입 `pruv_check_utf8`(Table 3-7, `--trust-callers` 에서도), 두 판 생성물 바이트 동일, 행 목록 833; **Q1 G2 퍼징·변이 완료(2026-11-11, RESULTS 42):** 퍼저 `--g2`(독립 오라클, seed 41·56·57 × 두 컴파일러 센 검증 통과 217~220·거절 안전 실행 34~35·실패 0), G2 전용 변이 129개 거짓 변이 통과 0, G2 문제 6개·채점기·뜻 전체를 적은 참조 풀이(`bench/g2/`); **Q2 측정·독립 사용 완료(2026-11-11, RESULTS 43):** SPEC.md 6b(G2 사용자 규칙 한 쪽)·8절 `verify_unknown` 안내, 독립 작성자 3명(작성자 1 고치기 2회 최종 5/6 q04 증명 미결, 작성자 2 힌트 섞여 무효, 작성자 3 첫 시도 6/6 네 조합), 기존 compile 시간 G2 전 대비 0.99배·bench 정답 그대로, 2천만 칸 메모리 u8·bool 0.13배, raw UTF-8 검사 0.32~0.35ns/바이트. **→ G2 완료(G2a `[u8]`·`[bool]`, G2b `str`). A6 `[i32]` 는 미룸** |
-| G3 | 제네릭(타입 매개변수) | 타입마다 따로 증명하지 않고 한 번 증명(매개 변수 계약) |
-| G4 | 모듈·가시성·패키지 | 모듈 경계에서 계약만 보고 증명(지금의 함수 단위 모듈 검증 확장) |
-| G5 | 메모리 모델: 변경 가능한 값 의미론(Hylo) | 별칭 없음 보장 → 배열 비겹침을 최적화 정보로 |
-| G6 | Rust 함수 불러 쓰기(외부 함수) | 경계는 "믿는 계약"으로 표시하고 런타임 검사 선택. Rust 표준 컬렉션(늘어나는 `Vec`·`HashMap`·`String` 만들기)도 이 길로 먼저 쓴다 |
-| G7 | 동시성(참조 권한, Pony) | 데이터 경쟁 원천 차단 |
-| G8 | 표준 라이브러리 | AI가 계약을 붙여 쓰고 컴파일러가 증명. 사람은 계약만 검토 |
-| G9 | 재귀 함수·재귀 타입, 구조체 안 배열·문자열 필드(트리·JSON 같은 실제 자료) | `decreases` 로 종료, 귀납 증명. 지금 SPEC 은 재귀·재귀 타입·배열 필드 없음 |
-| G10 | 입출력·비동기(파일·프로세스·네트워크, async) | `io` 효과를 세분하고 자원 수명(5단계 3)과 묶음 |
-| (A6) | `[i32]` 등 원소 타입 더하기 | G2 에서 미룸. G3 제네릭 뒤 원소 타입 일반화로 흡수할지 그때 정함 |
+| G1 | Structs and enums (sum types), `match` extensions | fields and tags as z3 datatypes, field use in contracts |
+| G2 | Strings and byte arrays, arrays of several element types | length and range proofs the same way as arrays, UTF-8 boundaries — **design fixed (2026-11-11, `docs/G2_SPEC.md`, RESULTS §31.2):** first `[u8]` and `[bool]` (i32 later), next `str` (read-only byte sequence of valid UTF-8, `substr` with a proven boundary). Batches A0 foundation → A1–A4 u8 → A5 bool → B0–B2 str → Q. **A0 foundation done (2026-11-11, RESULTS §33):** symbolic array element types, query API, internal-name mapping (both implementations), run_all 444 row list and SMT 231 baseline repository fixed, behavior unchanged. **A1 u8 frontend done (2026-11-11, RESULTS §34):** `[u8]`, refinement syntax, type check, alloc narrow type (decision 6), internal-name rejection (both implementations), the proof and generation layers explicitly reject with `unsupported_type` (decision 16), 21 reject samples, row list 465. **A2 u8 proof done (2026-11-11, RESULTS §35):** the domain only at three places — entry, call result, havoc; `elem_range` obligation on alloc and store (judged only in final verification), inference element-type filter (both implementations), codegen `unsupported_type` after verification passes, 23 samples, row list 488, SMT 231 unchanged. **A3 u8 Rust execution done (2026-11-11, RESULTS §36):** `[u8]` generated in the Rust source backend (proof mode narrows only proven values, safe mode narrows after a range check, byte-identical in both implementations), the LLVM path is `unsupported_type` until A4, generalizing `runtime.c` goes to A4, examples 11, runtime 15, row list 590. **A4 u8 LLVM and ABI done (2026-11-11, RESULTS §37):** `[u8]` in the LLVM backend and `--rust-bindings` (i8 storage, zext reads, safe-mode check order and messages the same as the Rust backend, IR and bindings byte-identical in both implementations, `[i64]` IR unchanged), runtime v2 (alloc, copy, and free taking size and alignment arguments, v2 host helper and marker), 6 cases of failing to link with an old runtime or old bindings, allocation/free balance samples, row list 594; **A5 bool done (2026-11-11, RESULTS §38):** `[bool]` across all layers (SMT `Array(Int, Bool)`, counterexample `true/false`, i8 0/1 storage, raw-ABI entry byte check `pruv: invalid representation:`, typed bindings use a `__typed` entry with no check, `--infer` element-type table keyed by loop position), byte-identical in both implementations, row list 663; **B0 str frontend done (2026-11-11, RESULTS §39):** `str` type and string literals (6 escapes, `string_escape`, `string_unterminated`, `string_character`), type and effect for `len`, indexing, `copy`, `is_char_boundary`, and `substr`, `immutable_string`, ownership (a literal is also a source), the proof and generation layers use a guard that also looks at literals and raise `unsupported_type` (a new entry guard in the proof layer), dump byte-identical in both implementations, row list 694; **B1 str proof done (2026-11-11, RESULTS §40):** `str` is a u8 byte-array model (entry, call result, havoc bytes 0..255), literals are constant arrays, the `is_char_boundary` boundary formula, `substr` obligations `string_slice_range`→`utf8_boundary` (only in final verification) and the result byte relation, proof guard lifted (the generation layer still rejects), new trace same in both implementations, SMT 231 unchanged, row list 719; **B2 str execution and raw ABI done (2026-11-11, RESULTS §41):** `str` generated in Rust source (`&str`/`String`), LLVM (`{ptr,i64}` bytes), and bindings, literal escapes fixed, `is_char_boundary` and `substr` executed (safe-mode range→boundary check, new buffer), raw entry `pruv_check_utf8` (Table 3-7, also under `--trust-callers`), generated artifacts byte-identical in both implementations, row list 833; **Q1 G2 fuzzing and mutation done (2026-11-11, RESULTS §42):** fuzzer `--g2` (independent oracle, seeds 41, 56, 57 × two compilers, strong verified passes 217–220, rejected safe runs 34–35, failures 0), 129 G2-specific mutants with 0 false-mutant passes, 6 G2 problems, grader, and reference solutions that state the full meaning (`bench/g2/`); **Q2 measurement and independent use done (2026-11-11, RESULTS §43):** SPEC.md §6b (one page of G2 user rules) and the §8 `verify_unknown` guide, 3 independent authors (author 1 fixed twice, final 5/6, q04 proof undecided; author 2 invalid because a hint leaked in; author 3 first attempt 6/6 in four combinations), existing compile time 0.99× relative to pre-G2 and bench correctness unchanged, 20-million-cell memory for u8 and bool 0.13×, raw UTF-8 check 0.32–0.35ns/byte. **→ G2 done (G2a `[u8]` and `[bool]`, G2b `str`). A6 `[i32]` deferred** |
+| G3 | Generics (type parameters) | prove once instead of separately per type (parameter contracts) |
+| G4 | Modules, visibility, packages | prove from contracts only at module boundaries (extending today's function-level module verification) |
+| G5 | Memory model: mutable value semantics (Hylo) | no-aliasing guarantee → array non-overlap as optimization information |
+| G6 | Calling Rust functions (foreign functions) | the boundary is marked as a "trusted contract" with optional runtime checks. Rust standard collections (growable `Vec`, `HashMap`, and creating `String`) are also used first through this path |
+| G7 | Concurrency (reference permissions, Pony) | data races blocked at the root |
+| G8 | Standard library | the AI attaches contracts and the compiler proves. Humans review only the contracts |
+| G9 | Recursive functions and recursive types, array and string fields inside structs (real data such as trees and JSON) | termination by `decreases`, inductive proof. The current SPEC has no recursion, recursive types, or array fields |
+| G10 | I/O and async (files, processes, network, async) | refine the `io` effect and bundle with resource lifetimes (Stage 5 item 3) |
+| (A6) | Adding element types such as `[i32]` | deferred from G2. Whether to absorb it into element-type generalization after G3 generics will be decided then |
 
-**기능마다 거치는 건전성 관문** (통과해야 다음 기능):
-1. SPEC에 한 쪽 이내로 정리("방법은 하나" 유지)
-2. `tests/must_reject/`에 그 기능의 틀린 프로그램 추가, 일부러 틀린 계약 시험
-3. 변이 시험·bench 재채점에서 기존 숫자가 안 떨어짐
-4. 감사 1회 + 고친 뒤 확인 1회
-5. 독립 AI가 명세만 보고 그 기능을 써서 문제를 푸는지 측정
+**Soundness gates each feature goes through** (must pass before the next feature):
+1. Summarize in one page or less in SPEC (keep "one way")
+2. Add that feature's wrong programs to `tests/must_reject/`, deliberately wrong contract tests
+3. Existing numbers do not drop in mutation testing and bench re-grading
+4. One audit + one confirmation after fixing
+5. Measure whether an independent AI solves problems using that feature from the spec alone
 
-**진행 순서(옛 안, 2026-11-10):** M1(C2) → M2(G1) → M3(C4) → 1단계 → G2 → 3단계 → G3·G4 → G5·G6 → 4·5단계 → G7·G8. M1~M3·0단계·1단계·G1·G2 는 끝났다(2026-11-11).
+**Order of progress (old plan, 2026-11-10):** M1 (C2) → M2 (G1) → M3 (C4) → Stage 1 → G2 → Stage 3 → G3 and G4 → G5 and G6 → Stages 4 and 5 → G7 and G8. M1–M3, Stage 0, Stage 1, G1, and G2 are done (2026-11-11).
 
-**진행 순서(새 안, 2026-11-11 — 최종 목표 "Lair 대체"에 맞춰 다시 짬):** 생태계를 처음부터 만들지 않고 Rust 생태계에 올라타는 길(5절)을 빨리 여는 쪽으로 G6 를 앞당긴다.
-1. **G3 제네릭** — Rust 라이브러리(`Vec<T>`·`Option<T>`)를 표현하려면 먼저 필요하다.
-2. **성능 점검 한 묶음** — bench 에서 Rust 보다 1.3~1.5배 느린 p03·p04·p08 원인 찾기(원인 미확인, 번역기 생성 코드로 추정), 증명 사실(값 범위·비겹침)을 LLVM 에 더 넘기기.
-3. **G6 Rust 불러 쓰기** + Rust 표준 컬렉션에 믿는 계약 — 이 뒤로 L2 를 시작할 수 있다.
-4. **G9 재귀·재귀 타입·필드 확장** — 실제 자료(트리·JSON)를 다루려면 필요하다.
-5. **G4 모듈** — 코드가 Lair 크기로 커지기 전에.
-6. **G5 메모리 모델** — 바꿀 수 있는 큰 자료를 복사 없이 다루기, 비겹침을 최적화 정보로.
-7. **G10 입출력·비동기 + G7 동시성 + 5단계(자원 수명·io 계약)** — Lair 백엔드(L3)의 전제.
-8. **G8 표준 라이브러리** — Rust 에서 빌려 쓰던 것 중 증명 값어치가 큰 것부터 Pruv 판으로.
-- 3단계(증명 실패 시 자동 시험)는 G6 근처에 끼운다(믿는 계약 경계를 시험으로 확인하는 일과 맞물림). 4단계(최적화 분리)·6단계(여러 언어 출력)는 뒤로.
-- 기능마다 건전성 관문 5개는 그대로 지킨다. 숫자가 안 오르면 순서를 바꾼다.
+**Order of progress (new plan, 2026-11-11 — rearranged for the final goal "replace Lair"):** instead of building an ecosystem from scratch, G6 is moved earlier to open the path of riding on the Rust ecosystem (§5) quickly.
+1. **G3 generics** — needed first to express Rust libraries (`Vec<T>`, `Option<T>`).
+2. **A performance-check batch** — find the cause of p03, p04, and p08 being 1.3–1.5× slower than Rust in bench (cause unconfirmed, presumed to be translator-generated code), and pass more proof facts (value ranges, non-overlap) to LLVM.
+3. **G6 calling Rust** + trusted contracts on Rust standard collections — after this, L2 can start.
+4. **G9 recursion, recursive types, field extensions** — needed to handle real data (trees, JSON).
+5. **G4 modules** — before the code grows to Lair's size.
+6. **G5 memory model** — handling large mutable data without copying, non-overlap as optimization information.
+7. **G10 I/O and async + G7 concurrency + Stage 5 (resource lifetimes, io contracts)** — prerequisites for the Lair backend (L3).
+8. **G8 standard library** — of what was borrowed from Rust, starting with what has high proof value, to Pruv implementations.
+- Stage 3 (automatic testing on proof failure) is slotted in near G6 (it ties in with checking the trusted-contract boundary by testing). Stage 4 (optimization separation) and Stage 6 (multi-language output) go later.
+- The 5 soundness gates per feature are kept as they are. If the numbers do not go up, the order is changed.
 
-### Lair 이전 트랙 (L, 2026-11-11 정함)
-언어 개발과 Lair 이전을 번갈아 진행한다. 이전하는 동안 Lair 는 계속 돌아가야 하고, 바꾼 조각마다 기존 TS 판과 결과를 대조한다.
-| 단계 | 할 일 | 전제 |
+### Lair migration track (L, decided 2026-11-11)
+Language development and the Lair migration proceed in alternation. While migrating, Lair must keep running, and each replaced piece is cross-checked against the existing TS implementation.
+| Stage | What to do | Prerequisite |
 |---|---|---|
-| L0 | 제품에 넣지 않고 옆에서 대조: Lair 핵심 계산을 Pruv 로 쓰고 무작위 입력으로 TS 판과 비교해 버그 찾기. 첫 후보 `src/backend/engine-import/tail.ts` `clipBytes`(G2 q06 과 같은 꼴, 원문 끝의 진짜 `�` 까지 지우는 버그 후보), 다음 `src/shared/web-sources.ts` `hostWithin` | 지금 가능(G2) |
-| L1 | JS 다리: Electron 에서 Pruv 함수를 부르는 네이티브 모듈 + 플랫폼별 빌드. 순수 계산 함수(경로 검사·줄 병합·한도 계산)를 하나씩 바꿔 끼운다 | M3 I 4개 플랫폼 배포 빌드(보류 중, CI 비용은 사용자 결정) |
-| L2 | Rust 라이브러리를 쓰는 큰 부품(파서·문서 변환·프로토콜·터미널 문자 해석)을 Pruv 로 | G3·G6(·G9) |
-| L3 | 백엔드 전체(프로세스·파일·네트워크·위임·원격)를 Pruv 로, Node 백엔드 대체 | G4·G5·G7·G10 |
-| L4 | 화면: Rust UI 도구(GPUI·Slint·iced 등) 위에서 Pruv 로, Electron 대체. 미리보기 브라우저는 시스템 WebView·Chromium 경계로 남음 | L3 |
-- 주의: 언어가 바뀌는 중에 옮긴 코드는 언어 변경 때 다시 고쳐야 한다. 그래서 이전 조각은 작게 두고 TS 판을 대조 기준으로 남긴다.
+| L0 | Cross-check on the side without putting it in the product: write Lair's core computations in Pruv and compare with the TS implementation on random inputs to find bugs. First candidate `src/backend/engine-import/tail.ts` `clipBytes` (the same shape as G2 q06, a bug candidate that also erases a genuine `�` at the end of the source text), next `src/shared/web-sources.ts` `hostWithin` | possible now (G2) |
+| L1 | JS bridge: a native module that calls Pruv functions from Electron + per-platform builds. Pure computation functions (path checks, line merging, limit computation) are swapped in one by one | M3 I 4-platform distribution build (on hold, CI cost is a user decision) |
+| L2 | Large components that use Rust libraries (parsers, document conversion, protocols, terminal-character interpretation) in Pruv | G3, G6 (and G9) |
+| L3 | The whole backend (processes, files, network, delegation, remote) in Pruv, replacing the Node backend | G4, G5, G7, G10 |
+| L4 | Screen: in Pruv on top of Rust UI tools (GPUI, Slint, iced, etc.), replacing Electron. The preview browser stays as the system WebView / Chromium boundary | L3 |
+- Caution: code migrated while the language is changing has to be fixed again when the language changes. So migration pieces are kept small and the TS implementation is left as the cross-check baseline.
 
-### 컴파일러 경로 (C)
-| 단계 | 출력 | 이유 |
+### Compiler path (C)
+| Stage | Output | Reason |
 |---|---|---|
-| C1 (지금) | Rust 코드 → rustc(속은 LLVM) | 기능을 늘리는 동안 가장 싸고, 속도는 이미 Rust와 같다 |
-| C2 (단기 목표 M1) | **LLVM IR 직접 출력** | rustc 의존을 떼고, 증명 결과(오버플로 없음 `nsw`, 값 범위, 배열 비겹침 `noalias`)를 LLVM 최적화에 직접 넘긴다. Rust보다 빨라질 여지 |
-| C3 (선택) | 개발용 빠른 빌드에 Cranelift | 컴파일 속도. 최적화는 약하니 배포용은 LLVM |
-| C4 (단기 목표 M3, G1 뒤) | 컴파일러 자체를 Python에서 Rust 등으로 재작성 | 파일 하나로 배포, 큰 코드에서 컴파일 속도 |
-- 기계어 생성·최적화(LLVM급 뒷단)는 직접 만들지 않는다. 수백만 줄과 20년 넘는 실측의 결과라 따라잡을 수 없고, 목표("Rust만큼 빠르게")와도 어긋난다. 직접 만든 뒷단(Go, Cranelift)은 컴파일 속도·독립성을 얻고 실행 속도를 내줬다.
-- 속도는 같은 LLVM 에 Rust 보다 많은 사실(증명된 범위·비겹침·지운 검사)을 넘겨서 올린다. 이것이 Pruv 가 Rust 를 부분적으로 넘을 수 있는 곳이다.
-- 자체 뒷단을 만들 이유가 생긴다면 속도가 아니라 "번역 과정까지 증명"(CompCert 방식)이다. 먼 후순위 선택지로만 둔다.
-- 셀프 호스팅(Pruv로 Pruv 컴파일러 작성)은 후순위 시험대로만 둔다. 검증기 신뢰는 올리지 않는다(z3를 그대로 믿어야 함).
+| C1 (now) | Rust code → rustc (LLVM inside) | cheapest while adding features, and speed is already the same as Rust |
+| C2 (short-term goal M1) | **Direct LLVM IR output** | drops the rustc dependency and passes proof results (no overflow `nsw`, value ranges, array non-overlap `noalias`) directly to LLVM optimization. Room to be faster than Rust |
+| C3 (optional) | Cranelift for fast development builds | compile speed. Optimization is weak, so LLVM for distribution |
+| C4 (short-term goal M3, after G1) | Rewrite the compiler itself from Python to Rust or similar | distribution as one file, compile speed on large code |
+- We will not build the machine-code generation and optimization (LLVM-class backend) ourselves. It is the result of millions of lines and more than 20 years of measurement, so it cannot be caught up with, and it also conflicts with the goal ("as fast as Rust"). Self-built backends (Go, Cranelift) gained compile speed and independence and gave up execution speed.
+- Speed is raised by passing the same LLVM more facts than Rust does (proven ranges, non-overlap, erased checks). This is where Pruv can partly surpass Rust.
+- If a reason to build our own backend arises, it would be not speed but "proving the translation process itself" (the CompCert approach). We keep it only as a distant, low-priority option.
+- Self-hosting (writing the Pruv compiler in Pruv) is kept only as a low-priority test bed. It does not raise verifier trust (z3 must still be trusted as is).
 
-## 5. 보급 전략
+## 5. Distribution strategy
 
-- "JS, Java, Rust, C++를 다 대체"로 가면 Haxe의 길이 된다(기술은 좋은데 틈새에 머문다).
-- **기존 언어 위에 얹혀서 AI가 짠 코드의 안전을 보증하는 층**으로 시작한다(TypeScript, Kotlin의 길).
-- 판매 포인트는 숫자다: "같은 AI가 짰을 때 Rust보다 버그 X% 적고 속도는 같다"를 공개 벤치마크로 보인다.
-- 먼저 노릴 분야: 틀리면 큰일 나고 속도도 중요한 핵심 로직(금융 계산, 데이터 처리, 암호, 임베디드).
-- **생태계 전략(2026-11-11): Rust 생태계에 올라탄다**(Kotlin→Java, TypeScript→JS 의 길). Pruv 는 Rust·LLVM 으로 번역되므로 Rust 라이브러리를 부르는 비용은 경계의 검사·복사뿐이다(메모리 모양을 맞추면 복사 없음, `str` UTF-8 검사는 바이트당 약 0.33ns, RESULTS 43). 필요한 것은 G3·G6 과 자주 쓰는 Rust 라이브러리에 붙인 믿는 계약 목록이다. 보장은 그 계약이 맞는 만큼이다. 쓰는 사람이 늘면 Pruv 라이브러리가 생기고, 증명 값어치가 큰 것만 Pruv 판으로 바꾼다. 다 바꿀 필요는 없다.
-- Lair 는 Pruv 의 첫 대형 실사용자다(1절 최종 목표, 4절 L 트랙). 밖으로 퍼뜨리는 길은 여전히 "얹히는 층"부터다.
-- 위치: "Rust 보다 전부 좋은 언어"가 아니라 "틀리면 안 되는 코드에서 Rust 보다 좋은 언어"다. 대가는 증명이 통과해야 컴파일된다는 까다로움(맞는 코드도 증명 시간 초과로 막힐 수 있음, RESULTS 43 q04)이다.
+- Going with "replace JS, Java, Rust, and C++ all" becomes Haxe's path (good technology that stays in a niche).
+- Start as **a layer that sits on top of existing languages and guarantees the safety of AI-written code** (the path of TypeScript and Kotlin).
+- The selling point is numbers: show "when the same AI writes it, X% fewer bugs than Rust at the same speed" with a public benchmark.
+- Fields to aim at first: core logic where being wrong is disastrous and speed also matters (financial computation, data processing, cryptography, embedded).
+- **Ecosystem strategy (2026-11-11): ride on the Rust ecosystem** (the path of Kotlin→Java and TypeScript→JS). Since Pruv is translated to Rust and LLVM, the cost of calling Rust libraries is only the checks and copies at the boundary (no copy if the memory shape matches, the `str` UTF-8 check is about 0.33ns per byte, RESULTS §43). What is needed is G3 and G6 plus a list of trusted contracts attached to commonly used Rust libraries. The guarantee is only as good as those contracts are correct. As the number of users grows, Pruv libraries appear, and only those with high proof value are replaced with Pruv implementations. There is no need to replace them all.
+- Lair is Pruv's first large real-world user (§1 final goal, §4 L track). The path of spreading outward is still "the layer that sits on top", first.
+- Positioning: not "a language better than Rust at everything" but "a language better than Rust for code that must not be wrong". The price is the fussiness that the proof must pass before it compiles (even correct code can be blocked by a proof timeout, RESULTS §43 q04).
 
-## 6. 정직한 한계
+## 6. Honest limits
 
-- 증명은 "코드가 계약을 지킨다"까지만 보장한다. 계약이 틀리거나 빠지면 못 잡는다. 사람은 계약을 읽어야 한다.
-- 모든 성질을 자동으로 증명하는 건 원리적으로 불가능하다. 3단계로 실용적으로 메운다.
-- 장점끼리 충돌한다(증명 강도와 컴파일 속도, 기능 수와 단순함). 기능은 시험 숫자를 올릴 때만 넣는다.
-- 생태계(라이브러리, 도구, 에디터 지원)는 몇 년짜리 일이다. AI로 코드 작성은 빨라지지만, 검증기 건전성 확인과 실제 사용자가 쌓이는 시간은 줄지 않는다.
-- 경쟁자: Dafny와 Verus에 AI를 붙이는 연구, Lean과 AI 증명기, Mojo. 같은 생각("AI용·계약 먼저·검증")의 신생 언어도 있다(2026-11-10 이름 조사에서 확인): Vow(vow-lang, ESBMC로 계약 검증·에이전트용 JSON 진단), Verum(verum-lang.org, 계약·SMT·LLVM), Prove(prove-lang.org, intent-first, 2026-04 시작). 모두 아직 작다.
+- A proof guarantees only up to "the code keeps the contract". If the contract is wrong or missing, it cannot be caught. Humans must read the contracts.
+- Automatically proving every property is impossible in principle. Stage 3 fills the gap practically.
+- The strengths conflict with each other (proof strength vs compile speed, number of features vs simplicity). Features are added only when they raise the test numbers.
+- The ecosystem (libraries, tools, editor support) is a multi-year job. AI speeds up writing code, but verifying the verifier's soundness and the time for real users to accumulate do not shrink.
+- Competitors: research attaching AI to Dafny and Verus, Lean and AI provers, Mojo. There are also new languages with the same idea ("for AI, contracts first, verification") (confirmed in the 2026-11-10 name survey): Vow (vow-lang, contract verification with ESBMC, JSON diagnostics for agents), Verum (verum-lang.org, contracts, SMT, LLVM), Prove (prove-lang.org, intent-first, started 2026-04). All are still small.
 
-## 7. 작업 규칙
+## 7. Working rules
 
-- 감사는 Claude로 한다(Codex는 보안 필터로 막힘). 최상위 모델은 비용을 먼저 알리고 범위를 좁힌다.
-- 검증기·코드 생성을 고치면 `tests/run_all.py` 전체, `bench` 풀이 재채점(기본·`--trust-callers`), 변이 시험을 함께 돌린다.
-- 결과는 부풀리지 않는다. 측정 못 한 것은 그대로 적는다.
+- Audits are done with Claude (Codex is blocked by the security filter). For the top-tier model, tell the cost first and narrow the scope.
+- When fixing the verifier or code generation, run all of `tests/run_all.py`, re-grade the `bench` solutions (default and `--trust-callers`), and run mutation testing together.
+- Do not inflate results. Write what could not be measured as it is.
 
-## 8. 파일 지도
+## 8. File map
 
 ```
 pruv/
-  BLUEPRINT.md        이 문서
-  SPEC.md             언어 명세
-  RESULTS.md          실험 결과
-  pruvc/              컴파일러 (pruvc.py, vparser.py, check.py, verify.py, codegen.py, vast.py,
-                      llvmgen.py = LLVM IR 뒷단, runtime.c = LLVM판 실행 지원)
-  examples/           예제
-  tests/run_all.py    회귀 시험 실행기
-  tests/must_reject/  거부 회귀 시험
-  tests/runtime/      실행 시험(경계 검사·안전 모드)
-  bench/              문제, 참조 구현, 시험 장치(harness/run.py), 변이 시험(mutate.py)
-  solve/              독립 AI 풀이 (rust, pruv)
-  docs/M1_LLVM_SPEC.md  LLVM 뒷단 명세(타입·ABI·메모리·시험 연결)
-  docs/research-2026-11.md  관련 연구 조사와 청사진 수정 제안
+  BLUEPRINT.md        this document
+  SPEC.md             language spec
+  RESULTS.md          experiment results
+  pruvc/              compiler (pruvc.py, vparser.py, check.py, verify.py, codegen.py, vast.py,
+                      llvmgen.py = LLVM IR backend, runtime.c = LLVM-implementation runtime support)
+  examples/           examples
+  tests/run_all.py    regression test runner
+  tests/must_reject/  reject regression tests
+  tests/runtime/      execution tests (bounds checks, safe mode)
+  bench/              problems, reference implementations, test rig (harness/run.py), mutation testing (mutate.py)
+  solve/              independent AI solutions (rust, pruv)
+  docs/M1_LLVM_SPEC.md  LLVM backend spec (types, ABI, memory, test wiring)
+  docs/research-2026-11.md  survey of related research and proposed blueprint revisions
 ```

@@ -1,55 +1,55 @@
-# tests/abi — Windows x64 외부 wrapper(sret) 표본
+# tests/abi — Windows x64 external wrapper (sret) samples
 
-## 목적
-`docs/M3_C4_SPEC.md` 7절: Windows x64 에서는 16바이트 Option/Result 반환을 `{i64,i64}` 값 반환이 아니라
-`void` + 첫 숨은 `ptr sret({i64,i64}) align 8` 로 **처음부터** 출력해야 한다. 이 폴더는 그 기대 IR 표본과,
-이 맥에서 가능한 검사(교차 COFF 객체화, verify, 기호, C 기준 서명 비교)를 둔다.
-이름·인자 순서는 `pruvc/llvmgen.py` `abi_of`(1214~1285줄)를 따르고 반환만 바꿨다.
+## Purpose
+`docs/M3_C4_SPEC.md` §7: on Windows x64, a 16-byte Option/Result return must be emitted **from the start** not as a `{i64,i64}` value return but as
+`void` + a first hidden `ptr sret({i64,i64}) align 8`. This folder holds the expected IR samples for that,
+and the checks possible on this Mac (cross COFF object generation, verify, symbols, signature comparison against a C reference).
+Names and argument order follow `abi_of` in `pruvc/llvmgen.py` (lines 1214–1285); only the return was changed.
 
-## 실행
+## Running
 ```
-.venv/bin/python tests/abi/check_abi.py [--ir-tool PATH]     # 환경변수 PRUV_IR_TOOL 도 가능
+.venv/bin/python tests/abi/check_abi.py [--ir-tool PATH]     # the environment variable PRUV_IR_TOOL also works
 ```
-- `--ir-tool` 이 있으면 `PATH obj IN.ll -o OUT.o --target x86_64-pc-windows-msvc`(받은 IR 을 그대로 객체화),
-  없으면 `llc -mtriple=x86_64-pc-windows-msvc -filetype=obj -O2`.
-- 주의: Python 판(legacy) IR 의 Windows 객체화는 지원하지 않는다(Option/Result 를 `{i64,i64}` 값으로 반환해 MSVC ABI 와 어긋남). `abi_lower` 검사는 2026-11-11 제거. Windows 대상 IR 은 Rust 판 `pruvc --target` 으로 만든다.
-- 도구는 `/opt/homebrew/opt/llvm@22/bin` 우선, 없으면 PATH.
-- 하나라도 실패하면 exit 1. 마지막 줄은 항상 `Windows 실행 ABI 는 이 맥에서 확인 불가: Windows CI 필요`.
+- With `--ir-tool`, it runs `PATH obj IN.ll -o OUT.o --target x86_64-pc-windows-msvc` (turning the given IR into an object as is);
+  without it, `llc -mtriple=x86_64-pc-windows-msvc -filetype=obj -O2`.
+- Note: generating a Windows object from the Python implementation's (legacy) IR is not supported (it returns Option/Result as a `{i64,i64}` value, which does not match the MSVC ABI). The `abi_lower` check was removed on 2026-11-11. Windows-target IR is produced with the Rust implementation's `pruvc --target`.
+- Tools are taken from `/opt/homebrew/opt/llvm@22/bin` first, otherwise from PATH.
+- If any check fails, exit 1. The last line is always `Windows execution ABI cannot be checked on this Mac: Windows CI needed`.
 
-## 표본이 확인하는 경계
-| 파일 | 경계 |
+## Boundaries the samples check
+| File | Boundary |
 |---|---|
-| `win_x64/opt_ret.ll` | Option 반환: void + 첫 숨은 sret align 8, tag zext + payload 저장, Some/None 두 경로 |
-| `win_x64/res_ret.ll` | Result 반환(ok/err), 같은 sret 모양 |
-| `win_x64/args_0_1_5.ll` | 인자 0/1/5개 + sret. sret 가 RCX 를 차지하므로 사용자 인자 3개까지 레지스터, 이후 스택 |
-| `win_x64/arr_ret.ll` | 배열 반환: 마지막 out 포인터 + void, sret 없음 |
-| `win_x64/struct_opt.ll` | 사용자 구조체(Option 필드 포함): word 배열 포인터 인자/마지막 out 포인터, sret 없음 |
-| `win_x64/ref.c` | clang 이 C 의 2×int64 반환을 어떻게 하강하는지 기준(declare 와 define 서명) |
-| `win_x64/rust_extern.rs` | Windows CI 에서 실행할 Rust extern 호출 드라이버 |
+| `win_x64/opt_ret.ll` | Option return: void + first hidden sret align 8, tag zext + payload store, the Some/None two paths |
+| `win_x64/res_ret.ll` | Result return (ok/err), same sret shape |
+| `win_x64/args_0_1_5.ll` | 0/1/5 arguments + sret. Since sret takes RCX, up to 3 user arguments go in registers, the rest on the stack |
+| `win_x64/arr_ret.ll` | Array return: last out pointer + void, no sret |
+| `win_x64/struct_opt.ll` | User struct (including an Option field): word-array pointer argument / last out pointer, no sret |
+| `win_x64/ref.c` | Reference for how clang lowers a C 2×int64 return (declare and define signatures) |
+| `win_x64/rust_extern.rs` | Rust extern call driver to run on the Windows CI |
 
-## 런타임 v2 링크 시험
-`check_runtime_v2.py [--pruvc PATH]` 는 G2 A4(`docs/G2_A4_IMPL.md` 6절)의 6경우를 호스트 대상에서 실제로 링크해 본다:
-새 바인딩+새 런타임(`g2a_u8_ret`·`arr_ret`)은 성공(`[u8]` 쪽은 `pruv-alloc-balance` 확인), 새 바인딩+옛 런타임,
-v2 helper 를 뺀 옛 바인딩 흉내+새 런타임, 새 바인딩+malloc 런타임(marker 없음)은 `rustc` 링크 실패와 기대 심볼 이름을 요구한다.
-`runtime_v1.c` 는 A3 커밋(bec0348)의 `pruvc/runtime.c` 를 그대로 얼린 사본이며 옛 런타임 역할만 한다(수정 금지).
-경우마다 `ok <이름>` / `FAIL <이름>: 이유` 한 줄, 하나라도 FAIL 이면 exit 1. `tests/m3_all.py` 의 `abi_v2` 단계로도 돈다.
+## Runtime v2 link test
+`check_runtime_v2.py [--pruvc PATH]` actually links the 6 cases of G2 A4 (`docs/G2_A4_IMPL.md` §6) on the host target:
+new bindings + new runtime (`g2a_u8_ret`, `arr_ret`) must succeed (for the `[u8]` side, `pruv-alloc-balance` is checked); new bindings + old runtime,
+old bindings imitated without the v2 helper + new runtime, and new bindings + malloc runtime (no marker) must fail the `rustc` link with the expected symbol name.
+`runtime_v1.c` is a frozen copy of `pruvc/runtime.c` at the A3 commit (bec0348) and serves only as the old runtime (do not modify).
+Each case prints one line, `ok <name>` / `FAIL <name>: reason`; if any is FAIL, exit 1. It also runs as the `abi_v2` stage of `tests/m3_all.py`.
 
-## Windows CI 에서 할 일 (이 맥에서는 불가)
-1. 표본·실제 생성 IR 을 객체화해 MSVC 링커로 `rust_extern.rs` 및 C 호출자와 링크, 실행.
-2. 네이티브 실행: Some/None, Ok/Err, i64 MIN/MAX, 인자 0·1·5개, 반복 호출(10만 회 이상),
-   구조체 내부 Option, 배열 반환.
-3. cl/clang-cl 이 만든 2×int64 반환 IR 과 우리 서명 비교(이 폴더 check_abi.py 도 CI 에서 함께 실행).
+## To do on the Windows CI (not possible on this Mac)
+1. Turn the samples and the actually generated IR into objects, link them with the MSVC linker against `rust_extern.rs` and the C caller, and run them.
+2. Native execution: Some/None, Ok/Err, i64 MIN/MAX, 0/1/5 arguments, repeated calls (100,000 or more),
+   Option inside a struct, array return.
+3. Compare our signatures with the 2×int64 return IR produced by cl/clang-cl (this folder's check_abi.py is also run together on the CI).
 
-## core/abi.rs 이식 계획 (초안)
+## core/abi.rs porting plan (draft)
 ```rust
 pub enum Target { MacArm64, MacX64, LinuxX64, WinX64 }
 
 pub enum RetPlan {
     Void,
     Scalar,            // i64 / bool(zext)
-    TaggedRegs,        // { i64, i64 } 값 반환 (macOS, Linux x64)
-    TaggedSret,        // void + 첫 숨은 ptr sret({i64,i64}) align 8 (Windows x64)
-    OutPtr,            // 마지막 명시 out 포인터 + void (배열, 사용자 타입)
+    TaggedRegs,        // { i64, i64 } value return (macOS, Linux x64)
+    TaggedSret,        // void + first hidden ptr sret({i64,i64}) align 8 (Windows x64)
+    OutPtr,            // last explicit out pointer + void (arrays, user types)
 }
 
 pub enum ParamPlan { Scalar, Bool, Array /* ptr,n */, Tagged /* tag,v */, UserWords /* ptr */ }
@@ -59,10 +59,10 @@ pub struct AbiPlan { pub name: String, pub params: Vec<ParamPlan>, pub ret: RetP
 pub fn plan_abi(f: &FnSig, target: Target) -> AbiPlan;
 pub fn emit_wrapper(plan: &AbiPlan, f: &FnSig, tt: &TypeTable, out: &mut String);
 ```
-- `plan_abi` 는 Option/Result 반환만 target 으로 갈라 `TaggedRegs`/`TaggedSret` 선택, 나머지는 target 무관.
-- `emit_wrapper` 는 entry 호출 후 `{i1,i64}` 를 tag zext 두 i64 로 만든다. `TaggedSret` 는 sret 포인터의 두 슬롯에 저장하고 `ret void`.
-- 선언·정의·IR call site 의 sret 속성을 같은 plan 에서 만들어 일치시킨다.
+- `plan_abi` splits only the Option/Result return by target, choosing `TaggedRegs`/`TaggedSret`; everything else is target-independent.
+- `emit_wrapper` turns the `{i1,i64}` after the entry call into two i64s with the tag zext'd. `TaggedSret` stores into the two slots of the sret pointer and does `ret void`.
+- The sret attributes of the declaration, the definition, and the IR call site are produced from the same plan so that they match.
 
-## 확인 안 된 가정
-이 표본들은 작성만 했고 실행해 보지 못했다(셸 없음). LLVM 22 문법·datalayout 문자열,
-clang 이 내는 sret 속성 모양, Result 의 tag 의미는 첫 실행 때 확인해야 한다.
+## Unverified assumptions
+These samples were only written and never run (no shell). The LLVM 22 syntax and datalayout string,
+the shape of the sret attribute clang emits, and the meaning of Result's tag must be checked on the first run.

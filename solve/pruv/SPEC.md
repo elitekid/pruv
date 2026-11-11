@@ -1,6 +1,6 @@
 # Vow language spec v0.1
 
-> 당시 독립 작업자에게 준 입력 사본이라 옛 이름(Vow)을 그대로 둔다. 지금 이름은 Pruv(RESULTS 14절).
+> This is the input copy given to the independent worker at the time, so the old name (Vow) is kept as is. The current name is Pruv (RESULTS §14).
 
 Vow is a tiny language designed to be written by AI. Humans read only the contracts
 (`requires` / `ensures`). The compiler proves every function correct against its contracts

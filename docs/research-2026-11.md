@@ -1,37 +1,37 @@
-# 관련 연구 조사 (2026-11-10, Gemini 3.8 Flash 조사 + 일부 직접 확인)
+# Related research survey (2026-11-10, survey by Gemini 3.8 Flash + some direct checks)
 
-> 이름 변경(2026-11-10): 이 문서의 "Vow"는 지금의 **Pruv**다. 당시 기록이라 본문은 그대로 둔다.
+> Rename (2026-11-10): "Vow" in this document is today's **Pruv**. It is a record from that time, so the body is left as is.
 
-원문은 Lair 위임 카드(07a03351)에 있다. 아래는 Vow 청사진에 쓸 것만 추렸다.
-표시: ✔ 직접 열어 확인함 · ? 확인 못 함(조사자 제시)
+The original is on the Lair delegation card (07a03351). Below is only what is to be used in the Vow blueprint.
+Marks: ✔ opened and checked directly · ? not checked (as presented by the surveyor)
 
-## 청사진에 바로 반영할 교훈
+## Lessons to reflect in the blueprint right away
 
-| 단계 | 교훈 | 근거 |
+| Stage | Lesson | Source |
 |---|---|---|
-| 1 불변식 추론 | LLM은 "참이지만 쓸모없는" 계약(`ensures true`)을 쉽게 쓴다. Houdini식 후보 소거나 코드·명세·설명 교차 검사가 필요하다 | Houdini(2001) ?, Clover(2023) ? arxiv.org/abs/2310.17807 |
-| 2 AI가 검증 코드 쓰기 | 검증기 오류를 유형별로 나눠 구체 지시로 바꿔 주면 성공률이 크게 오른다. Verus 매크로와 빌림 규칙은 LLM에게 부담이 크다 | DafnyBench 최고 68% ✔ arxiv.org/abs/2406.08467, AutoVerus ? arxiv.org/abs/2409.13082 |
-| 2 집계 함수 | sum, count를 재귀로 정의하게 두면 SMT가 매칭 루프에 빠진다. **언어 내장 집계 + 보조정리 자동 주입**으로 가야 한다. count는 multiset으로 인코딩 | Dafny, Why3 int.Sum, Verus trigger 문서 ? |
-| 3 자동 시험 | 증명 전에 PBT로 반례를 먼저 찾고, 증명 실패 계약은 런타임 검사로 남긴다(우아한 성능 저하) | DSpec2Test ✔ arxiv.org/abs/2609.29713, QuickCheck |
-| 4 최적화 분리 | 스케줄 변환의 동등성은 Exo처럼 효과 분석으로 보장한다. 탐색은 비용 모델 + 빔 탐색 | Halide, Exo, TVM, AlphaDev ? |
-| 6 다중 출력 | 계약과 유령 코드는 흔적 없이 지운다. 무한 정수를 i64로 내릴 때 범위 증명이 핵심이다 | Dafny 백엔드, Low*/KaRaMeL, Aeneas ? |
-| 5 구조 성능 | 타이머, 감시자, 시그널은 소유권이나 스코프 정리 없이는 반응형 그래프에서 샌다. 비용 계약은 RAML식 선형계획 환원 | Adapton, Salsa, Incremental, Svelte runes, RAML ? |
+| 1 Invariant inference | LLMs easily write contracts that are "true but useless" (`ensures true`). Houdini-style candidate elimination or cross-checking code, spec, and description is needed | Houdini(2001) ?, Clover(2023) ? arxiv.org/abs/2310.17807 |
+| 2 AI writing verified code | Sorting verifier errors by type and turning them into concrete instructions raises the success rate a lot. Verus macros and borrowing rules are a heavy burden for LLMs | DafnyBench best 68% ✔ arxiv.org/abs/2406.08467, AutoVerus ? arxiv.org/abs/2409.13082 |
+| 2 Aggregate functions | If sum and count are defined recursively, the SMT solver falls into matching loops. We should go with **built-in aggregates + automatic lemma injection**. Encode count as a multiset | Dafny, Why3 int.Sum, Verus trigger docs ? |
+| 3 Automatic testing | Find counterexamples first with PBT before proving, and leave contracts whose proofs fail as runtime checks (graceful degradation) | DSpec2Test ✔ arxiv.org/abs/2609.29713, QuickCheck |
+| 4 Separating optimization | Guarantee the equivalence of schedule transformations by effect analysis, as Exo does. Search with a cost model + beam search | Halide, Exo, TVM, AlphaDev ? |
+| 6 Multiple outputs | Erase contracts and ghost code without a trace. When lowering unbounded integers to i64, the range proof is the key | Dafny backend, Low*/KaRaMeL, Aeneas ? |
+| 5 Structural performance | Timers, watchers, and signals leak in a reactive graph without ownership or scope cleanup. Cost contracts reduce to linear programming, as in RAML | Adapton, Salsa, Incremental, Svelte runes, RAML ? |
 
-## 개발자 여론 (조사자 요약, 원문 미확인)
-- Martin Kleppmann 글 "AI가 형식 검증을 주류로 만든다"가 HN에서 큰 지지를 받았다. 조사자는 2024년 12월이라고 했지만 연도는 확인 못 했다.
-- "쓰레기 명세 → 검증된 쓰레기", AI의 보상 해킹(자명한 계약으로 검증기 통과) 우려가 있다.
-- z3 불안정성: 사소한 변경으로 밀리초에서 타임아웃으로 튄다. 증명과 런타임 검사를 섞는 혼합 방식이 필요하다는 의견이 많다.
+## Developer opinion (surveyor's summary, original not checked)
+- Martin Kleppmann's post "AI will make formal verification mainstream" got strong support on HN. The surveyor said it was December 2024, but the year was not checked.
+- There are concerns about "garbage spec → verified garbage" and AI reward hacking (passing the verifier with trivial contracts).
+- z3 instability: a trivial change can jump from milliseconds to a timeout. Many opinions say a hybrid mixing proofs and runtime checks is needed.
 
-## 경쟁자와 Vow의 차별점
-| 경쟁자 | 강점 | Vow가 다를 수 있는 점 |
+## Competitors and how Vow differs
+| Competitor | Strength | Where Vow may differ |
 |---|---|---|
-| Dafny | 가장 완성도 높은 계약 언어, 다중 출력 | 사람용 설계(트리거, 보조정리 수작업). Vow는 AI용: 내장 집계, 자동 보조정리 |
-| Verus | Rust 수준 성능 | 빌림 규칙과 매크로가 LLM에게 어렵다. Rust 외 출력 없음 |
-| Exo | 검증된 스케줄 분리 | 가속기 커널에 한정됨 |
+| Dafny | The most polished contract language, multiple outputs | Designed for humans (triggers, manual lemmas). Vow is for AI: built-in aggregates, automatic lemmas |
+| Verus | Rust-level performance | Borrowing rules and macros are hard for LLMs. No output other than Rust |
+| Exo | Verified schedule separation | Limited to accelerator kernels |
 
-Vow의 새로운 점 후보: ① AI용으로 SMT 함정을 피한 문법(내장 집계) ② 증명에서 시험으로 이어지는 연속 등급 ③ 검증된 AI 스케줄 탐색 ④ 증분 계산과 비용 계약의 결합.
+Candidates for Vow's novelty: ① a syntax for AI that avoids SMT pitfalls (built-in aggregates) ② a continuous grading from proof to testing ③ verified AI schedule search ④ combining incremental computation with cost contracts.
 
-## 청사진 수정 제안
-- 2단계: "재귀 정의 집계"가 아니라 **내장 집계 + 자동 보조정리**로 명시한다.
-- 3단계: 증명 실패를 빌드 실패로 두지 말고 런타임 검사로 남기는 선택지를 기본으로 둔다.
-- 0단계에 "자명한 계약 탐지"(ensures가 코드 없이도 참이면 경고)를 추가한다. 보상 해킹을 막는다.
+## Proposed blueprint changes
+- Stage 2: state **built-in aggregates + automatic lemmas** explicitly, not "recursively defined aggregates".
+- Stage 3: make the option of leaving a failed proof as a runtime check the default, instead of treating it as a build failure.
+- Add "trivial contract detection" to Stage 0 (warn when an ensures is true even without the code). This prevents reward hacking.

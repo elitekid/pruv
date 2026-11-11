@@ -2,17 +2,17 @@
 
 ## main_i128.ll
 
-i128 곱·부호 있는 나눗셈·나머지(양수 a, 음수 -a)를 하고 `@main` 이 결과를 찍는 진입점 IR.
-a = 2^64 + 5, b = 10. 각 줄은 결과 i128 의 `상위64비트 하위64비트`(둘 다 부호 없는 십진수).
+Entry-point IR that does an i128 multiplication, signed division, and remainder (for a positive a and a negative -a), with `@main` printing the results.
+a = 2^64 + 5, b = 10. Each line is the result i128 as `upper-64-bits lower-64-bits` (both unsigned decimal numbers).
 
 ```
 pruvc-ir-tool obj samples/main_i128.ll -o /tmp/m.o
-pruvc-ir-tool undef /tmp/m.o          # 대상에 따라 __multi3 / __divti3 / __modti3 이 나올 수 있음
+pruvc-ir-tool undef /tmp/m.o          # depending on the target, __multi3 / __divti3 / __modti3 may appear
 pruvc-ir-tool link /tmp/m.o -o /tmp/m --runtime none
 /tmp/m
 ```
 
-기대 출력(손으로 계산; 실행해 확인하지 못함):
+Expected output (computed by hand; not confirmed by running it):
 
 ```
 10 50
@@ -24,6 +24,6 @@ pruvc-ir-tool link /tmp/m.o -o /tmp/m --runtime none
 
 - `a*10 = 10·2^64 + 50`
 - `a/10 = 1844674407370955162`, `a%10 = 1`
-- `(-a)/10 = -1844674407370955162` (0 쪽으로 버림), `(-a)%10 = -1` — 2^128 에 대한 보수로 표시됨
+- `(-a)/10 = -1844674407370955162` (truncated toward 0), `(-a)%10 = -1` — shown as the complement with respect to 2^128
 
-종료 코드 0. 런타임 객체는 필요 없어 `--runtime none` 으로 링크한다(libc 의 printf 만 사용).
+Exit code 0. No runtime object is needed, so it is linked with `--runtime none` (only libc's printf is used).

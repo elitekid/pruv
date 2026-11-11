@@ -1,148 +1,148 @@
-# M1 LLVM 뒷단 명세 (2026-11-10 확정)
+# M1 LLVM Backend Spec (finalized 2026-11-10)
 
-`pruvc --backend llvm`이 텍스트 LLVM IR(`.ll`)과 Rust 바인딩(`.rs`)을 낸다. 정본(의미 기준)은 `pruvc/codegen.py`(Rust 뒷단)이고, LLVM판은 같은 프로그램에서 같은 출력·같은 오류 메시지·같은 종료 코드(101)를 내야 한다. `codegen.py`·`vast.py`·`check.py`·`verify.py`·`vparser.py`는 고치지 않는다.
+`pruvc --backend llvm` emits textual LLVM IR (`.ll`) and Rust bindings (`.rs`). The canonical reference (the semantic standard) is `pruvc/codegen.py` (the Rust backend), and the LLVM implementation must produce the same output, the same error messages, and the same exit code (101) for the same program. `codegen.py`, `vast.py`, `check.py`, `verify.py`, and `vparser.py` are not modified.
 
-## 1. 파일과 담당
+## 1. Files and ownership
 
-| 파일 | 내용 |
+| File | Contents |
 |---|---|
-| `pruvc/llvmgen.py` (새) | `gen_llvm(prog, verified=True, trust_callers=False) -> (ir: str, rust_bindings: str)` |
-| `pruvc/runtime.c` (새) | 2절 실행 지원 함수 |
+| `pruvc/llvmgen.py` (new) | `gen_llvm(prog, verified=True, trust_callers=False) -> (ir: str, rust_bindings: str)` |
+| `pruvc/runtime.c` (new) | the runtime support functions of §2 |
 | `pruvc/pruvc.py` | `--backend rust|llvm`, `--rust-bindings PATH` |
-| `tests/run_all.py`, `bench/harness/run.py`, `bench/mutate.py` | `--backend` 옵션, LLVM판 빌드·링크 |
+| `tests/run_all.py`, `bench/harness/run.py`, `bench/mutate.py` | `--backend` option, build and link of the LLVM implementation |
 
 ## 2. runtime.c (C11, clang -O2 -std=c11 -c)
 
 ```c
 #include <stdint.h>
-int64_t *pruv_alloc(int64_t len, int64_t value);   // len>=0 (호출자가 보장). len==0 -> NULL. len개를 value로 채움
-int64_t *pruv_copy(const int64_t *src, int64_t len); // len==0 -> NULL (src 안 읽음)
-void pruv_free(int64_t *data, int64_t len);        // NULL 또는 len==0 -> 무동작
-void pruv_print_i64(int64_t v);                    // "%lld\n" 를 stdout에, 매번 fflush(stdout)
+int64_t *pruv_alloc(int64_t len, int64_t value);   // len>=0 (guaranteed by the caller). len==0 -> NULL. fills len elements with value
+int64_t *pruv_copy(const int64_t *src, int64_t len); // len==0 -> NULL (does not read src)
+void pruv_free(int64_t *data, int64_t len);        // NULL or len==0 -> no-op
+void pruv_print_i64(int64_t v);                    // "%lld\n" to stdout, fflush(stdout) every time
 void pruv_print_bool(int64_t v);                   // "true\n"/"false\n", fflush
 _Noreturn void pruv_panic_oob(int64_t i, int64_t len);              // "pruv: index out of bounds: <i> (len <len>)"
 _Noreturn void pruv_panic_arith(const char *detail);                // "pruv: arithmetic error: <detail>"
 _Noreturn void pruv_panic_requires(const char *fn, const char *expr);// "pruv: requires violated: <fn>: <expr>"
 _Noreturn void pruv_panic_undefined(const char *detail);            // "pruv: requires undefined: <detail>"
 ```
-- panic 계열: `fflush(stdout)` → 메시지+`\n`을 stderr에 → `exit(101)`.
-- 할당 실패(또는 len*8 넘침): 기본(malloc) 모드는 `pruv_panic_arith("allocation failed")`. Rust 할당기 모드는 바인딩의 `handle_alloc_error`가 abort한다(정본 `vec!`과 같은 동작).
-- 할당 백엔드 두 가지:
-  - 기본: `malloc`/`free`.
-  - `-DPRUV_RUST_ALLOCATOR`: 할당은 `int64_t *pruv_host_alloc(int64_t len)`, 해제는 `void pruv_host_free(int64_t *data, int64_t len)`(둘 다 Rust 바인딩이 정의, len>0일 때만 부름). `value == 0`이면 할당은 `int64_t *pruv_host_alloc_zeroed(int64_t len)`(0 초기화 할당, 채우기 루프 없음; 기본 모드는 `calloc`). panic 함수는 맨 먼저 `void pruv_host_flush(void)`(Rust stdout flush)를 부른다. 이 모드에서만 무동작 함수 `void pruv_runtime_rust_allocator_v1(void)`를 정의한다(바인딩이 참조 → 잘못된 런타임을 링크하면 링크 실패).
-  - `-DPRUV_COUNT_ALLOCS`(시험용, 두 모드와 같이 쓸 수 있음): 성공한 할당 수와 null 아닌 `pruv_free` 수를 세고, `atexit`로 stderr에 `pruv-alloc-balance: <allocs> <frees>` 한 줄을 낸다.
+- Panic family: `fflush(stdout)` → message + `\n` to stderr → `exit(101)`.
+- Allocation failure (or len*8 overflow): in the default (malloc) mode, `pruv_panic_arith("allocation failed")`. In the Rust allocator mode, the binding's `handle_alloc_error` aborts (the same behavior as the canonical `vec!`).
+- Two allocation backends:
+  - Default: `malloc`/`free`.
+  - `-DPRUV_RUST_ALLOCATOR`: allocation is `int64_t *pruv_host_alloc(int64_t len)` and deallocation is `void pruv_host_free(int64_t *data, int64_t len)` (both defined by the Rust binding, called only when len>0). If `value == 0`, allocation is `int64_t *pruv_host_alloc_zeroed(int64_t len)` (zero-initialized allocation, no fill loop; the default mode uses `calloc`). Panic functions first call `void pruv_host_flush(void)` (Rust stdout flush). Only in this mode, the no-op function `void pruv_runtime_rust_allocator_v1(void)` is defined (the binding references it → linking the wrong runtime fails at link time).
+  - `-DPRUV_COUNT_ALLOCS` (for tests, can be combined with either of the two modes): counts successful allocations and non-null `pruv_free` calls, and emits one line `pruv-alloc-balance: <allocs> <frees>` to stderr via `atexit`.
 
-## 3. 값 → LLVM 타입
+## 3. Value → LLVM type
 
-| Pruv | 내부 SSA | 비고 |
+| Pruv | Internal SSA | Notes |
 |---|---|---|
 | i64 | `i64` | |
-| bool | `i1` (alloca 슬롯은 `i1`이어도 됨) | |
+| bool | `i1` (an alloca slot may be `i1` too) | |
 | unit | `void` | |
-| [i64] | `{ ptr, i64 }` (data, len) | 길이 0 소유 배열은 `{null, 0}` |
+| [i64] | `{ ptr, i64 }` (data, len) | an owned array of length 0 is `{null, 0}` |
 | Option<i64> | `{ i1, i64 }` | tag: Some=1, None=0. None payload=0 |
 | Result<i64,i64> | `{ i1, i64 }` | tag: Ok=1, Err=0 |
-| 계약 정수 | `i128` | 입력·원소·payload는 `sext` |
+| contract integer | `i128` | inputs, elements, and payloads are `sext` |
 
-소유 여부는 IR에 태그로 넣지 않고 생성기가 컴파일 시간에 추적한다(배열 인자 = 빌림, alloc/copy/배열 반환 호출 = 소유).
+Ownership is not put into the IR as a tag; the generator tracks it at compile time (an array argument = borrowed, results of alloc/copy/array-returning calls = owned).
 
-## 4. 함수 이름과 호출 규약
+## 4. Function names and calling convention
 
-함수 `f`마다 세 개를 낸다.
+Three are emitted per function `f`.
 
-| 이름 | 연결 | 하는 일 |
+| Name | Linkage | What it does |
 |---|---|---|
-| `@f__pruv_body` | `internal` | 본문(증명 모드 또는 안전 모드) |
-| `@f__pruv_entry` | `internal` | trust가 아니고 requires가 있으면 선언 순서대로 requires를 i128로 평가해 실패 시 panic, 그다음 body 호출. 그 밖에는 body로 바로 넘김 |
-| `@pruv_abi_f` | 외부(C 호출 규약) | 외부 ABI 값을 내부 값으로 바꿔 entry 호출 |
+| `@f__pruv_body` | `internal` | the body (proof mode or safe mode) |
+| `@f__pruv_entry` | `internal` | if not trust and there is a requires, evaluates the requires in declaration order as i128 and panics on failure, then calls body. Otherwise passes straight to body |
+| `@pruv_abi_f` | external (C calling convention) | converts external ABI values to internal values and calls entry |
 
-- Pruv 안쪽 호출: 증명 모드 → `f__pruv_body`(호출자가 requires를 증명함), 안전 모드 → `f__pruv_entry`.
-- 내부 시그니처: 배열 인자는 `ptr, i64` 두 인자로 펼침. bool은 `i1`. Option/Result 인자·반환은 `{i1,i64}` 집합값. 배열 반환은 `{ptr,i64}` 집합값.
-- 외부 ABI(`pruv_abi_f`):
-  - i64 → `i64`, bool 인자 → `i64`(0/1), 배열 인자 → `ptr, i64`, Option/Result 인자 → `i64 tag, i64 value`.
-  - 반환: i64 → `i64`, bool → `i64`(0/1), unit → `void`.
-  - 배열 반환 → `void`, 마지막 인자 `ptr out`에 `PruvArray { int64_t *data; int64_t len; }` 저장.
-  - Option/Result 반환은 `{i64,i64}` 값 반환(`{tag zext, payload}`, Rust 쪽은 `#[repr(C)] Pruv__Tagged`를 `-> Pruv__Tagged`로 받음; macOS arm64·SysV 전용; Windows x64는 16바이트 구조체를 숨은 포인터로 돌려주므로 M3에서 out-pointer로 되돌리거나 ABI 하강 필요).
-    - 이유: p04 백만 회 호출에서 out-pointer 저장·읽기 비용을 측정했고, 값 반환이 그 비용을 없앤다.
-  - 배열 반환만 out-pointer를 쓴다. `sret` 속성은 쓰지 않는다(명시적 out-pointer).
-- IR에 target triple·datalayout은 넣지 않는다(clang에 `-Wno-override-module`).
+- Calls inside Pruv: proof mode → `f__pruv_body` (the caller proves the requires), safe mode → `f__pruv_entry`.
+- Internal signature: an array argument is expanded into two arguments `ptr, i64`. bool is `i1`. Option/Result arguments and returns are `{i1,i64}` aggregate values. An array return is a `{ptr,i64}` aggregate value.
+- External ABI (`pruv_abi_f`):
+  - i64 → `i64`, bool argument → `i64` (0/1), array argument → `ptr, i64`, Option/Result argument → `i64 tag, i64 value`.
+  - Return: i64 → `i64`, bool → `i64` (0/1), unit → `void`.
+  - Array return → `void`, stored into the last argument `ptr out` as `PruvArray { int64_t *data; int64_t len; }`.
+  - An Option/Result return is a `{i64,i64}` value return (`{tag zext, payload}`; on the Rust side `#[repr(C)] Pruv__Tagged` is received as `-> Pruv__Tagged`; macOS arm64 and SysV only; Windows x64 returns a 16-byte struct through a hidden pointer, so in M3 it must be turned back into an out-pointer or ABI lowering is needed).
+    - Reason: the cost of out-pointer stores and reads was measured in p04's million calls, and value return removes that cost.
+  - Only an array return uses an out-pointer. The `sret` attribute is not used (an explicit out-pointer).
+- The IR contains no target triple or datalayout (`-Wno-override-module` for clang).
 
-## 5. 본문 하강
+## 5. Body lowering
 
-- 지역 변수·반환 슬롯은 entry 블록의 `alloca`(clang -O2가 승격). 루프 안에서 alloca 금지.
-- 모든 기본 블록은 terminator 하나로 끝난다. return 뒤 죽은 문장은 내지 않는다(새 블록에 넣고 `unreachable`이어도 됨).
-- `&&`, `||`는 단락 평가.
-- `assert`, `invariant`, `decreases`, `ensures`는 실행 코드 없음.
+- Local variables and the return slot are `alloca` in the entry block (clang -O2 promotes them). No alloca inside loops.
+- Every basic block ends with exactly one terminator. Dead statements after a return are not emitted (putting them in a new block that ends in `unreachable` is also fine).
+- `&&` and `||` are short-circuit evaluated.
+- `assert`, `invariant`, `decreases`, and `ensures` have no runtime code.
 
-| 연산 | 증명 모드 | 안전 모드 |
+| Operation | Proof mode | Safe mode |
 |---|---|---|
-| `+ - *` | `add/sub/mul nsw i64` | `llvm.sadd/ssub/smul.with.overflow.i64`, 실패 → `pruv_panic_arith("overflow in +")` 등 |
-| 단항 `-` | `sub nsw i64 0, x` | `ssub.with.overflow(0,x)` → `"overflow in unary -"` |
-| `/ %` | `udiv/urem` (검증기가 피제수>=0, 제수>0 증명) | `b > 0 && a >= 0` 검사 뒤 `udiv/urem`, 실패 → `"division outside domain: need divisor > 0 and dividend >= 0"` |
-| 인덱스 읽기·쓰기 | 검사 없이 `getelementptr inbounds i64, ptr %d, i64 %i` | `0 <= i < len`(무부호 비교 하나로 가능) 성공 블록에서만 GEP, 실패 → `pruv_panic_oob(i, len)` |
-| `alloc(n, v)` | `pruv_alloc(n, v)` | `0 <= n <= 2^40` 검사, 실패 → `"alloc length outside 0..2^40"` |
-| `copy(a)` | `pruv_copy(d, len)` | 같음 |
-| `len(a)` | 배열의 len | 같음 |
-| `print(x)` | `pruv_print_i64` / `pruv_print_bool(zext)` | 같음 |
+| `+ - *` | `add/sub/mul nsw i64` | `llvm.sadd/ssub/smul.with.overflow.i64`, failure → `pruv_panic_arith("overflow in +")`, etc. |
+| unary `-` | `sub nsw i64 0, x` | `ssub.with.overflow(0,x)` → `"overflow in unary -"` |
+| `/ %` | `udiv/urem` (the verifier proves dividend>=0, divisor>0) | after the `b > 0 && a >= 0` check, `udiv/urem`; failure → `"division outside domain: need divisor > 0 and dividend >= 0"` |
+| Index read/write | `getelementptr inbounds i64, ptr %d, i64 %i` without a check | `0 <= i < len` (possible with a single unsigned comparison), GEP only in the success block; failure → `pruv_panic_oob(i, len)` |
+| `alloc(n, v)` | `pruv_alloc(n, v)` | check `0 <= n <= 2^40`; failure → `"alloc length outside 0..2^40"` |
+| `copy(a)` | `pruv_copy(d, len)` | same |
+| `len(a)` | the array's len | same |
+| `print(x)` | `pruv_print_i64` / `pruv_print_bool(zext)` | same |
 
-- 실패 경로는 별도 블록에서 panic 호출 + `unreachable`. panic 선언에 `noreturn cold`.
-- 평가 순서는 모든 모드에서 소스 순서(왼쪽에서 오른쪽)다(`! io` 사용자 함수를 식 안에서 부를 수 있어 순서가 출력으로 드러난다). 인덱스 대입 `a[i] = v`: i → v(안전 모드는 이어서 범위 검사) → store. `alloc(n, v)`: n → v(안전 모드는 이어서 길이 검사).
-- 증명 사실 표시: 증명 모드 본체에만 `nsw`, `inbounds`, `udiv/urem`. 안전 모드 본체에는 `nsw`를 붙이지 않는다(검사 성공 경로의 결과는 intrinsic 값 그대로).
+- A failure path is a separate block with a panic call + `unreachable`. The panic declarations carry `noreturn cold`.
+- The evaluation order in every mode is source order (left to right) (a `! io` user function can be called inside an expression, so the order shows up in the output). Index assignment `a[i] = v`: i → v (in safe mode followed by the range check) → store. `alloc(n, v)`: n → v (in safe mode followed by the length check).
+- Marking of proved facts: `nsw`, `inbounds`, and `udiv/urem` only in the proof-mode body. No `nsw` is attached to the safe-mode body (the result on the successful check path is the intrinsic value as is).
 
-## 6. 메모리 (Rust `Vec` drop과 같은 의미)
+## 6. Memory (the same semantics as Rust `Vec` drop)
 
-- 소유 배열 지역 변수는 선언된 블록이 끝날 때 선언 역순으로 `pruv_free`. while 본문 지역은 매 회차 끝에 해제.
-- 배열 변수 재대입 `a = f(...)`: 오른쪽 전체 평가 → 옛 값 해제 → 새 값 저장.
-- `return`: 반환값 평가 → (지역 배열 변수를 반환하면 그 슬롯을 비워 이중 해제 방지) → 지금 열린 모든 스코프의 지역·임시 해제 → ret.
-- 호출 결과 임시 배열(`len(f(x))`, `g(f(x))`, `f(x)[i]`, `copy(f(x))`, 조건식 안): 그 임시를 쓰는 문장(또는 조건 평가)이 끝나면 해제. `let`/대입/`return`의 오른쪽 최상위 호출 결과는 임시가 아니라 소유가 이동한다.
-- 단락 평가에서는 실제 실행된 경로의 임시만 해제한다.
-- 배열 인자는 빌림. 피호출자가 해제하지 않는다.
-- panic(exit 101) 시 해제하지 않는다.
+- An owned array local variable is `pruv_free`d at the end of the block where it was declared, in reverse declaration order. Locals of a while body are freed at the end of every iteration.
+- Array variable reassignment `a = f(...)`: evaluate the whole right-hand side → free the old value → store the new value.
+- `return`: evaluate the return value → (if a local array variable is returned, empty that slot to prevent a double free) → free the locals and temporaries of all currently open scopes → ret.
+- Temporary arrays from call results (`len(f(x))`, `g(f(x))`, `f(x)[i]`, `copy(f(x))`, inside a condition expression): freed when the statement that uses that temporary (or the condition evaluation) ends. The top-level call result on the right-hand side of a `let`/assignment/`return` is not a temporary; ownership moves.
+- Under short-circuit evaluation, only the temporaries of the path actually executed are freed.
+- An array argument is borrowed. The callee does not free it.
+- On panic (exit 101), nothing is freed.
 
-## 7. requires 실행 검사 (entry 함수, trust가 아닐 때)
+## 7. Runtime check of requires (entry function, when not trust)
 
-- 메시지 식 문자열은 `codegen.show(expr)`를 그대로 쓴다(`from codegen import show`). 문자열은 IR 전역 상수(`private unnamed_addr constant [N x i8] c"...\00"`, 바이트 이스케이프 `\XX`).
-- i128 평가: `+ - *`와 단항 `-`는 `llvm.s*.with.overflow.i128`, 실패 → `pruv_panic_undefined("i128 overflow in +")` 등.
-- `/ %`는 유클리드(z3 Int와 같음). IR 안의 내부 함수 `@pruv_cdiv`, `@pruv_crem`(i128): b==0 → `"division by zero in /"`/`"division by zero in %"`, a==MIN && b==-1 → `"i128 overflow in /"`/`"i128 overflow in %"`, 그 밖에 sdiv/srem 뒤 나머지가 음수면 보정(b>0이면 q-=1, r+=b; b<0이면 q+=1, r-=b).
-- 계약 인덱스 `a[i]`: i128 상태에서 `0 <= i < len` 확인 뒤 읽음, 실패 → `"array index out of range"`.
-- `some_val`/`ok_val`/`err_val`: 태그 확인, 실패 → `"some_val of None"`, `"ok_val of Err"`, `"err_val of Ok"`.
-- Option/Result `==`/`!=`(계약에서만 가능): 태그가 다르면 다름, 둘 다 None이면 같음, 아니면 payload 비교.
-- `==>`는 `!a || b`(단락).
-- 한정자 `kind var in lo..hi: body`: lo, hi를 바깥에서 한 번 평가, 반복 변수 i128, `[lo, hi)`, lo>=hi면 빈 구간.
-  - forall: true, 거짓 만나면 중단. exists: false, 참 만나면 중단.
-  - sum: i128 0에서 checked add(`"i128 overflow in +"`).
-  - count: i128 0에서 참일 때 +1 (정본처럼 검사 없음, nsw 없음).
-  - max/min: 첫 값으로 시작, 빈 구간 → `"max over an empty range"`/`"min over an empty range"`.
-- requires 여러 개는 선언 순서대로, 첫 실패에서 panic.
+- The message expression string uses `codegen.show(expr)` as is (`from codegen import show`). The string is an IR global constant (`private unnamed_addr constant [N x i8] c"...\00"`, byte escape `\XX`).
+- i128 evaluation: `+ - *` and unary `-` use `llvm.s*.with.overflow.i128`, failure → `pruv_panic_undefined("i128 overflow in +")`, etc.
+- `/ %` are Euclidean (the same as z3 Int). The internal functions inside the IR `@pruv_cdiv`, `@pruv_crem` (i128): b==0 → `"division by zero in /"`/`"division by zero in %"`, a==MIN && b==-1 → `"i128 overflow in /"`/`"i128 overflow in %"`, otherwise after sdiv/srem, if the remainder is negative, correct it (if b>0, q-=1, r+=b; if b<0, q+=1, r-=b).
+- Contract index `a[i]`: in the i128 state, read after confirming `0 <= i < len`; failure → `"array index out of range"`.
+- `some_val`/`ok_val`/`err_val`: check the tag; failure → `"some_val of None"`, `"ok_val of Err"`, `"err_val of Ok"`.
+- Option/Result `==`/`!=` (possible only in contracts): different if the tags differ, equal if both are None, otherwise compare the payloads.
+- `==>` is `!a || b` (short-circuit).
+- Quantifier `kind var in lo..hi: body`: lo and hi are evaluated once outside, the iteration variable is i128, `[lo, hi)`, an empty range if lo>=hi.
+  - forall: true, stop when a false is met. exists: false, stop when a true is met.
+  - sum: checked add from i128 0 (`"i128 overflow in +"`).
+  - count: +1 from i128 0 when true (no check, no nsw, as in the canonical reference).
+  - max/min: start from the first value; empty range → `"max over an empty range"`/`"min over an empty range"`.
+- Multiple requires are in declaration order, panicking at the first failure.
 
-## 8. Rust 바인딩 (`.rs`, `#[path] mod sol;`로 들어감)
+## 8. Rust bindings (`.rs`, brought in with `#[path] mod sol;`)
 
-- 함수마다 Rust 정본과 같은 공개 시그니처: `pub fn f(a: &[i64], x: i64) -> Option<i64>` (배열 인자 `&[i64]`, 배열 반환 `Vec<i64>`, bool, `Option<i64>`, `Result<i64, i64>`, unit은 반환형 없음).
-- `extern "C"` 블록에 `pruv_abi_*` 선언(`#[link_name]` 없이 같은 이름 써도 됨), 공개 래퍼는 `#[inline]`.
-- 배열 반환: len>0이면 `Vec::from_raw_parts(data, len, len)`(Rust allocator로 할당됐으므로 안전), len==0이면 `Vec::new()`.
-- Option/Result: 태그로 Rust 생성자 생성(transmute 금지).
-- `io` 효과(`f.effects`에 "io")가 있는 함수는 호출 전에 `std::io::Write::flush(&mut std::io::stdout())`.
-- 할당 연결: 바인딩이 `#[no_mangle] pub extern "C" fn pruv_host_alloc(len: i64) -> *mut i64`와 `pruv_host_free(data: *mut i64, len: i64)`를 정의(`std::alloc::alloc`/`dealloc`, `Layout::array::<i64>(len)`; 실패 시 `std::alloc::handle_alloc_error`), `pruv_host_alloc_zeroed`(`alloc_zeroed`), `pruv_host_flush`(`std::io::stdout().flush()`, 결과 무시). 배열을 반환하는 함수가 하나라도 있으면 `extern "C" { fn pruv_runtime_rust_allocator_v1(); }`를 참조해(예: 래퍼 안에서 함수 포인터를 `black_box`) 잘못된 런타임 링크를 막는다.
-- 경고 억제: 각 항목에 `#[allow(dead_code, non_snake_case, unused)]`. Rust 2021 판.
+- Per function, the same public signature as the Rust canonical reference: `pub fn f(a: &[i64], x: i64) -> Option<i64>` (array argument `&[i64]`, array return `Vec<i64>`, bool, `Option<i64>`, `Result<i64, i64>`, unit has no return type).
+- Declare `pruv_abi_*` in an `extern "C"` block (using the same name without `#[link_name]` is fine), and public wrappers are `#[inline]`.
+- Array return: if len>0, `Vec::from_raw_parts(data, len, len)` (safe because it was allocated by the Rust allocator); if len==0, `Vec::new()`.
+- Option/Result: build the Rust constructor from the tag (transmute forbidden).
+- A function with the `io` effect ("io" in `f.effects`) calls `std::io::Write::flush(&mut std::io::stdout())` before the call.
+- Allocation wiring: the binding defines `#[no_mangle] pub extern "C" fn pruv_host_alloc(len: i64) -> *mut i64` and `pruv_host_free(data: *mut i64, len: i64)` (`std::alloc::alloc`/`dealloc`, `Layout::array::<i64>(len)`; on failure `std::alloc::handle_alloc_error`), `pruv_host_alloc_zeroed` (`alloc_zeroed`), and `pruv_host_flush` (`std::io::stdout().flush()`, result ignored). If there is even one function that returns an array, reference `extern "C" { fn pruv_runtime_rust_allocator_v1(); }` (for example, `black_box` a function pointer inside a wrapper) to prevent linking the wrong runtime.
+- Warning suppression: `#[allow(dead_code, non_snake_case, unused)]` on each item. Rust 2021 edition.
 
-## 9. CLI와 빌드 명령
+## 9. CLI and build commands
 
 ```
 python pruvc/pruvc.py in.pruv -o out.ll --backend llvm [--rust-bindings out.rs] [--no-verify] [--trust-callers]
 ```
-- `--backend` 기본 rust. llvm이고 `--rust-bindings`를 생략하면 `-o` 경로의 확장자를 `.rs`로 바꾼 곳(같으면 거부).
-- rust 뒷단에 `--rust-bindings`를 주면 사용법 오류(exit 2). 언어 오류는 지금처럼 JSON 줄 + exit 1, 성공은 `{"ok": true}`.
-- 시험 장치 빌드(LLVM판):
+- `--backend` defaults to rust. If it is llvm and `--rust-bindings` is omitted, the path of `-o` with its extension changed to `.rs` (rejected if it is the same).
+- Giving `--rust-bindings` with the rust backend is a usage error (exit 2). A language error is a JSON line + exit 1 as now, and success is `{"ok": true}`.
+- Test-harness build (LLVM implementation):
   1. `clang -O2 <cpu> -Wno-override-module -c gen.ll -o gen.o`
   2. `clang -O2 <cpu> -std=c11 -DPRUV_RUST_ALLOCATOR -c pruvc/runtime.c -o rt.o`
-  - `<cpu>`: arm64(`platform.machine()`이 arm64/aarch64)는 `-mcpu=native`, 그 밖에는 `-march=native`.
-  3. 지금 rustc 명령에 `-C link-arg=gen.o -C link-arg=rt.o` 추가, `mod sol`은 바인딩 `.rs`.
+  - `<cpu>`: `-mcpu=native` for arm64 (`platform.machine()` is arm64/aarch64), `-march=native` otherwise.
+  3. Add `-C link-arg=gen.o -C link-arg=rt.o` to the current rustc command, and `mod sol` is the bindings `.rs`.
 
-## 10. 시험 장치
+## 10. Test harness
 
-- `tests/run_all.py --backend rust|llvm|both` (기본 rust). examples·runtime 시험을 고른 뒷단으로 돈다. 거부 시험은 뒷단과 무관하게 한 번.
-  - LLVM판 examples: 세 모드로 `.ll` 생성 → clang 오브젝트 → 바인딩을 `mod sol`로 넣은 빈 `fn main(){}` 실행 파일 링크 성공이면 통과.
-  - `--no-verify`의 "unsafe 없음" 검사는 Rust판에만. LLVM판 안전 모드에서는 대신 `.ll`에 `nsw`가 없음을 검사.
-  - runtime JSON의 `gen_contains`는 Rust판 전용. LLVM판용 `gen_contains_llvm`(선택)을 읽는다.
-- `bench/harness/run.py --backend rust|llvm`, `build_and_run(sol_path, pid, workdir, noperf=False, llvm_path=None)` (llvm_path가 있으면 LLVM판 링크). 실행 파일이 0이 아닌 코드로 끝나면 `wrong`(+`exit_code`), noperf가 아니고 모든 시험이 통과했는데 PERF가 없으면 `wrong`.
-- `bench/mutate.py <src> <out> [--backend llvm]`: 증명 빌드와 `--no-verify` 빌드 모두 같은 뒷단.
+- `tests/run_all.py --backend rust|llvm|both` (default rust). The examples and runtime tests run on the chosen backend. Rejection tests run once regardless of backend.
+  - LLVM examples: generate `.ll` in three modes → clang object → pass if linking an empty `fn main(){}` executable that includes the bindings as `mod sol` succeeds.
+  - The "no unsafe" check of `--no-verify` is for the Rust implementation only. For the LLVM implementation's safe mode, instead check that the `.ll` has no `nsw`.
+  - `gen_contains` in runtime JSON is for the Rust implementation only. The LLVM implementation reads `gen_contains_llvm` (optional).
+- `bench/harness/run.py --backend rust|llvm`, `build_and_run(sol_path, pid, workdir, noperf=False, llvm_path=None)` (if llvm_path is given, link the LLVM implementation). If the executable ends with a nonzero code it is `wrong` (+`exit_code`); if not noperf and all tests passed but there is no PERF, it is `wrong`.
+- `bench/mutate.py <src> <out> [--backend llvm]`: both the proof build and the `--no-verify` build use the same backend.

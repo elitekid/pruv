@@ -1,42 +1,42 @@
-# G2 B1 구현 명세: `str` 증명 — 두 판 공통
+# G2 B1 implementation spec: `str` proof — common to both implementations
 
-이 명세는 Python 판(`pruvc/`)과 Rust 판(`pruvc-rs/`)이 **같은 SMT·같은 의무 순서·같은 문구**를 내도록 고정한 것이다. 근거: `docs/G2_SPEC.md` 0.0절 결정 2·4·11·13·16, 4.3~4.5절, 6.1·6.3절, 7.5절. 앞 묶음: `docs/G2_A2_IMPL.md`(u8 증명), `docs/G2_A5_IMPL.md` 2절(bool 증명), `docs/G2_B0_IMPL.md`(str 앞단).
+This spec fixes things so that the Python implementation (`pruvc/`) and the Rust implementation (`pruvc-rs/`) emit **the same SMT, the same proof obligation order, and the same wording**. Basis: `docs/G2_SPEC.md` §0.0 decisions 2, 4, 11, 13, 16, §4.3~§4.5, §6.1, §6.3, §7.5. Earlier batches: `docs/G2_A2_IMPL.md` (u8 proof), `docs/G2_A5_IMPL.md` §2 (bool proof), `docs/G2_B0_IMPL.md` (str frontend).
 
-## 0. 범위와 결정
+## 0. Scope and decisions
 
-- 증명 층이 `str` 을 받는다. 생성 층(Rust·LLVM)은 계속 `unsupported_type`(stage `codegen`)으로 막는다(B2에서 연다).
-- **표현:** 기호 `str` 값은 새 형태를 만들지 않고 **원소 타입 U8 인 기호 배열**(Py `Arr`, Rs `Val::Arr(Arr)`, `elem = U8`)이다. SMT 는 `Array(Int, Int)` + 길이 Int. 그래서
-  - 함수 진입·사용자 함수 호출 결과·루프 havoc 세 곳의 바이트 범위 가정(결정 2)은 지금 있는 `u8_dom` 길이 그대로 붙는다(새 코드 없음).
-  - `len`·코드 읽기 `s[i]`(index_oob, `in_range` 가정 그대로)·계약 읽기(contract_domain)·`copy`·재바인딩·`ensures` 의 `result`·반례 JSON(`{"len": n, "first": [..]}`, 정수)은 배열 길이 그대로다.
-- 리터럴은 상수 항, `substr` 결과는 새 기호 값 + 길이·바이트 관계 가정이다. 두 경우 모두 **범위 가정을 따로 넣지 않는다**: 리터럴 바이트는 상수(0..255)이고, `substr` 바이트는 원래 `s` 의 바이트와 같으므로 이미 성립한다(결정 2의 "리터럴·copy·substr 결과"는 이것으로 충족).
-- UTF-8 유효성 공리는 넣지 않는다(결정 13: 과대 근사). **SMT 반례의 str 바이트는 유효 UTF-8 이 아닐 수 있다.** 이 뜻을 `substr` 두 의무의 FIX 글자에 적는다(3절).
-- `--infer`: 새 후보 없음. `string_slice_range`·`utf8_boundary` 는 `cand` 없이(None) 증명해 탐색에서는 생략되고 최종 전체 검증에서만 판정된다(결정 4). `infer.py`/`infer.rs` 는 고치지 않는다(조사 결과 StrLit 순회는 이미 안전: Py `show` 가 `_Skip`, Rs `show` 가 None).
-- G2를 쓰지 않는 입력의 SMT·fresh 번호·의무 순서는 바뀌면 안 된다(기존 SMT 231 바이트 불변).
+- The proof layer accepts `str`. The generation layer (Rust, LLVM) keeps blocking it with `unsupported_type` (stage `codegen`) (opened in B2).
+- **Representation:** a symbolic `str` value creates no new form; it is a **symbolic array whose element type is U8** (Py `Arr`, Rs `Val::Arr(Arr)`, `elem = U8`). In SMT it is `Array(Int, Int)` + a length Int. So:
+  - The byte-range assumption (decision 2) at the three places — function entry, user-function call result, loop havoc — attaches with the existing `u8_dom` length as is (no new code).
+  - `len`, code read `s[i]` (index_oob, `in_range` assumption as is), contract read (contract_domain), `copy`, rebinding, `result` in `ensures`, and the counterexample JSON (`{"len": n, "first": [..]}`, integers) are the same as for array length.
+- A literal is a constant term, and a `substr` result is a new symbolic value + assumptions on length and byte relation. In both cases **no range assumption is added separately**: literal bytes are constants (0..255), and `substr` bytes equal those of the original `s`, so the range already holds (this satisfies "results of literal, copy and substr" in decision 2).
+- No UTF-8 validity axiom is added (decision 13: over-approximation). **The bytes of a str in an SMT counterexample may not be valid UTF-8.** This meaning is written into the FIX text of the two `substr` obligations (§3).
+- `--infer`: no new candidates. `string_slice_range` and `utf8_boundary` are proved without `cand` (None), so they are skipped in the search and decided only in the final full verification (decision 4). `infer.py`/`infer.rs` are not modified (investigation showed the StrLit traversal is already safe: Py `show` is `_Skip`, Rs `show` is None).
+- The SMT, fresh numbering, and obligation order for inputs that do not use G2 must not change (the existing 231 bytes of SMT are unchanged).
 
-## 1. 타입과 fresh
+## 1. Types and fresh
 
 ### Py `pruvc/verify.py`
-- import 에 `STR` 이 들어오는지 확인(`from vast import *` 로 이미 들어오면 그대로).
-- `fresh(base, ty)`: `is_array(ty)` 분기 **바로 앞**에
+- Check that `STR` comes in through the import (if it already comes in through `from vast import *`, leave it).
+- `fresh(base, ty)`: **right before** the `is_array(ty)` branch,
   ```python
   if ty == STR:   # G2 B1: str = U8 byte array
       return mk_arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".len"), base, U8)
   ```
-  (카운터 `s.k += 1` 과 이름 `n` 은 함수 첫머리 그대로 — 배열과 같은 이름 규칙 `base!k`, `base!k.len`.)
-- `wf(STR, ..)` 는 닿지 않는다(호출부가 모두 `isinstance(v, Arr)` 를 먼저 본다).
+  (The counter `s.k += 1` and the name `n` are as at the start of the function — the same naming rule as arrays, `base!k`, `base!k.len`.)
+- `wf(STR, ..)` is never reached (every call site checks `isinstance(v, Arr)` first).
 
 ### Rs `pruvc-rs/crates/pruv-proof/src/model.rs`
-- `enum Ty` 에 `Str` 변형을 더한다(`Array(Elem)` 다음). `from_name("str") => Ty::Str`(배열 이름 판정보다 먼저), `name(): Ty::Str => "str"`. `is_array()`·`array_elem()` 은 **바꾸지 않는다**(str 은 배열이 아님; false/None).
-- `Ty::Array(_)` 를 매칭하는 곳(model.rs 413 근처 `Ty::Unit | Ty::Array(_) => Err(..)`, symbolic.rs 349·581 근처)에 `Ty::Str` 을 **Array 와 같은 팔**로 더한다. 와일드카드로 흡수하지 말고 명시한다.
-- model.rs 시험(`mod tests`)에 `assert_eq!(Ty::from_name("str"), Ty::Str); assert_eq!(Ty::Str.name(), "str");` 를 더한다.
+- Add a `Str` variant to `enum Ty` (after `Array(Elem)`). `from_name("str") => Ty::Str` (before the array-name check), `name(): Ty::Str => "str"`. **Do not change** `is_array()` and `array_elem()` (str is not an array; false/None).
+- Where `Ty::Array(_)` is matched (near model.rs 413 `Ty::Unit | Ty::Array(_) => Err(..)`, near symbolic.rs 349 and 581), add `Ty::Str` **in the same arm as Array**. State it explicitly; do not absorb it with a wildcard.
+- Add `assert_eq!(Ty::from_name("str"), Ty::Str); assert_eq!(Ty::Str.name(), "str");` to the tests in model.rs (`mod tests`).
 
 ### Rs `symbolic.rs` `try_fresh`
-- `Ty::Str` 팔: `Ty::Array(Elem::U8)` 와 똑같이 만든다(같은 이름 규칙, int sort 원소, `elem = Elem::U8`, 카운터 한 번).
+- The `Ty::Str` arm: build it exactly like `Ty::Array(Elem::U8)` (the same naming rule, int-sort elements, `elem = Elem::U8`, one counter increment).
 
-## 2. 식 평가
+## 2. Expression evaluation
 
-### 2.1 문자열 리터럴 `StrLit`(코드·계약 모두, 같은 항)
-Py `ev` 의 `IntLit`/`BoolLit` 분기 다음:
+### 2.1 String literal `StrLit` (code and contracts, the same term)
+In Py `ev`, after the `IntLit`/`BoolLit` branches:
 ```python
 if isinstance(e, StrLit):   # G2 B1: constant byte array, no counter, no assumption
     a = z3.K(z3.IntSort(), z3.IntVal(0))
@@ -44,31 +44,31 @@ if isinstance(e, StrLit):   # G2 B1: constant byte array, no counter, no assumpt
         a = z3.Store(a, z3.IntVal(i), z3.IntVal(b))
     return mk_arr(a, z3.IntVal(len(e.value)), "literal", U8)
 ```
-- 상수 배열 기본값 `0`, 색인 0부터 차례로 `Store`(바깥이 마지막 바이트). 길이는 `IntVal(바이트 수)`. 이름 `"literal"`.
-- 카운터를 건드리지 않고 의무·가정도 없다. Rs `symbolic.rs` `ev` 의 `Expr::StrLit` 팔(지금 `Err(..)`)을 같은 항으로 바꾼다(`K` 는 alloc 이 쓰는 상수 배열 생성 함수, Store 는 IndexAssign 이 쓰는 것을 쓴다).
+- Constant array default `0`, `Store` in order from index 0 (the outermost is the last byte). The length is `IntVal(number of bytes)`. The name is `"literal"`.
+- It does not touch the counter, and there are no obligations or assumptions. Replace the `Expr::StrLit` arm of Rs `symbolic.rs` `ev` (currently `Err(..)`) with the same term (`K` is the constant-array constructor that alloc uses; use the Store that IndexAssign uses).
 
-### 2.2 경계 판정 `boundary(arr, i)`
-Py 모듈 함수(`u8_dom` 옆):
+### 2.2 Boundary decision `boundary(arr, i)`
+A Py module function (next to `u8_dom`):
 ```python
 def str_boundary(arr, i):
     """G2 B1 (G2_SPEC 4.4): i is a UTF-8 character boundary of byte array arr (total, no domain)."""
     b = z3.Select(arr.a, i)
     return z3.Or(i == 0, i == arr.n, z3.And(i > 0, i < arr.n, z3.Or(b < 128, b >= 192)))
 ```
-- 글자 그대로: `Or` 세 인자 순서, `i > 0`(Py `0 < i` 가 아님), `i < arr.n`, `b < 128`, `b >= 192`. 상수는 정수 0·128·192.
-- Rs `symbolic.rs` 에 같은 식을 만드는 `fn str_boundary(&self, arr: &Arr, i: &Ast) -> Ast`(u8_dom 옆). `or([eq(i,0), eq(i,n), and([gt(i,0), lt(i,n), or([lt(b,128), ge(b,192)])])])` — z3 AST 가 Py 와 같도록(`i > 0` 은 `(> i 0)`).
+- Literally: the order of the three `Or` arguments, `i > 0` (not Py `0 < i`), `i < arr.n`, `b < 128`, `b >= 192`. The constants are the integers 0, 128, 192.
+- In Rs `symbolic.rs`, a `fn str_boundary(&self, arr: &Arr, i: &Ast) -> Ast` that builds the same expression (next to u8_dom): `or([eq(i,0), eq(i,n), and([gt(i,0), lt(i,n), or([lt(b,128), ge(b,192)])])])` — so that the z3 AST is the same as Py (`i > 0` is `(> i 0)`).
 
-### 2.3 builtin `is_char_boundary(s, i)`(코드·계약)
-Py `call` 의 `copy` 분기 다음, `print` 분기 앞:
+### 2.3 builtin `is_char_boundary(s, i)` (code and contracts)
+In Py `call`, after the `copy` branch and before the `print` branch:
 ```python
 if n == "is_char_boundary":
     return str_boundary(args[0], args[1])
 ```
-- 인자는 이미 앞에서 차례로 평가됐다(`args = [...]`). 의무·가정 없음. 계약 정의역 `dom` 은 바꾸지 않는다(Call 이면 인자 정의역만 모음 — 지금 코드 그대로가 4.4절 "인자 식 자체의 정의역만 검사").
-- Rs `call` 의 내장 이름 매칭에 같은 자리·같은 동작으로(`Val::Bool(..)`).
+- The arguments were already evaluated in order earlier (`args = [...]`). No obligations or assumptions. The contract domain `dom` is not changed (for a Call it only collects the argument domains — the current code as is matches §4.4 "check only the domain of the argument expressions themselves").
+- In Rs `call`, in the builtin-name match, at the same place with the same behavior (`Val::Bool(..)`).
 
-### 2.4 builtin `substr(s, lo, hi)`(코드만; 계약은 검사기가 거부)
-Py, `is_char_boundary` 분기 다음:
+### 2.4 builtin `substr(s, lo, hi)` (code only; contracts are rejected by the checker)
+Py, after the `is_char_boundary` branch:
 ```python
 if n == "substr":   # G2 B1 (G2_SPEC 4.4): range -> boundary -> fresh result
     sv, lo, hi = args
@@ -83,83 +83,83 @@ if n == "substr":   # G2 B1 (G2_SPEC 4.4): range -> boundary -> fresh result
                                                z3.Select(res.a, k) == z3.Select(sv.a, lo + k))))
     return res
 ```
-- 순서 고정: 인자 평가(기존) → `string_slice_range` → `utf8_boundary` → fresh(카운터 1) → 길이 가정 → 바이트 관계 가정.
-- node = substr Call 식(두 의무 같은 node, 코드가 달라 중복 제거 키가 다르다). key_extra 없음, cand 없음.
-- 묶인 변수는 고정 이름 정수 상수 **`str!k`**(카운터 안 씀). patterns 없음. `lo + k` 는 `lo + k` 순서.
-- 길이 가정은 `res.n == hi - lo` 한 항(`res.n >= 0` 이나 MAX_LEN 가정·`u8_dom` 을 따로 넣지 않는다).
-- `s.assume(st, g, ..)` 는 호출 결과 가정과 같은 헬퍼(g 가 있으면 함의). Rs 도 같은 `assume`.
-- 실패 처리는 기존 `prove` 그대로(파생 중복 제거 규칙을 새로 만들지 않음, 결정 8).
-- Rs `call` 내장 매칭에 같은 자리·같은 순서로.
+- Fixed order: argument evaluation (existing) → `string_slice_range` → `utf8_boundary` → fresh (counter 1) → length assumption → byte-relation assumption.
+- node = the substr Call expression (both obligations have the same node; the codes differ, so the deduplication keys differ). No key_extra, no cand.
+- The bound variable is the fixed-name integer constant **`str!k`** (it does not use the counter). No patterns. `lo + k` is in the order `lo + k`.
+- The length assumption is the single term `res.n == hi - lo` (do not add `res.n >= 0`, a MAX_LEN assumption, or `u8_dom` separately).
+- `s.assume(st, g, ..)` is the same helper as for call-result assumptions (an implication if g exists). Rs uses the same `assume`.
+- Failure handling is the existing `prove` as is (no new derived-deduplication rule is created, decision 8).
+- In the Rs `call` builtin match, at the same place and in the same order.
 
-### 2.5 그 밖
-- `len`·`copy`·Index·재바인딩·return·ensures·havoc·반례: 바꾸지 않는다(배열 길로 그대로 처리됨). 다만 Rs 에서 `Ty::Str`/`Val::Arr` 를 거부하는 매칭이 있으면 배열과 같게 고친다.
-- Py `ev` 맨 끝 예외·Rs 다른 `Err` 문구는 그대로.
+### 2.5 Other
+- `len`, `copy`, Index, rebinding, return, ensures, havoc, counterexamples: not changed (they are handled through the array path as is). However, if Rs has a match that rejects `Ty::Str`/`Val::Arr`, fix it to be the same as for arrays.
+- The exception at the very end of Py `ev` and the other `Err` wording in Rs stay as they are.
 
-## 3. FIX 표
+## 3. FIX table
 
-Py `FIX` 딕셔너리에서 `elem_range` 다음, Rs `obligation.rs` `fix_for` 같은 자리에 두 줄(글자 그대로):
+Two lines (literal text) in the Py `FIX` dictionary after `elem_range`, and at the same place in Rs `obligation.rs` `fix_for`:
 
 ```
 string_slice_range: keep 0 <= lo <= hi <= len(s) for substr(s, lo, hi): bound lo and hi with requires, an if, or a loop invariant (a counterexample str may not be valid UTF-8)
 utf8_boundary: cut a str only at character boundaries: require or check is_char_boundary(s, lo) and is_char_boundary(s, hi) (a counterexample str may not be valid UTF-8)
 ```
 
-진단 message 는 기존 형식 `cannot prove <what> in <fn>`. 예: `cannot prove substr range 0 <= lo <= hi <= len(literal) in f`, `cannot prove substr cuts of s at UTF-8 character boundaries in f`.
+The diagnostic message uses the existing format `cannot prove <what> in <fn>`. Examples: `cannot prove substr range 0 <= lo <= hi <= len(literal) in f`, `cannot prove substr cuts of s at UTF-8 character boundaries in f`.
 
-## 4. 가드
+## 4. Guard
 
-- 증명 층 가드 skip 에 `"str"` 을 더한다: Py `verify.verify_program` 맨 앞 `g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool", "str"))`, Rs `lib.rs` `verify_program_opts` 맨 앞 `&["array_u8", "array_bool", "str"]`. 주석은 `G2 B1`.
-  - 이제 skip 이 모든 G2 타입을 덮으므로 이 가드는 항상 None 이다. 그래도 지우지 않는다(A6 i32 가 오면 다시 쓴다).
-- 생성 층 가드 6곳은 바꾸지 않는다(str 은 stage `codegen` 으로 막힌다; driver 가드는 verify 성공 뒤에도 돈다).
+- Add `"str"` to the skip of the proof-layer guard: at the very start of Py `verify.verify_program`, `g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool", "str"))`, and at the very start of Rs `lib.rs` `verify_program_opts`, `&["array_u8", "array_bool", "str"]`. The comment is `G2 B1`.
+  - Now that skip covers every G2 type, this guard is always None. It is still not deleted (it is used again when A6 i32 arrives).
+- The 6 generation-layer guards are not changed (str is blocked with stage `codegen`; the driver guard runs even after verify succeeds).
 
-## 5. 표본(시험 작업자, `tests/must_reject/`)
+## 5. Samples (test worker, `tests/must_reject/`)
 
-`.json` 키: `stage`, `code`, 선택 `flags`, 선택 `cex_contains`(stdout+stderr 부분 문자열). 각 표본은 목표 오류 앞의 다른 의무가 모두 성립하게 쓴다. 문법: `while` 은 `decreases` 필수, 식 문장은 호출만, 모든 경로 `return`, 식별자에 `__` 금지, 같은 스코프 가림 금지, 리터럴을 코드에 쓰면 함수에 `! alloc`.
+`.json` keys: `stage`, `code`, optional `flags`, optional `cex_contains` (a substring of stdout+stderr). Write each sample so that every other obligation before the target error holds. Grammar: `while` requires `decreases`, an expression statement must be a call, every path must `return`, no `__` in identifiers, no shadowing in the same scope, and if a literal is used in code the function needs `! alloc`.
 
-### 5.1 B0 가드 표본 옮기기(증명 통과 → 생성 층 거부)
-`g2b_b0_verify_layer`, `g2b_b0_literal_verify`, `g2b_b0_infer_layer`(flags `--infer` 유지), `g2b_b0_guard_order`(cex `"line": 5, "col": 5` 유지), `g2b_b0_guard_lit_first`(cex `"line": 4, "col": 20` 유지): `.json` 의 `stage` 를 `"verify"` → `"codegen"`. `.pruv` 첫 줄 주석을 "B1부터 증명은 통과하고 생성 층이 거부" 뜻으로 고친다(프로그램 본문은 그대로). 예외: `g2b_b0_guard_lit_first` 의 `return k + len(s) + n;` 은 증명이 돌면서 범위를 모르는 `n` 때문에 overflow 가 먼저 나므로 `return k + len(s);` 로 고쳤다(위치 4:20 은 그대로).
+### 5.1 Moving the B0 guard samples (proof passes → generation layer rejects)
+`g2b_b0_verify_layer`, `g2b_b0_literal_verify`, `g2b_b0_infer_layer` (keep flags `--infer`), `g2b_b0_guard_order` (keep cex `"line": 5, "col": 5`), `g2b_b0_guard_lit_first` (keep cex `"line": 4, "col": 20`): change `stage` in `.json` from `"verify"` to `"codegen"`. Fix the first-line comment of `.pruv` to mean "from B1 the proof passes and the generation layer rejects" (the program body is unchanged). Exception: in `g2b_b0_guard_lit_first`, `return k + len(s) + n;` was changed to `return k + len(s);` because, now that the proof runs, overflow occurs first due to `n` whose range is unknown (the position 4:20 is unchanged).
 
-### 5.2 G2_SPEC 6.3 verify 표본(새로)
-| 이름 | 내용 | stage/code |
+### 5.2 G2_SPEC §6.3 verify samples (new)
+| Name | Content | stage/code |
 |---|---|---|
-| `g2b_slice_range` | `substr("abc", 2, 1)` (lo > hi, 두 경계는 성립) | verify / `string_slice_range` |
+| `g2b_slice_range` | `substr("abc", 2, 1)` (lo > hi, both boundaries hold) | verify / `string_slice_range` |
 | `g2b_slice_start` | `substr("é", 1, 2)` | verify / `utf8_boundary` |
 | `g2b_slice_end` | `substr("é", 0, 1)` | verify / `utf8_boundary` |
 | `g2b_index` | `let s: str = "ab"; return s[len(s)];` | verify / `index_oob` |
 | `g2b_contract_index` | `fn f(s: str) -> i64 requires s[len(s)] >= 0` | verify / `contract_domain` |
 
-### 5.3 B1 양성 증명 표본(증명 통과 → stage `codegen` / `unsupported_type`)
-이름 `g2b_b1_ok_*`. 증명이 통과해야 codegen 단계까지 간다.
-- `g2b_b1_ok_len`: assert 로 바이트 길이 `len("")==0`, `len("a")==1`, `len("é")==2`, `len("안")==3`, `len("😀")==4`, `len("\0")==1`, `len("a\0b")==3`, `len("안녕")==6`, 그리고 바이트 값 `"é"[0]==195`, `"é"[1]==169`, `"\0"[0]==0`, `"안"[0]==236`.
-- `g2b_b1_ok_boundary`: assert 로 `is_char_boundary("é",0)`, `!is_char_boundary("é",1)`, `is_char_boundary("é",2)`, `!is_char_boundary("é",-1)`, `!is_char_boundary("é",3)`, `is_char_boundary("",0)`, `is_char_boundary("abc",1)`, `!is_char_boundary("😀",1)`·`2`·`3`, `is_char_boundary("😀",4)`, `is_char_boundary("안a",3)`.
-- `g2b_b1_ok_flow`: 리터럴 → copy → substr → 함수 반환 → 호출자. 예: `fn head(s: str, i: i64) -> str ! alloc requires 0 <= i && i <= len(s) requires is_char_boundary(s, i) ensures len(result) == i ensures forall k in 0..i: result[k] == s[k]` 본문 `let c: str = copy(s); let d: str = substr(c, 0, i); return d;` 그리고 `fn use(..) -> i64 ! alloc` 에서 `let a: str = "안녕"; let b: str = head(a, 3); assert len(b) == 3; assert b[0] == 236;` 와 `let t: str = substr("héllo", 1, 3); assert len(t) == 2 && t[0] == 195 && t[1] == 169;`.
-- `g2b_b1_ok_param`: str 매개변수 바이트 범위 가정(진입·호출 결과): `requires len(s) > 0` 에서 `let b: i64 = s[0]; assert b >= 0 && b <= 255;`, 그리고 str 을 돌려주는 함수를 부른 결과의 첫 바이트도 같은 assert.
-- `g2b_b1_ok_loop`: 루프 안에서 다시 대입하는 `let mut t: str` (havoc) 뒤 바이트 범위 assert, 그리고 `while` 로 `s` 의 바이트를 세는 정상 루프(invariant·decreases 포함).
-- `g2b_b1_ok_contract`: 계약에서 `is_char_boundary`·`len`·`s[i]`·리터럴: 예 `fn g(s: str, i: i64) -> bool ensures result == is_char_boundary(s, i) { return is_char_boundary(s, i); }`, `requires len(s) >= len("ab")` 와 `requires len(s) > 0 ==> s[0] >= 0`.
-- `g2b_b1_ok_infer`(flags `["--infer"]`): 불변식 없이는 증명 안 되고 `--infer` 가 찾는 기존 템플릿(예: `0 <= i && i <= len(s)`) 으로 되는 str 루프. 추론이 못 찾으면 이 표본 대신 불변식을 적은 루프를 쓰고, 그 사실을 첫 줄 주석에 적는다.
+### 5.3 B1 positive proof samples (proof passes → stage `codegen` / `unsupported_type`)
+Named `g2b_b1_ok_*`. The proof must pass for it to reach the codegen stage.
+- `g2b_b1_ok_len`: byte lengths by assert: `len("")==0`, `len("a")==1`, `len("é")==2`, `len("안")==3`, `len("😀")==4`, `len("\0")==1`, `len("a\0b")==3`, `len("안녕")==6`, and byte values `"é"[0]==195`, `"é"[1]==169`, `"\0"[0]==0`, `"안"[0]==236`.
+- `g2b_b1_ok_boundary`: by assert, `is_char_boundary("é",0)`, `!is_char_boundary("é",1)`, `is_char_boundary("é",2)`, `!is_char_boundary("é",-1)`, `!is_char_boundary("é",3)`, `is_char_boundary("",0)`, `is_char_boundary("abc",1)`, `!is_char_boundary("😀",1)`, `2` and `3`, `is_char_boundary("😀",4)`, `is_char_boundary("안a",3)`.
+- `g2b_b1_ok_flow`: literal → copy → substr → function return → caller. For example `fn head(s: str, i: i64) -> str ! alloc requires 0 <= i && i <= len(s) requires is_char_boundary(s, i) ensures len(result) == i ensures forall k in 0..i: result[k] == s[k]` with body `let c: str = copy(s); let d: str = substr(c, 0, i); return d;`, and in `fn use(..) -> i64 ! alloc`, `let a: str = "안녕"; let b: str = head(a, 3); assert len(b) == 3; assert b[0] == 236;` and `let t: str = substr("héllo", 1, 3); assert len(t) == 2 && t[0] == 195 && t[1] == 169;`.
+- `g2b_b1_ok_param`: the byte-range assumption for a str parameter (entry and call result): under `requires len(s) > 0`, `let b: i64 = s[0]; assert b >= 0 && b <= 255;`, and the same assert on the first byte of the result of calling a function that returns a str.
+- `g2b_b1_ok_loop`: a byte-range assert after a `let mut t: str` reassigned inside a loop (havoc), and a valid `while` loop that counts the bytes of `s` (with invariant and decreases).
+- `g2b_b1_ok_contract`: `is_char_boundary`, `len`, `s[i]` and literals in contracts: e.g. `fn g(s: str, i: i64) -> bool ensures result == is_char_boundary(s, i) { return is_char_boundary(s, i); }`, `requires len(s) >= len("ab")` and `requires len(s) > 0 ==> s[0] >= 0`.
+- `g2b_b1_ok_infer` (flags `["--infer"]`): a str loop that cannot be proved without an invariant and is proved by an existing template (e.g. `0 <= i && i <= len(s)`) that `--infer` finds. If inference cannot find it, use a loop with a written invariant instead of this sample, and note that fact in the first-line comment.
 
-### 5.4 B1 거부 표본(증명이 실제로 판정하는지, 공허하지 않은지)
-| 이름 | 내용 | stage/code |
+### 5.4 B1 rejection samples (does the proof actually decide, and is it not vacuous)
+| Name | Content | stage/code |
 |---|---|---|
 | `g2b_b1_bad_len` | `assert len("안") == 2;` | verify / `assert` |
 | `g2b_b1_bad_boundary` | `assert is_char_boundary("é", 1);` | verify / `assert` |
 | `g2b_b1_bad_byte` | `assert "é"[1] == 168;` | verify / `assert` |
-| `g2b_b1_param_boundary` | `fn f(s: str, i: i64) -> str ! alloc requires 0 <= i && i <= len(s) { return substr(s, 0, i); }` — cex_contains `"first"` (str 반례가 배열 모양) | verify / `utf8_boundary` |
-| `g2b_b1_param_range` | `requires 0 <= i` 만 두고 `substr(s, i, len(s))` (i > len(s) 가능) — 첫 진단이 `string_slice_range` | verify / `string_slice_range` |
-| `g2b_b1_infer_boundary` (flags `["--infer"]`) | 정상 `while` 루프(불변식 적음) 뒤 경계를 모르는 `substr(s, 0, i)` 를 반환 — `--infer` 에서도 `utf8_boundary` 로 거부 | verify / `utf8_boundary` |
-| `g2b_b1_substr_bytes` | `let t: str = substr("héllo", 1, 3); assert t[0] == 104;`(실제 195) | verify / `assert` |
+| `g2b_b1_param_boundary` | `fn f(s: str, i: i64) -> str ! alloc requires 0 <= i && i <= len(s) { return substr(s, 0, i); }` — cex_contains `"first"` (the str counterexample has an array shape) | verify / `utf8_boundary` |
+| `g2b_b1_param_range` | only `requires 0 <= i`, then `substr(s, i, len(s))` (i > len(s) is possible) — the first diagnostic is `string_slice_range` | verify / `string_slice_range` |
+| `g2b_b1_infer_boundary` (flags `["--infer"]`) | after a valid `while` loop (with a written invariant), return `substr(s, 0, i)` with unknown boundary — rejected with `utf8_boundary` also under `--infer` | verify / `utf8_boundary` |
+| `g2b_b1_substr_bytes` | `let t: str = substr("héllo", 1, 3); assert t[0] == 104;` (actually 195) | verify / `assert` |
 | `g2b_b1_ensures_len` | `fn h(s: str) -> str ! alloc requires len(s) >= 2 && is_char_boundary(s, 1) ensures len(result) == 2 { return substr(s, 0, 1); }` | verify / `ensures` |
 
-### 5.5 감사 뒤 더한 표본
-- `g2b_b1_ok_boundary2`(양성): 내부 선행 바이트 194·195·236 은 경계, continuation 191 은 아님, `substr("é",0,0)`, 3바이트 `substr("안녕",3,6)`, 4바이트 `substr("😀a",0,4)` `"a~"`(126) 내부 ASCII — 192 문턱을 191 로 내리는 변이, 128 문턱을 올리는 변이(`ok_boundary` 의 😀 3번=128), 127 미만으로 내리는 변이(126)를 잡는다. 127(DEL)은 리터럴에 쓸 수 없어 `b<127` 변이는 표본이 없다.
-- `g2b_b1_bad_cont`(assert), `g2b_b1_slice_mid_empty`(`substr("é",1,1)` → utf8_boundary), `g2b_b1_slice_neg`(음수 lo → string_slice_range), `g2b_b1_slice_over`(hi > len → string_slice_range, 뒤에 utf8_boundary 도 남).
+### 5.5 Samples added after the audit
+- `g2b_b1_ok_boundary2` (positive): the interior lead bytes 194, 195, 236 are boundaries, the continuation 191 is not, `substr("é",0,0)`, the 3-byte `substr("안녕",3,6)`, the 4-byte `substr("😀a",0,4)`, and the interior ASCII `"a~"` (126) — it catches the mutant that lowers the 192 threshold to 191, the mutant that raises the 128 threshold (item 3 of 😀 in `ok_boundary` = 128), and the mutant that lowers it below 127 (126). 127 (DEL) cannot be written in a literal, so there is no sample for the `b<127` mutant.
+- `g2b_b1_bad_cont` (assert), `g2b_b1_slice_mid_empty` (`substr("é",1,1)` → utf8_boundary), `g2b_b1_slice_neg` (negative lo → string_slice_range), `g2b_b1_slice_over` (hi > len → string_slice_range, and utf8_boundary also remains afterward).
 
-- run_all·diff_compilers 는 기대 code 가 진단 중에 **있는지**만 본다. 의무 순서(range → boundary)는 메인이 두 판을 직접 실행해 확인했다(자동 검사 아님).
+- run_all and diff_compilers only check that the expected code is **present** among the diagnostics. The obligation order (range → boundary) was confirmed by the main worker by running both implementations directly (not an automatic check).
 
-### 5.6 알려진 한계
-- `--infer` 후보는 리터럴이 든 식을 만들지 않는다(Py `show` 의 `_Skip`, Rs `show` None). 그래서 `while i < len("abcd")` 처럼 루프 조건에 리터럴이 있으면 경계 후보가 없어 추론이 못 한다(완전성 한계, 두 판 같음). 불변식을 적거나 길이를 변수에 담아 쓴다.
-- SMT 가 같아도 str(배열) 반례 값이 두 판에서 다를 수 있다(z3 모델 선택; diff_trace `cex_only`). 결정 11 에 따라 새 표본은 `same` 이어야 하므로, 표본의 `cex_contains` 는 반례 값에 기대지 않는다.
+### 5.6 Known limitations
+- `--infer` candidates do not build expressions that contain a literal (Py `show` `_Skip`, Rs `show` None). So when a loop condition has a literal, as in `while i < len("abcd")`, there is no boundary candidate and inference cannot succeed (a completeness limitation, the same in both implementations). Write an invariant, or put the length in a variable.
+- Even when the SMT is the same, the str (array) counterexample values may differ between the two implementations (z3 model choice; diff_trace `cex_only`). Per decision 11 the new samples must be `same`, so the `cex_contains` of a sample does not rely on counterexample values.
 
-## 6. 확인(메인)
+## 6. Verification (main worker)
 
-- 빌드, `run_all --backend both`(행 목록 갱신 `--list-rows`), SMT 231 cmp, 새 표본 `diff_trace`(플래그 없음·`--flags=--infer`, same 만), `diff_parse`·`diff_compilers --only must_reject --backend both`, `m3_all`, `cli_also_llvm`, `inference --regress`, 퍼저, cargo 시험.
+- Build, `run_all --backend both` (update the row list with `--list-rows`), SMT 231 cmp, `diff_trace` on the new samples (no flags, `--flags=--infer`, same only), `diff_parse` and `diff_compilers --only must_reject --backend both`, `m3_all`, `cli_also_llvm`, `inference --regress`, fuzzer, cargo tests.

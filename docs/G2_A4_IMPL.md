@@ -1,101 +1,101 @@
-# G2 A4 구현 명세: `[u8]` LLVM 뒷단·`--rust-bindings`·런타임 v2
+# G2 A4 Implementation Spec: `[u8]` LLVM Backend, `--rust-bindings`, Runtime v2
 
-상태: A4 묶음 구현 계약(메인 작성). 두 판(Python `pruvc/llvmgen.py`, Rust `pruv-core/src/llvmgen.rs`·`abi.rs`·`bindings.rs`)은 아래 글자를 **바이트 그대로** 낸다. `tests/diff_llvm.py`가 두 판의 IR과 바인딩을 바이트로 비교한다. 근거: `docs/G2_SPEC.md` 0.0절, 5.2·5.3·5.4절. A3 명세 `docs/G2_A3_IMPL.md`의 안전 모드 문구·검사 순서를 그대로 따른다.
+Status: A4 batch implementation contract (written by main). Both implementations (Python `pruvc/llvmgen.py`, Rust `pruv-core/src/llvmgen.rs`, `abi.rs`, `bindings.rs`) emit the text below **byte for byte**. `tests/diff_llvm.py` compares the IR and bindings of the two implementations byte for byte. Basis: `docs/G2_SPEC.md` §0.0, §5.2, §5.3, §5.4. It follows the safe-mode messages and check order of the A3 spec `docs/G2_A3_IMPL.md` as is.
 
-## 0. 범위와 결정
+## 0. Scope and decisions
 
-1. A4는 llvmgen을 쓰는 모든 길(`--backend llvm`, `--also-llvm`, Rust 판 `--emit ll|obj|exe`)에서 `[u8]`를 연다. `[bool]`(`array_bool`)은 계속 `unsupported_type`으로 거부한다(A5).
-2. **기존 `[i64]`만 쓰는 프로그램의 IR은 한 바이트도 바뀌지 않는다.** u8용 선언(`DECLS_U8`)은 프로그램이 `[u8]`를 쓸 때만(`uses_array_type(prog, "array_u8")`) 덧붙인다.
-3. **바인딩은 모든 프로그램에서 바뀐다**(G2_SPEC 5.4 호환성 3·4항): v2 host helper 세 개를 늘 정의하고, 배열을 돌려주는 함수가 있으면 marker를 `pruv_runtime_rust_allocator_v2`로 참조한다. 까닭: `-DPRUV_RUST_ALLOCATOR` 런타임이 v2 host helper를 extern으로 부르므로, 그 런타임과 링크하는 모든 바인딩이 helper를 정의해야 한다. 새 바인딩 + 옛 런타임은 배열을 돌려주는 함수가 있거나(v2 marker) v2 런타임 함수를 쓰면 링크가 실패하고, 옛 바인딩 + 새 런타임은 v2 host helper를 부르는 런타임 코드가 링크에 남으면 실패한다. 둘 다 아닌 조합은 링크될 수 있으나 그때는 v1 경로만 쓰이므로 안전하다(보장 범위는 G2_SPEC 5.4 호환성 4항: 재생성·재링크 필요). 시험(6절)은 `-C link-dead-code`로 쓰이지 않는 함수가 링커 gc로 지워져 실패가 가려지는 일을 막는다.
-4. 런타임의 기존 `pruv_alloc`·`pruv_copy`·`pruv_free`·`pruv_raw_alloc`과 v1 host helper·v1 marker는 **고치지 않는다**. v2 함수는 새로 더한다.
-5. 안전 모드 저장 범위 문구는 Rust 소스 뒷단과 같다: `pruv: element out of range: <v> (u8 0..=255)`, 종료 101. 검사 순서: 저장은 색인 → 값, alloc은 길이 → 값(길이가 0이어도 값 검사).
-6. 증명 모드는 검사를 넣지 않는다(값 범위는 `elem_range`가 증명). GEP의 `inbounds`는 지금처럼 두 모드 모두 붙는다(안전 모드는 색인 검사 뒤라 참).
+1. A4 opens `[u8]` in every path that uses llvmgen (`--backend llvm`, `--also-llvm`, the Rust implementation's `--emit ll|obj|exe`). `[bool]` (`array_bool`) continues to be rejected as `unsupported_type` (A5).
+2. **The IR of existing programs that use only `[i64]` does not change by a single byte.** The u8 declarations (`DECLS_U8`) are appended only when the program uses `[u8]` (`uses_array_type(prog, "array_u8")`).
+3. **Bindings change for all programs** (G2_SPEC 5.4 compatibility items 3 and 4): three v2 host helpers are always defined, and if there is a function that returns an array, the marker is referenced as `pruv_runtime_rust_allocator_v2`. Reason: the `-DPRUV_RUST_ALLOCATOR` runtime calls the v2 host helpers as extern, so every binding linked with that runtime must define the helpers. A new binding + old runtime fails to link if there is a function returning an array (v2 marker) or if a v2 runtime function is used, and an old binding + new runtime fails if runtime code that calls the v2 host helpers remains in the link. Combinations that are neither may link, but then only the v1 path is used, so it is safe (the guaranteed range is G2_SPEC 5.4 compatibility item 4: regeneration and relinking required). The tests (§6) use `-C link-dead-code` to prevent unused functions from being removed by linker gc and hiding a failure.
+4. The runtime's existing `pruv_alloc`, `pruv_copy`, `pruv_free`, `pruv_raw_alloc`, and the v1 host helpers and v1 marker are **not modified**. v2 functions are added new.
+5. The safe-mode store-range message is the same as the Rust source backend: `pruv: element out of range: <v> (u8 0..=255)`, exit 101. Check order: for a store, index → value; for alloc, length → value (the value is checked even when the length is 0).
+6. Proof mode inserts no checks (the value range is proved by `elem_range`). The `inbounds` of GEP is attached in both modes as now (in safe mode it is true because it follows the index check).
 
-## 1. 원소 타입 정보 싣기(두 판 공통 규칙)
+## 1. Carrying element type information (rules common to both implementations)
 
-- `lty("array_u8") = "{ ptr, i64 }"`(ARR), `vkind("array_u8") = arr`(Rs `Kind::Arr`). `array_bool`은 지금 그대로(가드가 막음).
-- 배열 값 `V(k=arr)`과 배열 슬롯 `Slot(k=arr)`은 `ty` 칸에 원소 정보를 싣는다:
-  - `[u8]`이면 `ty` = `ARRAY_U8`(Py `Type("array_u8")`) / Rs `Some("array_u8".to_string())`.
-  - `[i64]`이면 지금처럼 `ty` = `None`(Py `None`, Rs `None`). **i64 길의 코드·출력은 그대로.**
-  - 아래에서 "u8 배열"은 `ty`의 이름이 `array_u8`인 배열 값/슬롯이다. 원소 IR 타입 `E` = u8이면 `i8`, 아니면 `i64`.
-- 배열 값이 생기는 모든 자리에서 `ty`를 채운다:
-  - 매개변수: `bind_params`·`bind_contract_params`(타입 `p.type`).
-  - 슬롯: `new_slot(name, ty)`가 배열 슬롯에 `ty`(u8일 때만)를 넣고, `load(sl)`가 돌려주는 배열 V에 `sl.ty`를 복사한다.
-  - `alloc(n, v)`: Call 노드의 ty(Py `e.ty`, Rs `expr_ty(e)`)가 `array_u8`이면 u8.
-  - `copy(x)`: 결과 V의 `ty` = 인자 V의 `ty`.
-  - 사용자 함수 호출 결과: `f.ret`이 `array_u8`이면 u8.
-- 매개변수·호출·반환에서 배열인지 판정하던 `p.type == ARRAY` / `p.ty == "array"` / `f.ret == ARRAY`는 **배열이면(`array`·`array_u8`)** 으로 넓힌다(Py `is_array(t)`, Rs `is_array_name(..)` 등 typeinfo에 있는 질의). 대상: `ir_params`, `bind_params`, `bind_contract_params`, `ev_call`의 호출 결과, `abi_of`(인자 `ptr %a.x.a, i64 %a.x.n`과 반환 out 포인터 글자는 원소와 무관하게 지금과 같다), 바인딩 생성.
-- 소유 배열 목록(`scope["arrays"]`)과 임시값 목록(`temps`)은 슬롯·V를 그대로 담으므로 `ty`가 따라온다. 해제(`free_val`)는 V의 `ty`로 고른다.
-- 조기 `return x`의 슬롯 비우기(`store ptr null` / `store i64 0`)는 그대로.
+- `lty("array_u8") = "{ ptr, i64 }"` (ARR), `vkind("array_u8") = arr` (Rs `Kind::Arr`). `array_bool` stays as is (the guard blocks it).
+- The array value `V(k=arr)` and array slot `Slot(k=arr)` carry element information in the `ty` field:
+  - For `[u8]`, `ty` = `ARRAY_U8` (Py `Type("array_u8")`) / Rs `Some("array_u8".to_string())`.
+  - For `[i64]`, `ty` = `None` as now (Py `None`, Rs `None`). **The code and output of the i64 path are unchanged.**
+  - Below, a "u8 array" is an array value/slot whose `ty` name is `array_u8`. The element IR type `E` is `i8` if u8, otherwise `i64`.
+- `ty` is filled in at every place an array value arises:
+  - Parameters: `bind_params`, `bind_contract_params` (type `p.type`).
+  - Slots: `new_slot(name, ty)` puts `ty` (only when u8) in an array slot, and `load(sl)` copies `sl.ty` to the array V it returns.
+  - `alloc(n, v)`: if the ty of the Call node (Py `e.ty`, Rs `expr_ty(e)`) is `array_u8`, it is u8.
+  - `copy(x)`: the `ty` of the resulting V = the `ty` of the argument V.
+  - User function call result: if `f.ret` is `array_u8`, it is u8.
+- The `p.type == ARRAY` / `p.ty == "array"` / `f.ret == ARRAY` that decided whether something is an array in parameters, calls, and returns is widened to **if it is an array (`array` or `array_u8`)** (Py `is_array(t)`, Rs `is_array_name(..)`, and other queries in typeinfo). Targets: `ir_params`, `bind_params`, `bind_contract_params`, the call result in `ev_call`, `abi_of` (the arguments `ptr %a.x.a, i64 %a.x.n` and the return out-pointer text are the same as now regardless of element), and binding generation.
+- The owned array list (`scope["arrays"]`) and the temporaries list (`temps`) hold slots and Vs as is, so `ty` follows. Freeing (`free_val`) is chosen by the V's `ty`.
+- Clearing the slot at an early `return x` (`store ptr null` / `store i64 0`) is unchanged.
 
-## 2. 생성 IR 글자(정확한 문자열)
+## 2. Generated IR text (exact strings)
 
-`%t`·`%g` 등은 지금 생성기의 `s.op` 번호 붙이기를 따른다. **아래 적은 순서대로 `op`/`ins`를 부른다**(번호가 두 판에서 같아야 한다). `[i64]` 경로의 글자·순서는 바꾸지 않는다.
+`%t`, `%g`, etc. follow the `s.op` numbering of the current generator. **Call `op`/`ins` in the order written below** (the numbers must be the same in both implementations). The text and order of the `[i64]` path are not changed.
 
-### 2.1 색인 주소 `index_ptr(a, i)`
+### 2.1 Index address `index_ptr(a, i)`
 
 ```
-(안전 모드만, 지금과 같음)  %ok = icmp ult i64 I, N ; guard → call void @pruv_panic_oob(i64 I, i64 N)
+(safe mode only, same as now)  %ok = icmp ult i64 I, N ; guard → call void @pruv_panic_oob(i64 I, i64 N)
 %g = getelementptr inbounds E, ptr A, i64 I
 ```
 
-### 2.2 코드 읽기 `a[i]`
+### 2.2 Code read `a[i]`
 
-u8: `index_ptr` 뒤
+u8: after `index_ptr`
 ```
 %x = load i8, ptr %g
-%r = zext i8 %x to i64          ; 결과 V("i64", %r)
+%r = zext i8 %x to i64          ; result V("i64", %r)
 ```
-i64: 지금 그대로(`load i64`).
+i64: as now (`load i64`).
 
-### 2.3 원소 저장 `NAME[i] = x` (u8 배열 슬롯)
+### 2.3 Element store `NAME[i] = x` (u8 array slot)
 
-순서: 색인 식 → 값 식 → 슬롯 load → `index_ptr`(안전 모드 색인 검사) → (안전 모드만) 값 범위 검사 → trunc → store.
+Order: index expression → value expression → slot load → `index_ptr` (safe-mode index check) → (safe mode only) value range check → trunc → store.
 ```
-(안전 모드만)
+(safe mode only)
 %ok = icmp ule i64 X, 255
-guard(ok, fail_when=False):  call void @pruv_panic_elem(i64 X, ptr @.str.K)     ; 문자열 "u8 0..=255"
-(두 모드)
+guard(ok, fail_when=False):  call void @pruv_panic_elem(i64 X, ptr @.str.K)     ; string "u8 0..=255"
+(both modes)
 %b = trunc i64 X to i8
 store i8 %b, ptr %g
 ```
-- `guard`는 지금 `index_ptr`의 색인 검사와 같은 방식(`ok`/`fail` 라벨, fail 블록 끝 `unreachable`)이다. 문자열 `"u8 0..=255"`는 `panic1`처럼 fail 블록을 내보낼 때 `m.string`으로 등록한다(`call void @pruv_panic_elem(i64 X, ptr S)` 한 줄을 `ins`).
-- `icmp ule`(부호 없는 비교)라 음수도 실패로 간다.
+- `guard` works the same way as the index check of the current `index_ptr` (`ok`/`fail` labels, `unreachable` at the end of the fail block). The string `"u8 0..=255"` is registered with `m.string` when the fail block is emitted, as with `panic1` (`ins` the one line `call void @pruv_panic_elem(i64 X, ptr S)`).
+- Since it is `icmp ule` (unsigned comparison), negatives also go to failure.
 
 ### 2.4 `alloc(n, v)` (u8)
 
-순서: n 식 → v 식 → (안전 모드만) 길이 검사(지금과 같은 `icmp ult i64 CNT, 1099511627777` + `pruv_panic_arith("alloc length outside 0..2^40")`) → (안전 모드만) 값 범위 검사(2.3과 같은 `icmp ule i64 V, 255` + `pruv_panic_elem(i64 V, "u8 0..=255")`) → 호출.
+Order: n expression → v expression → (safe mode only) length check (same as now: `icmp ult i64 CNT, 1099511627777` + `pruv_panic_arith("alloc length outside 0..2^40")`) → (safe mode only) value range check (same as 2.3: `icmp ule i64 V, 255` + `pruv_panic_elem(i64 V, "u8 0..=255")`) → call.
 ```
 %p = call ptr @pruv_alloc_u8(i64 CNT, i64 V)
 ```
-결과 `V("arr", %p, CNT, ty=u8)`, 지금처럼 `temp_arr(.., owned)`.
+The result is `V("arr", %p, CNT, ty=u8)`, `temp_arr(.., owned)` as now.
 
 ### 2.5 `copy(x)` (u8)
 
 ```
 %p = call ptr @pruv_copy_v2(ptr A, i64 N, i64 1, i64 1)
 ```
-결과 `V("arr", %p, N, ty=u8)`, `temp_arr`.
+The result is `V("arr", %p, N, ty=u8)`, `temp_arr`.
 
-### 2.6 해제 `free_val(v)` (u8)
+### 2.6 Free `free_val(v)` (u8)
 
 ```
 call void @pruv_free_v2(ptr P, i64 N, i64 1, i64 1)
 ```
-i64는 지금 그대로 `call void @pruv_free(ptr P, i64 N)`.
+For i64, as now: `call void @pruv_free(ptr P, i64 N)`.
 
-### 2.7 계약 읽기(requires, `cev`의 Index) (u8)
+### 2.7 Contract read (requires, Index of `cev`) (u8)
 
-지금 순서 그대로(`zext` 길이 → `icmp ult i128` → guard `pruv_panic_undefined("array index out of range")` → `trunc i128 .. to i64`) 뒤:
+After the current order (`zext` length → `icmp ult i128` → guard `pruv_panic_undefined("array index out of range")` → `trunc i128 .. to i64`) as is:
 ```
 %g = getelementptr inbounds i8, ptr A, i64 %ii
 %x = load i8, ptr %g
-%r = zext i8 %x to i128          ; 결과 V("i128", %r)
+%r = zext i8 %x to i128          ; result V("i128", %r)
 ```
 
-### 2.8 정렬 requires `csorted` (u8)
+### 2.8 Sorted requires `csorted` (u8)
 
-루프 몸체의 비교 부분만 바뀐다. 순서:
+Only the comparison part of the loop body changes. Order:
 ```
 %pk = sub i64 %kv, 1
 %g0 = getelementptr inbounds i8, ptr A, i64 %pk
@@ -106,43 +106,43 @@ i64는 지금 그대로 `call void @pruv_free(ptr P, i64 N)`.
 %z1 = zext i8 %x1 to i64
 %le = icmp sle i64 %z0, %z1
 ```
-i64는 지금 그대로.
+i64 is as now.
 
-### 2.9 선언
+### 2.9 Declarations
 
-`DECLS`는 그대로 두고, u8 프로그램이면 그 바로 뒤에 `DECLS_U8`을 붙인다.
+`DECLS` is left as is, and if the program is a u8 program, `DECLS_U8` is attached right after it.
 ```
 declare noalias ptr @pruv_alloc_u8(i64, i64) nounwind
 declare noalias ptr @pruv_copy_v2(ptr nocapture readonly, i64, i64, i64) nounwind
 declare void @pruv_free_v2(ptr nocapture, i64, i64, i64) nounwind
 declare void @pruv_panic_elem(i64, ptr) noreturn cold nounwind
 ```
-조립: `문자열 상수 + "\n" + 타입 정의 + (타입 있으면 "\n") + DECLS + (u8이면 DECLS_U8) + "\n" + 함수 청크들`(Rs는 Windows 머리 그대로 앞에).
+Assembly: `string constants + "\n" + type definitions + ("\n" if there are types) + DECLS + (DECLS_U8 if u8) + "\n" + function chunks` (Rs puts the Windows header in front as is).
 
-### 2.10 가드
+### 2.10 Guards
 
-- 생성기 자체 가드: Py `gen_llvm`의 `g2_unimplemented_error(prog, "codegen", skip=("array_u8",))`, Rs `gen_llvm_for`의 `g2_unimplemented_error(prog, "codegen", None, &["array_u8"], None)`.
-- 드라이버(Py `pruvc/pruvc.py` `compile_file`, Rs `pruvc-rs/crates/pruvc/src/driver.rs` `compile`): llvm 길과 rust 길을 가르던 분기를 없애고 모든 길에서 `g2_unimplemented_error(prog, "codegen", skip=("array_u8",))`(Rs `None, &["array_u8"], None`).
+- The generator's own guard: Py `gen_llvm`'s `g2_unimplemented_error(prog, "codegen", skip=("array_u8",))`, Rs `gen_llvm_for`'s `g2_unimplemented_error(prog, "codegen", None, &["array_u8"], None)`.
+- Driver (Py `pruvc/pruvc.py` `compile_file`, Rs `pruvc-rs/crates/pruvc/src/driver.rs` `compile`): remove the branch that separated the llvm path from the rust path, and in every path use `g2_unimplemented_error(prog, "codegen", skip=("array_u8",))` (Rs `None, &["array_u8"], None`).
 
-## 3. 런타임 `pruvc/runtime.c` v2
+## 3. Runtime `pruvc/runtime.c` v2
 
-기존 코드는 그대로 두고 다음을 더한다(C11, MSVC `/std:c11`에서도 컴파일돼야 하므로 `__attribute__`는 기존 COUNT 블록 밖에 쓰지 않는다).
+Leave the existing code as is and add the following (C11; it must also compile under MSVC `/std:c11`, so `__attribute__` is not used outside the existing COUNT block).
 
-선언부(기존 선언 뒤):
+Declaration part (after the existing declarations):
 ```c
 void *pruv_alloc_u8(int64_t len, int64_t value);
 void *pruv_copy_v2(const void *src, int64_t len, int64_t size, int64_t align);
 void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align);
 _Noreturn void pruv_panic_elem(int64_t v, const char *range);
 ```
-`#ifdef PRUV_RUST_ALLOCATOR` 블록 안(기존 v1 marker 뒤):
+Inside the `#ifdef PRUV_RUST_ALLOCATOR` block (after the existing v1 marker):
 ```c
 extern void *pruv_host_alloc_v2(int64_t len, int64_t size, int64_t align);
 extern void *pruv_host_alloc_zeroed_v2(int64_t len, int64_t size, int64_t align);
 extern void pruv_host_free_v2(void *data, int64_t len, int64_t size, int64_t align);
 void pruv_runtime_rust_allocator_v2(void) {}
 ```
-panic(기존 panic 4개 뒤):
+Panic (after the existing 4 panics):
 ```c
 _Noreturn void pruv_panic_elem(int64_t v, const char *range) {
     PRUV_HOST_FLUSH();
@@ -151,7 +151,7 @@ _Noreturn void pruv_panic_elem(int64_t v, const char *range) {
     exit(101);
 }
 ```
-할당(기존 `pruv_free` 뒤):
+Allocation (after the existing `pruv_free`):
 ```c
 #define PRUV_MAX_LEN ((uint64_t)1 << 40)
 
@@ -207,19 +207,19 @@ void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align) {
 #endif
 }
 ```
-머리 주석에 v2 helper·v2 marker·새 panic 문구(`pruv: element out of range: <v> (<range>)`)를 한 단락으로 더한다. `build.rs`·`runtime.rs`는 고치지 않는다(4변형이 `runtime.c`를 그대로 다시 굽는다).
+Add the v2 helpers, the v2 marker, and the new panic message (`pruv: element out of range: <v> (<range>)`) to the header comment as one paragraph. `build.rs` and `runtime.rs` are not modified (the 4 variants re-bake `runtime.c` as is).
 
-## 4. 바인딩 글자(두 판 `gen_bindings`)
+## 4. Binding text (`gen_bindings` of both implementations)
 
-`ALLOW` = `#[allow(dead_code, non_snake_case, unused)]`. 순서는 지금 그대로이고 아래만 바뀐다.
+`ALLOW` = `#[allow(dead_code, non_snake_case, unused)]`. The order is as now, and only the following changes.
 
-1. `Pruv__Array` 구조체 뒤, `Pruv__Tagged` 앞에 — u8 프로그램이면:
+1. After the `Pruv__Array` struct and before `Pruv__Tagged` — if it is a u8 program:
    ```
    ALLOW
    #[repr(C)]
    pub struct Pruv__ArrayU8 { pub data: *mut u8, pub len: i64 }
    ```
-2. `pruv_host_free` 블록 뒤에 **늘**(모든 프로그램) 세 블록(각각 앞에 `ALLOW` 한 줄):
+2. After the `pruv_host_free` block, **always** (all programs), three blocks (each preceded by one `ALLOW` line):
    ```rust
    #[no_mangle]
    pub extern "C" fn pruv_host_alloc_v2(len: i64, size: i64, align: i64) -> *mut u8 {
@@ -253,35 +253,35 @@ void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align) {
        }
    }
    ```
-   (`Vec<u8>::from_raw_parts(p, len, len)`이 놓을 때 쓰는 `Layout::array::<u8>(len)` = 크기 len·정렬 1과 같다.)
-3. `extern "C"` 블록:
-   - `array_u8` 매개변수 → `*const u8`, `i64`. (`array`는 지금처럼 `*const i64`, `i64`.)
-   - `array_u8` 반환 → 마지막 `*mut Pruv__ArrayU8`, 반환 없음. (`array`는 지금처럼 `*mut Pruv__Array`.)
-   - 배열(원소 무관)을 돌려주는 함수가 하나라도 있으면 마지막 줄 `    fn pruv_runtime_rust_allocator_v2();` (지금의 `_v1` 줄을 바꾼다).
-4. 공개 래퍼:
-   - 타입 철자: `array_u8` 매개변수 `&[u8]`, 반환 `::std::vec::Vec<u8>`(`rust_ty`).
-   - 인자: 배열이면 원소 무관 `x.as_ptr()`, `x.len() as i64`.
-   - 배열 반환: `let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v2 as unsafe extern "C" fn());`(지금의 `_v1`을 바꾼다), `let mut pruv__out = Pruv__ArrayU8 { data: ::std::ptr::null_mut(), len: 0 };`(i64는 `Pruv__Array`), 나머지 호출·`from_raw_parts` 줄은 지금과 같다.
+   (The `Layout::array::<u8>(len)` that `Vec<u8>::from_raw_parts(p, len, len)` uses when releasing equals size len and alignment 1.)
+3. `extern "C"` block:
+   - `array_u8` parameter → `*const u8`, `i64`. (`array` is `*const i64`, `i64` as now.)
+   - `array_u8` return → a final `*mut Pruv__ArrayU8`, no return value. (`array` is `*mut Pruv__Array` as now.)
+   - If there is at least one function that returns an array (any element type), the last line is `    fn pruv_runtime_rust_allocator_v2();` (replacing the current `_v1` line).
+4. Public wrappers:
+   - Type spelling: `array_u8` parameter `&[u8]`, return `::std::vec::Vec<u8>` (`rust_ty`).
+   - Arguments: if an array, regardless of element, `x.as_ptr()`, `x.len() as i64`.
+   - Array return: `let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v2 as unsafe extern "C" fn());` (replacing the current `_v1`), `let mut pruv__out = Pruv__ArrayU8 { data: ::std::ptr::null_mut(), len: 0 };` (for i64, `Pruv__Array`), and the remaining call and `from_raw_parts` lines are the same as now.
 
-## 5. 표본·시험(시험 담당)
+## 5. Samples and tests (test owner)
 
-- `tests/llvm_pending.txt`는 메인이 지운다(`git rm`). 그러면 run_all·cli_also_llvm의 같은 llvm 행이 실제 링크·실행 검사로 바뀐다. pending 장치 코드는 남긴다(A5에서 다시 쓸 수 있음).
-- `tests/runtime/g2a_rt_*.json` 15개에 `"alloc_balance": true`를 더한다(llvm 행만 읽는 키). 단, 종료 코드가 0이 아닌(panic으로 끝나는) 표본은 `exit(101)`로 끝나도 atexit가 돌아 줄이 나오지만 해제가 덜 된 채 끝나므로 넣지 않는다. 구현에서 정한 예외 둘: `g2a_rt_return`(돌려준 배열을 Rust `Vec`이 놓아 런타임 해제 횟수에 안 잡힘)과 `g2a_rt_refine_trust`(할당 0번이라 `a > 0` 조건에 걸림)도 넣지 않는다. 대신 `g2a_rt_free_paths`에 함수별 `llvm_fn_contains`(`call void @pruv_free_v2(`·`call ptr @pruv_copy_v2(` 있음; 선언 줄 때문에 늘 참인 `ll_contains`는 쓰지 않음)와 `llvm_fn_absent`(`@pruv_free(` 등 i64 helper 없음)를 둬서, 해제 횟수만으로는 못 잡는 i64 크기 해제 퇴행을 IR 글자로 막는다.
-- 새 runtime 표본 `tests/runtime/g2a_rt_free_paths.{pruv,rs,json}`: u8 배열의 반복 재대입(루프 안 `a = alloc(..)`), 분기 안 조기 반환, 호출 결과 임시값(`len(make())`, `make()[0]`), `copy`, 지역 `[u8]`를 pruv 호출자에게 옮기는 반환(`mk2`), `[u8]` 인자 전달(`sum2`), 길이만 쓰는 호출(`pass_on`)을 섞고 `alloc_balance: true`. 두 모드(증명·`--no-verify`) 모두 돌도록 기존 표본 json 형식을 따른다.
-- ABI 표본 `tests/abi/gen/g2a_u8_ret.pruv`(`[u8]` 인자를 받아 `[u8]`를 돌려주는 함수)와 `tests/abi/check_generated.py`가 `[u8]` 반환을 "마지막 out 포인터 + void"로 인정하게.
-- 런타임 v2 링크 시험 `tests/abi/check_runtime_v2.py`: 6절.
+- `tests/llvm_pending.txt` is deleted by main (`git rm`). Then the same llvm rows in run_all and cli_also_llvm turn into real link-and-run checks. The pending mechanism code stays (it can be reused in A5).
+- Add `"alloc_balance": true` to the 15 `tests/runtime/g2a_rt_*.json` (a key read only by llvm rows). However, samples whose exit code is nonzero (ending in panic) are not included: even though they end with `exit(101)`, atexit runs and the line is printed, but they end with deallocation incomplete. Two exceptions decided in implementation: `g2a_rt_return` (the returned array is released by the Rust `Vec`, so it is not counted in the runtime free count) and `g2a_rt_refine_trust` (zero allocations, so it hits the condition `a > 0`) are also not included. Instead, `g2a_rt_free_paths` gets per-function `llvm_fn_contains` (`call void @pruv_free_v2(` and `call ptr @pruv_copy_v2(` present; `ll_contains`, which is always true because of declaration lines, is not used) and `llvm_fn_absent` (no i64 helpers such as `@pruv_free(`), so that an i64-sized free regression, which the free count alone cannot catch, is blocked by IR text.
+- New runtime sample `tests/runtime/g2a_rt_free_paths.{pruv,rs,json}`: mixes repeated reassignment of a u8 array (`a = alloc(..)` inside a loop), early return inside a branch, call-result temporaries (`len(make())`, `make()[0]`), `copy`, a return that moves a local `[u8]` to a pruv caller (`mk2`), passing a `[u8]` argument (`sum2`), and a call that uses only the length (`pass_on`), with `alloc_balance: true`. It follows the existing sample json format so that it runs in both modes (proof and `--no-verify`).
+- ABI sample `tests/abi/gen/g2a_u8_ret.pruv` (a function that takes a `[u8]` argument and returns a `[u8]`), and make `tests/abi/check_generated.py` accept a `[u8]` return as "final out pointer + void".
+- Runtime v2 link test `tests/abi/check_runtime_v2.py`: §6.
 
-## 6. 링크 실패 시험(`tests/abi/check_runtime_v2.py`)
+## 6. Link failure test (`tests/abi/check_runtime_v2.py`)
 
-호스트 대상에서 Rust 판 pruvc로 `.ll`+바인딩을 만들고 clang으로 `.ll`·런타임을 객체화한 뒤 rustc로 Rust 주 프로그램과 링크한다. `tests/abi/runtime_v1.c`는 A3 커밋(bec0348)의 `runtime.c`를 그대로 얼린 사본이다.
+On the host target, create `.ll` + bindings with the Rust implementation's pruvc, turn the `.ll` and runtime into objects with clang, and link with a Rust main program using rustc. `tests/abi/runtime_v1.c` is a frozen copy of the `runtime.c` of the A3 commit (bec0348).
 
-| 경우 | 바인딩 | 런타임 | 기대 |
+| Case | Binding | Runtime | Expected |
 |---|---|---|---|
-| ok_u8 | `g2a_u8_ret` 새 바인딩 | 새 `runtime.c` `-DPRUV_RUST_ALLOCATOR -DPRUV_COUNT_ALLOCS` | 링크·실행 성공, 기대 출력, `pruv-alloc-balance: A F`에서 F >= 1·A = F + 1(돌려준 배열은 Rust `Vec`이 놓음; 표본은 중간 copy 하나를 런타임 안에서 놓음) |
-| ok_i64 | `arr_ret` 새 바인딩 | 새 runtime, rust allocator | 성공 |
-| old_rt_u8 | `g2a_u8_ret` 새 바인딩 | `runtime_v1.c` rust allocator | 링크 실패(`pruv_runtime_rust_allocator_v2` 없음) |
-| old_rt_i64 | `arr_ret` 새 바인딩 | `runtime_v1.c` rust allocator | 링크 실패(`pruv_runtime_rust_allocator_v2` 없음) |
-| old_bind | `arr_ret` 새 바인딩에서 v2 helper 세 블록을 지운 것(옛 바인딩 흉내) | 새 runtime rust allocator | 링크 실패(`pruv_host_alloc_v2` 등 없음) |
-| malloc_rt | `g2a_u8_ret` 새 바인딩 | 새 runtime, malloc(정의 없음) | 링크 실패(marker 없음) |
+| ok_u8 | new binding of `g2a_u8_ret` | new `runtime.c` `-DPRUV_RUST_ALLOCATOR -DPRUV_COUNT_ALLOCS` | link and run succeed, expected output, and in `pruv-alloc-balance: A F` F >= 1 and A = F + 1 (the returned array is released by the Rust `Vec`; the sample releases one intermediate copy inside the runtime) |
+| ok_i64 | new binding of `arr_ret` | new runtime, rust allocator | success |
+| old_rt_u8 | new binding of `g2a_u8_ret` | `runtime_v1.c` rust allocator | link failure (`pruv_runtime_rust_allocator_v2` missing) |
+| old_rt_i64 | new binding of `arr_ret` | `runtime_v1.c` rust allocator | link failure (`pruv_runtime_rust_allocator_v2` missing) |
+| old_bind | the new binding of `arr_ret` with the three v2 helper blocks removed (imitating an old binding) | new runtime rust allocator | link failure (`pruv_host_alloc_v2` etc. missing) |
+| malloc_rt | new binding of `g2a_u8_ret` | new runtime, malloc (no definition) | link failure (marker missing) |
 
-링크 실패 경우는 rustc 종료 코드가 0이 아니고, 오류 글에 기대 심볼 이름이 있어야 통과다. 결과를 경우마다 한 줄로 찍고 하나라도 어긋나면 종료 1.
+For the link-failure cases, the rustc exit code must be nonzero and the error text must contain the expected symbol name to pass. Print the results one line per case, and exit 1 if even one deviates.
