@@ -2,10 +2,68 @@
 //! match_sorted_requires, rstr). The output must be byte-identical to Python's.
 
 use crate::ast::*;
+use crate::gtype::{is_g3_key, GType};
 use crate::typeinfo::{is_user_type, TypeTable};
+
+/// G3: a generic specialization function (stem `pruv_g3_f_...`); such functions are private Rust items.
+/// The prefix `pruv_` is reserved, so no user function can carry it.
+pub fn is_spec_fn(name: &str) -> bool {
+    name.starts_with("pruv_g3_f_")
+}
+
+/// G3: the declaration name a generated type stem (`pruv_g3_t_<len>_<name>_...`) was made from; any other name as is.
+/// Used where Python keeps `src_name` (panic messages of requires).
+pub fn src_name(name: &str) -> &str {
+    if let Some(rest) = name.strip_prefix("pruv_g3_t_") {
+        if let Some(us) = rest.find('_') {
+            if let Ok(n) = rest[..us].parse::<usize>() {
+                let start = us + 1;
+                if let Some(s) = rest.get(start..start + n) {
+                    return s;
+                }
+            }
+        }
+    }
+    name
+}
+
+/// The type name of a key: the text before the argument list (`option` for `option<bool>`).
+pub fn key_name(t: &str) -> &str {
+    t.split('<').next().unwrap_or(t)
+}
+
+/// A user struct/enum name; a structured key (`option<bool>`) is not one.
+pub fn is_user_key(t: &str) -> bool {
+    !is_g3_key(t) && is_user_type(t)
+}
+
+fn structured_builtin(g: &GType) -> bool {
+    g.owner.is_none() && !g.args.is_empty() && (g.name == "option" || g.name == "result")
+}
+
+/// Rust type spelling of a structured type (G3): Option<X> / Result<X> with X != i64.
+pub fn rty_g(g: &GType, param: bool) -> String {
+    if structured_builtin(g) {
+        let x = rty_g(&g.args[0], false);
+        if g.name == "option" {
+            return format!("::std::option::Option<{}>", x);
+        }
+        return format!("::std::result::Result<{}, i64>", x);
+    }
+    rty_name(&g.name, param)
+}
 
 /// Rust type spelling for execution. It covers all 6 built-ins and user types, so there is no failure path.
 pub fn rty(t: &str, param: bool) -> String {
+    if is_g3_key(t) {
+        if let Ok(g) = GType::try_from_key(t) {
+            return rty_g(&g, param);
+        }
+    }
+    rty_name(t, param)
+}
+
+fn rty_name(t: &str, param: bool) -> String {
     match t {
         "i64" => "i64".to_string(),
         "bool" => "bool".to_string(),
@@ -35,8 +93,29 @@ fn type_repr(t: &str) -> String {
     format!("Type(name='{}')", t)
 }
 
+/// Contract (i128) mirror of a structured type (G3): C(Option<X>) = Option<C(X)>, C(Result<X>) = Result<C(X), i128>.
+pub fn try_cty_g(g: &GType) -> Result<String, String> {
+    if structured_builtin(g) {
+        let x = try_cty_g(&g.args[0])?;
+        if g.name == "option" {
+            return Ok(format!("::std::option::Option<{}>", x));
+        }
+        return Ok(format!("::std::result::Result<{}, i128>", x));
+    }
+    try_cty_name(&g.name)
+}
+
 /// Contract (i128) mirror type. Err for unit and array.
 pub fn try_cty(t: &str) -> Result<String, String> {
+    if is_g3_key(t) {
+        if let Ok(g) = GType::try_from_key(t) {
+            return try_cty_g(&g);
+        }
+    }
+    try_cty_name(t)
+}
+
+fn try_cty_name(t: &str) -> Result<String, String> {
     match t {
         "i64" => Ok("i128".to_string()),
         "bool" => Ok("bool".to_string()),
@@ -52,8 +131,30 @@ pub fn cty(t: &str) -> String {
     try_cty(t).unwrap()
 }
 
+/// Contract conversion of a structured type (G3): recursive, the payload first.
+pub fn try_conv_g(g: &GType, x: &str) -> Result<String, String> {
+    if structured_builtin(g) {
+        let inner = try_conv_g(&g.args[0], "v")?;
+        let mapped = if inner == "v" { x.to_string() } else { format!("{}.map(|v| {})", x, inner) };
+        if g.name == "option" {
+            return Ok(mapped);
+        }
+        return Ok(format!("{}.map_err(|v| v as i128)", mapped));
+    }
+    try_conv_name(&g.name, x)
+}
+
 /// Rust expression converting the runtime value `x` (of type t) to a contract value. Err for unit and array.
 pub fn try_conv(t: &str, x: &str) -> Result<String, String> {
+    if is_g3_key(t) {
+        if let Ok(g) = GType::try_from_key(t) {
+            return try_conv_g(&g, x);
+        }
+    }
+    try_conv_name(t, x)
+}
+
+fn try_conv_name(t: &str, x: &str) -> Result<String, String> {
     match t {
         "i64" => Ok(format!("({} as i128)", x)),
         "bool" => Ok(x.to_string()),
@@ -128,25 +229,26 @@ pub fn show(e: &Expr) -> String {
             Some(a) => format!("{}({})", x.name, show(a)),
         },
         Expr::Quant(x) => format!("{} {} in {}..{}: {}", x.kind, x.var, show(&x.lo), show(&x.hi), show(&x.body)),
+        // G3: a specialized node is named by its stem; the message shows the declaration name as written
         Expr::StructLit(x) => {
             if x.fields.is_empty() {
-                format!("{} {{}}", x.name)
+                format!("{} {{}}", src_name(&x.name))
             } else {
                 let fs: Vec<String> = x.fields.iter().map(|f| format!("{}: {}", f.name, show(&f.value))).collect();
-                format!("{} {{ {} }}", x.name, fs.join(", "))
+                format!("{} {{ {} }}", src_name(&x.name), fs.join(", "))
             }
         }
         Expr::EnumCtor(x) => {
             if x.args.is_empty() {
-                format!("{}::{}", x.enum_name, x.variant)
+                format!("{}::{}", src_name(&x.enum_name), x.variant)
             } else {
-                format!("{}::{}({})", x.enum_name, x.variant, show_list(&x.args))
+                format!("{}::{}({})", src_name(&x.enum_name), x.variant, show_list(&x.args))
             }
         }
         Expr::FieldAccess(x) => format!("{}.{}", show(&x.base), x.field),
-        Expr::IsVariant(x) => format!("is_variant({}, {}::{})", show(&x.value), x.enum_name, x.variant),
+        Expr::IsVariant(x) => format!("is_variant({}, {}::{})", show(&x.value), src_name(&x.enum_name), x.variant),
         Expr::VariantField(x) => {
-            format!("variant_field({}, {}::{}, {})", show(&x.value), x.enum_name, x.variant, x.field)
+            format!("variant_field({}, {}::{}, {})", show(&x.value), src_name(&x.enum_name), x.variant, x.field)
         }
     }
 }

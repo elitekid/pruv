@@ -1,0 +1,31 @@
+// G3 A3 runtime: Result<T> keeps its i64 error payload; Ok::<T>, Err::<T> and match on Result<T>
+fn unwrap_or<T>(r: Result<T>, d: T) -> T {
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return d; }
+  }
+}
+
+fn succeed<T>(x: T) -> Result<T> {
+  return Ok::<T>(x);
+}
+
+fn fail<T>(code: i64) -> Result<T> {
+  return Err::<T>(code);
+}
+
+fn unwrap_bool(r: Result<bool>, d: bool) -> bool {
+  return unwrap_or::<bool>(r, d);
+}
+
+fn ok_bool(x: bool) -> Result<bool> {
+  return succeed::<bool>(x);
+}
+
+fn fail_bool(code: i64) -> Result<bool> {
+  return fail::<bool>(code);
+}
+
+fn fail_int(code: i64) -> Result<i64> {
+  return fail::<i64>(code);
+}

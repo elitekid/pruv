@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["true 7", "0 true"], "gen_contains": ["pub struct pruv_g3_t_4_Pair_2_i_b {", "pub struct pruv_g3_t_4_Pair_2_b_i {"]}

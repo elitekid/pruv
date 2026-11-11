@@ -46,6 +46,14 @@ Option/Result carry i128) and converters `pruv_to_c__Name(value)` (recursive; an
 only its active variant), so contract arithmetic never goes through i64.
 Standard types are always written `::std::vec::Vec` / `::std::option::Option` /
 `::std::result::Result` so user types named Vec etc. cannot collide.
+
+G3 (generics): gen_rust first builds the shared specialization plan (mono.py) and generates from the CONCRETE program
+it contains, so there is no generic Rust. Generic function specializations are private fns named `pruv_g3_f_...`
+(with `__pruv_body` + a private checked entry when they have `requires`); generic nominal applications are ordinary
+`pub struct/enum pruv_g3_t_...` with the usual derives. Option<X> / Result<X> (X != i64) are
+`::std::option::Option<R(X)>` / `::std::result::Result<R(X), i64>`; their constructors are written with explicit
+turbofish (`None::<R(X)>`, `Ok::<R(X), i64>(..)`). Contract mirrors are recursive: C(Option<X>) = Option<C(X)>,
+C(Result<X>) = Result<C(X), i128>. A program without generics is generated directly, byte for byte as before G3.
 """
 from vast import *
 from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str
@@ -229,6 +237,11 @@ CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pr
 
 
 def rty(t, param=False):
+    if t.owner is None and t.args and t.name in ("option", "result"):  # G3: Option<X> / Result<X>, X != i64
+        x = rty(t.args[0])
+        if t.name == "option":
+            return "::std::option::Option<%s>" % x
+        return "::std::result::Result<%s, i64>" % x
     simple = {"i64": "i64", "bool": "bool", "unit": "()", "option": "::std::option::Option<i64>",
               "result": "::std::result::Result<i64, i64>"}
     if t.name in simple:
@@ -248,6 +261,11 @@ def rty(t, param=False):
 
 def cty(t):
     """contract (i128) mirror of a type"""
+    if t.owner is None and t.args and t.name in ("option", "result"):  # G3: C(Option<X>) = Option<C(X)>
+        x = cty(t.args[0])
+        if t.name == "option":
+            return "::std::option::Option<%s>" % x
+        return "::std::result::Result<%s, i128>" % x
     n = t.name
     if n == "i64":
         return "i128"
@@ -264,6 +282,12 @@ def cty(t):
 
 def conv(t, x):
     """Rust expression turning the executed value `x` (type t) into its contract value"""
+    if t.owner is None and t.args and t.name in ("option", "result"):  # G3: recursive, payload first
+        inner = conv(t.args[0], "v")
+        if t.name == "option":
+            return x if inner == "v" else "%s.map(|v| %s)" % (x, inner)
+        ok = x if inner == "v" else "%s.map(|v| %s)" % (x, inner)
+        return "%s.map_err(|v| v as i128)" % ok
     n = t.name
     if n == "i64":
         return "(%s as i128)" % x
@@ -320,20 +344,23 @@ def show(e):
         return e.name if e.arg is None else "%s(%s)" % (e.name, show(e.arg))
     if isinstance(e, Quant):
         return "%s %s in %s..%s: %s" % (e.kind, e.var, show(e.lo), show(e.hi), show(e.body))
+    # G3: a specialized node carries the declaration name as written in `src_name` (its name is the generated stem)
     if isinstance(e, StructLit):
+        sn = getattr(e, "src_name", e.name)
         if not e.fields:
-            return "%s {}" % e.name
-        return "%s { %s }" % (e.name, ", ".join("%s: %s" % (f.name, show(f.value)) for f in e.fields))
+            return "%s {}" % sn
+        return "%s { %s }" % (sn, ", ".join("%s: %s" % (f.name, show(f.value)) for f in e.fields))
     if isinstance(e, EnumCtor):
+        sn = getattr(e, "src_name", e.enum_name)
         if not e.args:
-            return "%s::%s" % (e.enum_name, e.variant)
-        return "%s::%s(%s)" % (e.enum_name, e.variant, ", ".join(show(a) for a in e.args))
+            return "%s::%s" % (sn, e.variant)
+        return "%s::%s(%s)" % (sn, e.variant, ", ".join(show(a) for a in e.args))
     if isinstance(e, FieldAccess):
         return "%s.%s" % (show(e.base), e.field)
     if isinstance(e, IsVariant):
-        return "is_variant(%s, %s::%s)" % (show(e.value), e.enum_name, e.variant)
+        return "is_variant(%s, %s::%s)" % (show(e.value), getattr(e, "src_name", e.enum_name), e.variant)
     if isinstance(e, VariantField):
-        return "variant_field(%s, %s::%s, %s)" % (show(e.value), e.enum_name, e.variant, e.field)
+        return "variant_field(%s, %s::%s, %s)" % (show(e.value), getattr(e, "src_name", e.enum_name), e.variant, e.field)
     if isinstance(e, StrLit):  # G2 B2
         return "<str>"
     return "?"
@@ -463,8 +490,9 @@ class Gen:
         ps = ", ".join("%s: %s" % (p.name, rty(p.type, True)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
         body_name = f.name + "__pruv_body" if f.requires else f.name
+        vis = "" if (f.requires or getattr(f, "private", False)) else "pub "   # G3: specializations are private
         s.emit(0, ALLOW)
-        s.emit(0, "%sfn %s(%s)%s {" % ("" if f.requires else "pub ", body_name, ps, ret))
+        s.emit(0, "%sfn %s(%s)%s {" % (vis, body_name, ps, ret))
         s.block(f.body, 1)
         s.emit(0, "}")
         s.emit(0, "")
@@ -474,7 +502,7 @@ class Gen:
     def entry(s, f, ps, ret, body_name):
         s.emit(0, ALLOW)
         s.emit(0, "#[inline]")
-        s.emit(0, "pub fn %s(%s)%s {" % (f.name, ps, ret))
+        s.emit(0, "%sfn %s(%s)%s {" % ("" if getattr(f, "private", False) else "pub ", f.name, ps, ret))
         if not s.trust:
             s.cp = {}   # user-type parameter -> its type, converted once below
             checks = []
@@ -542,6 +570,13 @@ class Gen:
                 return "pruv_cidx_u8(%s, %s)" % (s.carr(e.array), s.c(e.index))
             return "pruv_cidx(%s, %s)" % (s.carr(e.array), s.c(e.index))
         if isinstance(e, Ctor):
+            if e.ty is not None and e.ty.args:   # G3: Option<X> / Result<X>, X != i64
+                cx = cty(e.ty.args[0])
+                if e.name == "None":
+                    return "None::<%s>" % cx
+                if e.name == "Some":
+                    return "Some::<%s>(%s)" % (cx, s.c(e.arg))
+                return "%s::<%s, i128>(%s)" % (e.name, cx, s.c(e.arg))
             if e.name == "None":
                 return "None::<i128>"
             ctor = {"Some": "Some", "Ok": "Ok::<i128, i128>", "Err": "Err::<i128, i128>"}[e.name]
@@ -743,6 +778,13 @@ class Gen:
                 return "pruv_get(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
             return "(unsafe { *%s.get_unchecked((%s) as usize) })" % (s.e(e.array), s.e(e.index))
         if isinstance(e, Ctor):
+            if e.ty is not None and e.ty.args:   # G3: explicit payload type, never left to Rust inference
+                rx = rty(e.ty.args[0])
+                if e.name == "None":
+                    return "None::<%s>" % rx
+                if e.name == "Some":
+                    return "Some::<%s>(%s)" % (rx, s.e(e.arg))
+                return "%s::<%s, i64>(%s)" % (e.name, rx, s.e(e.arg))
             return "None" if e.name == "None" else "%s(%s)" % (e.name, s.e(e.arg))
         if isinstance(e, StructLit):
             # declaration order = left-to-right evaluation; parenthesized so `if S { .. }.x` parses
@@ -794,11 +836,15 @@ class Gen:
         raise Exception("codegen: contract-only expression in code: %r" % e)
 
 
-def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30):
-    from typeinfo import g2_unimplemented_error, g3_unimplemented_error
-    g3err = g3_unimplemented_error(prog, "codegen")  # G3 A1: generics stop here until A3/A4
-    if g3err is not None:
-        raise RuntimeError("unsupported_type: %s" % g3err.message)
+def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None):
+    """plan: a mono.SpecPlan for a generic program (computed here when omitted; PruvError specialization_limit
+    propagates). A program without generics is generated directly from prog, exactly as before G3."""
+    from typeinfo import g2_unimplemented_error, first_g3_use
+    if plan is None and first_g3_use(prog) is not None:
+        from mono import specialize
+        plan = specialize(prog)
+    if plan is not None:
+        prog = plan.program   # concrete: stems for specializations, no type parameters
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)

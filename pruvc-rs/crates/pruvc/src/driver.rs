@@ -210,15 +210,25 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    // G3 A2 staging guard (same place as in Python compile_file): the verifier handles generics (proof errors of generic
-    // programs are reported above), but both code generators do not yet; reject explicitly here, before code generation,
-    // also with --no-verify. Removed when the A3/A4 batches land.
-    if let Some(e) = pruv_core::typeinfo::g3_unimplemented_error(&prog, "codegen") {
-        return Err(Fail::Lang(vec![e]));
+    // G3 A3 (same place as in Python compile_file): the Rust source backend specializes generic programs (shared plan,
+    // mono.rs); the LLVM backend (also --also-llvm) rejects them explicitly until A4, also with --no-verify.
+    let mut plan_prog: Option<Program> = None;
+    if pruv_core::typeinfo::first_g3_use(&prog).is_some() {
+        if a.kind != Kind::Rs || a.also_llvm.is_some() {
+            if let Some(e) = pruv_core::mono::llvm_unsupported_error(&prog) {
+                return Err(Fail::Lang(vec![e]));
+            }
+        }
+        match pruv_core::mono::specialize(&prog) {
+            Ok(plan) => plan_prog = Some(plan.program),
+            Err(pruv_core::mono::MonoError::Limit(e)) => return Err(Fail::Lang(vec![e])), // no output at all
+            Err(pruv_core::mono::MonoError::Internal(m)) => return Err(Fail::Internal(m)),
+        }
     }
+    let gprog: &Program = plan_prog.as_ref().unwrap_or(&prog);
     // G2: even after verify, reject array types that do not yet have a code-generation layer.
     // A4, A5: [u8] and [bool] are allowed on every path (rust, llvm, ll, obj, exe, also_llvm).
-    let g2_err = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen", None, &["array_u8", "array_bool", "str"], None); // G2 B2
+    let g2_err = pruv_core::typeinfo::g2_unimplemented_error(gprog, "codegen", None, &["array_u8", "array_bool", "str"], None); // G2 B2
     if let Some(e) = g2_err {
         return Err(Fail::Lang(vec![e]));
     }
@@ -226,7 +236,8 @@ fn compile(a: &Args) -> Result<(), Fail> {
         // Stage 7: the Rust-source backend. Like Python compile_file, all the text (rs, and with --also-llvm also ll and bindings)
         // is produced first and only then are files written (on a generator error no file is written). Write order: OUT, LL, RS.
         Kind::Rs => {
-            let rs_text = pruv_core::codegen::gen_rust(&prog, a.verify, a.trust_callers, a.budget).map_err(Fail::Internal)?;
+            let rs_text =
+                pruv_core::codegen::gen_rust_concrete(gprog, a.verify, a.trust_callers, a.budget).map_err(Fail::Internal)?;
             let llvm_texts = match &a.also_llvm {
                 Some(_) => Some(generate(a, &prog)?),
                 None => None,

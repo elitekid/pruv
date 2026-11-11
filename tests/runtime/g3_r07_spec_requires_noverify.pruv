@@ -1,0 +1,11 @@
+// G3 A3 runtime (--no-verify only: the caller does not establish the requires of the generic callee, so the proof
+// rejects it). The specialization first::<bool> has its own checked entry, which the unverified caller reaches.
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+{
+  return a[0];
+}
+
+fn unchecked_first(a: [bool]) -> bool {
+  return first::<bool>(a);
+}

@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": ["Some(true) Ok(3)"], "stderr_contains": "pruv: requires violated: same_nested: (a == b)", "gen_contains": ["::std::result::Result<i128, i128>", "::std::option::Option<bool>"]}

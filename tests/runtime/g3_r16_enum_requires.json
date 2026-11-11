@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": ["false", "true"], "stderr_contains": "pruv: requires violated: left_bool: is_variant(c, Choice::Left)"}

@@ -1,0 +1,31 @@
+// G3 A3 runtime: a generic struct with two parameters; generic callees; assignment to a field of type A
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn make<A, B>(a: A, b: B) -> Pair<A, B> {
+  return Pair::<A, B> { first: a, second: b };
+}
+
+fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
+  return make::<B, A>(p.second, p.first);
+}
+
+fn set_first<A, B>(p: Pair<A, B>, v: A) -> Pair<A, B> {
+  let mut q: Pair<A, B> = p;
+  q.first = v;
+  return q;
+}
+
+fn build(a: i64, b: bool) -> Pair<i64, bool> {
+  return make::<i64, bool>(a, b);
+}
+
+fn swap_ib(p: Pair<i64, bool>) -> Pair<bool, i64> {
+  return swap::<i64, bool>(p);
+}
+
+fn reset_first(p: Pair<i64, bool>) -> Pair<i64, bool> {
+  return set_first::<i64, bool>(p, 0);
+}

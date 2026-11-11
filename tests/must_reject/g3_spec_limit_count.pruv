@@ -1,0 +1,88 @@
+// G3 A3 specialization limit (count): every generic function calls the next one at two different types, so the
+// number of distinct specializations doubles per level (g0:1, g1:2, ... g12:4096, g13:8192). The program is
+// small, type-correct and proves; code generation stops at the 4097th function specialization (4096 allowed).
+fn g13<T>() -> i64 {
+  return 0;
+}
+
+fn g12<T>() -> i64 {
+  let a: i64 = g13::<Option<T>>();
+  let b: i64 = g13::<Result<T>>();
+  return 0;
+}
+
+fn g11<T>() -> i64 {
+  let a: i64 = g12::<Option<T>>();
+  let b: i64 = g12::<Result<T>>();
+  return 0;
+}
+
+fn g10<T>() -> i64 {
+  let a: i64 = g11::<Option<T>>();
+  let b: i64 = g11::<Result<T>>();
+  return 0;
+}
+
+fn g9<T>() -> i64 {
+  let a: i64 = g10::<Option<T>>();
+  let b: i64 = g10::<Result<T>>();
+  return 0;
+}
+
+fn g8<T>() -> i64 {
+  let a: i64 = g9::<Option<T>>();
+  let b: i64 = g9::<Result<T>>();
+  return 0;
+}
+
+fn g7<T>() -> i64 {
+  let a: i64 = g8::<Option<T>>();
+  let b: i64 = g8::<Result<T>>();
+  return 0;
+}
+
+fn g6<T>() -> i64 {
+  let a: i64 = g7::<Option<T>>();
+  let b: i64 = g7::<Result<T>>();
+  return 0;
+}
+
+fn g5<T>() -> i64 {
+  let a: i64 = g6::<Option<T>>();
+  let b: i64 = g6::<Result<T>>();
+  return 0;
+}
+
+fn g4<T>() -> i64 {
+  let a: i64 = g5::<Option<T>>();
+  let b: i64 = g5::<Result<T>>();
+  return 0;
+}
+
+fn g3<T>() -> i64 {
+  let a: i64 = g4::<Option<T>>();
+  let b: i64 = g4::<Result<T>>();
+  return 0;
+}
+
+fn g2<T>() -> i64 {
+  let a: i64 = g3::<Option<T>>();
+  let b: i64 = g3::<Result<T>>();
+  return 0;
+}
+
+fn g1<T>() -> i64 {
+  let a: i64 = g2::<Option<T>>();
+  let b: i64 = g2::<Result<T>>();
+  return 0;
+}
+
+fn g0<T>() -> i64 {
+  let a: i64 = g1::<Option<T>>();
+  let b: i64 = g1::<Result<T>>();
+  return 0;
+}
+
+fn run() -> i64 {
+  return g0::<i64>();
+}

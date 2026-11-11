@@ -5,9 +5,13 @@
 //! Places where Python raises an Exception return Err(str(e)) (an AST printed with %r becomes {:?} — an unreachable path).
 
 use crate::ast::*;
-use crate::emit_common::{emit_public_types, match_sorted_requires, rstr, rty, show, try_conv, try_cty};
+use crate::emit_common::{
+    emit_public_types, is_spec_fn, is_user_key, key_name, match_sorted_requires, rstr, rty, rty_g, show, try_conv, try_cty,
+    try_cty_g,
+};
+use crate::gtype::{is_g3_key, GType};
 use crate::pyrepr::repr_str;
-use crate::typeinfo::{array_elem_name, is_array_name, is_user_type, uses_array_type, uses_str, TypeTable};
+use crate::typeinfo::{array_elem_name, is_array_name, uses_array_type, uses_str, TypeTable};
 use std::collections::{HashMap, HashSet};
 
 pub type R<T> = Result<T, String>;
@@ -166,6 +170,19 @@ fn lit_str(bytes: &[u8]) -> String {
     }
     s.push('"');
     s
+}
+
+/// G3: the payload type of a structured Option<X> / Result<X> node type (`e.ty.args[0]` in Python), else None.
+fn payload_type(ty: &Option<String>) -> Option<GType> {
+    let t = ty.as_deref()?;
+    if !is_g3_key(t) {
+        return None;
+    }
+    let g = GType::try_from_key(t).ok()?;
+    if g.owner.is_none() && !g.args.is_empty() {
+        return Some(g.args[0].clone());
+    }
+    None
 }
 
 /// The array element type name of the expression ("i64" if it is not an array).
@@ -463,8 +480,10 @@ impl<'a> Gen<'a> {
         let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", rty(&f.ret, false)) };
         let has = !f.requires.is_empty();
         let body_name = if has { format!("{}__pruv_body", f.name) } else { f.name.clone() };
+        // G3: generic specializations are private items
+        let vis = if has || is_spec_fn(&f.name) { "" } else { "pub " };
         self.emit(0, ALLOW);
-        self.emit(0, &format!("{}fn {}({}){} {{", if has { "" } else { "pub " }, body_name, ps, ret));
+        self.emit(0, &format!("{}fn {}({}){} {{", vis, body_name, ps, ret));
         self.block(&f.body, 1)?;
         self.emit(0, "}");
         self.emit(0, "");
@@ -488,7 +507,7 @@ impl<'a> Gen<'a> {
     fn entry(&mut self, f: &Function, ps: &str, ret: &str, body_name: &str) -> R<()> {
         self.emit(0, ALLOW);
         self.emit(0, "#[inline]");
-        self.emit(0, &format!("pub fn {}({}){} {{", f.name, ps, ret));
+        self.emit(0, &format!("{}fn {}({}){} {{", if is_spec_fn(&f.name) { "" } else { "pub " }, f.name, ps, ret));
         if !self.trust {
             self.cp = Some(HashMap::new());
             let res = self.entry_checks(f);
@@ -539,7 +558,7 @@ impl<'a> Gen<'a> {
                     return Ok(x.name.clone());
                 }
                 if let Some(ty) = &x.ty {
-                    if self.cp.is_some() && is_user_type(ty) && self.params.contains(&x.name) {
+                    if self.cp.is_some() && is_user_key(ty) && self.params.contains(&x.name) {
                         if let Some(cp) = self.cp.as_mut() {
                             cp.insert(x.name.clone(), ty.clone());
                         }
@@ -547,7 +566,8 @@ impl<'a> Gen<'a> {
                     }
                 }
                 let t = x.ty.as_deref().unwrap_or("i64");
-                if t == "i64" || t == "option" || t == "result" || is_user_type(t) {
+                let tn = key_name(t);
+                if tn == "i64" || tn == "option" || tn == "result" || is_user_key(t) {
                     return try_conv(t, &x.name);
                 }
                 Ok(x.name.clone())
@@ -590,6 +610,21 @@ impl<'a> Gen<'a> {
                 Ok(format!("pruv_cidx({}, {})", a, i))
             }
             Expr::Ctor(x) => {
+                // G3: Option<X> / Result<X> with X != i64 carry an explicit payload type
+                if let Some(g) = payload_type(&x.ty) {
+                    let cx = try_cty_g(&g)?;
+                    if x.name == "None" {
+                        return Ok(format!("None::<{}>", cx));
+                    }
+                    let a = match &x.arg {
+                        Some(a) => self.c(a)?,
+                        None => return Err("codegen: unsupported expression in requires: None".to_string()),
+                    };
+                    if x.name == "Some" {
+                        return Ok(format!("Some::<{}>({})", cx, a));
+                    }
+                    return Ok(format!("{}::<{}, i128>({})", x.name, cx, a));
+                }
                 if x.name == "None" {
                     return Ok("None::<i128>".to_string());
                 }
@@ -1024,6 +1059,21 @@ impl<'a> Gen<'a> {
                 Ok(format!("(unsafe {{ *{}.get_unchecked(({}) as usize) }})", a, i))
             }
             Expr::Ctor(x) => {
+                // G3: explicit payload type, never left to Rust inference
+                if let Some(g) = payload_type(&x.ty) {
+                    let rx = rty_g(&g, false);
+                    if x.name == "None" {
+                        return Ok(format!("None::<{}>", rx));
+                    }
+                    let a = match &x.arg {
+                        Some(a) => self.e(a)?,
+                        None => return Err("codegen: contract-only expression in code: None".to_string()),
+                    };
+                    if x.name == "Some" {
+                        return Ok(format!("Some::<{}>({})", rx, a));
+                    }
+                    return Ok(format!("{}::<{}, i64>({})", x.name, rx, a));
+                }
                 if x.name == "None" {
                     return Ok("None".to_string());
                 }
@@ -1143,11 +1193,37 @@ impl<'a> Gen<'a> {
     }
 }
 
-/// Pruv -> Rust source. Err is the str(e) at the place where Python raises an Exception.
-pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
-    if let Some(e) = crate::typeinfo::g3_unimplemented_error(prog, "codegen") { // G3 A1: generics stop here until A3
-        return Err(format!("unsupported_type: {}", e.message));
+/// Failure of `gen_rust_any`: a diagnostic (PruvError, the specialization limit) or Python's str(Exception).
+#[derive(Debug, Clone)]
+pub enum GenError {
+    Diag(crate::diagnostic::PruvError),
+    Msg(String),
+}
+
+/// Pruv -> Rust source for any checked program (Python `gen_rust`): a program that uses generics is specialized first
+/// (shared plan, mono.rs) and generated from the concrete program; any other program is generated directly.
+pub fn gen_rust_any(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, GenError> {
+    if crate::typeinfo::first_g3_use(prog).is_some() {
+        let plan = crate::mono::specialize(prog).map_err(|e| match e {
+            crate::mono::MonoError::Limit(p) => GenError::Diag(p),
+            crate::mono::MonoError::Internal(m) => GenError::Msg(m),
+        })?;
+        return gen_rust_concrete(&plan.program, verified, trust_callers, budget).map_err(GenError::Msg);
     }
+    gen_rust_concrete(prog, verified, trust_callers, budget).map_err(GenError::Msg)
+}
+
+/// Pruv -> Rust source. Err is the str(e) at the place where Python raises an Exception. A generic program is
+/// specialized first; a specialization limit is reported as "specialization_limit: <message>".
+pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
+    gen_rust_any(prog, verified, trust_callers, budget).map_err(|e| match e {
+        GenError::Msg(m) => m,
+        GenError::Diag(p) => format!("{}: {}", p.code, p.message),
+    })
+}
+
+/// The generator proper, for a CONCRETE program (no type parameters; a plan.program of mono.rs, or a program without G3).
+pub fn gen_rust_concrete(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) { // G2 B2
         return Err(format!("unsupported_type: {}", e.message));
     }

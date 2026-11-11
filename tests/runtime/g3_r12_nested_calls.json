@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["false false", "1 true 1 true"], "gen_contains": ["fn pruv_g3_f_4_lift_1_b(", "fn pruv_g3_f_4_lift_1_n4_Pair_2_i_b(", "fn pruv_g3_f_5_twice_1_n4_Pair_2_i_b("]}

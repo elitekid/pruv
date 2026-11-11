@@ -1,0 +1,16 @@
+// G3 A3 runtime (--no-verify only): the checked entry of same::<Pair<Option<bool>, Result<i64>>> compares two
+// nested aggregates through their recursive contract mirrors
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn same<T>(a: T, b: T) -> T
+  requires a == b
+{
+  return a;
+}
+
+fn loose_same(a: Pair<Option<bool>, Result<i64>>, b: Pair<Option<bool>, Result<i64>>) -> Pair<Option<bool>, Result<i64>> {
+  return same::<Pair<Option<bool>, Result<i64>>>(a, b);
+}

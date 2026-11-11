@@ -1,0 +1,25 @@
+// G3 A3 runtime: generic callees of generic callees, instantiated at bool and at a generic struct argument
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn make<A, B>(a: A, b: B) -> Pair<A, B> {
+  return Pair::<A, B> { first: a, second: b };
+}
+
+fn twice<T>(x: T) -> Pair<T, T> {
+  return make::<T, T>(x, x);
+}
+
+fn lift<T>(x: T) -> Option<Pair<T, T>> {
+  return Some::<Pair<T, T>>(twice::<T>(x));
+}
+
+fn lift_bool(x: bool) -> Option<Pair<bool, bool>> {
+  return lift::<bool>(x);
+}
+
+fn lift_pair(a: i64, b: bool) -> Option<Pair<Pair<i64, bool>, Pair<i64, bool>>> {
+  return lift::<Pair<i64, bool>>(make::<i64, bool>(a, b));
+}

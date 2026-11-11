@@ -1,0 +1,11 @@
+// G3 A3 runtime (--no-verify only): the checked entry of the specialization same::<bool> evaluates `a == b`
+// on the bool contract mirrors when the unverified caller reaches it
+fn same<T>(a: T, b: T) -> T
+  requires a == b
+{
+  return a;
+}
+
+fn loose_same_bool(a: bool, b: bool) -> bool {
+  return same::<bool>(a, b);
+}

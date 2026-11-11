@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["false", "true", "Err(3)", "Ok(true)", "Err(5)"], "gen_contains": ["Err::<bool, i64>(", "Ok::<bool, i64>("]}

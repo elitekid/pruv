@@ -28,6 +28,7 @@ pub mod emit_common;
 pub mod gtype;
 pub mod lexer;
 pub mod llvmgen;
+pub mod mono;
 pub mod parser;
 pub mod pyio;
 pub mod pyjson;

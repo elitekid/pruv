@@ -1,0 +1,23 @@
+// G3 A3 runtime: a generic enum with two parameters; Choice<i64,bool> and Choice<bool,i64> are distinct Rust types
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B),
+}
+
+fn flip<A, B>(c: Choice<A, B>) -> Choice<B, A> {
+  match c {
+    Choice::Left(x) => { return Choice::<B, A>::Right(x); }
+    Choice::Right(y) => { return Choice::<B, A>::Left(y); }
+  }
+}
+
+fn flip_ib(c: Choice<i64, bool>) -> Choice<bool, i64> {
+  return flip::<i64, bool>(c);
+}
+
+fn tag(c: Choice<bool, i64>) -> i64 {
+  match c {
+    Choice::Left(x) => { return 0; }
+    Choice::Right(y) => { return y; }
+  }
+}

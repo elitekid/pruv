@@ -1,0 +1,18 @@
+// G3 A3 runtime: abstract equality in requires specialized to a nested aggregate. The contract mirror of
+// Pair<Option<bool>, Result<i64>> is built recursively: Option<bool> stays bool-valued, Result<i64> widens to i128.
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn same<T>(a: T, b: T) -> T
+  requires a == b
+{
+  return a;
+}
+
+fn same_nested(a: Pair<Option<bool>, Result<i64>>, b: Pair<Option<bool>, Result<i64>>) -> Pair<Option<bool>, Result<i64>>
+  requires a == b
+{
+  return same::<Pair<Option<bool>, Result<i64>>>(a, b);
+}

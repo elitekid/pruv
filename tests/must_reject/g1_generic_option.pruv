@@ -1,8 +1,0 @@
-struct Point {
-  x: i64,
-  y: i64,
-}
-
-fn f(o: Option<Point>) -> i64 {
-  return 0;
-}

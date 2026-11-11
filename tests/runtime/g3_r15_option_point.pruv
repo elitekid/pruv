@@ -1,0 +1,25 @@
+// G3 A3 runtime: Option of a user struct. `f` is the program of the former rejection sample
+// tests/must_reject/g1_generic_option.pruv (G3_SPEC 3.1: now accepted, see tests/g3/legacy_migrations.json)
+struct Point {
+  x: i64,
+  y: i64,
+}
+
+fn f(o: Option<Point>) -> i64 {
+  return 0;
+}
+
+fn px(o: Option<Point>) -> i64 {
+  match o {
+    Some(p) => { return p.x; }
+    None => { return -1; }
+  }
+}
+
+fn origin() -> Option<Point> {
+  return Some::<Point>(Point { x: 0, y: 0 });
+}
+
+fn nowhere() -> Option<Point> {
+  return None::<Point>;
+}

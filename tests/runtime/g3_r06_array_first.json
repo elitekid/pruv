@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["true", "9", "false"], "gen_contains": ["fn pruv_g3_f_5_first_1_b__pruv_body(a: &[bool]) -> bool {", "fn pruv_g3_f_5_first_1_i__pruv_body(a: &[i64]) -> i64 {"]}

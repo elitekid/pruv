@@ -1,0 +1,34 @@
+// G3 A3 runtime: a generic loop over [T] with allocation; the specializations are the existing [i64] / [bool] code
+// (safe mode uses pruv_alloc / pruv_alloc_bool and the checked stores)
+fn fill<T: Element>(n: i64, v: T) -> [T] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let mut out: [T] = alloc(n, v);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(out) == n
+    decreases n - i
+  {
+    out[i] = v;
+    i = i + 1;
+  }
+  return out;
+}
+
+fn fill_bool(n: i64, v: bool) -> [bool] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let out: [bool] = fill::<bool>(n, v);
+  return out;
+}
+
+fn fill_int(n: i64, v: i64) -> [i64] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let out: [i64] = fill::<i64>(n, v);
+  return out;
+}

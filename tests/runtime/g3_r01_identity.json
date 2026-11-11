@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["-7", "true", "Some(false)", "None", "Ok(true)", "Err(4)"], "gen_contains": ["fn pruv_g3_f_8_identity_1_i(", "fn pruv_g3_f_8_identity_1_ob(", "::std::option::Option<bool>", "::std::result::Result<bool, i64>"]}

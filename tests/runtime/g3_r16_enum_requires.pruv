@@ -1,0 +1,24 @@
+// G3 A3 runtime: is_variant / variant_field in requires over an instantiated generic enum (concrete contract mirror)
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B),
+}
+
+fn left_or<A, B>(c: Choice<A, B>, d: A) -> A {
+  match c {
+    Choice::Left(x) => { return x; }
+    Choice::Right(y) => { return d; }
+  }
+}
+
+fn left_bool(c: Choice<bool, i64>) -> bool
+  requires is_variant(c, Choice::Left)
+{
+  return left_or::<bool, i64>(c, false);
+}
+
+fn left_true(c: Choice<bool, i64>) -> bool
+  requires is_variant(c, Choice::Left) && variant_field(c, Choice::Left, value)
+{
+  return left_or::<bool, i64>(c, false);
+}

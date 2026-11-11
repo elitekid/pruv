@@ -1,0 +1,12 @@
+// G3 A3 runtime: abstract equality `a == b` in requires, specialized to bool (checked at the public entry)
+fn same<T>(a: T, b: T) -> T
+  requires a == b
+{
+  return a;
+}
+
+fn same_bool(a: bool, b: bool) -> bool
+  requires a == b
+{
+  return same::<bool>(a, b);
+}

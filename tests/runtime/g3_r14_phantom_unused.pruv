@@ -1,0 +1,29 @@
+// G3 A3 runtime: a phantom parameter makes Tag<bool> and Tag<i64> distinct types with the same representation;
+// a generic function and a generic struct that nobody instantiates generate nothing
+struct Tag<T> {
+  id: i64,
+}
+
+struct Never<T> {
+  v: T,
+}
+
+fn make<T>(id: i64) -> Tag<T> {
+  return Tag::<T> { id: id };
+}
+
+fn retag<A, B>(t: Tag<A>) -> Tag<B> {
+  return make::<B>(t.id);
+}
+
+fn never_called<T>(x: T) -> Option<T> {
+  return Some::<T>(x);
+}
+
+fn tag_bool(id: i64) -> Tag<bool> {
+  return make::<bool>(id);
+}
+
+fn to_int(t: Tag<bool>) -> Tag<i64> {
+  return retag::<bool, i64>(t);
+}

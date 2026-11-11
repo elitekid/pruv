@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["4", "9", "false", "true", "Some(true)", "None"], "gen_contains": ["fn pruv_g3_f_6_get_or_1_i(o: ::std::option::Option<i64>, d: i64) -> i64 {", "None::<bool>"]}

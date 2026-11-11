@@ -1,0 +1,1 @@
+{"flags_matrix": [["--no-verify"]], "exit": 101, "stdout_lines": ["None Err(1)"], "stderr_contains": "pruv: requires violated: pruv_g3_f_4_same_1_n4_Pair_2_ob_ri: (a == b)"}
