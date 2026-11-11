@@ -431,11 +431,10 @@ pub fn nominal_fields(ty: &GType, decls: Decls) -> Result<Vec<GType>, TypeArityE
 
 // ---------- admissibility ----------
 
-/// Nesting cap for declarations that grow their arguments forever (G3_SPEC 5.1 caps nesting at 128).
-const MAX_VALUE_DEPTH: usize = 128;
-
-// The cycle guard is keyed by the full applied type (Box<Box<i64>> is finite and must pass), plus a depth cap.
-fn is_value_seen(ty: &GType, decls: Decls, seen: &[GType]) -> bool {
+// D<A..> is a value iff every argument is a value and D is a value declaration. Type parameters range over
+// values, so checking the declared fields once with the parameters left abstract is equivalent to checking the
+// substituted fields, and it is linear: Box<Box<i64>> passes, Grow<T> { g: Grow<Option<T>> } is a cycle.
+fn is_value_seen(ty: &GType, decls: Decls, seen: &[String]) -> bool {
     if *ty == GType::i64() || *ty == GType::bool() || ty.owner.is_some() {
         return true;
     }
@@ -445,19 +444,20 @@ fn is_value_seen(ty: &GType, decls: Decls, seen: &[GType]) -> bool {
     if !is_nominal(ty) {
         return false;
     }
-    match decls(&ty.name) {
-        Some((n, _)) if n == ty.args.len() && !seen.contains(ty) && seen.len() < MAX_VALUE_DEPTH => {}
+    let fields = match decls(&ty.name) {
+        Some((n, fields)) if n == ty.args.len() => fields,
         _ => return false,
-    }
+    };
     if !ty.args.iter().all(|a| is_value_seen(a, decls, seen)) {
         return false;
     }
-    let mut inner: Vec<GType> = seen.to_vec();
-    inner.push(ty.clone());
-    match nominal_fields(ty, decls) {
-        Ok(fields) => fields.iter().all(|f| is_value_seen(f, decls, &inner)),
-        Err(_) => false,
+    // every declared field of the declaration is a value; reaching it again through its own fields is a cycle
+    if seen.contains(&ty.name) {
+        return false;
     }
+    let mut inner: Vec<String> = seen.to_vec();
+    inner.push(ty.name.clone());
+    fields.iter().all(|f| is_value_seen(f, decls, &inner))
 }
 
 /// Admissible value (G3_SPEC 3.1): i64, bool, Option<V>, Result<V>, D<V..> whose substituted fields are

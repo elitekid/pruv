@@ -160,16 +160,19 @@ def is_value(ty: Type, decls, _seen=()) -> bool:
     if not _is_nominal(ty):
         return False
     info = _lookup(decls, ty.name)
-    # the cycle guard is keyed by the full applied type (Box<Box<i64>> is finite and must pass), with a depth cap
-    # for declarations that grow their arguments forever (S<T> { s: S<Option<T>> }); G3_SPEC 5.1 caps nesting at 128
-    if info is None or info[0] != len(ty.args) or ty in _seen or len(_seen) >= _MAX_VALUE_DEPTH:
+    if info is None or info[0] != len(ty.args):
         return False
-    if not all(is_value(a, decls, _seen) for a in ty.args):
-        return False
-    return all(is_value(f, decls, _seen + (ty,)) for f in nominal_fields(ty, decls))
+    # D<A..> is a value iff every argument is a value and D is a value declaration. Type parameters range over
+    # values, so checking the declared fields once with the parameters left abstract is equivalent to checking
+    # the substituted fields, and it is linear: Box<Box<i64>> passes, Grow<T> { g: Grow<Option<T>> } is a cycle.
+    return all(is_value(a, decls, _seen) for a in ty.args) and _decl_is_value(ty.name, info, decls, _seen)
 
 
-_MAX_VALUE_DEPTH = 128
+def _decl_is_value(name, info, decls, seen) -> bool:
+    """Every declared field of `name` is a value; reaching `name` again through its own fields is a cycle."""
+    if name in seen:
+        return False
+    return all(is_value(f, decls, seen + (name,)) for f in info[1])
 
 
 def is_element(ty: Type, element_params=()) -> bool:

@@ -171,7 +171,17 @@ def nested_same_declaration_is_value():
     d = dict(DECLS, Box=(1, [bt]), Grow=(1, [mk_nominal("Grow", (mk_option(grow),))]))
     return (is_value(mk_nominal("Box", (mk_nominal("Box", (I64,)),)), d)
             and is_value(mk_nominal("Box", (mk_nominal("Box", (mk_nominal("Box", (BOOL,)),)),)), d)
-            and not is_value(mk_nominal("Grow", (I64,)), d))
+            and not is_value(mk_nominal("Grow", (I64,)), d)
+            and not is_value(mk_nominal("Grow2", (I64,)),
+                             dict(d, Grow2=(1, [mk_nominal("Grow2", (mk_option(mk_option(P("Grow2", 0, "T"))),))])))
+            and is_value(_deep_box(200), d))     # confirmation audit: no RecursionError, linear in depth
+
+
+def _deep_box(n):
+    t = I64
+    for _ in range(n):
+        t = mk_nominal("Box", (t,))
+    return t
 
 @case
 def admissible_with_callable_decls():
