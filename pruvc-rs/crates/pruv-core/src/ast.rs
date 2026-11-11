@@ -1,11 +1,11 @@
-//! Pruv AST (vast.py 대응): 식 15 + 문 10 + 선언/보조 9 = 34 노드.
-//! Type 은 이름 문자열 하나. 정수는 부호+정규화 십진 문자열(임의 길이).
-//! `ty` 는 parse 단계에서 항상 None (검사 단계가 채운다).
+//! Pruv AST (counterpart of vast.py): 15 expressions + 10 statements + 9 declarations/helpers = 34 nodes.
+//! Type is a single name string. Integers are a sign plus a normalized decimal string (arbitrary length).
+//! `ty` is always None at the parse stage (the check stage fills it in).
 
 pub type Type = String;
 pub type Ty = Option<String>;
 
-// ---------- 식 ----------
+// ---------- expressions ----------
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntLit { pub line: i64, pub col: i64, pub value: String, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
@@ -103,7 +103,7 @@ impl Expr {
     }
 }
 
-// ---------- 선언/보조 ----------
+// ---------- declarations/helpers ----------
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDecl { pub line: i64, pub col: i64, pub name: String, pub ty: Type }
 #[derive(Debug, Clone, PartialEq)]
@@ -119,14 +119,14 @@ pub struct MatchArm {
     pub line: i64, pub col: i64, pub enum_name: Option<String>, pub ctor: String,
     pub binders: Vec<String>, pub body: Vec<Stmt>,
 }
-/// STAGE1 A 정제 주석(vast.Refinement). 위치 = 주석이 붙은 타입의 첫 토큰. Type 은 기본 타입 그대로.
-/// shape "scalar" | "array". lo/hi/maxlen 은 부호+정규화 십진 문자열(임의 길이, 범위 검사는 refine.rs).
+/// STAGE1 A refinement annotation (vast.Refinement). Position = the first token of the annotated type. Type stays the base type.
+/// shape "scalar" | "array". lo/hi/maxlen are a sign plus a normalized decimal string (arbitrary length; range checks are in refine.rs).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Refinement {
     pub line: i64, pub col: i64, pub shape: String, pub base: String,
     pub lo: Option<String>, pub hi: Option<String>, pub maxlen: Option<String>,
 }
-/// line/col 없음.
+/// No line/col.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param { pub name: String, pub ty: Type, pub refine: Option<Refinement> }
 
@@ -136,7 +136,7 @@ pub enum TypeDecl {
     Enum(EnumDecl),
 }
 
-// ---------- 문 ----------
+// ---------- statements ----------
 #[derive(Debug, Clone, PartialEq)]
 pub struct Let {
     pub line: i64, pub col: i64, pub name: String, pub mutable: bool, pub ty: Type, pub value: Expr,
@@ -145,7 +145,7 @@ pub struct Let {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assign { pub line: i64, pub col: i64, pub name: String, pub value: Expr }
 #[derive(Debug, Clone, PartialEq)]
-/// elem_refine: (lo, hi, origin_what) — refine.rs 가 원소 범위가 있는 정제 배열에 저장할 때만 단다.
+/// elem_refine: (lo, hi, origin_what) — set by refine.rs only when storing into a refined array that has an element range.
 pub struct IndexAssign {
     pub line: i64, pub col: i64, pub name: String, pub index: Expr, pub value: Expr,
     pub elem_refine: Option<(String, String, String)>,
@@ -157,7 +157,7 @@ pub struct While { pub line: i64, pub col: i64, pub cond: Expr, pub invariants: 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Return { pub line: i64, pub col: i64, pub value: Option<Expr> }
 #[derive(Debug, Clone, PartialEq)]
-/// origin_code/origin_what: refine.rs 가 합성한 assert 에만 있다(검증 오류 code 와 원천 설명).
+/// origin_code/origin_what: present only on asserts synthesized by refine.rs (verification error code and a description of the origin).
 pub struct Assert {
     pub line: i64, pub col: i64, pub cond: Expr,
     pub origin_code: Option<String>, pub origin_what: Option<String>,
@@ -183,14 +183,14 @@ pub enum Stmt {
     Match(Match),
 }
 
-// ---------- 최상위 ----------
+// ---------- top level ----------
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub line: i64, pub col: i64, pub name: String, pub params: Vec<Param>, pub ret: Type,
     pub effects: Vec<String>, pub requires: Vec<Expr>, pub ensures: Vec<Expr>, pub body: Vec<Stmt>,
     pub ret_refine: Option<Refinement>,
 }
-/// line/col 없음.
+/// No line/col.
 #[derive(Debug, Clone, PartialEq, Default)]
-/// refined: refine::expand 가 이미 돌았다는 표식(Python `_refined`). 덤프에는 내보내지 않는다.
+/// refined: a marker that refine::expand has already run (Python `_refined`). Not emitted in the dump.
 pub struct Program { pub functions: Vec<Function>, pub types: Vec<TypeDecl>, pub refined: bool }

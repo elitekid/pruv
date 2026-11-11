@@ -1,10 +1,10 @@
-//! Python 출력 공통 함수(codegen.py 의 rty·cty·conv·emit_public_types·show·
-//! match_sorted_requires·rstr 대응). 출력은 Python 과 바이트 동일해야 한다.
+//! Common Python-output functions (counterparts of codegen.py's rty, cty, conv, emit_public_types, show,
+//! match_sorted_requires, rstr). The output must be byte-identical to Python's.
 
 use crate::ast::*;
 use crate::typeinfo::{is_user_type, TypeTable};
 
-/// 실행용 Rust 타입 철자. 내장 6종과 사용자 타입을 모두 덮으므로 실패 경로가 없다.
+/// Rust type spelling for execution. It covers all 6 built-ins and user types, so there is no failure path.
 pub fn rty(t: &str, param: bool) -> String {
     match t {
         "i64" => "i64".to_string(),
@@ -18,11 +18,11 @@ pub fn rty(t: &str, param: bool) -> String {
         "array_u8" => {
             if param { "&[u8]".to_string() } else { "::std::vec::Vec<u8>".to_string() }
         }
-        // G2 A5: 폴백에 기대지 않고 명시
+        // G2 A5: stated explicitly instead of relying on the fallback
         "array_bool" => {
             if param { "&[bool]".to_string() } else { "::std::vec::Vec<bool>".to_string() }
         }
-        // G2 B2: str 은 매개변수 &str, 지역·반환 String
+        // G2 B2: str is &str as a parameter, String as a local or return value
         "str" => {
             if param { "&str".to_string() } else { "::std::string::String".to_string() }
         }
@@ -30,12 +30,12 @@ pub fn rty(t: &str, param: bool) -> String {
     }
 }
 
-/// Python 의 `%r` 로 찍은 Type.
+/// A Type printed with Python's `%r`.
 fn type_repr(t: &str) -> String {
     format!("Type(name='{}')", t)
 }
 
-/// 계약(i128) 거울 타입. unit·array 는 Err.
+/// Contract (i128) mirror type. Err for unit and array.
 pub fn try_cty(t: &str) -> Result<String, String> {
     match t {
         "i64" => Ok("i128".to_string()),
@@ -47,12 +47,12 @@ pub fn try_cty(t: &str) -> Result<String, String> {
     }
 }
 
-/// 정상 경로 전용(계약 표현이 없는 타입이면 패닉; 실패를 받으려면 try_cty).
+/// Normal path only (panics for a type with no contract representation; use try_cty to receive the failure).
 pub fn cty(t: &str) -> String {
     try_cty(t).unwrap()
 }
 
-/// 실행 값 `x`(타입 t)를 계약 값으로 바꾸는 Rust 식. unit·array 는 Err.
+/// Rust expression converting the runtime value `x` (of type t) to a contract value. Err for unit and array.
 pub fn try_conv(t: &str, x: &str) -> Result<String, String> {
     match t {
         "i64" => Ok(format!("({} as i128)", x)),
@@ -64,12 +64,12 @@ pub fn try_conv(t: &str, x: &str) -> Result<String, String> {
     }
 }
 
-/// 정상 경로 전용(실패하면 패닉; 실패를 받으려면 try_conv).
+/// Normal path only (panics on failure; use try_conv to receive the failure).
 pub fn conv(t: &str, x: &str) -> String {
     try_conv(t, x).unwrap()
 }
 
-/// 사용자 타입마다 `pub struct`/`pub enum`, 의존 먼저(TypeTable.order).
+/// A `pub struct`/`pub enum` per user type, dependencies first (TypeTable.order).
 pub fn emit_public_types(prog: &Program) -> String {
     let tt = TypeTable::new(&prog.types);
     let mut out: Vec<String> = Vec::new();
@@ -112,7 +112,7 @@ fn show_list(xs: &[Expr]) -> String {
     xs.iter().map(show).collect::<Vec<_>>().join(", ")
 }
 
-/// 계약 식의 읽기 쉬운 텍스트(패닉 메시지용).
+/// Human-readable text of a contract expression (for panic messages).
 pub fn show(e: &Expr) -> String {
     match e {
         Expr::IntLit(x) => x.value.clone(),
@@ -151,7 +151,7 @@ pub fn show(e: &Expr) -> String {
     }
 }
 
-/// `len(a)` 호출이면 a 의 이름.
+/// The name of a if this is a `len(a)` call.
 fn len_of(x: &Expr) -> Option<&str> {
     if let Expr::Call(c) = x {
         if c.name == "len" && c.args.len() == 1 {
@@ -163,8 +163,8 @@ fn len_of(x: &Expr) -> Option<&str> {
     None
 }
 
-/// e 가 구조상 `forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]`
-/// (안쪽 시작 `i` 또는 `i + 1`)이면 배열 이름 a, 아니면 None.
+/// The array name a if e is structurally `forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]`
+/// (inner start `i` or `i + 1`), otherwise None.
 pub fn match_sorted_requires(e: &Expr) -> Option<String> {
     let q1 = match e {
         Expr::Quant(q) if q.kind == "forall" => q,
@@ -220,7 +220,7 @@ pub fn match_sorted_requires(e: &Expr) -> Option<String> {
     Some(a.to_string())
 }
 
-/// ASCII 만 쓰는 Rust 문자열 리터럴.
+/// A Rust string literal using ASCII only.
 pub fn rstr(text: &str) -> String {
     let mut out = String::from("\"");
     for ch in text.chars() {

@@ -1,12 +1,12 @@
-//! verify.py 의 기호 실행: `Arr`, `State`, `FnVerifier`(fresh, wf, rebuild, havoc, 집계, 식 `ev`, 정의역 `dom`,
-//! 문 `exec`, 루프, `run`).
+//! Symbolic execution of verify.py: `Arr`, `State`, `FnVerifier` (fresh, wf, rebuild, havoc, aggregates, expression `ev`, domain `dom`,
+//! statement `exec`, loops, `run`).
 //!
-//! 함수 구조·호출 순서·`s.k` 증가 순서·z3 식 생성 순서·보조정리 누적 순서는 verify.py 와 같게 둔다.
-//! 주석의 줄 번호는 verify.py 기준이다. 의무(`prove`)·반례·trace 는 obligation.rs.
+//! Function structure, call order, `s.k` increment order, z3 expression construction order and lemma accumulation order are kept the same as verify.py.
+//! Line numbers in comments refer to verify.py. Obligations (`prove`), counterexamples and trace are in obligation.rs.
 //!
-//! Python 은 `ev(e, st, g, code, env=None)` 에서 `env = st.env` 로 같은 dict 를 읽으면서 `st.pc` 에 덧붙인다.
-//! Rust 에서는 `ev` 가 `st: &mut State` 와 별도로 `env: &Env`(진입 때 복제한 스냅샷)를 받는다. `ev` 는 env 를 바꾸지
-//! 않으므로 의미가 같다. 반례(`cex`)는 `st.env` 를 읽는다.
+//! In Python, `ev(e, st, g, code, env=None)` reads the same dict via `env = st.env` while appending to `st.pc`.
+//! In Rust, `ev` takes `env: &Env` (a snapshot cloned on entry) separately from `st: &mut State`. Since `ev` does not modify env,
+//! the semantics are the same. The counterexample (`cex`) reads `st.env`.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Instant;
@@ -18,18 +18,18 @@ use crate::model::{Elem, Model, Prelude, Ty, TypeKind};
 use crate::obligation::Trace;
 use crate::sys::{Ast, FuncDecl, Sort, Z3};
 
-/// (line, col), 1부터.
+/// (line, col), 1-based.
 pub type Pos = (u32, u32);
 
-/// 내부 실패(Python 예외)는 문자열로 올린다.
+/// Internal failures (Python exceptions) are propagated as strings.
 pub type R<T> = Result<T, String>;
 
-/// verify.py 7행.
+/// verify.py line 7.
 pub const MAX_LEN: i64 = 1 << 40;
-/// verify.py 8행.
+/// verify.py line 8.
 pub const TIMEOUT_MS: u32 = 8000;
 
-/// verify.py `QueryConfig`: solver 질의 한 번의 기록 경계(단계·라운드·자원 한도).
+/// verify.py `QueryConfig`: recording boundary of one solver query (phase, round, resource limits).
 #[derive(Clone, Debug)]
 pub struct QueryConfig {
     /// "verification" | "inference"
@@ -46,26 +46,26 @@ impl Default for QueryConfig {
     }
 }
 
-/// STAGE1 B2: 추론이 루프에 더하는 후보 한 개 = (후보 ID, 식, 문자열). verify.py `extra` 의 항목.
+/// STAGE1 B2: one candidate that inference adds to a loop = (candidate ID, expr, string). An item of verify.py `extra`.
 pub type ExtraInv = (String, Expr, String);
-/// STAGE1 B2: 루프 번호 → 그 루프의 후보들(정렬 순서). 비어 있으면 기존 경로.
+/// STAGE1 B2: loop number → that loop's candidates (sorted order). If empty, the existing path.
 pub type Extra = HashMap<usize, std::rc::Rc<Vec<ExtraInv>>>;
 
-/// verify.py `BudgetExhausted` / `InferenceTimeout`. Python 은 예외로 `prove` 깊은 곳에서 빠져나오지만 Rust 의
-/// `prove` 는 값을 돌려주지 않으므로 `Probe.abort` 에 표시하고, 이후 의무는 질의·기록 없이 지나가며 `exec_block` 이 멈춘다.
+/// verify.py `BudgetExhausted` / `InferenceTimeout`. Python escapes from deep inside `prove` via an exception, but Rust's
+/// `prove` returns no value, so it is flagged in `Probe.abort`, later obligations pass without query or recording, and `exec_block` stops.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ProbeAbort {
     Budget,
     Timeout,
 }
 
-/// verify.py `Probe`: 한 함수의 탐색 상태(모든 회차가 공유).
+/// verify.py `Probe`: search state of one function (shared by all rounds).
 pub struct Probe {
     pub max_queries: usize,
     pub deadline: Instant,
-    /// 지금까지 한 시도 수(예산 계수기)
+    /// Number of attempts so far (budget counter)
     pub queries: usize,
-    /// 이번 회차에 실패한 후보 {ID: (의무 code, 시도 상태)}
+    /// Candidates that failed this round {ID: (obligation code, attempt status)}
     pub failed: HashMap<String, (String, String)>,
     pub abort: Option<ProbeAbort>,
 }
@@ -77,7 +77,7 @@ impl Probe {
     pub fn begin_round(&mut self) {
         self.failed.clear();
     }
-    /// verify.py `Probe.tick`: 시도 전에 예산 → 벽시계 → 계수. 넘으면 abort 를 세우고 false.
+    /// verify.py `Probe.tick`: before an attempt, budget → wall clock → count. If exceeded, sets abort and returns false.
     pub fn tick(&mut self) -> bool {
         if self.queries >= self.max_queries {
             self.abort = Some(ProbeAbort::Budget);
@@ -92,8 +92,8 @@ impl Probe {
     }
 }
 
-/// verify.py `walk_loops`: (While, 그것이 든 블록, 블록 안 인덱스), 선위 순서(문장 순서, While 은 본문보다 먼저,
-/// If then → els, Match 팔 순서). 루프 번호 = 이 열에서의 자리.
+/// verify.py `walk_loops`: (While, the block containing it, index within the block), in pre-order (statement order, a While before its body,
+/// If then → els, Match arm order). Loop number = position in this sequence.
 pub fn walk_loops(stmts: &[Stmt]) -> Vec<(&ast::While, &[Stmt], usize)> {
     fn go<'s>(stmts: &'s [Stmt], out: &mut Vec<(&'s ast::While, &'s [Stmt], usize)>) {
         for (i, st) in stmts.iter().enumerate() {
@@ -120,10 +120,10 @@ pub fn walk_loops(stmts: &[Stmt]) -> Vec<(&ast::While, &[Stmt], usize)> {
     out
 }
 
-/// `loop_` 의 불변식 한 항: (후보 ID 또는 None, 식, 후보 문자열 또는 None).
+/// One invariant item of `loop_`: (candidate ID or None, expr, candidate string or None).
 type InvRef<'x> = (Option<&'x str>, &'x Expr, Option<&'x str>);
 
-/// verify.py `loop` 안의 문구: (정의역 what, 의무 what).
+/// Wording inside verify.py `loop`: (domain what, obligation what).
 fn inv_what(cid: Option<&str>, text: Option<&str>, phase: &str) -> (String, String) {
     match cid {
         None => (
@@ -144,12 +144,12 @@ fn inv_what(cid: Option<&str>, text: Option<&str>, phase: &str) -> (String, Stri
     }
 }
 
-/// verify.py `in_range` (168행). `x >= I64_MIN` 은 파이썬 int 와의 비교라 뒤집지 않는다(raw).
+/// verify.py `in_range` (line 168). `x >= I64_MIN` is a comparison with a Python int, so it is not flipped (raw).
 pub fn in_range(z: &Z3, x: &Ast) -> Ast {
     z.and(&[x.raw_ge(&z.int(i64::MIN)), x.raw_le(&z.int(i64::MAX))])
 }
 
-/// verify.py `_conj` (72행): None 은 건너뛰고, 하나면 그대로, 둘 이상이면 And.
+/// verify.py `_conj` (line 72): None is skipped, one item is returned as is, two or more become And.
 pub fn conj(z: &Z3, xs: Vec<Option<Ast>>) -> Option<Ast> {
     let xs: Vec<Ast> = xs.into_iter().flatten().collect();
     match xs.len() {
@@ -159,12 +159,12 @@ pub fn conj(z: &Z3, xs: Vec<Option<Ast>>) -> Option<Ast> {
     }
 }
 
-/// verify.py `_imp` (79행).
+/// verify.py `_imp` (line 79).
 pub fn imp(c: &Ast, d: Option<Ast>) -> Option<Ast> {
     d.map(|d| c.implies(&d))
 }
 
-/// 정수 리터럴(부호+십진 문자열)을 Python `str(int)` 꼴로: 앞의 `+`·0 제거, `-0` 은 `0`.
+/// Render an integer literal (sign + decimal string) in Python `str(int)` form: strip a leading `+` and zeros; `-0` becomes `0`.
 pub fn norm_int(s: &str) -> String {
     let (neg, rest) = match s.strip_prefix('-') {
         Some(r) => (true, r),
@@ -181,10 +181,10 @@ pub fn norm_int(s: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
-// 식 모양 보조 (verify.py 83~132행)
+// Expression-shape helpers (verify.py lines 83-132)
 // ---------------------------------------------------------------------------------------------
 
-/// `_partial_here` 의 kind: None=전부, "variant", "other".
+/// The kind of `_partial_here`: None=all, "variant", "other".
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PKind {
     All,
@@ -196,7 +196,7 @@ fn is_tag_fn(n: &str) -> bool {
     matches!(n, "some_val" | "ok_val" | "err_val")
 }
 
-/// verify.py `_partial_here` (86행).
+/// verify.py `_partial_here` (line 86).
 fn partial_here(e: &Expr, kind: PKind) -> bool {
     match e {
         Expr::VariantField(_) => kind != PKind::Other,
@@ -209,7 +209,7 @@ fn partial_here(e: &Expr, kind: PKind) -> bool {
     }
 }
 
-/// verify.py `_kids` (103행).
+/// verify.py `_kids` (line 103).
 fn kids(e: &Expr) -> Vec<&Expr> {
     match e {
         Expr::Unary(x) => vec![&*x.operand],
@@ -227,7 +227,7 @@ fn kids(e: &Expr) -> Vec<&Expr> {
     }
 }
 
-/// verify.py `_has_vf` (127행).
+/// verify.py `_has_vf` (line 127).
 pub fn has_vf(e: &Expr, kind: PKind) -> bool {
     if partial_here(e, kind) {
         return true;
@@ -255,7 +255,7 @@ fn stmt_pos(s: &Stmt) -> Pos {
     (l as u32, c as u32)
 }
 
-/// verify.py `assigned` (671행): 대입되는 이름(Let 은 제외). 이름순 집합이라 havoc 순회가 정렬 순서가 된다.
+/// verify.py `assigned` (line 671): assigned names (Let excluded). A name-ordered set, so havoc iteration is in sorted order.
 pub fn assigned(stmts: &[Stmt], out: &mut BTreeSet<String>) {
     for st in stmts {
         match st {
@@ -284,7 +284,7 @@ pub fn assigned(stmts: &[Stmt], out: &mut BTreeSet<String>) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// 값·환경·상태
+// Values, environment, state
 // ---------------------------------------------------------------------------------------------
 
 #[derive(Clone)]
@@ -296,21 +296,21 @@ pub struct Arr {
 }
 
 impl Arr {
-    /// 순수 조립(fresh 카운터를 건드리지 않는다).
+    /// Pure assembly (does not touch the fresh counter).
     pub fn new(a: Ast, n: Ast, name: String, elem: Elem) -> Arr {
         Arr { a, n, name, elem }
     }
 }
 
-/// 환경 값. verify.py 는 z3 식의 sort 로 Int/Bool/Datatype 을 구분하지만 여기서는 태그로 든다.
+/// Environment value. verify.py distinguishes Int/Bool/Datatype by the z3 expression's sort, but here they are carried as tags.
 #[derive(Clone)]
 pub enum Val {
     Int(Ast),
     Bool(Ast),
-    /// Opt/Res/사용자 struct·enum 값과 그 Pruv 타입(= `Model.type_of`).
+    /// An Opt/Res/user struct/enum value and its Pruv type (= `Model.type_of`).
     Dt(Ast, Ty),
     Arr(Arr),
-    /// Python `None`(print, unit 함수 호출).
+    /// Python `None` (print, unit function call).
     Unit,
 }
 
@@ -340,7 +340,7 @@ impl Val {
             _ => Err("expected an array".to_string()),
         }
     }
-    /// 필드 타입이 `ty` 인 접근자 결과 `a` 의 값 태그(z3 sort 로 구분하는 Python 과 같은 분류).
+    /// The value tag of accessor result `a` whose field type is `ty` (the same classification as Python, which distinguishes by z3 sort).
     pub fn from_field(ty: &Ty, a: Ast) -> R<Val> {
         match ty {
             Ty::I64 => Ok(Val::Int(a)),
@@ -351,7 +351,7 @@ impl Val {
     }
 }
 
-/// 삽입 순서를 유지하는 환경(Python dict).
+/// An environment that preserves insertion order (Python dict).
 #[derive(Clone, Default)]
 pub struct Env(pub Vec<(String, Val)>);
 
@@ -362,7 +362,7 @@ impl Env {
     pub fn try_get(&self, name: &str) -> Option<&Val> {
         self.0.iter().find(|(k, _)| k == name).map(|(_, v)| v)
     }
-    /// dict 대입: 이미 있으면 자리를 유지한 채 값만 교체.
+    /// dict assignment: if already present, replace only the value, keeping its position.
     pub fn set(&mut self, name: &str, v: Val) {
         if let Some(e) = self.0.iter_mut().find(|(k, _)| k == name) {
             e.1 = v;
@@ -386,7 +386,7 @@ pub struct State {
 }
 
 impl State {
-    /// verify.py `State.fork` (146행).
+    /// verify.py `State.fork` (line 146).
     pub fn fork(&self, extra: Option<Ast>) -> State {
         let mut pc = self.pc.clone();
         if let Some(e) = extra {
@@ -407,7 +407,7 @@ pub enum Arith {
 // FnVerifier
 // ---------------------------------------------------------------------------------------------
 
-/// verify.py `FnVerifier`(189행). 함수마다 하나, `k`/`seen`/`aggs`/`lemmas` 는 함수 단위.
+/// verify.py `FnVerifier` (line 189). One per function; `k`/`seen`/`aggs`/`lemmas` are per function.
 pub struct FnVerifier<'a> {
     pub z: Z3,
     pub prelude: &'a Prelude,
@@ -418,33 +418,33 @@ pub struct FnVerifier<'a> {
     pub k: u32,
     pub(crate) seen: HashSet<(u32, u32, String, Option<String>)>,
     pub qstack: Vec<Ast>,
-    /// `s.aggs`: (kind, Tc.sexpr(), len(outer)) → F. 삽입 순서 유지(F 이름에 `len(aggs)` 가 들어간다).
+    /// `s.aggs`: (kind, Tc.sexpr(), len(outer)) → F. Insertion order preserved (`len(aggs)` goes into the F name).
     pub(crate) aggs: Vec<((String, String, usize), FuncDecl)>,
     pub lemmas: Vec<Ast>,
-    /// `lemma_keys` 의 `(kind, F)` 항목
+    /// The `(kind, F)` item of `lemma_keys`
     pub(crate) lemma_fn_keys: HashSet<(String, String)>,
-    /// `lemma_keys` 의 `L.sexpr()` 항목
+    /// The `L.sexpr()` item of `lemma_keys`
     pub(crate) lemma_text_keys: HashSet<String>,
     /// `s.params`
     pub params: Env,
-    /// `s.errors`(verify_program 이 함수 순서대로 모은다).
+    /// `s.errors`(collected by verify_program in function order).
     pub errors: Vec<PruvError>,
-    /// `s.funcs`: 이름 → 함수(같은 이름이면 뒤의 것).
+    /// `s.funcs`: name → function (the later one if names repeat).
     pub(crate) funcs: HashMap<String, &'a ast::Function>,
-    /// `s.f`: 증명 대상 함수(시제품 경로에서는 None).
+    /// `s.f`: the function being proved (None on the prototype path).
     pub(crate) f: Option<&'a ast::Function>,
-    /// solver 질의 설정(기본: verification, TIMEOUT_MS, rlimit/seed 없음).
+    /// Solver query configuration (default: verification, TIMEOUT_MS, no rlimit/seed).
     pub qcfg: QueryConfig,
-    /// STAGE1 B2 `extra`: 루프 번호 → 후보들. 비면 기존 경로(fresh 번호·SMT·오류 불변).
+    /// STAGE1 B2 `extra`: loop number → candidates. If empty, the existing path (fresh numbers, SMT and errors unchanged).
     pub extra: Extra,
-    /// 루프(While 노드 주소) → 루프 번호. `extra` 가 비어 있지 않을 때만 채운다(`set_extra`).
+    /// Loop (While node address) → loop number. Filled only when `extra` is non-empty (`set_extra`).
     pub(crate) loop_no: HashMap<usize, usize>,
-    /// STAGE1 B2 탐색 상태. Some 이면 후보 의무만 질의하고 오류는 만들지 않는다.
+    /// STAGE1 B2 search state. If Some, only candidate obligations are queried and no errors are produced.
     pub probe: Option<&'a mut Probe>,
 }
 
 impl<'a> FnVerifier<'a> {
-    /// 시제품(손 빌더) 경로: 프로그램·함수 없이 조각만 쓴다.
+    /// Prototype (hand-builder) path: uses only the pieces, without a program or function.
     pub fn new(z: &Z3, prelude: &'a Prelude, model: &'a Model, trace: &'a mut Trace, fname: &str) -> Self {
         FnVerifier {
             z: z.clone(),
@@ -470,7 +470,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// verify.py `FnVerifier(.., extra=..)`: 후보를 정하고, 비어 있지 않으면 루프 번호표를 만든다.
+    /// verify.py `FnVerifier(.., extra=..)`: fixes the candidates and, if non-empty, builds the loop number table.
     pub fn set_extra(&mut self, extra: Extra) {
         self.loop_no.clear();
         if !extra.is_empty() {
@@ -504,8 +504,8 @@ impl<'a> FnVerifier<'a> {
         v
     }
 
-    // ---------- fresh (201행) ----------
-    /// `fresh(base, ty)`: k 를 먼저 올린 뒤 이름 `base!k`; 배열 길이는 `base!k.len`.
+    // ---------- fresh (line 201) ----------
+    /// `fresh(base, ty)`: bump k first, then the name is `base!k`; an array length is `base!k.len`.
     pub fn try_fresh(&mut self, base: &str, ty: &Ty) -> R<Val> {
         self.k += 1;
         let n = format!("{}!{}", base, self.k);
@@ -543,7 +543,7 @@ impl<'a> FnVerifier<'a> {
             Ty::Unit => Err("fresh: unit".to_string()),
         }
     }
-    /// 시제품용: 실패하면 `Val::Unit`.
+    /// For the prototype: `Val::Unit` on failure.
     pub fn fresh(&mut self, base: &str, ty: &Ty) -> Val {
         self.try_fresh(base, ty).unwrap_or(Val::Unit)
     }
@@ -551,13 +551,13 @@ impl<'a> FnVerifier<'a> {
         self.fresh(base, &Ty::I64).ast().clone()
     }
 
-    /// dom() 의 Quant 분기가 만드는 `!dk` 상수는 쓰이지 않아도 `s.k += 1` 은 일어난다(499행).
+    /// Even if the `!dk` constant made by dom()'s Quant branch is unused, `s.k += 1` still happens (line 499).
     pub fn bump_k(&mut self) {
         self.k += 1;
     }
 
-    // ---------- value domain (219행) ----------
-    /// `wf(ty, v)`: 활성 leaf 가 전부 i64. 자명하면 None.
+    // ---------- value domain (line 219) ----------
+    /// `wf(ty, v)`: all active leaves are i64. None if trivial.
     pub fn wf(&self, ty: &Ty, v: &Ast) -> Option<Ast> {
         let z = &self.z;
         let p = self.prelude;
@@ -592,7 +592,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// `rebuild(ty, cur, path, new)` (242행): struct 값 `cur` 의 필드 경로를 `new` 로 바꾼 값.
+    /// `rebuild(ty, cur, path, new)` (line 242): the struct value `cur` with the field path replaced by `new`.
     pub fn try_rebuild(&self, ty: &Ty, cur: &Ast, path: &[&str], new: &Ast) -> R<Ast> {
         if path.is_empty() {
             return Ok(new.clone());
@@ -607,8 +607,8 @@ impl<'a> FnVerifier<'a> {
         Ok(sf.ctor.apply(&vals))
     }
 
-    // ---------- run() 앞부분 (835행): 시제품용 ----------
-    /// 매개변수마다 `fresh`, 배열은 `0 <= len <= MAX_LEN`, 그 밖은 `wf` 를 pc 에 넣는다. `self.params` 도 채운다.
+    // ---------- first part of run() (line 835): for the prototype ----------
+    /// `fresh` for each parameter; arrays put `0 <= len <= MAX_LEN` into pc, everything else puts `wf`. Also fills `self.params`.
     pub fn init_params(&mut self, params: &[(&str, Ty)]) -> State {
         let mut env = Env::default();
         let mut pc: Vec<Ast> = Vec::new();
@@ -629,7 +629,7 @@ impl<'a> FnVerifier<'a> {
         State { env, pc }
     }
 
-    /// `ensures_ok` 앞부분(647행): 현재 env 위에 매개변수 원래 값을 덮고 `result` 를 넣는다.
+    /// First part of `ensures_ok` (line 647): overlays the parameters' original values on the current env and inserts `result`.
     pub fn ensures_env(&self, st: &State, result: Option<Val>) -> Env {
         let mut env = st.env.clone();
         for (n, v) in &self.params.0 {
@@ -641,8 +641,8 @@ impl<'a> FnVerifier<'a> {
         env
     }
 
-    // ---------- ev 조각 (시제품용) ----------
-    /// `assume(st, g, fact)` (340행).
+    // ---------- ev pieces (for the prototype) ----------
+    /// `assume(st, g, fact)` (line 340).
     pub fn assume(&self, st: &mut State, g: &[Ast], fact: Ast) {
         if g.is_empty() {
             st.pc.push(fact);
@@ -651,7 +651,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// Binary `+ - *` (361~385행): 결과를 만들고 `in_range(res)` 의무(code "overflow").
+    /// Binary `+ - *` (lines 361-385): builds the result and the `in_range(res)` obligation (code "overflow").
     pub fn ev_arith(&mut self, st: &State, g: &[Ast], op: Arith, l: &Ast, r: &Ast, node: Pos) -> Ast {
         let res = match op {
             Arith::Add => l.add(r),
@@ -663,7 +663,7 @@ impl<'a> FnVerifier<'a> {
         res
     }
 
-    /// Binary `/ %` (373~376행): 의무 `r > 0 && l >= 0` (code "div").
+    /// Binary `/ %` (lines 373-376): obligation `r > 0 && l >= 0` (code "div").
     pub fn ev_div(&mut self, st: &State, g: &[Ast], is_mod: bool, l: &Ast, r: &Ast, node: Pos) -> Ast {
         let ob = self.z.and(&[r.gt_i(0), l.ge_i(0)]);
         self.prove(st, g, &ob, node, "div", None);
@@ -674,14 +674,14 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// Unary `-` (358~360행).
+    /// Unary `-` (lines 358-360).
     pub fn ev_neg(&mut self, st: &State, g: &[Ast], v: &Ast, node: Pos) -> Ast {
         let ob = in_range(&self.z, &v.neg());
         self.prove(st, g, &ob, node, "overflow", None);
         v.neg()
     }
 
-    /// Index (386~395행): 의무 `0 <= i < n` (code "index_oob"), 읽은 값의 `in_range` 를 pc 에 가정.
+    /// Index (lines 386-395): obligation `0 <= i < n` (code "index_oob"); assumes `in_range` of the value read into pc.
     pub fn ev_index(&mut self, st: &mut State, g: &[Ast], arr: &Arr, i: &Ast, node: Pos) -> Ast {
         let ob = self.z.and(&[i.ge_i(0), i.lt(&arr.n)]);
         self.prove(st, g, &ob, node, "index_oob", None);
@@ -691,7 +691,7 @@ impl<'a> FnVerifier<'a> {
         v
     }
 
-    /// Call `alloc(n, init)` (609~613행). `args` = [n, init]. 의무 "alloc_negative" 뒤 `s.k += 1`.
+    /// Call `alloc(n, init)` (lines 609-613). `args` = [n, init]. After the "alloc_negative" obligation, `s.k += 1`.
     pub fn ev_alloc(&mut self, st: &State, g: &[Ast], n: &Ast, init: &Ast, node: Pos) -> Arr {
         let ob = self.z.and(&[n.ge_i(0), n.le_i(MAX_LEN)]);
         self.prove(st, g, &ob, node, "alloc_negative", None);
@@ -699,8 +699,8 @@ impl<'a> FnVerifier<'a> {
         Arr::new(self.z.const_array(&self.z.int_sort(), init), n.clone(), "alloc".to_string(), Elem::I64)
     }
 
-    // ---------- exec 조각 (시제품용; st 는 호출자가 이미 fork 한 상태) ----------
-    /// IndexAssign (718~725행): 의무 `0 <= i < arr.n`("index_oob", node = 문장) 뒤 `Store`.
+    // ---------- exec pieces (for the prototype; st is a state the caller has already forked) ----------
+    /// IndexAssign (lines 718-725): after the obligation `0 <= i < arr.n` ("index_oob", node = statement), `Store`.
     pub fn index_assign(&mut self, st: &mut State, name: &str, i: &Ast, v: &Ast, node: Pos) {
         let arr = st.env.get(name).arr().clone();
         let ob = self.z.and(&[i.ge_i(0), i.lt(&arr.n)]);
@@ -708,15 +708,15 @@ impl<'a> FnVerifier<'a> {
         st.env.set(name, Val::Arr(Arr::new(arr.a.store(i, v), arr.n.clone(), name.to_string(), arr.elem)));
     }
 
-    /// FieldAssign (761~766행): 오른쪽 값 `v` 는 호출자가 먼저 계산한다.
+    /// FieldAssign (lines 761-766): the right-hand value `v` is computed first by the caller.
     pub fn field_assign(&mut self, st: &mut State, name: &str, path: &[&str], v: &Ast) {
         let Val::Dt(root, ty) = st.env.get(name).clone() else { panic!("field assign on non-struct") };
         let new = self.try_rebuild(&ty, &root, path, v).unwrap_or_else(|_| v.clone());
         st.env.set(name, Val::Dt(new, ty));
     }
 
-    /// check_dom 한 건 (524~543행): 정의역 `d` 가 None 이거나 `simplify(d)` 가 true 면 질의 없음,
-    /// 아니면 `prove(.., code)` 하고 d 를 돌려준다(돌려준 것이 호출자의 `prev` 로 간다).
+    /// One check_dom case (lines 524-543): no query if the domain `d` is None or `simplify(d)` is true,
+    /// otherwise `prove(.., code)` and return d (what is returned goes to the caller's `prev`).
     pub fn check_dom_one(&mut self, st: &State, g: &[Ast], d: Option<Ast>, node: Pos, code: &str) -> Option<Ast> {
         let d = d?;
         if d.simplify().is_true() {
@@ -726,8 +726,8 @@ impl<'a> FnVerifier<'a> {
         Some(d)
     }
 
-    // ---------- havoc (684행) ----------
-    /// 이름순(바이트 순 = 코드포인트 순, Python `sorted`)으로 순회한다(SPEC 6절의 0A 정렬).
+    // ---------- havoc (line 684) ----------
+    /// Iterates in name order (byte order = code point order, Python `sorted`) (the 0A sorting of SPEC §6).
     pub fn havoc_set(&mut self, st: &State, names: &BTreeSet<String>) -> R<State> {
         let mut h = st.fork(None);
         for n in names {
@@ -753,7 +753,7 @@ impl<'a> FnVerifier<'a> {
                     h.env.set(n, nv);
                 }
                 Val::Dt(old_ast, ty) => {
-                    // 집합값: `name!h{k}` 에서 k 는 증가 전 값을 쓰고 그 뒤에 올린다(701~702행).
+                    // Set value: in `name!h{k}`, k uses the value before incrementing and is bumped afterwards (lines 701-702).
                     let nv = self.z.constant(&format!("{}!h{}", n, self.k), &old_ast.sort());
                     self.k += 1;
                     h.env.set(n, Val::Dt(nv.clone(), ty.clone()));
@@ -767,14 +767,14 @@ impl<'a> FnVerifier<'a> {
         Ok(h)
     }
 
-    /// 시제품용: 순서와 상관없이 받고 안에서 정렬한다. 실패하면 forks 만 돌려준다.
+    /// For the prototype: accepts any order and sorts internally. On failure, returns only forks.
     pub fn havoc(&mut self, st: &State, names: &[&str]) -> State {
         let set: BTreeSet<String> = names.iter().map(|s| s.to_string()).collect();
         self.havoc_set(st, &set).unwrap_or_else(|_| st.fork(None))
     }
 
-    // ---------- 양화 조각 (401~417행; 시제품용) ----------
-    /// Quant 평가 중간: lo/hi 를 먼저 평가한 뒤 `s.k += 1`, 상수 `var!q{k}`, qstack push. 본문 평가 뒤 `quant_exit`.
+    // ---------- quantifier pieces (lines 401-417; for the prototype) ----------
+    /// Mid-Quant evaluation: evaluate lo/hi first, then `s.k += 1`, constant `var!q{k}`, qstack push. After evaluating the body, `quant_exit`.
     pub fn quant_enter(&mut self, var: &str) -> Ast {
         self.k += 1;
         let k = self.z.int_const(&format!("{}!q{}", var, self.k));
@@ -784,7 +784,7 @@ impl<'a> FnVerifier<'a> {
     pub fn quant_exit(&mut self) {
         self.qstack.pop();
     }
-    /// `ForAll([k], Implies(And(k >= lo, k < hi), body))` — patterns 없음.
+    /// `ForAll([k], Implies(And(k >= lo, k < hi), body))` — no patterns.
     pub fn forall_q(&self, k: &Ast, lo: &Ast, hi: &Ast, body: &Ast) -> Ast {
         let rng = self.z.and(&[k.ge(lo), k.lt(hi)]);
         self.z.forall(std::slice::from_ref(k), &rng.implies(body), &[])
@@ -795,8 +795,8 @@ impl<'a> FnVerifier<'a> {
         self.z.exists(std::slice::from_ref(k), &self.z.and(&[rng, body.clone()]), &[])
     }
 
-    /// G2 A2: U8 배열의 원소 정의역 `ForAll([k], Implies(And(k >= 0, k < n), And(A[k] >= 0, A[k] <= 255)))`.
-    /// 묶인 변수는 고정 이름 `elem!k`(self.k 를 건드리지 않는다). patterns 없음.
+    /// G2 A2: element domain of a U8 array`ForAll([k], Implies(And(k >= 0, k < n), And(A[k] >= 0, A[k] <= 255)))`.
+    /// The bound variable has the fixed name `elem!k` (does not touch self.k). No patterns.
     pub fn u8_dom(&self, arr: &Arr) -> Ast {
         let k = self.z.int_const("elem!k");
         let rng = self.z.and(&[k.ge_i(0), k.lt(&arr.n)]);
@@ -805,7 +805,7 @@ impl<'a> FnVerifier<'a> {
         self.z.forall(std::slice::from_ref(&k), &rng.implies(&body), &[])
     }
 
-    /// G2 B1: `i` 가 바이트 배열 `arr` 의 UTF-8 문자 경계인가(전체 함수, 정의역 없음).
+    /// G2 B1: is `i` a UTF-8 character boundary of the byte array `arr` (total function, no domain)?
     /// `Or(i == 0, i == n, And(i > 0, i < n, Or(b < 128, b >= 192)))`, `b = Select(arr.a, i)`.
     pub fn str_boundary(&self, arr: &Arr, i: &Ast) -> Ast {
         let z = &self.z;
@@ -817,9 +817,9 @@ impl<'a> FnVerifier<'a> {
         ])
     }
 
-    // ---------- 집계 + 보조정리 (545~602행) ----------
-    /// sum/count/max/min over lo<=k<hi 를 미해석 함수 `F(lo, hi, *outer)` 와 펼침 보조정리로 옮긴다.
-    /// 호출 시점에 `qstack` 에는 이 집계의 자기 변수 `k` 가 이미 빠져 있어야 한다(`quant_exit` 뒤).
+    // ---------- aggregates + lemmas (lines 545-602) ----------
+    /// Translates sum/count/max/min over lo<=k<hi into an uninterpreted function `F(lo, hi, *outer)` and unrolling lemmas.
+    /// At call time, this aggregate's own variable `k` must already be gone from `qstack` (after `quant_exit`).
     pub fn aggregate(&mut self, kind: &str, k: &Ast, lo: &Ast, hi: &Ast, t: &Ast) -> Ast {
         let z = self.z.clone();
         let outer: Vec<Ast> = self.qstack.iter().filter(|c| t.occurs(c)).cloned().collect();
@@ -864,7 +864,7 @@ impl<'a> FnVerifier<'a> {
                 b
             }
         };
-        // 더 작은 범위의 집계에 원소 x 를 붙인 값. `empty`: 작은 범위가 비어 있음.
+        // The aggregate of the smaller range with element x attached. `empty`: the smaller range is empty.
         let comb = |smaller: &Ast, x: &Ast, empty: &Ast| -> Ast {
             if kind == "sum" || kind == "count" {
                 z.ite(empty, &z.int(0), smaller).add(&val(x))
@@ -881,7 +881,7 @@ impl<'a> FnVerifier<'a> {
 
         let fk = (kind.to_string(), f.name().to_string());
         if !self.lemma_fn_keys.contains(&fk) {
-            // 빈 범위: sum/count 는 0 (새 항을 만들지 않으므로 matching loop 없음)
+            // Empty range: sum/count is 0 (no new terms are created, so no matching loop)
             self.lemma_fn_keys.insert(fk);
             if kind == "sum" || kind == "count" {
                 let x = z.int_const("agg!x");
@@ -904,7 +904,7 @@ impl<'a> FnVerifier<'a> {
         }
         let bound_lo = self.qstack.iter().any(|c| lo.occurs(c));
         let bound_hi = self.qstack.iter().any(|c| hi.occurs(c));
-        // 끝을 하나만 옮겨 펼친다: 양화된 보조정리가 자기 출력에 다시 매치되지 않게.
+        // Unroll by moving only one end: so the quantified lemma does not match its own output again.
         if !bound_hi {
             let hm1 = hi.sub_i(1);
             facts.push(lo.lt(hi).implies(&app.eq(&comb(&fa(lo, &hm1), &hm1, &hm1.le(lo)))));
@@ -936,10 +936,10 @@ impl<'a> FnVerifier<'a> {
     }
 
     // =========================================================================================
-    // 식 (345행 `ev`)
+    // Expressions (`ev` at line 345)
     // =========================================================================================
 
-    /// `st.env` 를 스냅샷으로 `ev` (env=None 호출).
+    /// `ev` with `st.env` as the snapshot (the env=None call).
     fn ev0(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool) -> R<Val> {
         let env = st.env.clone();
         self.ev(e, st, g, code, &env)
@@ -955,14 +955,14 @@ impl<'a> FnVerifier<'a> {
         Ok(v.try_ast()?.clone())
     }
 
-    /// verify.py `ev(e, st, g, code, env)`. code=True: 증명 의무와 i64 의미 생성.
+    /// verify.py `ev(e, st, g, code, env)`. code=True: generates proof obligations and i64 semantics.
     pub(crate) fn ev(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Val> {
         let model: &'a Model = self.model;
         match e {
             Expr::IntLit(x) => Ok(Val::Int(self.z.int_str(&norm_int(&x.value)))),
             Expr::BoolLit(x) => Ok(Val::Bool(self.z.bool_val(x.value))),
             Expr::StrLit(x) => {
-                // G2 B1: 상수 바이트 배열. 카운터·의무·가정 없음.
+                // G2 B1: constant byte array. No counters, obligations or assumptions.
                 let mut a = self.z.const_array(&self.z.int_sort(), &self.z.int(0));
                 for (i, b) in x.value.iter().enumerate() {
                     a = a.store(&self.z.int(i as i64), &self.z.int(*b as i64));
@@ -1010,7 +1010,7 @@ impl<'a> FnVerifier<'a> {
                         }
                         return Ok(Val::Int(if op == "/" { l.div(&r) } else { l.modulo(&r) }));
                     }
-                    // 두 쪽 모두 z3 식이므로 z3py 반사 규칙(오른쪽이 수 리터럴이면 뒤집힘)을 따르는 eq/ne/lt/..
+                    // Both sides are z3 expressions, so eq/ne/lt/.. follow the z3py reflection rule (flipped if the right side is a numeric literal)
                     "==" => return Ok(Val::Bool(l.eq(&r))),
                     "!=" => return Ok(Val::Bool(l.ne(&r))),
                     "<" => return Ok(Val::Bool(l.lt(&r))),
@@ -1030,7 +1030,7 @@ impl<'a> FnVerifier<'a> {
                 let arr = arr.try_arr()?.clone();
                 let i = self.ev_ast(&x.index, st, g, code, env)?;
                 if code {
-                    // `i >= 0` 은 파이썬 int, `i < arr.n` 은 z3 식끼리(반사 규칙)
+                    // `i >= 0` is with a Python int, `i < arr.n` is between z3 expressions (reflection rule)
                     let ob = self.z.and(&[i.ge_i(0), i.lt(&arr.n)]);
                     self.prove_core(
                         &st.env,
@@ -1044,7 +1044,7 @@ impl<'a> FnVerifier<'a> {
                     );
                 }
                 let v = arr.a.select(&i);
-                // G2 A5: bool 배열은 in_range 가정 없이 Bool 값
+                // G2 A5: a bool array yields a Bool value without an in_range assumption
                 if arr.elem == Elem::Bool {
                     return Ok(Val::Bool(v));
                 }
@@ -1138,7 +1138,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// verify.py `call` (604행).
+    /// verify.py `call` (line 604).
     fn call(&mut self, e: &Expr, x: &ast::Call, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Val> {
         let n = x.name.as_str();
         let mut args: Vec<Val> = Vec::new();
@@ -1184,13 +1184,13 @@ impl<'a> FnVerifier<'a> {
                 return Ok(Val::Arr(Arr::new(a.a.clone(), a.n.clone(), "copy".to_string(), a.elem)));
             }
             "is_char_boundary" => {
-                // G2 B1: 의무·가정 없음.
+                // G2 B1: no obligations or assumptions.
                 let sv = arg(0)?.try_arr()?;
                 let i = arg(1)?.try_ast()?;
                 return Ok(Val::Bool(self.str_boundary(sv, i)));
             }
             "substr" => {
-                // G2 B1: 범위 → 경계 → 새 결과 → 길이 가정 → 바이트 관계 가정.
+                // G2 B1: range → bounds → new result → length assumption → byte-relation assumption.
                 let sv = arg(0)?.try_arr()?.clone();
                 let lo = arg(1)?.try_ast()?.clone();
                 let hi = arg(2)?.try_ast()?.clone();
@@ -1244,7 +1244,7 @@ impl<'a> FnVerifier<'a> {
             cenv.set(&p.name, a.clone());
         }
         if code {
-            // 호출 지점은 callee 의 requires 정의역을 증명하지 않는다(callee 자신의 run() 이 이미 증명).
+            // The call site does not prove the callee's requires domain (the callee's own run() already proves it).
             for r in &f.requires {
                 let ob = self.ev_ast(r, st, g, false, &cenv)?;
                 self.prove_core(
@@ -1283,10 +1283,10 @@ impl<'a> FnVerifier<'a> {
     }
 
     // =========================================================================================
-    // 계약의 정의역 (440~543행)
+    // Domain of a contract (lines 440-543)
     // =========================================================================================
 
-    /// verify.py `dom(e, st, g, env, kind)`: 계약 e 의 모든 부분 연산이 정의되는 조건(단락 순서). None=자명.
+    /// verify.py `dom(e, st, g, env, kind)`: the condition under which all partial operations of contract e are defined (short-circuit order). None=trivial.
     pub(crate) fn dom(&mut self, e: &Expr, st: &mut State, g: &[Ast], env: &Env, kind: PKind) -> R<Option<Ast>> {
         if !has_vf(e, kind) {
             return Ok(None);
@@ -1389,8 +1389,8 @@ impl<'a> FnVerifier<'a> {
                 let Some(dbody) = dbody? else { return Ok(outer) };
                 let mut rng = self.z.and(&[k.ge(&lo), k.lt(&hi)]);
                 if x.kind == "forall" || x.kind == "exists" {
-                    // k 에서의 본문은 앞선 본문이 모두 참(forall)/거짓(exists)일 때만 평가된다.
-                    // 이름의 번호는 dbody 계산 뒤의 현재 s.k (512행).
+                    // The body at k is evaluated only when all earlier bodies are true (forall) / false (exists).
+                    // The number in the name is the current s.k after computing dbody (line 512).
                     let j = self.z.int_const(&format!("{}!dj{}", x.var, self.k));
                     let mut envj = env.clone();
                     envj.set(&x.var, Val::Int(j.clone()));
@@ -1410,7 +1410,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// verify.py `dom_obligations` (524행): variant_field → variant_domain, 그 밖의 부분 연산 → contract_domain.
+    /// verify.py `dom_obligations` (line 524): variant_field → variant_domain, other partial operations → contract_domain.
     fn dom_obligations(&mut self, e: &Expr, st: &mut State, g: &[Ast], env: &Env) -> R<Vec<(Ast, &'static str)>> {
         let mut out: Vec<(Ast, &'static str)> = Vec::new();
         for (kind, code) in [(PKind::Variant, "variant_domain"), (PKind::Other, "contract_domain")] {
@@ -1426,7 +1426,7 @@ impl<'a> FnVerifier<'a> {
         Ok(out)
     }
 
-    /// verify.py `check_dom` (537행): 코드별로 D(e) 를 따로 증명하고 증명한 정의역들을 돌려준다.
+    /// verify.py `check_dom` (line 537): proves D(e) separately per code and returns the domains proved.
     pub(crate) fn check_dom_e(
         &mut self,
         st: &mut State,
@@ -1439,7 +1439,7 @@ impl<'a> FnVerifier<'a> {
         self.check_dom_cand(st, g, e, node, what, env, None)
     }
 
-    /// `check_dom_e` + STAGE1 B2 후보 ID(`cand`: 중복 억제 키이자 기록 꼬리표).
+    /// `check_dom_e` + STAGE1 B2 candidate ID (`cand`: both the duplicate-suppression key and the recording tag).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn check_dom_cand(
         &mut self,
@@ -1471,10 +1471,10 @@ impl<'a> FnVerifier<'a> {
     }
 
     // =========================================================================================
-    // 문 (647~833행)
+    // Statements (lines 647-833)
     // =========================================================================================
 
-    /// verify.py `ensures_ok` (647행).
+    /// verify.py `ensures_ok` (line 647).
     fn ensures_ok(&mut self, st: &mut State, val: Option<Val>, node: Pos) -> R<()> {
         let f = self.f.ok_or_else(|| "no function".to_string())?;
         let mut env = st.env.clone();
@@ -1487,7 +1487,7 @@ impl<'a> FnVerifier<'a> {
                 env.set("result", v);
             }
         }
-        let mut prev: Vec<Ast> = Vec::new(); // 앞선 절(정의역+값)은 위에서 증명되어 뒤 절의 조회를 정당화할 수 있다
+        let mut prev: Vec<Ast> = Vec::new(); // earlier clauses (domain + value) were proved above and can justify lookups in later clauses
         for en in &f.ensures {
             let what = format!("variant_field lookups in postcondition (line {}) are defined", en.line());
             let ds = self.check_dom_e(st, &prev, en, node, &what, Some(&env))?;
@@ -1499,11 +1499,11 @@ impl<'a> FnVerifier<'a> {
         Ok(())
     }
 
-    /// verify.py `exec_block` (660행).
+    /// verify.py `exec_block` (line 660).
     pub(crate) fn exec_block(&mut self, stmts: &[Stmt], st: State) -> R<Vec<State>> {
         let mut states = vec![st];
         for stmt in stmts {
-            // STAGE1 B2: 예산 소진·시간 초과가 나면 Python 은 예외로 여기서 빠져나간다.
+            // STAGE1 B2: on budget exhaustion or timeout, Python escapes from here via an exception.
             if self.probe_aborted() {
                 return Ok(Vec::new());
             }
@@ -1519,7 +1519,7 @@ impl<'a> FnVerifier<'a> {
         Ok(states)
     }
 
-    /// Let / Assign (711~717행).
+    /// Let / Assign (lines 711-717).
     fn exec_bind(&mut self, name: &str, value: &Expr, st: State) -> R<Vec<State>> {
         let mut st = st.fork(None);
         let v = self.ev0(value, &mut st, &[], true)?;
@@ -1531,7 +1531,7 @@ impl<'a> FnVerifier<'a> {
         Ok(vec![st])
     }
 
-    /// verify.py `exec` (710행).
+    /// verify.py `exec` (line 710).
     fn exec(&mut self, stmt: &Stmt, st: State) -> R<Vec<State>> {
         if self.probe_aborted() {
             return Ok(Vec::new());
@@ -1571,7 +1571,7 @@ impl<'a> FnVerifier<'a> {
                     );
                 }
                 if let Some((lo, hi, what)) = &s.elem_refine {
-                    // refine.rs: 저장 값(이미 계산됨)의 범위 의무 하나. 정의역 검사·재평가·forall 없음, 뒤에 가정하지 않는다.
+                    // refine.rs: one range obligation on the stored value (already computed). No domain check, re-evaluation or forall, and it is not assumed afterwards.
                     let lo: i64 = lo.parse().map_err(|_| format!("refinement bound '{}'", lo))?;
                     let hi: i64 = hi.parse().map_err(|_| format!("refinement bound '{}'", hi))?;
                     let ob = self.z.and(&[v.ge_i(lo), v.le_i(hi)]);
@@ -1622,7 +1622,7 @@ impl<'a> FnVerifier<'a> {
                         }
                     }
                     for mut end in self.exec_block(&a.body, b)? {
-                        // 바인더와 팔의 지역 변수는 팔과 함께 끝난다; 바깥 변수의 갱신만 남는다
+                        // The binder and the arm's local variables end with the arm; only updates to outer variables remain
                         let drop_keys: Vec<String> =
                             end.env.0.iter().filter(|(k, _)| !outer.contains(k)).map(|(k, _)| k.clone()).collect();
                         for k in drop_keys {
@@ -1635,7 +1635,7 @@ impl<'a> FnVerifier<'a> {
             }
             Stmt::FieldAssign(s) => {
                 let mut st = st.fork(None);
-                let v = self.ev0_ast(&s.value, &mut st, &[], true)?; // 오른쪽 먼저, 저장 전의 상태에서
+                let v = self.ev0_ast(&s.value, &mut st, &[], true)?; // right-hand side first, in the state before storing
                 let (root, ty) = match st.env.try_get(&s.name) {
                     Some(Val::Dt(r, t)) => (r.clone(), t.clone()),
                     _ => return Err(format!("field assignment on '{}' which is not a struct value", s.name)),
@@ -1661,8 +1661,8 @@ impl<'a> FnVerifier<'a> {
                 match &s.origin_code {
                     None => self.prove_core(&st.env, &st.pc, &[], &ob, spos, "assert", "assertion", None),
                     Some(code) => {
-                        // refine.rs 가 합성한 assert: 자기 code 와 원천 설명. 설명이 중복 억제 키에도 들어가
-                        // 한 주석의 여러 지점이 모두 보고된다.
+                        // An assert synthesized by refine.rs: its own code and the source description. The description also goes into the duplicate-suppression key,
+                        // so multiple points of one annotation are all reported.
                         let what = s.origin_what.as_deref().unwrap_or("");
                         self.prove_core(&st.env, &st.pc, &[], &ob, spos, code, what, Some(what));
                     }
@@ -1681,7 +1681,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// 루프 시작 상태: 대입되는 변수를 havoc 하고 각 불변식의 정의역(variant)과 값을 가정한다.
+    /// Loop start state: havoc the assigned variables and assume each invariant's domain (variant) and value.
     fn loop_assume_invariants(&mut self, invs: &[InvRef<'_>], h: &mut State) -> R<()> {
         for &(_cid, inv, _text) in invs {
             let envh = h.env.clone();
@@ -1694,13 +1694,13 @@ impl<'a> FnVerifier<'a> {
         Ok(())
     }
 
-    /// verify.py `loop` (786행).
+    /// verify.py `loop` (line 786).
     fn loop_(&mut self, w: &ast::While, st: &mut State) -> R<Vec<State>> {
         if self.probe_aborted() {
             return Ok(Vec::new());
         }
         let dpos = pos(&w.decreases);
-        // STAGE1 B2: 쓴 불변식(정제 필수 → 사용자) 뒤에 이 루프의 후보(정렬 순서)를 잇는다.
+        // STAGE1 B2: append this loop's candidates (sorted order) after the written invariants (required refinements → user).
         let extra_here: std::rc::Rc<Vec<ExtraInv>> = if self.extra.is_empty() {
             std::rc::Rc::new(Vec::new())
         } else {
@@ -1717,7 +1717,7 @@ impl<'a> FnVerifier<'a> {
         for (id, e, t) in extra_here.iter() {
             invs.push((Some(id.as_str()), e, Some(t.as_str())));
         }
-        let mut prev: Vec<Ast> = Vec::new(); // 불변식은 차례로: 앞의 것(여기서 증명됨)이 뒤의 조회를 정당화할 수 있다
+        let mut prev: Vec<Ast> = Vec::new(); // invariants in order: an earlier one (proved here) can justify lookups in a later one
         for &(cid, inv, text) in &invs {
             let (w_dom, w_ob) = inv_what(cid, text, "entry");
             let ds = self.check_dom_cand(st, &prev, inv, pos(inv), &w_dom, None, cid)?;
@@ -1728,7 +1728,7 @@ impl<'a> FnVerifier<'a> {
         }
         let mut names: BTreeSet<String> = BTreeSet::new();
         assigned(&w.body, &mut names);
-        // 임의의 한 번의 반복: 시작에서 불변식이 성립했고(정의되었고)
+        // An arbitrary single iteration: at the start the invariants held (and were defined)
         let mut b = self.havoc_set(st, &names)?;
         self.loop_assume_invariants(&invs, &mut b)?;
         let c = self.ev0_ast(&w.cond, &mut b, &[], true)?;
@@ -1748,7 +1748,7 @@ impl<'a> FnVerifier<'a> {
                 prev.push(ob);
             }
             if has_vf(&w.decreases, PKind::All) {
-                // decreases 는 본문 끝에서 읽힌다: 방금 증명한 불변식이 그 조회를 정당화할 수 있다
+                // decreases is read at the end of the body: the invariants just proved can justify that lookup
                 let mut extra: Vec<Ast> = Vec::new();
                 for &(_cid, inv, _text) in &invs {
                     let envp = end.env.clone();
@@ -1771,7 +1771,7 @@ impl<'a> FnVerifier<'a> {
             let ob = dv.lt(&d0);
             self.prove_core(&end.env, &end.pc, &[], &ob, dpos, "decreases_decrease", "decreases strictly decreases", None);
         }
-        // 루프 뒤
+        // After the loop
         let mut a = self.havoc_set(st, &names)?;
         self.loop_assume_invariants(&invs, &mut a)?;
         let c = self.ev0_ast(&w.cond, &mut a, &[], true)?;
@@ -1779,7 +1779,7 @@ impl<'a> FnVerifier<'a> {
         Ok(vec![a])
     }
 
-    /// verify.py `run` (835행).
+    /// verify.py `run` (line 835).
     pub fn run(&mut self) -> R<()> {
         let f = self.f.ok_or_else(|| "no function".to_string())?;
         let mut env = Env::default();
@@ -1805,10 +1805,10 @@ impl<'a> FnVerifier<'a> {
         self.params = env.clone();
         let mut st = State { env, pc };
         for r in &f.requires {
-            // D(r) 는 앞선 requires 만으로 증명하고, 그 뒤 D(r) && r 을 선언 순서대로 가정한다
+            // D(r) is proved from the preceding requires only, then D(r) && r is assumed in declaration order
             let what = format!("variant_field lookups in requires (line {}) are defined", r.line());
             self.check_dom_e(&mut st, &[], r, pos(r), &what, None)?;
-            // variant_field 부분만 가정한다: 나머지 정의역은 위에서 증명했지만 가정하지 않는다
+            // Only the variant_field part is assumed: the remaining domains were proved above but are not assumed
             let envc = st.env.clone();
             if let Some(d) = self.dom(r, &mut st, &[], &envc, PKind::Variant)? {
                 st.pc.push(d);
@@ -1835,7 +1835,7 @@ mod tests {
     fn reflected_and_literal_comparisons() {
         let z = Z3::new();
         let x = z.int_const("x");
-        // z3 수 리터럴이 오른쪽이면 반사(`IntVal(0).__le__(x)`), 파이썬 int 면 그대로
+        // If a z3 numeric literal is on the right, reflect (`IntVal(0).__le__(x)`); if it is a Python int, leave as is
         assert_eq!(x.ge(&z.int(0)).sexpr(), "(<= 0 x)");
         assert_eq!(x.ge_i(0).sexpr(), "(>= x 0)");
         assert_eq!(x.ne_i(0).sexpr(), "(distinct x 0)");

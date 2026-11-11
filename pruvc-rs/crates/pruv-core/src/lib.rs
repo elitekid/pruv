@@ -1,20 +1,20 @@
-//! pruv-core: 앞단(AST·lexer·parser·typeinfo·check)과 코드 생성 공통부.
+//! pruv-core: the frontend (AST, lexer, parser, typeinfo, check) and the shared code-generation parts.
 //!
-//! M3 1단계: ast·diagnostic·lexer·parser·dump(시험 스키마) 이식 완료. 모듈 계획(docs/M3_C4_SPEC.md 2절 표):
+//! M3 stage 1: porting of ast, diagnostic, lexer, parser, dump (test schema) is complete. Module plan (docs/M3_C4_SPEC.md §2 table):
 //!
-//! | 모듈            | Python 대응        | 담당                                         |
+//! | Module          | Python counterpart | Responsibility                               |
 //! |-----------------|--------------------|----------------------------------------------|
-//! | `ast`           | `vast.py`          | 식 14·문 10·선언/보조 9 = 33 노드, Type 은 이름 하나 |
-//! | `diagnostic`    | `vast.PruvError`   | 오류 형식, line/col 은 1부터 유니코드 문자 단위  |
-//! | `lexer`/`parser`| `vparser.py`       | 토큰·위치·재귀 하강·음수 리터럴 접기             |
-//! | `typeinfo`      | `typeinfo.py`      | 명목 타입·선언 순서·안정적 의존 순서             |
-//! | `check`         | `check.py`         | 타입·효과·소유·재귀 금지·첫 오류 순서            |
-//! | `codegen`       | `codegen.py`       | Rust 출력(마지막 단계)                          |
-//! | `llvmgen`/`abi` | `llvmgen.py`       | LLVM IR 텍스트, 대상 wrapper                    |
+//! | `ast`           | `vast.py`          | 14 expressions, 10 statements, 9 declarations/helpers = 33 nodes, Type is a single name |
+//! | `diagnostic`    | `vast.PruvError`   | error format, line/col are 1-based in Unicode characters |
+//! | `lexer`/`parser`| `vparser.py`       | tokens, positions, recursive descent, negative-literal folding |
+//! | `typeinfo`      | `typeinfo.py`      | nominal types, declaration order, stable dependency order |
+//! | `check`         | `check.py`         | types, effects, ownership, recursion ban, first-error order |
+//! | `codegen`       | `codegen.py`       | Rust output (final stage)                    |
+//! | `llvmgen`/`abi` | `llvmgen.py`       | LLVM IR text, target wrapper                 |
 //!
-//! 규칙: 검사 뒤 AST 는 읽기 전용. 순회 결과가 출력에 들어가면 순서를 정의한다.
+//! Rule: the AST is read-only after checking. If a traversal result goes into the output, define its order.
 
-/// AST 덤프(JSON)의 스키마 식별자.
+/// Schema identifier of the AST dump (JSON).
 pub const SCHEMA_AST: &str = "pruv-ast-v1";
 
 pub mod abi;
@@ -35,7 +35,7 @@ pub mod pyrepr_table;
 pub mod refine;
 pub mod typeinfo;
 
-/// 공개 진입: 소스 문자열을 파싱한다(개행 정규화 포함).
+/// Public entry: parses a source string (including newline normalization).
 pub fn parse(src: &str) -> Result<ast::Program, diagnostic::PruvError> {
     parser::parse_source(src)
 }

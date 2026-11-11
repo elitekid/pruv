@@ -1,5 +1,5 @@
-//! 외부 워드 형태(pruv_abi_*) IR 텍스트: llvmgen.py 의 Words 클래스와 abi_of(1124~1288행) 이식.
-//! docs/M2_G1_SPEC.md 5절 W(T).
+//! IR text for the external word form (pruv_abi_*): a port of llvmgen.py's Words class and abi_of (lines 1124-1288).
+//! docs/M2_G1_SPEC.md §5 W(T).
 
 use crate::ast::*;
 use crate::llvmgen::{lty, mangle, st, words, R, OPT};
@@ -37,7 +37,7 @@ impl<'a> Words<'a> {
         self.lines.push(format!("store i64 {}, ptr {}", v, g));
     }
 
-    /// words ptr[off..] 에서 타입 ty 의 값을 읽는다; st(ty) 타입 SSA 이름을 돌려준다
+    /// Reads a value of type ty from the words at ptr[off..]; returns the SSA name of type st(ty)
     pub fn de(&mut self, ty: &str, ptr: &str, off: usize) -> R<String> {
         let tt = self.tt;
         match ty {
@@ -86,7 +86,7 @@ impl<'a> Words<'a> {
         }
     }
 
-    /// SSA 값 x(타입 st(ty))를 ptr[off..] 에 워드로 쓴다
+    /// Writes the SSA value x (of type st(ty)) as words to ptr[off..]
     pub fn ser(&mut self, ty: &str, x: &str, ptr: &str, off: usize) -> R<()> {
         let tt = self.tt;
         match ty {
@@ -103,7 +103,7 @@ impl<'a> Words<'a> {
                 let t = self.op(format!("extractvalue {} {}, 0", OPT, x));
                 let mut p = self.op(format!("extractvalue {} {}, 1", OPT, x));
                 if ty == "option" {
-                    // None 의 payload 는 0 으로 직렬화
+                    // The payload of None is serialized as 0
                     p = self.op(format!("select i1 {}, i64 {}, i64 0", t, p));
                 }
                 let z = self.op(format!("zext i1 {} to i64", t));
@@ -128,7 +128,7 @@ impl<'a> Words<'a> {
                         Ok(())
                     }
                     TypeDecl::Enum(ed) => {
-                        // 비활성 payload 는 구성상 0 (EnumCtor/역직렬화가 zeroinitializer 에서 시작)
+                        // An inactive payload is 0 by construction (EnumCtor/deserialization starts from zeroinitializer)
                         let tag = self.op(format!("extractvalue {} {}, 0", tstr, x));
                         self.wr(ptr, off, &tag);
                         let mut o = off + 1;
@@ -149,7 +149,7 @@ impl<'a> Words<'a> {
     }
 }
 
-/// wrapper 가 따를 C ABI 대상. SysV = macOS arm64/x64·Linux x64 (기존 출력).
+/// The C ABI target the wrapper follows. SysV = macOS arm64/x64 and Linux x64 (existing output).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AbiTarget {
     SysV,
@@ -170,11 +170,11 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
             args.push(format!("ptr %a.{}.a", q));
             args.push(format!("i64 %a.{}.n", q));
             if p.ty == "array_bool" {
-                // G2 A5: raw 진입에서 모든 바이트가 0/1 인지 먼저 검사
+                // G2 A5: at the raw entry, first check that every byte is 0/1
                 pre.push(format!("call void @pruv_check_bool(ptr %a.{}.a, i64 %a.{}.n)", q, q));
             }
             if p.ty == "str" {
-                // G2 B2: raw 진입에서 바이트열이 유효 UTF-8 인지 먼저 검사
+                // G2 B2: at the raw entry, first check that the byte sequence is valid UTF-8
                 pre.push(format!("call void @pruv_check_utf8(ptr %a.{}.a, i64 %a.{}.n)", q, q));
             }
         } else if is_user_type(&p.ty) {
@@ -215,7 +215,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
         body.push("  ret void".to_string());
         ret = "void";
     } else if (rt == "option" || rt == "result") && target == AbiTarget::WinX64 {
-        // Windows x64: 16바이트 집합체는 숨은 sret 포인터로 돌려준다(첫 매개변수)
+        // Windows x64: a 16-byte aggregate is returned through a hidden sret pointer (first parameter)
         ext.insert(0, "ptr sret({ i64, i64 }) align 8 %sret".to_string());
         body.push(format!("  %r = call {} {}({})", lty(rt), entry, argl));
         body.push(format!("  %x0 = extractvalue {} %r, 0", lty(rt)));
@@ -228,7 +228,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
         body.push("  ret void".to_string());
         ret = "void";
     } else if rt == "option" || rt == "result" {
-        // { i64, i64 } 값 반환(macOS arm64 / SysV x86-64 에서 레지스터 두 개)
+        // Returns a { i64, i64 } value (two registers on macOS arm64 / SysV x86-64)
         body.push(format!("  %r = call {} {}({})", lty(rt), entry, argl));
         body.push(format!("  %x0 = extractvalue {} %r, 0", lty(rt)));
         body.push(format!("  %x1 = extractvalue {} %r, 1", lty(rt)));
@@ -262,8 +262,8 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
     }
     let mut out = format!("define {} @pruv_abi_{}({}) {{\nentry:\n{}\n}}\n", ret, n, ext.join(", "), body.join("\n"));
     if f.params.iter().any(|p| p.ty == "array_bool" || p.ty == "str") {
-        // G2 A5: typed Rust 바인딩은 타입으로 유효한 &[bool] 을 바이트 검사 없는 이 진입으로 넘긴다
-        // G2 B2: &str 도 같다(유효 UTF-8 검사 줄을 뺀다)
+        // G2 A5: the typed Rust binding passes a type-valid &[bool] through this entry, which has no byte check
+        // G2 B2: the same for &str (the valid-UTF-8 check line is omitted)
         let tb: Vec<&str> = body
             .iter()
             .map(|x| x.as_str())
@@ -300,7 +300,7 @@ mod tests {
             abi_of(&f, &tt, AbiTarget::SysV).unwrap(),
             "define i64 @pruv_abi_f(i64 %a.x, i64 %a.b) {\nentry:\n  %c.b = icmp ne i64 %a.b, 0\n  %r = call i1 @f__pruv_entry(i64 %a.x, i1 %c.b)\n  %rz = zext i1 %r to i64\n  ret i64 %rz\n}\n"
         );
-        // i64/bool 반환은 대상과 무관
+        // i64/bool returns are independent of the target
         assert_eq!(abi_of(&f, &tt, AbiTarget::WinX64).unwrap(), abi_of(&f, &tt, AbiTarget::SysV).unwrap());
     }
 

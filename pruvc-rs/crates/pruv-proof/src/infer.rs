@@ -1,16 +1,16 @@
-//! STAGE1 B2: 템플릿 Houdini 불변식 추론(`--infer`). pruvc/infer.py 를 줄 단위로 옮긴다. 명세: docs/STAGE1_B_INFER.md.
+//! STAGE1 B2: template Houdini invariant inference (`--infer`). A line-by-line port of pruvc/infer.py. Spec: docs/STAGE1_B_INFER.md.
 //!
-//! 함수마다: 고정 템플릿으로 후보 불변식을 만들고(3절), Houdini 회차를 돈다(4.1): 회차마다 살아 있는 후보 전부를
-//! 추가 루프 불변식으로 주고 함수 전체를 검증해, 진입·보존 의무가 증명되지 않은 후보를 뺀다. 아무것도 안 빠지면 끝.
-//! 그 뒤 `verify_program_opts` 가 살아남은 후보로 한 번 더 검증한다(4.2).
+//! Per function: build candidate invariants from fixed templates (§3), then run Houdini rounds (4.1): in each round all live candidates are
+//! supplied as extra loop invariants and the whole function is verified; candidates whose entry/preservation obligations are not proved are dropped. Done when nothing is dropped.
+//! Afterwards `verify_program_opts` verifies once more with the surviving candidates (4.2).
 //!
-//! B+ (명세 3.7, 추론 설정 버전 2): 종류 12(값 범위)·13(출력 배열 접두)·14(조기 반환 접두)를 더했다.
+//! B+ (spec 3.7, inference config version 2): added kinds 12 (value range), 13 (output array prefix) and 14 (early-return prefix).
 //!
-//! Python 과 다르게 옮긴 곳:
-//! - 정수 계산은 i128(포화 연산). Python 은 임의 정밀도지만 i64 밖의 값은 어차피 후보를 만들지 않는다.
-//! - `_Skip` 예외는 `Option` 으로(`None` = 후보를 만들지 않음).
-//! - 회차마다 새 z3 컨텍스트·Prelude·Model(같은 seq) 을 만든다(lib.rs 주석).
-//! - 예산·시간 초과는 예외 대신 `Probe.abort` 표시(symbolic.rs 의 `ProbeAbort`).
+//! Where the port differs from Python:
+//! - Integer arithmetic is i128 (saturating). Python uses arbitrary precision, but values outside i64 never produce a candidate anyway.
+//! - The `_Skip` exception becomes an `Option` (`None` = no candidate is produced).
+//! - A fresh z3 context, Prelude and Model (same seq) is created per round (see the comment in lib.rs).
+//! - Budget/time exhaustion sets `Probe.abort` instead of raising (`ProbeAbort` in symbolic.rs).
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -25,19 +25,19 @@ use crate::symbolic::{norm_int, walk_loops, Extra, ExtraInv, FnVerifier, Probe, 
 use crate::sys::Z3;
 
 /// INFER_CONFIG
-pub const MAX_CANDIDATES: usize = 64; // 루프마다, 정렬·중복 제거 뒤(잘린 수는 `capped`)
-pub const MAX_QUERIES: usize = 512; // 함수마다, 모든 solver 시도(보조정리 재시도도 1)
+pub const MAX_CANDIDATES: usize = 64; // per loop, after sorting and dedup (the truncated count is `capped`)
+pub const MAX_QUERIES: usize = 512; // per function, all solver attempts (a lemma retry counts as 1)
 pub const RLIMIT: u32 = 100000;
 pub const TIMEOUT_MS: u32 = 500;
 pub const SEED: u32 = 0;
-pub const MAX_SECONDS: u64 = 5; // 함수마다 벽시계
+pub const MAX_SECONDS: u64 = 5; // per-function wall clock
 
 const I64_MAX: i128 = i64::MAX as i128;
 
 type Rng = (i128, i128);
 
 // ---------------------------------------------------------------------------
-// 출력 (3.5)
+// Output (3.5)
 // ---------------------------------------------------------------------------
 fn prec(op: &str) -> u8 {
     match op {
@@ -55,7 +55,7 @@ fn is_quantifier(e: &Expr) -> bool {
     matches!(e, Expr::Quant(q) if q.kind == "forall" || q.kind == "exists")
 }
 
-/// infer.py `show`. None = 출력 함수가 모르는 노드(Python `_Skip`).
+/// infer.py `show`. None = a node the output function does not know (Python `_Skip`).
 pub fn show(e: &Expr) -> Option<String> {
     match e {
         Expr::IntLit(x) => Some(norm_int(&x.value)),
@@ -115,7 +115,7 @@ pub fn show(e: &Expr) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// AST 보조
+// AST helpers
 // ---------------------------------------------------------------------------
 /// refine.py `_kids`
 fn kids(e: &Expr) -> Vec<&Expr> {
@@ -135,7 +135,7 @@ fn kids(e: &Expr) -> Vec<&Expr> {
     }
 }
 
-// refine.py `_expr_names` / `_stmt_names` / `_fn_names` (pruv_core::refine 에서는 비공개라 그대로 옮겼다)
+// refine.py `_expr_names` / `_stmt_names` / `_fn_names` (private in pruv_core::refine, so ported as is)
 fn expr_names(e: &Expr, out: &mut HashSet<String>) {
     match e {
         Expr::Var(x) => {
@@ -216,7 +216,7 @@ fn fn_names(f: &ast::Function) -> HashSet<String> {
     out
 }
 
-/// 구조(위치·검사기 타입 제외)가 같은가: infer.py `_shape(a) == _shape(b)`.
+/// Is the structure the same (excluding positions and checker types):infer.py `_shape(a) == _shape(b)`.
 fn shape_eq(a: &Expr, b: &Expr) -> bool {
     match (a, b) {
         (Expr::IntLit(x), Expr::IntLit(y)) => norm_int(&x.value) == norm_int(&y.value),
@@ -271,7 +271,7 @@ fn shape_eq(a: &Expr, b: &Expr) -> bool {
     }
 }
 
-/// infer.py `_free`: e 의 자유 변수 이름(양화 변수는 양화 본문 안에서 묶인다).
+/// infer.py `_free`: free variable names of e (quantified variables are bound inside the quantifier body).
 fn free(e: &Expr, bound: &mut Vec<String>, out: &mut HashSet<String>) {
     match e {
         Expr::Var(x) => {
@@ -300,7 +300,7 @@ fn free_set(e: &Expr) -> HashSet<String> {
     out
 }
 
-/// Assign / IndexAssign / FieldAssign 참조(중첩 블록 포함).
+/// References to Assign / IndexAssign / FieldAssign (including nested blocks).
 #[derive(Clone, Copy)]
 enum Asg<'s> {
     A(&'s ast::Assign),
@@ -345,7 +345,7 @@ fn assigned(stmts: &[Stmt]) -> BTreeSet<String> {
     v.iter().map(|a| a.name().to_string()).collect()
 }
 
-/// 루프 본문 안에서 선언된 이름(let, match 바인더): 루프 머리에서는 보이지 않는다.
+/// Names declared inside the loop body (let, match binders): not visible at the loop head.
 fn locals(stmts: &[Stmt], out: &mut BTreeSet<String>) {
     for st in stmts {
         match st {
@@ -370,8 +370,8 @@ fn locals(stmts: &[Stmt], out: &mut BTreeSet<String>) {
     }
 }
 
-/// infer.py `_init`: block[idx] 의 루프에서 `name` 의 값 = 같은 블록의 가장 가까운 앞선 let/대입. 앞선
-/// if/while/match 가 먼저 대입하면, 또는 없으면 None. skip_index: 그 이름의 IndexAssign 은 넘어간다.
+/// infer.py `_init`: the value of `name` at the loop in block[idx] = the nearest preceding let/assignment in the same block. None if a preceding
+/// if/while/match assigns it first, or if there is none. skip_index: an IndexAssign of that name is skipped.
 fn init<'s>(block: &'s [Stmt], idx: usize, name: &str, skip_index: bool) -> Option<&'s Expr> {
     for j in (0..idx).rev() {
         let st = &block[j];
@@ -394,7 +394,7 @@ fn lit_val(x: &ast::IntLit) -> Option<i128> {
     norm_int(&x.value).parse::<i128>().ok()
 }
 
-/// infer.py `_lit`: 정수 리터럴(IntLit, 또는 그 단항 마이너스)의 값, 아니면 None.
+/// infer.py `_lit`: the value of an integer literal (IntLit, or its unary minus), else None.
 fn lit(e: &Expr) -> Option<i128> {
     match e {
         Expr::IntLit(x) => lit_val(x),
@@ -419,7 +419,7 @@ fn is_len_var(e: &Expr, m: &BTreeSet<String>) -> bool {
     }
 }
 
-/// 루프가 바꾸지 않는 식 (3.1)
+/// Expressions the loop does not change (3.1)
 fn invariant_expr(e: &Expr, m: &BTreeSet<String>) -> bool {
     if matches!(e, Expr::IntLit(_)) {
         return true;
@@ -450,7 +450,7 @@ fn conj_terms(e: &Expr) -> Vec<&Expr> {
     }
 }
 
-/// 배열 내부 타입 이름 → 원소 타입 이름("i64"/"u8"/"bool"). 배열이 아니면 None.
+/// Array internal type name → element type name ("i64"/"u8"/"bool"). None if not an array.
 fn arr_elem_of(ty: &str) -> Option<&'static str> {
     match ty {
         "array" => Some("i64"),
@@ -460,8 +460,8 @@ fn arr_elem_of(ty: &str) -> Option<&'static str> {
     }
 }
 
-// G2 A5: 루프 위치 기준 표. 환경을 문장 순서로 갱신하며(배열이 아닌 Let 은 이름을 지운다),
-// 대상 루프 노드(포인터 동일성)에 닿을 때의 환경이 그 루프의 표다. 안쪽 블록은 복사한 환경으로 들어간다.
+// G2 A5: per-loop-position table. The environment is updated in statement order (a non-array Let erases the name),
+// and the environment on reaching the target loop node (pointer identity) is that loop's table. Inner blocks are entered with a copied environment.
 fn env_set(env: &mut Vec<(String, &'static str)>, name: &str, e: Option<&'static str>) {
     env.retain(|(n, _)| n != name);
     if let Some(e) = e {
@@ -510,7 +510,7 @@ fn find_loop_env(stmts: &[Stmt], env: &mut Vec<(String, &'static str)>, w: &ast:
     false
 }
 
-/// 루프 `w` 머리에서 보이는 배열 이름 → 원소 타입 표(매개변수에서 시작).
+/// Table of array name → element type visible at the head of loop `w` (starting from the parameters).
 fn elem_types(f: &ast::Function, w: &ast::While) -> Vec<(String, &'static str)> {
     let mut env: Vec<(String, &'static str)> = Vec::new();
     for p in &f.params {
@@ -528,7 +528,7 @@ fn elem_type_of<'t>(tab: &'t [(String, &'static str)], name: &str) -> Option<&'t
     tab.iter().find(|(n, _)| n == name).map(|(_, e)| *e)
 }
 
-/// e 안에 원소 타입이 bool 인 배열의 Index 가 있는가.
+/// Does e contain an Index of an array whose element type is bool?
 fn reads_bool_elem(e: &Expr, tab: &[(String, &'static str)]) -> bool {
     if let Expr::Index(x) = e {
         if let Expr::Var(a) = &*x.array {
@@ -540,7 +540,7 @@ fn reads_bool_elem(e: &Expr, tab: &[(String, &'static str)]) -> bool {
     kids(e).into_iter().any(|c| reads_bool_elem(c, tab))
 }
 
-/// `forall K in 0..len(x): A && B` requires 에서 {배열 이름: (L, U)}(배열마다 처음 것). requires 순서를 유지한다.
+/// `forall K in 0..len(x): A && B` in requires, {array name: (L, U)} (the first one per array). Preserves the requires order.
 fn elem_ranges(f: &ast::Function) -> Vec<(String, Rng)> {
     let mut out: Vec<(String, Rng)> = Vec::new();
     for r in &f.requires {
@@ -573,7 +573,7 @@ fn elem_ranges(f: &ast::Function) -> Vec<(String, Rng)> {
         let mut hi: Option<i128> = None;
         let mut ok = true;
         for t in [&*body.left, &*body.right] {
-            let mut side: Option<(bool, i128)> = None; // (true = lo, 값)
+            let mut side: Option<(bool, i128)> = None; // (true = lo, value)
             if let Expr::Binary(tb) = t {
                 if tb.op == ">=" || tb.op == "<=" {
                     let lv = lit(&tb.right);
@@ -601,7 +601,7 @@ fn elem_ranges(f: &ast::Function) -> Vec<(String, Rng)> {
     out
 }
 
-/// 항의 (하한, 상한) 또는 None (3.1 rng). 계산은 포화 i128.
+/// (lower bound, upper bound) of a term, or None (3.1 rng). Computed with saturating i128.
 fn rng(e: &Expr, ranges: &[(String, Rng)], m: &BTreeSet<String>) -> Option<Rng> {
     match e {
         Expr::IntLit(x) => lit_val(x).map(|v| (v, v)),
@@ -638,7 +638,7 @@ fn rng(e: &Expr, ranges: &[(String, Rng)], m: &BTreeSet<String>) -> Option<Rng> 
 }
 
 // ---------------------------------------------------------------------------
-// 후보 노드 만들기: 모든 노드는 루프 위치(3.4)
+// Building candidate nodes: every node is at the loop position (3.4)
 // ---------------------------------------------------------------------------
 struct Bld {
     line: i64,
@@ -650,7 +650,7 @@ impl Bld {
     fn int(&self, n: i128) -> Expr {
         Expr::IntLit(ast::IntLit { line: self.line, col: self.col, value: n.to_string(), ty: None })
     }
-    /// 리터럴. |n| > i64 최대면 None(Python `_Skip`). 음수는 단항 마이너스.
+    /// Literal. None if |n| > i64 max (Python `_Skip`). Negatives are unary minus.
     fn lit(&self, n: i128) -> Option<Expr> {
         if n.unsigned_abs() > I64_MAX as u128 {
             return None;
@@ -720,8 +720,8 @@ impl Bld {
         })
     }
 
-    /// e 의 복사본(루프 위치). sub = (이름, 공장): 그 이름의 자유 Var 가 공장() 으로 바뀐다.
-    /// Var·Quant 는 새 노드(타입 없음), 그 밖은 원래 노드의 `ty` 를 그대로 가져온다(Python `clone` 과 같다).
+    /// A copy of e (at the loop position). sub = (name, factory): free Vars of that name are replaced by factory().
+    /// Var and Quant are new nodes (no type); everything else carries over the original node's `ty` as is (same as Python `clone`).
     fn clone_e(&self, e: &Expr, sub: Option<(&str, &dyn Fn() -> Expr)>) -> Expr {
         let (line, col) = (self.line, self.col);
         match e {
@@ -842,7 +842,7 @@ impl Bld {
 }
 
 // ---------------------------------------------------------------------------
-// 후보 생성 (3절)
+// Candidate generation (§3)
 // ---------------------------------------------------------------------------
 struct Cand {
     kind: u32,
@@ -850,8 +850,8 @@ struct Cand {
     expr: Expr,
 }
 
-/// 식 안에 `len` 이 아닌 Call 노드가 있는가(사용자 함수·alloc·copy·print·is_some 등). 있으면 후보를 만들지 않는다:
-/// 계약 문맥에서 callee requires 가 검사되지 않고 ensures 가 가정되어 경로 조건이 오염되기 때문.
+/// Does the expression contain a Call node other than `len` (user function, alloc, copy, print, is_some, etc.)? If so, no candidate is produced:
+/// in a contract context the callee's requires is not checked and its ensures is assumed, which pollutes the path condition.
 fn has_non_len_call(e: &Expr) -> bool {
     if let Expr::Call(c) = e {
         if c.name != "len" {
@@ -872,7 +872,7 @@ fn push(out: &mut Vec<Cand>, kind: u32, e: Option<Expr>) {
     }
 }
 
-/// 후보 식의 왼쪽 N: lo 가 IntLit 0 이면 v, 아니면 v - lo
+/// Left-hand N of a candidate expression: v if lo is IntLit 0, otherwise v - lo
 fn n_of(b: &Bld, v: &str, lo: &Expr) -> Expr {
     if matches!(lo, Expr::IntLit(x) if lit_val(x) == Some(0)) {
         b.var(v)
@@ -881,7 +881,7 @@ fn n_of(b: &Bld, v: &str, lo: &Expr) -> Expr {
     }
 }
 
-/// c0 == 0 이면 t, 아니면 c0 + t
+/// t if c0 == 0, otherwise c0 + t
 fn with_c0(b: &Bld, c0: i128, t: Expr) -> Option<Expr> {
     if c0 == 0 {
         Some(t)
@@ -890,7 +890,7 @@ fn with_c0(b: &Bld, c0: i128, t: Expr) -> Option<Expr> {
     }
 }
 
-/// 계수 c * N: c == 0 이면 0, c == 1 이면 N
+/// Coefficient c * N: 0 if c == 0, N if c == 1
 fn coef(b: &Bld, c: i128, n: Expr) -> Option<Expr> {
     if c == 0 {
         b.lit(0)
@@ -916,7 +916,7 @@ fn acc(st: &ast::Assign) -> Option<(&str, &Expr)> {
     None
 }
 
-/// "max" / "min": X 가 T 와 Var m 을 최대/최소 꼴로 비교하면.
+/// "max" / "min": if X compares T and Var m in max/min form.
 fn maxmin(x: &Expr, m: &str, t: &Expr) -> Option<&'static str> {
     let xb = match x {
         Expr::Binary(b) => b,
@@ -941,8 +941,8 @@ fn maxmin(x: &Expr, m: &str, t: &Expr) -> Option<&'static str> {
     None
 }
 
-/// 루프 w 의 후보 [(종류, 문자열, 식)] (정렬 전, 중복 있을 수 있음).
-/// 3.1 카운터 정의: (pos(v), 증가폭 c, lo = init(v)). 아니면 None.
+/// Candidates of loop w [(kind, string, expr)] (unsorted, may contain duplicates).
+/// 3.1 counter definition: (pos(v), step c, lo = init(v)). None otherwise.
 fn counter_info<'a>(
     w: &'a ast::While,
     asg: &[Asg<'a>],
@@ -982,7 +982,7 @@ fn counter_info<'a>(
     Some((pos, c, lo))
 }
 
-/// 3.7 srng(p): f.requires 의 최상위 && 항에서 p 의 (하한, 상한), 각각 처음 찾은 것.
+/// 3.7 srng(p): (lower bound, upper bound) of p from the top-level && terms of f.requires, each the first one found.
 fn srng(p: &str, f: &ast::Function) -> (Option<i128>, Option<i128>) {
     let mut lo: Option<i128> = None;
     let mut hi: Option<i128> = None;
@@ -996,7 +996,7 @@ fn srng(p: &str, f: &ast::Function) -> (Option<i128>, Option<i128>) {
             let rp = is_var(&tb.right, p);
             let lv = lit(&tb.left);
             let rv = lit(&tb.right);
-            // (하한이면 true, 값)
+            // (true if lower bound, value)
             let found: Option<(bool, i128)> = match tb.op.as_str() {
                 ">=" => match (lp, rv, rp, lv) {
                     (true, Some(c), _, _) => Some((true, c)),
@@ -1030,7 +1030,7 @@ fn srng(p: &str, f: &ast::Function) -> (Option<i128>, Option<i128>) {
     (lo, hi)
 }
 
-/// 3.7 irng(e): 시작값 식의 (하한, 상한).
+/// 3.7 irng(e): (lower bound, upper bound) of an initial-value expression.
 fn irng(
     e: &Expr,
     f: &ast::Function,
@@ -1062,7 +1062,7 @@ fn gen(
     f: &ast::Function,
 ) -> Vec<Cand> {
     let b = Bld { line: w.line, col: w.col, k: kname.to_string() };
-    let etab = elem_types(f, w); // G2 A5: 루프 위치 기준 표
+    let etab = elem_types(f, w); // G2 A5: per-loop-position table
     let m = assigned(&w.body);
     let mut loc: BTreeSet<String> = BTreeSet::new();
     locals(&w.body, &mut loc);
@@ -1072,13 +1072,13 @@ fn gen(
     let count_of = |name: &str| asg.iter().filter(|a| a.name() == name).count();
     let mut out: Vec<Cand> = Vec::new();
 
-    // e 에 v 가 나오고 다른 자유 이름은 모두 M 밖이고 루프 본문에서 선언되지 않았다
+    // v occurs in e, and every other free name is outside M and not declared in the loop body
     let stable = |e: &Expr, v: &str| -> bool {
         let names = free_set(e);
         names.contains(v) && !names.iter().any(|n| n != v && ns.contains(n))
     };
 
-    // ---- 카운터 ----
+    // ---- counters ----
     for v in &m {
         let mine: Vec<Asg> = asg.iter().filter(|s| s.name() == v.as_str()).copied().collect();
         if mine.len() != 1 {
@@ -1117,9 +1117,9 @@ fn gen(
         };
         let lov = lit(lo);
 
-        // 종류 1
+        // kind 1
         push(&mut out, 1, Some(b.bin("<=", b.cl(lo), b.var(v))));
-        // 종류 2, 3: 루프 조건의 경계 식
+        // kinds 2, 3: boundary expression of the loop condition
         for t in conj_terms(&w.cond) {
             let tb = match t {
                 Expr::Binary(x) => x,
@@ -1154,10 +1154,10 @@ fn gen(
             }
         }
 
-        // ---- pos(v) 앞의 누적 문장 ----
+        // ---- accumulation statements before pos(v) ----
         for st2 in &w.body[..pos] {
             match st2 {
-                // 단순 합: s = s + T | s = T + s
+                // Simple sum:s = s + T | s = T + s
                 Stmt::Assign(a2) => {
                     if let Some((s_name, t)) = acc(a2) {
                         let c0 = init(block, idx, s_name, false).and_then(lit);
@@ -1189,7 +1189,7 @@ fn gen(
                         }
                     }
                 }
-                // 조건부 누적 / 최대 / 최소: if X { ... }
+                // Conditional accumulation / max / min:if X { ... }
                 Stmt::If(i2) if i2.els.is_empty() && i2.then.len() == 1 && matches!(i2.then[0], Stmt::Assign(_)) => {
                     let inner = match &i2.then[0] {
                         Stmt::Assign(x) => x,
@@ -1237,7 +1237,7 @@ fn gen(
                             }
                         }
                     }
-                    // 최대 / 최소: if X { m = T; }
+                    // max / min:if X { m = T; }
                     let mname = inner.name.as_str();
                     let tt = &inner.value;
                     let fr = free_set(tt);
@@ -1247,7 +1247,7 @@ fn gen(
                         && !fr.iter().any(|n| loc.contains(n))
                     {
                         if let Some(kind) = maxmin(&i2.cond, mname, tt) {
-                            // None = 아래 경계 lo, Some(n) = 리터럴 n
+                            // None = lower bound lo below, Some(n) = literal n
                             let mut bs: Vec<Option<i128>> = vec![None];
                             let initm = init(block, idx, mname, false);
                             if let (Some(lv), Some(im)) = (lov, initm) {
@@ -1312,8 +1312,8 @@ fn gen(
         }
     }
 
-    // ---- B+ (명세 3.7, 버전 2): 종류 12, 13, 14 ----
-    // 카운터 집합 CTR (3.1 정의 전부, 이름 정렬 순)
+    // ---- B+ (spec 3.7, version 2): kinds 12, 13, 14 ----
+    // Counter set CTR (all 3.1 definitions, in name-sorted order)
     let mut ctr: Vec<(&String, usize, i128, &Expr)> = Vec::new();
     for v in &m {
         if let Some((pos, c, lo)) = counter_info(w, &asg, &m, block, idx, v) {
@@ -1321,7 +1321,7 @@ fn gen(
         }
     }
 
-    // 종류 12: 카운터가 아닌 스칼라의 시작 범위
+    // kind 12: initial range of a scalar that is not a counter
     for v in &m {
         if ctr.iter().any(|(n, _, _, _)| *n == v) {
             continue;
@@ -1342,7 +1342,7 @@ fn gen(
         }
     }
 
-    // 종류 13, 14
+    // kinds 13, 14
     for (v, pos, c, lo) in &ctr {
         if *c != 1 {
             continue;
@@ -1350,7 +1350,7 @@ fn gen(
         let v: &str = v.as_str();
         for st2 in &w.body[..*pos] {
             match st2 {
-                // 13: 출력 배열 접두 `b[v] = E;`
+                // 13: output array prefix `b[v] = E;`
                 Stmt::IndexAssign(ia) if is_var(&ia.index, v) => {
                     let bn = ia.name.as_str();
                     if count_of(bn) != 1 {
@@ -1387,7 +1387,7 @@ fn gen(
                         )),
                     );
                 }
-                // 14: 조기 반환 접두 `if C { return R; }`
+                // 14: early-return prefix`if C { return R; }`
                 Stmt::If(i2)
                     if i2.els.is_empty() && i2.then.len() == 1 && matches!(i2.then[0], Stmt::Return(_)) =>
                 {
@@ -1404,7 +1404,7 @@ fn gen(
         }
     }
 
-    // ---- 원소 저장으로만 쓰이는 배열 (종류 4, 5) ----
+    // ---- arrays used only for element storage (kinds 4, 5) ----
     for bn in &m {
         let all_index = asg.iter().filter(|s| s.name() == bn.as_str()).all(|s| matches!(s, Asg::I(_)));
         if !all_index {
@@ -1435,7 +1435,7 @@ fn gen(
         push(&mut out, 4, Some(b.bin("==", b.length(bn), b.cl(&e_node))));
         let mut pairs: Vec<Rng> = Vec::new();
         for (src, (lo_, hi_)) in ranges {
-            // 범위의 출처 배열과 대상 배열의 원소 타입이 같을 때만(표에서 못 찾으면 쓰지 않는다)
+            // only when the source array of the range and the target array have the same element type (not used if not found in the table)
             match (elem_type_of(&etab, src), elem_type_of(&etab, bn)) {
                 (Some(a), Some(c2)) if a == c2 => {}
                 _ => continue,
@@ -1470,12 +1470,12 @@ fn gen(
             push(&mut out, 5, e5);
         }
     }
-    // 원소 타입이 bool 인 배열을 읽거나 쓰는 후보(종류 5~14)는 만들지 않는다.
+    // No candidates (kinds 5-14) that read or write an array whose element type is bool.
     out.retain(|c| !(c.kind >= 5 && reads_bool_elem(&c.expr, &etab)));
     out
 }
 
-/// (정렬·중복 제거·자른 후보, 자르기 전 수 `generated`, 잘린 수 `capped`)
+/// (sorted, deduplicated, truncated candidates; pre-truncation count `generated`; truncated count `capped`)
 fn candidates_for_loop(
     w: &ast::While,
     block: &[Stmt],
@@ -1500,9 +1500,9 @@ fn candidates_for_loop(
 }
 
 // ---------------------------------------------------------------------------
-// Houdini 구동 (4.1) 과 보고 (5)
+// Houdini driver (4.1) and report (5)
 // ---------------------------------------------------------------------------
-/// 빠진 후보 한 개의 기록
+/// Record of one dropped candidate
 pub struct Dropped {
     pub cand: String,
     pub text: String,
@@ -1517,10 +1517,10 @@ pub struct LoopInfo {
     pub col: i64,
     pub generated: usize,
     pub capped: usize,
-    /// 살아 있는 후보 (ID, 식, 문자열)
+    /// Live candidates (ID, expr, string)
     pub alive: Vec<ExtraInv>,
     pub dropped: Vec<Dropped>,
-    /// 처음 후보 목록(자른 뒤, 순위 순)의 (종류 번호, 후보). 버전 1 되돌림(4.1)이 쓴다.
+    /// (kind number, candidate) of the initial candidate list (after truncation, in rank order). Used by the version 1 fallback (4.1).
     pub initial: Vec<(u32, ExtraInv)>,
 }
 
@@ -1547,12 +1547,12 @@ pub struct InferResult {
     pub status: InferStatus,
     pub rounds: u32,
     pub queries: usize,
-    /// 버전 1 되돌림을 했는가(4.1)
+    /// Whether the version 1 fallback was done (4.1)
     pub fallback: bool,
 }
 
 impl InferResult {
-    /// {루프 번호: 살아남은 후보들}. 후보가 없는 루프는 없다(전부 비면 빈 표).
+    /// {loop number: surviving candidates}. Loops with no candidates are absent (an empty table if all are empty).
     pub fn extra(&self) -> Extra {
         let mut m: Extra = HashMap::new();
         for l in &self.loops {
@@ -1563,7 +1563,7 @@ impl InferResult {
         m
     }
 
-    /// 루프마다 보고 레코드 하나. new_errors = 이 함수의 최종 검증 오류 수.
+    /// One report record per loop. new_errors = number of final verification errors of this function.
     pub fn records(&self, new_errors: usize) -> Vec<Json> {
         let mut out = Vec::new();
         for l in &self.loops {
@@ -1614,8 +1614,8 @@ impl InferResult {
     }
 }
 
-/// Houdini 회차 반복(4.1). `r` 은 지금까지의 회차 번호(이어서 센다). 예산 소진·시간 초과면 `res.status` 를 정하고
-/// 후보를 모두 비운다. 첫 탐색과 되돌림 탐색이 같이 쓴다.
+/// Houdini round iteration (4.1). `r` is the round number so far (counting continues). On budget exhaustion or timeout, sets `res.status` and
+/// empties all candidates. Shared by the first search and the fallback search.
 fn houdini_rounds(
     prog: &ast::Program,
     f: &ast::Function,
@@ -1629,7 +1629,7 @@ fn houdini_rounds(
     loop {
         let extra = res.extra();
         if extra.is_empty() {
-            break; // 후보가 (더) 없다: 회차 없음
+            break; // no (more) candidates: no round
         }
         *r += 1;
         probe.begin_round();
@@ -1652,7 +1652,7 @@ fn houdini_rounds(
             out
         };
         if let Some(a) = probe.abort {
-            // 예산 소진·시간 초과: Python 은 예외로 run 을 떠났으므로 그 뒤의 내부 오류는 보지 않는다.
+            // Budget exhausted / timeout: Python left run via an exception, so internal errors after that are not seen.
             res.status = match a {
                 ProbeAbort::Budget => InferStatus::BudgetExhausted,
                 ProbeAbort::Timeout => InferStatus::Timeout,
@@ -1687,8 +1687,8 @@ fn houdini_rounds(
     Ok(())
 }
 
-/// infer.py `infer_function`: 함수 하나의 후보 + Houdini 회차(+ 4.1 버전 1 되돌림). 오류 목록은 건드리지 않는다.
-/// 회차마다 새 z3 컨텍스트·Prelude·Model(같은 `seq`)을 만든다.
+/// infer.py `infer_function`: candidates + Houdini rounds for one function (+ 4.1 version 1 fallback). Does not touch the error list.
+/// A fresh z3 context, Prelude and Model (same `seq`) is created per round.
 pub fn infer_function(
     prog: &ast::Program,
     f: &ast::Function,
@@ -1723,7 +1723,7 @@ pub fn infer_function(
     houdini_rounds(prog, f, decls, seq, rec, &mut res, &mut probe, &mut r)?;
     let mut queries = probe.queries;
 
-    // 4.1 버전 1 되돌림: 예산 소진이고 처음 후보에 종류 12 이상이 있었으면 종류 1~11 만으로 다시.
+    // 4.1 version 1 fallback: if the budget was exhausted and the initial candidates included kind 12 or above, retry with kinds 1-11 only.
     let had_new_kind = res.loops.iter().any(|l| l.initial.iter().any(|(k, _)| *k >= 12));
     if res.status == InferStatus::BudgetExhausted && had_new_kind {
         res.fallback = true;

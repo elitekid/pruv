@@ -1,5 +1,5 @@
-//! LLVM 백엔드용 Rust 바인딩 생성기(llvmgen.py 의 rust_ty·rs_ser·rs_de·gen_bindings 대응).
-//! 출력은 Python 과 바이트 동일해야 한다.
+//! Rust bindings generator for the LLVM backend (counterparts of llvmgen.py's rust_ty, rs_ser, rs_de, gen_bindings).
+//! The output must be byte-identical to Python's.
 
 use crate::ast::*;
 use crate::emit_common::emit_public_types;
@@ -72,7 +72,7 @@ pub extern "C" fn pruv_host_free(data: *mut i64, len: i64) {
     }
 }"##;
 
-/// 외부(pruv_abi_*) 형태의 i64 워드 수(llvmgen.words).
+/// Number of i64 words in the external (pruv_abi_*) form (llvmgen.words).
 fn words(tt: &TypeTable, ty: &str) -> Result<i64, String> {
     match ty {
         "i64" | "bool" => return Ok(1),
@@ -99,19 +99,19 @@ fn words(tt: &TypeTable, ty: &str) -> Result<i64, String> {
     }
 }
 
-/// Python 의 `tt.decls[name]` KeyError(str(e) == 따옴표 붙은 이름).
+/// Python's `tt.decls[name]` KeyError (str(e) == the quoted name).
 fn decl<'a>(tt: &'a TypeTable, ty: &str) -> Result<&'a TypeDecl, String> {
     tt.decl(ty).ok_or_else(|| format!("'{}'", ty))
 }
 
-/// 함수 이름 맹글링 여부(`[^A-Za-z0-9_]` 문자가 있으면 바뀐다).
+/// Whether the function name is mangled (it changes if it has a `[^A-Za-z0-9_]` character).
 fn needs_mangling(n: &str) -> bool {
     n.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '_'))
 }
 
-/// G2 A5: [bool] 매개변수가 있으면 바인딩은 바이트 검사 없는 pruv_abi_<f>__typed 를 부른다.
+/// G2 A5: if there is a [bool] parameter, the binding calls pruv_abi_<f>__typed, which has no byte check.
 fn typed_abi_name(f: &Function) -> String {
-    // G2 B2: &str 도 같다
+    // G2 B2: the same for &str
     if f.params.iter().any(|p| p.ty == "array_bool" || p.ty == "str") {
         format!("{}__typed", f.name)
     } else {
@@ -136,7 +136,7 @@ fn rust_ty(t: &str, param: bool) -> String {
     }
 }
 
-/// 값 `expr`(Copy)을 워드 배열 `arr` 의 `off` 에 쓰는 Rust 문장들.
+/// Rust statements that write the value `expr` (Copy) into the word array `arr` at `off`.
 fn rs_ser(tt: &TypeTable, ty: &str, expr: &str, arr: &str, off: i64, ctr: &mut i64) -> Result<Vec<String>, String> {
     match ty {
         "i64" => return Ok(vec![format!("{}[{}] = {};", arr, off, expr)]),
@@ -192,7 +192,7 @@ fn rs_ser(tt: &TypeTable, ty: &str, expr: &str, arr: &str, off: i64, ctr: &mut i
     }
 }
 
-/// 워드 배열 `arr` 의 `off` 에서 ty 값을 다시 만드는 Rust 식(안전 생성자만).
+/// Rust expression that rebuilds a ty value from the word array `arr` at `off` (safe constructors only).
 fn rs_de(tt: &TypeTable, ty: &str, arr: &str, off: i64) -> Result<String, String> {
     match ty {
         "i64" => return Ok(format!("{}[{}]", arr, off)),
@@ -269,7 +269,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         o.push(ALLOW.to_string());
         o.push(h.to_string());
     }
-    let returns_array = prog.functions.iter().any(|f| is_array_name(&f.ret) || f.ret == "str"); // G2 B2: str 반환도 센다
+    let returns_array = prog.functions.iter().any(|f| is_array_name(&f.ret) || f.ret == "str"); // G2 B2: str returns are counted too
     let mut decls: Vec<String> = Vec::new();
     for f in &prog.functions {
         if needs_mangling(&f.name) {
@@ -281,7 +281,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         let mut ps: Vec<&str> = Vec::new();
         for p in &f.params {
             if p.ty == "array_u8" || p.ty == "array_bool" || p.ty == "str" {
-                // G2 A5: bool 도 *const u8 (G2 B2: str 도)
+                // G2 A5: bool is also *const u8 (G2 B2: so is str)
                 ps.extend(["*const u8", "i64"]);
             } else if p.ty == "array" {
                 ps.extend(["*const i64", "i64"]);
@@ -315,11 +315,11 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         decls.push(format!("    fn pruv_abi_{}({}){};", typed_abi_name(f), plist.join(", "), ret));
     }
     if prog.functions.iter().any(|f| f.ret == "array_bool") {
-        // G2 A5: 모든 pruv_abi_* 줄 뒤, marker 줄 앞
+        // G2 A5: after all pruv_abi_* lines, before the marker line
         decls.push("    fn pruv_check_bool(p0: *const u8, p1: i64);".to_string());
     }
     if prog.functions.iter().any(|f| f.ret == "str") {
-        // G2 B2: check_bool 줄 뒤, marker 줄 앞
+        // G2 B2: after the check_bool line, before the marker line
         decls.push("    fn pruv_check_utf8(p0: *const u8, p1: i64);".to_string());
     }
     if returns_array {
@@ -392,7 +392,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         } else if f.ret == "bool" {
             body.push(format!("{} != 0", call));
         } else if f.ret == "array_bool" {
-            // G2 A5: 검사 뒤에 Rust bool 로 인수
+            // G2 A5: after the check, take it as a Rust bool
             body.push("let mut pruv__out = Pruv__ArrayBool { data: ::std::ptr::null_mut(), len: 0 };".to_string());
             body.push(format!("{};", callo));
             body.push("pruv_check_bool(pruv__out.data, pruv__out.len);".to_string());
@@ -402,7 +402,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
                     .to_string(),
             );
         } else if f.ret == "str" {
-            // G2 B2: 검사 뒤에 Rust String 으로 인수
+            // G2 B2: after the check, take it as a Rust String
             body.push("let mut pruv__out = Pruv__Str { data: ::std::ptr::null_mut(), len: 0 };".to_string());
             body.push(format!("{};", callo));
             body.push("pruv_check_utf8(pruv__out.data, pruv__out.len);".to_string());

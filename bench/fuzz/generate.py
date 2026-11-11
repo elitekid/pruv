@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Pruv 컴파일러 차분 퍼징용 프로그램 생성기 (표준 라이브러리만, Python 3.9).
+"""Program generator for differential fuzzing of the Pruv compiler (standard library only, Python 3.9).
 
-    generate_case(seed, index) -> dict      결정적 (random.Random(f"{seed}:{index}"))
-    candidate_inputs(case, rng, n) -> list  인자 목록 n개 (requires 경계 근처 편향)
+    generate_case(seed, index) -> dict      deterministic (random.Random(f"{seed}:{index}"))
+    candidate_inputs(case, rng, n) -> list  n argument lists (biased near the requires boundaries)
 
-    python bench/fuzz/generate.py --seed S --count N --out DIR   # .pruv 파일로 눈으로 확인
+    python bench/fuzz/generate.py --seed S --count N --out DIR   # write .pruv files for visual inspection
 
-생성 규칙: 매개변수는 불변, `let mut` 지역만 재대입, 모든 경로가 `return e;`로 끝남,
-while에는 decreases(와 invariant), 이항식은 항상 괄호, 음수 리터럴은 `(-5)`.
-기존 재료는 부수효과 없음. 새 계열(약 20%: arrfill/copy/effects/branches/nested/quant/helpers)은
-`! io, alloc` 효과, 지역 배열, assert, 중첩 반복, bool 매개변수(params 타입 "bool"), 보조 함수를 쓴다.
-새 계열(약 30%: twoarr/arrret/option/optparam/struct)은 배열 매개변수 2개, `-> [i64] ! alloc`,
-Option/Result 반환·매개변수(params 타입 "Option<i64>"/"Result<i64>", 입력은 {"tag": "Some", "v": n} 형태 dict),
-최상위 struct/enum 을 쓴다 (f 의 매개변수·반환에 약 70%, 나머지는 안쪽 지역·보조 함수).
-구조체 틀은 requires 에도 구조체 리터럴·열거형·Option/Result ==/!= 를 넣고, 가끔 빈 구조체(`Unit {}`)·
-Result 필드·열거형 필드를 쓴다. `tap(v) ! io` 로 평가 순서·단일 평가·두 필드 오버플로 순서를 관측하는 변형도 있다.
+Generation rules: parameters are immutable, only `let mut` locals are reassigned, every path ends in `return e;`,
+while loops carry decreases (and invariant), binary expressions are always parenthesized, negative literals are `(-5)`.
+The original ingredients have no side effects. The new family (about 20%: arrfill/copy/effects/branches/nested/quant/helpers)
+uses the `! io, alloc` effects, local arrays, assert, nested loops, bool parameters (params type "bool"), and helper functions.
+The new family (about 30%: twoarr/arrret/option/optparam/struct) uses two array parameters, `-> [i64] ! alloc`,
+Option/Result returns and parameters (params type "Option<i64>"/"Result<i64>", inputs are dicts of the form {"tag": "Some", "v": n}),
+and top-level struct/enum (about 70% in the parameters/return of f, the rest in inner locals and helper functions).
+The struct template also puts struct literals, enums, and Option/Result ==/!= into requires, and occasionally uses an empty struct (`Unit {}`),
+Result fields, and enum fields. There is also a variant that observes evaluation order, single evaluation, and two-field overflow order via `tap(v) ! io`.
 """
 import argparse
 import copy
@@ -22,9 +22,9 @@ import os
 import random
 import sys
 
-# 이미 보고한 컴파일러 결함을 피하는 생성 선택(run.py --avoid-known 이 채운다).
-# "fz01": 인덱스 대입 `b[e1] = e2` 에서 e1·e2 가 모두 효과 있는 호출이면 평가 순서가 모드마다 다르다
-#         (tests/runtime/fz01_index_assign_order). 피할 때는 값을 지역에 먼저 묶는다.
+# Generation choices that avoid already-reported compiler defects (filled in by run.py --avoid-known).
+# "fz01": in an index assignment `b[e1] = e2`, if e1 and e2 are both calls with effects, the evaluation order differs per mode
+#         (tests/runtime/fz01_index_assign_order). To avoid it, bind the value to a local first.
 AVOID = set()
 
 I64_MIN = -(1 << 63)
@@ -37,30 +37,30 @@ CMPS = ["<", "<=", ">", ">=", "==", "!="]
 
 
 def lit(n):
-    """Pruv 리터럴: 음수는 (-5) 형태."""
+    """Pruv literal: negatives take the (-5) form."""
     return str(n) if n >= 0 else "(-%d)" % (-n)
 
 
-# ---------------------------------------------------------------- 컨텍스트 / 힌트
+# ---------------------------------------------------------------- context / hints
 
 class Ctx:
     def __init__(self, rng):
         self.rng = rng
-        self.ints = []        # i64 매개변수 이름
-        self.arr = None       # 배열 매개변수 이름 ("a") 또는 None
-        self.params = []      # [[이름, "i64"|"array"], ...] 선언 순서
+        self.ints = []        # names of i64 parameters
+        self.arr = None       # name of the array parameter ("a") or None
+        self.params = []      # [[name, "i64"|"array"], ...] in declaration order
         self.requires = []
         self.ensures = []
         self.ret = "i64"
-        self.helper = None    # fn g 소스 또는 None
+        self.helper = None    # source of fn g, or None
         self.undef_idx = None
-        self.effects = []     # f 의 효과 목록 (["io", "alloc"] 중 정확히 쓰는 것)
-        self.after = False    # True 면 보조 함수를 f 뒤에 둔다 (앞방향 호출)
-        self.types = None     # 최상위 struct/enum 선언 소스 또는 None (맨 앞에 둔다)
-        self.type_info = None  # {"structs": {이름: [[필드, 타입], ...]}, "enums": {이름: {변이: [[필드, 타입], ...]}}}
-        # idx: 배열 경계 근처 인덱스 매개변수 / div: 0·음수 편향 제수 / neg: 음수 편향
-        # wide: i64 극단 편향 / exact: {이름: [정확한 경계값]} / empty: 빈 배열 편향
-        # exact_val: {이름: [값, ...]} 구조체·열거형·Option/Result 매개변수용 정확한 값 (입력 JSON 형태)
+        self.effects = []     # effects of f (exactly those of ["io", "alloc"] that it uses)
+        self.after = False    # if True, put the helper function after f (forward call)
+        self.types = None     # source of top-level struct/enum declarations, or None (placed first)
+        self.type_info = None  # {"structs": {name: [[field, type], ...]}, "enums": {name: {variant: [[field, type], ...]}}}
+        # idx: index parameters near array bounds / div: divisors biased to 0 and negatives / neg: negative bias
+        # wide: i64 extremes bias / exact: {name: [exact boundary values]} / empty: empty-array bias
+        # exact_val: {name: [value, ...]} exact values for struct/enum/Option/Result parameters (input JSON form)
         self.hints = {"ints": {}, "arrays": {}, "consts": [3, 5, 10, 100], "rel": [], "pick": [],
                       "idx": [], "div": [], "neg": [], "wide": [], "exact": {}, "empty": False}
 
@@ -113,7 +113,7 @@ def declare(ctx, ints, arr, shuffle=True):
         hint_arr(ctx, "a")
 
 
-# ---------------------------------------------------------------- 식 생성
+# ---------------------------------------------------------------- expression generation
 
 def atom(rng, vars_, arr):
     r = rng.random()
@@ -165,7 +165,7 @@ def index_expr(rng, vars_, arr):
     return lit(rng.choice([0, 1, 2, 3]))
 
 
-# ---------------------------------------------------------------- requires 재료
+# ---------------------------------------------------------------- requires ingredients
 
 def req_bound_int(ctx):
     rng = ctx.rng
@@ -221,7 +221,7 @@ def req_guard_idx(ctx):
     if rng.random() < 0.8:
         ctx.requires.append("(0 <= %s) && (%s < len(a)) && %s" % (x, x, test))
     else:
-        ctx.requires.append(test)  # 무방비: 검증기는 contract_domain으로 거절해야 함
+        ctx.requires.append(test)  # unguarded: the verifier must reject with contract_domain
     set_int(ctx, x, lo=-1, hi=8)
     ctx.hints["idx"].append(x)
 
@@ -270,7 +270,7 @@ def req_max(ctx):
         ctx.requires.append("(len(a) >= 1) && %s" % test)
         set_arr(ctx, "a", minlen=1)
     else:
-        ctx.requires.append(test)  # 무방비 max/min: contract_domain 기대
+        ctx.requires.append(test)  # unguarded max/min: expect contract_domain
     ctx.hints["consts"].append(50)
 
 
@@ -281,7 +281,7 @@ def req_exists(ctx):
 
 
 SORTED_FORMS = [
-    # (가중치, 텍스트) — 앞 둘은 O(n) 검사 형태, 나머지는 일반 검사여야 하는 근접 변형
+    # (weight, text) — the first two are O(n) check forms, the rest are near-miss variants that must pass as ordinary checks
     (3, "forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]"),
     (3, "forall i in 0..len(a): forall j in (i + 1)..len(a): a[i] <= a[j]"),
     (1, "forall i in 0..len(a): forall j in (i + 2)..len(a): a[i] <= a[j]"),
@@ -311,7 +311,7 @@ def req_impl(ctx):
     ctx.requires.append(rng.choice(opts))
 
 
-# (함수, 정수 필요, 정수 2개 필요, 배열 필요)
+# (function, needs an integer, needs two integers, needs an array)
 REQ_TABLE = [
     (req_bound_int, True, False, False), (req_bound_int, True, False, False),
     (req_len_le, False, False, True), (req_len_ge, False, False, True),
@@ -366,7 +366,7 @@ def add_ensures(ctx, pure_expr=None, p=0.6):
         ctx.ensures.append(rng.choice(opts))
 
 
-# ---------------------------------------------------------------- 보조 함수 g
+# ---------------------------------------------------------------- helper function g
 
 def make_helper(rng, force=None, info=None):
     v = rng.randrange(4)
@@ -386,7 +386,7 @@ def make_helper(rng, force=None, info=None):
         req = ["p < q"] + (["(0 <= p) && (q <= %d)" % B] if rng.random() < 0.6 else [])
         body, ens = "(q - p)", ["result > 0"]
     if rng.random() < 0.15:
-        ens = ["result >= (-5)"]  # 거짓일 수 있음
+        ens = ["result >= (-5)"]  # may be false
     if info is not None:
         info["req"] = list(req)
         info["B"] = B
@@ -397,7 +397,7 @@ def make_helper(rng, force=None, info=None):
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------- 본문: pure / straight
+# ---------------------------------------------------------------- body: pure / straight
 
 def body_pure(ctx):
     rng = ctx.rng
@@ -443,7 +443,7 @@ def body_straight(ctx):
                 lines.append("    %s = %s;" % (m, expr(rng, vars_, arr, 1)))
             lines.append("  }")
         elif arr and t < 0.88:
-            e = index_expr(rng, vars_, arr)  # 무방비 인덱스
+            e = index_expr(rng, vars_, arr)  # unguarded index
             lines.append("  %s = (%s + %s[%s]);" % (m, m, arr, e))
         else:
             lines.append("  %s = %s;" % (m, expr(rng, vars_, arr, 2, helper)))
@@ -459,7 +459,7 @@ def body_straight(ctx):
     return lines
 
 
-# ---------------------------------------------------------------- 반복문 틀
+# ---------------------------------------------------------------- loop templates
 
 def loop_text(parts, indent="  "):
     out = [indent + "while " + parts["cond"]]
@@ -474,7 +474,7 @@ def loop_text(parts, indent="  "):
 
 
 def mutate(ctx, parts, extra=None):
-    """근접 실패(near-miss) 프로그램을 만들기 위한 변이. extra: {이름: 함수(parts)}."""
+    """Mutation used to build near-miss programs. extra: {name: function(parts)}."""
     rng = ctx.rng
     ops = {}
     if parts["invs"]:
@@ -581,7 +581,7 @@ def tmpl_countdown(ctx):
     c = rng.choice([1, 2, 3])
     declare(ctx, ["n"], False)
     B = rng.choice([10, 1000, 3000])
-    set_int(ctx, "n", cap=3000)  # 반복 횟수를 제한해 바이너리가 오래 돌지 않게
+    set_int(ctx, "n", cap=3000)  # cap the iteration count so the binary does not run for long
     f = rng.random()
     if f < 0.6:
         ctx.requires.append("(0 <= n) && (n <= %d)" % B)
@@ -624,13 +624,13 @@ def tmpl_range(ctx):
 
 TEMPLATES = [tmpl_sum, tmpl_count, tmpl_maxscan, tmpl_search, tmpl_countdown, tmpl_range]
 
-I64_MIN_EXPR = "((-9223372036854775807) - 1)"   # 계약 리터럴은 수학적이지만 음수는 이렇게 쓴다
+I64_MIN_EXPR = "((-9223372036854775807) - 1)"   # contract literals are mathematical, but negatives are written this way
 
 
-# ---------------------------------------------------------------- 새 재료 1: requires 미정의 (undef)
+# ---------------------------------------------------------------- new ingredient 1: requires undefined (undef)
 
 def undef_req(ctx, kind, guarded):
-    """부분 계약 연산이 든 requires 줄 목록. guarded=False면 방어가 뒤에 있거나 없거나 순서가 바뀐다."""
+    """List of requires lines containing partial contract operations. With guarded=False the guard is placed later, missing, or in a different order."""
     rng = ctx.rng
     x = rng.choice(ctx.ints)
     if kind == "idx":
@@ -673,7 +673,7 @@ def undef_req(ctx, kind, guarded):
             return [guard + " && " + t]
         f = rng.randrange(3)
         return [[t + " && " + guard], [t], [t, guard]][f]
-    # forall / exists: 0..x 가 len(a)를 넘을 수 있다
+    # forall / exists: 0..x can exceed len(a)
     if kind == "forall":
         q = "forall k in 0..%s: (a[k] >= 0)" % x
     else:
@@ -712,7 +712,7 @@ def tmpl_undef(ctx):
     return body_straight(ctx)
 
 
-# ---------------------------------------------------------------- 새 재료 2: i128 를 넘는 비선형 계약
+# ---------------------------------------------------------------- new ingredient 2: nonlinear contracts exceeding i128
 
 def tmpl_wide(ctx):
     rng = ctx.rng
@@ -739,7 +739,7 @@ def tmpl_wide(ctx):
             set_int(ctx, n, lo=-B, hi=B)
         bounded = True
     else:
-        ctx.requires += [prod] + bounds   # 경계가 곱 뒤에 있어 곱이 먼저 미정의가 될 수 있다
+        ctx.requires += [prod] + bounds   # the bounds come after the product, so the product can become undefined first
         ctx.hints["wide"] += ctx.ints
         for n in ctx.ints:
             set_int(ctx, n, lo=-B, hi=B)
@@ -757,7 +757,7 @@ def tmpl_wide(ctx):
     return ["  if (x < 0) {", "    return 0;", "  }", "  return 1;"]
 
 
-# ---------------------------------------------------------------- 새 재료 3: 유클리드 계약 나눗셈/나머지
+# ---------------------------------------------------------------- new ingredient 3: Euclidean contract division/remainder
 
 def tmpl_euclid(ctx):
     rng = ctx.rng
@@ -793,7 +793,7 @@ def tmpl_euclid(ctx):
     return ["  let mut r: i64 = (x % y);", "  if %s {" % c, "    r = (r + y);", "  }", "  return r;"]
 
 
-# ---------------------------------------------------------------- 새 재료 4: 정렬 전제
+# ---------------------------------------------------------------- new ingredient 4: sortedness precondition
 
 def tmpl_sorted(ctx):
     rng = ctx.rng
@@ -822,7 +822,7 @@ def tmpl_sorted(ctx):
     return ["  if (len(a) >= 2) {", "    return (a[1] - a[0]);", "  }", "  return 0;"]
 
 
-# ---------------------------------------------------------------- 새 재료 5: i64 경계 산술
+# ---------------------------------------------------------------- new ingredient 5: i64 boundary arithmetic
 
 def tmpl_bound(ctx):
     rng = ctx.rng
@@ -870,7 +870,7 @@ def tmpl_bound(ctx):
     return ["  return (x - 1);"]
 
 
-# ---------------------------------------------------------------- 새 재료 6: 코드 나눗셈/나머지 방어
+# ---------------------------------------------------------------- new ingredient 6: guards for code division/remainder
 
 def tmpl_divguard(ctx):
     rng = ctx.rng
@@ -894,7 +894,7 @@ def tmpl_divguard(ctx):
     return ["  return %s;" % e]
 
 
-# ---------------------------------------------------------------- 새 재료 7: 호출 전제가 일부 입력에서만 성립
+# ---------------------------------------------------------------- new ingredient 7: call precondition holds only for some inputs
 
 def tmpl_call(ctx):
     rng = ctx.rng
@@ -932,11 +932,11 @@ def tmpl_call(ctx):
     return body
 
 
-# ---------------------------------------------------------------- 새 계열: 지역 배열 / 효과 / assert / 중첩 반복 /
-# bool / 양화 ensures / 보조 함수 (감사에서 빠졌던 기능)
+# ---------------------------------------------------------------- new family: local arrays / effects / assert / nested loops /
+# bool / quantified ensures / helper functions (features missed in the audit)
 
 def declare2(ctx, ints, arr, bools):
-    """declare + bool 매개변수. 매개변수 타입: "i64" | "array" | "bool"."""
+    """declare + bool parameters. Parameter types: "i64" | "array" | "bool"."""
     params = [[n, "i64"] for n in ints]
     if arr:
         params.append(["a", "array"])
@@ -962,7 +962,7 @@ def cond_lt_le(p):
 
 
 def idx_off(var, arr):
-    """본문의 arr[var] 쓰기를 한 칸 밀어 index_oob 근접 실패를 만든다."""
+    """Shift the arr[var] writes in the body by one slot to make an index_oob near miss."""
     def f(p):
         p["body"] = [s.replace("%s[%s]" % (arr, var), "%s[(%s + 1)]" % (arr, var)) for s in p["body"]]
     return f
@@ -973,7 +973,7 @@ def bound_elem(ctx, B):
     set_arr(ctx, "a", elem=(-B, B))
 
 
-# -- 1) 지역 배열: alloc 로 채우기
+# -- 1) local array: fill with alloc
 
 def tmpl_arrfill(ctx):
     rng = ctx.rng
@@ -1005,10 +1005,10 @@ def tmpl_arrfill(ctx):
             ctx.requires.append("(0 <= n) && (n <= 100)")
             set_int(ctx, "n", lo=0, hi=100)
         elif f < 0.9:
-            ctx.requires.append("n <= 100")          # 음수 n: alloc 전제를 증명 못 함
+            ctx.requires.append("n <= 100")          # negative n: the alloc precondition cannot be proven
             set_int(ctx, "n", hi=100)
         else:
-            ctx.requires.append("0 <= n")            # 상한 없음: alloc 전제를 증명 못 함
+            ctx.requires.append("0 <= n")            # no upper bound: the alloc precondition cannot be proven
             set_int(ctx, "n", lo=0)
     if val == "mod":
         V, spec = "(i % 7)", "forall k in 0..i: ((0 <= b[k]) && (b[k] <= 6))"
@@ -1062,7 +1062,7 @@ def tmpl_arrfill(ctx):
         invs2 = ["(0 <= j) && (j <= len(b))", "(0 <= t) && (t <= (6 * j))"]
         if sums:
             invs2.append("t == sum(k in 0..j: b[k])")
-        # ensures 는 매개변수만 볼 수 있다(지역 b 금지): len(b) == N 이므로 N 으로 쓴다
+        # ensures can only see parameters (no local b): since len(b) == N, write it as N
         ctx.ensures.append("(0 <= result) && (result <= (6 * %s))" % N)
         p2 = {"cond": "(j < len(b))", "invs": invs2, "decr": "(len(b) - j)", "decr_bad": "len(b)",
               "body": ["t = (t + b[j]);"], "step": ["j = (j + 1);"]}
@@ -1078,7 +1078,7 @@ def tmpl_arrfill(ctx):
     return lines
 
 
-# -- 1) 지역 배열: copy
+# -- 1) local array: copy
 
 def tmpl_copy(ctx):
     rng = ctx.rng
@@ -1109,7 +1109,7 @@ def tmpl_copy(ctx):
     return pre + ["  let mut i: i64 = 0;"] + loop_text(p1) + ["  return (c[0] + a[0]);"]
 
 
-# -- 2) 효과와 평가 순서
+# -- 2) effects and evaluation order
 
 def tmpl_effects(ctx):
     rng = ctx.rng
@@ -1133,10 +1133,10 @@ def tmpl_effects(ctx):
     for name in ("va", "vb"):
         H[name] = [rng.choice(["const", "id"]), rng.randrange(10)]
     if rng.random() < 0.1:
-        H[rng.choice(["ia", "ib"])][1] = N          # 근접 실패: 인덱스 도우미가 N 을 돌려준다
+        H[rng.choice(["ia", "ib"])][1] = N          # near miss: the index helper returns N
     weak = set()
     if rng.random() < 0.06:
-        weak.add(rng.choice(["ia", "ib"]))          # ensures 없음: 호출쪽이 인덱스를 증명 못 함
+        weak.add(rng.choice(["ia", "ib"]))          # no ensures: the caller cannot prove the index
     used = []
     uses = {"sub": False, "note": False}
 
@@ -1293,7 +1293,7 @@ def tmpl_effects(ctx):
     return L
 
 
-# -- 3,5,6) assert / else if / 중첩 if / 블록 지역 / bool
+# -- 3,5,6) assert / else if / nested if / block locals / bool
 
 def tmpl_branches(ctx):
     rng = ctx.rng
@@ -1374,7 +1374,7 @@ def tmpl_branches(ctx):
     return lines
 
 
-# -- 4) 중첩 반복 / 연속 반복
+# -- 4) nested loops / consecutive loops
 
 def tmpl_nested(ctx):
     rng = ctx.rng
@@ -1443,7 +1443,7 @@ def tmpl_nested(ctx):
     return pre + loop_text(outer) + ["  return %s;" % ret]
 
 
-# -- 7) exists / forall / min / max / ==> 를 쓰는 ensures
+# -- 7) ensures using exists / forall / min / max / ==>
 
 def tmpl_quant(ctx):
     rng = ctx.rng
@@ -1511,7 +1511,7 @@ def tmpl_quant(ctx):
     return ["  if flag {", "    return x;", "  }", "  return (-x);"]
 
 
-# -- 8) 반복문 있는 보조 함수 + 그것을 부르는 두 번째 보조 함수 (앞방향 호출 포함)
+# -- 8) helper function with a loop + a second helper function calling it (including forward calls)
 
 def tmpl_helpers(ctx):
     rng = ctx.rng
@@ -1567,11 +1567,11 @@ def tmpl_helpers(ctx):
     return body
 
 
-# ---------------------------------------------------------------- 새 계열 2: 배열 2개 / 배열 반환 /
-# Option·Result 반환·매개변수 / 구조체·열거형. params 타입: "i64"|"bool"|"array"|"Option<i64>"|"Result<i64>"
+# ---------------------------------------------------------------- new family 2: two arrays / array return /
+# Option/Result return and parameters / struct/enum. params types: "i64"|"bool"|"array"|"Option<i64>"|"Result<i64>"
 
 def declare_list(ctx, params, shuffle=True):
-    """매개변수 목록 [[이름, 타입], ...] 을 설정한다. 배열 이름은 a, b."""
+    """Set the parameter list [[name, type], ...]. Array names are a, b."""
     params = [list(p) for p in params]
     if shuffle and ctx.rng.random() < 0.5:
         ctx.rng.shuffle(params)
@@ -1582,7 +1582,7 @@ def declare_list(ctx, params, shuffle=True):
         if t == "array":
             hint_arr(ctx, n)
         elif t != "bool":
-            hint_int(ctx, n)      # 구조체·열거형 인자도 같은 힌트를 쓴다(안의 i64 필드 모두에 적용)
+            hint_int(ctx, n)      # struct/enum arguments use the same hint (applied to all i64 fields inside)
 
 
 def bnd(ctx, name, B):
@@ -1596,12 +1596,12 @@ def elem_bound(ctx, arr, B):
 
 
 def maybe_bad_ensures(ctx, p=0.08):
-    """마지막 `result == E` ensures 를 `result == (E + 1)` 로 어긋나게 한다 (거절돼야 함)."""
+    """Skew the last `result == E` ensures into `result == (E + 1)` (must be rejected)."""
     if ctx.ensures and ctx.rng.random() < p and ctx.ensures[-1].startswith("result == "):
         ctx.ensures[-1] = "result == (%s + 1)" % ctx.ensures[-1][len("result == "):]
 
 
-# -- 1) 배열 매개변수 2개
+# -- 1) two array parameters
 
 def tmpl_twoarr(ctx):
     rng = ctx.rng
@@ -1614,7 +1614,7 @@ def tmpl_twoarr(ctx):
         lenreq = "len(a) == len(b)"
     elif v == "cmp":
         lenreq = rng.choice(["len(a) == len(b)", "len(a) == len(b)", "len(a) <= len(b)"])
-    if lenreq and rng.random() < 0.82:       # 가끔 길이 조건을 뺀다: 거절돼야 함
+    if lenreq and rng.random() < 0.82:       # occasionally drop the length condition: must be rejected
         ctx.requires.append(lenreq)
     if v == "dot":
         B = rng.choice([10, 1000, 30000])
@@ -1677,7 +1677,7 @@ def tmpl_twoarr(ctx):
     return finish_template(ctx, ["  let mut c: i64 = 0;", "  let mut i: i64 = 0;"], parts, ["  return c;"], extras)
 
 
-# -- 2) 배열 반환 `-> [i64] ! alloc`
+# -- 2) array return `-> [i64] ! alloc`
 
 G_ALLOC = "\n".join(["fn g(b: [i64]) -> [i64] ! alloc", "  ensures len(result) == len(b)", "{",
                      "  return alloc(len(b), 0);", "}"])
@@ -1731,14 +1731,14 @@ def tmpl_arrret(ctx):
     return finish_template(ctx, pre, parts, ["  return b;"], extras)
 
 
-# -- 3) Option / Result 반환
+# -- 3) Option / Result return
 
-# 평가 순서·단일 평가를 io 출력으로 관측하는 보조 함수 (이름 tap 은 다른 보조 함수와 겹치지 않는다)
+# helper function that observes evaluation order and single evaluation through io output (the name tap does not collide with other helpers)
 TAP_FN = "\n".join(["fn tap(v: i64) -> i64 ! io", "  ensures result == v", "{", "  print(v);", "  return v;", "}"])
 
 
 def tmpl_option_tap(ctx, res):
-    """Some(..)/Ok(..) 인자, match 대상 식, 호출 인자에 tap(io)을 넣어 평가 순서·단일 평가를 관측한다."""
+    """Put tap(io) into Some(..)/Ok(..) arguments, match scrutinee expressions, and call arguments to observe evaluation order and single evaluation."""
     rng = ctx.rng
     B = rng.choice([1000, 100000])
     declare_list(ctx, [["x", "i64"]])
@@ -1751,7 +1751,7 @@ def tmpl_option_tap(ctx, res):
     arm_n, none_v = ("Err(c)", "c") if res else ("None", "0")
     v = rng.choice(["match", "match", "arg", "two"])
     helper = [TAP_FN]
-    if v == "match":        # match g(tap(x)) {..}: tap 은 정확히 한 번만 평가돼야 한다
+    if v == "match":        # match g(tap(x)) {..}: tap must be evaluated exactly once
         g = ["fn g(v: i64) -> %s" % T]
         if res:
             g += ["  ensures (v > 0) ==> (is_ok(result) && (ok_val(result) == v))",
@@ -1764,8 +1764,8 @@ def tmpl_option_tap(ctx, res):
         helper.append("\n".join(g))
         ctx.ensures += ["((x > 0) ==> (result == (x + 1)))", "((x <= 0) ==> (result == %s))" % ("4" if res else "0")]
         body = ["  match g(tap(x)) {", "    %s => { return (w + 1); }" % arm_s, "    %s => { return %s; }" % (arm_n, none_v), "  }"]
-    elif v == "arg":        # 호출 인자 안의 Some(tap(x))
-        h = ["fn h(o: %s) -> i64" % T,      # w + 1 이 넘치지 않게 경계를 둔다(없으면 늘 거절)
+    elif v == "arg":        # Some(tap(x)) inside a call argument
+        h = ["fn h(o: %s) -> i64" % T,      # put a bound so w + 1 does not overflow (always rejected without it)
              "  requires %s(o) ==> (%s(o) <= 1000000)" % (("is_ok", "ok_val") if res else ("is_some", "some_val"))]
         if res:
             h += ["  ensures is_ok(o) ==> (result == (ok_val(o) + 1))", "  ensures (!is_ok(o)) ==> (result == err_val(o))"]
@@ -1778,7 +1778,7 @@ def tmpl_option_tap(ctx, res):
             body = ["  return h(%s);" % mk("tap(x)")]
         else:
             body = ["  let o: %s = %s;" % (T, mk("tap(x)")), "  return h(o);"]
-    else:                   # 한 생성자 안의 두 tap: 왼쪽부터
+    else:                   # two taps in one constructor: from the left
         ctx.ensures.append("result == (x + 2)")
         arm = "Ok(w)" if res else "Some(w)"
         body = ["  let o: %s = %s;" % (T, mk("(tap(x) + tap(2))")), "  match o {", "    %s => { return w; }" % arm,
@@ -1811,7 +1811,7 @@ def tmpl_option(ctx):
         if rng.random() < 0.9:
             invs.append("forall k in 0..i: (a[k] != x)")
         if rng.random() < 0.08:
-            ctx.ensures.append("(%s(result) || (%s(result) >= 0))" % (is_, val))   # 무방비 *_val: 거절돼야 함
+            ctx.ensures.append("(%s(result) || (%s(result) >= 0))" % (is_, val))   # unguarded *_val: must be rejected
         else:
             ctx.ensures.append("(%s(result) ==> ((0 <= %s(result)) && (%s(result) < len(a)) && (a[%s(result)] == x)))"
                                % (is_, val, val, val))
@@ -1833,13 +1833,13 @@ def tmpl_option(ctx):
             set_int(ctx, "x", lo=0)
         bad1, bad2 = ("Err(1)", "Err(2)") if res else ("None", "None")
         L = []
-        if rng.random() >= 0.1:              # 가끔 y 검사를 뺀다: 거절돼야 함
+        if rng.random() >= 0.1:              # occasionally drop the y check: must be rejected
             L += ["  if (y <= 0) {", "    return %s;" % bad1, "  }"]
         if not nonneg:
             L += ["  if (x < 0) {", "    return %s;" % bad2, "  }"]
         L.append("  return %s;" % ("Ok((x / y))" if res else "Some((x / y))"))
         if rng.random() < 0.08:
-            ctx.ensures.append("(%s(result) || (%s(result) >= 0))" % (is_, val))   # 무방비 *_val: 거절돼야 함
+            ctx.ensures.append("(%s(result) || (%s(result) >= 0))" % (is_, val))   # unguarded *_val: must be rejected
         else:
             ctx.ensures.append("(%s(result) ==> ((y > 0) && (%s(result) == (x / y))))" % (is_, val))
         if res:
@@ -1850,7 +1850,7 @@ def tmpl_option(ctx):
         else:
             ctx.ensures.append("((!is_some(result)) ==> ((y <= 0)%s))" % ("" if nonneg else " || (x < 0)"))
         return L
-    # 보조 함수가 Option/Result 를 돌려주고 f 가 match 로 푼다
+    # the helper function returns an Option/Result and f unpacks it with match
     if v == "mfind":
         found, miss = ("Ok(i)", "Err(3)") if res else ("Some(i)", "None")
         gp = {"cond": "(i < len(a))", "invs": ["(0 <= i) && (i <= len(a))"], "decr": "(len(a) - i)",
@@ -1898,7 +1898,7 @@ def tmpl_option(ctx):
     return lines
 
 
-# -- 4) Option / Result 매개변수
+# -- 4) Option / Result parameters
 
 def tmpl_optparam(ctx):
     rng = ctx.rng
@@ -1916,7 +1916,7 @@ def tmpl_optparam(ctx):
     elif form == "strict":
         ctx.requires.append("(%s(%s)) && (1 <= %s) && (%s <= %d)" % (is_, pn, V, V, B))
     elif form == "unguarded":
-        ctx.requires.append("(0 <= %s) && (%s <= %d)" % (V, V, B))      # None/Err 이면 requires undefined
+        ctx.requires.append("(0 <= %s) && (%s <= %d)" % (V, V, B))      # requires undefined for None/Err
     else:
         ctx.requires.append("(0 <= %s) && (%s <= %d) && %s(%s)" % (V, V, B, is_, pn))
     if res:
@@ -1925,7 +1925,7 @@ def tmpl_optparam(ctx):
             ctx.requires.append("(!is_ok(r)) ==> ((%s <= err_val(r)) && (err_val(r) <= %d))" % (lit(-B), B))
     if with_x:
         bnd(ctx, "x", B)
-    if rng.random() < 0.5:      # Option/Result 비교 재료 (실행 시 requires 검사가 값 비교를 한다)
+    if rng.random() < 0.5:      # Option/Result comparison ingredient (the run-time requires check performs the value comparison)
         k = rng.choice([0, 1, 3, B])
         if res:
             r, ex = rng.choice([
@@ -1964,7 +1964,7 @@ def tmpl_optparam(ctx):
             "    %s => { t = %s; }" % (arm_none, none_e), "  }", "  return t;"]
 
 
-# -- 5) 구조체 / 열거형 (f 의 매개변수·반환에 약 70%, 나머지는 안쪽 지역·보조 함수에서만 쓴다)
+# -- 5) struct / enum (about 70% in the parameters/return of f, the rest only in inner locals and helper functions)
 
 TAP_SCENARIOS = ["tlit", "tenum", "tsome", "tmatch", "tcall", "tover"]
 
@@ -1974,29 +1974,29 @@ def tmpl_struct(ctx):
     P = rng.choice(["Point", "Pair", "Spot"])
     Q = rng.choice(["Frame", "Panel", "Holder"])
     E = rng.choice(["Event", "Shape", "Msg"])
-    M = "Mode"                  # 구조체 안 열거형 필드용 (E 는 P 를 품으므로 재귀를 피해 따로 둔다)
+    M = "Mode"                  # for the enum field inside the struct (E contains P, so keep this separate to avoid recursion)
     has_ok = rng.random() < 0.35
     has_opt = rng.random() < 0.3
-    has_res = rng.random() < 0.1      # Result<i64> 필드 res
-    has_ef = rng.random() < 0.1       # 열거형 필드 m: Mode
-    has_unit = rng.random() < 0.1     # 빈 구조체 필드 u: Unit
+    has_res = rng.random() < 0.1      # Result<i64> field res
+    has_ef = rng.random() < 0.1       # enum field m: Mode
+    has_unit = rng.random() < 0.1     # empty struct field u: Unit
     pv = rng.choice([("Hit", "Fail"), ("Hit", "Fail"), ("Hit",), ("Fail",)])
     B = rng.choice([1000, 100000, 1000000])
-    if rng.random() < 0.7:      # 70%는 f 가 구조체·열거형을 인자·반환으로 다룬다
+    if rng.random() < 0.7:      # 70%: f handles structs/enums as arguments/returns
         sc = rng.choice(["pval", "pret", "qval", "eval", "eret", "emix"])
-    elif rng.random() < 0.7:    # 나머지 30% 중 약 70%는 io 로 평가 순서를 관측하는 변형 (전체의 약 21%)
+    elif rng.random() < 0.7:    # about 70% of the remaining 30% are variants that observe evaluation order via io (about 21% overall)
         sc = rng.choice(TAP_SCENARIOS)
     else:
         sc = rng.choice(["lit", "mut", "copy", "nested", "loopf", "loopa", "mk", "shift", "chain", "chain",
                          "ematch", "optf"])
     if sc in ("optf", "tsome"):
         has_opt = True
-    quiet = {"opt": "None", "res": "Err(1)", "m": "%s::Off" % M}     # tap 변형: 필드 기본값이 tap 을 되풀이하지 않게
+    quiet = {"opt": "None", "res": "Err(1)", "m": "%s::Off" % M}     # tap variants: so that field defaults do not repeat tap
     tinfo = {"structs": {}, "enums": {}}
-    bound_reqs = []             # [(requires 문장, 매개변수 이름)] 변이로 하나 뺄 수 있는 경계 계약
+    bound_reqs = []             # [(requires clause, parameter name)] bound contracts of which one can be dropped by mutation
 
     def plit(xe, ye, opt=None, ok=None, res=None, m=None):
-        """구조체 리터럴: 필드는 항상 선언 순서 (x, y, ok, opt, res, m, u)."""
+        """Struct literal: fields are always in declaration order (x, y, ok, opt, res, m, u)."""
         f = ["x: %s" % xe, "y: %s" % ye]
         if has_ok:
             f.append("ok: %s" % (ok or "true"))
@@ -2071,14 +2071,14 @@ def tmpl_struct(ctx):
     hit, fail = "Hit" in pv, "Fail" in pv
 
     def ibound(ex, name):
-        """i64 식 ex 를 [-B, B] 로 묶는 requires 하나 (name: 힌트를 거는 매개변수)."""
+        """One requires that bounds the i64 expression ex to [-B, B] (name: the parameter the hint is attached to)."""
         r = "(%s <= %s) && (%s <= %d)" % (lit(-B), ex, ex, B)
         ctx.requires.append(r)
         bound_reqs.append((r, name))
         set_int(ctx, name, lo=-B, hi=B)
 
     def obound(ex, name):
-        """Option<i64> 식 ex 의 값을 묶는다. some_val 은 is_some 으로 가드한다."""
+        """Bound the value of the Option<i64> expression ex. some_val is guarded with is_some."""
         inner = "(%s <= some_val(%s)) && (some_val(%s) <= %d)" % (lit(-B), ex, ex, B)
         if rng.random() < 0.5:
             r = "(!is_some(%s)) || (%s)" % (ex, inner)
@@ -2095,7 +2095,7 @@ def tmpl_struct(ctx):
             obound("%s.opt" % path, name)
 
     def ebound(name):
-        """열거형 매개변수 name 의 페이로드 경계. 가드된 variant_field, 가끔 Fail 쪽을 무방비로 둔다."""
+        """Payload bound of the enum parameter name. Uses a guarded variant_field, and occasionally leaves the Fail side unguarded."""
         set_int(ctx, name, lo=-B, hi=B)
         if hit:
             pt = vf(name, "Hit", "pt")
@@ -2112,14 +2112,14 @@ def tmpl_struct(ctx):
             c = vf(name, "Fail", "code")
             inner = "(%s <= %s) && (%s <= %d)" % (lit(-B), c, c, B)
             if rng.random() < 0.08:
-                r = inner                        # 무방비 variant_field: 거절돼야 함 (안전 모드에선 requires undefined)
+                r = inner                        # unguarded variant_field: must be rejected (requires undefined in safe mode)
             else:
                 r = "(!%s) || (%s)" % (iv(name, "Fail"), inner)
             ctx.requires.append(r)
             bound_reqs.append((r, name))
 
     def drop_bound(p=0.12):
-        """경계 계약 하나를 뺀다: 오버플로가 증명되지 않아 거절돼야 함(입력 힌트도 푼다)."""
+        """Drop one bound contract: overflow can no longer be proven, so it must be rejected (the input hint is released too)."""
         if bound_reqs and rng.random() < p:
             r, name = rng.choice(bound_reqs)
             ctx.requires.remove(r)
@@ -2127,7 +2127,7 @@ def tmpl_struct(ctx):
             h["lo"] = h["hi"] = None
 
     def bump_ens(old, new):
-        """ensures 중 old 를 포함한 첫 문장을 어긋나게 한다."""
+        """Skew the first ensures clause that contains old."""
         for i, s in enumerate(ctx.ensures):
             if old in s:
                 ctx.ensures[i] = s.replace(old, new, 1)
@@ -2137,12 +2137,12 @@ def tmpl_struct(ctx):
         if rng.random() < 0.93:
             bnd(ctx, name, B)
         else:
-            set_int(ctx, name, lo=-B, hi=B)      # 무방비: 오버플로를 증명 못 해 거절돼야 함
+            set_int(ctx, name, lo=-B, hi=B)      # unguarded: overflow cannot be proven, so it must be rejected
 
-    pending_exact = []          # [(매개변수 이름, 값 만드는 함수)] types_text 뒤에 풀어 hints["exact_val"] 로 넣는다
+    pending_exact = []          # [(parameter name, value-building function)] resolved after types_text and put into hints["exact_val"]
 
     def zero(ty):
-        """타입 ty 의 영(0) 값 (입력 JSON 형태). types_text 뒤에만 부른다."""
+        """Zero value of type ty (input JSON form). Call only after types_text."""
         if ty == "i64":
             return 0
         if ty == "bool":
@@ -2157,21 +2157,21 @@ def tmpl_struct(ctx):
         return {"enum": ty, "variant": first, "fields": {fn: zero(ft) for fn, ft in tinfo["enums"][ty][first]}}
 
     def evar(var, **kw):
-        """열거형 E 의 변이 값 (필드 이름 -> 값; 안 준 필드는 영값)."""
+        """Variant value of enum E (field name -> value; fields not given get the zero value)."""
         return {"enum": E, "variant": var,
                 "fields": {fn: kw.get(fn, zero(ft)) for fn, ft in tinfo["enums"][E][var]}}
 
     def cmp_req(p=None, v=None, pparam=None, e=None, eparam=None, p_prob=0.6):
-        """requires 에 구조체 리터럴·열거형 ==/!= 비교를 하나 더한다 (실행 시 requires 검사는 i128 로 계산한다).
-        p: 구조체 경로(예 "p", "q.p"), v: 곱할 i64 식, pparam: p 가 매개변수 이름 그대로면 그 이름,
-        e: 열거형 매개변수 이름. 입력이 이 조건을 만족·위반하는 값 둘 다 나오게 exact_val 힌트도 건다."""
+        """Add one more struct literal / enum ==/!= comparison to requires (the run-time requires check computes in i128).
+        p: struct path (e.g. "p", "q.p"), v: i64 expression to multiply by, pparam: the name of p if p is exactly a parameter name,
+        e: enum parameter name. Also attaches an exact_val hint so inputs both satisfy and violate this condition."""
         if rng.random() >= p_prob:
             return
         opts = []
         if p:
             cp = dict(opt="%s.opt" % p, ok="%s.ok" % p, res="%s.res" % p, m="%s.m" % p)
             sq = rng.choice(["(%s * %s)" % (v, v), "(%s * %s)" % (v, v), "((%s * %s) * %s)" % (v, v, v)])
-            opts.append(("%s != %s" % (p, plit(sq, "0", **cp)), "p0"))     # 곱이 i64 를 넘을 수 있다 (계약 산술)
+            opts.append(("%s != %s" % (p, plit(sq, "0", **cp)), "p0"))     # the product can exceed i64 (contract arithmetic)
             opts.append(("(%s.x == %s.y) ==> (%s == %s)" % (p, p, p, plit("%s.y" % p, "%s.x" % p, **cp)), None))
         if e:
             opts.append(("%s != %s::Empty" % (e, E), "e0"))
@@ -2187,7 +2187,7 @@ def tmpl_struct(ctx):
         else:
             ctx.requires.append(r)
         if tag == "p0" and pparam:
-            # 영값 (x=0, y=0): 비교와 정확히 같아 위반; x=1 인 값은 만족
+            # zero value (x=0, y=0): exactly equal to the comparison, so it violates; a value with x=1 satisfies
             pending_exact.append((pparam, lambda: [zero(P), dict(zero(P), fields=dict(zero(P)["fields"], x=1))]))
         if tag in ("e0", "e1", "e2") and eparam:
             pending_exact.append((eparam, lambda: [evar("Empty"), evar("Fail", code=0) if fail else evar("Empty"),
@@ -2262,11 +2262,11 @@ def tmpl_struct(ctx):
         x_bound("y")
         g = ["fn mk(x: i64, y: i64) -> %s" % P, "  ensures result.x == x", "  ensures result.y == y"]
         if rng.random() < 0.6:
-            g.append("  ensures result == %s" % plit("x", "y"))      # 필드가 더 있으면 모두 선언 순서대로
+            g.append("  ensures result == %s" % plit("x", "y"))      # if there are more fields, all in declaration order
         if has_opt and rng.random() < 0.7:
             g.append("  ensures is_some(result.opt) && (some_val(result.opt) == x)")
         if len(g) > 2 and rng.random() < 0.1:
-            g.pop(rng.randrange(1, len(g)))      # 계약을 줄이면 호출쪽 증명이 깨질 수 있다
+            g.pop(rng.randrange(1, len(g)))      # shrinking the contract can break the caller-side proof
         g += ["{", "  return %s;" % plit("x", "y"), "}"]
         ctx.helper, ctx.after = "\n".join(g), rng.random() < 0.4
         ctx.ensures.append("result == (x + y)")
@@ -2277,7 +2277,7 @@ def tmpl_struct(ctx):
         x_bound()
         D = rng.choice([3, 100, -7, 1000000])
         if rng.random() < 0.1:
-            D = 2000000                          # 보조 함수 requires 위반: 거절돼야 함
+            D = 2000000                          # helper function requires violated: must be rejected
         g = ["fn shift(p: %s, dx: i64) -> %s" % (P, P),
              "  requires ((-1000000) <= p.x) && (p.x <= 1000000)",
              "  requires ((-1000000) <= dx) && (dx <= 1000000)",
@@ -2285,7 +2285,7 @@ def tmpl_struct(ctx):
              "  let mut q: %s = p;" % P, "  q.x = (q.x + dx);", "  return q;", "}"]
         ctx.helper, ctx.after = "\n".join(g), rng.random() < 0.4
         body = ["  let p: %s = %s;" % (P, plit("x", "1")), "  let r: %s = shift(p, %s);" % (P, lit(D))]
-        if rng.random() < 0.4:      # 호출 뒤 호출자의 원래 값 p 를 다시 쓴다 (호출 너머 복사)
+        if rng.random() < 0.4:      # reuse the caller's original value p after the call (copy across the call)
             ctx.ensures.append("result == (((x + %s) + x) + 1)" % lit(D))
             body.append("  return ((r.x + p.x) + r.y);")
         else:
@@ -2310,7 +2310,7 @@ def tmpl_struct(ctx):
         else:
             wens.append("((x <= 0) ==> %s)" % iv("result", "Empty"))
         if rng.random() < 0.1:
-            wens.pop(rng.randrange(len(wens)))   # 계약 하나 빼기: 호출쪽 requires 증명이 깨질 수 있다
+            wens.pop(rng.randrange(len(wens)))   # drop one contract: the caller-side requires proof can break
         wrap = ["fn wrap(x: i64) -> %s" % E] + ["  ensures " + w for w in wens]
         wrap += ["{", "  if (x > 0) {", "    return %s;" % A, "  }", "  return %s;" % Bv, "}"]
         sreq = []
@@ -2319,7 +2319,7 @@ def tmpl_struct(ctx):
                         % (iv("e", "Hit"), vf("e", "Hit", "pt"), vf("e", "Hit", "pt")))
         if fail:
             if rng.random() < 0.1:
-                sreq.append("%s >= 0" % vf("e", "Fail", "code"))        # 무방비: variant_domain 기대
+                sreq.append("%s >= 0" % vf("e", "Fail", "code"))        # unguarded: expect variant_domain
             else:
                 sreq.append("(!%s) || (%s >= 0)" % (iv("e", "Fail"), vf("e", "Fail", "code")))
         score = ["fn score(e: %s) -> i64" % E] + ["  requires " + r for r in sreq] + ["  ensures result >= 0", "{",
@@ -2345,7 +2345,7 @@ def tmpl_struct(ctx):
         body = ["  let mut e: %s = %s::Empty;" % (E, E), "  if (x > 0) {", "    e = %s;" % A, "  } else {",
                 "    e = %s;" % Bv, "  }", "  match e {"] + arms() + ["  }"]
     elif sc == "pval":      # f(p: P) -> i64
-        extra_u = has_unit and rng.random() < 0.5      # 빈 구조체를 f 인자로도 받는다
+        extra_u = has_unit and rng.random() < 0.5      # f also takes the empty struct as an argument
         declare_list(ctx, [["p", P]] + ([["u", "Unit"]] if extra_u else []))
         pbound("p", "p")
         drop_bound()
@@ -2374,7 +2374,7 @@ def tmpl_struct(ctx):
         cmp_req(p="p", v="dx", pparam="p")
         ctx.ret = P
         v = rng.choice(["add", "add", "swap", "fresh"])
-        okf = has_ok and v != "swap" and rng.random() < 0.4      # ok 필드도 바꾼다
+        okf = has_ok and v != "swap" and rng.random() < 0.4      # also change the ok field
         okx = "(dx > 0)" if okf else "p.ok"
         if v == "swap":
             ctx.ensures += ["result.x == p.y", "result.y == (p.x + dx)"]
@@ -2393,8 +2393,8 @@ def tmpl_struct(ctx):
             else:
                 body = ["  return %s;" % plit("(p.x + dx)", "p.y", opt="p.opt", ok=okx)]
         if rng.random() < 0.1:
-            bump_ens("result.x == (p.x + dx)", "result.x == ((p.x + dx) + 1)")    # 어긋난 ensures: 거절돼야 함
-    elif sc == "qval":      # f(q: Q) -> Q 또는 i64, 중첩 필드 대입
+            bump_ens("result.x == (p.x + dx)", "result.x == ((p.x + dx) + 1)")    # skewed ensures: must be rejected
+    elif sc == "qval":      # f(q: Q) -> Q or i64, nested field assignment
         want_q = True
         declare_list(ctx, [["q", Q]])
         pbound("q.p", "q")
@@ -2439,9 +2439,9 @@ def tmpl_struct(ctx):
         if hit and not opt_hit and rng.random() < 0.7:
             ctx.ensures.append("(%s && %s) ==> (result == %s.x)"
                                % (iv("e", "Hit"), vf("e", "Hit", "ok"), vf("e", "Hit", "pt")))
-        if any("(result == 0)" in s for s in ctx.ensures) and rng.random() < 0.08:    # 대상이 있을 때만
+        if any("(result == 0)" in s for s in ctx.ensures) and rng.random() < 0.08:    # only when there is a target
             bump_ens("(result == 0)", "(result == 1)")
-    elif sc == "eret":      # f(x: i64) -> E, 분기로 변이를 고른다
+    elif sc == "eret":      # f(x: i64) -> E, a branch picks the variant
         want_e = True
         declare_list(ctx, [["x", "i64"]])
         x_bound()
@@ -2463,13 +2463,13 @@ def tmpl_struct(ctx):
             bens = "((x < 0) ==> %s)" % iv("result", "Empty")
         zens = "((x == 0) ==> (result == %s::Empty))" % E if rng.random() < 0.3 else "((x == 0) ==> %s)" % iv("result", "Empty")
         ctx.ensures += [aens, bens, zens]
-        if rng.random() < 0.1:      # 어긋난 ensures: 실제로 문장이 바뀌는 것만 고른다
+        if rng.random() < 0.1:      # skewed ensures: pick only those where the clause actually changes
             muts = []
             for i in range(3):
                 s = ctx.ensures[i]
                 t = s.replace("== x", "== (x + 1)", 1).replace("== (0 - x)", "== x", 1)
                 if t == s and s.startswith("((x == 0) ==> "):
-                    t = s.replace("==> ", "==> !", 1)       # x == 0 인데 Empty 가 아니라고 주장
+                    t = s.replace("==> ", "==> !", 1)       # claims it is not Empty although x == 0
                 if t != s:
                     muts.append((i, t))
             if muts:
@@ -2508,7 +2508,7 @@ def tmpl_struct(ctx):
                 fe = "(%s + 1)" % fe
             ctx.ensures.append("%s ==> (%s && (%s == %s))" % (iv("e", "Fail"), iv("result", "Fail"), vf("result", "Fail", "code"), fe))
         body = ["  match e {"] + out + ["  }"]
-    elif sc == "tlit":      # 구조체 리터럴 필드 평가 순서: 왼쪽부터 (tap 출력 순서가 비교된다)
+    elif sc == "tlit":      # struct literal field evaluation order: from the left (the tap output order is compared)
         declare_list(ctx, [["x", "i64"]])
         x_bound()
         ctx.effects = ["io"]
@@ -2517,7 +2517,7 @@ def tmpl_struct(ctx):
                                   ("(tap(x) + 1)", "tap(x)", "((x + 1) + x)")])
         ctx.ensures.append("result == %s" % ens)
         body = ["  let p: %s = %s;" % (P, plit(xe, ye, **quiet)), "  return (p.x + p.y);"]
-    elif sc == "tenum":     # 열거형 생성 인자의 tap, 가끔 match 대상 pick(..) 가 e 를 한 번만 평가
+    elif sc == "tenum":     # tap in enum constructor arguments; occasionally the match scrutinee pick(..) evaluates e only once
         want_e = True
         declare_list(ctx, [["x", "i64"]])
         x_bound()
@@ -2533,7 +2533,7 @@ def tmpl_struct(ctx):
         else:
             body = ["  let e: %s = %s;" % (E, A), "  match e {"] + arms() + ["  }"]
         ctx.helper, ctx.after = "\n\n".join(texts), rng.random() < 0.4
-    elif sc == "tsome":     # Option 필드 Some(tap(x))
+    elif sc == "tsome":     # Option field Some(tap(x))
         declare_list(ctx, [["x", "i64"]])
         x_bound()
         ctx.effects = ["io"]
@@ -2541,7 +2541,7 @@ def tmpl_struct(ctx):
         ctx.ensures.append("result == (x + 1)")
         body = ["  let p: %s = %s;" % (P, plit("x", "1", opt="Some(tap(x))", res="Err(1)", m="%s::Off" % M)),
                 "  match p.opt {", "    Some(v) => { return (v + p.y); }", "    None => { return 0; }", "  }"]
-    elif sc == "tmatch":    # match g(tap(x)): 대상 식은 한 번만 평가
+    elif sc == "tmatch":    # match g(tap(x)): the scrutinee expression is evaluated only once
         want_e = True
         declare_list(ctx, [["x", "i64"]])
         x_bound()
@@ -2553,7 +2553,7 @@ def tmpl_struct(ctx):
                  "  if (v > 0) {", "    return %s::Fail(v);" % E, "  }", "  return %s::Empty;" % E, "}"]
         else:
             g = ["fn g(v: i64) -> %s" % E,
-                 "  ensures (v > 0) ==> (%s && (%s.x == v) && (%s.y == 1) && %s)"     # ok·y 도 알려야 f 가 증명된다
+                 "  ensures (v > 0) ==> (%s && (%s.x == v) && (%s.y == 1) && %s)"     # ok and y must be stated too for f to be proven
                  % (iv("result", "Hit"), vf("result", "Hit", "pt"), vf("result", "Hit", "pt"), vf("result", "Hit", "ok")),
                  "  ensures (v <= 0) ==> %s" % iv("result", "Empty"), "{",
                  "  if (v > 0) {", "    return %s::Hit(%s, true);" % (E, plit("v", "1", **quiet)), "  }",
@@ -2561,20 +2561,20 @@ def tmpl_struct(ctx):
         ctx.helper, ctx.after = TAP_FN + "\n\n" + "\n".join(g), rng.random() < 0.4
         ctx.ensures += ["((x > 0) ==> (result == x))", "((x <= 0) ==> (result == 0))"]
         body = ["  match g(tap(x)) {"] + arms() + ["  }"]
-    elif sc == "tcall":     # 호출 인자: 구조체 리터럴 안의 tap 이 뒤 인자 tap 보다 먼저
+    elif sc == "tcall":     # call arguments: the tap inside the struct literal comes before the later argument's tap
         declare_list(ctx, [["x", "i64"]])
         x_bound()
         ctx.effects = ["io"]
-        g = ["fn addx(p: %s, k: i64) -> i64" % P,       # sum 은 집계 키워드라 쓰지 않는다
+        g = ["fn addx(p: %s, k: i64) -> i64" % P,       # sum is an aggregate keyword, so it is not used
              "  requires ((-1000000) <= p.x) && (p.x <= 1000000)", "  requires ((-1000000) <= k) && (k <= 1000000)",
              "  ensures result == (p.x + k)", "{", "  return (p.x + k);", "}"]
         ctx.helper, ctx.after = TAP_FN + "\n\n" + "\n".join(g), rng.random() < 0.4
         ctx.ensures.append("result == (x + 2)")
         body = ["  return addx(%s, tap(2));" % plit("tap(x)", "1", **quiet)]
-    elif sc == "tover":     # 서로 다른 연산이 오버플로하는 두 필드: 왼쪽 필드 오류가 먼저 나는지 관측
+    elif sc == "tover":     # two fields overflowing through different operations: observe whether the left field's error comes first
         a, b, c, d = "a", "b", "c", "d"
         declare_list(ctx, [[n, "i64"] for n in (a, b, c, d)])
-        mode = rng.choices(["ok", "both", "right", "left"], weights=[45, 25, 15, 15])[0]   # right/left: 그쪽만 넘칠 수 있다
+        mode = rng.choices(["ok", "both", "right", "left"], weights=[45, 25, 15, 15])[0]   # right/left: only that side can overflow
         B = rng.choice([1000, 1000000])
         use_tap = rng.random() < 0.5
         for n in (a, b):
@@ -2584,9 +2584,9 @@ def tmpl_struct(ctx):
             if mode in ("ok", "left"):
                 bnd(ctx, n, B)
         ex = {}
-        if mode in ("both", "left"):        # 왼쪽(a + b) 이 넘치기 쉬운 값
+        if mode in ("both", "left"):        # values where the left side (a + b) overflows easily
             ex[a], ex[b] = [I64_MAX, I64_MAX - 1], [I64_MAX, 1, 2, 1 << 62]
-        if mode in ("both", "right"):       # 오른쪽(c * d) 이 넘치기 쉬운 값
+        if mode in ("both", "right"):       # values where the right side (c * d) overflows easily
             ex[c], ex[d] = [1 << 40, I64_MAX, 3037000500], [1 << 40, 2, I64_MAX, 3037000500]
         ctx.hints["exact"] = ex
         ctx.hints["wide"] = [n for n in (a, b, c, d) if n in ex]
@@ -2597,7 +2597,7 @@ def tmpl_struct(ctx):
         ly = "(tap(c) * d)" if use_tap else "(c * d)"
         ctx.ensures.append("result == ((a + b) + (c * d))")
         body = ["  let p: %s = %s;" % (P, plit(lx, ly, **quiet)), "  return (p.x + p.y);"]
-    else:  # optf: Option/Result/열거형 필드
+    else:  # optf: Option/Result/enum fields
         declare_list(ctx, [["x", "i64"]])
         x_bound()
         none = rng.random() < 0.3
@@ -2621,7 +2621,7 @@ def tmpl_struct(ctx):
     return body
 
 
-FAMILY_SHARE = 0.50      # 기존 계열 20% + 새 계열(배열 2개·배열 반환·Option/Result·구조체) 30%
+FAMILY_SHARE = 0.50      # existing family 20% + new family (two arrays, array return, Option/Result, struct) 30%
 FAMILY = [("arrfill", tmpl_arrfill, 17), ("copy", tmpl_copy, 8), ("effects", tmpl_effects, 22),
           ("branches", tmpl_branches, 17), ("nested", tmpl_nested, 13), ("quant", tmpl_quant, 12),
           ("helpers", tmpl_helpers, 11),
@@ -2629,9 +2629,9 @@ FAMILY = [("arrfill", tmpl_arrfill, 17), ("copy", tmpl_copy, 8), ("effects", tmp
           ("optparam", tmpl_optparam, 20), ("struct", tmpl_struct, 60)]
 
 
-# ---------------------------------------------------------------- G2 모드 (--g2)
-# 원소 타입 배열 [u8]·[bool] 과 UTF-8 문자열 str 을 쓰는 프로그램. 기존 FAMILY·재료와 완전히 따로다
-# (generate_case(seed, index, g2=True) 만 이 블록을 쓰고 rng 도 따로 만든다).
+# ---------------------------------------------------------------- G2 mode (--g2)
+# Programs that use typed-element arrays [u8], [bool] and UTF-8 strings (str). Completely separate from the existing FAMILY and ingredients
+# (only generate_case(seed, index, g2=True) uses this block, and it also creates its own rng).
 
 G2_BAD_RATE = 0.3
 G2_LIM = 1000000
@@ -2641,12 +2641,12 @@ G2_TYMAP = {"i64": "i64", "array": "[i64]", "array_u8": "[u8]", "array_bool": "[
 
 
 def g2_esc(s):
-    """Pruv 문자열 리터럴 이스케이프(\\\" \\\\ \\n \\r \\t \\0 만). 그 밖의 문자는 그대로."""
+    """Pruv string literal escaping (only \\\" \\\\ \\n \\r \\t \\0). Other characters are kept as is."""
     return "".join(G2_ESC.get(c, c) for c in s)
 
 
 def g2_char(rng):
-    """ASCII 1/2(인쇄 문자 + \\0 \\n \\t \\r \" \\), 2·3·4바이트 각 1/6 (서로게이트 제외)."""
+    """ASCII 1/2 (printable characters + \\0 \\n \\t \\r \" \\), 2-, 3-, and 4-byte characters 1/6 each (surrogates excluded)."""
     r = rng.random()
     if r < 0.5:
         if rng.random() < 0.7:
@@ -2676,7 +2676,7 @@ def g2_lit_text(rng, need_multi=False):
 
 
 def g2_offsets(text):
-    """각 문자 시작의 바이트 오프셋 목록 (마지막에 전체 길이)."""
+    """List of byte offsets where each character starts (the total length at the end)."""
     out, o = [], 0
     for c in text:
         out.append(o)
@@ -2688,9 +2688,9 @@ def g2_offsets(text):
 def g2_hints():
     h = {"ints": {}, "arrays": {}, "consts": [3, 5, 10, 100], "rel": [], "pick": [], "idx": [], "div": [],
          "neg": [], "wide": [], "exact": {}, "empty": False}
-    h["g2rel"] = {}       # {정수 매개변수: 길이를 따라갈 매개변수 이름 또는 상수 길이}
-    h["g2small"] = {}     # {정수 매개변수: 자주 고를 작은 상한}
-    h["g2order"] = []     # [(x, y)] 가끔 x <= y 로 맞춘다
+    h["g2rel"] = {}       # {integer parameter: name of the parameter whose length it follows, or a constant length}
+    h["g2small"] = {}     # {integer parameter: small upper bound to pick often}
+    h["g2order"] = []     # [(x, y)] occasionally arranged so that x <= y
     return h
 
 
@@ -2708,7 +2708,7 @@ def g2_fn(params, ret, effects, requires, ensures, body):
 
 
 def g2_loop(bound, invs, body, bad=False, ivar="i"):
-    """`let mut i: i64 = 0;` + while i < bound.  bad 면 끝값 +1 (색인 범위 밖 읽기)."""
+    """`let mut i: i64 = 0;` + while i < bound.  If bad, the end value is +1 (read out of index range)."""
     hi = ("%s + 1" % bound) if bad else bound
     out = ["  let mut %s: i64 = 0;" % ivar, "  while %s < %s" % (ivar, hi),
            "    invariant 0 <= %s && %s <= %s" % (ivar, ivar, hi)]
@@ -2723,7 +2723,7 @@ def g2_case_parts(src, params, ret, hints, feats):
     return {"src": src + "\n", "params": params, "ret": ret, "hints": hints, "feats": feats}
 
 
-# 1) [i64] -> [u8] 자르기 루프 저장 (q01 꼴)
+# 1) [i64] -> [u8] clamping loop store (q01 shape)
 def g2_clamp(rng):
     lo = rng.choice([0, 0, 0, 5, 16])
     hi = rng.choice([255, 255, 200, 100, 127])
@@ -2742,7 +2742,7 @@ def g2_clamp(rng):
     return g2_case_parts(src, [["a", "array"]], "array_u8", h, ["alloc_u8", "ret_u8", "store_u8", "u8"])
 
 
-# 2) [u8] 매개변수 스캔 (합·최대·개수)
+# 2) [u8] parameter scan (sum, max, count)
 def g2_u8_scan(rng):
     mode = rng.choice(["sum", "max", "count"])
     bad = rng.random() < G2_BAD_RATE
@@ -2768,7 +2768,7 @@ def g2_u8_scan(rng):
     return g2_case_parts(src, [["a", "array_u8"]], "i64", g2_hints(), ["u8"])
 
 
-# 3) [u8] copy 뒤 원소 갱신(+d 포화) 반환
+# 3) [u8] copy, then element update (+d saturating) and return
 def g2_copy_update(rng):
     use_d = rng.random() < 0.6
     D = rng.choice([1, 7, 100, 255, 300, -1, -50, -255, 0])
@@ -2803,7 +2803,7 @@ def g2_copy_update(rng):
     return g2_case_parts(src, params, "array_u8", h, ["ret_u8", "store_u8", "u8"])
 
 
-# 4) alloc 으로 [u8] 를 만들어 반환
+# 4) build a [u8] with alloc and return it
 def g2_alloc_u8(rng):
     mode = rng.choice(["direct", "fill", "calc"])
     bad = rng.random() < G2_BAD_RATE
@@ -2830,7 +2830,7 @@ def g2_alloc_u8(rng):
     return g2_case_parts(src, [["n", "i64"]], "array_u8", h, feats)
 
 
-# 5) [bool] 매개변수 집계 (개수·최장 run)
+# 5) [bool] parameter aggregation (count, longest run)
 def g2_bool_agg(rng):
     mode = rng.choice(["count", "count", "run"])
     bad = rng.random() < 0.25
@@ -2856,7 +2856,7 @@ def g2_bool_agg(rng):
     return g2_case_parts(src, [["a", "array_bool"]], "i64", g2_hints(), ["bool_arr"])
 
 
-# 6) [bool] 만들어 반환
+# 6) build a [bool] and return it
 def g2_bool_build(rng):
     ty = rng.choice(["array", "array_u8"])
     T = rng.choice([0, 1, 100, 128, 255]) if ty == "array_u8" else rng.choice([0, 5, -3, 100])
@@ -2871,7 +2871,7 @@ def g2_bool_build(rng):
     return g2_case_parts(src, [["a", ty]], "array_bool", g2_hints(), feats)
 
 
-# 7) str 매개변수 바이트 스캔 (특정 바이트 개수·문자 수·첫 위치)
+# 7) str parameter byte scan (count of a given byte, character count, first position)
 def g2_str_scan(rng):
     mode = rng.choice(["count_ge", "count_eq", "chars", "find"])
     bad = rng.random() < G2_BAD_RATE
@@ -2896,7 +2896,7 @@ def g2_str_scan(rng):
     return g2_case_parts(src, [["s", "str"]], "i64", g2_hints(), ["str"])
 
 
-# 8) str 경계 부분 문자열 (가드 뒤 substr, 또는 다음 경계까지 전진 루프)
+# 8) str boundary substring (substr after a guard, or a loop advancing to the next boundary)
 def g2_str_substr(rng):
     mode = rng.choice(["guard", "guard_tail", "two", "prefix", "skip"])
     bad = rng.random() < G2_BAD_RATE
@@ -2953,7 +2953,7 @@ def g2_str_substr(rng):
     return g2_case_parts(src, params, "str", h, feats)
 
 
-# 9) 코드 안 문자열 리터럴
+# 9) string literal inside code
 def g2_literal(rng):
     mode = rng.choice(["byte", "len_add", "cut", "cut"])
     h = g2_hints()
@@ -2987,7 +2987,7 @@ def g2_literal(rng):
     return g2_case_parts(src, [["k", "i64"]], "i64", h, ["lit", "str"])
 
 
-# 10) str -> [u8] 바이트 복사
+# 10) str -> [u8] byte copy
 def g2_str_to_u8(rng):
     mode = rng.choice(["copy", "upper", "mask"])
     bad = rng.random() < G2_BAD_RATE
@@ -3007,7 +3007,7 @@ def g2_str_to_u8(rng):
                          ["alloc_u8", "ret_u8", "store_u8", "str", "u8"])
 
 
-# 11) requires is_char_boundary(s, i) 를 둔 함수와 그 호출
+# 11) a function with requires is_char_boundary(s, i) and its call
 def g2_requires_boundary(rng):
     h = g2_hints()
     g2_int_hint(h, "i", 0, None)
@@ -3114,12 +3114,12 @@ def g2_candidate_inputs(case, rng, n):
     return out
 
 
-# ---------------------------------------------------------------- 케이스 조립
+# ---------------------------------------------------------------- case assembly
 
 def render(ctx, body):
     tymap = {"array": "[i64]", "bool": "bool", "Option<i64>": "Option<i64>", "Result<i64>": "Result<i64>",
              "array_u8": "[u8]", "array_bool": "[bool]", "str": "str"}
-    sig = ", ".join("%s: %s" % (n, tymap.get(t, "i64" if t == "i64" else t)) for n, t in ctx.params)   # 구조체·열거형은 타입 이름 그대로
+    sig = ", ".join("%s: %s" % (n, tymap.get(t, "i64" if t == "i64" else t)) for n, t in ctx.params)   # structs/enums keep their type name as is
     head = "fn f(%s) -> %s" % (sig, ctx.ret)
     if ctx.effects:
         head += " ! " + ", ".join(ctx.effects)
@@ -3151,9 +3151,9 @@ def generate_case(seed, index, g2=False):
                 "ret": ctx.ret, "kind": kind, "input_hints": ctx.hints}
         ti = ctx.type_info
         if ti and any(t in ti["structs"] or t in ti["enums"] for t in [ctx.ret] + [t for _, t in ctx.params]):
-            case["types"] = ti       # f 의 인자·반환에 구조체/열거형이 있을 때만 넣는다
+            case["types"] = ti       # only when f has a struct/enum in its arguments or return
         return case
-    r = (r - FAMILY_SHARE) / (1.0 - FAMILY_SHARE)   # 기존 재료는 남은 몫을 기존 비율대로 나눠 가진다
+    r = (r - FAMILY_SHARE) / (1.0 - FAMILY_SHARE)   # the existing ingredients share the remaining portion in their existing proportions
     new_kinds = [(0.20, "pure"), (0.35, "undef"), (0.38, "wide"), (0.44, "euclid"),
                  (0.50, "sorted"), (0.57, "bound"), (0.63, "divguard"), (0.69, "call")]
     kind = None
@@ -3191,7 +3191,7 @@ def generate_case(seed, index, g2=False):
             "ret": ctx.ret, "kind": kind, "input_hints": ctx.hints}
 
 
-# ---------------------------------------------------------------- 입력 생성
+# ---------------------------------------------------------------- input generation
 
 def pick_in_range(rng, lo, hi):
     if lo > hi:
@@ -3250,10 +3250,10 @@ def gen_array(rng, h, consts):
     if h.get("sorted") and rng.random() < 0.85:
         out.sort()
         m = rng.random()
-        if len(out) >= 2 and m < 0.2:        # 인접 교환 한 번
+        if len(out) >= 2 and m < 0.2:        # one adjacent swap
             j = rng.randrange(len(out) - 1)
             out[j], out[j + 1] = out[j + 1], out[j]
-        elif len(out) >= 2 and m < 0.4:      # 같은 이웃
+        elif len(out) >= 2 and m < 0.4:      # same neighbor
             j = rng.randrange(len(out) - 1)
             out[j + 1] = out[j]
     return out
@@ -3265,7 +3265,7 @@ WIDE = [I64_MAX, I64_MIN, I64_MAX - 1, I64_MIN + 1, 1 << 62, -(1 << 62), 3037000
 
 
 def bias_inputs(rng, h, vals):
-    """undef/나눗셈/경계 재료용 입력 편향 (vals 를 제자리에서 바꾼다)."""
+    """Input bias for the undef/division/boundary ingredients (modifies vals in place)."""
     if h.get("empty") and "a" in vals and rng.random() < 0.25:
         vals["a"] = []
     for x in h.get("idx", []):
@@ -3291,21 +3291,21 @@ def bias_inputs(rng, h, vals):
     for x, lst in h.get("exact", {}).items():
         if x in vals and lst and rng.random() < 0.45:
             vals[x] = max(I64_MIN, min(I64_MAX, rng.choice(lst)))
-    # exact_val: 구조체·열거형·Option/Result 매개변수에 계약 비교와 정확히 같거나 다른 값을 넣는다
+    # exact_val: give struct/enum/Option/Result parameters values exactly equal to or different from the contract comparison
     for x, lst in h.get("exact_val", {}).items():
         if x in vals and lst and rng.random() < 0.3:
             vals[x] = copy.deepcopy(rng.choice(lst))
 
 
 def gen_opt(rng, h, consts):
-    """Option<i64> 인자: {"tag": "Some", "v": n} 또는 {"tag": "None"}."""
+    """Option<i64> argument: {"tag": "Some", "v": n} or {"tag": "None"}."""
     if rng.random() < 0.4:
         return {"tag": "None"}
     return {"tag": "Some", "v": pick_int(rng, h, consts)}
 
 
 def gen_res(rng, h, eh, consts):
-    """Result<i64> 인자: {"tag": "Ok", "v": n} 또는 {"tag": "Err", "v": code}. eh: 오류 코드 힌트."""
+    """Result<i64> argument: {"tag": "Ok", "v": n} or {"tag": "Err", "v": code}. eh: error code hint."""
     if rng.random() < 0.55:
         return {"tag": "Ok", "v": pick_int(rng, h, consts)}
     if rng.random() < 0.5:
@@ -3314,9 +3314,9 @@ def gen_res(rng, h, eh, consts):
 
 
 def gen_value(rng, ty, types, h, consts, eh=None, strict=False):
-    """타입 문자열 ty 의 입력 값을 case["types"] 로 재귀 생성한다.
-    구조체 {"struct": 이름, "fields": {...}}, 열거형 {"enum": 이름, "variant": 변이, "fields": {...}} (필드는 선언 순서).
-    h: i64 힌트(lo/hi/cap). strict 면 힌트 범위 안의 값만 고른다(계약을 만족하는 입력을 늘린다)."""
+    """Recursively generate an input value for the type string ty using case["types"].
+    Struct {"struct": name, "fields": {...}}, enum {"enum": name, "variant": variant, "fields": {...}} (fields in declaration order).
+    h: i64 hints (lo/hi/cap). If strict, only values within the hint range are picked (increasing inputs that satisfy the contract)."""
     structs, enums = types.get("structs", {}), types.get("enums", {})
     if ty == "bool":
         return rng.choice([True, False])
@@ -3331,7 +3331,7 @@ def gen_value(rng, ty, types, h, consts, eh=None, strict=False):
     if ty in structs:
         return {"struct": ty, "fields": {fn: gen_value(rng, ft, types, h, consts, eh, strict) for fn, ft in structs[ty]}}
     if ty in enums:
-        var = rng.choice(list(enums[ty].keys()))      # 변이는 고르게
+        var = rng.choice(list(enums[ty].keys()))      # pick variants uniformly
         return {"enum": ty, "variant": var,
                 "fields": {fn: gen_value(rng, ft, types, h, consts, eh, strict) for fn, ft in enums[ty][var]}}
     if strict and h.get("lo") is not None and h.get("hi") is not None:
@@ -3340,7 +3340,7 @@ def gen_value(rng, ty, types, h, consts, eh=None, strict=False):
 
 
 def fit_len(rng, arr, n, h, consts):
-    """배열 arr 을 길이 n 으로 자르거나 늘린다 (두 배열 길이 같음 경계 시험)."""
+    """Truncate or extend array arr to length n (boundary test for two arrays having equal length)."""
     arr = list(arr)
     if len(arr) > n:
         return arr[:n]
@@ -3363,7 +3363,7 @@ def candidate_inputs(case, rng, n):
     named = set(types.get("structs", {})) | set(types.get("enums", {}))
     for _ in range(n):
         vals = {}
-        strict = rng.random() < 0.75      # 구조체·열거형 값 하나 전체를 힌트 범위 안에 둘지
+        strict = rng.random() < 0.75      # whether to keep a whole struct/enum value within the hint range
         for name, ty in case["params"]:
             if ty == "array":
                 vals[name] = gen_array(rng, h["arrays"].get(name, {}), consts)
@@ -3398,11 +3398,11 @@ def candidate_inputs(case, rng, n):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Pruv 퍼징 프로그램 생성 (.pruv 파일로 저장)")
+    ap = argparse.ArgumentParser(description="Pruv fuzzing program generator (writes .pruv files)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--count", type=int, default=20)
     ap.add_argument("--out", default="bench/fuzz/out/generated")
-    ap.add_argument("--g2", action="store_true", help="G2 모드: [u8]·[bool]·str 프로그램 생성")
+    ap.add_argument("--g2", action="store_true", help="G2 mode: generate [u8], [bool], and str programs")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):

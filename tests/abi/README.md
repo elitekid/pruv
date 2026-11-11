@@ -14,7 +14,7 @@ Names and argument order follow `abi_of` in `pruvc/llvmgen.py` (lines 1214–128
   without it, `llc -mtriple=x86_64-pc-windows-msvc -filetype=obj -O2`.
 - Note: generating a Windows object from the Python implementation's (legacy) IR is not supported (it returns Option/Result as a `{i64,i64}` value, which does not match the MSVC ABI). The `abi_lower` check was removed on 2026-11-11. Windows-target IR is produced with the Rust implementation's `pruvc --target`.
 - Tools are taken from `/opt/homebrew/opt/llvm@22/bin` first, otherwise from PATH.
-- If any check fails, exit 1. The last line is always `Windows execution ABI cannot be checked on this Mac: Windows CI needed`.
+- If any check fails, exit 1. The last line is always `The Windows execution ABI cannot be verified on this Mac: Windows CI is required`.
 
 ## Boundaries the samples check
 | File | Boundary |

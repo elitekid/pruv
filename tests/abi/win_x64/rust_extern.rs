@@ -1,10 +1,10 @@
-// Windows CI 드라이버: Pruv wrapper 객체(opt_ret.ll 등 → .obj)를 링크해 실행한다.
-// 이 맥에서는 실행하지 못한다(Windows 실행 ABI 는 Windows CI 에서만 확인).
+// Windows CI driver: links and runs the Pruv wrapper objects (opt_ret.ll etc. -> .obj).
+// It cannot be run on this Mac (the Windows execution ABI is only verified on Windows CI).
 //
-// 빌드 예 (x86_64-pc-windows-msvc, 객체는 check_abi.py 와 같은 방식으로 미리 만든다):
+// Build example (x86_64-pc-windows-msvc; build the objects beforehand the same way check_abi.py does):
 //   rustc --edition 2021 rust_extern.rs -C link-arg=opt_ret.obj -C link-arg=args_0_1_5.obj -o rust_extern.exe
 //
-// 기대 출력:
+// Expected output:
 //   get_opt(5)  = (1, 5)
 //   get_opt(-3) = (0, 0)
 //   get_opt(MAX)= (1, 9223372036854775807)

@@ -1,4 +1,4 @@
-//! pruvc: Pruv 컴파일러 CLI(Rust 판). 1GB 스택 스레드에서 cli → driver 를 돌리고 종료 코드로 끝낸다.
+//! pruvc: the Pruv compiler CLI (Rust implementation). Runs cli -> driver on a 1GB-stack thread and ends with the exit code.
 
 mod cli;
 mod driver;
@@ -12,7 +12,7 @@ fn run(argv: Vec<String>) -> i32 {
     }
 }
 
-/// 스레드 패닉 페이로드에서 메시지를 꺼낸다.
+/// Extracts the message from a thread panic payload.
 fn panic_message(p: &(dyn std::any::Any + Send)) -> String {
     if let Some(s) = p.downcast_ref::<&str>() {
         (*s).to_string()
@@ -39,7 +39,7 @@ fn main() {
             }
         }
     }
-    // 깊게 중첩된 입력을 위해 큰 스택 스레드에서 돌린다.
+    // Run on a large-stack thread for deeply nested input.
     let code = match std::thread::Builder::new().stack_size(1 << 30).spawn(move || run(argv)) {
         Ok(h) => match h.join() {
             Ok(c) => c,

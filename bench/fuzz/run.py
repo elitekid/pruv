@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""Pruv 컴파일러 차분 퍼징 실행기 (표준 라이브러리만, Python 3.9).
+"""Differential fuzzing runner for the Pruv compiler (standard library only, Python 3.9).
 
     python bench/fuzz/run.py [--seed 1] [--programs 100] [--inputs 8] [--max-candidates 400]
                              [--rejected-sample 30] [--jobs N] [--batch 25] [--out DIR] [--keep-work]
-    python bench/fuzz/run.py --g2 [--seed 41] [--programs 200] [--rejected-sample 30]   (G2 모드, README 참조)
+    python bench/fuzz/run.py --g2 [--seed 41] [--programs 200] [--rejected-sample 30]   (G2 mode, see README)
     python bench/fuzz/run.py --replay DIR_OR_PRUVFILE
-    (모든 형태에 [--compiler py|rs] [--compiler-path PATH] 사용 가능, tests/compiler_driver.py; 기본 rs)
+    (every form accepts [--compiler py|rs] [--compiler-path PATH], see tests/compiler_driver.py; default rs)
 
-약속: 검증기가 받아들인 프로그램(pruvc 기본 모드 exit 0)은 requires를 만족하는 모든 입력에서
-범위 밖 인덱스/오버플로 없이 ensures가 성립하고 출력이 오라클과 같다. 모드마다 자기 오라클과 비교한다
-(증명 모드는 mode="proof", 안전 모드는 mode="safe"). 기대 결과가 같은 모드끼리는 stdout, 종료 코드,
-`pruv: ...` 줄이 정확히 같고, rust-X == llvm-X 는 항상 같다. 증명·안전 모드는 안쪽 호출의 실행 requires가
-i128 한계에 닿을 때처럼 오라클 결과가 다르면 정당하게 달라질 수 있다.
-검증된 프로그램의 실행 requires 검사는 정의역 밖(`requires undefined`)에 닿지 않는다(i128 한계만 예외).
+Promise: a program the verifier accepted (pruvc default mode, exit 0) satisfies ensures on every input that
+satisfies requires, with no out-of-range index or overflow, and its output equals the oracle's. Each mode is
+compared with its own oracle (proof mode uses mode="proof", safe mode uses mode="safe"). Modes with the same
+expected outcome have exactly the same stdout, exit code, and `pruv: ...` line, and rust-X == llvm-X always holds.
+Proof and safe modes may legitimately differ when the oracle results differ, for example when the run-time
+requires of an inner call reaches the i128 limit.
+The run-time requires check of a verified program never reaches outside the domain (`requires undefined`); the only exception is the i128 limit.
 
-빌드: macOS는 새 실행 파일의 첫 실행마다 약 0.33초를 직렬로 쓰므로, 프로그램 --batch개를 한 실행
-파일(백엔드마다 1개, 증명·안전 모듈을 함께)에 묶는다. LLVM 모듈은 `pruv_abi_` 기호에 고유 접두사를
-붙인 사본으로 링크하고 `pruv_host_*`의 #[no_mangle]은 첫 모듈에만 둔다.
+Build: on macOS the first run of each new executable costs about 0.33 s serially, so --batch programs are bundled
+into one executable (one per backend, with the proof and safe modules together). LLVM modules are linked as copies
+with a unique prefix on the `pruv_abi_` symbols, and the #[no_mangle] of `pruv_host_*` stays only on the first module.
 """
 import argparse
 import concurrent.futures as cf
@@ -51,13 +52,13 @@ RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 I64_MIN = -(1 << 63)
 TIMEOUT_RC = -999
 FAULT_KINDS = {"oob", "overflow", "div_domain", "requires_violated", "requires_undefined",
-               "elem_range", "slice_range", "slice_cut"}   # 뒤 셋은 G2(oracle 만 냄, 기존 경로 불변)
+               "elem_range", "slice_range", "slice_cut"}   # the last three are G2 (only the oracle emits them; existing paths unchanged)
 MODES = [("rust-proof", "rust", False), ("rust-safe", "rust", True),
          ("llvm-proof", "llvm", False), ("llvm-safe", "llvm", True)]
 SAFE_MODES = [m for m in MODES if m[2]]
 
 
-# ---------------------------------------------------------------- 하위 프로세스
+# ---------------------------------------------------------------- subprocesses
 
 def run_cmd(cmd, timeout):
     try:
@@ -98,11 +99,11 @@ def build_runtime(work):
     rc, so, se = run_cmd([CLANG, "-O2", CPU_FLAG, "-std=c11", "-DPRUV_RUST_ALLOCATOR",
                           "-c", RUNTIME_C, "-o", rt_o], 300)
     if rc != 0:
-        raise RuntimeError("clang (runtime.c) 실패: " + se[-400:])
+        raise RuntimeError("clang (runtime.c) failed: " + se[-400:])
     return rt_o
 
 
-# ---------------------------------------------------------------- 드라이버
+# ---------------------------------------------------------------- driver
 
 def rust_int(v):
     if v == I64_MIN:
@@ -113,7 +114,7 @@ def rust_int(v):
 
 
 def deep_copy_arg(v):
-    """인자 복사: 배열(list)과 모든 dict(Option/Result, 구조체, 열거형)를 재귀로 복사한다."""
+    """Argument copy: recursively copies arrays (list) and every dict (Option/Result, struct, enum)."""
     if isinstance(v, list):
         return list(v)
     if isinstance(v, dict):
@@ -122,7 +123,7 @@ def deep_copy_arg(v):
 
 
 def rust_option_result(ty, v):
-    """Option/Result dict({"tag": "Some", "v": 3} 등) -> Rust 리터럴, black_box 로 감싸 상수 접힘을 막는다."""
+    """Option/Result dict (e.g. {"tag": "Some", "v": 3}) -> Rust literal, wrapped in black_box to prevent constant folding."""
     tag = v.get("tag") if isinstance(v, dict) else None
     if ty == "Option<i64>":
         if tag == "None":
@@ -130,16 +131,16 @@ def rust_option_result(ty, v):
         elif tag == "Some":
             lit = "Some(%s)" % rust_int(v["v"])
         else:
-            raise ValueError("Option<i64> 인자 형식이 아님: %r" % (v,))
+            raise ValueError("not an Option<i64> argument form: %r" % (v,))
         return "std::hint::black_box::<Option<i64>>(%s)" % lit
     if tag not in ("Ok", "Err"):
-        raise ValueError("Result<i64> 인자 형식이 아님: %r" % (v,))
+        raise ValueError("not a Result<i64> argument form: %r" % (v,))
     return "std::hint::black_box::<Result<i64, i64>>(%s(%s))" % (tag, rust_int(v["v"]))
 
 
 def rust_value(mod, v):
-    """값 dict 를 Rust 식으로(재귀). 구조체/열거형 경로는 `<mod>::` 접두어(Rust·LLVM 모두 생성 모듈 최상단에
-    pub 타입이 있다: pruvc/codegen.py emit_public_types, llvmgen 도 같은 함수를 쓴다)."""
+    """Value dict -> Rust expression (recursive). Struct/enum paths get the `<mod>::` prefix (for both Rust and LLVM the
+    pub types sit at the top of the generated module: pruvc/codegen.py emit_public_types, which llvmgen also uses)."""
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, int):
@@ -160,11 +161,11 @@ def rust_value(mod, v):
             return "None"
         if tag in ("Some", "Ok", "Err"):
             return "%s(%s)" % (tag, rust_value(mod, v["v"]))
-    raise ValueError("값 형식을 모름: %r" % (v,))
+    raise ValueError("unknown value form: %r" % (v,))
 
 
 def rust_str_lit(s):
-    """G2: Python str -> Rust 문자열 리터럴. 0x20..=0x7E 중 `"`·`\\` 가 아니면 그대로, 나머지는 \\u{소문자hex}."""
+    """G2: Python str -> Rust string literal. Characters in 0x20..=0x7E other than `"` and `\\` are kept, the rest become \\u{lowercase hex}."""
     out = []
     for ch in s:
         o = ord(ch)
@@ -176,11 +177,11 @@ def rust_str_lit(s):
 
 
 def batch_driver_source(specs):
-    """specs: [(모듈 이름, 생성된 .rs 절대 경로, params, inputs, 시작 id[, 반환 타입])] -> main.rs 문자열.
-    argv[1] = 평탄한 실행 id. 각 (프로그램, 모드, 입력)에 id가 하나씩 배정된다.
-    params 타입 문자열: "i64", "bool", "array", "array_u8", "array_bool", "str", "Option<i64>", "Result<i64>",
-    그 밖은 사용자 타입 이름 (구조체/열거형 값 dict 를 `<모듈>::Point { .. }` 식으로 만든다).
-    출력은 `{:?}`; 반환 타입이 "str" 이면 `{:?}` 로 `.as_bytes()` (바이트 정수 list, G2_Q1_IMPL 5.0)."""
+    """specs: [(module name, absolute path of the generated .rs, params, inputs, start id[, return type])] -> main.rs string.
+    argv[1] = flat run id. One id is assigned to each (program, mode, input).
+    params type strings: "i64", "bool", "array", "array_u8", "array_bool", "str", "Option<i64>", "Result<i64>",
+    anything else is a user type name (struct/enum value dicts are built as `<module>::Point { .. }`).
+    Output uses `{:?}`; if the return type is "str", `{:?}` of `.as_bytes()` (list of byte integers, G2_Q1_IMPL 5.0)."""
     L = ['#![allow(dead_code, unused_imports)]']
     for spec in specs:
         modname, gen_rs = spec[0], spec[1]
@@ -215,7 +216,7 @@ def batch_driver_source(specs):
                 elif isinstance(v, dict) and ("struct" in v or "enum" in v):
                     parts.append("std::hint::black_box(%s)" % rust_value(modname, v))
                 else:
-                    raise ValueError("지원하지 않는 매개변수 타입: %r" % (ty,))
+                    raise ValueError("unsupported parameter type: %r" % (ty,))
             if ret == "str":
                 L.append('        %d => { %s println!("{:?}", %s::f(%s).as_bytes()); }'
                          % (start + idx, " ".join(decl), modname, ", ".join(parts)))
@@ -227,7 +228,7 @@ def batch_driver_source(specs):
 
 
 def _sig_type(ty):
-    """소스 타입 문자열(공백 제거됨) -> 퍼저 타입 문자열. [i64] 는 기존대로 매개변수 "array"."""
+    """Source type string (whitespace removed) -> fuzzer type string. [i64] stays "array" as a parameter, as before."""
     if ty == "[u8]":
         return "array_u8"
     if ty == "[bool]":
@@ -236,10 +237,10 @@ def _sig_type(ty):
 
 
 def signature_from_src(src):
-    # 반환형: i64 / bool / [i64] / [u8] / [bool] / str / () / Option<i64> / Result<i64> / 사용자 타입 (꺾쇠·대괄호 허용)
+    # return type: i64 / bool / [i64] / [u8] / [bool] / str / () / Option<i64> / Result<i64> / user type (angle and square brackets allowed)
     m = re.search(r"fn\s+f\s*\(([^)]*)\)\s*->\s*(\[\s*(?:i64|u8|bool)\s*\]|\(\s*\)|\w+(?:\s*<[^<>]*>)?)", src)
     if not m:
-        raise ValueError("fn f(...) -> T 시그니처를 찾지 못함")
+        raise ValueError("could not find a fn f(...) -> T signature")
     params = []
     for p in [s.strip() for s in m.group(1).split(",") if s.strip()]:
         name, ty = [t.strip() for t in p.split(":", 1)]
@@ -247,11 +248,11 @@ def signature_from_src(src):
         params.append([name, _sig_type(ty)])
     ret = re.sub(r"\s+", "", m.group(2))
     if ret in ("[u8]", "[bool]"):
-        ret = _sig_type(ret)    # 기존 "[i64]" 표기는 그대로 둔다
+        ret = _sig_type(ret)    # keep the existing "[i64]" notation as is
     return params, ret
 
 
-# ---------------------------------------------------------------- 1~2단계: 생성 + 검증
+# ---------------------------------------------------------------- phases 1-2: generate + verify
 
 def phase_a(case, work):
     rec = {"name": case["name"], "src": case["src"], "params": case["params"], "ret": case["ret"],
@@ -267,13 +268,13 @@ def phase_a(case, work):
     except oracle.OracleUnsupported as e:
         rec["status"], rec["detail"] = "oracle_unsupported", str(e)
         return rec
-    except Exception as e:  # OracleParseError 포함
+    except Exception as e:  # includes OracleParseError
         rec["status"], rec["detail"] = "oracle_parse_error", "%s: %s" % (type(e).__name__, e)
         return rec
     rec["nv_rs"] = os.path.join(d, "rust_safe_gen.rs")
     rec["ver_rs"] = os.path.join(d, "rust_proof_gen.rs")
-    # pruvc 한 번 호출이 Rust 출력과 LLVM 출력(.ll + bindings)을 함께 만든다 (--also-llvm).
-    # 재사용된 작업 폴더의 옛 파일을 집어 쓰지 않도록 호출 전에 출력 경로를 먼저 지운다.
+    # One pruvc invocation produces both the Rust output and the LLVM output (.ll + bindings) (--also-llvm).
+    # Output paths are removed before the call so stale files in a reused work folder are not picked up.
     llvm_paths = {}
     for lname in ("llvm-safe", "llvm-proof"):
         llvm_paths[lname] = (os.path.join(d, lname + ".ll"), os.path.join(d, lname + "_gen.rs"))
@@ -295,7 +296,7 @@ def phase_a(case, work):
         rec["failures"].append({"kind": "timeout", "detail": "pruvc --no-verify (rust+llvm) exit %d: %s"
                                                           % (rc, (so + se).strip()[-400:])})
         return rec
-    if rc not in (0, 1):  # 음수(신호/크래시), 2(사용법), 3(내부 오류) 등은 모두 실패
+    if rc not in (0, 1):  # negative (signal/crash), 2 (usage), 3 (internal error), etc. are all failures
         rec["status"] = "failed"
         rec["failures"].append({"kind": "internal_error", "detail": "pruvc --no-verify (rust+llvm) exit %d: %s"
                                                           % (rc, (so + se).strip()[-400:])})
@@ -308,8 +309,8 @@ def phase_a(case, work):
         else:
             rec["status"] = "failed"
             rec["failures"].append({"kind": "internal_error",
-                                    "detail": "pruvc --no-verify exit 1, 진단 stage=%s"
-                                              % (sorted(str(s) for s in stages) or "없음")})
+                                    "detail": "pruvc --no-verify exit 1, diagnostic stage=%s"
+                                              % (sorted(str(s) for s in stages) or "none")})
         return rec
     pll, prs = llvm_paths["llvm-proof"]
     clear_outputs([rec["ver_rs"], pll, prs])
@@ -332,7 +333,7 @@ def phase_a(case, work):
     return rec
 
 
-# ---------------------------------------------------------------- 3~4단계: 입력 선택 + clang 준비 + 빌드
+# ---------------------------------------------------------------- phases 3-4: input selection + clang preparation + build
 
 def safe_check(prog, args):
     try:
@@ -352,20 +353,20 @@ def choose_inputs(rec, args, fixed=None):
         ok_l, bad_l, seen = [], [], set()
         n_err, n_cand = 0, 0
         for a in cands:
-            key = json.dumps(a, sort_keys=True)   # Option/Result dict 도 같은 키
+            key = json.dumps(a, sort_keys=True)   # Option/Result dicts get the same key
             if key in seen:
                 continue
             seen.add(key)
             n_cand += 1
             st = safe_check(prog, a)
             if st == "error":
-                n_err += 1      # 조용히 버리지 않고 센다
+                n_err += 1      # counted rather than silently dropped
                 continue
             (ok_l if st == "ok" else bad_l).append(a)
         rec["input_errors"] = n_err
         if n_cand and n_err == n_cand:
             rec["failures"].append({"kind": "harness_error",
-                                    "detail": "입력 후보 %d개 전부 requires 검사에서 예외(error)" % n_cand})
+                                    "detail": "all %d input candidates raised an exception (error) in the requires check" % n_cand})
         n_ok = max(1, args.inputs * 3 // 4)
         n_bad = max(0, args.inputs - n_ok)
         sel_ok, sel_bad = ok_l[:n_ok], bad_l[:n_bad]
@@ -375,7 +376,7 @@ def choose_inputs(rec, args, fixed=None):
             sel_ok = ok_l[:n_ok + (n_bad - len(sel_bad))]
         inputs = sel_ok + sel_bad
         if not inputs and not any(f.get("kind") == "harness_error" for f in rec["failures"]):
-            rec["failures"].append({"kind": "harness_error", "detail": "고른 입력이 0개 (후보 %d개, error %d개)"
+            rec["failures"].append({"kind": "harness_error", "detail": "0 inputs selected (%d candidates, %d errors)"
                                     % (n_cand, n_err)})
     rec["inputs"] = inputs
     rec["req"] = [safe_check(prog, a) for a in inputs]
@@ -383,11 +384,11 @@ def choose_inputs(rec, args, fixed=None):
     rec["oracle_safe"] = [oracle_run(prog, a, "safe") for a in inputs]
     if rec["status"] == "verified":
         rec["oracle_proof"] = [oracle_run(prog, a, "proof") for a in inputs]
-    rec["oracle"] = rec["oracle_safe"]  # 호환용: 안전 모드 결과
+    rec["oracle"] = rec["oracle_safe"]  # for compatibility: the safe-mode results
 
 
 def oracle_run(prog, a, mode):
-    """오라클 한 번 실행. mode 인자를 모르는 옛 오라클이면 mode 없이 부른다."""
+    """Run the oracle once. With an old oracle that does not know the mode argument, call it without mode."""
     def fresh():
         return [deep_copy_arg(v) for v in a]
     try:
@@ -404,22 +405,23 @@ NO_MANGLE_RE = re.compile(r"^[ \t]*#\[no_mangle\][ \t]*\n", re.M)
 
 
 def prep_llvm(rec, mode, rt_o):
-    """phase_a 가 pruvc --also-llvm 로 만든 .ll/bindings(rec['llvm_files'][name])를 읽어
-    심볼을 고유하게 바꾼 .ll 사본 -> clang .o. pruvc 는 여기서 부르지 않는다.
-    G2 기호: 바꾸는 것은 `pruv_abi_` 접두 하나뿐이다. `pruv_abi_<f>__typed`(str/[bool] 매개변수)도 같은 접두라
-    .ll 정의·bindings extern·호출이 함께 바뀐다. `pruv_check_utf8`/`pruv_check_bool`/`pruv_copy_v2`/
-    `pruv_str_boundary`/`pruv_runtime_rust_allocator_v2` 는 공유 runtime.o(-DPRUV_RUST_ALLOCATOR)가 정의하므로
-    바꾸지 않는다. `Pruv__Str` 등 repr(C) 구조체는 모듈별 `mod` 안에 있어 겹치지 않는다.
-    -> (art 또는 None, 실패 종류 또는 None, 오류 문장 또는 None). 원본 .ll/.rs는 rec['dir']에 그대로 둔다.
-    건전성: proof 모드 산출물은 rec['status'] == 'verified' 일 때만 쓴다."""
+    """Read the .ll/bindings (rec['llvm_files'][name]) that phase_a produced with pruvc --also-llvm,
+    make a .ll copy with uniquified symbols -> clang .o. pruvc is not called here.
+    G2 symbols: the only thing rewritten is the `pruv_abi_` prefix. `pruv_abi_<f>__typed` (str/[bool] parameters) shares
+    that prefix, so the .ll definitions, bindings externs, and calls change together. `pruv_check_utf8`/`pruv_check_bool`/
+    `pruv_copy_v2`/`pruv_str_boundary`/`pruv_runtime_rust_allocator_v2` are defined by the shared runtime.o
+    (-DPRUV_RUST_ALLOCATOR), so they are not rewritten. repr(C) structs such as `Pruv__Str` live inside a per-module
+    `mod`, so they do not collide.
+    -> (art or None, failure kind or None, error message or None). The original .ll/.rs stay untouched in rec['dir'].
+    Soundness: proof-mode artifacts are used only when rec['status'] == 'verified'."""
     name, backend, safe = mode
     d = rec["dir"]
     tag = "p%dl%d" % (rec["idx"], 1 if safe else 0)
     if not safe and rec["status"] != "verified":
-        return None, "harness_error", "%s: proof 모드인데 status=%s (verified 아님)" % (name, rec["status"])
+        return None, "harness_error", "%s: proof mode but status=%s (not verified)" % (name, rec["status"])
     files = rec.get("llvm_files", {}).get(name)
     if not files or not os.path.exists(files[0]) or not os.path.exists(files[1]):
-        return None, "harness_error", ("%s: phase_a 가 만든 LLVM 출력 없음 (llvm_files=%s)"
+        return None, "harness_error", ("%s: no LLVM output produced by phase_a (llvm_files=%s)"
                                        % (name, files))
     ll, gen = files
     with open(ll) as fh:
@@ -429,13 +431,13 @@ def prep_llvm(rec, mode, rt_o):
     n_ll = ll_text.count("@pruv_abi_")
     n_rs = rs_text.count("pruv_abi_")
     if n_ll < 1 or n_rs < 1:
-        return None, "harness_error", ("%s: 심볼 재작성 대상 없음 (.ll @pruv_abi_ %d개, bindings pruv_abi_ %d개)"
+        return None, "harness_error", ("%s: nothing to rewrite (.ll @pruv_abi_ count %d, bindings pruv_abi_ count %d)"
                                        % (name, n_ll, n_rs))
     rw_ll = os.path.join(d, name + "_rw.ll")
     write(rw_ll, ll_text.replace("@pruv_abi_", "@pruv_abi_%s_" % tag))
     rs_new = rs_text.replace("pruv_abi_", "pruv_abi_%s_" % tag)
     if rs_new.count("pruv_abi_%s_" % tag) != n_rs:
-        return None, "harness_error", "%s: bindings 재작성 개수 불일치" % name
+        return None, "harness_error", "%s: bindings rewrite count mismatch" % name
     gen_o = os.path.join(d, name + "_gen.o")
     rc, so, se = run_cmd([CLANG, "-O2", CPU_FLAG, "-Wno-override-module", "-c", rw_ll, "-o", gen_o], 300)
     if rc != 0:
@@ -462,13 +464,13 @@ def phase_b(rec, args, rt_o, fixed=None):
         else:
             rec["build_errors"][name] = err
             rec["failures"].append({"kind": "build_error", "mode": name, "detail": err})
-    rec["arts"] = arts  # 입력 선택까지 끝난 뒤에만 존재 -> 배치 빌드 대상
+    rec["arts"] = arts  # exists only after input selection is done -> target of the batch build
     return rec
 
 
 def build_binary(recs, backend, label, work, rt_o, only_mode=None):
-    """recs의 (프로그램, 모드) 모듈을 한 실행 파일로. -> (exe 또는 None, 오류 문장 또는 None).
-    만들 모듈이 없으면 (None, None). 성공하면 rec['bins'][모드], rec['ids'][모드]를 채운다."""
+    """Build the (program, mode) modules of recs into one executable. -> (exe or None, error message or None).
+    (None, None) if there is no module to build. On success, fills rec['bins'][mode] and rec['ids'][mode]."""
     entries, links = [], []
     for rec in recs:
         for mode in rec["modes"]:
@@ -482,7 +484,7 @@ def build_binary(recs, backend, label, work, rt_o, only_mode=None):
             else:
                 modname = "p%d_l%s" % (rec["idx"], "safe" if safe else "proof")
                 gen = os.path.join(rec["dir"], "%s_%s_bind.rs" % (name, label))
-                # pruv_host_* 의 #[no_mangle]은 바이너리의 첫 LLVM 모듈에만 둔다
+                # the #[no_mangle] of pruv_host_* stays only on the first LLVM module of the binary
                 write(gen, art["rs"] if not entries else NO_MANGLE_RE.sub("", art["rs"]))
                 links.append(art["o"])
             entries.append((rec, name, modname, os.path.abspath(gen)))
@@ -512,8 +514,8 @@ def build_binary(recs, backend, label, work, rt_o, only_mode=None):
 
 
 def build_group(recs, backend, label, work, rt_o):
-    """배치 하나(백엔드 하나)를 빌드. 실패하면 프로그램별로 다시 빌드해 실패한 프로그램만 build_error.
-    -> 만든 실행 파일 수"""
+    """Build one batch (one backend). On failure, rebuild per program so only the failing programs get build_error.
+    -> number of executables built"""
     exe, err = build_binary(recs, backend, label, work, rt_o)
     if exe is None and err is None:
         return 0
@@ -521,7 +523,7 @@ def build_group(recs, backend, label, work, rt_o):
         return 1
     if len(recs) > 1:
         return sum(build_group([r], backend, "%s_p%d" % (label, r["idx"]), work, rt_o) for r in recs)
-    # 프로그램 하나: 증명·안전 모듈을 따로 빌드해 실패한 모드만 build_error 로 남긴다
+    # single program: build the proof and safe modules separately and keep build_error only for the failing mode
     rec, n = recs[0], 0
     for mode in rec["modes"]:
         name = mode[0]
@@ -547,7 +549,7 @@ def build_group_safe(recs, backend, label, work, rt_o):
 
 
 def build_all(progs, args, work, rt_o):
-    """준비된 프로그램을 --batch개씩 묶어 배치마다 rust 1개 + llvm 1개 실행 파일을 병렬 빌드. -> 실행 파일 수"""
+    """Bundle the prepared programs --batch at a time and build one rust and one llvm executable per batch in parallel. -> number of executables"""
     ready = [r for r in progs if "arts" in r]
     size = max(1, args.batch)
     total = 0
@@ -562,7 +564,7 @@ def build_all(progs, args, work, rt_o):
     return total
 
 
-# ---------------------------------------------------------------- 5단계: 실행
+# ---------------------------------------------------------------- phase 5: run
 
 def run_one(exe, rid):
     rc, so, se = run_cmd([exe, str(rid)], 10)
@@ -575,7 +577,7 @@ def run_one(exe, rid):
 
 
 def run_all(progs, jobs):
-    """모든 (프로그램, 모드, 입력)을 id로 한 번씩 병렬 실행해 rec['runs'][모드][k]에 채운다."""
+    """Run every (program, mode, input) once by id in parallel and fill rec['runs'][mode][k]."""
     tasks = []
     for rec in progs:
         rec["runs"] = {}
@@ -597,10 +599,10 @@ def run_all(progs, jobs):
                 rec["runs"][name][k] = {"exit": -998, "stdout": "", "pruv": ""}
             done += 1
             if done % 500 == 0:
-                print("[실행] %d/%d" % (done, len(tasks)), flush=True)
+                print("[run] %d/%d" % (done, len(tasks)), flush=True)
 
 
-# ---------------------------------------------------------------- 6단계: 검사
+# ---------------------------------------------------------------- phase 6: check
 
 def expected_stdout(o):
     lines = ["%s\n" % str(l).rstrip("\n") for l in (o.get("output") or [])]
@@ -609,12 +611,12 @@ def expected_stdout(o):
 
 
 def fault_stdout(o):
-    """오류 직전까지 오라클이 찍은 줄들 (없으면 빈 문자열)."""
+    """Lines the oracle printed up to the fault (empty string if none)."""
     return "".join("%s\n" % str(l).rstrip("\n") for l in (o.get("output") or []))
 
 
 def outcome_key(o):
-    """오라클 결과가 같은지 비교하는 키: (kind, value, output, detail 접두어)."""
+    """Key for comparing whether oracle results are the same: (kind, value, output, detail prefix)."""
     kind = o.get("kind")
     pre = None
     if kind in FAULT_KINDS:
@@ -626,14 +628,14 @@ def outcome_key(o):
 
 
 def mode_oracle(rec, m, k):
-    """모드 m의 기대 결과: 증명 모드는 oracle_proof, 안전 모드는 oracle_safe."""
+    """Expected result of mode m: oracle_proof for proof modes, oracle_safe for safe modes."""
     key = "oracle_proof" if m.endswith("-proof") else "oracle_safe"
     lst = rec.get(key) or rec["oracle"]
     return lst[k]
 
 
 def check(rec):
-    """실패 목록을 돌려주고, 끝까지 비교하지 못한(oracle limit) 수는 rec['incomplete']에 쓴다."""
+    """Return the failure list; the count of comparisons that could not be completed (oracle limit) goes into rec['incomplete']."""
     fails = []
     incomplete = 0
     modes = list(rec["runs"])
@@ -642,28 +644,28 @@ def check(rec):
         runs = {m: rec["runs"][m][k] for m in modes}
         orc = {m: mode_oracle(rec, m, k) for m in modes}
         sigs = {m: (runs[m]["exit"], runs[m]["stdout"], runs[m]["pruv"]) for m in modes}
-        # 1) 건전성: limit 건너뛰기보다 먼저 (limit 결과도 contract_failures를 가질 수 있다)
+        # 1) soundness: before skipping limit (a limit result can also carry contract_failures)
         if verified:
             op = (rec.get("oracle_proof") or rec["oracle"])[k]
             pk = op.get("kind")
             if pk == "requires_undefined" and "i128" not in str(op.get("detail")):
-                # 명세 A: 정의역이 증명됐으니 requires undefined 는 i128 넘침·반복 예산으로만 날 수 있다
+                # Spec A: the domain was proven, so requires undefined can arise only from i128 overflow or the iteration budget
                 fails.append({"kind": "unsound", "input": k,
-                              "detail": "검증됨인데 requires 가 정의역 밖에서 평가됨: %s" % op.get("detail")})
+                              "detail": "verified but requires was evaluated outside its domain: %s" % op.get("detail")})
             elif rec["req"][k] == "ok" and (pk in FAULT_KINDS or op.get("contract_failures")):
                 fails.append({"kind": "unsound", "input": k,
-                              "detail": "검증됨 + requires 만족인데 oracle(proof)=%s (%s) contract_failures=%s"
+                              "detail": "verified + requires satisfied but oracle(proof)=%s (%s) contract_failures=%s"
                                         % (pk, op.get("detail"), op.get("contract_failures"))})
-        # 2) 오라클 예외 (같은 결과 객체는 한 번만)
+        # 2) oracle exceptions (the same result object only once)
         seen_err = set()
         for m in modes:
             if orc[m].get("kind") == "oracle_error" and id(orc[m]) not in seen_err:
                 seen_err.add(id(orc[m]))
                 fails.append({"kind": "oracle_error", "input": k, "mode": m, "detail": orc[m].get("detail")})
-        # 3) 모드 일치: 기대 결과가 같은 모드끼리는 정확히 같아야 하고, rust-X == llvm-X 는 항상 같아야 한다
+        # 3) mode agreement: modes with the same expected outcome must match exactly, and rust-X == llvm-X must always match
         groups = {}
         for m in modes:
-            # limit 은 확정 결과가 아니다: 같은 limit 이라도 실제 실행은 모드마다 정당하게 다를 수 있다
+            # limit is not a definitive result: even with the same limit, actual runs may legitimately differ per mode
             if orc[m].get("kind") not in ("oracle_error", "limit"):
                 groups.setdefault(outcome_key(orc[m]), []).append(m)
         pairs = set()
@@ -677,13 +679,13 @@ def check(rec):
         bad = set()
         for a, b in sorted(pairs):
             if TIMEOUT_RC in (runs[a]["exit"], runs[b]["exit"]):
-                continue  # 시간 초과는 run_timeout / incomplete 로 따로 센다
+                continue  # timeouts are counted separately as run_timeout / incomplete
             if sigs[a] != sigs[b]:
                 bad.update((a, b))
         if bad:
             fails.append({"kind": "mode_mismatch", "input": k,
                           "detail": "; ".join("%s=%r" % (m, sigs[m]) for m in modes if m in bad)})
-        # 4) 모드별 오라클 비교
+        # 4) per-mode oracle comparison
         for m in modes:
             o = orc[m]
             okind = o.get("kind")
@@ -691,10 +693,10 @@ def check(rec):
             if okind == "oracle_error":
                 continue
             if okind == "limit":
-                incomplete += 1  # 실행이 시간 초과였든 아니든 끝까지 비교하지 못함
+                incomplete += 1  # whether or not the run timed out, the comparison could not be completed
                 continue
             if run["exit"] == TIMEOUT_RC:
-                fails.append({"kind": "run_timeout", "input": k, "mode": m, "detail": "10초 초과"})
+                fails.append({"kind": "run_timeout", "input": k, "mode": m, "detail": "exceeded 10 s"})
                 continue
             if okind == "ok":
                 want = expected_stdout(o)
@@ -715,7 +717,7 @@ def check(rec):
     return fails
 
 
-# ---------------------------------------------------------------- 저장 / 출력
+# ---------------------------------------------------------------- save / print
 
 def short(v, n=60):
     s = json.dumps(v, default=str)
@@ -739,13 +741,13 @@ def save_failure(out_dir, rec, kind, items):
     write(os.path.join(d, "inputs.json"), json.dumps(rec.get("inputs", []), indent=1))
     res = {"name": rec["name"], "status": rec["status"], "params": rec["params"], "ret": rec["ret"],
            "failures": items, "build_errors": rec.get("build_errors", {}), "inputs": rec_results(rec)}
-    if (rec.get("case") or {}).get("g2"):   # g2 case 만 (기존 case 의 results.json 은 그대로)
+    if (rec.get("case") or {}).get("g2"):   # g2 cases only (results.json of existing cases is unchanged)
         res["g2"] = True
         res["g2_features"] = rec["case"].get("g2_features", [])
     write(os.path.join(d, "results.json"), json.dumps(res, indent=1, default=str))
     write(os.path.join(d, "pruvc_output.txt"),
           "".join("== %s ==\n%s\n" % (k, v) for k, v in rec["logs"].items()))
-    # 이 프로그램 자신의 (재작성하지 않은) 생성 파일
+    # this program's own generated files (not rewritten)
     try:
         gd = os.path.join(d, "gen")
         os.makedirs(gd, exist_ok=True)
@@ -758,10 +760,10 @@ def save_failure(out_dir, rec, kind, items):
 
 def print_table(rec):
     modes = list(rec.get("runs", {}))
-    print("프로그램 %s: 상태=%s 코드=%s" % (rec["name"], rec["status"], ",".join(rec.get("codes", [])) or "-"))
+    print("program %s: status=%s codes=%s" % (rec["name"], rec["status"], ",".join(rec.get("codes", [])) or "-"))
     for m, e in rec.get("build_errors", {}).items():
-        print("  빌드 실패 %s: %s" % (m, e[:200].replace("\n", " ")))
-    print("  %-3s %-34s %-28s %s" % ("#", "인자 (requires)", "oracle", " | ".join(modes)))
+        print("  build failed %s: %s" % (m, e[:200].replace("\n", " ")))
+    print("  %-3s %-34s %-28s %s" % ("#", "args (requires)", "oracle", " | ".join(modes)))
     for k, args in enumerate(rec.get("inputs", [])):
         o = rec["oracle"][k]
         osum = "%s %s" % (o.get("kind"), o.get("value") if o.get("kind") == "ok" else (o.get("detail") or ""))
@@ -773,7 +775,7 @@ def print_table(rec):
 
 
 def guard(fn, rec, *a):
-    """작업 스레드 예외를 하네스 실패로 기록."""
+    """Record a worker-thread exception as a harness failure."""
     try:
         return fn(rec, *a)
     except Exception:
@@ -781,7 +783,7 @@ def guard(fn, rec, *a):
         return rec
 
 
-# ---------------------------------------------------------------- 재실행
+# ---------------------------------------------------------------- replay
 
 def replay(path, args):
     if os.path.isdir(path):
@@ -789,7 +791,7 @@ def replay(path, args):
         if not os.path.exists(pruv):
             cand = sorted(f for f in os.listdir(path) if f.endswith(".pruv"))
             if not cand:
-                print(".pruv 파일이 없습니다: " + path)
+                print("no .pruv file found: " + path)
                 return 2
             pruv = os.path.join(path, cand[0])
     else:
@@ -800,7 +802,7 @@ def replay(path, args):
         alt = os.path.splitext(pruv)[0] + ".inputs.json"
         inp = alt if os.path.exists(alt) else None
     if inp is None:
-        print("inputs.json을 찾지 못했습니다: " + base)
+        print("could not find inputs.json: " + base)
         return 2
     src = open(pruv).read()
     inputs = json.load(open(inp))
@@ -808,40 +810,40 @@ def replay(path, args):
     case = {"name": "replay_" + os.path.splitext(os.path.basename(pruv))[0], "src": src, "entry": "f",
             "params": params, "ret": ret, "input_hints": {}}
     if any(t in ("array_u8", "array_bool", "str") for t in [p[1] for p in params] + [ret]):
-        case["g2"] = True   # G2 타입(드라이버는 params/ret 문자열만 본다); g2_features 는 저장본에 없으면 비움
+        case["g2"] = True   # G2 types (the driver only looks at the params/ret strings); g2_features is left empty if the saved copy has none
         case["g2_features"] = []
     work = tempfile.mkdtemp(prefix="pruvfuzz_replay_%s_" % driver().name)
     try:
         rt_o = build_runtime(work)
         rec = phase_a(case, work)
         if "prog" not in rec or rec["status"] not in ("verified", "rejected"):
-            print("상태=%s %s %s" % (rec["status"], rec.get("detail", ""), rec["failures"]))
+            print("status=%s %s %s" % (rec["status"], rec.get("detail", ""), rec["failures"]))
             return 1
         rec["idx"] = 0
         guard(phase_b, rec, args, rt_o, inputs)
-        build_all([rec], args, work, rt_o)  # 크기 1 배치, 본 실행과 같은 경로
+        build_all([rec], args, work, rt_o)  # batch of size 1, same path as the main run
         run_all([rec], args.jobs)
         if "runs" in rec:
             rec["failures"] += check(rec)
         if "oracle" in rec:
             print_table(rec)
         for f in rec["failures"]:
-            print("실패 [%s] 입력=%s 모드=%s: %s" % (f["kind"], f.get("input", "-"), f.get("mode", "-"),
-                                                 str(f["detail"])[:400]))
-        print("끝까지 비교하지 못함(oracle limit) %d건" % rec.get("incomplete", 0))
-        print("실패 %d건" % len(rec["failures"]))
+            print("failure [%s] input=%s mode=%s: %s" % (f["kind"], f.get("input", "-"), f.get("mode", "-"),
+                                                     str(f["detail"])[:400]))
+        print("comparisons not completed (oracle limit): %d" % rec.get("incomplete", 0))
+        print("failures: %d" % len(rec["failures"]))
         return 1 if rec["failures"] else 0
     finally:
         if args.keep_work:
-            print("작업 폴더: " + work)
+            print("work folder: " + work)
         else:
             shutil.rmtree(work, ignore_errors=True)
 
 
-# ---------------------------------------------------------------- 본 실행
+# ---------------------------------------------------------------- main run
 
 def main():
-    ap = argparse.ArgumentParser(description="Pruv 차분 퍼징")
+    ap = argparse.ArgumentParser(description="Pruv differential fuzzing")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--programs", type=int, default=100)
     ap.add_argument("--inputs", type=int, default=8)
@@ -849,13 +851,13 @@ def main():
     ap.add_argument("--rejected-sample", type=int, default=30)
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--out", default=None)
-    ap.add_argument("--batch", type=int, default=25, help="실행 파일 하나에 묶을 프로그램 수")
+    ap.add_argument("--batch", type=int, default=25, help="number of programs to bundle into one executable")
     ap.add_argument("--avoid-known", default="",
-                    help="쉼표로 구분한 이미 보고한 결함 id (예: fz01). 생성기가 그 형태를 만들지 않는다")
+                    help="comma-separated ids of defects already reported (e.g. fz01); the generator will not produce that shape")
     ap.add_argument("--keep-work", action="store_true")
     ap.add_argument("--replay", default=None)
     ap.add_argument("--g2", action="store_true",
-                    help="G2 모드: u8/bool 배열·str 템플릿만 생성, 출력 폴더 끝 _g2, 관문(g2_shortfall) 적용")
+                    help="G2 mode: generate only u8/bool array and str templates, output folder ends in _g2, gate (g2_shortfall) applies")
     CD.add_args(ap)
     args = ap.parse_args()
     global DRIVER
@@ -863,7 +865,7 @@ def main():
     generate.AVOID.update(x.strip() for x in args.avoid_known.split(",") if x.strip())
     if args.replay:
         return replay(args.replay, args)
-    # 컴파일러별 결과·작업 폴더: py 의 기본 경로(out/<seed>)는 그대로, rs 는 out/<seed>_rs
+    # per-compiler result/work folders: the py default path (out/<seed>) is unchanged, rs uses out/<seed>_rs
     out_dir = args.out or os.path.join(HERE, "out", str(args.seed) + ("" if DRIVER.name == "py" else "_" + DRIVER.name)
                                        + ("_g2" if args.g2 else ""))
     os.makedirs(out_dir, exist_ok=True)
@@ -877,10 +879,10 @@ def main():
     invalid_saved = 0
     try:
         rt_o = build_runtime(work)
-        # --- 1~2단계
+        # --- phases 1-2
         verified, rejected_all = [], []
         def candidate(i):
-            """후보 i 하나를 생성하고 phase_a까지 돌린다. 예외는 하네스 실패로 기록."""
+            """Generate candidate i and run it through phase_a. Exceptions are recorded as harness failures."""
             case = None
             try:
                 case = generate.generate_case(args.seed, i, g2=True) if args.g2 else generate.generate_case(args.seed, i)
@@ -915,17 +917,17 @@ def main():
                 for c in rec["codes"]:
                     rej_codes[c] = rej_codes.get(c, 0) + 1
                 rejected_all.append(rec)
-            if rec["failures"]:  # 1~2단계에서 생긴 실패(내부 오류, 시간 초과)는 바로 저장
+            if rec["failures"]:  # failures from phases 1-2 (internal error, timeout) are saved right away
                 _record_failures(out_dir, [rec], fail_kinds, failed_cases)
             if counts["candidates"] % 20 == 0:
-                print("[생성/검증] 후보 %d, 통과 %d, 거절 %d, 생성기 오류 %d"
+                print("[generate/verify] candidates %d, pass %d, reject %d, generator errors %d"
                       % (counts["candidates"], counts["verified"], counts["rejected"],
                          counts["generator_invalid"] + counts["oracle_unsupported"]
                          + counts["oracle_parse_error"]), flush=True)
 
-        # 스트리밍: 최대 jobs*2개를 진행 중으로 두고, 하나 끝날 때마다 다음 후보를 낸다.
-        # 충분히 모이거나 --max-candidates에 닿으면 제출만 멈추고, 낸 후보의 결과는 모두 거둔다.
-        # G2 모드는 셀 조건에서 빠지는 프로그램 몫으로 10%(거절은 +5)를 더 모은다(기존 경로는 그대로)
+        # Streaming: keep at most jobs*2 in flight and submit the next candidate whenever one finishes.
+        # Once enough are collected or --max-candidates is reached, stop submitting but collect the results of every candidate already submitted.
+        # G2 mode collects an extra 10% (+5 for rejected) to cover programs dropped by the counting condition (existing path unchanged)
         want_programs = args.programs + (args.programs // 10 if args.g2 else 0)
         want_rejected = args.rejected_sample + (5 if args.g2 else 0)
         nxt, cap = 0, max(args.jobs * 2, 2)
@@ -941,19 +943,19 @@ def main():
                 for f in done_set:
                     pending.discard(f)
                     handle(f.result())
-        # 완료 순서와 무관하게 재현되도록 후보 번호순으로 정렬; 초과 통과분은 빌드하지 않는다
+        # sort by candidate number so results reproduce regardless of completion order; surplus passing programs are not built
         verified.sort(key=lambda r: r["cand_idx"])
         rejected_all.sort(key=lambda r: r["cand_idx"])
         verified = verified[:want_programs]
         programs_short = len(verified) < args.programs
         if programs_short:
-            print("경고: 검증 통과 프로그램이 %d개뿐입니다 (요청 %d개, 후보 %d개)"
+            print("warning: only %d verified programs (requested %d, candidates %d)"
                   % (len(verified), args.programs, counts["candidates"]), flush=True)
         t1 = time.time()
         sample = rejected_all[:want_rejected]
         counts["rejected_built"] = len(sample)
         progs = verified + sample
-        # --- 3~4단계 (입력 선택 + clang 준비, 이어서 배치 빌드; pruvc 는 phase_a 에서 이미 끝남)
+        # --- phases 3-4 (input selection + clang preparation, then batch build; pruvc already finished in phase_a)
         for i, r in enumerate(progs):
             r["idx"] = i
         done = 0
@@ -963,14 +965,14 @@ def main():
                 f.result()
                 done += 1
                 if done % 20 == 0:
-                    print("[준비] %d/%d" % (done, len(progs)), flush=True)
+                    print("[prepare] %d/%d" % (done, len(progs)), flush=True)
         binaries_built = build_all(progs, args, work, rt_o)
-        print("[빌드] 실행 파일 %d개" % binaries_built, flush=True)
+        print("[build] %d executables" % binaries_built, flush=True)
         t2 = time.time()
-        # --- 5단계 (실행)
+        # --- phase 5 (run)
         run_all(progs, args.jobs)
         t3 = time.time()
-        # --- 6단계 (검사) + 저장
+        # --- phase 6 (check) + save
         inputs_run = 0
         outcome_counts = {}
         incomplete_total = 0
@@ -1013,9 +1015,9 @@ def main():
                           "total": round(t4 - t0, 2), "wall": round(time.time() - t0, 2)},
         }
         if args.g2:
-            # G2 모드에서만 키를 더한다. 통과 수에는 검증 통과(verified_used)와 안전 모드로 빌드·실행한 거절만 센다.
-            # 셀 조건(결정 11·G2_SPEC 8.3): g2 case, 입력이 --inputs 개 이상, 안전 모드 실행 결과가 모두 있음,
-            # 검증 통과분은 requires 를 만족하면서 오라클이 끝까지 비교한(limit 아님) 입력이 하나 이상.
+            # Keys are added only in G2 mode. The pass count includes only verified programs (verified_used) and rejected ones built and run in safe modes.
+            # Counting condition (decision 11, G2_SPEC 8.3): a g2 case, at least --inputs inputs, all safe-mode run results present,
+            # and for verified programs at least one input that satisfies requires and that the oracle compared to the end (not limit).
             def _ran(r, names):
                 runs = r.get("runs") or {}
                 return all(n in runs and runs[n] and all(x is not None and x["exit"] not in (TIMEOUT_RC, -998) for x in runs[n]) for n in names)
@@ -1048,36 +1050,36 @@ def main():
             if summary["g2_verified"] < args.programs or g2_rej_built < args.rejected_sample:
                 miss_v = max(0, args.programs - summary["g2_verified"])
                 miss_r = max(0, args.rejected_sample - g2_rej_built)
-                fail_kinds["g2_shortfall"] = miss_v + miss_r   # 모자란 프로그램 수 합
+                fail_kinds["g2_shortfall"] = miss_v + miss_r   # total number of missing programs
                 summary["g2_shortfall"] = {"verified_missing": miss_v, "rejected_built_missing": miss_r}
         write(os.path.join(out_dir, "summary.json"), json.dumps(summary, indent=2))
-        print("---- 요약 ----")
-        print("후보 %d (생성기 오류 %d, 오라클 미지원 %d) -> 통과 %d / 거절 %d %s"
+        print("---- summary ----")
+        print("candidates %d (generator errors %d, oracle unsupported %d) -> pass %d / reject %d %s"
               % (summary["candidates"], summary["generator_invalid"],
                  summary["oracle_unsupported"] + summary["oracle_parse_error"],
                  summary["verified"], summary["rejected"], json.dumps(rej_codes)))
-        print("실행한 입력 %d (프로세스 실행 %d), 소요 %.1fs (생성+검증 %.1f, 빌드 %.1f, 실행 %.1f)"
+        print("inputs run %d (process executions %d), elapsed %.1fs (generate+verify %.1f, build %.1f, run %.1f)"
               % (inputs_run, summary["executions"], summary["timings_s"]["total"],
                  summary["timings_s"]["generate_verify"], summary["timings_s"]["build"],
                  summary["timings_s"]["run"]))
-        print("입력 결과(상태/requires/oracle): " + json.dumps(summary["oracle_outcomes"]))
-        print("끝까지 비교하지 못함(oracle limit, 실패도 통과도 아님): %d건" % summary["incomplete"])
-        print("requires 만족 입력이 하나도 없는 프로그램: %d개 %s"
+        print("input outcomes (status/requires/oracle): " + json.dumps(summary["oracle_outcomes"]))
+        print("comparisons not completed (oracle limit, neither failure nor pass): %d" % summary["incomplete"])
+        print("programs with no input satisfying requires: %d %s"
               % (summary["no_sat_inputs"]["count"], json.dumps(summary["no_sat_inputs"]["names"])))
         if programs_short:
-            print("경고: 검증 통과 프로그램 %d개 < 요청 %d개 (programs_short)"
+            print("warning: verified programs %d < requested %d (programs_short)"
                   % (summary["verified_used"], args.programs))
         if args.g2:
-            print("G2: 검증 통과 %d (요청 %d), 거절 안전 모드 빌드 %d (요청 %d), 프로그램당 입력 최소 %d, 입력 부족 프로그램 %d, 태그 %s"
+            print("G2: verified %d (requested %d), rejected safe-mode builds %d (requested %d), min inputs per program %d, programs short of inputs %d, tags %s"
                   % (summary["g2_verified"], args.programs, summary["g2_rejected_built_safe_modes"],
                      args.rejected_sample, summary["g2_inputs_per_program_min"], summary["g2_short_inputs"],
                      json.dumps(summary["g2_features_verified"])))
-        print("실패: %s" % (json.dumps(fail_kinds) if fail_kinds else "없음"))
-        print("결과: " + out_dir)
+        print("failures: %s" % (json.dumps(fail_kinds) if fail_kinds else "none"))
+        print("results: " + out_dir)
         return 1 if fail_kinds else 0
     finally:
         if args.keep_work:
-            print("작업 폴더: " + work)
+            print("work folder: " + work)
         else:
             shutil.rmtree(work, ignore_errors=True)
 
@@ -1091,7 +1093,7 @@ def _record_failures(out_dir, recs, fail_kinds, failed_cases):
             fail_kinds[kind] = fail_kinds.get(kind, 0) + len(items)
             failed_cases.append(rec["name"])
             save_failure(out_dir, rec, kind, items)
-        rec["failures"] = []  # 중복 저장 방지
+        rec["failures"] = []  # prevent duplicate saving
 
 
 if __name__ == "__main__":

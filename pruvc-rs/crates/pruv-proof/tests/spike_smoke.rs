@@ -1,4 +1,4 @@
-//! 형식 스모크: 판정 값은 단언하지 않는다(z3 버전·시간에 좌우). 구조와 순서 규칙만 확인한다.
+//! Format smoke test: verdict values are not asserted (they depend on z3 version and timing). Only structure and ordering rules are checked.
 
 use pruv_proof::samples::{run_sample, sample_names};
 use serde_json::Value;
@@ -18,11 +18,11 @@ fn every_sample_has_well_formed_trace() {
             assert!(o["code"].as_str().is_some());
             let attempts = o["attempts"].as_array().expect("attempts");
             assert!(matches!(attempts.len(), 1 | 2), "{name}: attempts {}", attempts.len());
-            // 첫 시도는 lemmas=false, 둘째가 있으면 lemmas=true
+            // the first attempt is lemmas=false; a second one, if present, is lemmas=true
             assert_eq!(attempts[0]["lemmas"], Value::Bool(false));
             if attempts.len() == 2 {
                 assert_eq!(attempts[1]["lemmas"], Value::Bool(true));
-                assert_ne!(attempts[0]["result"], "unsat", "unsat 뒤에는 재시도하지 않는다");
+                assert_ne!(attempts[0]["result"], "unsat", "no retry after unsat");
             }
             for a in attempts {
                 assert!(a["smt2"].as_str().unwrap().starts_with("(set-option :timeout 8000)\n"));

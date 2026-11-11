@@ -1,7 +1,7 @@
-//! Pruv -> LLVM IR 텍스트 생성기 (llvmgen.py 1~1327행 + gen_llvm 이식).
-//! 목표: 같은 프로그램·모드에서 Python gen_llvm 의 첫 반환값과 바이트 동일.
-//! 규칙: 가변 상태(임시 번호·라벨 번호·스코프·임시 해제 목록·계약 환경)는 Python 과 같은 순서로 바꾼다.
-//! Python 의 None 은 문자열 "None" 으로 흉내 낸다(V 의 a/b 기본값).
+//! Pruv -> LLVM IR text generator (a port of llvmgen.py lines 1-1327 plus gen_llvm).
+//! Goal: for the same program and mode, byte-identical to the first return value of Python's gen_llvm.
+//! Rule: mutable state (temp numbers, label numbers, scopes, temp-free lists, contract environment) is changed in the same order as in Python.
+//! Python's None is imitated by the string "None" (the default of V's a/b).
 
 use crate::abi::{abi_of, AbiTarget};
 use crate::ast::*;
@@ -12,7 +12,7 @@ pub type R<T> = Result<T, String>;
 
 pub const SIGNED_MIN128: i128 = i128::MIN;
 pub const OPT: &str = "{ i1, i64 }";
-/// 계약 집합체 안에 저장되는 Option/Result
+/// Option/Result stored inside a contract aggregate
 pub const COPT: &str = "{ i1, i128 }";
 pub const ARR: &str = "{ ptr, i64 }";
 
@@ -34,7 +34,7 @@ pub const DECLS: &str = concat!(
     "declare { i128, i1 } @llvm.smul.with.overflow.i128(i128, i128)\n",
 );
 
-/// `[u8]` 프로그램에만 DECLS 바로 뒤에 붙는 선언(G2 A4 2.9절).
+/// Declarations appended right after DECLS only for `[u8]` programs (G2 A4 §2.9).
 pub const DECLS_U8: &str = concat!(
     "declare noalias ptr @pruv_alloc_u8(i64, i64) nounwind\n",
     "declare noalias ptr @pruv_copy_v2(ptr nocapture readonly, i64, i64, i64) nounwind\n",
@@ -42,10 +42,10 @@ pub const DECLS_U8: &str = concat!(
     "declare void @pruv_panic_elem(i64, ptr) noreturn cold nounwind\n",
 );
 
-/// G2 A5: `[bool]` 을 쓰는 프로그램에만 DECLS_U8 뒤에 붙는 선언.
+/// G2 A5: declarations appended after DECLS_U8 only for programs that use `[bool]`.
 pub const DECLS_BOOL: &str = "declare void @pruv_check_bool(ptr nocapture readonly, i64) nounwind\n";
 
-/// G2 B2: `str` 을 쓰는 프로그램에만 붙는 선언(DECLS_U8 뒤, DECLS_BOOL 뒤).
+/// G2 B2: declarations appended only for programs that use `str` (after DECLS_U8 and after DECLS_BOOL).
 pub const DECLS_STR: &str = concat!(
     "declare i32 @pruv_str_boundary(ptr nocapture readonly, i64, i64) nounwind willreturn memory(argmem: read)\n",
     "declare noalias ptr @pruv_substr(ptr nocapture readonly, i64, i64, i64) nounwind\n",
@@ -60,22 +60,22 @@ fn is_u8_ty(t: &Option<String>) -> bool {
     t.as_deref() == Some(ARRAY_U8)
 }
 
-/// G2 B2: str 값 (코드·계약 읽기는 u8 과 같은 글자)
+/// G2 B2: str value (code and contract reads use the same spelling as u8)
 fn is_strv(t: &Option<String>) -> bool {
     t.as_deref() == Some(STR)
 }
 
-/// G2 B2: 배열 또는 str 의 내부 타입 이름인가(`{ ptr, i64 }` 표현)
+/// G2 B2: whether this is the internal type name of an array or str (`{ ptr, i64 }` representation)
 fn is_arr_name(n: &str) -> bool {
     is_array_name(n) || n == STR
 }
 
-/// G2 A5: 바이트 배열(u8·bool·str) — GEP i8, copy/free v2 (1,1)
+/// G2 A5: byte arrays (u8, bool, str) — GEP i8, copy/free v2 (1,1)
 fn is_bytes_ty(t: &Option<String>) -> bool {
     matches!(t.as_deref(), Some(ARRAY_U8) | Some(ARRAY_BOOL) | Some(STR))
 }
 
-/// G2 A5: 배열 타입 이름 → V/Slot 에 싣는 ty (u8·bool·str 만 Some)
+/// G2 A5: array type name -> the ty carried in V/Slot (Some only for u8, bool, str)
 fn elem_ty(t: &str) -> Option<String> {
     match t {
         ARRAY_U8 => Some(ARRAY_U8.to_string()),
@@ -85,7 +85,7 @@ fn elem_ty(t: &str) -> Option<String> {
     }
 }
 
-/// 원소 IR 타입 E (바이트 배열이면 i8, 아니면 i64)
+/// Element IR type E (i8 for a byte array, otherwise i64)
 fn elem_ir(v: &V) -> &'static str {
     if is_bytes_ty(&v.ty) {
         "i8"
@@ -97,7 +97,7 @@ fn elem_ir(v: &V) -> &'static str {
 const NONE_ATTR: &str = "'NoneType' object has no attribute 'name'";
 const IDX_ERR: &str = "list index out of range";
 
-// ---------- 타입 보조 ----------
+// ---------- type helpers ----------
 
 pub fn mangle(n: &str) -> String {
     let mut out = String::new();
@@ -111,7 +111,7 @@ pub fn mangle(n: &str) -> String {
     out
 }
 
-/// Pruv 타입의 내부 SSA 타입
+/// The internal SSA type of a Pruv type
 pub fn lty(t: &str) -> String {
     match t {
         "i64" => "i64".to_string(),
@@ -159,7 +159,7 @@ pub fn vkind(t: &str) -> Kind {
     }
 }
 
-/// 집합체 안 값의 저장 타입(c: 계약/i128 형태)
+/// Storage type of a value inside an aggregate (c: contract/i128 form)
 pub fn st(t: &str, c: bool) -> String {
     match t {
         "i64" => {
@@ -197,7 +197,7 @@ fn t_variant_index(tt: &TypeTable, ty: &str, variant: &str) -> R<usize> {
     tt.variant_index(ty, variant).ok_or_else(|| format!("'{}' is not in list", variant))
 }
 
-/// 평탄화된 enum 타입 안에서 `variant` 의 i 번째 필드 저장 인덱스
+/// Storage index of the i-th field of `variant` inside the flattened enum type
 pub fn payload_index(tt: &TypeTable, ty: &str, variant: &str, i: usize) -> R<usize> {
     let mut base = 1usize;
     if let TypeDecl::Enum(e) = t_decl(tt, ty)? {
@@ -213,7 +213,7 @@ pub fn payload_index(tt: &TypeTable, ty: &str, variant: &str, i: usize) -> R<usi
     Err(format!("'{}'", variant))
 }
 
-/// W(T): 외부(pruv_abi_*) 형태의 i64 워드 수
+/// W(T): number of i64 words in the external (pruv_abi_*) form
 pub fn words(tt: &TypeTable, ty: &str) -> R<usize> {
     match ty {
         "i64" | "bool" => Ok(1),
@@ -266,10 +266,10 @@ pub fn type_defs(tt: &TypeTable) -> String {
     s
 }
 
-// ---------- 값·슬롯 ----------
+// ---------- values and slots ----------
 
-/// SSA 값. k 별 의미: i64|i1|i128, arr(a=ptr,b=len), opt(a=tag,b=payload), unit, agg(a=집합체 SSA, ty=타입).
-/// 슬롯(Slot)도 같은 모양이다(arr: a=ptr 슬롯, b=len 슬롯).
+/// SSA value. Meaning by k: i64|i1|i128, arr(a=ptr,b=len), opt(a=tag,b=payload), unit, agg(a=aggregate SSA, ty=type).
+/// A Slot has the same shape (arr: a=ptr slot, b=len slot).
 #[derive(Clone, Debug)]
 pub struct V {
     pub k: Kind,
@@ -295,7 +295,7 @@ impl V {
     }
 }
 
-/// 이름 바인딩: ("ssa", V) 또는 ("slot", Slot)
+/// Name binding: ("ssa", V) or ("slot", Slot)
 #[derive(Clone, Debug)]
 pub enum Bind {
     Ssa(V),
@@ -364,7 +364,7 @@ impl Default for Mod {
     }
 }
 
-/// 내부 매개변수 목록 [(타입, 이름)]
+/// Internal parameter list [(type, name)]
 pub fn ir_params(f: &Function) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for p in &f.params {
@@ -385,7 +385,7 @@ pub fn ir_params(f: &Function) -> Vec<(String, String)> {
     out
 }
 
-/// 내부 함수 정의의 매개변수 목록: 배열 포인터는 읽기 전용 빌림
+/// Parameter list of an internal function definition: array pointers are read-only borrows
 pub fn sig_text(params: &[(String, String)]) -> String {
     params
         .iter()
@@ -396,12 +396,12 @@ pub fn sig_text(params: &[(String, String)]) -> String {
         .join(", ")
 }
 
-/// guard 의 실패 블록에서 부르는 noreturn 호출(Python 람다 대응). 문자열 상수는 호출 시점에 등록한다.
+/// The noreturn call made from a guard's failure block (counterpart of a Python lambda). String constants are registered at call time.
 pub enum Fail {
     Panic1(&'static str, String),
     Oob(String, String),
     Requires(String, String),
-    /// u8 원소 범위 위반: (값 SSA, 범위 문구). 문자열은 fail 블록을 내보낼 때 등록한다.
+    /// u8 element range violation: (value SSA, range text). The string is registered when the fail block is emitted.
     Elem(String, &'static str),
 }
 
@@ -482,7 +482,7 @@ impl<'a> FnGen<'a> {
         }
     }
 
-    // ---------- 방출 ----------
+    // ---------- emission ----------
     pub fn ins(&mut self, text: String) -> R<()> {
         if self.dead {
             return Err(format!("llvmgen: internal error: instruction after terminator: {}", text));
@@ -542,7 +542,7 @@ impl<'a> FnGen<'a> {
         }
     }
 
-    /// cond != fail_when 일 때만 계속; 아니면 실패 블록에서 fail 호출
+    /// Continue only when cond != fail_when; otherwise call fail in the failure block
     pub fn guard(&mut self, cond: &str, fail: Fail, fail_when: bool) -> R<()> {
         let ok = self.label("ok");
         let bad = self.label("fail");
@@ -571,7 +571,7 @@ impl<'a> FnGen<'a> {
         s
     }
 
-    // ---------- 슬롯 / 스코프 ----------
+    // ---------- slots / scopes ----------
     pub fn new_slot(&mut self, name: &str, ty: &str) -> Slot {
         let kind = vkind(ty);
         let base = format!("%l{}.{}", self.nslot, mangle(name));
@@ -591,7 +591,7 @@ impl<'a> FnGen<'a> {
                 self.allocas.push(format!("{} = alloca ptr", a));
                 self.allocas.push(format!("{} = alloca i64", b));
                 let mut sl = V::with_b(Kind::Arr, a, b);
-                sl.ty = elem_ty(ty); // G2 A5: u8·bool 만 Some, 그 밖 None(기본값 그대로)
+                sl.ty = elem_ty(ty); // G2 A5: Some only for u8 and bool, None otherwise (default unchanged)
                 sl
             }
             Kind::Agg => {
@@ -700,8 +700,8 @@ impl<'a> FnGen<'a> {
         Ok(())
     }
 
-    // ---------- 사용자 집합체(G1) ----------
-    /// 값 v 의 저장 타입 st(ty, c) SSA
+    // ---------- user aggregates (G1) ----------
+    /// SSA of the storage type st(ty, c) of value v
     pub fn pack(&mut self, v: &V, ty: &str, c: bool) -> R<String> {
         if ty == "option" || ty == "result" {
             let (ot, pt) = if c { (COPT, "i128") } else { (OPT, "i64") };
@@ -751,10 +751,10 @@ impl<'a> FnGen<'a> {
     pub fn mk_struct(&mut self, e: &StructLit, c: bool) -> R<V> {
         let tt = self.tt;
         let ty = e.name.as_str();
-        // Python dict 처럼 이름으로 찾는다(감사: Vec 선형 탐색은 필드 수의 제곱). 같은 이름은 나중 값.
+        // Look up by name like a Python dict (audit: a linear Vec search is quadratic in the field count). For the same name, the later value wins.
         let mut vals: std::collections::HashMap<&str, V> = std::collections::HashMap::new();
         for fi in &e.fields {
-            // 소스 순서 평가
+            // Evaluate in source order
             let v = self.evf(&fi.value, c)?;
             vals.insert(fi.name.as_str(), v);
         }
@@ -786,7 +786,7 @@ impl<'a> FnGen<'a> {
         Ok(V::agg(acc, ty))
     }
 
-    /// 집합체 `base`(코드 형태)에서 중첩 struct 필드 `path` 를 v 로 바꾼 값
+    /// The aggregate `base` (code form) with the nested struct field `path` replaced by v
     pub fn set_path(&mut self, base: &V, ty: &str, path: &[String], v: &V) -> R<V> {
         let tt = self.tt;
         let fds = t_fields(tt, ty, None)?;
@@ -803,7 +803,7 @@ impl<'a> FnGen<'a> {
         Ok(V::agg(r, ty))
     }
 
-    /// 코드 값 -> 계약 값(i64 잎은 부호 확장; enum 은 활성 변형만 변환)
+    /// Code value -> contract value (i64 leaves are sign-extended; for an enum only the active variant is converted)
     pub fn to_c(&mut self, x: &V, ty: &str) -> R<V> {
         let tt = self.tt;
         match ty {
@@ -884,7 +884,7 @@ impl<'a> FnGen<'a> {
         Ok(acc)
     }
 
-    /// 두 계약 값의 구조적 동등 -> i1 (SSA 이름 또는 리터럴)
+    /// Structural equality of two contract values -> i1 (SSA name or literal)
     pub fn ceq(&mut self, l: &V, r: &V, ty: &str) -> R<String> {
         let tt = self.tt;
         match ty {
@@ -894,7 +894,7 @@ impl<'a> FnGen<'a> {
                 let te = self.op(format!("icmp eq i1 {}, {}", l.a, r.a))?;
                 let mut pe = self.op(format!("icmp eq i128 {}, {}", l.b, r.b))?;
                 if ty == "option" {
-                    // None 의 payload 는 비교하지 않는다
+                    // The payload of None is not compared
                     let nt = self.op(format!("xor i1 {}, true", l.a))?;
                     pe = self.op(format!("or i1 {}, {}", nt, pe))?;
                 }
@@ -929,7 +929,7 @@ impl<'a> FnGen<'a> {
                     cases.push(format!("i64 {}, label %{}", t_variant_index(tt, ty, &v.name)?, lb));
                 }
                 self.term(format!("switch i64 {}, label %{} [ {} ]", tl, dflt, cases.join(" ")))?;
-                self.place(&dflt); // 같은 태그, 필드 없는 변형
+                self.place(&dflt); // same tag, variant with no fields
                 entries.push(("true".to_string(), dflt.clone()));
                 self.br(&end)?;
                 for (v, lb) in vs.iter().zip(&lbls) {
@@ -957,7 +957,7 @@ impl<'a> FnGen<'a> {
         self.op(format!("insertvalue {} {}, i64 {}, 1", OPT, a, v.b))
     }
 
-    // ---------- 함수 틀 ----------
+    // ---------- function skeleton ----------
     pub fn bind_params(&mut self) -> R<()> {
         self.place("start");
         let f = self.f;
@@ -999,8 +999,8 @@ impl<'a> FnGen<'a> {
         }
     }
 
-    // ---------- 문 ----------
-    /// 블록을 자기 스코프로 낮춘다; 제어가 흘러 나올 수 있으면 true
+    // ---------- statements ----------
+    /// Lowers a block into its own scope; true if control can fall out of it
     pub fn run_block(&mut self, stmts: &[Stmt], bind: Vec<(String, Bind)>) -> R<bool> {
         self.push_scope();
         if !bind.is_empty() {
@@ -1064,7 +1064,7 @@ impl<'a> FnGen<'a> {
                     Bind::Slot(s) => s,
                     Bind::Ssa(_) => return Err(format!("llvmgen: field assignment to non-local {}", x.name)),
                 };
-                let v = self.ev(&x.value, false)?; // 오른쪽 먼저, 그다음 루트 load -> insertvalue 사슬 -> store
+                let v = self.ev(&x.value, false)?; // right side first, then root load -> insertvalue chain -> store
                 let root = self.load(&sl)?;
                 let ty = need_ty(&sl.ty)?.to_string();
                 let nv = self.set_path(&root, &ty, &x.fields, &v)?;
@@ -1074,12 +1074,12 @@ impl<'a> FnGen<'a> {
             Stmt::IndexAssign(x) => {
                 self.begin_temps();
                 let sl = self.lookup(&x.name)?.val().clone();
-                let i = self.ev(&x.index, false)?; // 인덱스 먼저, 그다음 값(모든 모드)
+                let i = self.ev(&x.index, false)?; // index first, then the value (all modes)
                 let v = self.ev(&x.value, false)?;
                 let a = self.load(&sl)?;
                 let g = self.index_ptr(&a, &i)?;
                 if a.ty.as_deref() == Some(ARRAY_BOOL) {
-                    // G2 A5: 값 범위 검사 없음
+                    // G2 A5: no value range check
                     let z = self.op(format!("zext i1 {} to i8", v.a))?;
                     self.ins(format!("store i8 {}, ptr {}", z, g))?;
                 } else if is_u8_ty(&a.ty) {
@@ -1149,7 +1149,7 @@ impl<'a> FnGen<'a> {
                     v = self.ev(val, true)?;
                     if v.k == Kind::Arr {
                         if let Expr::Var(var) = val {
-                            // 지역 배열을 내보낼 때: 슬롯을 비워 아래 정리가 해제하지 않게 한다
+                            // When returning a local array out: empty the slot so the cleanup below does not free it
                             let sl = self.lookup(&var.name)?.val().clone();
                             self.ins(format!("store ptr null, ptr {}", sl.a))?;
                             self.ins(format!("store i64 0, ptr {}", sl.b))?;
@@ -1214,7 +1214,7 @@ impl<'a> FnGen<'a> {
         }
     }
 
-    /// 사용자 enum 의 match: 태그 switch; payload 추출은 arm 블록 안에서만; default 는 unreachable
+    /// match on a user enum: tag switch; payload extraction only inside the arm block; default is unreachable
     pub fn user_match(&mut self, st: &Match, sv: &V) -> R<()> {
         let tt = self.tt;
         let ty = need_ty(&sv.ty)?.to_string();
@@ -1256,7 +1256,7 @@ impl<'a> FnGen<'a> {
         Ok(())
     }
 
-    // ---------- 코드 식 ----------
+    // ---------- code expressions ----------
     pub fn index_ptr(&mut self, a: &V, i: &V) -> R<String> {
         if !self.verified {
             let ok = self.op(format!("icmp ult i64 {}, {}", i.a, a.b))?;
@@ -1277,7 +1277,7 @@ impl<'a> FnGen<'a> {
         Ok(v)
     }
 
-    /// G2 B2: 리터럴 바이트(유효 UTF-8)를 전역 문자열로 등록하고 `@.str.N` 을 돌려준다.
+    /// G2 B2: registers the literal bytes (valid UTF-8) as a global string and returns `@.str.N`.
     fn str_global(&mut self, value: &[u8]) -> String {
         let text = String::from_utf8_lossy(value).into_owned();
         self.m.string(&text)
@@ -1312,7 +1312,7 @@ impl<'a> FnGen<'a> {
             Expr::IntLit(x) => Ok(V::new(Kind::I64, x.value.clone())),
             Expr::BoolLit(x) => Ok(V::new(Kind::I1, if x.value { "true" } else { "false" })),
             Expr::StrLit(x) => {
-                // G2 B2: 전역 문자열을 새 버퍼로 복사(빈 문자열이면 pruv_copy_v2 가 NULL)
+                // G2 B2: copy the global string into a new buffer (for an empty string pruv_copy_v2 gives NULL)
                 let g = self.str_global(&x.value);
                 let l = x.value.len().to_string();
                 let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", g, l))?;
@@ -1439,7 +1439,7 @@ impl<'a> FnGen<'a> {
             return Ok(V::new(Kind::I64, x.b));
         }
         if n == "alloc" {
-            let cnt = self.ev(arg(a, 0)?, false)?; // 모든 모드에서 소스 순서: n 다음 v
+            let cnt = self.ev(arg(a, 0)?, false)?; // source order in all modes: n, then v
             let v = self.ev(arg(a, 1)?, false)?;
             let u8a = is_u8_ty(&e.ty);
             if !self.verified {
@@ -1451,7 +1451,7 @@ impl<'a> FnGen<'a> {
                 }
             }
             if e.ty.as_deref() == Some(ARRAY_BOOL) {
-                // G2 A5: zext i1 → i64, pruv_alloc_u8 로 할당
+                // G2 A5: zext i1 -> i64, allocate with pruv_alloc_u8
                 let z = self.op(format!("zext i1 {} to i64", v.a))?;
                 let p = self.op(format!("call ptr @pruv_alloc_u8(i64 {}, i64 {})", cnt.a, z))?;
                 let mut rv = V::with_b(Kind::Arr, p, cnt.a.clone());
@@ -1489,7 +1489,7 @@ impl<'a> FnGen<'a> {
             return Ok(V::unit());
         }
         if n == "is_char_boundary" {
-            // G2 B2: 인자 s → i 차례
+            // G2 B2: argument order s -> i
             let s = self.ev(arg(a, 0)?, false)?;
             let i = self.ev(arg(a, 1)?, false)?;
             let r = self.op(format!("call i32 @pruv_str_boundary(ptr {}, i64 {}, i64 {})", s.a, s.b, i.a))?;
@@ -1497,7 +1497,7 @@ impl<'a> FnGen<'a> {
             return Ok(V::new(Kind::I1, c));
         }
         if n == "substr" {
-            // G2 B2: 인자 s → lo → hi 차례
+            // G2 B2: argument order s -> lo -> hi
             let s = self.ev(arg(a, 0)?, false)?;
             let lo = self.ev(arg(a, 1)?, false)?;
             let hi = self.ev(arg(a, 2)?, false)?;
@@ -1563,7 +1563,7 @@ impl<'a> FnGen<'a> {
         Ok(V::with_b(Kind::Opt, x0, x1))
     }
 
-    // ---------- 계약(requires) 평가, i128 ----------
+    // ---------- contract (requires) evaluation, i128 ----------
     pub fn bind_contract_params(&mut self) -> R<()> {
         self.place("start");
         let f = self.f;
@@ -1600,7 +1600,7 @@ impl<'a> FnGen<'a> {
             Expr::IntLit(x) => Ok(V::new(Kind::I128, x.value.clone())),
             Expr::BoolLit(x) => Ok(V::new(Kind::I1, if x.value { "true" } else { "false" })),
             Expr::StrLit(x) => {
-                // G2 B2: 복사 없이 전역 문자열을 그대로 가리킨다
+                // G2 B2: point at the global string directly, without copying
                 let g = self.str_global(&x.value);
                 Ok(V { k: Kind::Arr, a: g, b: x.value.len().to_string(), ty: Some(STR.to_string()) })
             }
@@ -1779,7 +1779,7 @@ impl<'a> FnGen<'a> {
         }
     }
 
-    /// requires 반복 예산 1 단위 소비(docs/M0_CONTRACTS.md B)
+    /// Consumes 1 unit of the requires iteration budget (docs/M0_CONTRACTS.md B)
     pub fn spend(&mut self) -> R<()> {
         let budget = match &self.budget {
             Some(b) => b.clone(),
@@ -1792,7 +1792,7 @@ impl<'a> FnGen<'a> {
         self.guard(&ok, Fail::Panic1("pruv_panic_undefined", "contract iteration budget exceeded".to_string()), false)
     }
 
-    /// sorted 사전조건 forall 의 O(n) 형태: forall k in 1..len(a): a[k-1] <= a[k]
+    /// The O(n) form of the sorted precondition forall: forall k in 1..len(a): a[k-1] <= a[k]
     pub fn csorted(&mut self, name: &str, q: usize) -> R<V> {
         let arr = self.cenv.get(name).cloned().ok_or_else(|| format!("'{}'", name))?;
         let k = format!("%q{}.k", q);
@@ -1850,7 +1850,7 @@ impl<'a> FnGen<'a> {
         };
         if x.kind == "forall" {
             if let Some(sorted_arr) = crate::emit_common::match_sorted_requires(e) {
-                // G2 B2: 매칭된 배열이 str 이면 빠른 길을 쓰지 않고 일반 길로 간다
+                // G2 B2: if the matched array is a str, skip the fast path and take the general path
                 let is_str = self.cenv.get(&sorted_arr).map_or(false, |v| is_strv(&v.ty));
                 if !is_str {
                     let q = self.nq;
@@ -2000,7 +2000,7 @@ pub fn entry_of(
     Ok(g.render(&format!("define internal {} @{}__pruv_entry({})", rt, mangle(&f.name), sig_text(&params))))
 }
 
-// ---------- requires 보조 함수 ----------
+// ---------- requires helper functions ----------
 pub fn cdivrem(m: &mut Mod, is_div: bool) -> String {
     let (nm, sym) = if is_div { ("pruv_cdiv", "/") } else { ("pruv_crem", "%") };
     let z = m.string(&format!("division by zero in {}", sym));
@@ -2044,17 +2044,17 @@ c2:\n\
     )
 }
 
-/// 프로그램 -> (IR 텍스트, Rust 바인딩 텍스트). Err 는 Python 이 예외를 내는 자리의 메시지.
+/// Program -> (IR text, Rust bindings text). Err is the message at the place where Python raises an exception.
 pub fn gen_llvm(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> R<(String, String)> {
     gen_llvm_for(prog, verified, trust_callers, budget, AbiTarget::SysV)
 }
 
 const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-pc-windows-msvc\"\n\n";
 
-/// 대상 ABI 를 고른 생성. SysV 는 gen_llvm 과 바이트 동일.
+/// Generation with a chosen target ABI. SysV is byte-identical to gen_llvm.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) {
-        // G2 B2: str 도 생성 층을 연다
+        // G2 B2: str also opens the generation layer
         return Err(format!("unsupported_type: {}", e.message));
     }
     let tt = TypeTable::new(&prog.types);
@@ -2089,8 +2089,8 @@ pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget:
         type_defs(&tt),
         if prog.types.is_empty() { "" } else { "\n" },
         DECLS,
-        // G2 A5: u8 또는 bool 을 쓰면 DECLS_U8, bool 을 쓰면 그 뒤 DECLS_BOOL
-        // G2 B2: u8 또는 bool 또는 str 이면 DECLS_U8, str 이면 맨 뒤 DECLS_STR
+        // G2 A5: DECLS_U8 if u8 or bool is used, and DECLS_BOOL after it if bool is used
+        // G2 B2: DECLS_U8 if u8, bool or str is used, and DECLS_STR at the very end if str is used
         if uses_array_type(prog, "array_u8") || uses_array_type(prog, "array_bool") || has_str { DECLS_U8 } else { "" },
         if uses_array_type(prog, "array_bool") { DECLS_BOOL } else { "" },
         if has_str { DECLS_STR } else { "" },

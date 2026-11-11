@@ -1,5 +1,6 @@
-/* Windows CI: C 호출자 (clang, x86_64-pc-windows-msvc) 가 args_0_1_5.win.obj 의 sret wrapper 를 직접 부른다.
- * 16바이트 구조체 반환은 C ABI 상 숨은 sret 로 하강하므로, 우리 wrapper 서명과 맞아야 값이 맞는다. */
+/* Windows CI: a C caller (clang, x86_64-pc-windows-msvc) calls the sret wrapper in args_0_1_5.win.obj directly.
+ * Returning a 16-byte struct lowers to a hidden sret under the C ABI, so the values only match
+ * if our wrapper signature agrees with it. */
 #include <stdint.h>
 #include <stdio.h>
 

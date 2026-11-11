@@ -1,32 +1,33 @@
 # -*- coding: utf-8 -*-
-"""G2 전용 변이 시험: G2 변이 연산(G2_OPS)과 bench/mutate.py 의 기본 연산(base)으로 변이를 만들고,
-(1) 검증 4번(컴파일러 py·rs × --infer 없음·켬, 뒷단 rust)의 판정과
-(2) 진실 판정(rs 컴파일러 --no-verify rust 뒷단 → run.build_and_run 으로 참조 시험 실행)을 낸다.
-명세: docs/G2_Q1_IMPL.md 3절.
+"""G2-specific mutation test: generate mutants with the G2 mutation operators (G2_OPS) and the base operators of bench/mutate.py (base),
+and produce
+(1) the verdicts of the 4 verification runs (compiler py/rs x without/with --infer, rust backend) and
+(2) the ground-truth verdict (rs compiler --no-verify, rust backend -> run the reference tests via run.build_and_run).
+Spec: docs/G2_Q1_IMPL.md section 3.
 
-사용:
+Usage:
   mutate_ops.py OUT.json [SRC_DIR] [--jobs N] [--retry] [--only qNN ...]
-  mutate_ops.py --self-test        (연산만 고정 줄에 시험, 컴파일러 호출 없음)
-  SRC_DIR 기본값은 bench/g2/solutions/ref_pruv. 결과는 보통 bench/g2/results/ 에 둔다.
+  mutate_ops.py --self-test        (test the operators on fixed lines only, no compiler invocation)
+  SRC_DIR defaults to bench/g2/solutions/ref_pruv. Results usually go in bench/g2/results/.
 
-변이 연산(계약 줄 SKIP 은 건드리지 않음):
-  byte_const_pm1  정수 토큰 127·128·191·192·255·256 을 +1·-1
-  guard_true/false  `if 조건 {`·`} else if 조건 {` 의 조건을 true/false 로 (while 은 아님)
-  len_pm1         len(X) 를 (len(X) + 1)/(len(X) - 1)
-  substr_pm1      substr(s, lo, hi) 의 lo·hi 를 각각 (.. + 1)/(.. - 1)
-  boundary_drop   is_char_boundary(..) 를 true, !is_char_boundary(..) 를 false
-  conj_drop       while/if 조건의 최상위 && 쪽을 하나씩만 남김
-  base            bench/mutate.py 의 OPS 를 ast 로 읽어 적용(사본 없음)
-같은 결과 텍스트는 하나로 합치고 ops 이름 목록을 남긴다.
+Mutation operators (contract lines matched by SKIP are left alone):
+  byte_const_pm1  integer tokens 127, 128, 191, 192, 255, 256 are changed by +1 and -1
+  guard_true/false  the condition of `if cond {` and `} else if cond {` is replaced with true/false (not while)
+  len_pm1         len(X) becomes (len(X) + 1)/(len(X) - 1)
+  substr_pm1      lo and hi of substr(s, lo, hi) each become (.. + 1)/(.. - 1)
+  boundary_drop   is_char_boundary(..) becomes true, !is_char_boundary(..) becomes false
+  conj_drop       keep only one side of the top-level && in a while/if condition at a time
+  base            apply OPS of bench/mutate.py read via ast (no copy)
+Mutants with identical resulting text are merged and the list of op names is kept.
 
-검증 판정(mutate_infer.py classify 와 같음):
-  accepted(종료 0) / rejected / undecided(inference_timeout·verify_unknown 뿐) / crash
-  (종료 0·1 밖, JSON 없는 1, stage internal, 시간 초과 600초, 실행 실패). --retry 는 undecided 를 직렬로 한 번 더.
-진실 판정: ok → true_mutant, wrong·timeout → false_mutant, Pruv --no-verify 거부 → not_compilable,
-  컴파일러 crash·생성 Rust 의 rustc 실패(코드 생성 결함 후보) → crash.
+Verification verdicts (same as mutate_infer.py classify):
+  accepted (exit 0) / rejected / undecided (only inference_timeout, verify_unknown) / crash
+  (exit outside 0/1, exit 1 without JSON, stage internal, 600 s timeout, failure to run). --retry re-runs undecided ones once more, serially.
+Ground-truth verdict: ok -> true_mutant, wrong/timeout -> false_mutant, Pruv --no-verify rejects -> not_compilable,
+  compiler crash or rustc failure on the generated Rust (code generation defect candidate) -> crash.
 
-관문(G2_SPEC 8.3): false_accepted(거짓 변이인데 4번 중 하나라도 accepted)=0, crash=0, py·rs 판정 차이=0.
-종료 코드: false_accepted 나 crash 가 있으면 1, 아니면 0. 참 변이의 통과는 수만 센다.
+Gate (G2_SPEC 8.3): false_accepted (a false mutant accepted by any of the 4 runs) = 0, crash = 0, py/rs verdict differences = 0.
+Exit code: 1 if there is any false_accepted or crash, otherwise 0. Passes of true mutants are only counted.
 """
 import ast
 import hashlib
@@ -53,9 +54,9 @@ RUNS = [(c, inf) for c in ("py", "rs") for inf in (False, True)]
 DEFAULT_SRC = os.path.join(HERE, "solutions", "ref_pruv")
 
 
-# ---------------------------------------------------------------- 연산 도우미
+# ---------------------------------------------------------------- operator helpers
 def match_paren(s, open_idx):
-    """s[open_idx] == '(' 의 짝 ')' 위치. 없으면 -1."""
+    """Position of the ')' matching s[open_idx] == '('. -1 if none."""
     depth = 0
     for i in range(open_idx, len(s)):
         ch = s[i]
@@ -69,7 +70,7 @@ def match_paren(s, open_idx):
 
 
 def split_top(s, start, end, sep):
-    """s[start:end] 를 괄호·대괄호 깊이 0 에서 sep(문자열) 으로 나눈 (a, b) 구간 목록."""
+    """List of (a, b) spans of s[start:end] split by sep (a string) at parenthesis/bracket depth 0."""
     spans = []
     depth = 0
     seg = start
@@ -92,7 +93,7 @@ def split_top(s, start, end, sep):
 
 
 def find_calls(line, name):
-    """name(...) 호출들의 (이름 시작, 여는 괄호, 닫는 괄호) 위치."""
+    """Positions (name start, opening paren, closing paren) of name(...) calls."""
     out = []
     for m in re.finditer(r"(?<![\w.])%s\s*\(" % re.escape(name), line):
         op = m.end() - 1
@@ -102,7 +103,7 @@ def find_calls(line, name):
     return out
 
 
-# ---------------------------------------------------------------- G2 연산
+# ---------------------------------------------------------------- G2 operators
 BYTE_RE = re.compile(r"(?<![\w.])(127|128|191|192|255|256)(?![\w.])")
 
 
@@ -204,7 +205,7 @@ G2_OPS = [
 ]
 
 
-# ---------------------------------------------------------------- base 연산(mutate.py 에서 ast 로)
+# ---------------------------------------------------------------- base operators (read from mutate.py via ast)
 def load_base():
     src = open(os.path.join(ROOT, "bench", "mutate.py"), encoding="utf-8").read()
     tree = ast.parse(src)
@@ -216,7 +217,7 @@ def load_base():
 
 
 def base_line_mutants(line, ops):
-    """mutate.py mutants() 와 같은 방식: 각 패턴의 각 일치를 한 줄에 치환."""
+    """Same approach as mutate.py mutants(): substitute each match of each pattern within one line."""
     res = []
     for pat, rep in ops:
         for m in re.finditer(pat, line):
@@ -227,7 +228,7 @@ def base_line_mutants(line, ops):
 
 
 def make_mutants(text, base_ops, skip):
-    """[(줄 번호, 원래 줄, 바뀐 줄, 전체 텍스트, ops 이름 목록)] 같은 결과는 합침."""
+    """[(line number, original line, changed line, full text, list of op names)]; identical results are merged."""
     lines = text.split("\n")
     out = []
     for li, line in enumerate(lines):
@@ -250,7 +251,7 @@ def make_mutants(text, base_ops, skip):
     return out
 
 
-# ---------------------------------------------------------------- 판정
+# ---------------------------------------------------------------- verdicts
 def classify(rc, stdout):
     errs = []
     for l in stdout.splitlines():
@@ -300,7 +301,7 @@ def verify(comp, path, infer):
 
 
 def truth(G, path, pid):
-    """rs 컴파일러 --no-verify rust 뒷단 → G.build_and_run."""
+    """rs compiler --no-verify, rust backend -> G.build_and_run."""
     d = tempfile.mkdtemp(prefix="g2t_")
     try:
         rs = os.path.join(d, pid + "_gen.rs")
@@ -318,7 +319,7 @@ def truth(G, path, pid):
             return base
         try:
             r = G.build_and_run(rs, pid, d)
-        except Exception as e:  # 채점기 자체 실패는 crash 로 기록
+        except Exception as e:  # a failure of the grader itself is recorded as crash
             base.update(truth="crash", status="grader_error: %s" % e)
             return base
         st = r.get("status")
@@ -329,7 +330,7 @@ def truth(G, path, pid):
         elif st in ("wrong", "timeout"):
             base["truth"] = "false_mutant"
         elif st == "compile_error":
-            base["truth"] = "crash"   # Pruv 가 받은 코드를 rustc 가 못 받음 = 코드 생성 결함 후보(관문에 넣음)
+            base["truth"] = "crash"   # code Pruv accepted but rustc rejects = code generation defect candidate (counted in the gate)
         else:
             base["truth"] = "crash"
         return base
@@ -364,7 +365,7 @@ def versions():
             if sha else None}
 
 
-# ---------------------------------------------------------------- 요약
+# ---------------------------------------------------------------- summary
 def build_table(items, groups_of):
     tab = {}
     for it in items:
@@ -463,23 +464,23 @@ def self_test():
                 bad += 1
             print("%s %-15s %r" % ("ok  " if ok else "FAIL", name, line))
             if not ok:
-                print("     기대: %r" % (want,))
-                print("     결과: %r" % (got,))
-    # 연산 이름 7개
+                print("     expected: %r" % (want,))
+                print("     got:      %r" % (got,))
+    # 7 operator names
     names = [n for n, _ in G2_OPS]
     want_names = ["byte_const_pm1", "guard_true", "guard_false", "len_pm1", "substr_pm1", "boundary_drop", "conj_drop"]
     if names != want_names:
         bad += 1
-        print("FAIL G2_OPS 이름: %r" % names)
-    # base: ast 로 읽은 OPS 가 mutate.py 와 같이 동작
+        print("FAIL G2_OPS names: %r" % names)
+    # base: OPS read via ast behaves the same as in mutate.py
     ops, skip = load_base()
     got = base_line_mutants("  x = a + 1;", ops)
     if "  x = a + 2;" not in got or not skip.match("  requires x > 0"):
         bad += 1
-        print("FAIL base 연산 읽기: %r" % got)
+        print("FAIL reading base operators: %r" % got)
     else:
-        print("ok   base (mutate.py OPS/SKIP ast 로 읽음)")
-    print("self-test:", "실패 %d" % bad if bad else "전부 통과")
+        print("ok   base (mutate.py OPS/SKIP read via ast)")
+    print("self-test:", "fail %d" % bad if bad else "all pass")
     sys.exit(1 if bad else 0)
 
 
@@ -510,7 +511,7 @@ def main():
     src_dir = args[1] if len(args) > 1 else DEFAULT_SRC
 
     sys.path.insert(0, HERE)
-    import run as G  # 같은 폴더의 채점기(명세 2.3 인터페이스만 사용)
+    import run as G  # the grader in the same folder (uses only the spec 2.3 interface)
 
     base_ops, skip = load_base()
     work = tempfile.mkdtemp(prefix="g2m_src_")

@@ -1,5 +1,5 @@
-//! 사용자 struct/enum 타입 정보(typeinfo.py 대응).
-//! `type_name` 은 모든 타입의 소스 철자를, `TypeTable` 은 검사된 프로그램의 선언을 색인한다.
+//! User struct/enum type information (counterpart of typeinfo.py).
+//! `type_name` gives the source spelling of every type, and `TypeTable` indexes the declarations of the checked program.
 
 use crate::ast::*;
 use std::collections::{HashMap, HashSet};
@@ -7,17 +7,17 @@ use std::collections::{HashMap, HashSet};
 pub const BUILTIN_TYPE_NAMES: [&str; 9] =
     ["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str"];
 
-/// 내장이 아닌 이름이면 사용자 타입(선언 여부와 무관).
+/// A name that is not built in is a user type (whether or not it is declared).
 pub fn is_user_type(ty: &str) -> bool {
     !BUILTIN_TYPE_NAMES.contains(&ty)
 }
 
-/// 배열 내부 타입 이름("array"/"array_u8"/"array_bool")인가.
+/// Whether this is an internal array type name ("array"/"array_u8"/"array_bool").
 pub fn is_array_name(n: &str) -> bool {
     array_elem_name(n).is_some()
 }
 
-/// 배열 내부 타입 이름 → 원소 타입 이름.
+/// Internal array type name -> element type name.
 pub fn array_elem_name(n: &str) -> Option<&'static str> {
     match n {
         "array" => Some("i64"),
@@ -27,7 +27,7 @@ pub fn array_elem_name(n: &str) -> Option<&'static str> {
     }
 }
 
-/// 원소 타입 이름 → 배열 내부 타입 이름.
+/// Element type name -> internal array type name.
 pub fn array_of_elem_name(e: &str) -> Option<&'static str> {
     match e {
         "i64" => Some("array"),
@@ -37,7 +37,7 @@ pub fn array_of_elem_name(e: &str) -> Option<&'static str> {
     }
 }
 
-/// 소스 수준 철자. 사용자 타입은 자기 이름 그대로.
+/// Source-level spelling. A user type keeps its own name.
 pub fn type_name(ty: &str) -> String {
     match ty {
         "i64" => "i64".to_string(),
@@ -53,7 +53,7 @@ pub fn type_name(ty: &str) -> String {
     }
 }
 
-/// 걷기 공통: `pick(타입 이름)` 이 참인 첫 자리.
+/// Shared walk: the first position where `pick(type name)` is true.
 fn g2_in_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool) -> Option<(i64, i64, String)> {
     for s in stmts {
         match s {
@@ -105,7 +105,7 @@ fn g2_walk(prog: &Program, pick: &dyn Fn(&str) -> bool) -> Option<(i64, i64, Str
     None
 }
 
-/// 후보 위치 중 (line, col) 이 가장 작은 것을 남긴다(같으면 먼저 본 것).
+/// Keeps the candidate position with the smallest (line, col) (the one seen first if equal).
 fn g2_cand(best: &mut Option<(i64, i64, String)>, line: i64, col: i64, ty: &str) {
     let better = match best {
         None => true,
@@ -116,7 +116,7 @@ fn g2_cand(best: &mut Option<(i64, i64, String)>, line: i64, col: i64, ty: &str)
     }
 }
 
-/// 식 안의 모든 StrLit 을 후보로(와일드카드 없이 모든 변형을 나열).
+/// Takes every StrLit in an expression as a candidate (listing all variants, with no wildcard).
 fn g2_cand_expr(e: &Expr, lits: bool, best: &mut Option<(i64, i64, String)>) {
     match e {
         Expr::IntLit(_) => {}
@@ -167,7 +167,7 @@ fn g2_cand_expr(e: &Expr, lits: bool, best: &mut Option<(i64, i64, String)>) {
     }
 }
 
-/// 문장 안의 Let 타입(pick)과 모든 식의 StrLit 을 후보로(와일드카드 없이 모든 변형을 나열).
+/// Takes the Let types (pick) in a statement and the StrLit of every expression as candidates (listing all variants, with no wildcard).
 fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, best: &mut Option<(i64, i64, String)>) {
     for s in stmts {
         match s {
@@ -213,10 +213,10 @@ fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, best: 
     }
 }
 
-/// 아직 구현 안 한 층의 타입(`[i64]` 가 아닌 배열, `str`)이 처음 나오는 곳: (line, col, 내부 타입 이름).
-/// 함수 선언 순서대로, 걸린 첫 함수에서: 매개변수 → 반환 타입 → 그 함수의 후보 위치(본문 Let 타입,
-/// `str` 이 skip 에 없으면 requires/ensures/본문 모든 식의 StrLit) 중 (line, col) 최소.
-/// `skip` 에 든 내부 이름은 건너뛴다.
+/// Where a type of a not-yet-implemented layer (an array other than `[i64]`, `str`) first appears: (line, col, internal type name).
+/// In function declaration order, in the first function that matches: parameters -> return type -> the smallest (line, col) among that function's candidate positions (body Let types,
+/// and, if `str` is not in skip, the StrLit of every expression in requires/ensures/body).
+/// Internal names contained in `skip` are skipped.
 pub fn first_g2_unimplemented(prog: &Program, skip: &[&str]) -> Option<(i64, i64, String)> {
     let pick = |t: &str| (t == "str" || (is_array_name(t) && t != "array")) && !skip.contains(&t);
     let lits = !skip.contains(&"str");
@@ -244,12 +244,12 @@ pub fn first_g2_unimplemented(prog: &Program, skip: &[&str]) -> Option<(i64, i64
     None
 }
 
-/// 프로그램의 매개변수·반환·let 타입 중 내부 이름이 `name` 인 자리가 있는가.
+/// Whether any parameter, return or let type of the program has the internal name `name`.
 pub fn uses_array_type(prog: &Program, name: &str) -> bool {
     g2_walk(prog, &|t: &str| t == name).is_some()
 }
 
-/// G2 B2: 매개변수·반환·(중첩) let 타입이 `str` 이거나 requires/ensures/본문 어느 식이든 StrLit 이 있는가.
+/// G2 B2: whether a parameter, return or (nested) let type is `str`, or any expression in requires/ensures/body has a StrLit.
 pub fn uses_str(prog: &Program) -> bool {
     let pick = |t: &str| t == "str";
     for f in &prog.functions {
@@ -271,8 +271,8 @@ pub fn uses_str(prog: &Program) -> bool {
     false
 }
 
-/// `first_g2_unimplemented` 를 진단으로. stage 는 "verify" / "codegen" 등 막힌 층 이름.
-/// layer 가 있으면 메시지의 층 이름으로 쓰고, fix 가 있으면 고침 안내를 바꾼다.
+/// Turns `first_g2_unimplemented` into a diagnostic. stage is the name of the blocked layer, such as "verify" / "codegen".
+/// If layer is given it is used as the layer name in the message, and if fix is given it replaces the fix hint.
 pub fn g2_unimplemented_error(
     prog: &Program,
     stage: &str,
@@ -324,7 +324,7 @@ impl TypeDecl {
             TypeDecl::Enum(e) => e.col,
         }
     }
-    /// 구조체는 필드, enum 은 모든 변형의 필드를 선언 순서로.
+    /// For a struct its fields, for an enum the fields of all variants, in declaration order.
     pub fn all_fields(&self) -> Vec<&FieldDecl> {
         match self {
             TypeDecl::Struct(s) => s.fields.iter().collect(),
@@ -335,10 +335,10 @@ impl TypeDecl {
 
 #[derive(Debug, Clone, Default)]
 pub struct TypeTable {
-    /// 선언 순서(첫 선언 우선, 이름 중복 없음).
+    /// Declaration order (first declaration wins, no duplicate names).
     pub decls: Vec<TypeDecl>,
     index: HashMap<String, usize>,
-    /// 의존 먼저·선언 안정 순서: `decls` 의 인덱스.
+    /// Dependencies first, declaration-stable order: indices into `decls`.
     pub order: Vec<usize>,
 }
 
@@ -355,12 +355,12 @@ impl TypeTable {
         t
     }
 
-    /// 의존 순서로 나열한 선언.
+    /// Declarations listed in dependency order.
     pub fn ordered(&self) -> impl Iterator<Item = &TypeDecl> {
         self.order.iter().map(move |&i| &self.decls[i])
     }
 
-    /// 필드 순서대로, 중복 없이, 선언된 이름만.
+    /// In field order, without duplicates, declared names only.
     pub fn deps(&self, d: &TypeDecl) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for f in d.all_fields() {
@@ -382,7 +382,7 @@ impl TypeTable {
 
     fn visit(&self, i: usize, seen: &mut HashSet<usize>, order: &mut Vec<usize>) {
         if !seen.insert(i) {
-            return; // 먼저 표시: 순환(검사기가 거부)이 있어도 무한 반복 없음
+            return; // mark first: no infinite loop even with a cycle (which the checker rejects)
         }
         for n in self.deps(&self.decls[i]) {
             if let Some(&j) = self.index.get(&n) {
@@ -392,7 +392,7 @@ impl TypeTable {
         order.push(i);
     }
 
-    // ---- 조회 ----
+    // ---- lookup ----
     pub fn decl(&self, ty: &str) -> Option<&TypeDecl> {
         self.index.get(ty).map(|&i| &self.decls[i])
     }
@@ -405,7 +405,7 @@ impl TypeTable {
         matches!(self.decl(ty), Some(TypeDecl::Enum(_))) && is_user_type(ty)
     }
 
-    /// enum 의 변형(없거나 enum 이 아니면 None).
+    /// A variant of an enum (None if missing or not an enum).
     pub fn variant(&self, ty: &str, variant: &str) -> Option<&VariantDecl> {
         match self.decl(ty) {
             Some(TypeDecl::Enum(e)) => e.variants.iter().find(|v| v.name == variant),
@@ -413,7 +413,7 @@ impl TypeTable {
         }
     }
 
-    /// struct 필드, 또는 enum 의 `variant` 필드(선언 순서). 찾지 못하면 None.
+    /// A struct's fields, or the fields of an enum's `variant` (declaration order). None if not found.
     pub fn fields(&self, ty: &str, variant: Option<&str>) -> Option<&[FieldDecl]> {
         match self.decl(ty)? {
             TypeDecl::Struct(s) => Some(&s.fields),

@@ -101,7 +101,7 @@ _ESCAPES = {'"': '"', "\\": "\\", "n": "\n", "r": "\r", "t": "\t", "0": "\0"}
 
 
 def _decode_str(text, line):
-    """따옴표 안 소스 문자 -> UTF-8 bytes. 이스케이프는 \\\" \\\\ \\n \\r \\t \\0 만."""
+    """Source characters inside the quotes -> UTF-8 bytes. Only the escapes \\\" \\\\ \\n \\r \\t \\0 are allowed."""
     body, out, i = text[1:-1], [], 0
     while i < len(body):
         c = body[i]
@@ -158,7 +158,7 @@ class _Parser(object):
     def __init__(self, src):
         self.t = _lex(src)
         self.p = 0
-        # 선언 순서와 무관하게 타입 이름을 알도록 미리 훑는다
+        # pre-scan so type names are known regardless of declaration order
         self.struct_names, self.enum_names = set(), set()
         for i in range(len(self.t) - 1):
             a, b = self.t[i], self.t[i + 1]
@@ -278,7 +278,7 @@ class _Parser(object):
         return Program(fns, structs, enums)
 
     def fields_(self, open_, close):
-        """`{ f: T, ... }` 또는 `(f: T, ...)` -> [(필드, 타입)] (끝 쉼표 허용)"""
+        """`{ f: T, ... }` or `(f: T, ...)` -> [(field, type)] (trailing comma allowed)"""
         self.eat(open_)
         out = []
         while not self.is_(close):
@@ -330,9 +330,9 @@ class _Parser(object):
 
     @staticmethod
     def narrow(e, ty, first):
-        """`alloc(n, v)` 가 타입 자리(let 오른쪽·재대입 오른쪽·return 뒤) 바로 오른쪽에 통째로 오면
-        그 배열 타입을 붙인다(5번째 칸). 그 밖은 [i64]."""
-        # 파서가 괄호를 노드로 남기지 않으므로 `(alloc(..))` 도 좁힌다(컴파일러 check.py alloc_hint_for 와 같음)
+        """If `alloc(n, v)` appears whole directly at a typed position (right of let, right of a reassignment, after return),
+        attach that array type (5th slot). Otherwise it is [i64]."""
+        # the parser leaves no node for parentheses, so `(alloc(..))` is narrowed too (same as the compiler's check.py alloc_hint_for)
         if ty in ("array_u8", "array_bool") and e[0] == "call" and e[1] == "alloc" and len(e[2]) == 2:
             return e + (ty,)
         return e
@@ -450,7 +450,7 @@ class _Parser(object):
         return ("match", line, scrut, arms)
 
     def pattern(self):
-        """-> (키, 바인딩 이름들). 키: 'Some' 'None' 'Ok' 'Err' 또는 'Enum::Variant'"""
+        """-> (key, binding names). key: 'Some' 'None' 'Ok' 'Err' or 'Enum::Variant'"""
         t = self.peek()
         if t[0] == "id" and t[1] in ("Some", "Ok", "Err"):
             self.next()
@@ -608,7 +608,7 @@ class _Parser(object):
             self.eat(")")
             return ("variant_field", a, en, vn, fld)
         if self.is_("::", 1):
-            # 열거형 생성: Enum::V 또는 Enum::V(e1, e2)
+            # enum construction: Enum::V or Enum::V(e1, e2)
             self.next()
             self.next()
             vn = self.ident()
@@ -688,7 +688,7 @@ def _emod(x, y):
 
 
 def _boundary(s, i):
-    """G2_SPEC 4.4: UTF-8 문자 경계. 음수·n 초과는 false, 0 과 n 은 true, 그 사이는 연속 바이트(128..=191)가 아닐 때."""
+    """G2_SPEC 4.4: UTF-8 character boundary. Negative or above n is false, 0 and n are true, in between it holds when the byte is not a continuation byte (128..=191)."""
     if not isinstance(s, bytes):
         raise OracleUnsupported("is_char_boundary on a non-str")
     n = len(s)
@@ -700,7 +700,7 @@ def _boundary(s, i):
 
 
 def _cp(v):
-    """값 복사: 배열(list)은 얕게(원소가 정수뿐), dict(Option/Result/구조체/열거형)는 깊게."""
+    """Value copy: arrays (list) shallowly (elements are only integers), dicts (Option/Result/struct/enum) deeply."""
     if isinstance(v, list):
         return list(v)
     if isinstance(v, dict):
@@ -715,7 +715,7 @@ class _Interp(object):
         self.prog, self.max_steps, self.steps, self.mode = prog, max_steps, 0, mode
         self.output, self.failures = [], []
 
-    # ---- 구조체·열거형·Option/Result 값 (코드/계약 공용; evalf 로 피연산자를 계산)
+    # ---- struct / enum / Option / Result values (shared by code and contracts; operands computed via evalf)
     def build(self, e, evalf):
         k = e[0]
         if k == "ctor":
@@ -729,7 +729,7 @@ class _Interp(object):
             if [f for f, _e in e[2]] != [f for f, _t in decl]:
                 raise OracleUnsupported("struct literal %s: fields not in declaration order" % e[1])
             vals = {}
-            for f, fe in e[2]:          # 소스 순서(= 선언 순서) 왼→오
+            for f, fe in e[2]:          # source order (= declaration order), left to right
                 vals[f] = _cp(evalf(fe))
             return {"struct": e[1], "fields": vals}
         if k == "ector":
@@ -1094,12 +1094,12 @@ class _Interp(object):
                 raise _Fault("elem_range", str(v))
             a[i] = v
         elif k == "fassign":
-            # q.a.b = e: 값만 계산(평가할 다른 피연산자 없음), 지역 구조체를 제자리에서 바꾼다
+            # q.a.b = e: only the value is computed (no other operands to evaluate); the local struct is modified in place
             v = _cp(self.ev(s[4], env))
             obj, path = env.get(s[2]), s[3]
             for f in path[:-1]:
                 obj = self.get_field(obj, f)
-            self.get_field(obj, path[-1])      # 필드 존재 확인
+            self.get_field(obj, path[-1])      # check that the field exists
             obj["fields"][path[-1]] = v
         elif k == "match":
             v = self.ev(s[2], env)
@@ -1168,15 +1168,15 @@ class _Interp(object):
 
 # ---------------------------------------------------------------- public API
 def format_value(v):
-    """Rust `{:?}` 출력과 같은 문자열: -5, true, [1, -2], [], Some(3), None, Ok(3), Err(-2), ().
-    구조체·열거형은 생성 Rust 의 #[derive(Debug)] 모양(pruvc/codegen.py:177-191 의 `pub struct N { pub f: T }`,
-    `pub enum E { V(T, U), W }`): `Point { x: 1, y: -2 }`, 필드 없는 구조체 `Name`,
-    열거형 `Empty` / `Hit(Point { x: 3, y: 4 }, true)` (페이로드는 필드 이름 없는 튜플 형식)."""
+    """String identical to Rust `{:?}` output: -5, true, [1, -2], [], Some(3), None, Ok(3), Err(-2), ().
+    Structs and enums follow the #[derive(Debug)] shape of the generated Rust (`pub struct N { pub f: T }` and
+    `pub enum E { V(T, U), W }` in pruvc/codegen.py:177-191): `Point { x: 1, y: -2 }`, a struct without fields `Name`,
+    enums `Empty` / `Hit(Point { x: 3, y: 4 }, true)` (the payload is a tuple form without field names)."""
     if v is None:
         return "()"
     if isinstance(v, bool):
         return "true" if v else "false"
-    if isinstance(v, bytes):        # str: 바이트 정수 list (Rust 드라이버의 {:?} of as_bytes())
+    if isinstance(v, bytes):        # str: list of byte integers ({:?} of as_bytes() in the Rust driver)
         return "[" + ", ".join(str(x) for x in v) + "]"
     if isinstance(v, list):
         return "[" + ", ".join(format_value(x) for x in v) + "]"
@@ -1197,7 +1197,7 @@ def format_value(v):
 
 
 def _str_arg(v):
-    """str 인자(Python str 또는 UTF-8 bytes) -> bytes. 서로게이트·잘못된 UTF-8 은 OracleUnsupported."""
+    """str argument (Python str or UTF-8 bytes) -> bytes. Surrogates and invalid UTF-8 raise OracleUnsupported."""
     if isinstance(v, str):
         try:
             return v.encode("utf-8")
@@ -1213,13 +1213,13 @@ def _str_arg(v):
 
 
 def _prep_args(fn, args):
-    """str 매개변수의 Python str 입력을 UTF-8 bytes 로 바꾼 새 인자 list."""
+    """New argument list in which Python str inputs for str parameters are converted to UTF-8 bytes."""
     return [_str_arg(a) if pt == "str" else a for (_pn, pt), a in zip(fn.params, args)]
 
 
 def _check_arg(prog, ty, v):
-    """사용자 타입 인자 값이 프로그램 선언(이름·필드 순서·변이)과 맞는지 가볍게 확인. 안 맞으면 OracleUnsupported.
-    i64/bool/[i64]/Option/Result 는 확인하지 않는다(기존 동작 유지). array_u8·array_bool·str 은 값 형식을 확인한다."""
+    """Lightly check that a user-type argument value matches the program declaration (name, field order, variant). Raises OracleUnsupported if not.
+    i64/bool/[i64]/Option/Result are not checked (existing behavior kept). array_u8, array_bool, and str have their value format checked."""
     if ty == "array_u8":
         if not (isinstance(v, list) and all(isinstance(x, int) and not isinstance(x, bool) and 0 <= x <= 255
                                             for x in v)):
@@ -1476,14 +1476,14 @@ def _selftest():
 
 
 def _selftest_values(go):
-    """구조체·열거형·Option/Result·배열 반환 등 새 구성 시험."""
+    """Tests of newer constructs: structs, enums, Option/Result, array returns, etc."""
     import sys
     SOME = lambda v: {"tag": "Some", "v": v}
     NONE = {"tag": "None"}
     OK = lambda v: {"tag": "Ok", "v": v}
     ERR = lambda v: {"tag": "Err", "v": v}
 
-    # 1) 구조체: 필드 대입 뒤 복사 독립성 (let 복사, 인자 전달·반환 복사, 중첩 필드 대입)
+    # 1) struct: copy independence after field assignment (let copy, argument-passing and return copies, nested field assignment)
     src = ("struct P { x: i64, y: i64 }\n"
            "fn f() -> i64 {\n let a: P = P { x: 1, y: 2 };\n let mut b: P = a;\n b.x = 10;\n"
            " return a.x * 100 + b.x;\n}\n")
@@ -1494,16 +1494,16 @@ def _selftest_values(go):
            "fn f() -> i64 {\n let a: L = L { o: P { x: 5, y: 0 }, n: 1 };\n let b: L = bump(a);\n"
            " return a.o.x * 10 + b.o.x;\n}\n")
     r = go(src, "f", [])
-    assert r["value"] == 56 and not r["contract_failures"], r      # a 는 바뀌지 않는다 (5*10 + 6)
+    assert r["value"] == 56 and not r["contract_failures"], r      # a is unchanged (5*10 + 6)
 
-    # 2) 열거형 match (팔 순서 무관, 페이로드 없는 변이)
+    # 2) enum match (arm order does not matter, variant without payload)
     src = ("enum Ev { Empty, Hit(a: i64, b: i64), Fail(code: i64), }\n"
            "fn s(e: Ev) -> i64 {\n match e {\n  Ev::Fail(c) => { return -c; }\n"
            "  Ev::Hit(a, b) => { return a * 10 + b; }\n  Ev::Empty => { return 0; }\n }\n}\n"
            "fn f() -> i64 { return s(Ev::Hit(3, 4)) + s(Ev::Fail(5)) * 1000 + s(Ev::Empty); }\n")
     assert go(src, "f", [])["value"] == 34 - 5000
 
-    # 3) Option 반환 + ensures some_val, 정의역 밖 ensures 는 실패로 기록
+    # 3) Option return + ensures some_val; an ensures outside the domain is recorded as a failure
     src = ("fn pick(n: i64) -> Option<i64>\n ensures is_some(result) ==> some_val(result) == n\n"
            "{\n if n > 0 { return Some(n); }\n return None;\n}\n"
            "fn bad(n: i64) -> Option<i64>\n ensures some_val(result) > 0\n{\n if n > 0 { return Some(n); }\n"
@@ -1512,9 +1512,9 @@ def _selftest_values(go):
     assert r["value"] == SOME(5) and not r["contract_failures"], r
     assert go(src, "pick", [-1])["value"] == NONE and not go(src, "pick", [-1])["contract_failures"]
     assert not go(src, "bad", [2])["contract_failures"]
-    assert go(src, "bad", [-2])["contract_failures"] == ["ensures bad clause 1"]   # some_val(None): 정의역 밖
+    assert go(src, "bad", [-2])["contract_failures"] == ["ensures bad clause 1"]   # some_val(None): outside the domain
 
-    # 4) requires 의 some_val(None) -> requires_undefined, 가드가 있으면 requires_violated
+    # 4) some_val(None) in requires -> requires_undefined; with a guard, requires_violated
     src = ("fn g(o: Option<i64>) -> i64\n requires some_val(o) > 0\n{ return 1; }\n"
            "fn h(o: Option<i64>) -> i64\n requires is_some(o) && some_val(o) > 0\n{ return 1; }\n")
     p = parse_program(src)
@@ -1526,7 +1526,7 @@ def _selftest_values(go):
     assert check_requires(p, "g", [NONE]) == "undefined" and check_requires(p, "h", [NONE]) == "violated"
     assert check_requires(p, "h", [SOME(1)]) == "ok"
 
-    # 5) variant_field 정의역: 다른 변이면 undefined (requires 는 requires_undefined, 안쪽 호출은 모드별로)
+    # 5) variant_field domain: undefined for a different variant (requires gives requires_undefined, inner calls depend on the mode)
     src = ("enum Ev { Empty, Hit(value: i64) }\n"
            "fn f(e: Ev) -> i64\n requires variant_field(e, Ev::Hit, value) > 0\n{ return 0; }\n"
            "fn k(e: Ev) -> i64\n requires !is_variant(e, Ev::Hit) || variant_field(e, Ev::Hit, value) > 0\n"
@@ -1542,7 +1542,7 @@ def _selftest_values(go):
     r = run(p, "w3", [])
     assert r["kind"] == "requires_violated" and r["detail"].startswith("k "), r
 
-    # 6) 배열 반환 + 배열 지역 재대입 (copy / alloc / 함수 결과)
+    # 6) array return + reassignment of a local array (copy / alloc / function result)
     src = ("fn mk(n: i64) -> [i64] ! alloc\n requires n >= 0\n ensures len(result) == n\n"
            "{ return alloc(n, 7); }\n"
            "fn f(a: [i64]) -> i64 ! alloc {\n let mut b: [i64] = copy(a);\n b = mk(3);\n b[0] = 1;\n"
@@ -1556,7 +1556,7 @@ def _selftest_values(go):
     assert run(p, "f", [[]])["value"] == 3157
     assert run(p, "g", [[1, 2]])["value"] == [4, 4, 4]
 
-    # 7) 배열 매개변수 둘
+    # 7) two array parameters
     src = ("fn dot(a: [i64], b: [i64]) -> i64\n requires len(a) == len(b)\n{\n let mut i: i64 = 0;\n"
            " let mut s: i64 = 0;\n while i < len(a)\n  invariant 0 <= i && i <= len(a)\n"
            "  decreases len(a) - i\n {\n  s = s + a[i] * b[i];\n  i = i + 1;\n }\n return s;\n}\n")
@@ -1565,7 +1565,7 @@ def _selftest_values(go):
     assert r["value"] == 32 and not r["contract_failures"], r
     assert run(p, "dot", [[1], [1, 2]])["kind"] == "requires_violated"
 
-    # 8) Result 인자·반환 (dict 형식), 오버플로, 계약의 == / != 와 ok_val / err_val 정의역
+    # 8) Result argument/return (dict form), overflow, == / != in contracts and the ok_val / err_val domain
     src = ("fn r(x: Result<i64>) -> Result<i64> {\n match x {\n  Err(c) => { return Err(c - 1); }\n"
            "  Ok(v) => { return Ok(v + 1); }\n }\n}\n"
            "fn e(o: Option<i64>) -> Option<i64>\n ensures result == o\n ensures !(result != o)\n{ return o; }\n"
@@ -1585,9 +1585,9 @@ def _selftest_values(go):
     assert run(p, "d", [NONE])["contract_failures"] == []
     a = [SOME(1)]
     run(p, "e", a)
-    assert a == [SOME(1)]   # 인자는 바뀌지 않는다
+    assert a == [SOME(1)]   # the argument is unchanged
 
-    # 9) 계약 안 구조체 리터럴(산술은 수학적)과 열거형 == (변이와 필드까지 비교)
+    # 9) struct literal inside a contract (arithmetic is mathematical) and enum == (compares variant and fields too)
     src = ("struct P { x: i64, y: i64 }\nenum Ev { Empty, Hit(a: i64, b: i64) }\n"
            "fn m(a: i64) -> i64\n ensures P { x: a * 2, y: 0 } == P { x: a + a, y: 0 }\n{ return 0; }\n"
            "fn t(n: i64) -> Ev\n ensures result == Ev::Hit(n, 2)\n{ return Ev::Hit(n, 2); }\n"
@@ -1597,14 +1597,14 @@ def _selftest_values(go):
            "fn c2() -> () {\n assert Ev::Hit(1, 2) == Ev::Hit(1, 3);\n}\n")
     p = parse_program(src)
     r = run(p, "m", [I64_MAX])
-    assert r["kind"] == "ok" and not r["contract_failures"], r      # 2^64-2 가 구조체 안에서 넘치지 않는다
+    assert r["kind"] == "ok" and not r["contract_failures"], r      # 2^64-2 does not overflow inside the struct
     assert run(p, "t", [3])["contract_failures"] == []
     assert run(p, "u", [3])["contract_failures"] == ["ensures u clause 1"]
     assert run(p, "c", [])["contract_failures"] == []
     cf2 = run(p, "c2", [])["contract_failures"]
     assert len(cf2) == 1 and cf2[0].startswith("assert c2 line "), cf2
 
-    # 10) 평가 순서: 구조체 필드·열거형 페이로드·Some 은 왼→오
+    # 10) evaluation order: struct fields, enum payloads, and Some go left to right
     src = ("struct S { x: i64, y: i64 }\nenum E { N, V(a: i64, b: i64) }\n"
            "fn p(x: i64) -> i64 ! io { print(x); return x; }\n"
            "fn f() -> i64 ! io {\n let s: S = S { x: p(1), y: p(2) };\n let e: E = E::V(p(3), p(4));\n"
@@ -1614,13 +1614,13 @@ def _selftest_values(go):
     r = go(src, "f", [])
     assert r["output"] == ["1", "2", "3", "4", "5"] and r["value"] == 3 + 7 + 5, r
 
-    # 11) format_value 은 Rust {:?} 형식
+    # 11) format_value uses the Rust {:?} format
     assert format_value(-5) == "-5" and format_value(True) == "true" and format_value(False) == "false"
     assert format_value([1, -2]) == "[1, -2]" and format_value([]) == "[]" and format_value(None) == "()"
     assert format_value(SOME(3)) == "Some(3)" and format_value(NONE) == "None"
     assert format_value(OK(3)) == "Ok(3)" and format_value(ERR(-2)) == "Err(-2)"
 
-    # 11b) 구조체·열거형 Debug 모양 (중첩, Option 필드, 빈 구조체/변이)
+    # 11b) struct/enum Debug shape (nesting, Option fields, empty struct/variant)
     def S(n, **kw):
         return {"struct": n, "fields": kw}
 
@@ -1635,7 +1635,7 @@ def _selftest_values(go):
     assert format_value(S("Outer", p=pt, e=E("Event", "Hit", pt=pt, ok=False))) == \
         "Outer { p: Point { x: 1, y: -2 }, e: Hit(Point { x: 1, y: -2 }, false) }"
 
-    # 11c) 구조체 인자를 받아 필드를 바꾼 복사본을 돌려주는 함수, 인자 형식 확인
+    # 11c) function taking a struct argument and returning a copy with a changed field; argument format check
     src = ("struct Point { x: i64, y: i64 }\nenum Event { Empty, Hit(pt: Point, ok: bool) }\n"
            "fn f(p: Point, d: i64) -> Point\n requires d >= 0\n ensures result.x == p.x + d\n"
            "{ let mut q: Point = p; q.x = q.x + d; return q; }\n"
@@ -1645,7 +1645,7 @@ def _selftest_values(go):
     r = run(p, "f", [arg, 5])
     assert r["kind"] == "ok" and r["value"] == S("Point", x=6, y=2) and not r["contract_failures"], r
     assert format_value(r["value"]) == "Point { x: 6, y: 2 }"
-    assert arg == S("Point", x=1, y=2)                  # 인자는 바뀌지 않는다
+    assert arg == S("Point", x=1, y=2)                  # the argument is unchanged
     assert check_requires(p, "f", [arg, -1]) == "violated" and check_requires(p, "f", [arg, 0]) == "ok"
     ev = E("Event", "Hit", pt=arg, ok=True)
     r = run(p, "g", [ev])
@@ -1676,7 +1676,7 @@ def _selftest_values(go):
             assert expected_stderr_prefix(r) == prefix, (r, expected_stderr_prefix(r))
         return r
 
-    # 13a) 타입 문자열
+    # 13a) type strings
     pg = parse_program("fn f(a: [u8], b: [bool], s: str, c: [i64]) -> str ! alloc { return s; }")
     assert pg.fns["f"].params == [("a", "array_u8"), ("b", "array_bool"), ("s", "str"), ("c", "arr")]
     assert pg.fns["f"].ret == "str"
@@ -1687,7 +1687,7 @@ def _selftest_values(go):
         except OracleUnsupported:
             pass
 
-    # 13b) is_char_boundary 식(코드·계약), "aé" = 97 195 169, "a😀" = 97 240 159 152 128
+    # 13b) is_char_boundary expressions (code and contracts),"aé" = 97 195 169, "a😀" = 97 240 159 152 128
     bsrc = "fn b(s: str, i: i64) -> bool { return is_char_boundary(s, i); }"
     for s, exp in [("aé", {-1: False, 0: True, 1: True, 2: False, 3: True, 4: False}),
                    ("a\U0001F600", {1: True, 2: False, 3: False, 4: False, 5: True, 6: False}),
@@ -1704,7 +1704,7 @@ def _selftest_values(go):
     esrc = "fn e(s: str) -> i64 ensures forall k in 0..len(s): is_char_boundary(s, k) ==> s[k] != 169 { return 0; }"
     assert go(esrc, "e", ["aé"])["contract_failures"] == []
 
-    # 13c) substr: slice_range 가 slice_cut 보다 먼저
+    # 13c) substr: slice_range comes before slice_cut
     ssrc = "fn sub(s: str, lo: i64, hi: i64) -> str ! alloc { return substr(s, lo, hi); }"
     for mode in ("safe", "proof"):
         r = go(ssrc, "sub", ["é", 0, 2], mode=mode)
@@ -1712,7 +1712,7 @@ def _selftest_values(go):
         r = go(ssrc, "sub", ["é", 1, 1], mode=mode)
         assert r["kind"] == "slice_cut" and r["detail"] == "1 1 2", r
         assert expected_stderr_prefix(r) == "pruv: UTF-8 boundary error: 1..1 (len 2)"
-        r = go(ssrc, "sub", ["é", 1, 3], mode=mode)         # 끝이 범위 밖 + 시작이 경계 아님 -> range
+        r = go(ssrc, "sub", ["é", 1, 3], mode=mode)         # end out of range + start not on a boundary -> range
         assert r["kind"] == "slice_range" and r["detail"] == "1 3 2", r
         assert expected_stderr_prefix(r) == "pruv: string slice out of bounds: 1..3 (len 2)"
         assert go(ssrc, "sub", ["é", 2, 1], mode=mode)["kind"] == "slice_range"
@@ -1720,7 +1720,7 @@ def _selftest_values(go):
     assert go(ssrc, "sub", ["", 0, 0])["value"] == b""
     assert format_value(b"") == "[]" and format_value(b"hi") == "[104, 105]"
 
-    # 13d) alloc: 길이 → 값 범위, 길이 0 이어도 값 검사, 좁은 타입 자리
+    # 13d) alloc: length -> value range, the value is checked even when length is 0, narrow-type positions
     asrc = "fn a(n: i64, v: i64) -> [u8] ! alloc { let x: [u8] = alloc(n, v); return x; }"
     fails(asrc, "a", [-1, 300], "overflow", "pruv: arithmetic error: alloc length", "alloc")
     fails(asrc, "a", [0, 300], "elem_range", "pruv: element out of range: 300 (u8 0..=255)", "300")
@@ -1730,7 +1730,7 @@ def _selftest_values(go):
     fails("fn a(v: i64) -> [u8] ! alloc { return alloc(1, v); }", "a", [300], "elem_range")
     fails("fn a(v: i64) -> [u8] ! alloc { let mut x: [u8] = alloc(1, 0); x = alloc(1, v); return x; }",
           "a", [256], "elem_range")
-    # 좁은 자리가 아니면 [i64]
+    # outside a narrow position it is [i64]
     r = go("fn a(v: i64) -> i64 { let x: [u8] = copy(alloc(2, v)); return len(x) + x[0]; }", "a", [300])
     assert r["kind"] == "ok" and r["value"] == 302, r
     r = go("fn a(v: i64) -> i64 { let x: [i64] = alloc(2, v); return x[1]; }", "a", [300])
@@ -1740,7 +1740,7 @@ def _selftest_values(go):
     assert r["value"] == [False, True] and format_value(r["value"]) == "[false, true]", r
     fails(bsrc2, "ab", [0], "oob", "pruv: index out of bounds:")
 
-    # 13e) [u8] 저장: 색인 → 값 범위
+    # 13e) [u8] store: index -> value range
     st = ("fn st(a: [u8], i: i64, v: i64) -> [u8] ! alloc { let mut b: [u8] = copy(a); b[i] = v; return b; }")
     fails(st, "st", [[1, 2], 5, 300], "oob", "pruv: index out of bounds:")
     fails(st, "st", [[1, 2], -1, 300], "oob")
@@ -1752,7 +1752,7 @@ def _selftest_values(go):
            "st", [[1, 2], 1, 300])
     assert r["value"] == [1, 300], r
 
-    # 13f) 문자열 리터럴: 이스케이프·다중 바이트, str 연산
+    # 13f) string literals: escapes, multi-byte, str operations
     lit = r'fn lit() -> str ! alloc { return "\" \\ \n \r \t \0 ' + "é" + r'"; }'
     r = go(lit, "lit", [])
     assert r["value"] == b'" \\ \n \r \t \x00 \xc3\xa9', r
@@ -1777,7 +1777,7 @@ def _selftest_values(go):
     except OracleUnsupported:
         pass
 
-    # 13g) str 색인·len·copy, 입력 검사
+    # 13g) str indexing, len, copy, input checks
     ssrc2 = "fn g(s: str, i: i64) -> i64 { let t: str = copy(s); return len(t) * 1000 + t[i]; }"
     assert go(ssrc2, "g", ["aé", 2])["value"] == 3169
     fails(ssrc2, "g", ["aé", 3], "oob", "pruv: index out of bounds:")
@@ -1807,7 +1807,7 @@ def _selftest_values(go):
         pass
     assert go("fn f(a: [bool]) -> [bool] ! alloc { return copy(a); }", "f", [[True, False]])["value"] == [True, False]
 
-    # 12) _cp 는 dict 도 깊게 복사하고, 지원하지 않는 구성은 OracleUnsupported, pruvc 는 import 하지 않는다
+    # 12) _cp also deep-copies dicts, unsupported constructs raise OracleUnsupported, and pruvc is not imported
     d = {"struct": "P", "fields": {"x": 1}}
     c = _cp(d)
     c["fields"]["x"] = 2

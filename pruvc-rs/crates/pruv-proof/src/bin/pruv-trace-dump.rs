@@ -1,16 +1,15 @@
-//! 사용법: pruv-trace-dump [--infer] [--no-verify] [--trust-callers] [--contract-budget N] FILE
-//! (그 밖의 "--" 옵션·FILE 개수 오류는 종료 코드 2). options 는 {"infer","no_verify"}.
-//! `--no-verify`: 검증을 돌리지 않는다(obligations [], timeout_ms 없음). --trust-callers·--contract-budget 은 증명에 영향 없다.
-//! `--infer`: options {"infer":true}, 최상위 "inference"(루프별 보고 레코드 배열; 읽기·parse·check 오류여도 [])가 더해진다.
-//! 파일 하나를 받아(입력마다 새 프로세스: `_MODEL_SEQ` 가 0 에서 시작) 한 줄을 stdout 에 쓴다.
-//! 출력은 Python `diff_py_adapter.trace_result(path, True)` 를 `json.dumps(sort_keys=True, ensure_ascii=False)` 한 것과
-//! 바이트 동일해야 한다:
+//! Usage: pruv-trace-dump [--infer] [--no-verify] [--trust-callers] [--contract-budget N] FILE
+//! (any other "--" option or a wrong FILE count exits with code 2). options is {"infer","no_verify"}.
+//! `--no-verify`: do not run verification (obligations [], no timeout_ms). --trust-callers and --contract-budget do not affect proofs.
+//! `--infer`: options {"infer":true}, and a top-level "inference" (array of per-loop report records; [] even on read/parse/check errors) is added.
+//! Takes one file (a new process per input: `_MODEL_SEQ` starts at 0) and writes one line to stdout.
+//! The output must be byte-identical to the Python `diff_py_adapter.trace_result(path, True)` passed through `json.dumps(sort_keys=True, ensure_ascii=False)`:
 //!   {"errors":[...], "obligations":[{"attempts":[{"lemmas","reason_unknown","result","rlimit","seed","smt2","status","timeout_ms"}],
 //!    "cand","code","col","fn","line","phase","round","seq"[,"skipped"]}],
 //!    "options":{"infer":false}, "schema":"pruv-trace-v2", "timeout_ms":N}
-//! parse/check 오류면 errors 에 그 오류 하나, obligations 는 빈 목록이고 timeout_ms 는 없다(options 는 항상 있다).
-//! 증명기 내부 실패는 errors 에 `internal_error` 하나(그때까지 기록한 obligations 와 timeout_ms 는 남는다).
-//! 읽기·해독 실패는 어댑터처럼 internal_error(Python 예외 문장, pruv_core::pyio).
+//! On a parse/check error, errors holds that single error, obligations is an empty list and timeout_ms is absent (options is always present).
+//! An internal prover failure puts a single `internal_error` in errors (obligations recorded so far and timeout_ms are kept).
+//! Read/decode failures yield internal_error like the adapter (Python exception sentence, pruv_core::pyio).
 
 use std::io::Write;
 
@@ -19,7 +18,7 @@ use pruv_proof::obligation::{adapter_obligations_json, Trace};
 use pruv_proof::symbolic::TIMEOUT_MS;
 use pruv_proof::{verify_program_opts, VerifyOptions};
 
-/// 어댑터 `internal_err(e)`.
+/// The adapter's `internal_err(e)`.
 fn internal_err(msg: &str) -> Json {
     Json::Obj(vec![
         ("stage".to_string(), Json::str("internal")),
@@ -31,7 +30,7 @@ fn internal_err(msg: &str) -> Json {
     ])
 }
 
-/// infer: `--infer` 일 때만 최상위 `inference`(보고 레코드 배열)를 낸다(어댑터: 읽기·parse·check 오류여도 `[]` 로 있다).
+/// infer: only with `--infer` is a top-level `inference` (report record array) emitted (adapter: present as `[]` even on read/parse/check errors).
 fn output(
     errors: Vec<Json>,
     trace: &Trace,
@@ -62,7 +61,7 @@ fn output(
 }
 
 fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
-    // 어댑터 trace_result 처럼 읽기·해독 실패도 internal_error(Python 예외 문장)로 낸다(감사 필수 1).
+    // Like the adapter's trace_result, read/decode failures are also reported as internal_error (Python exception sentence) (audit must-fix 1).
     let src = match pruv_core::pyio::read_source(std::path::Path::new(path)) {
         Ok(s) => s,
         Err(msg) => return output(vec![internal_err(&msg)], &Trace::adapter(), None, infer, no_verify, Vec::new()),
@@ -75,7 +74,7 @@ fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
         Err(e) => errors.push(e.to_json_value()),
         Ok(mut prog) => match pruv_core::check::check(&mut prog) {
             Err(e) => errors.push(e.to_json_value()),
-            // --no-verify: 검증을 돌리지 않는다(obligations [], timeout_ms 없음).
+            // --no-verify: do not run verification (obligations [], no timeout_ms).
             Ok(_) if no_verify => {}
             Ok(tt) => {
                 timeout = Some(TIMEOUT_MS);
@@ -93,7 +92,7 @@ fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
 
 fn main() {
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
-    // 옵션("--" 로 시작)과 FILE 을 가른다. 알려진 옵션: --infer.
+    // Separate options (starting with "--") from FILE. Known option: --infer.
     let mut files: Vec<std::ffi::OsString> = Vec::new();
     let mut unknown: Vec<String> = Vec::new();
     let mut infer = false;
@@ -106,9 +105,9 @@ fn main() {
         } else if s == "--no-verify" {
             no_verify = true;
         } else if s == "--trust-callers" {
-            // 증명에 영향 없음: 받기만 한다.
+            // No effect on proofs: just accept it.
         } else if s == "--contract-budget" {
-            // 값 하나를 받는다(증명에 영향 없음). 값이 없으면 사용법 오류.
+            // Takes one value (no effect on proofs). A missing value is a usage error.
             if args.next().is_none() {
                 eprintln!("pruv-trace-dump: --contract-budget needs a value");
                 std::process::exit(2);
@@ -128,9 +127,9 @@ fn main() {
         std::process::exit(2);
     }
     let path = files.remove(0);
-    // 깊게 중첩된 입력을 위해 1GB 스택 스레드에서 돌린다(파서·검사기·기호 실행이 모두 재귀).
+    // Run on a 1GB-stack thread for deeply nested input (parser, checker and symbolic execution are all recursive).
     let handle = std::thread::Builder::new().stack_size(1 << 30).spawn(move || run(&path, infer, no_verify));
-    // 패닉·스레드 생성 실패는 차분 도구가 rs_crash 로 세도록 0 이 아닌 종료 코드로 끝낸다.
+    // A panic or thread-creation failure exits with a nonzero code so the differential tool counts it as rs_crash.
     let line = match handle.map(|h| h.join()) {
         Ok(Ok(s)) => s,
         _ => {

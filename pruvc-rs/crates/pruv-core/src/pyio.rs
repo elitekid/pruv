@@ -1,18 +1,18 @@
-//! Python `open(path).read()` 흉내: 실패하면 Python 예외의 str(e) 문장을 돌려준다.
-//! (CLI·시험 바이너리가 읽기·해독 실패를 Python 판처럼 internal_error 로 보고하는 데 쓴다.)
-//! 개행 정규화는 parse 가 한다. 해독 오류 위치는 파일 앞에서부터 센 바이트 위치다(Python 이 파일 전체를
-//! 한 번에 읽을 때와 같다; 8192바이트 너머·CRLF 섞임도 확인됨, RESULTS 18절).
+//! Imitation of Python `open(path).read()`: on failure, returns the str(e) message of the Python exception.
+//! (Used by the CLI and test binaries to report read/decode failures as internal_error, like the Python implementation.)
+//! Newline normalization is done by parse. The decode-error position is the byte position counted from the start of the file (the same as when Python
+//! reads the whole file at once; also confirmed beyond 8192 bytes and with mixed CRLF, RESULTS §18).
 
 use crate::pyrepr::repr_str;
 
-/// UTF-8 엄격 해독 실패를 Python `UnicodeDecodeError` 문장으로.
+/// A strict UTF-8 decode failure as a Python `UnicodeDecodeError` message.
 pub fn utf8_error_message(bytes: &[u8], e: &std::str::Utf8Error) -> String {
     let start = e.valid_up_to();
     let (end, reason) = match e.error_len() {
         None => (bytes.len(), "unexpected end of data"),
         Some(n) => {
             let b = bytes[start];
-            // 시작 바이트가 될 수 없는 값(이어지는 바이트·C0/C1·F5 이상)이면 invalid start byte
+            // A value that cannot be a start byte (a continuation byte, C0/C1, F5 or above) gives invalid start byte
             let bad_start = (0x80..=0xC1).contains(&b) || b >= 0xF5;
             (start + n, if n == 1 && bad_start { "invalid start byte" } else { "invalid continuation byte" })
         }
@@ -24,7 +24,7 @@ pub fn utf8_error_message(bytes: &[u8], e: &std::str::Utf8Error) -> String {
     }
 }
 
-/// 파일 읽기 실패를 Python `OSError` 문장(`[Errno N] 설명: 'path'`)으로.
+/// A file read failure as a Python `OSError` message (`[Errno N] description: 'path'`).
 pub fn io_error_message(path: &std::path::Path, e: &std::io::Error) -> String {
     let shown = repr_str(&path.to_string_lossy());
     match e.raw_os_error() {
@@ -40,7 +40,7 @@ pub fn io_error_message(path: &std::path::Path, e: &std::io::Error) -> String {
     }
 }
 
-/// 읽기 + 엄격 UTF-8 해독. 실패하면 Python str(e) 와 같은 문장.
+/// Read plus strict UTF-8 decoding. On failure, the same message as Python's str(e).
 pub fn read_source(path: &std::path::Path) -> Result<String, String> {
     let bytes = std::fs::read(path).map_err(|e| io_error_message(path, &e))?;
     match std::str::from_utf8(&bytes) {

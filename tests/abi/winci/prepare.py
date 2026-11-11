@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Windows CI 입력물 생성 (맥에서 실행, 결과물은 커밋). 표준 라이브러리만, Python 3.9.
+"""Generate Windows CI inputs (run on the Mac; the outputs are committed). Standard library only, Python 3.9.
 
-사용:
+Usage:
   python3 tests/abi/winci/prepare.py [--pruvc PATH] [--check] [--skip-run]
-    --pruvc    기본 pruvc-rs/target/release/pruvc
-    --check    쓰지 않고, 다시 만든 결과가 out/ 의 커밋본과 같은지만 확인 (다르면 exit 1)
-    --skip-run 호스트 링크·실행(.expected)을 건너뜀 (.expected 는 생성·비교하지 않음)
+    --pruvc    default pruvc-rs/target/release/pruvc
+    --check    do not write; only check that the regenerated output is the same as the committed copy in out/ (exit 1 if it differs)
+    --skip-run skip the host link and run (.expected) (.expected is neither generated nor compared)
 
-소스: tests/abi/gen/*.pruv + tests/abi/winci/src/*.pruv. 호출 목록은 calls.json (파일 이름 -> 목록).
-  호출 문자열 "f(인자)" 는 Rust 식이다. 드라이버가 `sol::f(인자)` 로 부르고 `{:?}` 로 출력한다.
-    (구조체·타입은 `sol::Cell { .. }` 처럼 써야 한다.)
-  {"repeat": "f", "args": "Rust 인자 식(i: i64 사용 가능)", "n": 100000} 는 같은 함수를 n 번 불러
-    출력 문자열의 바이트 해시 합계를 한 줄로 낸다.
-산출(out/): <이름>.win.ll  <이름>.rs  <이름>_main.rs  <이름>.expected
-  .win.ll = --target x86_64-pc-windows-msvc, .rs = 바인딩(대상 무관), .expected = 이 맥(호스트 대상)에서 실행한 stdout.
+Sources: tests/abi/gen/*.pruv + tests/abi/winci/src/*.pruv. The call list is calls.json (file name -> list).
+  A call string "f(args)" is a Rust expression. The driver calls it as `sol::f(args)` and prints it with `{:?}`.
+    (Structs and types must be written like `sol::Cell { .. }`.)
+  {"repeat": "f", "args": "Rust argument expression (i: i64 is available)", "n": 100000} calls the same function n times
+    and emits the sum of byte hashes of the output strings as a single line.
+Outputs (out/): <name>.win.ll  <name>.rs  <name>_main.rs  <name>.expected
+  .win.ll = --target x86_64-pc-windows-msvc, .rs = bindings (target-independent), .expected = stdout from running on this Mac (host target).
 """
 import argparse
 import json
@@ -43,7 +43,7 @@ def run(argv, timeout=600):
 
 
 def rust_str(s):
-    return json.dumps(s)  # ASCII 호출 문자열 전제: JSON 이스케이프 = Rust 문자열 이스케이프(\\ \" \n)
+    return json.dumps(s)  # assumes ASCII call strings: JSON escaping = Rust string escaping (\\ \" \n)
 
 
 def driver(stem, calls):
@@ -55,7 +55,7 @@ def driver(stem, calls):
         if isinstance(c, str):
             m = CALL_RE.match(c.strip())
             if not m:
-                raise ValueError("%s: 호출 형식이 f(...) 가 아님: %r" % (stem, c))
+                raise ValueError("%s: call is not of the form f(...): %r" % (stem, c))
             o.append("    println!(\"{} = {:?}\", %s, sol::%s(%s));" % (rust_str(c), m.group(1), m.group(2)))
         elif isinstance(c, dict) and "repeat" in c:
             f, n, args = c["repeat"], int(c["n"]), c.get("args", "")
@@ -68,7 +68,7 @@ def driver(stem, calls):
             o.append("        println!(\"repeat %s n=%d sum={}\", acc);" % (f, n))
             o.append("    }")
         else:
-            raise ValueError("%s: 알 수 없는 호출 항목: %r" % (stem, c))
+            raise ValueError("%s: unknown call entry: %r" % (stem, c))
     o.append("}")
     return "\n".join(o) + "\n"
 
@@ -82,11 +82,11 @@ def pruvc(a, src, ll, rs, target):
 
 
 def host_expected(stem, work, tools):
-    """호스트 대상 .ll + 드라이버를 run_all 과 같은 방법으로 링크·실행해 stdout 을 돌려준다."""
+    """Link and run the host-target .ll + driver the same way run_all does, and return stdout."""
     hll = work / (stem + ".host.ll")
     ok, err = pruvc(tools["args"], tools["srcs"][stem], hll, work / "host_unused.rs", None)
     if not ok:
-        raise RuntimeError("호스트 .ll 생성 실패: " + err)
+        raise RuntimeError("host .ll generation failed: " + err)
     gen_o = work / (stem + "_gen.o")
     rc, so, se = run([tools["clang"], "-O2", "-Wno-override-module", "-c", str(hll), "-o", str(gen_o)])
     if rc != 0:
@@ -98,7 +98,7 @@ def host_expected(stem, work, tools):
         raise RuntimeError("rustc: " + (se or so)[-600:])
     rc, so, se = run([str(exe)], timeout=300)
     if rc != 0:
-        raise RuntimeError("호스트 실행 exit %d: %s" % (rc, (se or so)[-300:]))
+        raise RuntimeError("host run exit %d: %s" % (rc, (se or so)[-300:]))
     return so
 
 
@@ -114,25 +114,25 @@ def main():
     for d in SRC_DIRS:
         for f in sorted(d.glob("*.pruv")):
             if f.stem in srcs:
-                print("이름 중복: " + f.stem)
+                print("duplicate name: " + f.stem)
                 return 1
             srcs[f.stem] = f
     problems = []
     names = {s.name for s in srcs.values()}
     for s in srcs.values():
         if s.name not in calls:
-            problems.append("calls.json 에 항목 없음: " + s.name)
+            problems.append("no entry in calls.json: " + s.name)
     for k in calls:
         if k not in names:
-            problems.append("calls.json 에 있으나 소스 없음: " + k)
+            problems.append("in calls.json but no source: " + k)
     if not Path(a.pruvc).exists():
-        problems.append("pruvc 없음: " + a.pruvc)
+        problems.append("pruvc not found: " + a.pruvc)
     tools = {"args": a, "srcs": srcs}
     if not a.skip_run:
         for t in ("clang", "rustc"):
             tools[t] = shutil.which(t)
             if not tools[t]:
-                problems.append("도구 없음: " + t)
+                problems.append("tool missing: " + t)
     if problems:
         print("\n".join(problems))
         return 1
@@ -153,7 +153,7 @@ def main():
             try:
                 ok, err = pruvc(a, src, gen / (stem + ".win.ll"), gen / (stem + ".rs"), TRIPLE)
                 if not ok:
-                    raise RuntimeError("Windows .ll 생성 실패: " + err)
+                    raise RuntimeError("Windows .ll generation failed: " + err)
                 (gen / (stem + "_main.rs")).write_bytes((driver(stem, calls[src.name])).encode("utf-8"))
                 if not a.skip_run:
                     work_s = work / stem
@@ -161,11 +161,11 @@ def main():
                     shutil.copy(gen / (stem + "_main.rs"), work_s / (stem + "_main.rs"))
                     shutil.copy(gen / (stem + ".rs"), work_s / (stem + ".rs"))
                     (gen / (stem + ".expected")).write_bytes((host_expected(stem, work_s, tools)).encode("utf-8"))
-                print("%-18s 생성 %s" % (src.name, "(실행 생략)" if a.skip_run else "+ 호스트 실행"))
+                print("%-18s generated %s" % (src.name, "(run skipped)" if a.skip_run else "+ host run"))
             except Exception as e:  # noqa: BLE001
                 failed.append("%s: %s" % (src.name, e))
         if failed:
-            print("실패:\n  " + "\n  ".join(failed))
+            print("failed:\n  " + "\n  ".join(failed))
             return 1
 
         if a.check:
@@ -176,15 +176,15 @@ def main():
                 have = {n for n in have if not n.endswith(".expected")}
             for n in sorted(want | have):
                 if n not in want:
-                    diffs.append("커밋본에만 있음: " + n)
+                    diffs.append("only in committed copy: " + n)
                 elif n not in have:
-                    diffs.append("커밋본에 없음: " + n)
+                    diffs.append("missing from committed copy: " + n)
                 elif (gen / n).read_bytes() != (OUT / n).read_bytes():
-                    diffs.append("다름: " + n)
+                    diffs.append("differs: " + n)
             if diffs:
-                print("out/ 이 커밋본과 다름:\n  " + "\n  ".join(diffs))
+                print("out/ differs from the committed copy:\n  " + "\n  ".join(diffs))
                 return 1
-            print("out/ 이 생성 결과와 같음 (%d 파일)" % len(want))
+            print("out/ is the same as the generated output (%d files)" % len(want))
             return 0
 
         OUT.mkdir(exist_ok=True)
@@ -193,7 +193,7 @@ def main():
                 p.unlink()
         for p in gen.iterdir():
             shutil.copy(p, OUT / p.name)
-        print("out/ 에 %d 파일 기록. git add tests/abi/winci/out 후 커밋." % len(list(gen.iterdir())))
+        print("Wrote %d files to out/. Run git add tests/abi/winci/out, then commit." % len(list(gen.iterdir())))
         return 0
     finally:
         shutil.rmtree(work, ignore_errors=True)

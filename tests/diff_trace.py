@@ -1,43 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Python 정본 검증기 trace 와 Rust pruv-trace-dump 의 trace 를 입력마다 비교한다 (M3 3단계).
+"""Compare, per input, the trace of the canonical Python verifier with that of Rust pruv-trace-dump (M3 stage 3).
 
   python tests/diff_trace.py [--rs-path P] [--python P] [--only GROUP[,GROUP]] [--seeds 41,56,57]
                              [--fuzz-count 40] [--jobs N] [--save-dir DIR] [--input FILE ...]
                              [--flags "STR"]
 
-그룹: must_reject examples runtime bench check_edge fuzz input
-  (--input 만 주고 --only 가 없으면 input 그룹만 돈다)
-입력마다 Python(`PY tests/diff_py_adapter.py trace FILE`)과 Rust(`pruv-trace-dump FILE`)를 각각
-새 프로세스로 돌린다(셸 없음, timeout 300). 한 입력의 두 실행은 같은 작업자에서 차례로 한다.
+Groups: must_reject examples runtime bench check_edge fuzz input
+  (if only --input is given and there is no --only, only the input group runs)
+For each input, Python (`PY tests/diff_py_adapter.py trace FILE`) and Rust (`pruv-trace-dump FILE`) are each
+run in a new process (no shell, timeout 300). The two runs for one input happen one after the other in the same worker.
 
-분류 (입력 하나당 하나):
-  option_mismatch 두 출력의 "options" 가 기대값(expected = {"infer": "--infer" in --flags,
-                  "no_verify": "--no-verify" in --flags})과 다름(실패).
-                  다른 분류보다 먼저 검사한다.
-  same          두 stdout 한 줄이 바이트 동일, 어느 attempt result 도 unknown/error 가 아니고 errors 에
-                verify_unknown·inference_timeout 이 없음
-  same_unknown  바이트 동일(또는 counterexample 값이나 resource_unknown attempt 의 reason_unknown 글귀만 다름)하나 위 unknown/error/verify_unknown/inference_timeout 이
-                있음. 성공으로 세지 않는다. py 또는 rs errors 에 inference_timeout 이 있으면 실패, 그 밖에는
-                실패로 치지 않되 따로 보고
-  cex_only      errors 의 counterexample 값만 다르고 나머지 동일, 단 어느 쪽에도 unknown/error/verify_unknown/
-                inference_timeout 이 없을 때(통과로 침, 수는 따로 보고). 있으면 same_unknown 으로 분류
-  flaky_unknown 어느 쪽 attempt result 가 "unknown" 이고 그 차이 때문에 다름, 또는 어느 쪽 errors 에
-                inference_timeout(벽시계 5초 기한, 실행 시간에 달림)이 있고 그 때문에 다름 -> 그 입력만 직렬(--jobs 1)로
-                한 번 다시 돌려 재판정. same/cex_only 로 풀리면 이 칸에 센다(성공 칸 same 에는 더하지 않음;
-                첫 실행의 차이 요약은 보존해 "재시도로 풀린 차이(첫 결과)" 로 보고). 그래도 다르면 diff.
+Classification (exactly one per input):
+  option_mismatch the "options" of the two outputs differ from the expected value (expected = {"infer": "--infer" in --flags,
+                  "no_verify": "--no-verify" in --flags}) (fail).
+                  Checked before any other classification.
+  same          the one stdout line of each is byte-identical, no attempt result is unknown/error, and errors has no
+                verify_unknown or inference_timeout
+  same_unknown  byte-identical (or differing only in counterexample values or in the reason_unknown text of a resource_unknown attempt), but the
+                unknown/error/verify_unknown/inference_timeout above is present. Not counted as success. If the py or rs errors contain inference_timeout it is a fail;
+                otherwise it is not treated as a fail but is reported separately
+  cex_only      only the counterexample values in errors differ and everything else is identical, provided neither side has unknown/error/verify_unknown/
+                inference_timeout (counted as pass; the count is reported separately). If any is present it is classified as same_unknown
+  flaky_unknown either side's attempt result is "unknown" and that causes the difference, or either side's errors contain
+                inference_timeout (wall-clock 5 s limit, depends on run time) and that causes the difference -> only that input is re-run
+                once serially (--jobs 1) and re-judged. If it resolves to same/cex_only it is counted in this column (not added to same in the success column;
+                the first run's difference summary is kept and reported as "differences resolved by retry (first result)"). If it still differs, it is diff.
                 Also: a function's "inference" entry has status "timeout" (5 s wall clock) on either side. If it
                 still differs after the serial retry it stays flaky_unknown (noted; not comparable on a machine
                 this slow) instead of diff.
-  py_recursion  Python 재귀 한도 internal_error(비교 대상 없음)
-  diff          그 밖의 차이
-  py_crash / rs_crash   종료 코드≠0, 출력 줄 없음, JSON 아님
-  timeout       어느 쪽이든 시간 초과
-별도 집계 verified: 상태가 same 또는 cex_only 이고 Python errors 가 빈 입력 수(두 판이 같고 검증까지 끝남).
---flags=STR(옵션 모양 값이라 `=` 로 붙여 쓴다, 예: --flags=--infer): 공백으로 나눈 토큰을 Python(`adapter trace FLAGS FILE`)과 Rust(`pruv-trace-dump FLAGS FILE`)에 똑같이 넘김.
-종료 코드: 0 = diff·crash·timeout·option_mismatch 0 이고 inference_timeout 든 same_unknown 0,
-          1 = 그 외, 2 = 인자/바이너리 없음.
-Python 3.9 표준 라이브러리만 쓴다.
+  py_recursion  Python recursion-limit internal_error (nothing to compare)
+  diff          any other difference
+  py_crash / rs_crash   exit code != 0, no output line, or not JSON
+  timeout       either side timed out
+Separate tally verified: the number of inputs whose status is same or cex_only and whose Python errors are empty (both implementations agree and verification completed).
+--flags=STR (an option-shaped value, so attach it with `=`, e.g. --flags=--infer): the whitespace-split tokens are passed identically to Python (`adapter trace FLAGS FILE`) and Rust (`pruv-trace-dump FLAGS FILE`).
+Exit codes: 0 = diff, crash, timeout and option_mismatch are all 0 and there is no same_unknown containing inference_timeout,
+          1 = anything else, 2 = bad arguments / binary missing.
+Uses only the Python 3.9 standard library.
 """
 import argparse
 import collections
@@ -77,13 +77,13 @@ class Case(object):
         self.group, self.name, self.path = group, name, path
         self.status = None
         self.note = ""
-        self.py_raw = None      # bytes (한 줄, 개행 제외) 또는 None
+        self.py_raw = None      # bytes (one line, newline excluded) or None
         self.rs_raw = None
         self.py_obj = None
         self.rs_obj = None
-        self.flaky_first = False   # 처음에 flaky_unknown 으로 판정돼 재시도 했는가
-        self.first_summary = None  # 첫 실행의 diff_summary 결과(재시도 때 보존)
-        self.first_status = None   # 첫 실행의 상태
+        self.flaky_first = False   # was it first judged flaky_unknown and retried?
+        self.first_summary = None  # diff_summary result of the first run (kept across the retry)
+        self.first_status = None   # status of the first run
 
 
 def rel(path):
@@ -99,7 +99,7 @@ def parse_seed(tok):
 
 
 # ---------------------------------------------------------------------------
-# 입력 모으기
+# Collecting inputs
 # ---------------------------------------------------------------------------
 def build_cases(selected, args, tmp):
     per_group = collections.OrderedDict((g, []) for g in ALL_GROUPS)
@@ -109,7 +109,7 @@ def build_cases(selected, args, tmp):
             continue
         files = sorted(glob.glob(os.path.join(ROOT, *sub.split("/"), pat)))
         if not files:
-            notes.append("경고: %s 에 %s 가 없다(%s)" % (g, pat, sub))
+            notes.append("warning: no %s in %s (%s)" % (g, pat, sub))
         for p in files:
             per_group[g].append(Case(g, rel(p), p))
     if "fuzz" in selected:
@@ -119,7 +119,7 @@ def build_cases(selected, args, tmp):
         try:
             import generate
         except Exception as e:   # noqa: BLE001
-            print("오류: 퍼저 생성기를 불러오지 못했다: %s: %s" % (type(e).__name__, e), file=sys.stderr)
+            print("error: could not load the fuzzer generator: %s: %s" % (type(e).__name__, e), file=sys.stderr)
             raise SystemExit(2)
         skipped = 0
         for seed in args.seeds:
@@ -133,7 +133,7 @@ def build_cases(selected, args, tmp):
                 with open(p, "wb") as fh:
                     fh.write(data)
                 per_group["fuzz"].append(Case("fuzz", "fuzz:%s:%d" % (seed, idx), p))
-        notes.append("fuzz: 생성기 예외로 건너뛴 index %d개 (seeds=%s, count=%d)" % (
+        notes.append("fuzz: %d indexes skipped due to generator exceptions (seeds=%s, count=%d)" % (
             skipped, ",".join(str(s) for s in args.seeds), args.fuzz_count))
     if "input" in selected:
         for p in args.input:
@@ -142,30 +142,30 @@ def build_cases(selected, args, tmp):
 
 
 # ---------------------------------------------------------------------------
-# 실행
+# Running
 # ---------------------------------------------------------------------------
 def run_one_proc(argv, env):
     """-> (kind, raw_line|None, obj|None, note)  kind: ok / crash / timeout"""
     try:
         p = subprocess.run(argv, capture_output=True, timeout=PROC_TIMEOUT, env=env)
     except subprocess.TimeoutExpired:
-        return "timeout", None, None, "시간 초과(%d초)" % PROC_TIMEOUT
+        return "timeout", None, None, "timeout (%d s)" % PROC_TIMEOUT
     except OSError as e:
-        return "crash", None, None, "실행 실패: %s" % e
+        return "crash", None, None, "failed to start: %s" % e
     tail = p.stderr.decode("utf-8", "replace")[-300:].strip()
     if p.returncode != 0:
-        return "crash", None, None, "종료 코드 %d: %s" % (p.returncode, tail)
+        return "crash", None, None, "exit code %d: %s" % (p.returncode, tail)
     out = p.stdout
     if out.endswith(b"\n"):
         out = out[:-1]
     if not out or b"\n" in out:
-        return "crash", None, None, "stdout 이 한 줄이 아니다(%d바이트) %s" % (len(p.stdout), tail)
+        return "crash", None, None, "stdout is not a single line (%d bytes) %s" % (len(p.stdout), tail)
     try:
         obj = json.loads(out.decode("utf-8"))
     except (ValueError, RecursionError):
-        return "crash", None, None, "JSON 아님: %s" % out[:200].decode("utf-8", "replace")
+        return "crash", None, None, "not JSON: %s" % out[:200].decode("utf-8", "replace")
     if not isinstance(obj, dict):
-        return "crash", None, None, "JSON 객체가 아님"
+        return "crash", None, None, "not a JSON object"
     return "ok", out, obj, ""
 
 
@@ -176,7 +176,7 @@ def evaluate(case, py_argv, rs_argv, env, expected):
     if k != "ok":
         case.status = "timeout" if k == "timeout" else "py_crash"
         case.note = "py: " + note
-        # Rust 도 돌려 저장 사례에 남긴다
+        # run Rust too, so it is kept in the saved case
     k2, case.rs_raw, case.rs_obj, note2 = run_one_proc(rs_argv + [case.path], env)
     if k != "ok":
         return
@@ -188,7 +188,7 @@ def evaluate(case, py_argv, rs_argv, env, expected):
 
 
 def strip_cex(obj):
-    """errors 의 counterexample 값을 자리표시자로 바꾼 복사본(키 유무는 그대로 비교된다)"""
+    """Copy with the counterexample values in errors replaced by a placeholder (key presence is still compared)"""
     o = dict(obj)
     errs = []
     for e in o.get("errors", []):
@@ -200,12 +200,12 @@ def strip_cex(obj):
     return o
 
 
-RLIMIT_REASONS = ("max. resource limit exceeded", "push canceled")   # z3 rlimit 소진 글귀(같은 원인)
+RLIMIT_REASONS = ("max. resource limit exceeded", "push canceled")   # z3 rlimit-exhaustion texts (same cause)
 
 
 def strip_reason(obj):
-    """rlimit 소진(RLIMIT_REASONS) resource_unknown attempt 의 reason_unknown 글귀를 자리표시자로 바꾼 복사본. 같은 SMT 에서 rlimit 소진 위치에 따라
-    z3 가 "max. resource limit exceeded" / "push canceled" 처럼 다른 글귀를 내기 때문(상태·결과는 그대로 비교된다)"""
+    """Copy with the reason_unknown text of rlimit-exhausted (RLIMIT_REASONS) resource_unknown attempts replaced by a placeholder. For the same SMT,
+    z3 emits different texts such as "max. resource limit exceeded" / "push canceled" depending on where the rlimit ran out (status and result are still compared)"""
     o = dict(obj)
     obs = []
     for ob in o.get("obligations", []):
@@ -230,7 +230,7 @@ def results_of(o):
 
 
 def unknown_involved(py, rs):
-    """결과(result)가 다른 attempt 쌍에 "unknown" 이 끼었거나, 개수가 달라 보이는데 unknown 이 있는가"""
+    """Is "unknown" involved in an attempt pair whose results differ, or does a count appear to differ while an unknown is present?"""
     po, ro = py.get("obligations", []), rs.get("obligations", [])
     seen_unknown = "unknown" in set(results_of(py)) or "unknown" in set(results_of(rs))
     if not seen_unknown:
@@ -248,7 +248,7 @@ def unknown_involved(py, rs):
 
 
 def py_recursion(obj):
-    """Python 이 재귀 한도(RecursionError)로 internal_error 를 냈는가(비교 대상 없음, diff_parse 와 같은 범주)"""
+    """Did Python emit internal_error because of the recursion limit (RecursionError)? (nothing to compare; same category as in diff_parse)"""
     return any(isinstance(e, dict) and e.get("code") == "internal_error"
                and "maximum recursion depth" in str(e.get("message", "")) for e in obj.get("errors", []))
 
@@ -258,7 +258,7 @@ def error_codes(obj):
 
 
 def has_unknown_or_error(obj):
-    """attempt result 가 unknown/error 이거나 errors 에 verify_unknown/inference_timeout 이 있는가"""
+    """Is an attempt result unknown/error, or does errors contain verify_unknown/inference_timeout?"""
     if any(r in ("unknown", "error") for r in results_of(obj)):
         return True
     return any(c in ("verify_unknown", "inference_timeout") for c in error_codes(obj))
@@ -278,12 +278,12 @@ def classify(case, expected):
             return "same_unknown"
         return "cex_only"
     if canon(strip_reason(strip_cex(case.py_obj))) == canon(strip_reason(strip_cex(case.rs_obj))):
-        return "same_unknown"   # resource_unknown 의 z3 글귀만 다름(그 attempt 가 unknown 이라 성공으로 세지 않음)
+        return "same_unknown"   # only the z3 text of resource_unknown differs (that attempt is unknown, so it is not counted as success)
     if unknown_involved(case.py_obj, case.rs_obj):
         return "flaky_unknown"
     if ("inference_timeout" in error_codes(case.py_obj) or "inference_timeout" in error_codes(case.rs_obj)) \
             and case.py_obj.get("errors") != case.rs_obj.get("errors"):
-        return "flaky_unknown"   # 벽시계 기한(실행 시간에 달림)이 끼어 다름 -> 직렬 재시도
+        return "flaky_unknown"   # a wall-clock limit (depends on run time) is involved in the difference -> serial retry
     if inference_wall_timeout(case):
         # A function's inference hit the wall-clock limit (slow or busy machine, e.g. a CI runner):
         # how far each side got depends on speed -> retry serially like inference_timeout.
@@ -298,7 +298,7 @@ def inference_wall_timeout(case):
 
 
 # ---------------------------------------------------------------------------
-# diff 요약
+# diff summary
 # ---------------------------------------------------------------------------
 def smt_context(a, b):
     la, lb = a.split("\n"), b.split("\n")
@@ -307,7 +307,7 @@ def smt_context(a, b):
     while i < n and la[i] == lb[i]:
         i += 1
     lo, hi = max(0, i - 3), i + 4
-    out = ["    첫 다른 줄 번호 %d (py %d줄, rs %d줄)" % (i + 1, len(la), len(lb))]
+    out = ["    first differing line number %d (py %d lines, rs %d lines)" % (i + 1, len(la), len(lb))]
     out.append("    py:")
     out += ["      %s%s" % ("> " if lo + k == i else "  ", s) for k, s in enumerate(la[lo:hi])]
     out.append("    rs:")
@@ -323,26 +323,26 @@ def short(v, n=200):
 def diff_summary(py, rs):
     lines = []
     po, ro = py.get("obligations", []), rs.get("obligations", [])
-    lines.append("의무 수: py %d / rs %d" % (len(po), len(ro)))
+    lines.append("obligation count: py %d / rs %d" % (len(po), len(ro)))
     for k in sorted(set(py) | set(rs)):
         if k in ("errors", "obligations"):
             continue
         if py.get(k) != rs.get(k):
-            lines.append("최상위 키 %s 다름: py=%s rs=%s" % (k, short(py.get(k)), short(rs.get(k))))
+            lines.append("top-level key %s differs: py=%s rs=%s" % (k, short(py.get(k)), short(rs.get(k))))
     pe, re_ = py.get("errors", []), rs.get("errors", [])
     pes, res = strip_cex(py).get("errors", []), strip_cex(rs).get("errors", [])
     if pes != res:
-        lines.append("errors 수: py %d / rs %d" % (len(pe), len(re_)))
+        lines.append("errors count: py %d / rs %d" % (len(pe), len(re_)))
         for i in range(max(len(pes), len(res))):
             a = pes[i] if i < len(pes) else None
             b = res[i] if i < len(res) else None
             if a != b:
                 keys = sorted(set(a or {}) | set(b or {})) if isinstance(a, dict) and isinstance(b, dict) else []
-                lines.append("첫 다른 오류 #%d (counterexample 값 제외 비교)" % i)
+                lines.append("first differing error #%d (compared excluding counterexample values)" % i)
                 if keys:
                     for k in keys:
                         if a.get(k) != b.get(k):
-                            lines.append("  키 %s: py=%s rs=%s" % (k, short(a.get(k)), short(b.get(k))))
+                            lines.append("  key %s: py=%s rs=%s" % (k, short(a.get(k)), short(b.get(k))))
                 else:
                     lines.append("  py=%s rs=%s" % (short(a), short(b)))
                 break
@@ -353,42 +353,42 @@ def diff_summary(py, rs):
     for sq in seqs:
         a, b = pm.get(sq), rm.get(sq)
         if a is None or b is None:
-            lines.append("처음 다른 의무 seq=%s: %s에만 있음" % (sq, "py" if b is None else "rs"))
-            lines.append("  있는 쪽: %s" % short({k: v for k, v in (a or b).items() if k != "attempts"}))
+            lines.append("first differing obligation seq=%s: present only in %s" % (sq, "py" if b is None else "rs"))
+            lines.append("  the side that has it: %s" % short({k: v for k, v in (a or b).items() if k != "attempts"}))
             shown = True
             break
         if a == b:
             continue
-        lines.append("처음 다른 의무 seq=%s (fn=%s line=%s)" % (sq, a.get("fn"), a.get("line")))
+        lines.append("first differing obligation seq=%s (fn=%s line=%s)" % (sq, a.get("fn"), a.get("line")))
         for k in ("code", "line", "col", "fn", "skipped"):
             if a.get(k) != b.get(k):
                 lines.append("  %s: py=%s rs=%s" % (k, short(a.get(k)), short(b.get(k))))
         aa, ba = a.get("attempts", []), b.get("attempts", [])
         if len(aa) != len(ba):
-            lines.append("  attempt 수: py %d / rs %d" % (len(aa), len(ba)))
+            lines.append("  attempt count: py %d / rs %d" % (len(aa), len(ba)))
         for j in range(min(len(aa), len(ba))):
             x, y = aa[j], ba[j]
             if x == y:
                 continue
-            lines.append("  attempt #%d 다름:" % j)
+            lines.append("  attempt #%d differs:" % j)
             for k in ("lemmas", "result"):
                 if x.get(k) != y.get(k):
                     lines.append("    %s: py=%s rs=%s" % (k, short(x.get(k)), short(y.get(k))))
             if x.get("smt2") != y.get("smt2"):
-                lines.append("    smt2 다름:")
+                lines.append("    smt2 differs:")
                 lines += smt_context(str(x.get("smt2")), str(y.get("smt2")))
             break
         shown = True
         break
-    if not shown and not any(l.startswith("첫 다른 오류") for l in lines):
-        lines.append("(구조 요약에서 차이를 찾지 못함: 키 순서·공백 등 바이트 차이일 수 있다)")
+    if not shown and not any(l.startswith("first differing error") for l in lines):
+        lines.append("(no difference found in the structural summary: may be a byte-level difference such as key order or whitespace)")
     return lines
 
 
 def case_summary(case):
     lines = ["group: %s" % case.group, "name: %s" % case.name, "status: %s" % case.status]
     if case.flaky_first:
-        lines.append("처음 flaky_unknown 으로 판정돼 직렬 재시도 했다")
+        lines.append("first judged flaky_unknown, so it was retried serially")
     if case.note:
         lines.append("note: " + case.note)
     if case.status == "diff":
@@ -429,50 +429,50 @@ def default_python(explicit):
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(prog="diff_trace.py", description="Python/Rust 검증기 trace 비교")
-    ap.add_argument("--rs-path", default=None, help="pruv-trace-dump 경로")
-    ap.add_argument("--python", default=None, help="정본을 돌릴 Python (기본 .venv/bin/python)")
-    ap.add_argument("--only", default=None, help="그룹(쉼표 목록): " + " ".join(ALL_GROUPS))
+    ap = argparse.ArgumentParser(prog="diff_trace.py", description="Compare Python/Rust verifier traces")
+    ap.add_argument("--rs-path", default=None, help="path to pruv-trace-dump")
+    ap.add_argument("--python", default=None, help="Python used to run the canonical implementation (default .venv/bin/python)")
+    ap.add_argument("--only", default=None, help="groups (comma-separated list): " + " ".join(ALL_GROUPS))
     ap.add_argument("--seeds", default="41,56,57")
     ap.add_argument("--fuzz-count", type=int, default=40)
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     ap.add_argument("--save-dir", default=None)
-    ap.add_argument("--input", action="append", default=[], metavar="FILE", help="input 그룹 파일(여러 번 가능)")
-    ap.add_argument("--flags", default="", help="두 판에 똑같이 넘길 옵션(공백 구분), 예: --flags=--infer")
+    ap.add_argument("--input", action="append", default=[], metavar="FILE", help="file for the input group (may be repeated)")
+    ap.add_argument("--flags", default="", help="options passed identically to both implementations (whitespace-separated), e.g. --flags=--infer")
     args = ap.parse_args(argv)
     flag_toks = args.flags.split()
     expected = {"infer": "--infer" in flag_toks, "no_verify": "--no-verify" in flag_toks}
 
     args.seeds = [parse_seed(t) for t in args.seeds.split(",") if t.strip() != ""]
     if args.fuzz_count < 0 or args.jobs < 1:
-        ap.error("--fuzz-count 는 0 이상, --jobs 는 1 이상이어야 한다")
+        ap.error("--fuzz-count must be >= 0 and --jobs must be >= 1")
     if args.only is None:
         selected = ["input"] if args.input else [g for g in ALL_GROUPS if g != "input"]
     else:
         selected = [t.strip() for t in args.only.split(",") if t.strip()]
         bad = [t for t in selected if t not in ALL_GROUPS]
         if bad or not selected:
-            ap.error("--only: 알 수 없는 그룹 %s (가능: %s)" % (bad, " ".join(ALL_GROUPS)))
+            ap.error("--only: unknown group %s (valid: %s)" % (bad, " ".join(ALL_GROUPS)))
     if "input" in selected and not args.input:
-        ap.error("input 그룹에는 --input FILE 이 필요하다")
+        ap.error("the input group needs --input FILE")
     for p in args.input:
         if not os.path.isfile(p):
-            print("오류: --input 파일이 없다: %s" % p, file=sys.stderr)
+            print("error: --input file not found: %s" % p, file=sys.stderr)
             return 2
 
     rs = os.path.abspath(args.rs_path) if args.rs_path else default_rs_path()
     if not os.path.isfile(rs) or not os.access(rs, os.X_OK):
-        print("오류: Rust 바이너리를 찾을 수 없거나 실행할 수 없다: %s\n"
-              "  먼저 빌드하거나 --rs-path 로 pruv-trace-dump 경로를 준다." % rs, file=sys.stderr)
+        print("error: Rust binary not found or not executable: %s\n"
+              "  build it first, or pass the pruv-trace-dump path with --rs-path." % rs, file=sys.stderr)
         return 2
     py = default_python(args.python)
     if os.sep in py or "/" in py:
         if not os.path.isfile(py):
-            print("오류: Python 을 찾을 수 없다: %s" % py, file=sys.stderr)
+            print("error: Python not found: %s" % py, file=sys.stderr)
             return 2
     adapter = os.path.join(HERE, "diff_py_adapter.py")
     if not os.path.isfile(adapter):
-        print("오류: %s 가 없다" % adapter, file=sys.stderr)
+        print("error: %s not found" % adapter, file=sys.stderr)
         return 2
     py_argv = [py, adapter, "trace"] + flag_toks
     rs_argv = [rs] + flag_toks
@@ -491,7 +491,7 @@ def main(argv):
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as ex:
             list(ex.map(work, all_cases))
 
-        # flaky_unknown 재시도: 직렬(--jobs 1). 첫 실행의 차이 요약과 상태는 case 에 보존한다
+        # flaky_unknown retry: serial (--jobs 1). The first run's difference summary and status are kept in the case
         flaky = [c for c in all_cases if c.status == "flaky_unknown"]
         for c in flaky:
             c.flaky_first = True
@@ -499,14 +499,14 @@ def main(argv):
             c.first_summary = diff_summary(c.py_obj, c.rs_obj)
             evaluate(c, py_argv, rs_argv, env, expected)
             if c.status in ("same", "cex_only"):
-                c.status = "flaky_unknown"     # 재시도로 풀림(성공 칸에 더하지 않는다)
+                c.status = "flaky_unknown"     # resolved by the retry (not added to the success column)
             elif c.status == "flaky_unknown" and inference_wall_timeout(c):
                 # Still differs, but a function's inference stopped at the 5 s wall clock: the result only says
                 # how fast this machine is (slow CI runner), not that the compilers disagree. Not a failure.
                 c.note = (c.note + " " if c.note else "") + "(inference wall-clock timeout: not comparable here)"
             elif c.status == "flaky_unknown":
-                c.status = "diff"              # 그래도 다름
-            c.note = (c.note + " " if c.note else "") + "(재시도 후)"
+                c.status = "diff"              # still differs
+            c.note = (c.note + " " if c.note else "") + "(after retry)"
 
         def verified(c):
             return c.status in ("same", "cex_only") and c.py_obj is not None and c.py_obj.get("errors") == []
@@ -527,7 +527,7 @@ def main(argv):
         print("py: %s" % py)
         print("jobs: %d" % args.jobs)
         print("")
-        print("flags: %s (기대 options=%s)" % (args.flags or "(없음)", json.dumps(expected, sort_keys=True)))
+        print("flags: %s (expected options=%s)" % (args.flags or "(none)", json.dumps(expected, sort_keys=True)))
         print("%-12s" % "group" + "".join("%16s" % c for c in COLS) + "%15s" % "| verified")
         total = collections.Counter()
         for g in ALL_GROUPS:
@@ -539,15 +539,15 @@ def main(argv):
             print("%-12s" % g + "".join("%16d" % st[c] for c in COLS) + "%15d" % st["verified"])
             total.update(st)
         print("%-12s" % "TOTAL" + "".join("%16d" % total[c] for c in COLS) + "%15d" % total["verified"])
-        print("(cex_only %d건은 통과로 친다; flaky_unknown 은 직렬 재시도로 풀린 수, 성공 칸에 안 더한다)" % total["cex_only"])
-        print("(verified = same 또는 cex_only 이고 py errors 가 빈 입력: 두 판이 같고 검증까지 끝남)")
-        print("(same_unknown %d건: 두 판 바이트 동일하나 unknown/error/verify_unknown/inference_timeout 이 있음, "
-              "성공으로 세지 않음; 그중 inference_timeout %d건은 실패)" % (
+        print("(%d cex_only are counted as pass; flaky_unknown is the number resolved by the serial retry, not added to the success column)" % total["cex_only"])
+        print("(verified = inputs that are same or cex_only and have empty py errors: both implementations agree and verification completed)")
+        print("(%d same_unknown: byte-identical in both implementations but containing unknown/error/verify_unknown/inference_timeout, "
+              "not counted as success; of these, %d with inference_timeout are failures)" % (
                   total["same_unknown"], sum(1 for c in all_cases if inf_timeout(c))))
         for n in notes:
             print(n)
 
-        # 집계: 정본(py) 출력 기준
+        # Tally: based on the canonical (py) output
         n_obl = n_att = n_retry = n_skipped = 0
         res = collections.Counter()
         codes = collections.Counter()
@@ -570,19 +570,19 @@ def main(argv):
                     codes[e.get("code")] += 1
                     stages[e.get("stage")] += 1
         print("")
-        print("== 정본(py) 기준 집계 ==")
-        print("의무 %d (skipped %d), attempt %d, 재시도(lemmas true) %d" % (n_obl, n_skipped, n_att, n_retry))
-        print("결과별: sat=%d unsat=%d unknown=%d 그 밖=%d" % (
+        print("== tally based on the canonical (py) output ==")
+        print("obligations %d (skipped %d), attempts %d, retries (lemmas true) %d" % (n_obl, n_skipped, n_att, n_retry))
+        print("by result: sat=%d unsat=%d unknown=%d other=%d" % (
             res["sat"], res["unsat"], res["unknown"],
             sum(v for k, v in res.items() if k not in ("sat", "unsat", "unknown"))))
-        print("오류 code %d종, %d건:" % (len(codes), sum(codes.values())))
+        print("%d error codes, %d errors:" % (len(codes), sum(codes.values())))
         for code, n in sorted(codes.items(), key=lambda kv: (-kv[1], str(kv[0]))):
             print("  %-24s %d" % (code, n))
-        print("오류 stage: %s" % (", ".join("%s=%d" % kv for kv in sorted(stages.items(), key=lambda kv: str(kv[0]))) or "없음"))
+        print("error stage: %s" % (", ".join("%s=%d" % kv for kv in sorted(stages.items(), key=lambda kv: str(kv[0]))) or "none"))
 
         if diffs:
             print("")
-            print("== diff (최대 %d개 / 전체 %d) ==" % (MAX_SHOWN, len(diffs)))
+            print("== diff (up to %d / %d in total) ==" % (MAX_SHOWN, len(diffs)))
             for c in diffs[:MAX_SHOWN]:
                 print("[%s] %s" % (c.group, c.name))
                 for ln in diff_summary(c.py_obj, c.rs_obj):
@@ -590,32 +590,32 @@ def main(argv):
         mism = [c for c in all_cases if c.status == "option_mismatch"]
         if mism:
             print("")
-            print("== option_mismatch (최대 %d개 / 전체 %d) ==" % (MAX_SHOWN, len(mism)))
+            print("== option_mismatch (up to %d / %d in total) ==" % (MAX_SHOWN, len(mism)))
             for c in mism[:MAX_SHOWN]:
-                print("[%s] %s: 기대 %s py=%s rs=%s" % (c.group, c.name, json.dumps(expected, sort_keys=True),
+                print("[%s] %s: expected %s py=%s rs=%s" % (c.group, c.name, json.dumps(expected, sort_keys=True),
                                                     short(c.py_obj.get("options")), short(c.rs_obj.get("options"))))
         retried = [c for c in all_cases if c.first_summary is not None and c.status != "diff"]
         if retried:
             print("")
-            print("== 재시도로 풀린 차이(첫 결과) (최대 %d개 / 전체 %d) ==" % (MAX_SHOWN, len(retried)))
+            print("== differences resolved by retry (first result) (up to %d / %d in total) ==" % (MAX_SHOWN, len(retried)))
             for c in retried[:MAX_SHOWN]:
-                print("[%s] %s: 첫 상태 %s -> 재시도 후 %s" % (c.group, c.name, c.first_status, c.status))
+                print("[%s] %s: first status %s -> after retry %s" % (c.group, c.name, c.first_status, c.status))
                 for ln in c.first_summary:
                     print("  " + ln)
         if crashes:
             print("")
-            print("== crash/timeout (최대 %d개 / 전체 %d) ==" % (MAX_SHOWN, len(crashes)))
+            print("== crash/timeout (up to %d / %d in total) ==" % (MAX_SHOWN, len(crashes)))
             for c in crashes[:MAX_SHOWN]:
                 print("[%s] %s: %s %s" % (c.group, c.name, c.status, c.note))
         if args.save_dir:
             print("")
-            print("저장: 사례 %d개 -> %s" % (saved, args.save_dir))
+            print("saved: %d cases -> %s" % (saved, args.save_dir))
         print("")
-        print("걸린 시간: %.1f초" % (time.time() - t0))
+        print("elapsed: %.1f s" % (time.time() - t0))
 
     clean = all(total[k] == 0 for k in ("diff", "py_crash", "rs_crash", "timeout", "option_mismatch")) \
         and not any(inf_timeout(c) for c in all_cases)
-    print("결과: %s" % ("성공" if clean else "실패"))
+    print("result: %s" % ("success" if clean else "fail"))
     return 0 if clean else 1
 
 

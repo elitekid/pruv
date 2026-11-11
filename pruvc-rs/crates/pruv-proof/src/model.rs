@@ -1,13 +1,13 @@
-//! verify.py 10~70줄: `Opt`/`Res` Datatype(모듈 수준)와 프로그램별 `Model`(사용자 struct/enum, G1).
+//! verify.py lines 10-70: the `Opt`/`Res` Datatypes (module level) and the per-program `Model` (user struct/enum, G1).
 //!
-//! 이름 규칙(글자 단위로 verify.py 와 같아야 한다):
-//! - `Opt`: `some(sval: Int)`, `none`; `Res`: `ok(oval: Int)`, `err(eval: Int)`. 둘은 한 번의 `CreateDatatypes` 로 함께 만든다.
-//! - 사용자 타입 i 번째(TypeTable 의존 순서)는 tag = `m{SEQ}t{i}!`.
-//!   struct: datatype 이름 = 생성자 이름 = `tag+Name`, 접근자 = `tag+Name+"."+field`.
-//!   enum: datatype = `tag+Name`, 변형 생성자 = `tag+Name+"::"+Variant`, 접근자 = 생성자 이름 + `"."+field`.
-//! - SEQ(`_MODEL_SEQ`)는 프로세스(여기서는 스레드)에서 `Model` 을 만들 때마다 1 씩 증가한다. Python 은 프로그램마다
-//!   Model 하나를 만들므로 `verify_program` 은 `next_seq()` 를 한 번만 부르고 함수마다 컨텍스트가 다르더라도
-//!   같은 번호로 `Model::with_seq` 를 부른다.
+//! Naming rules (must match verify.py character for character):
+//! - `Opt`: `some(sval: Int)`, `none`; `Res`: `ok(oval: Int)`, `err(eval: Int)`. Both are created together with a single `CreateDatatypes`.
+//! - The i-th user type (in TypeTable dependency order) has tag = `m{SEQ}t{i}!`.
+//!   struct: datatype name = constructor name = `tag+Name`, accessor = `tag+Name+"."+field`.
+//!   enum: datatype = `tag+Name`, variant constructor = `tag+Name+"::"+Variant`, accessor = constructor name + `"."+field`.
+//! - SEQ (`_MODEL_SEQ`) increases by 1 each time a `Model` is created in the process (here, the thread). Python creates
+//!   one Model per program, so `verify_program` calls `next_seq()` only once and, even though each function has a different context,
+//!   calls `Model::with_seq` with the same number.
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -20,12 +20,12 @@ thread_local! {
     static MODEL_SEQ: Cell<u32> = const { Cell::new(0) };
 }
 
-/// 표본마다 Python 새 프로세스와 같게 0 에서 다시 시작하고 싶을 때(spike 바이너리가 표본 앞에서 부른다).
+/// For restarting from 0 per sample, like a fresh Python process (the spike binary calls this before each sample).
 pub fn reset_model_seq() {
     MODEL_SEQ.with(|c| c.set(0));
 }
 
-/// `_MODEL_SEQ[0] += 1` 뒤의 값.
+/// The value after `_MODEL_SEQ[0] += 1`.
 pub fn next_seq() -> u32 {
     MODEL_SEQ.with(|c| {
         c.set(c.get() + 1);
@@ -33,7 +33,7 @@ pub fn next_seq() -> u32 {
     })
 }
 
-/// 배열 원소 저장 타입(G2). 내부 이름 대응은 pruv_core::typeinfo 한 곳.
+/// Array element storage type (G2). The internal name mapping lives in one place, pruv_core::typeinfo.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Elem {
     I64,
@@ -42,7 +42,7 @@ pub enum Elem {
 }
 
 impl Elem {
-    /// 원소 타입 이름("i64"/"u8"/"bool").
+    /// Element type name ("i64"/"u8"/"bool").
     pub fn name(self) -> &'static str {
         match self {
             Elem::I64 => "i64",
@@ -60,7 +60,7 @@ impl Elem {
     }
 }
 
-/// Pruv 타입(vast.Type). 사용자 타입은 이름 하나.
+/// Pruv type (vast.Type). A user type is a single name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     I64,
@@ -74,7 +74,7 @@ pub enum Ty {
 }
 
 impl Ty {
-    /// 파서/검사기의 타입 이름 문자열 → `Ty`.
+    /// The parser/checker's type name string → `Ty`.
     pub fn from_name(n: &str) -> Ty {
         match n {
             "i64" => Ty::I64,
@@ -148,7 +148,7 @@ fn conv_fields(fs: &[past::FieldDecl]) -> Vec<FieldDecl> {
     fs.iter().map(|f| FieldDecl { name: f.name.clone(), ty: Ty::from_name(&f.ty) }).collect()
 }
 
-/// pruv-core 의 선언 → 이 크레이트의 선언(선언 순서 유지).
+/// pruv-core's declarations → this crate's declarations (declaration order preserved).
 pub fn decls_from_ast(types: &[past::TypeDecl]) -> Vec<TypeDecl> {
     types
         .iter()
@@ -194,7 +194,7 @@ impl TypeDecl {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Opt / Res (verify.py 10~12줄)
+// Opt / Res (verify.py lines 10-12)
 // ---------------------------------------------------------------------------------------------
 
 pub struct Prelude {
@@ -261,7 +261,7 @@ impl Prelude {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Model (verify.py 17~62줄)
+// Model (verify.py lines 17-62)
 // ---------------------------------------------------------------------------------------------
 
 pub struct StructFns {
@@ -275,12 +275,12 @@ pub struct VariantFns {
 }
 
 pub struct Model {
-    /// TypeTable.order: 의존 우선, 선언 순서 안정.
+    /// TypeTable.order: dependencies first, stable in declaration order.
     pub order: Vec<TypeDecl>,
     sorts: HashMap<String, Sort>,
     structs: HashMap<String, StructFns>,
     enums: HashMap<String, Vec<(String, VariantFns)>>,
-    /// `by_sort`: z3 정렬 이름 → Pruv 타입(Opt/Res/사용자).
+    /// `by_sort`: z3 sort name → Pruv type (Opt/Res/user).
     by_sort: HashMap<String, Ty>,
     opt_sort: Sort,
     res_sort: Sort,
@@ -288,7 +288,7 @@ pub struct Model {
     bool_sort: Sort,
 }
 
-/// typeinfo.py `_deps`: 선언된 사용자 타입 필드 의존(중복 없이 첫 등장 순서).
+/// typeinfo.py `_deps`: field dependencies on declared user types (no duplicates, first-appearance order).
 fn deps(d: &TypeDecl, uniq: &[TypeDecl]) -> Vec<usize> {
     let mut out: Vec<usize> = Vec::new();
     for f in d.all_fields() {
@@ -303,7 +303,7 @@ fn deps(d: &TypeDecl, uniq: &[TypeDecl]) -> Vec<usize> {
     out
 }
 
-/// typeinfo.py `_build_order`: 방문 표시를 먼저 하고 의존을 먼저 방문한 뒤 자신을 추가.
+/// typeinfo.py `_build_order`: mark as visited first, visit dependencies first, then append itself.
 fn visit(i: usize, uniq: &[TypeDecl], seen: &mut [bool], order: &mut Vec<usize>) {
     if seen[i] {
         return;
@@ -316,7 +316,7 @@ fn visit(i: usize, uniq: &[TypeDecl], seen: &mut [bool], order: &mut Vec<usize>)
 }
 
 impl Model {
-    /// `Model(prog)`: 순번을 새로 올린다(시제품·표본용).
+    /// `Model(prog)`: bumps the sequence number anew (for the prototype and samples).
     pub fn new(z: &Z3, pre: &Prelude, decls: &[TypeDecl]) -> Model {
         match Model::with_seq(z, pre, decls, next_seq()) {
             Ok(m) => m,
@@ -324,8 +324,8 @@ impl Model {
         }
     }
 
-    /// 순번을 호출자가 정한 `Model(prog)`. `decls` 는 프로그램 선언 순서(같은 이름이 반복되면 첫 선언만 쓴다).
-    /// 필드 타입이 정렬을 갖지 못하면(Python `KeyError`) `Err("'이름'")`.
+    /// `Model(prog)` with a caller-chosen sequence number. `decls` is the program declaration order (if a name repeats, only the first declaration is used).
+    /// If a field type has no sort (Python `KeyError`), `Err("'name'")`.
     pub fn with_seq(z: &Z3, pre: &Prelude, decls: &[TypeDecl], seq: u32) -> Result<Model, String> {
         let mut uniq: Vec<TypeDecl> = Vec::new();
         for d in decls {
@@ -405,7 +405,7 @@ impl Model {
         Ok(m)
     }
 
-    /// `Model.sort_of`(Python 은 정렬이 없으면 `KeyError(이름)`).
+    /// `Model.sort_of` (Python raises `KeyError(name)` when there is no sort).
     pub fn try_sort_of(&self, ty: &Ty) -> Result<Sort, String> {
         match ty {
             Ty::I64 => Ok(self.int_sort.clone()),
@@ -417,7 +417,7 @@ impl Model {
         }
     }
 
-    /// 시제품용(패닉). 새 경로는 `try_sort_of`.
+    /// For the prototype (panics). The new path uses `try_sort_of`.
     pub fn sort_of(&self, ty: &Ty) -> Sort {
         match self.try_sort_of(ty) {
             Ok(s) => s,
@@ -431,11 +431,11 @@ impl Model {
     pub fn sort_opt(&self, name: &str) -> Option<&Sort> {
         self.sorts.get(name)
     }
-    /// `Model.is_user(ty)`: 사용자 정렬이 있는 타입인가.
+    /// `Model.is_user(ty)`: is this a type that has a user sort?
     pub fn is_user(&self, ty: &Ty) -> bool {
         matches!(ty, Ty::User(n) if self.sorts.contains_key(n))
     }
-    /// `Model.type_of(v)`: datatype 값의 정렬 이름으로 Pruv 타입을 찾는다(없으면 None).
+    /// `Model.type_of(v)`: finds the Pruv type from the sort name of a datatype value (None if absent).
     pub fn type_of(&self, v: &Ast) -> Option<Ty> {
         self.by_sort.get(&v.sort().name()).cloned()
     }
@@ -479,18 +479,18 @@ impl Model {
     pub fn variant_opt(&self, enum_name: &str, variant: &str) -> Option<&VariantFns> {
         self.enums.get(enum_name)?.iter().find(|(n, _)| n == variant).map(|(_, f)| f)
     }
-    /// 열거형의 변형 함수들(선언 순서).
+    /// The variant functions of an enum (declaration order).
     pub fn enum_variants(&self, enum_name: &str) -> Option<&[(String, VariantFns)]> {
         self.enums.get(enum_name).map(|v| v.as_slice())
     }
-    /// 열거형 변형의 선언.
+    /// The declaration of an enum variant.
     pub fn variant_decl(&self, enum_name: &str, variant: &str) -> Option<&VariantDecl> {
         match &self.decl_opt(enum_name)?.kind {
             TypeKind::Enum(vs) => vs.iter().find(|v| v.name == variant),
             TypeKind::Struct(_) => None,
         }
     }
-    /// 열거형 변형 안의 필드 위치.
+    /// Position of a field within an enum variant.
     pub fn variant_field_index(&self, enum_name: &str, variant: &str, field: &str) -> Option<usize> {
         self.variant_decl(enum_name, variant)?.fields.iter().position(|f| f.name == field)
     }

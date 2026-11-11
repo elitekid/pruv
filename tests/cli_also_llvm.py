@@ -49,8 +49,8 @@ def read(p):
 
 
 def diag_keys(stdout):
-    """진단의 (stage, code, line, col) 목록. 반례 값과 메시지는 z3 모델에 따라 실행마다
-    달라질 수 있어(같은 호출을 되풀이해도 바뀐다) 비교하지 않는다."""
+    """List of (stage, code, line, col) from the diagnostics. Counterexample values and messages can
+    differ from run to run depending on the z3 model (even for repeated identical calls), so they are not compared."""
     keys = []
     for line in stdout.splitlines():
         try:

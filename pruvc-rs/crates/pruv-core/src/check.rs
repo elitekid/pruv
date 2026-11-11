@@ -1,5 +1,5 @@
-//! 타입·효과·구조 검사기(check.py 대응). 식마다 `ty` 를 채운다.
-//! 함수 구조·검사 순서·code·stage·message·fix 는 Python 과 글자 그대로 맞춘다.
+//! Type, effect and structure checker (counterpart of check.py). Fills in `ty` for every expression.
+//! Function structure, check order, code, stage, message and fix match Python character for character.
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
@@ -17,7 +17,7 @@ const RESULT: &str = "result";
 
 type Res<T> = Result<T, PruvError>;
 
-/// 계약에서만 쓰는 내장: 이름 -> (인자 타입, 결과 타입).
+/// Built-ins used only in contracts: name -> (argument types, result type).
 fn contract_only(n: &str) -> Option<(&'static str, &'static str)> {
     match n {
         "is_some" => Some((OPTION, BOOL)),
@@ -51,7 +51,7 @@ fn field_name_ok(s: &str) -> bool {
     }
 }
 
-/// 첫 글자만 ASCII 변환(이름은 ASCII 식별자, 빈 이름 없음).
+/// Converts only the first character to ASCII case (names are ASCII identifiers, never empty).
 fn cap_first(s: &str, upper: bool) -> String {
     let mut it = s.chars();
     match it.next() {
@@ -67,7 +67,7 @@ fn terr(line: i64, col: i64, code: &str, msg: impl Into<String>, fix: impl Into<
     PruvError::new("type", line, col, code, msg, fix)
 }
 
-/// 정수 리터럴(부호+십진 문자열)이 i64 범위인지: -2^63 <= v < 2^63.
+/// Whether the integer literal (sign plus decimal string) is in the i64 range: -2^63 <= v < 2^63.
 fn int_in_range(v: &str) -> bool {
     let (neg, rest) = if let Some(r) = v.strip_prefix('-') {
         (true, r)
@@ -101,16 +101,16 @@ struct Checker {
     funcs: HashMap<String, Rc<FuncInfo>>,
     func_order: Vec<String>,
     calls: HashMap<String, BTreeSet<String>>,
-    decls: HashMap<String, TypeDecl>, // 첫 선언
+    decls: HashMap<String, TypeDecl>, // first declaration
     tt: TypeTable,
     cur_name: String,
     cur_ret: String,
     used_effects: BTreeSet<String>,
-    /// let/재대입/return 의 오른쪽 식 자체가 alloc 호출일 때만 켜는 기대 배열 타입(alloc 가 바로 꺼낸다).
+    /// Expected array type, turned on only when the right-hand expression of a let/reassignment/return is itself an alloc call (alloc takes it right away).
     alloc_want: Option<String>,
 }
 
-/// 프로그램을 검사해 식마다 ty 를 채우고 타입 표를 돌려준다.
+/// Checks the program, fills in ty for every expression, and returns the type table.
 pub fn check(prog: &mut Program) -> Result<TypeTable, PruvError> {
     let mut c = Checker::new(prog)?;
     c.run(prog)?;
@@ -184,7 +184,7 @@ impl Checker {
         })
     }
 
-    /// 값이 alloc 호출 자체이고 기대 타입이 배열이면 alloc 의 결과 타입을 그 배열 타입으로 정한다.
+    /// If the value is itself an alloc call and the expected type is an array, sets alloc's result type to that array type.
     fn want_alloc(&mut self, value: &Expr, ty: &str) {
         if let Expr::Call(c) = value {
             if c.name == "alloc" && is_array_name(ty) {
@@ -194,7 +194,7 @@ impl Checker {
     }
 
     fn run(&mut self, prog: &mut Program) -> Res<()> {
-        crate::refine::expand(prog)?; // STAGE1 A: 정제 주석 검증 후 계약/assert 로 펼치기
+        crate::refine::expand(prog)?; // STAGE1 A: validate refinement annotations, then expand them into contracts/asserts
         self.declare_types(&prog.types)?;
         self.resolve_types(prog)?;
         self.type_recursion(&prog.types)?;
@@ -205,7 +205,7 @@ impl Checker {
         self.no_recursion()
     }
 
-    // ---- 사용자 타입 선언 ----
+    // ---- user type declarations ----
     fn declare_types(&mut self, types: &[TypeDecl]) -> Res<()> {
         for d in types {
             let (name, line, col) = (d.name(), d.line(), d.col());
@@ -240,7 +240,7 @@ impl Checker {
                     if e.variants.is_empty() {
                         return Err(terr(line, col, "empty_enum", format!("enum {} has no variants", name), "add at least one variant"));
                     }
-                    // 중복 검사는 Python set 처럼 집합으로(감사: Vec 은 O(n^2)).
+                    // Duplicate checking uses a set like a Python set (audit: a Vec is O(n^2)).
                     let mut seen: HashSet<&str> = HashSet::new();
                     for v in &e.variants {
                         if !type_name_ok(&v.name) {
@@ -346,7 +346,7 @@ impl Checker {
         fn visit(decls: &HashMap<String, TypeDecl>, state: &mut HashMap<String, u8>, n: &str, path: &mut Vec<String>) -> Res<()> {
             let d = match decls.get(n) {
                 Some(d) => d,
-                None => return Ok(()), // resolve_types 가 이미 보장
+                None => return Ok(()), // already guaranteed by resolve_types
             };
             match state.get(n).copied() {
                 Some(1) => {
@@ -417,7 +417,7 @@ impl Checker {
         Ok(())
     }
 
-    // ---- 함수 ----
+    // ---- functions ----
     fn fn_(&mut self, f: &mut Function) -> Res<()> {
         self.cur_name = f.name.clone();
         self.cur_ret = f.ret.clone();
@@ -472,7 +472,7 @@ impl Checker {
         Ok(())
     }
 
-    // ---- 문 ----
+    // ---- statements ----
     fn block(&mut self, stmts: &mut [Stmt], scope: &mut Scope) -> Res<()> {
         for st in stmts.iter_mut() {
             self.stmt(st, scope)?;
@@ -552,7 +552,7 @@ impl Checker {
                         format!("use `let mut b: {} = copy({});` (needs alloc)", type_name(&v.ty), s.name),
                     ));
                 }
-                // G2 A5: 원소가 bool 이면 값 기대 타입 bool
+                // G2 A5: if the element is bool, the expected value type is bool
                 let want_val: &str = if v.ty == "array_bool" { BOOL } else { I64 };
                 self.expect(&mut s.index, I64, scope, false)?;
                 self.expect(&mut s.value, want_val, scope, false)?;
@@ -737,7 +737,7 @@ impl Checker {
         Ok(())
     }
 
-    /// 배열은 명시적으로 옮기거나 빌린다: 새 배열은 alloc/copy/호출에서만 나온다.
+    /// Arrays are moved or borrowed explicitly: a new array comes only from alloc/copy/a call.
     fn array_source(&self, line: i64, col: i64, value: &Expr, scope: &Scope, allow_local_var: bool, ty: &str) -> Res<()> {
         if matches!(value, Expr::Call(_) | Expr::StrLit(_)) {
             return Ok(());
@@ -762,7 +762,7 @@ impl Checker {
         ))
     }
 
-    // ---- 식 ----
+    // ---- expressions ----
     fn expect(&mut self, e: &mut Expr, ty: &str, scope: &Scope, contract: bool) -> Res<String> {
         let t = self.expr(e, scope, contract)?;
         if t != ty {
@@ -880,7 +880,7 @@ impl Checker {
                     ));
                 }
                 self.expect(&mut x.index, I64, scope, c)?;
-                // G2 A5: bool 배열 읽기는 bool
+                // G2 A5: reading a bool array gives bool
                 if at == "array_bool" {
                     return Ok(BOOL.to_string());
                 }
@@ -981,8 +981,8 @@ impl Checker {
         }
     }
 
-    // ---- 사용자 타입 도우미 ----
-    /// struct 필드의 타입(이름, 타입 쌍이 아닌 타입만).
+    // ---- user type helpers ----
+    /// The type of a struct field (the type only, not the (name, type) pair).
     fn field_decl(&self, line: i64, col: i64, sty: &str, name: &str) -> Res<String> {
         for fd in self.tt.fields(sty, None).unwrap_or(&[]) {
             if fd.name == name {
@@ -992,7 +992,7 @@ impl Checker {
         Err(terr(line, col, "unknown_field", format!("struct {} has no field {}", sty, name), ""))
     }
 
-    /// 이름 붙은 enum 의 타입; 없으면 unknown_type, enum 이 아니면 not_enum.
+    /// The type of a named enum; unknown_type if missing, not_enum if it is not an enum.
     fn enum_type(&self, line: i64, col: i64, name: &str) -> Res<String> {
         if !self.decls.contains_key(name) {
             return Err(terr(line, col, "unknown_type", format!("unknown type {}", name), ""));
@@ -1003,7 +1003,7 @@ impl Checker {
         Ok(name.to_string())
     }
 
-    /// 변형의 필드 (이름, 타입) 목록.
+    /// List of (name, type) fields of a variant.
     fn variant_fields(&self, line: i64, col: i64, ety: &str, variant: &str) -> Res<Vec<(String, String)>> {
         match self.tt.variant(ety, variant) {
             Some(v) => Ok(v.fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect()),
@@ -1011,7 +1011,7 @@ impl Checker {
         }
     }
 
-    /// is_variant / variant_field 공통: 값·enum·변형 검사.
+    /// Shared by is_variant / variant_field: checks the value, enum and variant.
     #[allow(clippy::too_many_arguments)]
     fn variant_target(
         &mut self,
@@ -1122,7 +1122,7 @@ impl Checker {
                 }
                 arity(2)?;
                 self.expect(&mut e.args[0], I64, scope, c)?;
-                // G2 A5: 힌트가 array_bool 이면 값 기대 타입 bool
+                // G2 A5: if the hint is array_bool, the expected value type is bool
                 let vwant: &str = if want.as_deref() == Some("array_bool") { BOOL } else { I64 };
                 self.expect(&mut e.args[1], vwant, scope, c)?;
                 self.used_effects.insert("alloc".to_string());

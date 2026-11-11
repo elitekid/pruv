@@ -1,7 +1,7 @@
 //! `pruv-proof-spike SAMPLE_NAME` | `--all` | `--list`
 //!
-//! 표본의 의무 trace 를 JSON 으로 출력한다(형식은 samples.rs/obligation.rs 문서 참고).
-//! `--all` 은 표본마다 JSON 한 줄(JSON Lines). 표본마다 새 z3 컨텍스트와 `_MODEL_SEQ=0` 에서 시작한다.
+//! Prints the sample's obligation trace as JSON (see the samples.rs/obligation.rs docs for the format).
+//! `--all` emits one JSON line per sample (JSON Lines). Each sample starts with a fresh z3 context and `_MODEL_SEQ=0`.
 
 use pruv_proof::samples::{run_sample, sample_names};
 

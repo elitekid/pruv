@@ -20,13 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: 도구 버전
+      - name: Tool versions
         shell: bash
         run: |
           clang --version
           rustc -vV
           python --version
 
-      - name: Windows x64 ABI 실행 확인
+      - name: Verify Windows x64 ABI execution
         shell: bash
         run: python tests/abi/winci/run_windows.py

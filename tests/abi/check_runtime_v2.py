@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""런타임 v2 링크 시험 (docs/G2_A4_IMPL.md 6절; 표준 라이브러리만, Python 3.9).
+"""Runtime v2 link test (docs/G2_A4_IMPL.md section 6; standard library only, Python 3.9).
 
-사용: python3 tests/abi/check_runtime_v2.py [--pruvc PATH] [--keep DIR]
-  --pruvc  기본 pruvc-rs/target/release/pruvc (저장소 루트 기준)
-  --keep   산출물을 DIR 에 남김
-호스트 대상에서 Rust 판 pruvc 로 .ll + 바인딩을 만들고, clang 으로 .ll·런타임을 객체화한 뒤
-rustc 로 Rust 주 프로그램(`#[path=..] mod sol;`)과 링크한다. 6경우:
-  ok_u8      g2a_u8_ret 새 바인딩 + 새 runtime.c(rust allocator, count)  링크·실행 성공
-  ok_i64     arr_ret    새 바인딩 + 새 runtime.c(rust allocator)         링크·실행 성공
-  old_rt_u8  g2a_u8_ret 새 바인딩 + runtime_v1.c(rust allocator)         링크 실패
-  old_rt_i64 arr_ret    새 바인딩 + runtime_v1.c(rust allocator)         링크 실패(marker v2 없음)
-  old_bind   arr_ret    바인딩에서 v2 helper 세 블록을 지운 것 + 새 runtime  링크 실패(helper v2 없음)
-  malloc_rt  g2a_u8_ret 새 바인딩 + 새 runtime.c(malloc)                 링크 실패(marker 없음)
-링크 실패 경우: rustc 종료 코드 != 0 이고 오류 글에 기대 심볼 이름(하나 이상)이 있어야 통과.
-rustc 에 -C link-dead-code 를 줘서, 쓰이지 않는 함수가 gc 로 지워져 실패가 가려지는 일을 막는다.
-경우마다 `ok <이름>` / `FAIL <이름>: 이유` 한 줄. 종료: 0 통과 / 1 실패 / 2 도구·입력 없음.
+Usage: python3 tests/abi/check_runtime_v2.py [--pruvc PATH] [--keep DIR]
+  --pruvc  default pruvc-rs/target/release/pruvc (relative to the repository root)
+  --keep   keep the artifacts in DIR
+On the host target, builds .ll + bindings with the Rust implementation of pruvc, compiles the .ll and runtime to objects with clang, then
+links them with a Rust main program (`#[path=..] mod sol;`) using rustc. 6 cases:
+  ok_u8      g2a_u8_ret new bindings + new runtime.c (rust allocator, count)  link and run succeed
+  ok_i64     arr_ret    new bindings + new runtime.c (rust allocator)         link and run succeed
+  old_rt_u8  g2a_u8_ret new bindings + runtime_v1.c (rust allocator)          link fails
+  old_rt_i64 arr_ret    new bindings + runtime_v1.c (rust allocator)          link fails (no marker v2)
+  old_bind   arr_ret    bindings with the three v2 helper blocks removed + new runtime  link fails (no helper v2)
+  malloc_rt  g2a_u8_ret new bindings + new runtime.c (malloc)                 link fails (no marker)
+Link-failure cases pass only if the rustc exit code != 0 and the error text contains an expected symbol name (at least one).
+Passes -C link-dead-code to rustc so unused functions are not removed by gc, which would mask the failure.
+For each case, one line `ok <name>` / `FAIL <name>: reason`. Exit: 0 pass / 1 fail / 2 tool or input missing.
 """
 import argparse
 import os
@@ -40,8 +40,8 @@ MAIN_I64 = 'fn main() {\n    let v = sol::arr(&[5i64, 6, 7]);\n    println!("{:?
 OUT_U8 = "[1, 2, 200]"
 OUT_I64 = "[5, 6, 7]"
 
-# (이름, 소스 stem, 런타임 소스 키, rust allocator 인가, 바인딩 변형, 기대)
-#   기대: None = 성공, 튜플 = 링크 실패 + 오류 글에 이 중 하나 이상
+# (name, source stem, runtime source key, is rust allocator, bindings variant, expectation)
+#   expectation: None = success, tuple = link failure + the error text contains at least one of these
 CASES = [
     ("ok_u8", "g2a_u8_ret", "new", True, "new", None),
     ("ok_i64", "arr_ret", "new", True, "new", None),
@@ -61,7 +61,7 @@ def run(argv, timeout=600):
 
 
 def strip_v2_helpers(text):
-    """새 바인딩에서 pruv_host_*_v2 세 블록(앞의 #[allow..]·#[no_mangle] 줄 포함)을 지운다. (텍스트, 지운 개수)."""
+    """Remove the three pruv_host_*_v2 blocks (including the preceding #[allow..] and #[no_mangle] lines) from the new bindings. Returns (text, number removed)."""
     removed = 0
     for name in V2_HELPERS:
         pat = re.compile(r'#\[allow\([^\n]*\)\]\n#\[no_mangle\]\npub extern "C" fn ' + name + r'\(.*?\n\}\n', re.S)
@@ -75,7 +75,7 @@ class Ctx:
         self.a = a
         self.work = work
         self.gen = {}   # stem -> (ll, rs, gen_obj, error)
-        self.rt = {}    # (키, rust allocator) -> (obj, error)
+        self.rt = {}    # (key, rust allocator) -> (obj, error)
 
     def generated(self, stem):
         if stem not in self.gen:
@@ -83,11 +83,11 @@ class Ctx:
             rc, _, err = run([self.a.pruvc, str(GEN / (stem + ".pruv")), "--backend", "llvm", "--emit", "ll",
                               "-o", str(ll), "--rust-bindings", str(rs)])
             if rc != 0 or not ll.exists() or not rs.exists():
-                self.gen[stem] = (None, None, None, "pruvc 실패(%d): %s" % (rc, err.strip()[-300:]))
+                self.gen[stem] = (None, None, None, "pruvc failed (%d): %s" % (rc, err.strip()[-300:]))
             else:
                 rc, _, err = run([self.a.clang, "-O2", CPU_FLAG, "-Wno-override-module", "-c", str(ll), "-o", str(obj)])
                 if rc != 0:
-                    self.gen[stem] = (None, None, None, "clang(.ll) 실패: " + err.strip()[-300:])
+                    self.gen[stem] = (None, None, None, "clang(.ll) failed: " + err.strip()[-300:])
                 else:
                     self.gen[stem] = (ll, rs, obj, None)
         return self.gen[stem]
@@ -101,7 +101,7 @@ class Ctx:
             if key == "new" and rust_alloc:
                 flags.append("-DPRUV_COUNT_ALLOCS")
             rc, _, err = run([self.a.clang, "-O2", CPU_FLAG, "-std=c11"] + flags + ["-c", str(src), "-o", str(obj)])
-            self.rt[k] = (obj, None) if rc == 0 else (None, "clang(%s) 실패: %s" % (src.name, err.strip()[-300:]))
+            self.rt[k] = (obj, None) if rc == 0 else (None, "clang(%s) failed: %s" % (src.name, err.strip()[-300:]))
         return self.rt[k]
 
 
@@ -117,7 +117,7 @@ def run_case(ctx, case):
     if bind == "old":
         bindings, n = strip_v2_helpers(bindings)
         if n != len(V2_HELPERS):
-            return "바인딩에서 v2 helper 블록을 %d/%d 개만 지움(바인딩 글자가 명세 4절과 다름)" % (n, len(V2_HELPERS))
+            return "removed only %d/%d v2 helper blocks from the bindings (binding text differs from spec section 4)" % (n, len(V2_HELPERS))
     sol = ctx.work / (name + "_sol.rs")
     sol.write_text(bindings)
     main = ctx.work / (name + "_main.rs")
@@ -128,27 +128,27 @@ def run_case(ctx, case):
                       "-C", "link-dead-code", "-C", "link-arg=" + str(gen_obj), "-C", "link-arg=" + str(rt_obj)])
     if want_fail is not None:
         if rc == 0:
-            return "링크가 성공했음(실패해야 함)"
+            return "link succeeded (it must fail)"
         if not any(s in err for s in want_fail):
-            return "링크는 실패했지만 오류 글에 %s 가 없음: %s" % (" / ".join(want_fail), err.strip()[-300:])
+            return "link failed but the error text does not contain %s: %s" % (" / ".join(want_fail), err.strip()[-300:])
         return None
     if rc != 0:
-        return "링크 실패: " + err.strip()[-300:]
+        return "link failed: " + err.strip()[-300:]
     p = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
     want_out = OUT_U8 if stem == "g2a_u8_ret" else OUT_I64
     if p.returncode != 0:
-        return "실행 종료 코드 %d: %s" % (p.returncode, p.stderr.strip()[-200:])
+        return "run exit code %d: %s" % (p.returncode, p.stderr.strip()[-200:])
     if p.stdout.strip() != want_out:
         return "stdout %r != %r" % (p.stdout.strip(), want_out)
     if name == "ok_u8":
-        # 반환 배열(1개)은 Rust Vec 이 놓으므로 runtime 의 해제 횟수에 안 잡힌다: 할당 = 해제 + 1.
-        # g2a_u8_ret 은 중간 copy 하나를 런타임 안에서 놓으므로 해제 >= 1 (pruv_host_free_v2 경로)
+        # The returned array (one) is released by the Rust Vec, so it is not counted in the runtime's free count: allocs = frees + 1.
+        # g2a_u8_ret releases one intermediate copy inside the runtime, so frees >= 1 (pruv_host_free_v2 path)
         m = re.search(r"pruv-alloc-balance: (\d+) (\d+)", p.stderr)
         if not m:
-            return "stderr 에 pruv-alloc-balance 줄이 없음: %r" % p.stderr[-150:]
+            return "no pruv-alloc-balance line in stderr: %r" % p.stderr[-150:]
         al, fr = int(m.group(1)), int(m.group(2))
         if fr < 1 or al != fr + 1:
-            return "alloc balance %d allocs / %d frees (기대: frees >= 1, allocs == frees + 1)" % (al, fr)
+            return "alloc balance %d allocs / %d frees (expected: frees >= 1, allocs == frees + 1)" % (al, fr)
     return None
 
 
@@ -171,7 +171,7 @@ def main():
         if not p.exists():
             missing.append(str(p))
     if missing:
-        print("필요한 도구/입력을 찾지 못함: " + ", ".join(missing))
+        print("required tools/inputs not found: " + ", ".join(missing))
         return 2
 
     if a.keep:
@@ -187,15 +187,15 @@ def main():
         for case in CASES:
             try:
                 why = run_case(ctx, case)
-            except Exception as e:  # 한 경우의 예외가 나머지를 가리지 않게
-                why = "예외: %r" % (e,)
+            except Exception as e:  # so one case's exception does not hide the rest
+                why = "exception: %r" % (e,)
             if why is None:
                 print("ok " + case[0])
             else:
                 bad += 1
                 print("FAIL %s: %s" % (case[0], why))
         if a.keep:
-            print("산출물: " + str(work))
+            print("artifacts: " + str(work))
         return 1 if bad else 0
     finally:
         if cleanup:

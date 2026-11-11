@@ -11,7 +11,7 @@ build = "build.rs"
 name = "pruvc"
 path = "src/lib.rs"
 
-# 실제 CLI(M3 5단계)와 개발용 도구.
+# The real CLI (M3 stage 5) and development tools.
 [[bin]]
 name = "pruvc"
 path = "src/main.rs"

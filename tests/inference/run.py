@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""1단계 B2(--infer) 시험 실행기. Python 3.9 표준 라이브러리만 쓴다.
+"""Stage 1 B2 (--infer) test runner. Uses only the Python 3.9 standard library.
 
-    .venv/bin/python tests/inference/run.py --compiler py|rs [--regress] [--jobs N] [이름 ...]
+    .venv/bin/python tests/inference/run.py --compiler py|rs [--regress] [--jobs N] [NAME ...]
 
-형식은 tests/inference/README.md 참고.
+See tests/inference/README.md for the format.
 """
 import argparse
 import glob
@@ -54,21 +54,21 @@ def has_error(errors, stage, code):
 
 
 def fmt_errors(errors):
-    return ", ".join("%s/%s" % (e.get("stage"), e.get("code")) for e in errors) or "(없음)"
+    return ", ".join("%s/%s" % (e.get("stage"), e.get("code")) for e in errors) or "(none)"
 
 
 def check_expect(res, errors, expect, fails, label=""):
     if expect == "ok":
         if res.returncode != 0:
-            fails.append("%s종료 코드 %s (기대 0), 오류: %s" % (label, res.returncode, fmt_errors(errors)))
+            fails.append("%sexit code %s (expected 0), errors: %s" % (label, res.returncode, fmt_errors(errors)))
     elif isinstance(expect, dict):
         if res.returncode != 1:
-            fails.append("%s종료 코드 %s (기대 1)" % (label, res.returncode))
+            fails.append("%sexit code %s (expected 1)" % (label, res.returncode))
         if not has_error(errors, expect.get("stage"), expect.get("code")):
-            fails.append("%s오류 %s/%s 없음, 실제: %s" % (label, expect.get("stage"), expect.get("code"),
-                                                       fmt_errors(errors)))
+            fails.append("%serror %s/%s missing, actual: %s" % (label, expect.get("stage"), expect.get("code"),
+                                                             fmt_errors(errors)))
     else:
-        fails.append("%sjson expect 형식 오류: %r" % (label, expect))
+        fails.append("%sjson expect format error: %r" % (label, expect))
 
 
 def run_case(drv, pruv):
@@ -78,16 +78,16 @@ def run_case(drv, pruv):
         with open(os.path.splitext(pruv)[0] + ".json", encoding="utf-8") as fh:
             spec = json.load(fh)
     except (OSError, ValueError) as e:
-        return name, ["json 읽기 실패: %s" % e]
+        return name, ["failed to read json: %s" % e]
     flags = spec.get("flags", DEFAULT_FLAGS)
     res, errors, records = compile_one(drv, pruv, flags)
     if res.crashed:
-        return name, ["컴파일러 비정상 종료/시간 초과: rc=%s %s" % (res.returncode, res.stderr[-300:])]
+        return name, ["compiler crashed/timed out: rc=%s %s" % (res.returncode, res.stderr[-300:])]
     check_expect(res, errors, spec.get("expect", "ok"), fails)
 
     if "--show-inferred" in flags:
         if not records:
-            fails.append("--show-inferred 레코드가 stderr 에 없음")
+            fails.append("no --show-inferred record on stderr")
         have_inv = set()
         have_drop = set()
         for r in records:
@@ -97,44 +97,44 @@ def run_case(drv, pruv):
                 have_drop.add(d.get("text"))
         for k in spec.get("kept", []):
             if k not in have_inv:
-                fails.append("kept 없음: %r (실제 %s)" % (k, sorted(have_inv)))
+                fails.append("kept missing: %r (actual %s)" % (k, sorted(have_inv)))
         for d in spec.get("dropped", []):
             if d not in have_drop:
-                fails.append("dropped 없음: %r (실제 %s)" % (d, sorted(x for x in have_drop if x)))
+                fails.append("dropped missing: %r (actual %s)" % (d, sorted(x for x in have_drop if x)))
         for t in spec.get("absent", []):
             if "invariant " + t in have_inv or t in have_drop:
-                fails.append("absent 인데 생성됨: %r" % t)
+                fails.append("listed as absent but was generated: %r" % t)
         for fn, want in (spec.get("fallback") or {}).items():
             mine = [r for r in records if r.get("fn") == fn]
             got = bool(mine) and all(r.get("fallback") == "v1" for r in mine)
             has_any = any("fallback" in r for r in mine)
             if not mine:
-                fails.append("fallback[%s]: 그 함수 레코드 없음" % fn)
+                fails.append("fallback[%s]: no record for that function" % fn)
             elif want and not got:
-                fails.append("fallback[%s] 기대 true 인데 \"fallback\": \"v1\" 키가 없음" % fn)
+                fails.append("fallback[%s] expected true but the \"fallback\": \"v1\" key is missing" % fn)
             elif not want and has_any:
-                fails.append("fallback[%s] 기대 false 인데 fallback 키가 있음" % fn)
+                fails.append("fallback[%s] expected false but a fallback key is present" % fn)
         rounds = {}
         for r in records:
             for d in r.get("dropped", []):
                 rounds.setdefault(d.get("text"), d.get("round"))
         for t, want in (spec.get("dropped_round") or {}).items():
             if rounds.get(t) != want:
-                fails.append("dropped_round[%r] 기대 %s 실제 %s" % (t, want, rounds.get(t)))
+                fails.append("dropped_round[%r] expected %s actual %s" % (t, want, rounds.get(t)))
         for fn, st in (spec.get("status") or {}).items():
             got = sorted(set(r.get("status") for r in records if r.get("fn") == fn))
             if got != [st]:
-                fails.append("status[%s] 기대 %s 실제 %s" % (fn, st, got))
+                fails.append("status[%s] expected %s actual %s" % (fn, st, got))
     elif spec.get("kept") or spec.get("dropped") or spec.get("status") or spec.get("absent") \
             or spec.get("fallback"):
-        fails.append("flags 에 --show-inferred 가 없어 kept/dropped/status/absent/fallback 을 볼 수 없음")
+        fails.append("flags lacks --show-inferred, so kept/dropped/status/absent/fallback cannot be checked")
 
     ni = spec.get("noinfer")
     if ni:
         res2, errors2, _ = compile_one(drv, pruv, [])
         want = 0 if ni == "ok" else 1
         if res2.crashed or res2.returncode != want:
-            fails.append("noinfer %s 기대인데 종료 코드 %s (%s)" % (ni, res2.returncode, fmt_errors(errors2)))
+            fails.append("noinfer expected %s but exit code was %s (%s)" % (ni, res2.returncode, fmt_errors(errors2)))
     return name, fails
 
 
@@ -151,16 +151,16 @@ def run_regress_reject(drv, pruv):
                 expect = v
         except (OSError, ValueError):
             pass
-    extra = expect.get("flags")  # must_reject 표본 json 의 선택 키 flags(run_all 과 같은 뜻)
+    extra = expect.get("flags")  # optional key flags of the must_reject sample json (same meaning as in run_all)
     extra = list(extra) if isinstance(extra, list) and all(isinstance(x, str) for x in extra) else []
     res, errors, _ = compile_one(drv, pruv, ["--infer"] + extra)
     if res.crashed:
-        return name, ["컴파일러 비정상 종료/시간 초과: rc=%s" % res.returncode]
+        return name, ["compiler crashed/timed out: rc=%s" % res.returncode]
     if res.returncode != 1:
-        fails.append("--infer 에서 거부되지 않음(종료 %s) — 건전성 회귀" % res.returncode)
+        fails.append("not rejected under --infer (exit %s) — soundness regression" % res.returncode)
     elif expect.get("stage") or expect.get("code"):
         if not has_error(errors, expect.get("stage"), expect.get("code")):
-            fails.append("오류 %s/%s 없음, 실제: %s" % (expect.get("stage"), expect.get("code"), fmt_errors(errors)))
+            fails.append("error %s/%s missing, actual: %s" % (expect.get("stage"), expect.get("code"), fmt_errors(errors)))
     return name, fails
 
 
@@ -168,9 +168,9 @@ def run_regress_compile(drv, pruv, label):
     name = label + "/" + os.path.splitext(os.path.basename(pruv))[0]
     res, errors, _ = compile_one(drv, pruv, ["--infer"])
     if res.crashed:
-        return name, ["컴파일러 비정상 종료/시간 초과: rc=%s" % res.returncode]
+        return name, ["compiler crashed/timed out: rc=%s" % res.returncode]
     if res.returncode != 0:
-        return name, ["--infer 에서 컴파일 실패(종료 %s): %s" % (res.returncode, fmt_errors(errors))]
+        return name, ["compilation failed under --infer (exit %s): %s" % (res.returncode, fmt_errors(errors))]
     return name, []
 
 
@@ -189,11 +189,11 @@ def has_exit_key(pruv):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="--infer 시험 실행기")
+    ap = argparse.ArgumentParser(description="--infer test runner")
     CD.add_args(ap)
-    ap.add_argument("--regress", action="store_true", help="must_reject/examples/runtime/bench 회귀도 본다")
+    ap.add_argument("--regress", action="store_true", help="also check regressions in must_reject/examples/runtime/bench")
     ap.add_argument("--jobs", type=int, default=4)
-    ap.add_argument("names", nargs="*", help="inf_ 표본 이름(생략하면 전부)")
+    ap.add_argument("names", nargs="*", help="inf_ sample names (all if omitted)")
     ns = ap.parse_args()
     drv = CD.from_args(ns)
 
@@ -227,7 +227,7 @@ def main():
     print()
     print("TOTAL %d/%d" % (len(results) - len(bad), len(results)))
     if bad:
-        print("실패 목록:")
+        print("failures:")
         for n, f in bad:
             print("  %s" % n)
             for line in f:

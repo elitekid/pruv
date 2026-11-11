@@ -1,14 +1,14 @@
-//! 명령줄 해석. Python `pruvc.py`(argparse)와 같은 옵션·문장에 --emit/--target/-mcpu 를 더한 것.
-//! 사용법 오류는 `Err(메시지)` 로 돌려주고, 출력(usage 한 줄 + stderr + exit 2)은 `usage_error` 가 한다.
+//! Command-line parsing. The same options and messages as Python `pruvc.py` (argparse), plus --emit/--target/-mcpu.
+//! A usage error is returned as `Err(message)`, and the output (one usage line + stderr + exit 2) is produced by `usage_error`.
 
 use pruvc::target::{Cpu, Target};
 use std::path::{Component, Path, PathBuf};
 
-// stdout 의 usage 줄은 Python pruvc.py 와 (실행 파일 이름만 빼고) 같게 둔다(감사 필수 3). 새 옵션은 stderr 에 알린다.
+// The usage line on stdout is kept the same as Python pruvc.py (except for the executable name) (audit must-fix 3). New options are reported on stderr.
 pub const USAGE: &str = "usage: pruvc in.pruv -o OUT [--no-verify] [--trust-callers] [--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]";
 pub const USAGE_MORE: &str = "       [--emit exe|obj|ll|rs] [--target TRIPLE] [-mcpu=CPU]";
 
-/// 내부 출력 종류(backend×emit 결정표의 결과).
+/// Internal output kind (the result of the backend x emit decision table).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Rs,
@@ -28,30 +28,30 @@ impl Kind {
     }
 }
 
-/// 해석이 끝난 인자. 경로 규칙 검사까지 통과한 값이다.
+/// Fully parsed arguments. The values have also passed the path-rule checks.
 #[derive(Debug)]
 pub struct Args {
     pub input: String,
-    /// exe 에서 -o 를 생략했으면 입력 stem 으로 채워진 값.
+    /// For exe, if -o was omitted, the value filled in from the input stem.
     pub out: String,
     pub kind: Kind,
     pub verify: bool,
     pub trust_callers: bool,
-    /// --infer: Houdini 불변식 추론을 켠다.
+    /// --infer: turns on Houdini invariant inference.
     pub infer: bool,
-    /// --show-inferred: 루프별 추론 기록을 stderr 에(--infer 필요).
+    /// --show-inferred: prints the per-loop inference record to stderr (requires --infer).
     pub show_inferred: bool,
     pub budget: u64,
-    /// ll: 항상 Some(기본값 포함), obj: 명시했을 때만, 나머지 None.
+    /// ll: always Some (default included), obj: only when given explicitly, None for the rest.
     pub bindings: Option<String>,
-    /// 7단계(Rust 소스 뒷단)가 들어오면 driver 가 읽는다. 지금은 검증된 경로 쌍만 보관.
+    /// The driver reads it once stage 7 (the Rust-source backend) arrives. For now it only keeps the validated path pair.
     pub also_llvm: Option<(String, String)>,
-    /// obj/exe 는 항상 Some(기본 호스트). rs/ll 은 --target 을 줬을 때만(검증만 하고 쓰지 않음).
+    /// obj/exe are always Some (default host). rs/ll only when --target was given (validated but not used).
     pub target: Option<Target>,
     pub cpu: Cpu,
 }
 
-/// 사용법 오류를 Python 과 같은 형식으로 낸다: stdout 에 USAGE, stderr 에 상세, 종료 코드 2.
+/// Reports a usage error in the same format as Python: USAGE on stdout, details on stderr, exit code 2.
 pub fn usage_error(msg: &str) -> i32 {
     println!("{USAGE}");
     eprintln!("{USAGE_MORE}");
@@ -59,7 +59,7 @@ pub fn usage_error(msg: &str) -> i32 {
     2
 }
 
-// 옵션 이름과 받는 값 개수. 선언 순서는 argparse 의 약어 모호성 메시지 순서이기도 하다.
+// Option names and the number of values they take. The declaration order is also the order of argparse's abbreviation-ambiguity message.
 static OPTS: [(&str, usize); 11] = [
     ("-o", 1),
     ("--no-verify", 0),
@@ -92,7 +92,7 @@ struct Raw {
     mcpu: Option<String>,
 }
 
-/// argparse 의 음수 판별(`^-\d+$|^-\d*\.\d+$`): 옵션이 아니라 값으로 본다.
+/// argparse's negative-number test (`^-\d+$|^-\d*\.\d+$`): treated as a value, not an option.
 fn is_neg_number(s: &str) -> bool {
     let Some(r) = s.strip_prefix('-') else { return false };
     match r.split_once('.') {
@@ -108,7 +108,7 @@ fn known_head(s: &str) -> bool {
     s.starts_with("-mcpu=") || OPTS.iter().any(|o| o.0 == head)
 }
 
-/// 이 토큰을 옵션으로 볼지(argparse 규칙의 단순판): 공백이 든 낯선 토큰과 음수는 값.
+/// Whether to treat this token as an option (a simplified version of argparse's rule): an unfamiliar token containing a space, and a negative number, are values.
 fn is_option_like(s: &str) -> bool {
     if !s.starts_with('-') || s.len() == 1 || is_neg_number(s) {
         return false;
@@ -121,7 +121,7 @@ fn is_option_like(s: &str) -> bool {
 
 type Resolved = Option<(&'static str, Option<String>)>;
 
-/// 옵션 토큰 -> (옵션 이름, `=` 뒤 값). 모르면 None(= 남는 인자). 긴 옵션은 유일한 접두 약어를 허용.
+/// Option token -> (option name, value after `=`). None if unknown (= a leftover argument). Long options allow a unique prefix abbreviation.
 fn resolve_option(a: &str) -> Result<Resolved, String> {
     let (head, eq) = match a.find('=') {
         Some(p) => (&a[..p], Some(a[p + 1..].to_string())),
@@ -183,7 +183,7 @@ fn take_values(
     Ok(vals)
 }
 
-/// Python int() 의 십진 문법(부호·앞뒤 공백·밑줄 구분)을 i128 로. 너무 큰 수는 포화.
+/// Python int()'s decimal syntax (sign, surrounding whitespace, underscore separators) into i128. Numbers that are too large saturate.
 fn parse_py_int(s: &str) -> Option<i128> {
     let t = s.trim();
     let (neg, digits) = match t.strip_prefix('-') {
@@ -291,7 +291,7 @@ fn parse_raw(argv: &[String]) -> Result<Raw, String> {
     Ok(r)
 }
 
-/// backend×emit 결정표(설계 3절).
+/// The backend x emit decision table (design §3).
 fn resolve_kind(backend: Option<&str>, emit: Option<Kind>) -> Result<Kind, String> {
     match (backend, emit) {
         (None, None) => Ok(Kind::Rs),
@@ -305,7 +305,7 @@ fn resolve_kind(backend: Option<&str>, emit: Option<Kind>) -> Result<Kind, Strin
     }
 }
 
-/// Python os.path.splitext(p)[0]: 마지막 성분의 마지막 점 앞까지(앞쪽 점들은 확장자 구분이 아님).
+/// Python os.path.splitext(p)[0]: up to the last dot of the last component (leading dots are not extension separators).
 fn splitext_root(p: &str) -> String {
     let sep = p.rfind(|c: char| c == '/' || (cfg!(windows) && c == '\\')).map_or(0, |i| i + 1);
     let base = &p[sep..];
@@ -333,7 +333,7 @@ fn lexical_normalize(p: &Path) -> PathBuf {
     out
 }
 
-/// 경로 비교 키: 절대·정규화, 있으면 심볼릭 링크까지 푼 실제 경로(기존 파일 별칭), Windows 는 소문자.
+/// Path comparison key: absolute and normalized, the real path with symbolic links resolved if it exists (aliases of an existing file), lowercase on Windows.
 fn path_key(p: &str) -> String {
     let abs = std::path::absolute(Path::new(p)).unwrap_or_else(|_| PathBuf::from(p));
     let norm = lexical_normalize(&abs);
@@ -356,7 +356,7 @@ fn same_path(a: &str, b: &str) -> bool {
     path_key(a) == path_key(b)
 }
 
-/// 경로들이 서로 모두 다른지.
+/// Whether all the paths differ from one another.
 fn pairwise_distinct(paths: &[&str]) -> bool {
     let keys: Vec<String> = paths.iter().map(|p| path_key(p)).collect();
     for i in 0..keys.len() {
@@ -369,12 +369,12 @@ fn pairwise_distinct(paths: &[&str]) -> bool {
     true
 }
 
-/// argv(프로그램 이름 제외) -> Args. Err 는 사용법 오류 메시지.
+/// argv (without the program name) -> Args. Err is a usage error message.
 pub fn parse(argv: &[String]) -> Result<Args, String> {
     let r = parse_raw(argv)?;
     let kind_res = resolve_kind(r.backend, r.emit);
 
-    // 필수 인자: -o 는 exe 에서만 생략 가능
+    // Required arguments: -o may be omitted only for exe
     let mut missing: Vec<&str> = Vec::new();
     if r.input.is_none() {
         missing.push("input");
@@ -391,11 +391,11 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
     let kind = kind_res?;
     let input = r.input.clone().ok_or_else(|| "the following arguments are required: input".to_string())?;
 
-    // pruvc.py main 의 첫 검사: --show-inferred 는 --infer 가 있어야 한다
+    // The first check of pruvc.py main: --show-inferred requires --infer
     if r.show_inferred && !r.infer {
         return Err("--show-inferred requires --infer".to_string());
     }
-    // 이 아래 순서는 pruvc.py main 과 같다: also-llvm → 예산 → rust-bindings → 바인딩 경로
+    // The order below is the same as pruvc.py main: also-llvm -> budget -> rust-bindings -> bindings path
     if let Some((ll, rs)) = &r.also_llvm {
         if kind != Kind::Rs {
             return Err(if r.backend == Some("llvm") {
@@ -422,7 +422,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         }
     }
 
-    // 대상·CPU
+    // Target and CPU
     let target = match (&r.target, kind) {
         (Some(t), _) => Some(Target::parse(t).map_err(|e| format!("argument --target: {}", e.message))?),
         (None, Kind::Obj) | (None, Kind::Exe) => Some(Target::host().map_err(|e| e.message)?),
@@ -440,7 +440,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         }
     }
 
-    // 출력 경로
+    // Output paths
     let out = match r.out.clone() {
         Some(o) => o,
         None => {
@@ -462,7 +462,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             return Err("--rust-bindings path must differ from -o path".to_string());
         }
     }
-    // 입력과 출력 경로 중복 거부
+    // Reject duplicate input and output paths
     let mut outs: Vec<(&str, &str)> = vec![("-o", out.as_str())];
     if let Some(b) = &bindings {
         outs.push(("--rust-bindings", b.as_str()));

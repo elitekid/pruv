@@ -1,20 +1,20 @@
-//! verify.py `prove`/`cex`/`fmt_val` (254~338행)와 의무 trace.
+//! verify.py `prove`/`cex`/`fmt_val` (lines 254-338) and the obligation trace.
 //!
-//! `prove` 의 흐름을 그대로 옮긴다:
-//! 1. `seen` 키 `(line, col, code[, key_extra])` 가 있으면 질의 없이 끝낸다(어댑터 trace 는 `skipped` 항목을 남긴다).
-//! 2. `run(false)`: 새 Solver(timeout 8000ms)에 pc → guard → `Not(ob)` 순서로 assert 하고 check.
-//! 3. unsat 이면 끝(`seen` 에 넣지 않는다).
-//! 4. 아니고 `lemmas` 가 비어 있지 않으면: 첫 시도가 sat 이면 반례(relaxed)를 뽑고, `run(true)`
-//!    (pc → guard → lemmas → `Not(ob)`). unsat 이면 끝(seen 에 넣지 않는다).
-//! 5. 그 밖에는 `seen` 에 키를 넣고 오류를 만든다: sat(또는 relaxed 있음)이면 `cannot prove`+반례,
-//!    아니면 `verify_unknown`.
+//! This ports the flow of `prove` as is:
+//! 1. If the `seen` key `(line, col, code[, key_extra])` is present, finish without a query (the adapter trace leaves a `skipped` entry).
+//! 2. `run(false)`: in a new Solver (timeout 8000ms), assert pc → guard → `Not(ob)` in that order and check.
+//! 3. If unsat, done (not added to `seen`).
+//! 4. Otherwise, if `lemmas` is non-empty: if the first attempt was sat, extract the counterexample (relaxed), then `run(true)`
+//!    (pc → guard → lemmas → `Not(ob)`). If unsat, done (not added to seen).
+//! 5. Otherwise, add the key to `seen` and build the error: if sat (or relaxed is present), `cannot prove` + counterexample,
+//!    else `verify_unknown`.
 //!
-//! 각 시도의 SMT-LIB 는 `(set-option :timeout T)\n` + (rlimit 있으면 `(set-option :rlimit R)\n`) +
-//! (seed 있으면 `(set-option :random_seed S)\n`) + `Solver::to_smt2()` 이며 **check 전에** 뽑는다(T 기본 8000).
+//! Each attempt's SMT-LIB is `(set-option :timeout T)\n` + (if rlimit is set, `(set-option :rlimit R)\n`) +
+//! (if seed is set, `(set-option :random_seed S)\n`) + `Solver::to_smt2()`, extracted **before check** (T defaults to 8000).
 //!
-//! trace v2(어댑터 형식): 의무에 `phase`("verification"|"inference")·`round`·`cand`(없으면 null)·(skipped 일 때만) `skipped`,
-//! 시도에 `status`(proved|not_proved|timeout|resource_unknown)·`timeout_ms`·`rlimit`·`seed`·`reason_unknown`(Unknown 일 때만) 을 남긴다.
-//! 시제품 형식(`trace_json`)은 바뀌지 않는다. 설정은 `FnVerifier.qcfg`(`QueryConfig`).
+//! trace v2 (adapter format): an obligation records `phase` ("verification"|"inference"), `round`, `cand` (null if absent), and (only when skipped) `skipped`;
+//! an attempt records `status` (proved|not_proved|timeout|resource_unknown), `timeout_ms`, `rlimit`, `seed`, and `reason_unknown` (only when Unknown).
+//! The prototype format (`trace_json`) is unchanged. Configuration lives in `FnVerifier.qcfg` (`QueryConfig`).
 
 use pruv_core::diagnostic::PruvError;
 use pruv_core::pyjson::Json;
@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 use crate::symbolic::{Env, FnVerifier, Pos, State, Val};
 use crate::sys::{Ast, Sat, Solver, ZModel};
 
-/// verify.py `query_status`: 판정 + `reason_unknown` → 기록용 상태.
+/// verify.py `query_status`: verdict + `reason_unknown` → status for recording.
 pub fn query_status(result: Sat, reason: Option<&str>) -> &'static str {
     match result {
         Sat::Unsat => "proved",
@@ -45,20 +45,20 @@ pub struct Attempt {
     pub timeout_ms: u32,
     pub rlimit: Option<u32>,
     pub seed: Option<u32>,
-    /// Unknown 일 때만 `Some(sol.reason_unknown())`.
+    /// `Some(sol.reason_unknown())` only when Unknown.
     pub reason_unknown: Option<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Obligation {
-    /// 시제품 형식: 표본 전체에서 1부터. 어댑터 형식: 0부터(`len(rec.obligations)`).
+    /// Prototype format: from 1 across the whole sample. Adapter format: from 0 (`len(rec.obligations)`).
     pub seq: u32,
     pub fn_name: String,
     pub line: u32,
     pub col: u32,
     pub code: String,
     pub attempts: Vec<Attempt>,
-    /// 어댑터 형식에서 `key in fv.seen` 이라 질의 없이 지나간 의무.
+    /// In the adapter format, an obligation that passed without a query because `key in fv.seen`.
     pub skipped: bool,
     /// "verification" | "inference"
     pub phase: String,
@@ -69,30 +69,30 @@ pub struct Obligation {
 #[derive(Debug)]
 pub struct Trace {
     pub obligations: Vec<Obligation>,
-    /// true: 어댑터 `pruv-trace-v1` 규칙(seq 0부터, skipped 항목 기록, 진입 때 항목 생성).
+    /// true: adapter `pruv-trace-v1` rules (seq from 0, skipped entries recorded, entry created on entry).
     pub adapter: bool,
-    /// false: 기록하지 않는다(SMT 텍스트도 만들지 않는다).
+    /// false: record nothing (SMT text is not produced either).
     pub record: bool,
 }
 
 impl Default for Trace {
-    /// 시제품 형식(1부터, skipped 는 기록하지 않음).
+    /// Prototype format (from 1, skipped is not recorded).
     fn default() -> Self {
         Trace { obligations: Vec::new(), adapter: false, record: true }
     }
 }
 
 impl Trace {
-    /// `diff_py_adapter.trace_result` 와 같은 기록.
+    /// The same recording as `diff_py_adapter.trace_result`.
     pub fn adapter() -> Trace {
         Trace { obligations: Vec::new(), adapter: true, record: true }
     }
-    /// 기록 없음(verify_program 에 trace 를 주지 않을 때).
+    /// No recording (when no trace is given to verify_program).
     pub fn off() -> Trace {
         Trace { obligations: Vec::new(), adapter: true, record: false }
     }
 
-    /// `prove` 진입: 항목을 만들고 위치를 돌려준다(기록하지 않으면 None).
+    /// `prove` entry: creates the entry and returns its position (None if not recording).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn begin(
         &mut self,
@@ -133,7 +133,7 @@ impl Trace {
     }
 }
 
-/// verify.py 의 `FIX` 표(172행).
+/// The `FIX` table of verify.py (line 172).
 fn fix_for(code: &str) -> &'static str {
     match code {
         "index_oob" => "add a requires/invariant/if that bounds the index, e.g. `invariant 0 <= i && i <= len(a)`",
@@ -158,7 +158,7 @@ fn fix_for(code: &str) -> &'static str {
     }
 }
 
-/// z3py 가 모델 값 `str(v)` 로 찍는 꼴(수 리터럴, True/False, 접두 응용 `f(a, b)`).
+/// The form z3py prints for a model value via `str(v)` (numeric literal, True/False, prefix application `f(a, b)`).
 fn py_str(v: &Ast) -> String {
     if let Some(n) = v.numeral_string() {
         return n;
@@ -184,7 +184,7 @@ fn py_str(v: &Ast) -> String {
     }
 }
 
-/// `min(max(n, 0), 8)` (n 은 임의 길이 십진 문자열).
+/// `min(max(n, 0), 8)` (n is a decimal string of arbitrary length).
 fn clamp8(n: &str) -> usize {
     if n.starts_with('-') {
         return 0;
@@ -195,7 +195,7 @@ fn clamp8(n: &str) -> usize {
     }
 }
 
-/// `dict(relaxed, _note=...)`: 있으면 자리를 유지한 채 값만 교체, 없으면 끝에 추가.
+/// `dict(relaxed, _note=...)`: if present, replace only the value, keeping its position; otherwise append at the end.
 fn set_key(kv: &mut Vec<(String, Json)>, key: &str, v: Json) {
     if let Some(e) = kv.iter_mut().find(|(k, _)| k == key) {
         e.1 = v;
@@ -205,12 +205,12 @@ fn set_key(kv: &mut Vec<(String, Json)>, key: &str, v: Json) {
 }
 
 impl<'a> FnVerifier<'a> {
-    /// 시제품 경로: 오류 문구(`what`)는 비워 둔다.
+    /// Prototype path: the error wording (`what`) is left empty.
     pub fn prove(&mut self, st: &State, g: &[Ast], ob: &Ast, node: Pos, code: &str, key_extra: Option<&str>) {
         self.prove_core(&st.env, &st.pc, g, ob, node, code, "", key_extra);
     }
 
-    /// verify.py `prove(st, g, ob, node, code, what, key_extra)` (254행). 상태는 (env, pc) 로 받는다.
+    /// verify.py `prove(st, g, ob, node, code, what, key_extra)` (line 254). The state is taken as (env, pc).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prove_core(
         &mut self,
@@ -226,7 +226,7 @@ impl<'a> FnVerifier<'a> {
         self.prove_core_cand(senv, pc, g, ob, node, code, what, key_extra, None);
     }
 
-    /// `prove_core` + 기록용 `cand`.
+    /// `prove_core` + `cand` for recording.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prove_core_cand(
         &mut self,
@@ -240,7 +240,7 @@ impl<'a> FnVerifier<'a> {
         key_extra: Option<&str>,
         cand: Option<&str>,
     ) {
-        // STAGE1 B2: 탐색 중에는 아직 실패하지 않은 후보의 의무만 본다(중단 표시가 선 뒤에는 아무것도 보지 않는다).
+        // STAGE1 B2: during search, only obligations of candidates that have not yet failed are examined (once the abort flag is set, nothing is examined).
         let probing = self.probe.is_some();
         if let Some(p) = &self.probe {
             if p.abort.is_some() || cand.is_none() || cand.map_or(false, |c| p.failed.contains_key(c)) {
@@ -265,8 +265,8 @@ impl<'a> FnVerifier<'a> {
             self.probe_attempts(pc, g, ob, code, cand.unwrap_or(""), idx);
             return;
         }
-        // 먼저 집계 보조정리 없이: 가정이 적으므로 여기서 unsat 이면 건전한 증명이고,
-        // 보조정리가 필요 없는 많은 의무에서 양화 보조정리를 뺀다
+        // First without the aggregate lemmas: assumptions are few, so unsat here is a sound proof,
+        // and it drops the quantified lemmas for the many obligations that do not need them
         let (mut sol, mut r) = self.run_attempt(pc, g, ob, false, idx);
         if r == Sat::Unsat {
             return;
@@ -316,12 +316,12 @@ impl<'a> FnVerifier<'a> {
         });
     }
 
-    /// verify.py `_probe_attempts`: 후보 의무 하나의 탐색. `prove` 와 같은 두 단계(보조정리 없이 → 첫 시도가 unsat 이
-    /// 아니고 보조정리가 있으면 함께). 시도마다 먼저 예산·벽시계를 본다(`Probe::tick`; 넘으면 abort 표시 후 끝).
-    /// 시도 결과가 unknown 이고 z3 이유가 정확히 "timeout"(질의 500ms 벽시계 기한)이면 함수 전체 시간 초과(abort Timeout)로 끝낸다.
-    /// 그 밖에 마지막 시도가 proved 가 아니면(rlimit 소진 canceled 등 다른 unknown 글귀 포함) 그 후보만 이번 회차 실패로 남긴다(상태는 query_status 그대로).
-    /// 벽시계(`Probe::tick`)도 함수 전체를 멈춘다.
-    /// Python 의 z3.Z3Exception → 상태 "error" 분기는 옮기지 않았다: Rust 의 `Solver::check` 는 예외를 던지지 않는다.
+    /// verify.py `_probe_attempts`: search of a single candidate obligation. Same two stages as `prove` (without lemmas → if the first attempt is not unsat
+    /// and lemmas exist, with them too). Before each attempt, the budget and wall clock are checked first (`Probe::tick`; if exceeded, mark abort and finish).
+    /// If an attempt's result is unknown and the z3 reason is exactly "timeout" (the 500ms per-query wall-clock deadline), the whole function ends with a timeout (abort Timeout).
+    /// Otherwise, if the last attempt is not proved (including other unknown wordings such as rlimit-exhausted canceled), only that candidate is left failed for this round (status as in query_status).
+    /// The wall clock (`Probe::tick`) also stops the whole function.
+    /// Python's z3.Z3Exception → status "error" branch is not ported: Rust's `Solver::check` does not throw exceptions.
     fn probe_attempts(&mut self, pc: &[Ast], g: &[Ast], ob: &Ast, code: &str, cand: &str, idx: Option<usize>) {
         let mut status = String::new();
         for with_lemmas in [false, true] {
@@ -353,7 +353,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// verify.py 내부 `run(with_lemmas)` (258~269행): (solver, 판정).
+    /// verify.py inner `run(with_lemmas)` (lines 258-269): (solver, verdict).
     fn run_attempt(&mut self, pc: &[Ast], g: &[Ast], ob: &Ast, with_lemmas: bool, idx: Option<usize>) -> (Solver, Sat) {
         let q = &self.qcfg;
         let mut sol = Solver::with_options(&self.z, q.timeout_ms, q.rlimit, q.seed);
@@ -398,7 +398,7 @@ impl<'a> FnVerifier<'a> {
         (sol, result)
     }
 
-    /// verify.py `cex` (292행): 상태의 변수마다 모델 값. 평가에 실패한 변수는 건너뛴다(Python `except: pass`).
+    /// verify.py `cex` (line 292): the model value for each variable of the state. Variables that fail to evaluate are skipped (Python `except: pass`).
     fn cex(&self, m: &ZModel, senv: &Env) -> Vec<(String, Json)> {
         let mut out: Vec<(String, Json)> = Vec::new();
         for (name, v) in &senv.0 {
@@ -417,7 +417,7 @@ impl<'a> FnVerifier<'a> {
                 let mut els: Vec<Json> = Vec::new();
                 for i in 0..cnt {
                     let sel = a.a.select(&self.z.int(i as i64));
-                    // G2 A5: bool 원소는 JSON true/false
+                    // G2 A5: bool elements are JSON true/false
                     if a.elem == crate::model::Elem::Bool {
                         els.push(Json::Bool(m.eval(&sel)?.is_true()));
                     } else {
@@ -433,7 +433,7 @@ impl<'a> FnVerifier<'a> {
         }
     }
 
-    /// verify.py `fmt_val` (310행): z3 모델 값 → 한 줄 Pruv 문법(사용자 struct/enum); 모르는 모양은 z3py 의 `str()`.
+    /// verify.py `fmt_val` (line 310): z3 model value → one-line Pruv syntax (user struct/enum); unknown shapes use z3py's `str()`.
     pub(crate) fn fmt_val(&self, v: &Ast) -> String {
         if v.sort().is_int() && v.is_numeral() {
             if let Some(n) = v.numeral_string() {
@@ -478,7 +478,7 @@ impl<'a> FnVerifier<'a> {
     }
 }
 
-/// 시제품 출력 JSON: `{"sample","obligations":[{"seq","fn","line","col","code","attempts":[{"lemmas","smt2","result"}]}],"z3_version"}`.
+/// Prototype output JSON:`{"sample","obligations":[{"seq","fn","line","col","code","attempts":[{"lemmas","smt2","result"}]}],"z3_version"}`.
 pub fn trace_json(sample: &str, trace: &Trace, z3_version: &str) -> Value {
     let obligations: Vec<Value> = trace
         .obligations
@@ -516,7 +516,7 @@ fn opt_str(v: &Option<String>) -> Json {
     }
 }
 
-/// 어댑터 `pruv-trace-v2` 의 `obligations` 배열(키 정렬은 `dumps_sorted` 가 한다).
+/// The `obligations` array of adapter `pruv-trace-v2` (key sorting is done by `dumps_sorted`).
 pub fn adapter_obligations_json(trace: &Trace) -> Json {
     let items: Vec<Json> = trace
         .obligations

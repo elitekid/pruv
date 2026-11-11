@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Python 정본 gen_llvm 과 Rust pruv-llvm-dump 의 출력(IR + bindings)을 바이트 단위로 비교한다.
+"""Compare, byte for byte, the output (IR + bindings) of the canonical Python gen_llvm and Rust pruv-llvm-dump.
 
   python tests/diff_llvm.py [--rs-path PATH] [--only GROUP,...] [--seeds 41,56,57]
                             [--fuzz-count 200] [--mutations 3] [--save-dir DIR]
                             [--modes VT,Vt,vT,vt,B]
 
-그룹: must_reject examples runtime bench edge fuzz mutate
-  edge = tests/check_edge/ok_*.pruv 와 tests/check_edge/*.pruv 전체(중복 제거).
-모드(사례 = 입력 x 모드): 표기 첫 글자 V/v = verified 켬/끔, 둘째 글자 T/t = trust_callers 켬/끔.
-  Vt=(True,False) VT=(True,True) vt=(False,False) vT=(False,True), budget 기본 1<<30.
-  B = runtime json 의 contract_budget 과 flags(flags_matrix 포함)의 --contract-budget 값을 가진 입력만,
-      그 budget 으로 (V=True,T=False) 한 번 더. --modes 기본은 전부(Vt,VT,vt,vT,B).
-기대 줄 = json.dumps(obj, sort_keys=True, ensure_ascii=False), obj =
+Groups: must_reject examples runtime bench edge fuzz mutate
+  edge = tests/check_edge/ok_*.pruv plus all of tests/check_edge/*.pruv (deduplicated).
+Modes (case = input x mode): the first letter V/v = verified on/off, the second letter T/t = trust_callers on/off.
+  Vt=(True,False) VT=(True,True) vt=(False,False) vT=(False,True), default budget 1<<30.
+  B = only for inputs that have a contract_budget in the runtime json or a --contract-budget value in flags (including flags_matrix),
+      one more run with that budget at (V=True,T=False). The default for --modes is all of them (Vt,VT,vt,vT,B).
+Expected line = json.dumps(obj, sort_keys=True, ensure_ascii=False), obj =
   {"bindings":..,"ir":..} | {"error":{..}} | {"internal":msg} | {"adapter_error":"decode"}.
-  RecursionError -> py_recursion(비교 제외). Rust: (모드, budget) 별로 파일 200개씩 한 번 호출
+  RecursionError -> py_recursion (excluded from comparison). Rust: one call per 200 files for each (mode, budget)
   (`pruv-llvm-dump [--no-verify] [--trust-callers] --budget N FILE...`).
-  종료 코드≠0·시간 초과·줄 수 불일치·마지막 개행 없음 -> 그 묶음 전체 rs_crash.
-종료 코드: 0 = diff·crash(py_crash, rs_crash) 모두 0, 1 = 그 외, 2 = 인자/바이너리 없음.
-Python 3.9 표준 라이브러리만 쓴다.
+  Exit code != 0, timeout, line-count mismatch, or no trailing newline -> the whole batch is rs_crash.
+Exit codes: 0 = diff and crash (py_crash, rs_crash) are all 0, 1 = anything else, 2 = bad arguments / binary missing.
+Uses only the Python 3.9 standard library.
 """
 import argparse
 import collections
@@ -55,7 +55,7 @@ GROUP_DIRS = [
 CHECK_EDGE_DIR = "tests/check_edge"
 ALL_GROUPS = ["must_reject", "examples", "runtime", "bench", "edge", "fuzz", "mutate"]
 
-# (라벨, verified, trust_callers). B 는 별도 처리.
+# (label, verified, trust_callers). B is handled separately.
 MODE_TABLE = collections.OrderedDict([
     ("Vt", (True, False)),
     ("VT", (True, True)),
@@ -80,7 +80,7 @@ class Case(object):
     def __init__(self, group, name, path, mode, verified, trust, budget):
         self.group, self.name, self.path = group, name, path
         self.mode, self.verified, self.trust, self.budget = mode, verified, trust, budget
-        self.py = None      # bytes(개행 없음)
+        self.py = None      # bytes (no newline)
         self.rs = None
         self.status = None
         self.note = ""
@@ -130,7 +130,7 @@ def parse_modes(text):
 
 
 def runtime_budgets(path):
-    """runtime 입력의 json 에서 budget 값 목록(중복 제거, 순서 유지). 없으면 []."""
+    """List of budget values from a runtime input's json (deduplicated, order kept). [] if there are none."""
     j = os.path.splitext(path)[0] + ".json"
     vals = []
     try:
@@ -179,21 +179,21 @@ def mutate_text(text, rng):
 
 
 def build_inputs(selected, args, tmp):
-    """-> (그룹 -> [(name, path, [budget...])], notes)"""
+    """-> (group -> [(name, path, [budget...])], notes)"""
     notes = []
     per = collections.OrderedDict((g, []) for g in ALL_GROUPS)
     base = []
     for g, sub in GROUP_DIRS:
         files = list_dir(sub)
         if not files:
-            notes.append("경고: %s 에 *.pruv 가 없다(%s)" % (g, sub))
+            notes.append("warning: no *.pruv in %s (%s)" % (g, sub))
         for p in files:
             base.append((rel(p), p))
             if g in selected:
                 per[g].append((rel(p), p, runtime_budgets(p) if g == "runtime" else []))
     edge = list_edge()
     if not edge:
-        notes.append("경고: edge 에 *.pruv 가 없다(%s)" % CHECK_EDGE_DIR)
+        notes.append("warning: no *.pruv in edge (%s)" % CHECK_EDGE_DIR)
     for p in edge:
         base.append((rel(p), p))
         if "edge" in selected:
@@ -205,7 +205,7 @@ def build_inputs(selected, args, tmp):
         try:
             import generate
         except Exception as e:   # noqa: BLE001
-            print("오류: 퍼저 생성기를 불러오지 못했다: %s: %s" % (type(e).__name__, e), file=sys.stderr)
+            print("error: could not load the fuzzer generator: %s: %s" % (type(e).__name__, e), file=sys.stderr)
             raise SystemExit(2)
         skipped = 0
         for seed in args.seeds:
@@ -219,7 +219,7 @@ def build_inputs(selected, args, tmp):
                 with open(p, "wb") as fh:
                     fh.write(data)
                 per["fuzz"].append(("fuzz:%s:%d" % (seed, idx), p, []))
-        notes.append("fuzz: 생성기 예외로 건너뛴 index %d개 (seeds=%s, count=%d)" % (
+        notes.append("fuzz: %d indexes skipped due to generator exceptions (seeds=%s, count=%d)" % (
             skipped, ",".join(str(s) for s in args.seeds), args.fuzz_count))
     if "mutate" in selected:
         d = os.path.join(tmp, "mutate")
@@ -277,7 +277,7 @@ def eval_python(c):
         obj = {"internal": str(e)}
     try:
         c.py = dumps(obj).encode("utf-8")
-    except Exception as e:   # noqa: BLE001  도구 자체 오류
+    except Exception as e:   # noqa: BLE001  error in the tool itself
         c.status, c.note = "py_crash", "%s: %s" % (type(e).__name__, str(e)[:200])
 
 
@@ -285,20 +285,20 @@ def run_batch(rs, flags, paths):
     try:
         p = subprocess.run([rs] + flags + paths, capture_output=True, timeout=RS_TIMEOUT)
     except subprocess.TimeoutExpired:
-        return None, "시간 초과(%d초)" % RS_TIMEOUT
+        return None, "timeout (%d s)" % RS_TIMEOUT
     except OSError as e:
-        return None, "실행 실패: %s" % e
+        return None, "failed to start: %s" % e
     tail = p.stderr.decode("utf-8", "replace")[-300:].strip()
     if p.returncode != 0:
-        return None, "종료 코드 %d: %s" % (p.returncode, tail)
+        return None, "exit code %d: %s" % (p.returncode, tail)
     out = p.stdout
     if out and not out.endswith(b"\n"):
-        return None, "마지막 줄에 개행이 없다"
+        return None, "last line has no newline"
     lines = out.split(b"\n")
     if lines and lines[-1] == b"":
         lines.pop()
     if len(lines) != len(paths):
-        return None, "줄 수 %d != 파일 수 %d %s" % (len(lines), len(paths), tail)
+        return None, "line count %d != file count %d %s" % (len(lines), len(paths), tail)
     return lines, None
 
 
@@ -315,7 +315,7 @@ def eval_rust(rs, cases, problems):
             if err is not None:
                 for c in chunk:
                     c.status, c.note = "rs_crash", err
-                problems.append("%s: 모드 %s 묶음 %d (%d개, 첫 파일 %s): %s" % (
+                problems.append("%s: mode %s batch %d (%d files, first file %s): %s" % (
                     chunk[0].group, chunk[0].mode, i // BATCH, len(chunk), chunk[0].name, err))
                 continue
             for c, line in zip(chunk, lines):
@@ -324,7 +324,7 @@ def eval_rust(rs, cases, problems):
 
 
 # ---------------------------------------------------------------------------
-# 비교 요약
+# Comparison summary
 # ---------------------------------------------------------------------------
 def load(line):
     try:
@@ -339,17 +339,17 @@ def text_of(v):
 
 
 def line_diff(a, b):
-    """-> (첫 다른 줄 번호(1부터), 양쪽 앞뒤 3줄 문자열 목록)"""
+    """-> (first differing line number (1-based), list of strings with 3 lines of context on each side)"""
     la, lb = a.split("\n"), b.split("\n")
     n = min(len(la), len(lb))
     i = next((k for k in range(n) if la[k] != lb[k]), n)
     lo, hi = max(0, i - 3), i + 4
-    out = ["첫 다른 줄: %d (py %d줄, rs %d줄)" % (i + 1, len(la), len(lb))]
+    out = ["first differing line: %d (py %d lines, rs %d lines)" % (i + 1, len(la), len(lb))]
     for tag, ls in (("py", la), ("rs", lb)):
         for k in range(lo, min(hi, len(ls))):
             out.append("  %s %5d%s %s" % (tag, k + 1, ">" if k == i else " ", ls[k]))
         if i >= len(ls):
-            out.append("  %s (줄 %d 없음: 끝)" % (tag, i + 1))
+            out.append("  %s (no line %d: end)" % (tag, i + 1))
     return out
 
 
@@ -357,16 +357,16 @@ def diff_summary(c):
     po, ro = load(c.py), load(c.rs)
     if po is None or ro is None:
         a, b = c.py.decode("utf-8", "replace"), c.rs.decode("utf-8", "replace")
-        return ["json 해석 불가 -> 원문 줄 비교(py json %s, rs json %s)" % (po is not None, ro is not None)] + line_diff(a, b)
+        return ["cannot parse json -> comparing raw lines (py json %s, rs json %s)" % (po is not None, ro is not None)] + line_diff(a, b)
     out = []
     keys = sorted(set(po) | set(ro))
     kinds = []
     for k in keys:
         if k not in po or k not in ro:
-            kinds.append("%s 한쪽에만 있음(py=%s rs=%s)" % (k, k in po, k in ro))
+            kinds.append("%s present on one side only (py=%s rs=%s)" % (k, k in po, k in ro))
         elif po[k] != ro[k]:
-            kinds.append("%s 다름" % k)
-    out.append("다른 필드: " + (", ".join(kinds) if kinds else "(없음: 직렬화 순서/공백 차이)"))
+            kinds.append("%s differs" % k)
+    out.append("differing fields: " + (", ".join(kinds) if kinds else "(none: serialization order/whitespace difference)"))
     for k in ("ir", "bindings", "error", "internal", "adapter_error"):
         if k in po and k in ro and po[k] != ro[k]:
             out.append("-- %s --" % k)
@@ -406,7 +406,7 @@ def save_case(save_dir, seq, c):
 
 
 # ---------------------------------------------------------------------------
-# 대응 범위
+# Coverage
 # ---------------------------------------------------------------------------
 RE_ASSIGN = re.compile(r"=\s+([A-Za-z_]\w*)")
 RE_FIRST = re.compile(r"^\s*([A-Za-z_]\w*)")
@@ -454,15 +454,15 @@ def coverage(all_cases):
             if m and m.group(1) not in NON_INSN and s.startswith((" ", "\t")):
                 insn[m.group(1)] += 1
     print("")
-    print("== 대응 범위(coverage) ==")
-    print("성공(ir 있음) 사례 %d, 오류 사례 %d, internal 사례 %d, 해독 실패 %d" % (ok_n, err_n, internal_n, adapter_n))
-    print("LLVM 명령 종류 %d종: %s" % (len(insn), ", ".join("%s=%d" % kv for kv in sorted(insn.items()))))
-    print("@pruv_abi_ wrapper (사례별 고유 이름 합) %d" % wrappers)
-    print("nsw 가 있는 사례(verified) %d" % nsw)
-    print("with.overflow 가 있는 사례(safe, verified 끔) %d" % ovf)
-    print("%%pruv_t_ 사용자 타입 사례 %d" % utype)
-    print("@pruv_cdiv 사례 %d" % cdiv)
-    print("pruv_panic_requires 사례 %d" % panic)
+    print("== coverage ==")
+    print("successful (with ir) cases %d, error cases %d, internal cases %d, decode failures %d" % (ok_n, err_n, internal_n, adapter_n))
+    print("%d LLVM instruction kinds: %s" % (len(insn), ", ".join("%s=%d" % kv for kv in sorted(insn.items()))))
+    print("@pruv_abi_ wrappers (sum of distinct names per case) %d" % wrappers)
+    print("cases with nsw (verified) %d" % nsw)
+    print("cases with with.overflow (safe, verified off) %d" % ovf)
+    print("%%pruv_t_ user-type cases %d" % utype)
+    print("@pruv_cdiv cases %d" % cdiv)
+    print("pruv_panic_requires cases %d" % panic)
 
 
 def default_rs_path():
@@ -473,36 +473,36 @@ def default_rs_path():
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(prog="diff_llvm.py", description="Python/Rust LLVM 출력(IR+bindings) 바이트 비교")
-    ap.add_argument("--rs-path", default=None, help="pruv-llvm-dump 경로")
-    ap.add_argument("--only", default=None, help="그룹 목록(쉼표): " + " ".join(ALL_GROUPS))
-    ap.add_argument("--seeds", default="41,56,57", help="퍼저 seed 목록(쉼표)")
-    ap.add_argument("--fuzz-count", type=int, default=200, help="seed 마다 index 수")
-    ap.add_argument("--mutations", type=int, default=3, help="파일마다 변형 수")
-    ap.add_argument("--save-dir", default=None, help="다른 사례를 저장할 폴더")
-    ap.add_argument("--modes", default=None, help="예 VT,Vt,vT,vt,B (기본 전부)")
+    ap = argparse.ArgumentParser(prog="diff_llvm.py", description="Byte-compare Python/Rust LLVM output (IR+bindings)")
+    ap.add_argument("--rs-path", default=None, help="path to pruv-llvm-dump")
+    ap.add_argument("--only", default=None, help="group list (comma-separated): " + " ".join(ALL_GROUPS))
+    ap.add_argument("--seeds", default="41,56,57", help="fuzzer seed list (comma-separated)")
+    ap.add_argument("--fuzz-count", type=int, default=200, help="number of indexes per seed")
+    ap.add_argument("--mutations", type=int, default=3, help="number of mutations per file")
+    ap.add_argument("--save-dir", default=None, help="directory in which to save differing cases")
+    ap.add_argument("--modes", default=None, help="e.g. VT,Vt,vT,vt,B (default: all)")
     args = ap.parse_args(argv)
 
     args.seeds = [parse_seed(t) for t in args.seeds.split(",") if t.strip() != ""]
     if args.fuzz_count < 0 or args.mutations < 0:
-        ap.error("--fuzz-count, --mutations 는 0 이상이어야 한다")
+        ap.error("--fuzz-count and --mutations must be >= 0")
     if args.only is None:
         selected = list(ALL_GROUPS)
     else:
         selected = [t.strip() for t in args.only.split(",") if t.strip()]
         bad = [t for t in selected if t not in ALL_GROUPS]
         if bad or not selected:
-            ap.error("--only: 알 수 없는 그룹 %s (가능: %s)" % (bad, " ".join(ALL_GROUPS)))
+            ap.error("--only: unknown group %s (valid: %s)" % (bad, " ".join(ALL_GROUPS)))
     if args.modes is None:
         modes = list(ALL_MODES)
     else:
         modes = parse_modes(args.modes)
         if modes is None:
-            ap.error("--modes: 알 수 없는 표기 %r (가능: VT Vt vT vt B)" % args.modes)
+            ap.error("--modes: unknown notation %r (valid: VT Vt vT vt B)" % args.modes)
     rs = os.path.abspath(args.rs_path) if args.rs_path else default_rs_path()
     if not os.path.isfile(rs) or not os.access(rs, os.X_OK):
-        print("오류: Rust 바이너리를 찾을 수 없거나 실행할 수 없다: %s\n"
-              "  먼저 빌드하거나 --rs-path 로 pruv-llvm-dump 경로를 준다." % rs, file=sys.stderr)
+        print("error: Rust binary not found or not executable: %s\n"
+              "  build it first, or pass the pruv-llvm-dump path with --rs-path." % rs, file=sys.stderr)
         return 2
 
     with tempfile.TemporaryDirectory(prefix="diff_llvm_") as tmp:
@@ -559,31 +559,31 @@ def main(argv):
 
         if diffs:
             print("")
-            print("== 처음 다른 사례 (최대 %d개 / 전체 diff %d) ==" % (MAX_SHOWN, len(diffs)))
+            print("== first differing cases (up to %d / %d diff in total) ==" % (MAX_SHOWN, len(diffs)))
             for c in diffs[:MAX_SHOWN]:
-                print("[%s] %s  모드 %s" % (c.group, c.name, c.mode))
+                print("[%s] %s  mode %s" % (c.group, c.name, c.mode))
                 for ln in diff_summary(c):
                     print("  " + ln)
         pyc = [c for c in crashes if c.status == "py_crash"]
         if pyc:
             print("")
-            print("== py_crash (최대 5개 / 전체 %d) ==" % len(pyc))
+            print("== py_crash (up to 5 / %d in total) ==" % len(pyc))
             for c in pyc[:5]:
                 print("[%s] %s %s: %s" % (c.group, c.name, c.mode, c.note))
         if problems:
             print("")
-            print("== rs_crash (묶음 %d개, 최대 5개 표시) ==" % len(problems))
+            print("== rs_crash (%d batches, showing up to 5) ==" % len(problems))
             for p in problems[:5]:
                 print(p)
         if args.save_dir:
             print("")
-            print("저장: 사례 %d개 -> %s" % (saved, args.save_dir))
+            print("saved: %d cases -> %s" % (saved, args.save_dir))
 
         coverage(all_cases)
 
     clean = all(total[k] == 0 for k in ("diff", "py_crash", "rs_crash"))
     print("")
-    print("결과: %s" % ("성공(모두 same)" if clean else "실패"))
+    print("result: %s" % ("success (all same)" if clean else "fail"))
     return 0 if clean else 1
 
 

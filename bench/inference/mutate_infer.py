@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-"""건전성 회귀 측정: bench/mutate.py 와 같은 변이를 만들어 컴파일(검증+코드 생성)을 돌리고,
---infer 없음과 --infer 켬의 판정을 두 판(py·rs)에서 비교한다.
+"""Soundness regression measurement: generate the same mutants as bench/mutate.py, compile them (verification + code generation),
+and compare the verdicts without --infer and with --infer on both implementations (py, rs).
 
-판정:
-  accepted  = 종료 0
-  rejected  = 종료 1 이고 stdout 첫 오류 JSON 의 stage 가 internal 이 아니며 code 가 미결 코드가 아님
-  undecided = 종료 1 이고 code 가 inference_timeout·verify_unknown (부하에 따라 바뀔 수 있는 판정)
-  crash     = 그 밖(종료 2 사용법 오류, JSON 없는 종료 1, 종료 3·신호, 시간 초과, 실행 실패)
-새 통과 = 없음에서 accepted 가 아닌데 켬에서 accepted.
-미결은 --retry 로 병렬 1개로 다시 돌린다. 그래도 미결이면 결과에 그대로 남긴다(거부로 세지 않음).
-crash 가 하나라도 있으면 종료 코드 1.
+Verdicts:
+  accepted  = exit 0
+  rejected  = exit 1, the stage of the first error JSON on stdout is not internal, and the code is not an undecided code
+  undecided = exit 1 and the code is inference_timeout or verify_unknown (verdicts that can change with load)
+  crash     = anything else (exit 2 usage error, exit 1 without JSON, exit 3 or signal, timeout, failure to run)
+New pass = not accepted without inference but accepted with it.
+Undecided results are re-run with --retry, one at a time. If still undecided they stay in the result as is (not counted as rejected).
+Exit code 1 if there is any crash.
 
-뒷단(--backend)은 검증 뒤 단계라 판정에 영향이 없다(같은 판정을 두 번 세는 것이지 독립 증거가 아님).
-변이 규칙(OPS·SKIP·mutants)은 bench/mutate.py 소스에서 그대로 가져온다(사본 없음).
+The backend (--backend) is a stage after verification, so it does not affect verdicts (it counts the same verdict twice; it is not independent evidence).
+The mutation rules (OPS, SKIP, mutants) are taken directly from the bench/mutate.py source (no copy).
 
-사용: mutate_infer.py OUT.json SRC_DIR [SRC_DIR ...] [--jobs N] [--backend rust|llvm] [--retry]
+Usage: mutate_infer.py OUT.json SRC_DIR [SRC_DIR ...] [--jobs N] [--backend rust|llvm] [--retry]
 """
 import ast, hashlib, json, os, shutil, subprocess, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
@@ -55,7 +55,7 @@ def classify(rc, stdout):
     if rc == 1 and errs:
         if errs[0].get("stage") == "internal":
             return "crash", code
-        # 오류가 모두 미결 코드일 때만 미결(하나라도 진짜 거부가 있으면 거부)
+        # undecided only if every error is an undecided code (rejected if any is a real rejection)
         und = all(e.get("code") in UNDECIDED_CODES for e in errs)
         return ("undecided" if und else "rejected"), code
     return "crash", code
@@ -114,7 +114,7 @@ def main():
     out, dirs = args[0], args[1:]
     tags = [os.path.basename(os.path.normpath(d)) for d in dirs]
     if len(set(tags)) != len(tags):
-        sys.exit("입력 폴더 이름(basename)이 겹친다: %s" % tags)
+        sys.exit("input folder names (basename) collide: %s" % tags)
     mutants = load_mutants()
     work = tempfile.mkdtemp(prefix="mi_src_")
     try:
@@ -143,7 +143,7 @@ def main():
             again = [(i, c, inf) for i in range(len(items)) for c, inf in RUNS
                      if items[i][key(c, inf)]["verdict"] == "undecided"]
             retried = len(again)
-            for t in again:  # 병렬 1개
+            for t in again:  # one at a time
                 (i, c, inf), r = run(t)
                 r["first"] = items[i][key(c, inf)]
                 items[i][key(c, inf)] = r

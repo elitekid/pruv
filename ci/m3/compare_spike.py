@@ -1,10 +1,10 @@
-"""0B: Rust z3 실의무 시제품(pruv-proof-spike)과 Python 정본의 의무 trace 대조.
+"""0B: Cross-check the obligation trace of the Rust z3 real-obligation prototype (pruv-proof-spike) against the Python reference.
 
   .venv/bin/python ci/m3/compare_spike.py [--spike PATH]
 
-표본마다 Python(tests/diff_py_adapter.py trace)과 Rust(pruv-proof-spike NAME)를 새 프로세스로 실행하고,
-의무 순서·키(fn,line,col,code)·시도별 SMT-LIB 텍스트·판정을 비교한다. seen 으로 건너뛴 Python 의무는 뺀다.
-하나라도 다르면 exit 1.
+For each sample, runs Python (tests/diff_py_adapter.py trace) and Rust (pruv-proof-spike NAME) in fresh processes,
+and compares obligation order, key (fn,line,col,code), per-attempt SMT-LIB text, and verdict. Python obligations skipped via `seen` are excluded.
+Exits 1 if anything differs.
 """
 import argparse, difflib, json, os, subprocess, sys
 
@@ -18,11 +18,11 @@ def main():
     a = ap.parse_args()
     names = subprocess.run([a.spike, "--list"], capture_output=True, text=True, check=True).stdout.split()
     if not names:
-        print("error: 표본 목록이 비어 있음 (%s --list)" % a.spike)
+        print("error: sample list is empty (%s --list)" % a.spike)
         return 2
     total = same_smt = same_verdict = 0
     bad = False
-    py_z3 = None  # Python 쪽 z3 버전: trace 결과에 있으면 그것, 없으면 하위 프로세스로 한 번 구한다
+    py_z3 = None  # z3 version on the Python side: taken from the trace result if present, otherwise obtained once via a subprocess
     rs_z3 = None
     for n in names:
         r = json.loads(subprocess.run([a.spike, n], capture_output=True, text=True, check=True).stdout)
@@ -35,9 +35,9 @@ def main():
                 py_z3 = subprocess.run([sys.executable, "-c", "import z3; print(z3.get_full_version())"],
                                        capture_output=True, text=True, check=True).stdout.strip()
         rs_z3 = r.get("z3_version")
-        # 전체 버전 문자열은 빌드마다 꼬리(커밋 해시)가 다를 수 있다: 숫자 버전(첫 토큰)만 같아야 한다.
+        # The full version string's tail (commit hash) may differ per build: only the numeric version (first token) must match.
         if (rs_z3 or "").split()[:1] != (py_z3 or "").split()[:1]:
-            print("z3 버전 불일치: py=%r rs=%r (표본 %s)" % (py_z3, rs_z3, n))
+            print("z3 version mismatch: py=%r rs=%r (sample %s)" % (py_z3, rs_z3, n))
             bad = True
         po = [o for o in p["obligations"] if not o.get("skipped")]
         ro = r["obligations"]

@@ -1,12 +1,12 @@
 #!/bin/sh
-# 실행 파일의 동적 의존이 개발 머신/빌드 폴더/외부 libz3·libLLVM 에 묶여 있으면 실패한다.
+# Fails if an executable's dynamic dependencies are tied to the development machine, the build directory, or an external libz3/libLLVM.
 #
-# 사용: sh ci/m3/check_deps.sh EXE [EXE ...]
-# 환경: CHECK_DEPS_BUILD_DIR  빌드 폴더 절대 경로(기본: 현재 폴더). 이 경로가 의존 목록에 나오면 실패.
-# 종료 코드: 0 통과, 1 금지 항목 발견, 2 사용법·도구 오류.
+# Usage: sh ci/m3/check_deps.sh EXE [EXE ...]
+# Env:   CHECK_DEPS_BUILD_DIR  absolute path of the build directory (default: current directory). Fails if this path appears in the dependency list.
+# Exit codes: 0 pass, 1 forbidden entry found, 2 usage or tool error.
 #
-# macOS 는 `otool -L`, Linux 는 `ldd` 를 쓴다. otool 의 첫 줄은 파일 자신의 경로이므로 건너뛴다
-# (실행 파일이 빌드 폴더 안에 있어도 오탐하지 않게).
+# macOS uses `otool -L`, Linux uses `ldd`. The first line of otool output is the file's own path, so it is skipped
+# (to avoid false positives when the executable lives inside the build directory).
 
 set -u
 
@@ -45,7 +45,7 @@ for exe in "$@"; do
         continue
     fi
     deps=$(list_deps "$exe")
-    # 도구 자체가 실패한 경우(Mach-O/ELF 아님 등)는 금지 목록과 따로 취급한다.
+    # A failure of the tool itself (not Mach-O/ELF, etc.) is handled separately from the forbidden list.
     case "$deps" in
         *"not a Mach-O"*|*"not a dynamic executable"*|*"is not an object file"*|*"No such file"*)
             echo "check_deps: $tool could not read $exe:" >&2
@@ -66,7 +66,7 @@ $hit"
         fi
     done
 
-    # Linux: ldd 가 'not found' 로 표시한 의존은 해석되지 않는 라이브러리이므로 실패.
+    # Linux: a dependency that ldd marks 'not found' is an unresolved library, so it fails.
     if [ "$tool" = ldd ]; then
         nf=$(printf '%s\n' "$deps" | grep -F -e "not found")
         if [ -n "$nf" ]; then

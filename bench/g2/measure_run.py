@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""G2 Q2 실행 측정 (docs/G2_Q2_IMPL.md 3·4절).
+"""G2 Q2 run measurement (docs/G2_Q2_IMPL.md sections 3-4).
 python bench/g2/measure_run.py arrays  OUT.json [--reps 5] [--compiler rs|py]
 python bench/g2/measure_run.py strings OUT.json [--reps 7] [--sizes 1000000,8000000] [--compiler rs|py]
-arrays : perf/arr_*.pruv 를 두 뒷단의 단독 실행 파일로 빌드해 R회 실행(벽시계·최대 상주 메모리·출력 확인).
-         rust 뒷단 = 생성 Rust 를 mod 로 담은 한 줄 main 을 rustc, llvm 뒷단 = `pruvc --emit exe`(rs 판만 지원).
-strings: perf/str_ops.pruv 를 두 뒷단으로 만들어 Rust 드라이버(run.py TEMPLATE 방식)에서 함수 호출 시간을 잰다.
-실패(컴파일 오류·틀린 값)가 하나라도 있으면 끝에 종료 코드 1."""
+arrays : build perf/arr_*.pruv as standalone executables on both backends and run each R times (wall clock, peak resident memory, output check).
+         rust backend = rustc on a one-line main that embeds the generated Rust as a mod; llvm backend = `pruvc --emit exe` (rs implementation only).
+strings: build perf/str_ops.pruv on both backends and time function calls in a Rust driver (run.py TEMPLATE approach).
+Exit code 1 at the end if there is any failure (compile error or wrong value)."""
 import json, os, re, statistics, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,7 +24,7 @@ def fail(msg):
 
 
 def compile_errors(c):
-    """compile_pruv 결과의 오류 줄들(JSON 오류가 있으면 그것, 없으면 stderr 끝)."""
+    """Error lines from a compile_pruv result (the JSON errors if any, otherwise the tail of stderr)."""
     lines = [json.dumps(e, ensure_ascii=False)[:400] for e in c["errors"][:5]]
     return lines or [c["stderr"][-400:]]
 
@@ -47,7 +47,7 @@ def med(v):
 
 # ---------------------------------------------------------------- arrays
 def build_arr(compiler, backend, stem, work):
-    """단독 실행 파일을 만든다. (exe, None) 또는 (None, 오류 줄 목록)."""
+    """Build a standalone executable. Returns (exe, None) or (None, list of error lines)."""
     src = os.path.join(PERF, stem + ".pruv")
     d = sub_dir(work, backend)
     exe = os.path.join(d, stem + "_bin")
@@ -62,7 +62,7 @@ def build_arr(compiler, backend, stem, work):
         err = run_rustc(main_rs, exe, [])
         return (None, err) if err else (exe, None)
     if compiler != "rs":
-        return None, ["llvm 단독 실행 파일(--emit exe)은 Rust 판 pruvc(--compiler rs)만 지원"]
+        return None, ["llvm standalone executables (--emit exe) are supported only by the Rust implementation of pruvc (--compiler rs)"]
     r = subprocess.run([g2run.PRUVC_RS, src, "--emit", "exe", "-o", exe, "-mcpu=native"],
                        capture_output=True, encoding="utf-8", errors="replace", timeout=600)
     if r.returncode != 0:
@@ -80,7 +80,7 @@ def time_once(exe):
     for line in r.stderr.splitlines():
         m = re.match(r"^\s*(\d+)\s+maximum resident set size", line)
         if m:
-            rss = int(m.group(1))  # macOS: 바이트
+            rss = int(m.group(1))  # macOS: bytes
         m = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", line)
         if m:
             rss = int(m.group(1)) * 1024
@@ -135,7 +135,7 @@ use std::time::Instant;
 @RAW_DECL@
 
 fn build(b: usize) -> String {
-    let unit = "abcde\u{e9}\u{4e2d}"; // 10 바이트: ASCII 5 + 다중 바이트 5
+    let unit = "abcde\u{e9}\u{4e2d}"; // 10 bytes: 5 ASCII + 5 multi-byte
     let mut s = String::with_capacity(b);
     while s.len() + unit.len() <= b { s.push_str(unit); }
     while s.len() < b { s.push('a'); }
@@ -206,7 +206,7 @@ def build_str_driver(compiler, backend, work):
 
 
 def parse_driver(text):
-    """M/CHECK/INFO 줄 -> {size: {"info": (lo, hi), "fn": {name: {...}}}}"""
+    """M/CHECK/INFO lines -> {size: {"info": (lo, hi), "fn": {name: {...}}}}"""
     sizes = {}
     for line in text.splitlines():
         p = line.split()

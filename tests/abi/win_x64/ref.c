@@ -1,9 +1,9 @@
-/* Windows x64 C ABI 기준. check_abi.py 가 이 파일을
+/* Windows x64 C ABI reference. check_abi.py compiles this file to IR with
  *   clang --target=x86_64-pc-windows-msvc -O0 -S -emit-llvm
- * 으로 IR 로 만들어, 아래 두 종류의 서명을 우리 .ll 표본과 비교한다.
- *   - pruv_abi_*      : extern 선언을 부르는 호출자 (IR 의 declare 서명 = 호출 규약)
- *   - ref_pruv_abi_*  : 같은 서명을 C 로 정의한 기준 구현 (IR 의 define 서명)
- * 기대: 16바이트 구조체 반환은 `void @f(ptr sret(%struct.PruvTagged) align 8, ...)`.
+ * and cross-checks the two kinds of signatures below against our .ll samples.
+ *   - pruv_abi_*      : callers of the extern declarations (IR declare signature = calling convention)
+ *   - ref_pruv_abi_*  : reference implementations defining the same signatures in C (IR define signature)
+ * Expected: a 16-byte struct return is `void @f(ptr sret(%struct.PruvTagged) align 8, ...)`.
  */
 #include <stdint.h>
 
@@ -18,7 +18,7 @@ PruvTagged pruv_abi_f5(int64_t, int64_t, int64_t, int64_t, int64_t);
 void pruv_abi_arr(const int64_t *v, int64_t n, PruvArr *out);
 void pruv_abi_bump(const int64_t *p, int64_t d, int64_t *out);
 
-/* 호출자: 선언이 IR 에 남도록 실제로 호출한다. */
+/* Caller: actually calls each function so the declarations remain in the IR. */
 int64_t ref_caller(const int64_t *v, int64_t n) {
     int64_t acc = 0;
     PruvTagged t;
@@ -34,7 +34,7 @@ int64_t ref_caller(const int64_t *v, int64_t n) {
     return acc;
 }
 
-/* 기준 구현: 서명만 중요하다. */
+/* Reference implementations: only the signatures matter. */
 PruvTagged ref_pruv_abi_get_opt(int64_t x) { PruvTagged t = { x > 0, x > 0 ? x : 0 }; return t; }
 PruvTagged ref_pruv_abi_get_res(int64_t x) { PruvTagged t = { x >= 0, x >= 0 ? x : -x }; return t; }
 PruvTagged ref_pruv_abi_f0(void) { PruvTagged t = { 0, 0 }; return t; }

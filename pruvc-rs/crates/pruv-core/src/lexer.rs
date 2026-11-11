@@ -1,4 +1,4 @@
-//! 토큰 분리기 (vparser.py 의 lex). 입력은 이미 개행 정규화된 문자 배열.
+//! Tokenizer (lex in vparser.py). The input is a character array whose newlines are already normalized.
 
 use crate::diagnostic::PruvError;
 use crate::pyrepr::repr_str;
@@ -9,7 +9,7 @@ pub const KEYWORDS: &[&str] = &[
     "Err", "struct", "enum", "is_variant", "variant_field",
 ];
 
-/// Pruv 키워드가 아닌 Rust 키워드: 사용자 이름이 생성 Rust 에 그대로 들어간다.
+/// Rust keywords that are not Pruv keywords: user names go into the generated Rust as they are.
 pub const RUST_KEYWORDS: &[&str] = &[
     "as", "async", "await", "break", "const", "continue", "crate", "dyn", "enum", "extern", "for",
     "impl", "loop", "mod", "move", "pub", "ref", "self", "Self", "static", "struct", "super",
@@ -27,19 +27,19 @@ pub enum Kind {
     Eof,
 }
 
-/// val: 정수 토큰은 정규화 십진 문자열, eof 는 빈 문자열.
+/// val: a normalized decimal string for integer tokens, an empty string for eof.
 #[derive(Debug, Clone)]
 pub struct Tok {
     pub kind: Kind,
     pub val: String,
     pub line: i64,
     pub col: i64,
-    /// 토큰 뒤의 열(같은 줄). 정제 경계 뒤 `1e9` 같은 붙은 식별자를 알아보는 데 쓴다(eof 는 col).
+    /// The column after the token (same line). Used to recognize an attached identifier such as `1e9` after a refinement bound (col for eof).
     pub end: i64,
 }
 
 impl Tok {
-    /// Python repr(t.val): 정수 십진, eof 는 None, 나머지는 문자열 repr.
+    /// Python repr(t.val): decimal for integers, None for eof, string repr for the rest.
     pub fn repr(&self) -> String {
         match self.kind {
             Kind::Int => self.val.clone(),
@@ -52,8 +52,8 @@ impl Tok {
 const OPS2: &[&str] = &["==", "!=", "<=", ">=", "&&", "||", "->", "=>", "::", ".."];
 const OPS1_LIST: &[&str] = &[".", "|", "-", "+", "*", "/", "%", "<", ">", "=", "!", "(", ")", "{", "}", "[", "]", ",", ":", ";"];
 
-/// STAGE1 A: `|` 는 타입 자리의 타입처럼 보이는 이름 바로 뒤에서만 토큰이다
-/// (`x: i64 |`, `-> i64 |`, `[i64 |`, `Option<i64 |`). 그 밖에는 예전의 bad_char.
+/// STAGE1 A: `|` is a token only directly after a name that looks like a type in a type position
+/// (`x: i64 |`, `-> i64 |`, `[i64 |`, `Option<i64 |`). Anywhere else it is the old bad_char.
 fn bar_after_type(toks: &[Tok]) -> bool {
     if toks.len() < 2 {
         return false;
@@ -66,7 +66,7 @@ fn bar_after_type(toks: &[Tok]) -> bool {
         || a.val.chars().next().map_or(false, |c| c.is_ascii_uppercase())
 }
 
-/// pos 에서 시작하는 연산자 토큰(정규식 순서: 3글자, 2글자, 1글자).
+/// The operator token starting at pos (regex order: 3 characters, 2 characters, 1 character).
 fn match_op(src: &[char], pos: usize) -> Option<&'static str> {
     let n = src.len();
     if pos + 2 < n && src[pos] == '=' && src[pos + 1] == '=' && src[pos + 2] == '>' {
@@ -97,7 +97,7 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
             pos += 1;
             lstart = pos;
         } else if c == '"' {
-            // G2 B0: 문자열 리터럴. val 은 원문(따옴표·역슬래시 포함), 디코드는 파서가 한다.
+            // G2 B0: string literal. val is the raw text (quotes and backslashes included); the parser does the decoding.
             let start = pos;
             pos += 1;
             loop {
@@ -189,7 +189,7 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
             toks.push(Tok { kind: if is_kw { Kind::Kw } else { Kind::Id }, val: v, line, col, end });
         } else if let Some(op) = match_op(src, pos) {
             if op == "|" && !bar_after_type(&toks) {
-                // 타입 자리 밖의 외톨이 `|` 는 예전부터의 어휘 오류로 남는다
+                // A stray `|` outside a type position stays the lexical error it has always been
                 return Err(PruvError::new("parse", line, col, "bad_char", format!("unexpected character {}", repr_str("|")), "remove it"));
             }
             pos += op.len();
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn unicode_cols() {
-        // 문자 단위 열: 주석 속 비ASCII 뒤 줄바꿈과 eof 열
+        // Column in characters: the newline after non-ASCII text in a comment, and the eof column
         let t = lex(&chars("x // éé")).unwrap();
         assert_eq!(t.last().unwrap().col, 8);
         let e = lex(&chars("// éé\né")).unwrap_err();

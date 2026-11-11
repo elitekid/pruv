@@ -1,5 +1,5 @@
-//! AST 를 어댑터 스키마 pruv-ast-v1 의 Json 으로 직렬화.
-//! 정수·line·col 은 십진 문자열, bool 은 JSON bool, None 은 null, Type 은 이름 문자열.
+//! Serializes the AST to Json in the adapter schema pruv-ast-v1.
+//! Integers, line and col are decimal strings, bool is a JSON bool, None is null, Type is its name string.
 
 use crate::ast::*;
 use crate::parser::parse_source;
@@ -24,15 +24,15 @@ fn list<T>(v: &[T], f: fn(&T) -> Json) -> Json {
     Json::Arr(v.iter().map(f).collect())
 }
 
-/// 노드 하나: kind, (line, col), 필드들.
+/// One node: kind, (line, col), fields.
 fn node(kind: &str, lc: Option<(i64, i64)>, fields: Vec<(&str, Json)>) -> Json {
     let mut kv: Vec<(String, Json)> = vec![("kind".to_string(), js(kind))];
     if let Some((l, c)) = lc {
         kv.push(("line".to_string(), Json::Str(l.to_string())));
         kv.push(("col".to_string(), Json::Str(c.to_string())));
     }
-    // Python dict 처럼 같은 키는 덮어쓴다: 어댑터 ser() 에서 Quant.kind("forall" 등)가
-    // 노드 이름 "Quant" 를 덮어쓰는 동작이 기준 스냅샷(pruv-ast-v1)에 들어 있다.
+    // Like a Python dict, the same key is overwritten: in the adapter's ser(), Quant.kind ("forall" etc.)
+    // overwriting the node name "Quant" is baked into the reference snapshot (pruv-ast-v1).
     for (k, v) in fields {
         match kv.iter_mut().find(|(kk, _)| kk == k) {
             Some(slot) => slot.1 = v,
@@ -254,7 +254,7 @@ fn if_node(x: &If) -> Json {
     )
 }
 
-/// 정수 문자열 또는 null(값이 None 이면 null).
+/// Integer string or null (null when the value is None).
 fn opt_num(v: &Option<String>) -> Json {
     match v {
         Some(s) => js(s),
@@ -262,7 +262,7 @@ fn opt_num(v: &Option<String>) -> Json {
     }
 }
 
-/// Refinement 노드. 필드 shape("scalar"|"array"). 노드 이름 kind 는 "Refinement".
+/// Refinement node. Field shape ("scalar"|"array"). The node name kind is "Refinement".
 fn refinement(r: &Refinement) -> Json {
     node(
         "Refinement",
@@ -309,7 +309,7 @@ pub fn program(p: &Program) -> Json {
     )
 }
 
-/// 파일 바이트 하나 -> 출력 한 줄(개행 제외).
+/// One file's bytes -> one output line (without the newline).
 pub fn parse_dump_line(src_bytes: &[u8]) -> String {
     let src = match std::str::from_utf8(src_bytes) {
         Ok(s) => s,
@@ -328,7 +328,7 @@ pub fn parse_dump_line(src_bytes: &[u8]) -> String {
     dumps_sorted(&top)
 }
 
-/// 타입 표 -> {"order": [...], "entries": [{"deps","kind","name"}...]} (Python type_table_json).
+/// Type table ->{"order": [...], "entries": [{"deps","kind","name"}...]} (Python type_table_json).
 fn type_table_json(tt: &crate::typeinfo::TypeTable) -> Json {
     let mut entries = Vec::new();
     let mut order = Vec::new();
@@ -347,7 +347,7 @@ fn type_table_json(tt: &crate::typeinfo::TypeTable) -> Json {
     Json::Obj(vec![("order".to_string(), Json::Arr(order)), ("entries".to_string(), Json::Arr(entries))])
 }
 
-/// 파일 바이트 하나 -> parse+check 결과 한 줄(개행 제외). 성공이면 ty 가 채워진 program 과 type_table.
+/// One file's bytes -> one parse+check result line (without the newline). On success, the program with ty filled in and the type_table.
 pub fn check_dump_line(src_bytes: &[u8]) -> String {
     let src = match std::str::from_utf8(src_bytes) {
         Ok(s) => s,

@@ -1,10 +1,10 @@
-//! STAGE1 A: 정제 주석 -> 기존 계약(설탕 펼치기). refine.py 를 한 줄씩 옮김.
+//! STAGE1 A: refinement annotation -> existing contract (sugar expansion). A line-by-line port of refine.py.
 //!
-//! `expand(prog)` 는 Checker::run() 맨 앞에서 한 번 돈다. 합성 노드는 보통 검사기가 타입을 채우고
-//! verify/codegen/llvmgen 이 그대로 소비한다. 정제 주석이 없으면 아무것도 바꾸지 않는다.
+//! `expand(prog)` runs once at the very start of Checker::run(). The checker normally fills in the types of synthesized nodes, and
+//! verify/codegen/llvmgen consume them as they are. If there are no refinement annotations, nothing is changed.
 //!
-//! 정수 경계는 부호+정규화 십진 문자열이다(Python 은 임의 정밀도 int). 비교는 `cmp_dec` 로 문자열에서
-//! 직접 하므로 20자리 이상 리터럴도 i128 에 의존하지 않고 같은 판정·같은 숫자 표기가 나온다.
+//! Integer bounds are a sign plus a normalized decimal string (Python has arbitrary-precision int). Comparison is done directly on the strings
+//! with `cmp_dec`, so even literals of 20 or more digits give the same verdict and the same number spelling without relying on i128.
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
@@ -17,12 +17,12 @@ const I64_MIN: &str = "-9223372036854775808";
 const I64_MAX: &str = "9223372036854775807";
 const MAX_LEN: &str = "1099511627776"; // 2^40
 
-// ---------- 십진 문자열 비교 ----------
+// ---------- decimal string comparison ----------
 fn cmp_mag(a: &str, b: &str) -> Ordering {
     a.len().cmp(&b.len()).then_with(|| a.cmp(b))
 }
 
-/// 정규화된 부호 있는 십진 문자열(앞 0 없음, "0" 은 부호 없음) 비교.
+/// Comparison of normalized signed decimal strings (no leading zeros; "0" has no sign).
 fn cmp_dec(a: &str, b: &str) -> Ordering {
     let (an, am) = match a.strip_prefix('-') {
         Some(r) => (true, r),
@@ -57,7 +57,7 @@ fn validate(r: &Refinement) -> Res<()> {
             "remove the annotation and state the condition with requires/ensures/assert",
         ));
     }
-    // G2 A5: [bool | L..=U] 거부 (스칼라 refinement_base 바로 다음)
+    // G2 A5: reject [bool | L..=U] (right after the scalar refinement_base)
     if r.shape == "array" && r.base == "bool" && r.lo.is_some() {
         return Err(terr(
             r,
@@ -113,7 +113,7 @@ fn validate(r: &Refinement) -> Res<()> {
     Ok(())
 }
 
-// ---------- 일반 AST 보조 ----------
+// ---------- general AST helpers ----------
 fn kids(e: &Expr) -> Vec<&Expr> {
     match e {
         Expr::Unary(x) => vec![x.operand.as_ref()],
@@ -212,7 +212,7 @@ fn fn_names(f: &Function) -> HashSet<String> {
     out
 }
 
-/// k, k_1, k_2, ... 중 names 에 없는 첫 이름(결정적)
+/// The first name among k, k_1, k_2, ... that is not in names (deterministic)
 pub fn pick_bound_name(names: &HashSet<String>) -> String {
     if !names.contains("k") {
         return "k".to_string();
@@ -248,7 +248,7 @@ fn assigned(stmts: &[Stmt], out: &mut HashSet<String>) {
     }
 }
 
-// ---------- 조건 만들기(모든 노드는 주석 위치) ----------
+// ---------- building conditions (every node takes the annotation's position) ----------
 struct At {
     line: i64,
     col: i64,
@@ -270,7 +270,7 @@ impl At {
     fn length(&self, n: &str) -> Expr {
         Expr::Call(Call { line: self.line, col: self.col, name: "len".to_string(), args: vec![self.var(n)], ty: None })
     }
-    /// L <= v && v <= U (v 는 i64 식을 매번 새로 만드는 함수)
+    /// L <= v && v <= U (v is a function that builds a fresh i64 expression each time)
     fn within(&self, v: &dyn Fn() -> Expr, r: &Refinement) -> Expr {
         let lo = r.lo.as_deref().unwrap_or("0");
         let hi = r.hi.as_deref().unwrap_or("0");
@@ -280,7 +280,7 @@ impl At {
     }
 }
 
-/// 변수 `name`(`result` 가능)에 대한 정제 r 의 조건들 [(label, expr)]
+/// The conditions [(label, expr)] of refinement r for the variable `name` (may be `result`)
 fn parts(r: &Refinement, name: &str, kname: &str) -> Vec<(&'static str, Expr)> {
     let at = At::new(r);
     if r.shape == "scalar" {
@@ -316,7 +316,7 @@ fn synth_assert(r: &Refinement, expr: Expr, code: &str, what: String) -> Stmt {
     Stmt::Assert(Assert { line: r.line, col: r.col, cond: expr, origin_code: Some(code.to_string()), origin_what: Some(what) })
 }
 
-/// 선언 순서를 지키는 범위(Python dict). 같은 이름을 다시 넣으면 자리는 두고 값만 바꾼다.
+/// A scope that preserves declaration order (Python dict). Re-inserting the same name keeps its position and only replaces the value.
 type Scope = Vec<(String, Refinement)>;
 
 fn scope_get<'a>(s: &'a Scope, n: &str) -> Option<&'a Refinement> {
@@ -360,7 +360,7 @@ impl Expander {
                 Stmt::IndexAssign(a) => {
                     if let Some(r) = scope_get(scope, &a.name) {
                         if r.shape == "array" && r.lo.is_some() {
-                            // 합성 assert 없음: 검증기가 저장 값의 범위를 증명한다(code refinement_assign)
+                            // No synthesized assert: the verifier proves the range of the stored value (code refinement_assign)
                             let what = format!("the element range of local {} after the store on line {}", a.name, a.line);
                             a.elem_refine = Some((
                                 r.lo.clone().unwrap_or_default(),
@@ -381,7 +381,7 @@ impl Expander {
                     assigned(&w.body, &mut changed);
                     let mut pre: Vec<Expr> = Vec::new();
                     for (name, r) in scope.iter() {
-                        // 선언 순서, 루프 머리에서 살아 있는 것만
+                        // In declaration order, only those alive at the loop head
                         if changed.contains(name) {
                             pre.extend(parts(r, name, &self.k).into_iter().map(|(_, e)| e));
                         }
@@ -471,8 +471,8 @@ pub fn has_refinements(prog: &Program) -> bool {
         .any(|f| f.ret_refine.is_some() || f.params.iter().any(|p| p.refine.is_some()) || any_let_refine(&f.body))
 }
 
-/// 모든 주석을 검증한 뒤 펼친다. 주석이 없으면 아무것도 하지 않는다.
-/// 한 Program 에 한 번만 펼친다: `prog.refined` 표식(Python `_refined`)이 이미 서 있으면 아무것도 하지 않는다.
+/// Validates all annotations, then expands them. If there are no annotations, does nothing.
+/// Expands only once per Program: does nothing if the `prog.refined` marker (Python `_refined`) is already set.
 pub fn expand(prog: &mut Program) -> Res<()> {
     if prog.refined {
         return Ok(());

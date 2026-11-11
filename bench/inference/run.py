@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""1단계 B 측정: 불변식 절을 모두 지운 pruv_agg 사본(bench/inference/agg_noinv)을 추론 없이 / --infer 로 컴파일한다.
+"""Stage 1 B measurement: compile the copy of pruv_agg with all invariant clauses removed (bench/inference/agg_noinv) without inference and with --infer.
 
     .venv/bin/python bench/inference/run.py [--compiler py|rs] [--repeat N] [--json OUT]
 
-입력마다: 추론 없음 성공 여부, --infer 성공 여부, 루프별 생성·남김·탈락·잘림·회차·탐색 질의 수, 컴파일 시간 중앙값
-(추론 없음 / --infer, 벽시계, N번), 검증 trace 크기(pruv-trace-dump 또는 어댑터 출력 바이트, 추론 없음 / --infer).
-Python 3.9 표준 라이브러리만.
+Per input: whether the no-inference compile succeeds, whether the --infer compile succeeds, per-loop counts of generated / kept / dropped / capped
+candidates, rounds, and search queries, median compile time (no inference / --infer, wall clock, N runs), and verification trace size
+(bytes output by pruv-trace-dump or the adapter, no inference / --infer).
+Python 3.9 standard library only.
 """
 import argparse
 import glob
@@ -77,7 +78,7 @@ def main():
         print("%-5s %-7s %-6s %-46s %8d %8d %10s %10s" % (r["name"], r["noinfer_ok"], r["infer_ok"], lp,
                                                          r["ms_noinfer"], r["ms_infer"], r["trace_bytes_noinfer"],
                                                          r["trace_bytes_infer"]))
-    print("infer 성공: %d/%d, 추론 없음 성공: %d/%d" % (sum(r["infer_ok"] for r in rows), len(rows),
+    print("infer success: %d/%d, no-inference success: %d/%d" % (sum(r["infer_ok"] for r in rows), len(rows),
                                                  sum(r["noinfer_ok"] for r in rows), len(rows)))
     if ns.json:
         with open(ns.json, "w", encoding="utf-8") as fh:

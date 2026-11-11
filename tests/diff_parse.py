@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Python 정본 파서와 Rust pruv-parse-dump 의 parse 결과를 바이트 단위로 비교한다.
+"""Compare, byte for byte, the parse results of the canonical Python parser and Rust pruv-parse-dump.
 
   python tests/diff_parse.py [--mode parse|check] [--rs-path PATH] [--seeds 41,56,57]
                              [--fuzz-count 200] [--mutations 6] [--save-dir DIR]
                              [--only GROUP[,GROUP...]]
 
-그룹: must_reject examples runtime bench edge bytes fuzz mutate
---mode parse(기본): 기대 줄 = diff_py_adapter.dumps(parse_result(FILE)), Rust = pruv-parse-dump,
+Groups: must_reject examples runtime bench edge bytes fuzz mutate
+--mode parse (default): expected line = diff_py_adapter.dumps(parse_result(FILE)), Rust = pruv-parse-dump,
   edge = tests/parse_edge.
---mode check: 기대 줄 = diff_py_adapter.dumps(check_result(FILE)), Rust = pruv-check-dump,
-  edge = tests/check_edge (mutate 원본에도 들어간다), coverage 는 check 용(45개 오류 code 등).
-기대 줄 = diff_py_adapter.dumps(parse_result(FILE)) (같은 프로세스에서 직접 부른다).
-  UnicodeDecodeError -> {"adapter_error": "decode"}, RecursionError -> 비교 제외(py_recursion),
-  그 밖의 예외 -> py_crash(실패).
-Rust: 파일 200개씩 `pruv-parse-dump FILE...` 한 번(셸 없음, timeout 300). 줄 수 불일치·종료 코드≠0·
-  시간 초과·마지막 줄 개행 없음이면 그 묶음 전체가 rs_crash.
-종료 코드: 0 = 모두 same 이고 coverage 통과, 1 = 그 외, 2 = 인자/바이너리 없음.
-Python 3.9 표준 라이브러리만 쓴다.
+--mode check: expected line = diff_py_adapter.dumps(check_result(FILE)), Rust = pruv-check-dump,
+  edge = tests/check_edge (also used as mutate sources), coverage is the check one (45 error codes, etc.).
+Expected line = diff_py_adapter.dumps(parse_result(FILE)) (called directly in the same process).
+  UnicodeDecodeError -> {"adapter_error": "decode"}, RecursionError -> excluded from comparison (py_recursion),
+  any other exception -> py_crash (fail).
+Rust: one `pruv-parse-dump FILE...` run per 200 files (no shell, timeout 300). If the line count differs, the exit code is != 0,
+  it times out, or the last line has no newline, the whole batch is rs_crash.
+Exit codes: 0 = all same and coverage passes, 1 = anything else, 2 = bad arguments / binary missing.
+Uses only the Python 3.9 standard library.
 """
 import argparse
 import collections
@@ -35,7 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
-import diff_py_adapter as A  # noqa: E402  (모듈 import 때 ../pruvc 가 sys.path 에 들어간다)
+import diff_py_adapter as A  # noqa: E402  (importing the module puts ../pruvc on sys.path)
 
 BATCH = 200
 RS_TIMEOUT = 300
@@ -43,7 +43,7 @@ MAX_SHOWN = 10
 CONTEXT = 60
 REQUIRED_CODES = ("bad_char", "bad_int", "reserved_name", "unsupported_type", "syntax",
                   "string_escape", "string_unterminated", "string_character")
-QUANT_KINDS = ("forall", "exists", "sum", "count", "max", "min")   # 직렬화에서 Quant 의 kind 가 이 값으로 덮인다
+QUANT_KINDS = ("forall", "exists", "sum", "count", "max", "min")   # serialization overwrites a Quant's kind with one of these values
 
 GROUP_DIRS = [
     ("must_reject", "tests/must_reject"),
@@ -72,7 +72,7 @@ def group_dirs(mode):
 STATUSES = ("same", "diff", "py_recursion", "py_crash", "rs_crash")
 
 # ---------------------------------------------------------------------------
-# mutate 조각 (순서 고정: 결정성)
+# mutate fragments (fixed order: determinism)
 # ---------------------------------------------------------------------------
 FRAGMENTS = [
     "-", "--", "_", "1_", "9223372036854775808", "99999999999999999999999999999999",
@@ -83,7 +83,7 @@ FRAGMENTS = [
 ]
 
 # ---------------------------------------------------------------------------
-# 바이트 경계 입력 (이름, bytes)
+# Byte-boundary inputs (name, bytes)
 # ---------------------------------------------------------------------------
 OK_FN = b"fn f() -> i64 {\n  return 1;\n}\n"
 
@@ -92,7 +92,7 @@ def _u(s):
     return s.encode("utf-8")
 
 
-# Python repr(%r) 의 출력 가능/이스케이프 판정과 유니코드 버전 차이를 건드리는 문자들
+# Characters that probe Python repr(%r) printable/escape decisions and Unicode-version differences
 REPR_CODEPOINTS = [
     0x01, 0x1f, 0x7f, 0x80, 0x85, 0x9f, 0xa0, 0xad, 0xff, 0x100, 0x301, 0x378, 0x600, 0x61c,
     0x1680, 0x180e, 0x2000, 0x200b, 0x200e, 0x2028, 0x2029, 0x202f, 0x2060, 0x2065, 0x20bf,
@@ -105,7 +105,7 @@ REPR_CODEPOINTS = [
 
 def _build_byte_cases():
     cases = [
-        # 줄끝: open().read() 의 universal newlines 가 \r\n, \r 을 \n 으로 바꾼다
+        # Line endings: universal newlines in open().read() turn \r\n and \r into \n
         ("crlf_ok", b"fn f() -> i64 {\r\n  return 1;\r\n}\r\n"),
         ("cr_only_ok", b"fn f() -> i64 {\r  return 1;\r}\r"),
         ("crlf_error_line2", b"fn f() -> i64 {\r\n  return 1 $;\r\n}\r\n"),
@@ -119,7 +119,7 @@ def _build_byte_cases():
         ("bom_start", b"\xef\xbb\xbf" + OK_FN),
         ("bom_middle", OK_FN + b"\xef\xbb\xbf" + OK_FN),
         ("bom_only", b"\xef\xbb\xbf"),
-        # 잘못된 UTF-8 -> {"adapter_error": "decode"}
+        # Invalid UTF-8 -> {"adapter_error": "decode"}
         ("invalid_utf8_ff", OK_FN + b"\xff\n"),
         ("invalid_utf8_continuation", b"// \x80\n" + OK_FN),
         ("invalid_utf8_truncated", b"// \xe2\x82\n" + OK_FN),
@@ -127,7 +127,7 @@ def _build_byte_cases():
         ("invalid_utf8_surrogate", b"// \xed\xa0\x80\n" + OK_FN),
         ("invalid_utf8_above_max", b"\xf4\x90\x80\x80"),
         ("invalid_utf8_at_eof", OK_FN + b"\xe2\x82"),
-        # 제어 문자
+        # Control characters
         ("nul_middle", b"fn f() -> i64 {\x00  return 1;\n}\n"),
         ("nul_in_comment", b"// a\x00b\n" + OK_FN),
         ("nul_at_eof", OK_FN + b"\x00"),
@@ -140,11 +140,11 @@ def _build_byte_cases():
         ("ideographic_space", _u("fn f() -> i64 { return　1; }\n")),
         ("fullwidth_digit", _u("fn f() -> i64 { return １; }\n")),
         ("u2028_in_comment", _u("// a b $\nfn f() -> i64 { return 1 $; }\n")),
-        # 탭
+        # Tabs
         ("tab_then_error", b"fn f() -> i64 {\n\t\treturn 1 $;\n}\n"),
         ("tab_mixed_syntax_error", b"fn f() -> i64 {\n\t  \treturn 1 2;\n}\n"),
         ("tab_in_comment", b"// a\tb\t\nfn f() -> i64 { return 1 2; }\n"),
-        # 비ASCII 주석과 열 번호 (주석은 줄 끝까지라 같은 줄 오류는 파일 끝(eof)뿐이다)
+        # Non-ASCII comments and column numbers (a comment runs to end of line, so the only same-line error is at end of file (eof))
         ("comment_hangul_next_line_error", _u("// 한글 주석\nfn f() -> i64 { return 1 $; }\n")),
         ("comment_emoji_next_line_error", _u("// 😀😀 emoji\nfn f() -> i64 { return 1 $; }\n")),
         ("comment_combining_next_line_error", _u("// éé\nfn f() -> i64 { return 1 $; }\n")),
@@ -155,20 +155,20 @@ def _build_byte_cases():
         ("emoji_badchar_after_hangul_line", _u("// 한글한글\nfn f() -> i64 { return 😀; }\n")),
         ("combining_badchar", _u("fn f() -> i64 { return 1́; }\n")),
         ("hangul_comment_then_trailing_error", _u("fn f() -> i64 { return 1; } // 한글\n$\n")),
-        # 빈 입력과 끝 처리
+        # Empty input and end handling
         ("empty", b""),
         ("whitespace_only", b"   \n\t\n  "),
         ("only_newlines", b"\n\n\n"),
         ("comment_only_no_eol", b"// only a comment"),
         ("comment_only_eol", b"// c\n"),
         ("single_slash", b"/"),
-        # 아주 긴 줄
+        # Very long lines
         ("long_line_error_10k", b"fn f() -> i64 { return 1;" + b" " * 10000 + b"$ }\n"),
         ("long_comment_then_error", b"// " + b"x" * 10000 + b"\nfn f() -> i64 { return 1 $; }\n"),
         ("long_hangul_comment_then_error", _u("// " + "한" * 10000 + "\n$\n")),
         ("long_ident_100", b"fn " + b"a" * 100 + b"() -> i64 { return 1; }\n"),
         ("int_100_digits", b"fn f() -> i64 { return " + b"9" * 100 + b"; }\n"),
-        # 깊은 중첩 (정본이 RecursionError 면 py_recursion 으로 센다)
+        # Deep nesting (if the canonical implementation raises RecursionError it is counted as py_recursion)
         ("paren_nest_2000", b"fn f() -> i64 { return " + b"(" * 2000 + b"1" + b")" * 2000 + b"; }\n"),
         ("paren_nest_60", b"fn f() -> i64 { return " + b"(" * 60 + b"1" + b")" * 60 + b"; }\n"),
         ("unary_minus_3000_int", b"fn f() -> i64 { return " + b"-" * 3000 + b"5; }\n"),
@@ -188,16 +188,16 @@ BYTE_CASES = _build_byte_cases()
 
 
 # ---------------------------------------------------------------------------
-# 입력 모으기
+# Collecting inputs
 # ---------------------------------------------------------------------------
 class Case(object):
     __slots__ = ("group", "name", "path", "py", "rs", "status", "note")
 
     def __init__(self, group, name, path):
         self.group, self.name, self.path = group, name, path
-        self.py = None      # 기대 줄(bytes, 개행 없음)
-        self.rs = None      # Rust 줄(bytes, 개행 없음)
-        self.status = None  # None(미판정) 또는 STATUSES 중 하나
+        self.py = None      # expected line (bytes, no newline)
+        self.rs = None      # Rust line (bytes, no newline)
+        self.status = None  # None (undecided) or one of STATUSES
         self.note = ""
 
 
@@ -214,19 +214,19 @@ def safe(name):
 
 
 def mutate_text(text, rng):
-    """한 번의 변형. rng 사용 순서가 고정이라 결정적이다."""
+    """One mutation. The order of rng use is fixed, so the result is deterministic."""
     n = len(text)
     op = rng.randrange(4)
-    if op == 0 and n:                       # 임의 위치 문자 1~3개 삭제
+    if op == 0 and n:                       # delete 1-3 characters at a random position
         cnt = rng.randint(1, 3)
         pos = rng.randrange(n)
         return text[:pos] + text[pos + cnt:]
-    if op == 2 and n >= 2:                  # 두 토막 맞바꾸기
+    if op == 2 and n >= 2:                  # swap two segments
         a, b, c = sorted(rng.randint(0, n) for _ in range(3))
         return text[:a] + text[b:c] + text[a:b] + text[c:]
-    if op == 3 and n:                       # 임의 위치에서 자르기
+    if op == 3 and n:                       # truncate at a random position
         return text[:rng.randrange(n)]
-    pos = rng.randint(0, n)                 # 조각 삽입 (op==1, 그리고 위 분기가 못 쓰는 경우)
+    pos = rng.randint(0, n)                 # insert a fragment (op==1, and when the branches above cannot apply)
     return text[:pos] + rng.choice(FRAGMENTS) + text[pos:]
 
 
@@ -235,19 +235,19 @@ def parse_seed(tok):
 
 
 def build_cases(selected, args, tmp):
-    """-> (그룹별 Case 목록 dict, 보고용 부가 정보 list)"""
+    """-> (dict of Case lists per group, list of extra notes for the report)"""
     notes = []
-    base = []   # (rel, path) 변형 원본: must_reject·examples·runtime·bench·edge
+    base = []   # (rel, path) mutation sources: must_reject, examples, runtime, bench, edge
     per_group = collections.OrderedDict((g, []) for g in ALL_GROUPS)
     for g, sub in group_dirs(args.mode):
         files = list_dir(sub)
         if not files:
-            notes.append("경고: %s 에 *.pruv 가 없다(%s)" % (g, sub))
+            notes.append("warning: no *.pruv in %s (%s)" % (g, sub))
         for p in files:
             base.append((rel(p), p))
             if g in selected:
                 per_group[g].append(Case(g, rel(p), p))
-    if args.mode == "check":   # check 모드의 mutate 원본에는 parse 경계 입력도 더한다
+    if args.mode == "check":   # in check mode, the mutate sources also include the parse boundary inputs
         for p in list_dir(PARSE_EDGE_DIR):
             base.append((rel(p), p))
     if "bytes" in selected:
@@ -265,7 +265,7 @@ def build_cases(selected, args, tmp):
         try:
             import generate
         except Exception as e:   # noqa: BLE001
-            print("오류: 퍼저 생성기를 불러오지 못했다: %s: %s" % (type(e).__name__, e), file=sys.stderr)
+            print("error: could not load the fuzzer generator: %s: %s" % (type(e).__name__, e), file=sys.stderr)
             raise SystemExit(2)
         skipped = 0
         for seed in args.seeds:
@@ -273,14 +273,14 @@ def build_cases(selected, args, tmp):
                 try:
                     src = generate.generate_case(seed, idx)["src"]
                     data = src.encode("utf-8")
-                except Exception:   # noqa: BLE001  생성기 예외는 건너뛰고 수를 센다
+                except Exception:   # noqa: BLE001  generator exceptions are skipped and counted
                     skipped += 1
                     continue
                 p = os.path.join(d, "s%s_%05d.pruv" % (safe(str(seed)), idx))
                 with open(p, "wb") as fh:
                     fh.write(data)
                 per_group["fuzz"].append(Case("fuzz", "fuzz:%s:%d" % (seed, idx), p))
-        notes.append("fuzz: 생성기 예외로 건너뛴 index %d개 (seeds=%s, count=%d)" % (
+        notes.append("fuzz: %d indexes skipped due to generator exceptions (seeds=%s, count=%d)" % (
             skipped, ",".join(str(s) for s in args.seeds), args.fuzz_count))
     if "mutate" in selected:
         d = os.path.join(tmp, "mutate")
@@ -301,7 +301,7 @@ def build_cases(selected, args, tmp):
 
 
 # ---------------------------------------------------------------------------
-# 평가
+# Evaluation
 # ---------------------------------------------------------------------------
 def eval_python(case, fn=None):
     fn = fn or A.parse_result
@@ -319,24 +319,24 @@ def eval_python(case, fn=None):
 
 
 def run_batch(rs, paths):
-    """-> (줄 목록 | None, 오류 문장 | None)"""
+    """-> (list of lines | None, error message | None)"""
     try:
         p = subprocess.run([rs] + paths, capture_output=True, timeout=RS_TIMEOUT)
     except subprocess.TimeoutExpired:
-        return None, "시간 초과(%d초)" % RS_TIMEOUT
+        return None, "timeout (%d s)" % RS_TIMEOUT
     except OSError as e:
-        return None, "실행 실패: %s" % e
+        return None, "failed to start: %s" % e
     tail = p.stderr.decode("utf-8", "replace")[-300:].strip()
     if p.returncode != 0:
-        return None, "종료 코드 %d: %s" % (p.returncode, tail)
+        return None, "exit code %d: %s" % (p.returncode, tail)
     out = p.stdout
     if out and not out.endswith(b"\n"):
-        return None, "마지막 줄에 개행이 없다"
+        return None, "last line has no newline"
     lines = out.split(b"\n")
     if lines and lines[-1] == b"":
         lines.pop()
     if len(lines) != len(paths):
-        return None, "줄 수 %d != 파일 수 %d %s" % (len(lines), len(paths), tail)
+        return None, "line count %d != file count %d %s" % (len(lines), len(paths), tail)
     return lines, None
 
 
@@ -348,7 +348,7 @@ def eval_rust(rs, cases, problems):
         if err is not None:
             for c in chunk:
                 c.status, c.note = "rs_crash", err
-            problems.append("%s: 묶음 %d (%d개, 첫 파일 %s): %s" % (
+            problems.append("%s: batch %d (%d files, first file %s): %s" % (
                 chunk[0].group, i // BATCH, len(chunk), chunk[0].name, err))
             continue
         for c, line in zip(chunk, lines):
@@ -373,7 +373,7 @@ def diff_detail(case):
 
 
 # ---------------------------------------------------------------------------
-# 저장
+# Saving
 # ---------------------------------------------------------------------------
 def write_bytes(path, data):
     with open(path, "wb") as fh:
@@ -423,7 +423,7 @@ def collect_kinds(obj, kinds, intlits, unary_ops):
 
 def message_head(msg):
     head = re.split(r"['\"]", msg, 1)[0].strip()
-    return head or "<따옴표로 시작>"
+    return head or "<starts with a quote>"
 
 
 def coverage(all_cases, enforce):
@@ -452,41 +452,41 @@ def coverage(all_cases, enforce):
     missing_kinds = sorted(expected - kinds)
     missing_codes = [x for x in REQUIRED_CODES if x not in codes]
     print("")
-    print("== 대응 범위(coverage) ==")
-    print("노드 kind: %d/%d 종 나옴" % (len(expected & kinds), len(expected)))
-    print("  안 나온 kind: %s" % (", ".join(missing_kinds) if missing_kinds else "없음"))
+    print("== coverage ==")
+    print("node kinds: %d/%d seen" % (len(expected & kinds), len(expected)))
+    print("  kinds not seen: %s" % (", ".join(missing_kinds) if missing_kinds else "none"))
     extra = sorted(kinds - expected)
     if extra:
-        print("  vast 34 노드 밖의 kind 값: %s" % ", ".join(extra))
-    print("parse 오류 code: %s" % (", ".join("%s=%d" % kv for kv in sorted(codes.items())) or "없음"))
-    print("  빠진 필수 code: %s" % (", ".join(missing_codes) if missing_codes else "없음"))
-    print("오류 message 앞머리 형태: %d종" % len(heads))
+        print("  kind values outside the vast 34 nodes: %s" % ", ".join(extra))
+    print("parse error codes: %s" % (", ".join("%s=%d" % kv for kv in sorted(codes.items())) or "none"))
+    print("  missing required codes: %s" % (", ".join(missing_codes) if missing_codes else "none"))
+    print("error message head forms: %d" % len(heads))
     for (code, head), n in sorted(heads.items(), key=lambda kv: (-kv[1], kv[0])):
         print("  %-18s %-48s %d" % (code, head, n))
-    print("edge 묶음 IntLit 확인:")
+    print("edge group IntLit check:")
 
     def big(v, neg):
         return v is not None and v.startswith("-") == neg and len(v.lstrip("-")) > 20
     checks = [
         ("9223372036854775807", "9223372036854775807" in edge_ints),
         ("-9223372036854775808", "-9223372036854775808" in edge_ints),
-        ("20자리 넘는 큰 수", any(big(v, False) for v in edge_ints)),
-        ("음수 큰 수", any(big(v, True) for v in edge_ints)),
-        ("'--' 접기(int_double_neg.pruv: IntLit 5, Unary - 없음)", bool(fold_ok)),
+        ("big number over 20 digits", any(big(v, False) for v in edge_ints)),
+        ("big negative number", any(big(v, True) for v in edge_ints)),
+        ("'--' folding (int_double_neg.pruv: IntLit 5, no Unary -)", bool(fold_ok)),
     ]
     for label, ok in checks:
-        print("  %-52s %s" % (label, "있음" if ok else "없음"))
+        print("  %-52s %s" % (label, "present" if ok else "absent"))
     ok = not missing_kinds and not missing_codes
     if not enforce:
-        print("coverage 판정: --only 로 일부 그룹만 돌려 판정에서 제외(참고용)")
+        print("coverage verdict: only some groups were run with --only, so excluded from the verdict (informational)")
         return True
-    print("coverage 판정: %s" % ("통과" if ok else "실패"))
+    print("coverage verdict: %s" % ("pass" if ok else "fail"))
     return ok
 
 
 # ---------------------------------------------------------------------------
 def collect_ty(obj, tys):
-    """식 노드의 ty 값(문자열)을 모은다"""
+    """Collect the ty values (strings) of expression nodes"""
     stack = [obj]
     while stack:
         o = stack.pop()
@@ -530,36 +530,36 @@ def coverage_check(all_cases, enforce):
     user_tys = sorted(t for t in tys if t not in CHECK_TY_BUILTIN)
     ty_missing = [t for t in CHECK_TY_BUILTIN if t not in tys]
     if not user_tys:
-        ty_missing.append("사용자 타입")
+        ty_missing.append("user type")
     missing_codes = [x for x in CHECK_CODES if x not in codes]
     print("")
-    print("== 대응 범위(coverage, check) ==")
-    print("성공 결과 %d개 (type_table 있음 %d, entries 2개 이상 %d), 해독/읽기 실패 %d개" % (
+    print("== coverage (check) ==")
+    print("%d successful results (with type_table %d, with 2+ entries %d), %d decode/read failures" % (
         ok_n, tt_n, tt2_n, adapter_n))
-    print("ty 값 종류: %s" % (", ".join(sorted(tys)) or "없음"))
-    print("  내장 ty %d/%d, 사용자 타입 %d종(%s)" % (
+    print("ty value kinds: %s" % (", ".join(sorted(tys)) or "none"))
+    print("  builtin ty %d/%d, user types %d (%s)" % (
         len([t for t in CHECK_TY_BUILTIN if t in tys]), len(CHECK_TY_BUILTIN), len(user_tys),
         ", ".join(user_tys[:8])))
-    print("  안 나온 ty 종류: %s" % (", ".join(ty_missing) if ty_missing else "없음"))
-    print("오류 code %d종, 오류 %d건: %s" % (
-        len(codes), sum(codes.values()), ", ".join("%s=%d" % kv for kv in sorted(codes.items())) or "없음"))
-    print("오류 stage: type=%d effect=%d 그 밖=%d" % (
+    print("  ty kinds not seen: %s" % (", ".join(ty_missing) if ty_missing else "none"))
+    print("%d error codes, %d errors: %s" % (
+        len(codes), sum(codes.values()), ", ".join("%s=%d" % kv for kv in sorted(codes.items())) or "none"))
+    print("error stage: type=%d effect=%d other=%d" % (
         stages["type"], stages["effect"],
         sum(v for k, v in stages.items() if k not in ("type", "effect"))))
     extra = sorted(set(codes) - set(CHECK_CODES))
     if extra:
-        print("  기대 45개 밖의 code: %s" % ", ".join(str(x) for x in extra))
-    print("  빠진 필수 code(%d/%d 중): %s" % (
-        len(missing_codes), len(CHECK_CODES), ", ".join(missing_codes) if missing_codes else "없음"))
+        print("  codes outside the expected 45: %s" % ", ".join(str(x) for x in extra))
+    print("  missing required codes (of %d/%d): %s" % (
+        len(missing_codes), len(CHECK_CODES), ", ".join(missing_codes) if missing_codes else "none"))
     ncrash = sum(crash.values())
-    print("py_crash(RecursionError 제외): %d건" % ncrash)
+    print("py_crash (excluding RecursionError): %d" % ncrash)
     for note, n in crash.most_common(10):
         print("  %4d  %s" % (n, note))
     ok = not missing_codes
     if not enforce:
-        print("coverage 판정: --only 로 일부 그룹만 돌려 판정에서 제외(참고용)")
+        print("coverage verdict: only some groups were run with --only, so excluded from the verdict (informational)")
         return True
-    print("coverage 판정: %s" % ("통과" if ok else "실패"))
+    print("coverage verdict: %s" % ("pass" if ok else "fail"))
     return ok
 
 
@@ -572,35 +572,35 @@ def default_rs_path(mode="parse"):
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(prog="diff_parse.py", description="Python/Rust parse 결과 바이트 비교")
+    ap = argparse.ArgumentParser(prog="diff_parse.py", description="Byte-compare Python/Rust parse results")
     ap.add_argument("--mode", choices=("parse", "check"), default="parse",
-                    help="parse(기본): pruv-parse-dump 와 비교, check: pruv-check-dump 와 비교")
-    ap.add_argument("--rs-path", default=None, help="Rust 바이너리 경로(mode 에 따라 pruv-parse-dump / pruv-check-dump)")
-    ap.add_argument("--seeds", default="41,56,57", help="퍼저 seed 목록(쉼표)")
-    ap.add_argument("--fuzz-count", type=int, default=200, help="seed 마다 index 수")
-    ap.add_argument("--mutations", type=int, default=6, help="파일마다 변형 수")
-    ap.add_argument("--save-dir", default=None, help="다른 사례를 저장할 폴더")
-    ap.add_argument("--only", default=None, help="한 그룹 또는 쉼표 목록: " + " ".join(ALL_GROUPS))
+                    help="parse (default): compare with pruv-parse-dump, check: compare with pruv-check-dump")
+    ap.add_argument("--rs-path", default=None, help="Rust binary path (pruv-parse-dump / pruv-check-dump depending on mode)")
+    ap.add_argument("--seeds", default="41,56,57", help="fuzzer seed list (comma-separated)")
+    ap.add_argument("--fuzz-count", type=int, default=200, help="number of indexes per seed")
+    ap.add_argument("--mutations", type=int, default=6, help="number of mutations per file")
+    ap.add_argument("--save-dir", default=None, help="directory in which to save differing cases")
+    ap.add_argument("--only", default=None, help="one group or a comma-separated list: " + " ".join(ALL_GROUPS))
     args = ap.parse_args(argv)
 
     args.seeds = [parse_seed(t) for t in args.seeds.split(",") if t.strip() != ""]
     if args.fuzz_count < 0 or args.mutations < 0:
-        ap.error("--fuzz-count, --mutations 는 0 이상이어야 한다")
+        ap.error("--fuzz-count and --mutations must be >= 0")
     if args.only is None:
         selected = list(ALL_GROUPS)
     else:
         selected = [t.strip() for t in args.only.split(",") if t.strip()]
         bad = [t for t in selected if t not in ALL_GROUPS]
         if bad or not selected:
-            ap.error("--only: 알 수 없는 그룹 %s (가능: %s)" % (bad, " ".join(ALL_GROUPS)))
+            ap.error("--only: unknown group %s (valid: %s)" % (bad, " ".join(ALL_GROUPS)))
     rs = os.path.abspath(args.rs_path) if args.rs_path else default_rs_path(args.mode)
     if not os.path.isfile(rs) or not os.access(rs, os.X_OK):
-        print("오류: Rust 바이너리를 찾을 수 없거나 실행할 수 없다: %s\n"
-              "  먼저 빌드하거나 --rs-path 로 pruv-%s-dump 경로를 준다." % (rs, args.mode), file=sys.stderr)
+        print("error: Rust binary not found or not executable: %s\n"
+              "  build it first, or pass the pruv-%s-dump path with --rs-path." % (rs, args.mode), file=sys.stderr)
         return 2
     enc = (locale.getpreferredencoding(False) or "").lower().replace("-", "").replace("_", "")
     if enc != "utf8":
-        print("경고: 기본 인코딩이 %s 다. 정본 read_source 가 이를 쓰므로 PYTHONUTF8=1 로 돌리는 편이 안전하다." %
+        print("warning: the default encoding is %s. The canonical read_source uses it, so running with PYTHONUTF8=1 is safer." %
               enc, file=sys.stderr)
 
     with tempfile.TemporaryDirectory(prefix="diff_parse_") as tmp:
@@ -651,26 +651,26 @@ def main(argv):
 
         if diffs:
             print("")
-            print("== 처음 다른 사례 (최대 %d개 / 전체 diff %d) ==" % (MAX_SHOWN, len(diffs)))
+            print("== first differing cases (up to %d / %d diff in total) ==" % (MAX_SHOWN, len(diffs)))
             for c in diffs[:MAX_SHOWN]:
                 i, a, b, la, lb = diff_detail(c)
-                print("[%s] %s  (첫 차이 문자 위치 %d, py 길이 %d, rs 길이 %d)" % (c.group, c.name, i, la, lb))
+                print("[%s] %s  (first differing char position %d, py length %d, rs length %d)" % (c.group, c.name, i, la, lb))
                 print("  py: " + a)
                 print("  rs: " + b)
         pyc = [c for c in crashes if c.status == "py_crash"]
         if pyc:
             print("")
-            print("== py_crash (최대 5개 / 전체 %d) ==" % len(pyc))
+            print("== py_crash (up to 5 / %d in total) ==" % len(pyc))
             for c in pyc[:5]:
                 print("[%s] %s: %s" % (c.group, c.name, c.note))
         if problems:
             print("")
-            print("== rs_crash (묶음 %d개, 최대 5개 표시) ==" % len(problems))
+            print("== rs_crash (%d batches, showing up to 5) ==" % len(problems))
             for p in problems[:5]:
                 print(p)
         if args.save_dir:
             print("")
-            print("저장: 사례 %d개 -> %s" % (saved, args.save_dir))
+            print("saved: %d cases -> %s" % (saved, args.save_dir))
 
         cov_fn = coverage_check if args.mode == "check" else coverage
         cov_ok = cov_fn(all_cases, enforce=(args.only is None))
@@ -678,7 +678,7 @@ def main(argv):
     clean = all(total[k] == 0 for k in ("diff", "py_crash", "rs_crash"))
     ok = clean and cov_ok
     print("")
-    print("결과: %s" % ("성공(모두 same, coverage 통과)" if ok else "실패"))
+    print("result: %s" % ("success (all same, coverage pass)" if ok else "fail"))
     return 0 if ok else 1
 
 

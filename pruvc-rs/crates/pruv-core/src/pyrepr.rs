@@ -1,8 +1,8 @@
-//! Python `repr(str)` 흉내(bad_char 오류 문장용).
+//! Imitation of Python `repr(str)` (for the bad_char error message).
 
 use crate::pyrepr_table::NONPRINTABLE;
 
-/// 코드 포인트가 str.isprintable() 에서 거짓인가(비ASCII 용 이진 탐색).
+/// Whether the code point is false for str.isprintable() (binary search for non-ASCII).
 fn nonprintable(cp: u32) -> bool {
     NONPRINTABLE
         .binary_search_by(|&(lo, hi)| {
@@ -17,7 +17,7 @@ fn nonprintable(cp: u32) -> bool {
         .is_ok()
 }
 
-/// 문자열의 Python repr.
+/// The Python repr of a string.
 pub fn repr_str(s: &str) -> String {
     let quote = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
     let mut out = String::with_capacity(s.len() + 2);

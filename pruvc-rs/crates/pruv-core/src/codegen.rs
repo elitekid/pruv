@@ -1,8 +1,8 @@
-//! Pruv -> Rust 소스 생성기 (codegen.py 의 상수·class Gen·gen_rust 이식).
-//! 목표: 같은 프로그램·모드(verified, trust_callers, budget)에서 Python gen_rust 와 바이트 동일.
-//! 128~272행 함수(rty·cty·conv·emit_public_types·show·match_sorted_requires·rstr)는 emit_common 것을 쓴다.
-//! 규칙: 가변 상태(임시 번호 tmp·계약 변수 bound·cp 사전)는 Python 과 같은 순서로 바꾼다.
-//! Python 이 Exception 을 내는 자리는 Err(str(e)) 로 돌려준다(%r 로 찍는 AST 는 {:?} — 도달 불가 경로).
+//! Pruv -> Rust source generator (a port of codegen.py's constants, class Gen and gen_rust).
+//! Goal: for the same program and mode (verified, trust_callers, budget), byte-identical to Python's gen_rust.
+//! The functions at lines 128-272 (rty, cty, conv, emit_public_types, show, match_sorted_requires, rstr) use the ones in emit_common.
+//! Rule: mutable state (temp number tmp, contract variable bound, cp dictionary) is changed in the same order as in Python.
+//! Places where Python raises an Exception return Err(str(e)) (an AST printed with %r becomes {:?} — an unreachable path).
 
 use crate::ast::*;
 use crate::emit_common::{emit_public_types, match_sorted_requires, rstr, rty, show, try_conv, try_cty};
@@ -81,7 +81,7 @@ fn pruv_cdiv(a: i128, b: i128) -> i128 { if b == 0 { pruv_ud("division by zero i
 fn pruv_crem(a: i128, b: i128) -> i128 { if b == 0 { pruv_ud("division by zero in %") } a.checked_rem_euclid(b).unwrap_or_else(|| pruv_ud("i128 overflow in %")) }
 "##;
 
-/// `[u8]` 를 쓰는 프로그램의 안전 모드에만 SAFE_PRELUDE 바로 다음에 덧붙는다.
+/// Appended right after SAFE_PRELUDE only in safe mode for programs that use `[u8]`.
 pub const SAFE_PRELUDE_U8: &str = r##"#[allow(dead_code)]
 #[cold]
 #[inline(never)]
@@ -97,13 +97,13 @@ fn pruv_set_u8(a: &mut [u8], i: i64, v: i64) { let k = pruv_idx(i, a.len()); if 
 fn pruv_alloc_u8(n: i64, v: i64) -> ::std::vec::Vec<u8> { if n < 0 || n > (1i64 << 40) { pruv_ovf("alloc length outside 0..2^40") } if v < 0 || v > 255 { pruv_elem_oor(v) } vec![v as u8; n as usize] }
 "##;
 
-/// `[u8]` 를 쓰는 프로그램의 requires 실행 검사에만 CONTRACT_PRELUDE 바로 다음에 덧붙는다.
+/// Appended right after CONTRACT_PRELUDE only for the runtime requires check of programs that use `[u8]`.
 pub const CONTRACT_PRELUDE_U8: &str = r##"#[allow(dead_code)]
 #[inline]
 fn pruv_cidx_u8(a: &[u8], i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a[i as usize] as i128 } else { pruv_ud("array index out of range") } }
 "##;
 
-// G2 A5: `[bool]` 를 쓰는 프로그램의 안전 모드에만 SAFE_PRELUDE_U8(있으면) 다음에 덧붙는다.
+// G2 A5: appended after SAFE_PRELUDE_U8 (if present) only in safe mode for programs that use `[bool]`.
 pub const SAFE_PRELUDE_BOOL: &str = r##"#[allow(dead_code)]
 #[inline]
 fn pruv_get_bool(a: &[bool], i: i64) -> bool { a[pruv_idx(i, a.len())] }
@@ -115,19 +115,19 @@ fn pruv_set_bool(a: &mut [bool], i: i64, v: bool) { let k = pruv_idx(i, a.len())
 fn pruv_alloc_bool(n: i64, v: bool) -> ::std::vec::Vec<bool> { if n < 0 || n > (1i64 << 40) { pruv_ovf("alloc length outside 0..2^40") } vec![v; n as usize] }
 "##;
 
-// G2 A5: `[bool]` 를 쓰는 프로그램의 requires 실행 검사에만 CONTRACT_PRELUDE_U8(있으면) 다음에 덧붙는다.
+// G2 A5: appended after CONTRACT_PRELUDE_U8 (if present) only for the runtime requires check of programs that use `[bool]`.
 pub const CONTRACT_PRELUDE_BOOL: &str = r##"#[allow(dead_code)]
 #[inline]
 fn pruv_cidx_bool(a: &[bool], i: i128) -> bool { if i >= 0 && i < (a.len() as i128) { a[i as usize] } else { pruv_ud("array index out of range") } }
 "##;
 
-// G2 B2: str 을 쓰는 프로그램에 모드 무관으로 사용자 타입 다음에 붙는다.
+// G2 B2: appended after the user types for programs that use str, regardless of mode.
 pub const STR_PRELUDE: &str = r##"#[allow(dead_code)]
 #[inline]
 fn pruv_str_boundary(a: &str, i: i64) -> bool { i >= 0 && (i as u64) <= (a.len() as u64) && a.is_char_boundary(i as usize) }
 "##;
 
-// G2 B2: str 을 쓰는 프로그램의 안전 모드에만 SAFE_PRELUDE_BOOL(있으면) 다음에 덧붙는다.
+// G2 B2: appended after SAFE_PRELUDE_BOOL (if present) only in safe mode for programs that use str.
 pub const SAFE_PRELUDE_STR: &str = r##"#[allow(dead_code)]
 #[cold]
 #[inline(never)]
@@ -144,7 +144,7 @@ fn pruv_get_str(a: &str, i: i64) -> i64 { a.as_bytes()[pruv_idx(i, a.len())] as 
 fn pruv_substr(a: &str, lo: i64, hi: i64) -> ::std::string::String { if !(lo >= 0 && lo <= hi && (hi as u64) <= (a.len() as u64)) { pruv_slice_oob(lo, hi, a.len()) } if !(a.is_char_boundary(lo as usize) && a.is_char_boundary(hi as usize)) { pruv_slice_cut(lo, hi, a.len()) } ::std::string::String::from(&a[(lo as usize)..(hi as usize)]) }
 "##;
 
-// G2 B2: str 을 쓰는 프로그램의 requires 실행 검사에만 CONTRACT_PRELUDE_BOOL(있으면) 다음에 덧붙는다.
+// G2 B2: appended after CONTRACT_PRELUDE_BOOL (if present) only for the runtime requires check of programs that use str.
 pub const CONTRACT_PRELUDE_STR: &str = r##"#[allow(dead_code)]
 #[inline]
 fn pruv_cidx_str(a: &str, i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a.as_bytes()[i as usize] as i128 } else { pruv_ud("array index out of range") } }
@@ -153,7 +153,7 @@ fn pruv_cidx_str(a: &str, i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) 
 fn pruv_cboundary(a: &str, i: i128) -> bool { i >= 0 && i <= (a.len() as i128) && a.is_char_boundary(i as usize) }
 "##;
 
-/// G2 B2: 문자열 리터럴 글자 LIT(명세 1.2). 바이트는 파서가 보장한 UTF-8.
+/// G2 B2: string literal spelling LIT (spec 1.2). The bytes are UTF-8, guaranteed by the parser.
 fn lit_str(bytes: &[u8]) -> String {
     let mut s = String::from("\"");
     for ch in String::from_utf8_lossy(bytes).chars() {
@@ -168,12 +168,12 @@ fn lit_str(bytes: &[u8]) -> String {
     s
 }
 
-/// 식의 배열 원소 타입 이름(배열이 아니면 "i64").
+/// The array element type name of the expression ("i64" if it is not an array).
 fn elem_of(e: &Expr) -> &'static str {
     expr_ty(e).as_deref().and_then(array_elem_name).unwrap_or("i64")
 }
 
-/// SAFE_ARITH 표
+/// SAFE_ARITH table
 fn safe_arith(op: &str) -> Option<&'static str> {
     match op {
         "+" => Some("pruv_add"),
@@ -185,7 +185,7 @@ fn safe_arith(op: &str) -> Option<&'static str> {
     }
 }
 
-/// CONTRACT_ARITH 표
+/// CONTRACT_ARITH table
 fn contract_arith(op: &str) -> Option<&'static str> {
     match op {
         "+" => Some("pruv_cadd"),
@@ -197,7 +197,7 @@ fn contract_arith(op: &str) -> Option<&'static str> {
     }
 }
 
-// ---------- 보조 ----------
+// ---------- helpers ----------
 
 fn expr_ty(e: &Expr) -> &Option<String> {
     match e {
@@ -219,12 +219,12 @@ fn expr_ty(e: &Expr) -> &Option<String> {
     }
 }
 
-/// Python `a[i]` 의 IndexError
+/// The IndexError of Python `a[i]`
 fn arg(a: &[Expr], i: usize) -> R<&Expr> {
     a.get(i).ok_or_else(|| "list index out of range".to_string())
 }
 
-/// Python `format(n, "_")`: 세 자리마다 밑줄.
+/// Python `format(n, "_")`: an underscore every three digits.
 fn fmt_underscore(n: u64) -> String {
     let digits = n.to_string();
     let len = digits.len();
@@ -238,12 +238,12 @@ fn fmt_underscore(n: u64) -> String {
     out
 }
 
-/// TypeTable.decl 의 KeyError
+/// The KeyError of TypeTable.decl
 fn k_decl<'t>(tt: &'t TypeTable, ty: &str) -> R<&'t TypeDecl> {
     tt.decl(ty).ok_or_else(|| repr_str(ty))
 }
 
-/// TypeTable.variant (struct 이면 AttributeError, 없으면 KeyError)
+/// TypeTable.variant (AttributeError for a struct, KeyError if missing)
 fn k_variant<'t>(tt: &'t TypeTable, ty: &str, variant: &str) -> R<&'t VariantDecl> {
     match k_decl(tt, ty)? {
         TypeDecl::Enum(e) => e
@@ -274,8 +274,8 @@ fn k_field_index(tt: &TypeTable, ty: &str, name: &str, variant: Option<&str>) ->
         .ok_or_else(|| repr_str(name))
 }
 
-/// `{f.name: f.value for f in e.fields}` 를 리터럴마다 한 번 만든다(중복이면 뒤 것이 이김 = dict).
-/// 감사: 필드마다 뒤에서 훑으면 필드 수의 제곱이었다.
+/// Builds `{f.name: f.value for f in e.fields}` once per literal (on duplicates the later one wins = dict).
+/// Audit: scanning from the back for every field was quadratic in the field count.
 fn init_map(fields: &[FieldInit]) -> std::collections::HashMap<&str, &Expr> {
     let mut m = std::collections::HashMap::new();
     for f in fields {
@@ -284,7 +284,7 @@ fn init_map(fields: &[FieldInit]) -> std::collections::HashMap<&str, &Expr> {
     m
 }
 
-/// init_map 조회(없으면 Python KeyError 문장)
+/// init_map lookup (the Python KeyError message if missing)
 fn init_value<'a>(m: &std::collections::HashMap<&str, &'a Expr>, name: &str) -> R<&'a Expr> {
     m.get(name).copied().ok_or_else(|| repr_str(name))
 }
@@ -302,14 +302,14 @@ struct Gen<'a> {
     trust: bool,
     out: Vec<String>,
     has_req: HashSet<String>,
-    /// requires 진입 검사 중: 이미 바꾼 사용자 타입 매개변수 -> 타입
+    /// During the requires entry check: user-type parameters already converted -> type
     cp: Option<HashMap<String, String>>,
-    /// 범위 안 한정자 변수(계약 평가)
+    /// Quantifier variables in scope (contract evaluation)
     bound: Vec<String>,
     tmp: u64,
     table: TypeTable,
     params: HashSet<String>,
-    /// 변수 타입 표(매개변수·let; 블록마다 복사·복원)
+    /// Variable type table (parameters and let; copied and restored per block)
     vars: HashMap<String, String>,
 }
 
@@ -377,7 +377,7 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    /// pruv_contract__Name 거울 타입과 pruv_to_c__Name 변환기(requires 평가 전용)
+    /// The pruv_contract__Name mirror type and the pruv_to_c__Name converter (for requires evaluation only)
     fn contract_types(&self) -> R<String> {
         let attrs = "#[allow(dead_code, non_camel_case_types, non_snake_case, unused_variables)]";
         let mut out: Vec<String> = Vec::new();
@@ -474,7 +474,7 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    /// requires 검사들의 코드(cp 를 채운다)
+    /// Code of the requires checks (fills cp)
     fn entry_checks(&mut self, f: &Function) -> R<Vec<String>> {
         let mut checks: Vec<String> = Vec::new();
         for r in &f.requires {
@@ -515,7 +515,7 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    // ---------- 계약 평가(requires), i128 ----------
+    // ---------- contract (requires) evaluation, i128 ----------
 
     fn carr(&self, e: &Expr) -> R<String> {
         match e {
@@ -577,7 +577,7 @@ impl<'a> Gen<'a> {
                 let a = self.carr(&x.array)?;
                 let i = self.c(&x.index)?;
                 if expr_ty(&x.array).as_deref() == Some("str") {
-                    // G2 B2: elem_of 에 닿기 전에 가른다
+                    // G2 B2: split before reaching elem_of
                     return Ok(format!("pruv_cidx_str({}, {})", a, i));
                 }
                 if elem_of(&x.array) == "u8" {
@@ -606,7 +606,7 @@ impl<'a> Gen<'a> {
             }
             Expr::Quant(_) => self.cquant(e),
             Expr::StructLit(x) => {
-                // 선언 순서로 평가(Rust 는 리터럴 필드를 쓰인 순서로 평가)
+                // Evaluate in declaration order (Rust evaluates literal fields in the order written)
                 let fs: Vec<FieldDecl> = k_fields(&self.table, &x.name, None)?.to_vec();
                 let vals = init_map(&x.fields);
                 let mut parts: Vec<String> = Vec::new();
@@ -692,15 +692,15 @@ impl<'a> Gen<'a> {
             Expr::Quant(q) => q,
             other => return Err(format!("codegen: unsupported expression in requires: {:?}", other)),
         };
-        // 정렬 requires 는 O(n) 동치형으로 바꾼다(docs/M0_CONTRACTS.md C):
+        // A sorted requires is rewritten into its O(n) equivalent form (docs/M0_CONTRACTS.md C):
         // forall pruv_sk in 1..len(a): a[pruv_sk-1] <= a[pruv_sk]
         let owned: Quant;
-        // 원래 배열 변수의 타입: e.hi 의 `len(a)` 인자 Var 의 ty
+        // Type of the original array variable: the ty of the Var argument of `len(a)` in e.hi
         let arr_ty0: Option<String> = match &*q0.hi {
             Expr::Call(c) => c.args.first().and_then(|x| expr_ty(x).clone()),
             _ => None,
         };
-        // G2 B2: str 배열에는 정렬 빠른 길을 쓰지 않는다(일반 길)
+        // G2 B2: the sorted fast path is not used for str arrays (general path)
         let sorted = if arr_ty0.as_deref() == Some("str") { None } else { match_sorted_requires(e) };
         let q: &Quant = match sorted {
             Some(arr) => {
@@ -750,7 +750,7 @@ impl<'a> Gen<'a> {
         };
         self.tmp += 1;
         let n = self.tmp;
-        let lo = self.c(&q.lo)?; // 경계는 바깥 범위만 본다
+        let lo = self.c(&q.lo)?; // the bounds see only the outer scope
         let hi = self.c(&q.hi)?;
         self.bound.push(q.var.clone());
         let body = self.c(&q.body)?;
@@ -812,7 +812,7 @@ impl<'a> Gen<'a> {
         ))
     }
 
-    // ---------- 문 / 코드 식 ----------
+    // ---------- statements / code expressions ----------
 
     fn block(&mut self, stmts: &[Stmt], ind: usize) -> R<()> {
         let saved = self.vars.clone();
@@ -836,7 +836,7 @@ impl<'a> Gen<'a> {
                 self.emit(ind, &format!("{} = {};", x.name, v));
             }
             Stmt::FieldAssign(x) => {
-                // 우변을 임시에 완전히 평가한 뒤 저장
+                // Fully evaluate the right-hand side into a temporary, then store
                 let decl = match expr_ty(&x.value) {
                     Some(t) => format!("let pruv_v: {} = ", rty(t, false)),
                     None => "let pruv_v = ".to_string(),
@@ -894,7 +894,7 @@ impl<'a> Gen<'a> {
                         ),
                     );
                 } else {
-                    // 임시 먼저: 인덱스·값이 `a` 를 읽는 동안 `&mut a` 가 살아 있으면 안 된다
+                    // Temporaries first: `&mut a` must not be alive while the index and value read `a`
                     self.emit(
                         ind,
                         &format!(
@@ -951,7 +951,7 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    /// 빌린 슬라이스로 쓰는 배열 식
+    /// An array expression used as a borrowed slice
     fn arr_ref(&self, e: &Expr) -> R<String> {
         if let Expr::Var(x) = e {
             if !self.params.contains(&x.name) {
@@ -992,7 +992,7 @@ impl<'a> Gen<'a> {
                 Ok(format!("({} {} {})", l, x.op, r))
             }
             Expr::Index(x) if expr_ty(&x.array).as_deref() == Some("str") => {
-                // G2 B2: elem_of 에 닿기 전에 가른다
+                // G2 B2: split before reaching elem_of
                 if !self.verified {
                     let a = self.arr_ref(&x.array)?;
                     let i = self.e(&x.index)?;
@@ -1033,7 +1033,7 @@ impl<'a> Gen<'a> {
                 }
             }
             Expr::StructLit(x) => {
-                // 선언 순서 = 왼쪽에서 오른쪽 평가; 괄호로 감싸 `if S { .. }.x` 가 파싱되게 한다
+                // Declaration order = left-to-right evaluation; wrap in parentheses so that `if S { .. }.x` parses
                 let fs = k_fields(&self.table, &x.name, None)?;
                 if fs.is_empty() {
                     return Ok(format!("({} {{}})", x.name));
@@ -1079,7 +1079,7 @@ impl<'a> Gen<'a> {
                         };
                         return Ok(format!("{}({}, {})", f, n0, v0));
                     }
-                    // 소스 순서: n 먼저, v 나중(vec![v; n] 은 v 를 먼저 평가한다)
+                    // Source order: n first, v later (vec![v; n] evaluates v first)
                     let n0 = self.e(arg(a, 0)?)?;
                     let v0 = self.e(arg(a, 1)?)?;
                     if boola {
@@ -1112,7 +1112,7 @@ impl<'a> Gen<'a> {
                     return Ok(format!("pruv_str_boundary({}, {})", s0, i0));
                 }
                 if n == "substr" {
-                    // G2 B2: 인자 평가 순서 s → lo → hi
+                    // G2 B2: argument evaluation order s -> lo -> hi
                     let s0 = self.arr_ref(arg(a, 0)?)?;
                     let lo = self.e(arg(a, 1)?)?;
                     let hi = self.e(arg(a, 2)?)?;
@@ -1134,7 +1134,7 @@ impl<'a> Gen<'a> {
                 }
                 let mut name = n.to_string();
                 if self.verified && self.has_req.contains(&name) {
-                    name.push_str("__pruv_body"); // 호출자가 requires 를 증명했다
+                    name.push_str("__pruv_body"); // the caller proved the requires
                 }
                 Ok(format!("{}({})", name, args.join(", ")))
             }
@@ -1143,7 +1143,7 @@ impl<'a> Gen<'a> {
     }
 }
 
-/// Pruv -> Rust 소스. Err 는 Python 이 Exception 을 내는 자리의 str(e).
+/// Pruv -> Rust source. Err is the str(e) at the place where Python raises an Exception.
 pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) { // G2 B2
         return Err(format!("unsupported_type: {}", e.message));
@@ -1204,7 +1204,7 @@ mod tests {
         assert!(s.contains(
             "    if !(((x as i128) > 0i128)) { panic!(\"{}\", \"pruv: requires violated: f: (x > 0)\"); }\n    f__pruv_body(x)\n}\n"
         ));
-        // trust_callers 면 검사·예산 없음
+        // with trust_callers there is no check or budget
         let t = gen_rust(&p, true, true, 5).unwrap();
         assert!(!t.contains("pruv_budget") && t.contains("    f__pruv_body(x)\n"));
     }

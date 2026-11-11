@@ -1,5 +1,5 @@
-//! 완전한 이식(`verify_program`)이 표본 6개에서 0B 시제품(손 빌더, Python 과 SMT 텍스트·판정이 같음이 확인됨)과
-//! 같은 의무 열·SMT-LIB·판정을 내는지 본다. 판정은 시간 제한에 좌우될 수 있으나 표본은 작다.
+//! Checks that the full port (`verify_program`) yields, on the 6 samples, the same obligation sequence, SMT-LIB and verdicts
+//! as the 0B prototype (hand-written builder, confirmed to match the Python implementation in SMT text and verdicts). Verdicts may depend on the time limit, but the samples are small.
 
 use pruv_proof::model::reset_model_seq;
 use pruv_proof::obligation::Trace;
@@ -23,7 +23,7 @@ fn full_port_matches_spike_on_samples() {
         let spike = run_sample(name).expect("sample");
         let spike_obs = spike["obligations"].as_array().expect("obligations");
         let trace = full_trace(name);
-        // 시제품은 skipped(이미 실패한 키라 질의 없음) 항목을 기록하지 않는다
+        // the prototype does not record skipped entries (key already failed, so no query)
         let mine: Vec<_> = trace.obligations.iter().filter(|o| !o.skipped).collect();
         assert_eq!(spike_obs.len(), mine.len(), "{name}: obligation count");
         for (i, (a, b)) in spike_obs.iter().zip(mine.iter()).enumerate() {

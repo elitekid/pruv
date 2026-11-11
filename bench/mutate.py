@@ -1,7 +1,7 @@
 """Mutation test: inject small bugs into code lines of Pruv solutions.
 For each mutant: (1) does Pruv's verifier reject it?  (2) does the same code, compiled to
 Rust without verification (what rustc alone would accept), fail the tests?
-crash = 종료 코드 0·1·2 밖(exit 3·101 panic 등)·신호 종료·실행 실패·시간 초과(이전엔 exit 3만)"""
+crash = exit code outside 0/1/2 (exit 3, 101 panic, etc.), killed by signal, failure to run, or timeout (previously only exit 3)"""
 import json, os, re, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "harness"))

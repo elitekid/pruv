@@ -1,5 +1,5 @@
-//! 생성 파일: pruvc-rs/tools/gen_pyrepr_table.py (Python 3.9.6, Unicode 13.0.0). 손으로 고치지 않는다.
-//! Python str.isprintable() 이 거짓인 코드 포인트 범위(닫힌 구간, 오름차순).
+//! Generated file: pruvc-rs/tools/gen_pyrepr_table.py (Python 3.9.6, Unicode 13.0.0). Do not edit by hand.
+//! Code point ranges for which Python str.isprintable() is false (closed intervals, ascending).
 
 pub const NONPRINTABLE: &[(u32, u32)] = &[
     (0x0, 0x1F),

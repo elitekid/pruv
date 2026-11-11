@@ -1,29 +1,29 @@
-//! z3-sys 위의 작은 래퍼. 이 프로젝트의 unsafe 는 전부 여기에 있다.
+//! A small wrapper over z3-sys. All of this project's unsafe code lives here.
 //!
-//! 호출 순서·인자는 z3py(`z3.py`)가 하는 C API 호출을 그대로 따른다. SMT 텍스트를 Python 과 글자 단위로
-//! 맞추기 위해서다. z3py 와 맞춘 지점(확신 낮은 것은 README/최종 보고에 별도 표기):
+//! Call order and arguments follow exactly the C API calls z3py (`z3.py`) makes, so that the SMT text
+//! matches Python character for character. Points matched to z3py (low-confidence ones are flagged separately in the README/final report):
 //! - `Z3_set_ast_print_mode(ctx, SMTLIB2_COMPLIANT)` (z3py `Context.__init__`)
-//! - 양화: 항상 `Z3_mk_quantifier_const_ex(weight=1, qid="", skid="")` (z3py `_mk_quantifier`)
-//! - 패턴: 항(term) 하나짜리 `Z3_mk_pattern` (z3py `_to_pattern` → `MultiPattern`)
+//! - Quantifiers: always `Z3_mk_quantifier_const_ex(weight=1, qid="", skid="")` (z3py `_mk_quantifier`)
+//! - Patterns: a single-term `Z3_mk_pattern` (z3py `_to_pattern` → `MultiPattern`)
 //! - Datatype: `Z3_mk_constructor(name, "is-"+name, ...)` + `Z3_mk_datatypes` (z3py `CreateDatatypes`)
-//! - 산술: `+ - *` 는 인자 2개짜리 `Z3_mk_add/sub/mul`, `!=` 는 `Z3_mk_distinct`(Python `__ne__`)
-//! - 솔버: `Z3_mk_solver`, 타임아웃은 `Z3_params_set_uint("timeout", ms)` 후 `Z3_solver_set_params`
+//! - Arithmetic: `+ - *` are two-argument `Z3_mk_add/sub/mul`, `!=` is `Z3_mk_distinct` (Python `__ne__`)
+//! - Solver: `Z3_mk_solver`; the timeout is `Z3_params_set_uint("timeout", ms)` followed by `Z3_solver_set_params`
 //!
-//! # 공통 안전 근거 (각 unsafe 블록의 `SAFETY:` 가 번호로 인용)
-//! - **S1 컨텍스트 소유**: `Z3`(= `Rc<Ctx>`)는 모든 핸들(`Ast`/`Sort`/`FuncDecl`/`Solver`)이 복제본을 들고 있어
-//!   raw 포인터가 쓰이는 동안 `Z3_del_context` 가 불리지 않는다. 핸들은 `Rc` 때문에 `!Send` 라 한 스레드 전용.
-//! - **S2 논-rc 컨텍스트**: `Z3_mk_context`(rc 아님)로 만든다. 이 컨텍스트에서 Ast/Sort/FuncDecl/Symbol/Pattern 은
-//!   `Z3_solver_pop` 으로 범위를 내리지 않는 한 컨텍스트가 삭제될 때까지 유효하다. 우리는 push/pop 을 쓰지 않는다.
-//!   따라서 Ast 에 inc_ref/dec_ref 를 하지 않는다(해야 하는 것은 solver/params/constructor 뿐, S5).
-//! - **S3 배열 인자**: 길이·포인터는 호출 동안만 빌려 쓰는 슬라이스/Vec 에서 나오고, z3 는 호출 안에서 복사한다.
-//! - **S4 문자열**: 넘기는 `CString` 은 호출이 끝날 때까지 산다. 돌려받는 `*const c_char` 는 같은 컨텍스트의 다음
-//!   API 호출 전까지만 유효하므로 즉시 `String` 으로 복사한다.
-//! - **S5 ref-counted 객체**: solver/params 는 생성 직후 `inc_ref`, `Drop`(또는 사용 직후)에서 `dec_ref`.
-//!   constructor/constructor_list 는 `Z3_mk_datatypes` 직후 `del_*` 로 해제한다.
-//! - **S6 반환 포인터**: z3-sys 가 `Option<NonNull>` 로 돌려주든 raw 포인터로 돌려주든 `nn()` 이 null 을 패닉으로
-//!   바꾸고 같은 모양의 non-null 타입으로 돌려준다(버전 차이를 한 곳에 가둔다).
+//! # Common safety rationale (cited by number from each unsafe block's `SAFETY:`)
+//! - **S1 context ownership**: `Z3` (= `Rc<Ctx>`) is held as a clone by every handle (`Ast`/`Sort`/`FuncDecl`/`Solver`),
+//!   so `Z3_del_context` is not called while raw pointers are in use. Handles are `!Send` because of `Rc`, so they are single-thread only.
+//! - **S2 non-rc context**: created with `Z3_mk_context` (not rc). In this context Ast/Sort/FuncDecl/Symbol/Pattern stay
+//!   valid until the context is deleted, unless scopes are popped with `Z3_solver_pop`. We do not use push/pop.
+//!   Hence we do not inc_ref/dec_ref Asts (only solver/params/constructor need it, S5).
+//! - **S3 array arguments**: lengths and pointers come from slices/Vecs borrowed only for the duration of the call, and z3 copies within the call.
+//! - **S4 strings**: the `CString` we pass lives until the call ends. A returned `*const c_char` is valid only until the next
+//!   API call on the same context, so it is copied into a `String` immediately.
+//! - **S5 ref-counted objects**: solver/params get `inc_ref` right after creation and `dec_ref` in `Drop` (or right after use).
+//!   constructor/constructor_list are released with `del_*` right after `Z3_mk_datatypes`.
+//! - **S6 returned pointers**: whether z3-sys returns `Option<NonNull>` or a raw pointer, `nn()` turns null into a panic
+//!   and returns a non-null type of the same shape (confining version differences to one place).
 //!
-//! 메인이 실제 빌드에서 z3-sys 0.22 계열 시그니처와 어긋나는 곳은 이 파일만 고치면 된다.
+//! Wherever the real build disagrees with the z3-sys 0.22-series signatures, only this file needs fixing (by the main branch).
 
 use std::collections::HashSet;
 use std::ffi::{CStr, CString};
@@ -34,10 +34,10 @@ use std::rc::Rc;
 use z3_sys as z;
 
 // ---------------------------------------------------------------------------------------------
-// z3-sys 버전 차이 흡수: 반환 포인터 정규화 (S6)
+// Absorbing z3-sys version differences: normalizing returned pointers (S6)
 // ---------------------------------------------------------------------------------------------
 
-/// `Option<NonNull<T>>`/`NonNull<T>`/`*mut T`/`Option<*mut T>` 를 같은 non-null 모양으로 정규화.
+/// `Option<NonNull<T>>`/`NonNull<T>`/`*mut T`/`Option<*mut T>` are normalized to the same non-null shape.
 pub trait MaybePtr {
     type Inner;
     #[track_caller]
@@ -90,19 +90,19 @@ type RawApp = z::Z3_app;
 type RawSolver = z::Z3_solver;
 type RawConstructor = z::Z3_constructor;
 
-// `as u32/i32` 로 읽어 z3-sys 가 enum 으로 내든 정수 별칭으로 내든 같게 동작한다.
+// Read via `as u32/i32`, so it behaves the same whether z3-sys exposes an enum or an integer alias.
 const K_APP: u32 = 1; // Z3_APP_AST
 const K_QUANTIFIER: u32 = 3; // Z3_QUANTIFIER_AST
 const LBOOL_TRUE: i32 = 1;
 const LBOOL_FALSE: i32 = -1;
 
 unsafe fn take_string(p: *const c_char) -> String {
-    // SAFETY: S4 — 호출자가 방금 받은 z3 문자열 포인터이며 즉시 복사한다.
+    // SAFETY: S4 — a z3 string pointer the caller has just received; it is copied immediately.
     unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
 }
 
 // ---------------------------------------------------------------------------------------------
-// 컨텍스트
+// Context
 // ---------------------------------------------------------------------------------------------
 
 struct Ctx {
@@ -110,16 +110,16 @@ struct Ctx {
 }
 impl Drop for Ctx {
     fn drop(&mut self) {
-        // SAFETY: S1 — 마지막 `Z3` 복제본이 사라질 때만 불리므로 이 컨텍스트를 쓰는 핸들은 이미 없다.
+        // SAFETY: S1 — called only when the last `Z3` clone disappears, so no handle using this context remains.
         unsafe { z::Z3_del_context(self.raw) }
     }
 }
 
-/// 컨텍스트 핸들. 복제는 `Rc` 복제. Python 의 `main_ctx()` 에 해당(프로세스당 하나일 필요는 없고 표본마다 새로 만든다).
+/// Context handle. Cloning is an `Rc` clone. Corresponds to Python's `main_ctx()` (need not be one per process; a new one is made per sample).
 #[derive(Clone)]
 pub struct Z3(Rc<Ctx>);
 
-/// solver 판정.
+/// Solver verdict.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Sat {
     Sat,
@@ -136,18 +136,18 @@ impl Sat {
     }
 }
 
-/// z3 오류 처리기: 오류 코드와 메시지를 stderr 에 쓰고 abort (종료 코드 1 로 위장하지 않는다).
+/// z3 error handler: writes the error code and message to stderr and aborts (does not masquerade as exit code 1).
 extern "C" fn on_z3_error(c: RawCtx, e: z::ErrorCode) {
     use std::io::Write;
-    // SAFETY: S4 — z3 가 방금 이 컨텍스트에 대해 돌려준 오류 메시지를 즉시 복사한다.
+    // SAFETY: S4 — copies immediately the error message z3 has just returned for this context.
     let msg = unsafe { take_string(z::Z3_get_error_msg(c, e)) };
     let _ = writeln!(std::io::stderr(), "pruv: z3 error {:?}: {}", e as i32, msg);
     std::process::abort();
 }
 
-/// libz3 전체 버전 문자열 (`Z3_get_full_version`).
+/// Full libz3 version string (`Z3_get_full_version`).
 pub fn full_version() -> String {
-    // SAFETY: S4 — 인자 없는 정적 문자열 getter; 즉시 복사.
+    // SAFETY: S4 — a static string getter with no arguments; copied immediately.
     unsafe { take_string(z::Z3_get_full_version()) }
 }
 
@@ -173,8 +173,8 @@ pub struct FuncDecl {
 macro_rules! bin_ast {
     ($name:ident, $f:ident) => {
         pub fn $name(&self, o: &Ast) -> Ast {
-            debug_assert!(Rc::ptr_eq(&self.z.0, &o.z.0), "AST 가 서로 다른 컨텍스트에 속함");
-            // SAFETY: S1 S2 — 두 AST 는 같은 컨텍스트에서 만들어졌고(위 debug_assert) 컨텍스트 삭제 전까지 유효.
+            debug_assert!(Rc::ptr_eq(&self.z.0, &o.z.0), "ASTs belong to different contexts");
+            // SAFETY: S1 S2 — both ASTs were made in the same context (debug_assert above) and stay valid until the context is deleted.
             unsafe { self.z.wrap(nn(z::$f(self.z.raw(), self.raw, o.raw))) }
         }
     };
@@ -183,25 +183,25 @@ macro_rules! nary_ast {
     ($name:ident, $f:ident) => {
         pub fn $name(&self, args: &[Ast]) -> Ast {
             let raw: Vec<RawAst> = args.iter().map(|a| a.raw).collect();
-            // SAFETY: S1 S2 S3 — raw 는 이 호출 동안만 빌려 쓰는 Vec, 원소 AST 는 이 컨텍스트 소속.
+            // SAFETY: S1 S2 S3 — raw is a Vec borrowed only for this call; the element ASTs belong to this context.
             unsafe { self.wrap(nn(z::$f(self.raw(), raw.len() as c_uint, raw.as_ptr()))) }
         }
     };
 }
 
 impl Z3 {
-    /// z3py `Context()` 에 대응: 논-rc 컨텍스트 + SMT-LIB2 출력 모드.
+    /// Counterpart of z3py `Context()`: non-rc context + SMT-LIB2 output mode.
     pub fn new() -> Z3 {
-        // SAFETY: S2 — config 는 컨텍스트 생성 직후 삭제한다. 출력 모드는 z3-sys enum 값을 그대로 넘긴다.
+        // SAFETY: S2 — the config is deleted right after the context is created. The output mode passes the z3-sys enum value as is.
         unsafe {
             let cfg = nn(z::Z3_mk_config());
             let raw = nn(z::Z3_mk_context(cfg));
             z::Z3_del_config(cfg);
-            // z3 기본 오류 처리기는 stdout 에 쓰고 exit(1) 해서 '언어 거부'(종료 코드 1)와 구별되지 않는다.
-            // 가정: z3-sys 0.14.1 의 `Z3_error_handler` = `Option<unsafe extern "C" fn(Z3_context, ErrorCode)>`
-            // (오류 코드 enum 이름은 z3-sys 의 `ErrorCode`; 맞지 않으면 on_z3_error 서명만 고친다).
+            // z3's default error handler writes to stdout and calls exit(1), which is indistinguishable from a 'language rejection' (exit code 1).
+            // Assumption: z3-sys 0.14.1's `Z3_error_handler` = `Option<unsafe extern "C" fn(Z3_context, ErrorCode)>`
+            // (the error code enum is z3-sys's `ErrorCode`; if that does not match, only fix the on_z3_error signature).
             z::Z3_set_error_handler(raw, Some(on_z3_error));
-            // z3py Context(): Z3_set_ast_print_mode(ctx, Z3_PRINT_SMTLIB2_COMPLIANT) (값 2).
+            // z3py Context(): Z3_set_ast_print_mode(ctx, Z3_PRINT_SMTLIB2_COMPLIANT) (value 2).
             z::Z3_set_ast_print_mode(raw, z::AstPrintMode::Smtlib2Compliant);
             Z3(Rc::new(Ctx { raw }))
         }
@@ -216,7 +216,7 @@ impl Z3 {
 
     fn sym(&self, name: &str) -> RawSymbol {
         let cs = CString::new(name).expect("symbol name has no NUL");
-        // SAFETY: S1 S4 — cs 는 이 문장 끝까지 산다; z3 는 문자열을 복사해 심볼 테이블에 넣는다.
+        // SAFETY: S1 S4 — cs lives until the end of this statement; z3 copies the string into the symbol table.
         unsafe { nn(z::Z3_mk_string_symbol(self.raw(), cs.as_ptr())) }
     }
 
@@ -230,7 +230,7 @@ impl Z3 {
         Sort { z: self.clone(), raw: unsafe { nn(z::Z3_mk_bool_sort(self.raw())) } }
     }
     pub fn array_sort(&self, dom: &Sort, range: &Sort) -> Sort {
-        // SAFETY: S1 S2 — dom/range 는 같은 컨텍스트의 sort.
+        // SAFETY: S1 S2 — dom/range are sorts of the same context.
         Sort { z: self.clone(), raw: unsafe { nn(z::Z3_mk_array_sort(self.raw(), dom.raw, range.raw)) } }
     }
 
@@ -247,18 +247,18 @@ impl Z3 {
     pub fn bool_const(&self, name: &str) -> Ast {
         self.constant(name, &self.bool_sort())
     }
-    /// z3py `z3.IntVal(v)`: 십진 문자열 numeral.
+    /// z3py `z3.IntVal(v)`: decimal-string numeral.
     pub fn int(&self, v: i64) -> Ast {
         let cs = CString::new(v.to_string()).expect("digits only");
         let s = self.int_sort();
         // SAFETY: S1 S2 S4.
         unsafe { self.wrap(nn(z::Z3_mk_numeral(self.raw(), cs.as_ptr(), s.raw))) }
     }
-    /// z3py `z3.IntVal(str)`: 십진 문자열 numeral(임의 길이). 호출자가 정규화한 숫자 문자열을 준다.
+    /// z3py `z3.IntVal(str)`: decimal-string numeral (arbitrary length). The caller supplies a normalized digit string.
     pub fn int_str(&self, v: &str) -> Ast {
         let cs = CString::new(v).unwrap_or_default();
         let s = self.int_sort();
-        // SAFETY: S1 S2 S4 — 숫자 문자열(NUL 없음); 빈 문자열이면 z3 오류 처리기가 abort 한다.
+        // SAFETY: S1 S2 S4 — a digit string (no NUL); for an empty string the z3 error handler aborts.
         unsafe { self.wrap(nn(z::Z3_mk_numeral(self.raw(), cs.as_ptr(), s.raw))) }
     }
     pub fn bool_val(&self, v: bool) -> Ast {
@@ -292,7 +292,7 @@ impl Z3 {
     }
 
     // ---- quantifiers ----
-    /// z3py `ForAll(vs, body, patterns=...)`. 변수 0개면 body 그대로(z3py 와 같음).
+    /// z3py `ForAll(vs, body, patterns=...)`. With 0 variables, body as is (same as z3py).
     pub fn forall(&self, bound: &[Ast], body: &Ast, patterns: &[Ast]) -> Ast {
         self.quantifier(true, bound, body, patterns)
     }
@@ -305,7 +305,7 @@ impl Z3 {
             return body.clone();
         }
         let c = self.raw();
-        // SAFETY: S1 S2 S3 — 변수는 상수 AST(`Z3_to_app` 은 같은 포인터의 app 뷰); 패턴/배열은 호출 동안만 빌림.
+        // SAFETY: S1 S2 S3 — variables are constant ASTs (`Z3_to_app` is an app view of the same pointer); patterns/arrays are borrowed only for the call.
         unsafe {
             let apps: Vec<RawApp> = bound.iter().map(|b| nn(z::Z3_to_app(c, b.raw))).collect();
             let pats: Vec<RawPattern> = patterns
@@ -315,9 +315,9 @@ impl Z3 {
                     nn(z::Z3_mk_pattern(c, 1, term.as_ptr()))
                 })
                 .collect();
-            // z3py: qid=skid="" → `Z3_mk_string_symbol("")` 는 null 기호를 돌려주고 그대로 넘긴다.
-            // z3-sys 0.14.1 은 이 두 인자를 NonNull 로 묶어 null 을 못 넘기므로 같은 C 함수를
-            // null 허용 서명으로 따로 선언해 부른다(아래 `raw_quant`). 나머지 인자 형은 z3-sys 와 같다.
+            // z3py: qid=skid="" → `Z3_mk_string_symbol("")` returns a null symbol, which is passed through as is.
+            // z3-sys 0.14.1 wraps these two arguments in NonNull and cannot pass null, so the same C function is
+            // declared separately with a null-permitting signature and called (`raw_quant` below). The other argument types are the same as z3-sys.
             self.wrap(nn(raw_quant::Z3_mk_quantifier_const_ex(
                 c,
                 is_forall,
@@ -336,7 +336,7 @@ impl Z3 {
     }
 
     // ---- datatypes ----
-    /// z3py `CreateDatatypes(d1, d2, ...)`: 한 번의 `Z3_mk_datatypes` 로 여러 sort 를 함께 만든다.
+    /// z3py `CreateDatatypes(d1, d2, ...)`: creates several sorts together with a single `Z3_mk_datatypes`.
     pub fn create_datatypes(&self, specs: &[DtSpec]) -> Vec<DtSort> {
         let c = self.raw();
         let mut all_cons: Vec<RawConstructor> = Vec::new();
@@ -349,8 +349,8 @@ impl Z3 {
                 let fnames: Vec<RawSymbol> = ct.fields.iter().map(|(n, _)| self.sym(n)).collect();
                 let sorts: Vec<Option<RawSort>> = ct.fields.iter().map(|(_, s)| Some(s.raw)).collect();
                 let mut refs: Vec<c_uint> = vec![0; ct.fields.len()];
-                // SAFETY: S1 S2 S3 S5 — 필드 sort 는 모두 이미 만들어진 sort(재귀 참조 없음 → refs 는 0);
-                // 만든 constructor 는 아래에서 모두 del 한다.
+                // SAFETY: S1 S2 S3 S5 — field sorts are all already-created sorts (no recursive references → refs is 0);
+                // every constructor made is del'd below.
                 let con = unsafe {
                     nn(z::Z3_mk_constructor(
                         c,
@@ -364,19 +364,19 @@ impl Z3 {
                 };
                 cons.push(con);
             }
-            // SAFETY: S1 S3 S5 — cons 는 이 호출 동안 유효; list 는 아래에서 del.
+            // SAFETY: S1 S3 S5 — cons is valid for this call; the list is del'd below.
             let list = unsafe { nn(z::Z3_mk_constructor_list(c, cons.len() as c_uint, cons.as_ptr())) };
             lists.push(list);
             all_cons.extend(cons);
         }
         let names: Vec<RawSymbol> = specs.iter().map(|s| self.sym(&s.name)).collect();
-        // 출력 배열은 None 으로 초기화해 두고(미초기화 메모리를 읽지 않는다) 호출 뒤 원소마다 nn() 으로 검사한다.
-        // `Option<RawSort>` 와 `RawSort` 의 배치가 같아야 아래 캐스트가 유효하다(NonNull 류의 niche).
+        // The output array is initialized to None (so uninitialized memory is never read), and each element is checked with nn() after the call.
+        // The cast below is valid only if `Option<RawSort>` and `RawSort` have the same layout (NonNull-style niche).
         const _: () = assert!(core::mem::size_of::<Option<RawSort>>() == core::mem::size_of::<RawSort>());
         let mut out: Vec<Option<RawSort>> = vec![None; specs.len()];
-        // SAFETY: S1 S3 S5 — names/lists 는 specs.len() 개, `Z3_mk_datatypes` 는 sorts 출력 배열 specs.len() 개를
-        // 채운다(실패하면 z3 오류 처리기가 abort). 호출 뒤에만 del 한다. 채워지지 않은 원소는 nn() 이 패닉으로 잡는다.
-        // Z3_mk_constructor_list/Z3_mk_constructor 는 출력 배열이 없고 반환값을 이미 nn() 으로 검사한다.
+        // SAFETY: S1 S3 S5 — names/lists have specs.len() entries, and `Z3_mk_datatypes` fills the sorts output array of specs.len()
+        // entries (on failure the z3 error handler aborts). del happens only after the call. Unfilled elements are caught by nn() as a panic.
+        // Z3_mk_constructor_list/Z3_mk_constructor have no output array and their return values are already checked with nn().
         let sorts: Vec<Sort> = unsafe {
             z::Z3_mk_datatypes(
                 c,
@@ -393,12 +393,12 @@ impl Z3 {
             }
             out.iter().map(|m| Sort { z: self.clone(), raw: nn(*m) }).collect()
         };
-        // z3py 가 CreateDatatypes 뒤에 하는 것과 같은 조회: constructor(j), recognizer(j), accessor(j, k).
+        // The same lookups z3py does after CreateDatatypes:constructor(j), recognizer(j), accessor(j, k).
         let mut result = Vec::new();
         for (spec, sort) in specs.iter().zip(sorts) {
             let mut ctors = Vec::new();
             for (j, ct) in spec.ctors.iter().enumerate() {
-                // SAFETY: S1 S2 — sort 는 방금 만든 datatype sort, 인덱스는 spec 범위 안.
+                // SAFETY: S1 S2 — sort is the datatype sort just created; the index is within the spec range.
                 let (con, rec, accs) = unsafe {
                     let con = nn(z::Z3_get_datatype_sort_constructor(c, sort.raw, j as c_uint));
                     let rec = nn(z::Z3_get_datatype_sort_recognizer(c, sort.raw, j as c_uint));
@@ -424,7 +424,7 @@ impl Z3 {
         result
     }
 
-    /// z3py `z3.Function(name, *sorts)` (마지막이 치역).
+    /// z3py `z3.Function(name, *sorts)` (the last is the range).
     pub fn func_decl(&self, name: &str, domain: &[Sort], range: &Sort) -> FuncDecl {
         let s = self.sym(name);
         let dom: Vec<RawSort> = domain.iter().map(|d| d.raw).collect();
@@ -445,7 +445,7 @@ impl Sort {
         // SAFETY: S1 S4.
         unsafe { take_string(z::Z3_sort_to_string(self.z.raw(), self.raw)) }
     }
-    /// `Z3_get_sort_kind` 의 값(BOOL=1, INT=2, ARRAY=5, DATATYPE=6).
+    /// Value of `Z3_get_sort_kind` (BOOL=1, INT=2, ARRAY=5, DATATYPE=6).
     pub fn kind_id(&self) -> u32 {
         // SAFETY: S1.
         unsafe { z::Z3_get_sort_kind(self.z.raw(), self.raw) as u32 }
@@ -456,10 +456,10 @@ impl Sort {
     pub fn is_bool(&self) -> bool {
         self.kind_id() == 1
     }
-    /// z3py `sort.name()`: 심볼 문자열.
+    /// z3py `sort.name()`: the symbol string.
     pub fn name(&self) -> String {
         let c = self.z.raw();
-        // SAFETY: S1 S2 S4 — 정렬의 이름 심볼은 컨텍스트 수명 동안 유효하고 문자열은 즉시 복사한다.
+        // SAFETY: S1 S2 S4 — the sort's name symbol is valid for the context lifetime and the string is copied immediately.
         unsafe {
             let sym = nn(z::Z3_get_sort_name(c, self.raw));
             take_string(z::Z3_get_symbol_string(c, sym))
@@ -474,7 +474,7 @@ impl FuncDecl {
     pub fn name(&self) -> &str {
         &self.name
     }
-    /// 적용 `f(args...)` (`Z3_mk_app`). 인자 0개면 상수.
+    /// Application `f(args...)` (`Z3_mk_app`). A constant if there are 0 arguments.
     pub fn apply(&self, args: &[Ast]) -> Ast {
         let raw: Vec<RawAst> = args.iter().map(|a| a.raw).collect();
         // SAFETY: S1 S2 S3.
@@ -492,13 +492,13 @@ impl Ast {
     bin_ast!(raw_gt, Z3_mk_gt);
     bin_ast!(raw_ge, Z3_mk_ge);
 
-    /// z3py 비교 `l OP r` (두 쪽 모두 z3 식). Python 규칙: 오른쪽 형이 왼쪽 형의 하위 클래스면
-    /// 반사 메서드가 먼저 불린다. z3py 에서 IntNumRef(수 리터럴)는 ArithRef 의 하위 클래스이므로
-    /// `x >= IntVal(0)` 은 `IntVal(0).__le__(x)` = `(<= 0 x)` 가 된다. 수 리터럴 판정은 AST 종류
-    /// NUMERAL(z3py `_to_expr_ref` 가 IntNumRef 를 고르는 기준)로 한다. 파이썬 int 와의 비교는 `*_i`.
-    // 일반화: Python 비교 연산자는 오른쪽 형이 왼쪽 형의 진짜 하위 클래스일 때 오른쪽의 반사 메서드를
-    // 먼저 부른다. 여기 쓰이는 짝은 ArithRef⊃IntNumRef(수 리터럴), BoolRef⊃QuantifierRef(양화식) 둘이다.
-    // 예: `BoolVal(False) == ForAll(..)` 은 `(= forall false)`.
+    /// z3py comparison `l OP r` (both sides are z3 expressions). Python rule: if the right operand's type is a subclass of the left's,
+    /// the reflected method is called first. In z3py IntNumRef (a numeric literal) is a subclass of ArithRef, so
+    /// `x >= IntVal(0)` becomes `IntVal(0).__le__(x)` = `(<= 0 x)`. Numeric literals are detected by AST kind
+    /// NUMERAL (the criterion by which z3py `_to_expr_ref` picks IntNumRef). Comparison with a Python int is `*_i`.
+    // Generalization: a Python comparison operator calls the right operand's reflected method first when the right operand's type is a proper subclass of the left's.
+    // The pairs used here are two: ArithRef⊃IntNumRef (numeric literal) and BoolRef⊃QuantifierRef (quantified expression).
+    // Example: `BoolVal(False) == ForAll(..)` is `(= forall false)`.
     fn reflect(&self, o: &Ast) -> bool {
         (o.is_numeral() && !self.is_numeral())
             || (o.is_quantifier() && !self.is_quantifier() && self.sort().is_bool())
@@ -558,7 +558,7 @@ impl Ast {
         unsafe { self.z.wrap(nn(z::Z3_mk_store(self.z.raw(), self.raw, i.raw, v.raw))) }
     }
 
-    // Python 의 `x + 1`, `x >= 0` 처럼 정수 리터럴이 오른쪽에 오는 경우(IntVal 로 승격).
+    // Cases like Python's `x + 1`, `x >= 0` where an integer literal is on the right (promoted to IntVal).
     pub fn add_i(&self, v: i64) -> Ast {
         self.add(&self.z.int(v))
     }
@@ -571,7 +571,7 @@ impl Ast {
     pub fn le_i(&self, v: i64) -> Ast {
         self.raw_le(&self.z.int(v))
     }
-    /// Python `x != 0`(정수 리터럴, 반사 없음): `Z3_mk_distinct(x, IntVal(v))`.
+    /// Python `x != 0` (integer literal, no reflection):`Z3_mk_distinct(x, IntVal(v))`.
     pub fn ne_i(&self, v: i64) -> Ast {
         self.z.distinct(&[self.clone(), self.z.int(v)])
     }
@@ -582,7 +582,7 @@ impl Ast {
         self.raw_ge(&self.z.int(v))
     }
 
-    // 소스 정수 리터럴(verify.py ev 의 IntVal)과의 비교: 반사 규칙을 따른다.
+    // Comparison with a source integer literal (IntVal in verify.py ev): follows the reflection rule.
     pub fn eq_l(&self, v: i64) -> Ast { self.eq(&self.z.int(v)) }
     pub fn lt_l(&self, v: i64) -> Ast { self.lt(&self.z.int(v)) }
     pub fn le_l(&self, v: i64) -> Ast { self.le(&self.z.int(v)) }
@@ -602,7 +602,7 @@ impl Ast {
         // SAFETY: S1.
         unsafe { z::Z3_get_ast_kind(self.z.raw(), self.raw) as u32 }
     }
-    /// z3py `a.eq(b)` (구조적 동일).
+    /// z3py `a.eq(b)` (structural identity).
     pub fn same(&self, o: &Ast) -> bool {
         // SAFETY: S1.
         unsafe { z::Z3_is_eq_ast(self.z.raw(), self.raw, o.raw) }
@@ -615,25 +615,25 @@ impl Ast {
         // SAFETY: S1 S2.
         unsafe { self.z.wrap(nn(z::Z3_simplify(self.z.raw(), self.raw))) }
     }
-    /// 리터럴 `true` 인가(`z3.is_true`).
+    /// Is this the literal `true` (`z3.is_true`)?
     pub fn is_true(&self) -> bool {
-        // SAFETY: S1 — bool 값이 아닌 AST 에는 L_UNDEF 를 돌려준다.
+        // SAFETY: S1 — for an AST that is not a bool value, L_UNDEF is returned.
         (unsafe { z::Z3_get_bool_value(self.z.raw(), self.raw) }) as i32 == LBOOL_TRUE
     }
-    /// 리터럴 `false` 인가.
+    /// Is this the literal `false`?
     pub fn is_false(&self) -> bool {
         // SAFETY: S1.
         (unsafe { z::Z3_get_bool_value(self.z.raw(), self.raw) }) as i32 == LBOOL_FALSE
     }
     fn num_args(&self) -> u32 {
-        // SAFETY: S1 S2 — 호출자가 kind()==APP 를 확인한 뒤에만 부른다.
+        // SAFETY: S1 S2 — called only after the caller has confirmed kind()==APP.
         unsafe {
             let app = nn(z::Z3_to_app(self.z.raw(), self.raw));
             z::Z3_get_app_num_args(self.z.raw(), app) as u32
         }
     }
     fn arg(&self, i: u32) -> Ast {
-        // SAFETY: S1 S2 — kind()==APP 이고 i < num_args().
+        // SAFETY: S1 S2 — kind()==APP and i < num_args().
         unsafe {
             let app = nn(z::Z3_to_app(self.z.raw(), self.raw));
             self.z.wrap(nn(z::Z3_get_app_arg(self.z.raw(), app, i as c_uint)))
@@ -644,25 +644,25 @@ impl Ast {
         unsafe { self.z.wrap(nn(z::Z3_get_quantifier_body(self.z.raw(), self.raw))) }
     }
 
-    /// z3py `z3.is_app`: APP 또는 NUMERAL 종류.
+    /// z3py `z3.is_app`: kind APP or NUMERAL.
     pub fn is_app(&self) -> bool {
         let k = self.kind();
         k == 0 || k == K_APP
     }
-    /// z3py `children()`(APP 만; 수 리터럴·양화는 빈 목록).
+    /// z3py `children()` (APP only; numeric literals and quantifiers give an empty list).
     pub fn children(&self) -> Vec<Ast> {
         if self.kind() != K_APP {
             return Vec::new();
         }
         (0..self.num_args()).map(|i| self.arg(i)).collect()
     }
-    /// z3py `v.decl().name()`(APP 만).
+    /// z3py `v.decl().name()` (APP only).
     pub fn decl_name(&self) -> Option<String> {
         if self.kind() != K_APP {
             return None;
         }
         let c = self.z.raw();
-        // SAFETY: S1 S2 S4 — kind()==APP 확인 뒤; 문자열은 즉시 복사한다.
+        // SAFETY: S1 S2 S4 — after confirming kind()==APP; the string is copied immediately.
         unsafe {
             let app = nn(z::Z3_to_app(c, self.raw));
             let d = nn(z::Z3_get_app_decl(c, app));
@@ -670,12 +670,12 @@ impl Ast {
             Some(take_string(z::Z3_get_symbol_string(c, sym)))
         }
     }
-    /// 수 리터럴의 십진 문자열(z3py `as_long()` 이 읽는 값, 임의 길이). 수 리터럴이 아니면 None.
+    /// Decimal string of a numeric literal (the value z3py `as_long()` reads, arbitrary length). None if not a numeric literal.
     pub fn numeral_string(&self) -> Option<String> {
         if self.kind() != 0 {
             return None;
         }
-        // SAFETY: S1 S4 — NUMERAL 종류 확인 뒤; 문자열은 즉시 복사한다.
+        // SAFETY: S1 S4 — after confirming kind NUMERAL; the string is copied immediately.
         Some(unsafe { take_string(z::Z3_get_numeral_string(self.z.raw(), self.raw)) })
     }
 
@@ -690,7 +690,7 @@ impl Ast {
         }
     }
 
-    /// verify.py `_occurs(t, c)`: 상수 `c` 가 `self` 안에 나타나는가(양화 본문까지 따라감).
+    /// verify.py `_occurs(t, c)`: does constant `c` occur within `self` (descending into quantifier bodies)?
     pub fn occurs(&self, c: &Ast) -> bool {
         let mut seen: HashSet<u32> = HashSet::new();
         let mut todo: Vec<Ast> = vec![self.clone()];
@@ -717,12 +717,12 @@ impl Ast {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Datatype 사양/결과
+// Datatype spec/result
 // ---------------------------------------------------------------------------------------------
 
 pub struct DtCtorSpec {
     pub name: String,
-    /// (필드(접근자) 이름, 필드 sort)
+    /// (field (accessor) name, field sort)
     pub fields: Vec<(String, Sort)>,
 }
 pub struct DtSpec {
@@ -754,14 +754,14 @@ impl Solver {
         Solver::with_options(z, timeout_ms, None, None)
     }
 
-    /// z3py `s.set("timeout", t)`, (있으면) `s.set("rlimit", r)`, (있으면) `s.set("random_seed", s)` 를 이 순서로.
+    /// z3py `s.set("timeout", t)`, (if present) `s.set("rlimit", r)`, (if present) `s.set("random_seed", s)`, in this order.
     pub fn with_options(z: &Z3, timeout_ms: u32, rlimit: Option<u32>, seed: Option<u32>) -> Solver {
         let key = z.sym("timeout");
         let rkey = rlimit.map(|_| z.sym("rlimit"));
         let skey = seed.map(|_| z.sym("random_seed"));
         let c = z.raw();
-        // SAFETY: S1 S5 — solver/params 는 생성 직후 inc_ref, params 는 set 직후 dec_ref, solver 는 Drop 에서 dec_ref.
-        // 심볼(key/rkey/skey)은 같은 컨텍스트에서 만든 것이다(S1).
+        // SAFETY: S1 S5 — solver/params get inc_ref right after creation, params get dec_ref right after set, and the solver gets dec_ref in Drop.
+        // The symbols (key/rkey/skey) were made in the same context (S1).
         unsafe {
             let s = nn(z::Z3_mk_solver(c));
             z::Z3_solver_inc_ref(c, s);
@@ -780,7 +780,7 @@ impl Solver {
         }
     }
     pub fn add(&mut self, a: &Ast) {
-        // SAFETY: S1 S2 — a 는 같은 컨텍스트의 Bool 식.
+        // SAFETY: S1 S2 — a is a Bool expression of the same context.
         unsafe { z::Z3_solver_assert(self.z.raw(), self.raw, a.raw) }
     }
     /// z3py `Solver.sexpr()` (`Z3_solver_to_string`).
@@ -788,10 +788,10 @@ impl Solver {
         // SAFETY: S1 S4.
         unsafe { take_string(z::Z3_solver_to_string(self.z.raw(), self.raw)) }
     }
-    /// z3py `Solver.model()`: 직전 check 가 sat 일 때만 부른다(아니면 z3 오류 처리기가 abort).
+    /// z3py `Solver.model()`: call only when the preceding check was sat (otherwise the z3 error handler aborts).
     pub fn model(&self) -> ZModel {
         let c = self.z.raw();
-        // SAFETY: S1 S5 — 모델은 생성 직후 inc_ref, `ZModel` 의 Drop 에서 dec_ref.
+        // SAFETY: S1 S5 — the model gets inc_ref right after creation and dec_ref in `ZModel`'s Drop.
         unsafe {
             let m = nn(z::Z3_solver_get_model(c, self.raw));
             z::Z3_model_inc_ref(c, m);
@@ -804,7 +804,7 @@ impl Solver {
         unsafe { take_string(z::Z3_solver_get_reason_unknown(self.z.raw(), self.raw)) }
     }
     pub fn check(&mut self) -> Sat {
-        // SAFETY: S1 — `as i32` 로 lbool 을 읽는다(enum/정수 별칭 모두 가능).
+        // SAFETY: S1 — reads the lbool via `as i32` (works for both enum and integer alias).
         let r = unsafe { z::Z3_solver_check(self.z.raw(), self.raw) } as i32;
         match r {
             LBOOL_TRUE => Sat::Sat,
@@ -815,26 +815,26 @@ impl Solver {
 }
 impl Drop for Solver {
     fn drop(&mut self) {
-        // SAFETY: S1 S5 — new() 의 inc_ref 와 짝.
+        // SAFETY: S1 S5 — pairs with the inc_ref in new().
         unsafe { z::Z3_solver_dec_ref(self.z.raw(), self.raw) }
     }
 }
 
 type RawModel = z::Z3_model;
 
-/// z3 모델(z3py `ModelRef`).
+/// z3 model (z3py `ModelRef`).
 pub struct ZModel {
     z: Z3,
     raw: RawModel,
 }
 
 impl ZModel {
-    /// z3py `m.eval(a, model_completion=True)`. 평가에 실패하면 None(z3py 는 예외).
+    /// z3py `m.eval(a, model_completion=True)`. None if evaluation fails (z3py raises an exception).
     pub fn eval(&self, a: &Ast) -> Option<Ast> {
         let c = self.z.raw();
-        // 출력 칸은 None 으로 초기화(NonNull niche: `Option<RawAst>` 와 `RawAst` 는 크기가 같다 — 아래 const 단언).
+        // The output slot is initialized to None (NonNull niche: `Option<RawAst>` and `RawAst` have the same size — see the const assertion below).
         let mut out: Option<RawAst> = None;
-        // SAFETY: S1 S2 — 모델·식은 이 컨텍스트 소속; 출력 칸은 이 호출 동안 유효한 로컬이고 z3 가 채운다.
+        // SAFETY: S1 S2 — the model and expression belong to this context; the output slot is a local valid for this call and z3 fills it.
         let ok = unsafe {
             z::Z3_model_eval(c, self.raw, a.raw, true, &mut out as *mut Option<RawAst> as *mut RawAst)
         };
@@ -846,13 +846,13 @@ impl ZModel {
 }
 impl Drop for ZModel {
     fn drop(&mut self) {
-        // SAFETY: S1 S5 — `Solver::model` 의 inc_ref 와 짝.
+        // SAFETY: S1 S5 — pairs with the inc_ref in `Solver::model`.
         unsafe { z::Z3_model_dec_ref(self.z.raw(), self.raw) }
     }
 }
 const _: () = assert!(core::mem::size_of::<Option<RawAst>>() == core::mem::size_of::<RawAst>());
 
-/// null 기호를 허용하는 `Z3_mk_quantifier_const_ex` 선언(z3 C API 는 qid/skid 에 null 을 허용한다).
+/// Declaration of `Z3_mk_quantifier_const_ex` that permits null symbols (the z3 C API allows null for qid/skid).
 #[allow(clashing_extern_declarations, non_snake_case)]
 mod raw_quant {
     use z3_sys as z;
@@ -874,5 +874,5 @@ mod raw_quant {
     }
 }
 
-// 위 별도 extern 의 반환형 `Option<Z3_ast>` 가 포인터 크기(niche)임을 컴파일 때 확인한다.
+// Verify at compile time that the return type `Option<Z3_ast>` of the separate extern above is pointer-sized (niche).
 const _: () = assert!(core::mem::size_of::<Option<z3_sys::Z3_ast>>() == core::mem::size_of::<usize>());

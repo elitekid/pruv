@@ -1,7 +1,7 @@
-//! 사용법: pruv-llvm-dump [--no-verify] [--trust-callers] [--budget N] FILE...
-//! 파일마다 정확히 한 줄(UTF-8, 끝에 \n)을 순서대로 stdout 에 쓴다.
-//! parse+check(검증기는 돌리지 않음) 뒤 gen_llvm 결과를 {"bindings", "ir"} 로, 오류는 {"error"|"internal"|"adapter_error"}.
-//! 줄마다 바로 내보내 비운다: 한 파일이 스택을 넘쳐 중단돼도 앞 파일의 줄은 남는다.
+//! Usage: pruv-llvm-dump [--no-verify] [--trust-callers] [--budget N] FILE...
+//! Writes exactly one line (UTF-8, ending with \n) per file to stdout, in order.
+//! After parse+check (the verifier is not run), the gen_llvm result is emitted as {"bindings", "ir"}, and errors as {"error"|"internal"|"adapter_error"}.
+//! Each line is flushed immediately: even if one file overflows the stack and aborts, the lines of earlier files remain.
 
 use pruv_core::pyjson::{dumps_sorted, Json};
 use std::io::Write;
@@ -89,7 +89,7 @@ fn main() {
     if o.files.is_empty() {
         usage();
     }
-    // 깊게 중첩된 입력을 위해 큰 스택 스레드에서 돌린다.
+    // Run on a large-stack thread for deeply nested input.
     let handle = std::thread::Builder::new().stack_size(1 << 30).spawn(move || work(o));
     match handle.map(|h| h.join()) {
         Ok(Ok(true)) => {}

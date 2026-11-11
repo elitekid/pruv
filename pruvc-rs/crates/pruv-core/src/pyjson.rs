@@ -1,15 +1,15 @@
-//! 작은 JSON 값과 Python `json.dumps(..., ensure_ascii=False)` 와 바이트 동일한 출력기.
-//! 구분자는 ", " 와 ": ", 들여쓰기 없음.
+//! A small JSON value and a printer whose output is byte-identical to Python `json.dumps(..., ensure_ascii=False)`.
+//! Separators are ", " and ": ", with no indentation.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Json {
     Null,
     Bool(bool),
-    /// 수는 원문 그대로 보관한다.
+    /// Numbers are kept as their original text.
     Num(String),
     Str(String),
     Arr(Vec<Json>),
-    /// 삽입 순서를 가진 객체.
+    /// An object that keeps insertion order.
     Obj(Vec<(String, Json)>),
 }
 
@@ -22,21 +22,21 @@ impl Json {
     }
 }
 
-/// 삽입 순서대로 출력.
+/// Prints in insertion order.
 pub fn dumps(v: &Json) -> String {
     let mut out = String::new();
     write_value(&mut out, v, false);
     out
 }
 
-/// sort_keys=True: 모든 중첩 객체의 키를 코드 포인트(=UTF-8 바이트) 순으로 정렬.
+/// sort_keys=True: sorts the keys of every nested object by code point (= UTF-8 byte order).
 pub fn dumps_sorted(v: &Json) -> String {
     let mut out = String::new();
     write_value(&mut out, v, true);
     out
 }
 
-/// 문자열 이스케이프(ensure_ascii=False 규칙).
+/// String escaping (ensure_ascii=False rules).
 pub fn escape_str(out: &mut String, s: &str) {
     out.push('"');
     for c in s.chars() {

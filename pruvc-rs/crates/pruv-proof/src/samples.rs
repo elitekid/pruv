@@ -1,13 +1,13 @@
-//! 표본 .pruv 6개(`samples/`)에 대해 verify.py 가 만들 의무를 손으로 옮긴 빌더.
+//! Builders that hand-port the obligations verify.py would produce for the 6 sample .pruv files (`samples/`).
 //!
-//! 파서가 없으므로 각 빌더가 verify.py 의 평가 순서(`run` → `exec` → `loop` → `ensures_ok`)를 따라
-//! `FnVerifier` 조각을 부른다. 순서가 곧 `s.k`(이름의 번호)와 보조정리 누적 순서를 정한다.
-//! 위치(line, col)는 `samples/*.pruv` 원문 기준이며 verify.py 가 `prove` 에 넘기는 node 위치와 같다:
-//! Binary 는 연산자 토큰, Index 는 `[`, Call 은 이름, 문장은 첫 토큰, invariant/decreases/requires 는 식의 최상위 노드.
+//! Since there is no parser, each builder follows verify.py's evaluation order (`run` → `exec` → `loop` → `ensures_ok`)
+//! and calls `FnVerifier` pieces. That order determines `s.k` (the number in names) and the lemma accumulation order.
+//! Positions (line, col) are based on the `samples/*.pruv` source and equal the node positions verify.py passes to `prove`:
+//! Binary is the operator token, Index is `[`, Call is the name, a statement is its first token, invariant/decreases/requires are the top-level node of the expression.
 //!
-//! 가정(README 에도 적음):
-//! - havoc 변수 순서는 SPEC 6절의 0A 정렬(이름순)을 쓴다. Python 은 set 순회였으나 0A 에서 정렬하기로 했다.
-//! - 표본마다 새 컨텍스트와 `_MODEL_SEQ=0` 에서 시작한다(Python adapter 가 파일마다 새 프로세스라는 가정).
+//! Assumptions (also noted in the README):
+//! - The havoc variable order uses the 0A sorting (by name) from SPEC §6. Python iterated a set, but it was decided to sort in 0A.
+//! - Each sample starts with a fresh context and `_MODEL_SEQ=0` (assuming the Python adapter uses a new process per file).
 
 use serde_json::Value;
 
@@ -18,7 +18,7 @@ use crate::sys::{Ast, Z3};
 
 type SampleFn = fn(&Z3, &Prelude, &mut Trace);
 
-/// (이름, 빌더). 원문은 `samples/{이름}.pruv`.
+/// (name, builder). The source is `samples/{name}.pruv`.
 pub const SAMPLES: &[(&str, SampleFn)] = &[
     ("s1_sum_loop", s1_sum_loop),
     ("s2_agg_max_count", s2_agg_max_count),
@@ -32,7 +32,7 @@ pub fn sample_names() -> Vec<&'static str> {
     SAMPLES.iter().map(|(n, _)| *n).collect()
 }
 
-/// 표본 하나를 새 컨텍스트에서 돌려 trace JSON 을 만든다. 모르는 이름이면 None.
+/// Runs one sample in a fresh context and builds the trace JSON. None if the name is unknown.
 pub fn run_sample(name: &str) -> Option<Value> {
     let (_, build) = SAMPLES.iter().find(|(n, _)| *n == name)?;
     reset_model_seq();
@@ -52,7 +52,7 @@ fn inv_range(z: &Z3, i: &Ast, n: &Ast) -> Ast {
     z.and(&[z.int(0).le(i), i.le(n)])
 }
 
-/// `sum(k in 0..hi: k)` — Quant 평가: lo/hi 는 이미 평가됨 → `s.k += 1`, 본문 `k`, 집계.
+/// `sum(k in 0..hi: k)` — Quant evaluation: lo/hi are already evaluated → `s.k += 1`, body `k`, aggregate.
 fn sum_k(v: &mut FnVerifier, hi: &Ast) -> Ast {
     let lo = v.z.int(0);
     let k = v.quant_enter("k");
@@ -62,16 +62,16 @@ fn sum_k(v: &mut FnVerifier, hi: &Ast) -> Ast {
 }
 
 // =============================================================================================
-// s1_sum_loop: tri — sum 집계 + lemmas 재시도(첫 시도 sat → lemmas unsat), while 루프 havoc(Int)
+// s1_sum_loop: tri — sum aggregate + lemmas retry (first attempt sat → lemmas unsat), while-loop havoc (Int)
 // =============================================================================================
 fn s1_sum_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let model = Model::new(z, pre, &[]);
     let mut v = FnVerifier::new(z, pre, &model, trace, "tri");
 
-    // run(): 매개변수 n → `n!1`
+    // run(): parameter n → `n!1`
     let mut st = v.init_params(&[("n", Ty::I64)]);
     let n = int_of(&st, "n");
-    // requires n >= 0 && n <= 1_000   (부분 연산 없음 → 정의역 질의 없음)
+    // requires n >= 0 && n <= 1_000   (no partial operations → no domain queries)
     st.pc.push(z.and(&[n.ge_l(0), n.le_l(1000)]));
 
     // let mut s: i64 = 0;  let mut i: i64 = 0;
@@ -79,7 +79,7 @@ fn s1_sum_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     st.env.set("i", Val::Int(z.int(0)));
 
     // ---- while (7,3): loop() ----
-    // 진입: 각 invariant 를 평가해 invariant_entry 증명
+    // Entry: evaluate each invariant and prove invariant_entry
     let i0 = int_of(&st, "i");
     let s0 = int_of(&st, "s");
     let ob = inv_range(z, &i0, &n);
@@ -88,17 +88,17 @@ fn s1_sum_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let ob = s0.eq(&app); // s == sum(k in 0..i: k)
     v.prove(&st, &[], &ob, (9, 17), "invariant_entry", None);
 
-    // names = assigned(body) = {i, s} (정렬)
+    // names = assigned(body) = {i, s} (sorted)
     let mut b = v.havoc(&st, &["i", "s"]); // i!3, s!4
     let (bi, bs) = (int_of(&b, "i"), int_of(&b, "s"));
     b.pc.push(inv_range(z, &bi, &n));
     let app = sum_k(&mut v, &bi);
     b.pc.push(bs.eq(&app));
-    b.pc.push(bi.lt(&n)); // 조건 i < n
-    let d0 = n.sub(&bi); // decreases n - i (code=False: 의무 없음)
+    b.pc.push(bi.lt(&n)); // condition i < n
+    let d0 = n.sub(&bi); // decreases n - i (code=False: no obligation)
     v.prove(&b, &[], &d0.ge_i(0), (10, 17), "decreases_nonneg", None);
 
-    // 본문: s = s + i;  i = i + 1;
+    // Body: s = s + i;  i = i + 1;
     let mut e = b.fork(None);
     let (s_old, i_old) = (int_of(&e, "s"), int_of(&e, "i"));
     let res = v.ev_arith(&e, &[], Arith::Add, &s_old, &i_old, (12, 11));
@@ -109,7 +109,7 @@ fn s1_sum_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let res = v.ev_arith(&e, &[], Arith::Add, &i_old, &one, (13, 11));
     e.env.set("i", Val::Int(res));
 
-    // 본문 끝: invariant 유지
+    // End of body: invariant preserved
     let (ei, es) = (int_of(&e, "i"), int_of(&e, "s"));
     let ob = inv_range(z, &ei, &n);
     v.prove(&e, &[], &ob, (8, 22), "invariant_preserved", None);
@@ -119,7 +119,7 @@ fn s1_sum_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let dn = n.sub(&ei);
     v.prove(&e, &[], &dn.lt(&d0), (10, 17), "decreases_decrease", None);
 
-    // 루프 뒤
+    // After the loop
     let mut a = v.havoc(&st, &["i", "s"]); // i!7, s!8
     let (ai, asv) = (int_of(&a, "i"), int_of(&a, "s"));
     a.pc.push(inv_range(z, &ai, &n));
@@ -138,7 +138,7 @@ fn s1_sum_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {
 }
 
 // =============================================================================================
-// s2_agg_max_count: bounds — max/count/min 집계, max/min 의 contract_domain, lemmas 재시도(unsat/sat)
+// s2_agg_max_count: bounds — max/count/min aggregates, contract_domain of max/min, lemmas retry (unsat/sat)
 // =============================================================================================
 fn s2_agg_max_count(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let model = Model::new(z, pre, &[]);
@@ -158,7 +158,7 @@ fn s2_agg_max_count(z: &Z3, pre: &Prelude, trace: &mut Trace) {
 
     // ensures max(k in 0..n: k) >= 0
     {
-        // check_dom: dom(Quant max) = [lo < hi] (+ `!dk` 상수로 k 증가), 본문 정의역 없음
+        // check_dom: dom(Quant max) = [lo < hi] (+ k incremented via the `!dk` constant), no body domain
         let lo = z.int(0);
         let d = lo.lt(&n);
         v.bump_k();
@@ -173,7 +173,7 @@ fn s2_agg_max_count(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         v.prove(&st, &[], &ob, node, "ensures", None);
         prev.push(ob);
     }
-    // ensures count(k in 0..n: k >= 0) <= n   (정의역 질의 없음)
+    // ensures count(k in 0..n: k >= 0) <= n   (no domain queries)
     {
         let lo = z.int(0);
         let k = v.quant_enter("k");
@@ -184,7 +184,7 @@ fn s2_agg_max_count(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         v.prove(&st, &[], &ob, node, "ensures", None);
         prev.push(ob);
     }
-    // ensures min(k in 0..n: k) >= 1   (반례 표본: n = 1 이면 min = 0)
+    // ensures min(k in 0..n: k) >= 1   (counterexample sample: if n = 1 then min = 0)
     {
         let lo = z.int(0);
         let d = lo.lt(&n);
@@ -202,7 +202,7 @@ fn s2_agg_max_count(z: &Z3, pre: &Prelude, trace: &mut Trace) {
 }
 
 // =============================================================================================
-// s3_option_result: Opt/Res Datatype — 생성자, 인식자, 접근자(match), 증명/반례 섞임
+// s3_option_result: Opt/Res Datatype — constructors, recognizers, accessors (match), mix of proofs/counterexamples
 // =============================================================================================
 fn s3_option_result(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let model = Model::new(z, pre, &[]);
@@ -219,11 +219,11 @@ fn s3_option_result(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         let st = st.fork(None);
         let c = b.eq(&z.int(0));
         {
-            let t = st.fork(Some(c.clone())).fork(None); // then 블록, Return 이 다시 fork
+            let t = st.fork(Some(c.clone())).fork(None); // then block, Return forks again
             let val = pre.err(&z.int(1));
             safe_div_ensures(&mut v, pre, &t, val, (7, 5));
         }
-        // return Ok(a / b);   else 경로
+        // return Ok(a / b);   else path
         let r = st.fork(Some(c.not())).fork(None);
         let q = v.ev_div(&r, &[], false, &a, &b, (9, 15));
         let val = pre.ok(&q);
@@ -303,8 +303,8 @@ fn unwrap_or_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast,
 }
 
 // =============================================================================================
-// s4_struct_enum: 사용자 struct/enum Datatype(m1t0!Point, m1t1!Shape), variant_domain, match 팔,
-//                 필드 대입(rebuild), 루프 havoc 의 집합값(`q!h{k}`)
+// s4_struct_enum: user struct/enum Datatypes (m1t0!Point, m1t1!Shape), variant_domain, match arms,
+//                 field assignment (rebuild), set values of loop havoc (`q!h{k}`)
 // =============================================================================================
 fn s4_struct_enum(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let point = Ty::User("Point".to_string());
@@ -331,13 +331,13 @@ fn s4_struct_enum(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         let acc_r = circle.accs[0].apply1(&s);
 
         // requires is_variant(s, Shape::Circle) ==> (vf >= 0 && vf <= 1_000)   node = `==>` (13,41)
-        //   D = Implies(rec, And(rec, Implies(vf >= 0, rec)))   (dom(.., "variant"), 정의역 분석은 README 참고)
+        //   D = Implies(rec, And(rec, Implies(vf >= 0, rec)))   (dom(.., "variant"); see the README for the domain analysis)
         let ge0 = acc_r.ge_l(0);
         let le1000 = acc_r.le_l(1000);
         let d = rec_c.implies(&z.and(&[rec_c.clone(), ge0.implies(&rec_c)]));
         v.check_dom_one(&st, &[], Some(d.clone()), (13, 41), "variant_domain");
-        st.pc.push(d); // dom(r, "variant") 를 pc 에
-        st.pc.push(rec_c.implies(&z.and(&[ge0.clone(), le1000]))); // 값
+        st.pc.push(d); // dom(r, "variant") into pc
+        st.pc.push(rec_c.implies(&z.and(&[ge0.clone(), le1000]))); // value
 
         // match s { ... }
         let st = st.fork(None);
@@ -383,7 +383,7 @@ fn s4_struct_enum(z: &Z3, pre: &Prelude, trace: &mut Trace) {
             let rv = int_of(&r2, "w");
             let env = v.ensures_env(&r2, Some(Val::Int(rv)));
             let ob = env.get("result").ast().ge_l(0);
-            v.prove(&r2, &[], &ob, (19, 28), "ensures", None); // 반례 표본
+            v.prove(&r2, &[], &ob, (19, 28), "ensures", None); // counterexample sample
         }
     }
 
@@ -401,14 +401,14 @@ fn s4_struct_enum(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         st.env.set("i", Val::Int(z.int(0)));
 
         // ---- while (29,3) ----
-        // 진입
-        let i0 = int_of(&st, "i");
+        // Entry
+let i0 = int_of(&st, "i");
         v.prove(&st, &[], &inv_range(z, &i0, &n), (30, 22), "invariant_entry", None);
         let q0 = int_of(&st, "q");
         let ob = acc_y.apply1(&q0).eq(&acc_y.apply1(&p)); // q.y == p.y
         v.prove(&st, &[], &ob, (31, 19), "invariant_entry", None);
 
-        // 본문용 havoc: i → `i!3`(Int), q → `q!h3`(집합값, 이름은 k 증가 전 값)
+        // havoc for the body: i → `i!3` (Int), q → `q!h3` (set value; the name uses the value of k before incrementing)
         let mut b = v.havoc(&st, &["i", "q"]);
         let (bi, bq) = (int_of(&b, "i"), int_of(&b, "q"));
         b.pc.push(inv_range(z, &bi, &n));
@@ -421,7 +421,7 @@ fn s4_struct_enum(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         let mut e = b.fork(None);
         let qcur = int_of(&e, "q");
         let xq = acc_x.apply1(&qcur);
-        let res = v.ev_arith(&e, &[], Arith::Add, &xq, &z.int(1), (34, 15)); // 반례(overflow)
+        let res = v.ev_arith(&e, &[], Arith::Add, &xq, &z.int(1), (34, 15)); // counterexample (overflow)
         v.field_assign(&mut e, "q", &["x"], &res);
         // i = i + 1;
         let mut e = e.fork(None);
@@ -429,14 +429,14 @@ fn s4_struct_enum(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         let res = v.ev_arith(&e, &[], Arith::Add, &ie, &z.int(1), (35, 11));
         e.env.set("i", Val::Int(res));
 
-        // 유지
+        // Preserved
         let (ei, eq) = (int_of(&e, "i"), int_of(&e, "q"));
         v.prove(&e, &[], &inv_range(z, &ei, &n), (30, 22), "invariant_preserved", None);
         let ob = acc_y.apply1(&eq).eq(&acc_y.apply1(&p));
         v.prove(&e, &[], &ob, (31, 19), "invariant_preserved", None);
         v.prove(&e, &[], &n.sub(&ei).lt(&d0), (32, 17), "decreases_decrease", None);
 
-        // 루프 뒤
+        // After the loop
         let mut a = v.havoc(&st, &["i", "q"]);
         let (ai, aq) = (int_of(&a, "i"), int_of(&a, "q"));
         a.pc.push(inv_range(z, &ai, &n));
@@ -455,7 +455,7 @@ fn s4_struct_enum(z: &Z3, pre: &Prelude, trace: &mut Trace) {
 }
 
 // =============================================================================================
-// s5_nested_quant: forall/exists 중첩 + 양화 안의 집계(outer 변수, patterns=[app]) + requires 의 양화
+// s5_nested_quant: nested forall/exists + aggregates inside quantifiers (outer variables, patterns=[app]) + quantifiers in requires
 // =============================================================================================
 fn s5_nested_quant(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     let model = Model::new(z, pre, &[]);
@@ -485,7 +485,7 @@ fn s5_nested_quant(z: &Z3, pre: &Prelude, trace: &mut Trace) {
     {
         let lo = z.int(0);
         let ki = v.quant_enter("i");
-        let lo2 = ki.add_i(1); // lo/hi 는 `s.k += 1` 앞에서 평가
+        let lo2 = ki.add_i(1); // lo/hi are evaluated before `s.k += 1`
         let kj = v.quant_enter("j");
         let body2 = ki.lt(&kj);
         v.quant_exit();
@@ -512,7 +512,7 @@ fn s5_nested_quant(z: &Z3, pre: &Prelude, trace: &mut Trace) {
         let kj = v.quant_enter("j");
         let body_c = kj.lt(&ki);
         v.quant_exit();
-        // 집계 호출 시 qstack = [i] → outer = [i], hi=i 가 bound → 양화된 보조정리 ForAll([i], .., patterns=[app])
+        // At the aggregate call, qstack = [i] → outer = [i], hi=i is bound → quantified lemma ForAll([i], .., patterns=[app])
         let app = v.aggregate("count", &kj, &lo2, &ki, &body_c);
         let body = app.le(&ki);
         v.quant_exit();
@@ -522,7 +522,7 @@ fn s5_nested_quant(z: &Z3, pre: &Prelude, trace: &mut Trace) {
 }
 
 // =============================================================================================
-// s6_alloc_loop: 배열 매개변수/반환, alloc, 루프 havoc 의 배열(`out!k`, `out!k.len`), index_oob 반례
+// s6_alloc_loop: array parameters/returns, alloc, arrays in loop havoc (`out!k`, `out!k.len`), index_oob counterexample
 // =============================================================================================
 struct FillPos {
     alloc: (u32, u32),
@@ -557,7 +557,7 @@ fn s6_alloc_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {
             ret: (15, 3),
         },
     );
-    // fill_bad: out[i + 1] = i (index_oob 반례), requires n >= 1, ensures 없음
+    // fill_bad: out[i + 1] = i (index_oob counterexample), requires n >= 1, no ensures
     build_fill(
         z,
         pre,
@@ -596,7 +596,7 @@ fn build_fill(
     // requires n >= {n_lo} && n <= 1_000
     st.pc.push(z.and(&[n.ge_l(n_lo), n.le_l(1000)]));
 
-    // let mut out: [i64] = alloc(n, 0);  → 의무 alloc_negative 후 `s.k += 1`
+    // let mut out: [i64] = alloc(n, 0);  → obligation alloc_negative, then `s.k += 1`
     let arr = v.ev_alloc(&st, &[], &n, &z.int(0), pos.alloc);
     st.env.set("out", Val::Arr(Arr::new(arr.a, arr.n, "out".to_string(), arr.elem)));
     st.env.set("i", Val::Int(z.int(0)));
@@ -606,12 +606,12 @@ fn build_fill(
         st.env.get("out").arr().n.eq(&n)
     };
 
-    // 진입
+    // Entry
     let i0 = int_of(&st, "i");
     v.prove(&st, &[], &inv_range(z, &i0, &n), pos.inv1, "invariant_entry", None);
     v.prove(&st, &[], &len_eq_n(&st), pos.inv2, "invariant_entry", None);
 
-    // havoc: 정렬 이름 [i, out] → i!3, out!4(+ out!4.len)
+    // havoc: sorted names [i, out] → i!3, out!4(+ out!4.len)
     let mut b = v.havoc(&st, &["i", "out"]);
     let bi = int_of(&b, "i");
     b.pc.push(inv_range(z, &bi, &n));
@@ -620,7 +620,7 @@ fn build_fill(
     let d0 = n.sub(&bi);
     v.prove(&b, &[], &d0.ge_i(0), pos.dec, "decreases_nonneg", None);
 
-    // 본문: out[i] = i;  (fill_bad: out[i + 1] = i;)   i = i + 1;
+    // Body: out[i] = i;  (fill_bad: out[i + 1] = i;)   i = i + 1;
     let mut e = b.fork(None);
     let ie = int_of(&e, "i");
     let idx = match pos.index_add {
@@ -634,20 +634,20 @@ fn build_fill(
     let res = v.ev_arith(&e, &[], Arith::Add, &ie, &z.int(1), pos.i_add);
     e.env.set("i", Val::Int(res));
 
-    // 유지
+    // Preserved
     let ei = int_of(&e, "i");
     v.prove(&e, &[], &inv_range(z, &ei, &n), pos.inv1, "invariant_preserved", None);
     v.prove(&e, &[], &len_eq_n(&e), pos.inv2, "invariant_preserved", None);
     v.prove(&e, &[], &n.sub(&ei).lt(&d0), pos.dec, "decreases_decrease", None);
 
-    // 루프 뒤 (i!5, out!6)
+    // After the loop (i!5, out!6)
     let mut a = v.havoc(&st, &["i", "out"]);
     let ai = int_of(&a, "i");
     a.pc.push(inv_range(z, &ai, &n));
     a.pc.push(len_eq_n(&a));
     a.pc.push(ai.lt(&n).not());
 
-    // return out;  → ensures_ok (fill 만 `len(result) == n`)
+    // return out;  → ensures_ok (only fill has `len(result) == n`)
     let r = a.fork(None);
     let out_val = r.env.get("out").clone();
     let env = v.ensures_env(&r, Some(out_val));

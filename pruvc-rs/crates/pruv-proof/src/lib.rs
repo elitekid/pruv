@@ -1,18 +1,18 @@
-//! pruv-proof: Python `pruvc/verify.py` 의 z3 층을 옮긴 크레이트.
+//! pruv-proof: a crate porting the z3 layer of the Python `pruvc/verify.py`.
 //!
-//! 구성(verify.py 와 같은 구조):
-//! - `sys`        : z3-sys 위의 작은 래퍼. **unsafe 는 이 모듈에만** 있다(아래 `deny`).
-//! - `model`      : `Opt`/`Res` Datatype, 사용자 struct/enum `Model`, `_MODEL_SEQ`
-//! - `symbolic`   : `State`/`Arr`/`FnVerifier`: fresh, wf, havoc, 집계 보조정리, 식 `ev`, 정의역 `dom`, 문 `exec`, `run`
-//! - `obligation` : `prove`(pc → guard → (lemmas) → Not(ob), timeout 8000ms, seen 키), 반례 `cex`/`fmt_val`, trace
-//! - `samples`    : 표본 .pruv 6개의 의무를 손으로 옮긴 빌더(0B 시제품; `pruv-proof-spike` 가 쓴다)
+//! Layout (same structure as verify.py):
+//! - `sys`        : a small wrapper over z3-sys. **unsafe lives only in this module** (see `deny` below).
+//! - `model`      : `Opt`/`Res` Datatype, user struct/enum `Model`, `_MODEL_SEQ`
+//! - `symbolic`   : `State`/`Arr`/`FnVerifier`: fresh, wf, havoc, aggregate lemmas, expression `ev`, domain `dom`, statement `exec`, `run`
+//! - `obligation` : `prove` (pc → guard → (lemmas) → Not(ob), timeout 8000ms, seen key), counterexample `cex`/`fmt_val`, trace
+//! - `samples`    : builders hand-porting the obligations of the 6 sample .pruv files (0B prototype; used by `pruv-proof-spike`)
 //!
-//! 공개 진입은 [`verify_program`]. 같은 입력에서 의무마다 z3 에 넘기는 SMT-LIB 텍스트·판정·오류 JSON 이
-//! Python 과 바이트 동일해야 한다(SPEC 6절).
+//! The public entry point is [`verify_program`]. For the same input, the SMT-LIB text passed to z3 per obligation, the verdicts and the error JSON
+//! must be byte-identical to Python (SPEC §6).
 //!
-//! 왜 고수준 `z3` 크레이트 대신 sys 를 직접 쓰는가: z3py 와 SMT 텍스트가 글자 단위로 같아야 하는데
-//! (SPEC 6절) 고수준 크레이트는 양화 weight/qid, Datatype 생성 호출 방식 등이 z3py 와 다를 수 있다.
-//! `z3` 의존은 `vendored` 로 z3-sys/z3-src 를 끌어오는 용도로 둔다.
+//! Why use sys directly instead of the high-level `z3` crate: the SMT text must match z3py character for character
+//! (SPEC §6), and the high-level crate may differ from z3py in quantifier weight/qid, how Datatypes are created, etc.
+//! The `z3` dependency is kept only to pull in z3-sys/z3-src via `vendored`.
 #![deny(unsafe_code)]
 
 #[allow(unsafe_code)]
@@ -33,33 +33,33 @@ use crate::obligation::Trace;
 use crate::symbolic::FnVerifier;
 use crate::sys::Z3;
 
-/// 실행 중인 libz3 의 전체 버전 문자열(Python `z3.get_full_version()` 대응).
+/// Full version string of the running libz3 (counterpart of Python `z3.get_full_version()`).
 pub fn z3_full_version() -> String {
     sys::full_version()
 }
 
-/// verify.py `verify_program(prog)` (864행). 검사를 통과한 프로그램의 증명 오류를 함수·의무 순서대로 돌려준다.
+/// verify.py `verify_program(prog)` (line 864). Returns the proof errors of a program that passed checking, in function/obligation order.
 ///
-/// - Python 은 프로그램 전체에 `Model` 하나(`_MODEL_SEQ` 한 번 증가)를 만들고 모든 함수가 공유한다. 여기서는
-///   순번을 한 번만 받고, 함수마다 새 z3 컨텍스트에 같은 순번으로 `Model` 을 다시 만든다(식 텍스트가 같다).
-/// - `tt` 는 쓰지 않는다: Python 도 `Model(prog)` 안에서 `TypeTable(prog)` 를 새로 만든다(검사기가 만든 것과 같은 표).
-/// - `rec`: 어댑터 trace 기록(`Trace::adapter()`). None 이면 기록하지 않는다.
-/// - Python 의 예외(내부 실패)는 `Err(메시지)` — 그때까지 모은 오류는 버려진다(Python 도 예외로 반환값이 없다).
+/// - Python creates one `Model` for the whole program (incrementing `_MODEL_SEQ` once) shared by all functions. Here
+///   the sequence number is taken once, and for each function the `Model` is rebuilt in a fresh z3 context with the same number (the expression text is identical).
+/// - `tt` is unused: Python also builds a fresh `TypeTable(prog)` inside `Model(prog)` (the same table the checker built).
+/// - `rec`: adapter trace recording (`Trace::adapter()`). If None, nothing is recorded.
+/// - A Python exception (internal failure) becomes `Err(message)` — errors gathered so far are discarded (Python likewise returns no value on an exception).
 pub fn verify_program(prog: &Program, tt: &TypeTable, rec: Option<&mut Trace>) -> Result<Vec<PruvError>, String> {
     verify_program_opts(prog, tt, rec, &VerifyOptions { infer: false }, None)
 }
 
-/// STAGE1 B2 옵션.
+/// STAGE1 B2 options.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VerifyOptions {
-    /// `--infer`: 함수마다 템플릿 Houdini 불변식 추론(infer.rs) 뒤 살아남은 후보와 함께 검증한다.
+    /// `--infer`: per function, run template Houdini invariant inference (infer.rs) and verify together with the surviving candidates.
     pub infer: bool,
 }
 
-/// verify.py `verify_program(prog, rec, infer, report)`. `infer=false` 는 기존 경로 그대로.
-/// `report` 가 Some 이면 루프별 보고 레코드(docs/STAGE1_B_INFER.md 5절)를 함수 순서·루프 번호 순으로 push 한다
-/// (함수 하나를 끝낼 때마다: 뒤 함수에서 내부 실패가 나도 앞 함수의 레코드는 남는다).
-/// 추론 모드에서는 함수마다 탐색 회차마다·최종 검증마다 새 z3 컨텍스트(+Prelude, 같은 seq 의 Model)를 만든다.
+/// verify.py `verify_program(prog, rec, infer, report)`. `infer=false` keeps the existing path unchanged.
+/// If `report` is Some, per-loop report records (docs/STAGE1_B_INFER.md §5) are pushed in function order, then loop number order
+/// (after finishing each function: even if a later function fails internally, earlier functions' records remain).
+/// In inference mode a fresh z3 context (+Prelude, Model with the same seq) is created per function, per search round and per final verification.
 pub fn verify_program_opts(
     prog: &Program,
     _tt: &TypeTable,
@@ -76,7 +76,7 @@ pub fn verify_program_opts(
     let decls = decls_from_ast(&prog.types);
     let seq = next_seq();
     {
-        // Python 은 함수 수와 상관없이 Model 을 먼저 만든다: 모델 구성 실패는 함수가 없어도 난다.
+        // Python builds the Model first regardless of the function count: a model construction failure occurs even with no functions.
         let z = Z3::new();
         let pre = Prelude::new(&z);
         Model::with_seq(&z, &pre, &decls, seq)?;
@@ -115,9 +115,9 @@ pub fn verify_program_opts(
         return Ok(errors);
     }
     for f in &prog.functions {
-        // 함수마다 새 컨텍스트(논-rc 컨텍스트는 AST 를 지우지 않으므로 함수가 끝나면 통째로 버린다).
-        // 반례 모델 값은 Python 과 다를 수 있다(SMT 텍스트·판정은 같음). 원인 추정: z3py 는 rc 컨텍스트라 AST 번호가 재사용돼
-        // 고르는 모델이 달라진다(프로그램당 컨텍스트 하나로 바꿔도 반례 차이는 그대로였음, RESULTS 18절).
+        // A fresh context per function (a non-rc context never frees ASTs, so it is dropped wholesale when the function ends).
+        // Counterexample model values may differ from Python (the SMT text and verdicts are the same). Suspected cause: z3py uses an rc context, so AST ids are reused
+        // and the chosen model differs (switching to one context per program left the counterexample difference unchanged, RESULTS §18).
         let z = Z3::new();
         let pre = Prelude::new(&z);
         let model = Model::with_seq(&z, &pre, &decls, seq)?;

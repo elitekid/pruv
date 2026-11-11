@@ -1,4 +1,4 @@
-//! 재귀 하강 파서 (vparser.py 의 Parser 를 한 줄씩 옮김).
+//! Recursive-descent parser (a line-by-line port of Parser in vparser.py).
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
@@ -9,7 +9,7 @@ type R<T> = Result<T, PruvError>;
 
 const CMP_OPS: [&str; 6] = ["==", "!=", "<=", ">=", "<", ">"];
 
-/// 공개 진입: Python open().read() 의 universal newline 을 먼저 적용한다.
+/// Public entry: first applies the universal newline handling of Python open().read().
 pub fn parse_source(src: &str) -> R<Program> {
     let norm = src.replace("\r\n", "\n").replace('\r', "\n");
     let chars: Vec<char> = norm.chars().collect();
@@ -17,7 +17,7 @@ pub fn parse_source(src: &str) -> R<Program> {
     p.program()
 }
 
-/// 문자열 토큰 원문(따옴표 포함, 렉서가 이미 검사함)을 UTF-8 바이트열로 푼다.
+/// Decodes the raw text of a string token (quotes included, already validated by the lexer) into a UTF-8 byte sequence.
 fn decode_str_lit(raw: &str) -> Vec<u8> {
     let chars: Vec<char> = raw.chars().collect();
     let mut out: Vec<u8> = Vec::new();
@@ -45,7 +45,7 @@ fn decode_str_lit(raw: &str) -> Vec<u8> {
     out
 }
 
-/// 음수 접기용 십진 문자열 부호 반전("0" 은 그대로).
+/// Sign negation of a decimal string for negative folding ("0" stays as is).
 fn negate(v: &str) -> String {
     if v == "0" {
         "0".to_string()
@@ -63,22 +63,22 @@ fn is_upper(s: &str) -> bool {
 struct Parser {
     t: Vec<Tok>,
     i: usize,
-    /// 지금 만드는 AST 경로의 깊이(재귀 + 왼쪽으로 쌓이는 이항·접미 사슬). MAX_DEPTH 를 넘으면 Python 의
-    /// RecursionError 처럼 내부 오류로 멈춘다: 넘는 AST 는 파서·검사·검증·생성의 재귀가 1GB 스택도 넘길 수 있다.
+    /// Depth of the AST path being built (recursion plus binary/postfix chains that pile up to the left). Beyond MAX_DEPTH it stops with an internal error,
+    /// like Python's RecursionError: an AST that deep can overflow even a 1GB stack in the recursion of the parser, checker, verifier and generator.
     depth: usize,
 }
 
-/// AST 깊이 한도. Python 은 약 1000 단계에서 RecursionError 로 멈추므로(비교 범위 밖) 이보다 훨씬 크게,
-/// 그러나 뒤 단계 재귀가 1GB 스택 안에 들도록 정했다(RESULTS 20절).
+/// AST depth limit. Python stops with RecursionError at about 1000 levels (outside the cross-check range), so this is set much larger than that,
+/// but small enough that the later stages' recursion fits in the 1GB stack (RESULTS §20).
 pub const MAX_DEPTH: usize = 50_000;
 
 impl Parser {
-    // ---- 보조 ----
+    // ---- helpers ----
     fn idx(&self, k: usize) -> usize {
         (self.i + k).min(self.t.len() - 1)
     }
 
-    /// 깊이 한 단계 더하기(넘으면 내부 오류). 짝인 leave 로 되돌린다.
+    /// Adds one level of depth (internal error if exceeded). Undone by the paired leave.
     fn enter(&mut self, n: usize) -> R<()> {
         self.depth += n;
         if self.depth > MAX_DEPTH {
@@ -87,7 +87,7 @@ impl Parser {
         Ok(())
     }
 
-    // 오류로 빠져나갈 때는 깊이를 되돌리지 않는다(파싱 전체가 멈추므로). 그래서 빼기는 포화로.
+    // On an error exit the depth is not restored (the whole parse stops). So the subtraction is saturating.
     fn leave(&mut self, n: usize) {
         self.depth = self.depth.saturating_sub(n);
     }
@@ -125,7 +125,7 @@ impl Parser {
         Ok(())
     }
 
-    // 받은 토큰이 필요할 때만 복제한다(감사: 자주 도는 경로의 토큰 복제 제거).
+    // Clone the received token only when needed (audit: removed token cloning on a hot path).
     fn expect_tok(&mut self, val: &str) -> R<Tok> {
         self.expect(val)?;
         Ok(self.t[self.i - 1].clone())
@@ -143,7 +143,7 @@ impl Parser {
         Ok(self.next())
     }
 
-    // ---- 프로그램 ----
+    // ---- program ----
     fn program(&mut self) -> R<Program> {
         let mut p = Program::default();
         while self.peek(0).kind != Kind::Eof {
@@ -176,7 +176,7 @@ impl Parser {
         Ok(FieldDecl { line: n.line, col: n.col, name: n.val, ty })
     }
 
-    /// `name: Type, ...` 를 close 앞까지(close 는 소비 안 함); 끝 쉼표 허용
+    /// `name: Type, ...` up to close (close is not consumed); a trailing comma is allowed
     fn field_list(&mut self, close: &str) -> R<Vec<FieldDecl>> {
         let mut out = Vec::new();
         while !self.at(close, 0) {
@@ -226,12 +226,12 @@ impl Parser {
         Ok(EnumDecl { line: kw.line, col: kw.col, name: n.val, variants })
     }
 
-    /// 정제 주석을 허용하지 않는 자리의 타입(필드 등)
+    /// A type in a position where refinement annotations are not allowed (fields, etc.)
     fn type_(&mut self) -> R<Type> {
         Ok(self.type_r(false)?.0)
     }
 
-    // ---- STAGE1 A: 정제 주석 ----
+    // ---- STAGE1 A: refinement annotations ----
     fn ref_position(&self, tok: &Tok) -> PruvError {
         PruvError::new(
             "parse",
@@ -243,7 +243,7 @@ impl Parser {
         )
     }
 
-    /// fix 가 비면 기본 안내문.
+    /// If fix is empty, the default hint text.
     fn ref_syntax(&self, tok: &Tok, msg: String, fix: &str) -> PruvError {
         let fix = if fix.is_empty() {
             "write bounds as signed decimal integer literals, e.g. -1_000_000_000..=1_000_000_000"
@@ -253,7 +253,7 @@ impl Parser {
         PruvError::new("parse", tok.line, tok.col, "refinement_syntax", msg, fix)
     }
 
-    /// 부호 있는 십진 정수 리터럴(임의 길이 정규화 문자열; 범위 검사는 refine.rs)
+    /// Signed decimal integer literal (arbitrary-length normalized string; range checks are in refine.rs)
     fn ref_int(&mut self, what: &str) -> R<String> {
         let t = self.peek(0).clone();
         let mut neg = false;
@@ -269,7 +269,7 @@ impl Parser {
         self.bump();
         let nx = self.peek(0).clone();
         if nx.kind == Kind::Id && nx.line == n.line && nx.col == n.end {
-            let mut cs = nx.val.chars(); // 지수 표기(e/E + 숫자들)일 때만 지수 문구
+            let mut cs = nx.val.chars(); // the exponent wording only for exponent notation (e/E plus digits)
             let first = cs.next();
             let fix = if matches!(first, Some('e') | Some('E')) && cs.all(|c| c.is_ascii_digit()) {
                 "exponent notation is not supported: write the full decimal number, e.g. 1_000_000_000 for 1e9"
@@ -294,7 +294,7 @@ impl Parser {
         Ok(if neg { negate(&n.val) } else { n.val })
     }
 
-    /// `|` 뒤의 `L..=U`
+    /// `L..=U` after `|`
     fn ref_range(&mut self) -> R<(String, String)> {
         let lo = self.ref_int("lower bound")?;
         if !self.at("..", 0) {
@@ -319,14 +319,14 @@ impl Parser {
         Ok((lo, hi))
     }
 
-    /// `; <= N` (`;` 는 아직 소비 전)
+    /// `; <= N` (the `;` has not been consumed yet)
     fn ref_len(&mut self) -> R<String> {
         self.expect(";")?;
         self.expect("<=")?;
         self.ref_int("length bound")
     }
 
-    /// -> (Type, Refinement 또는 None). allow: 이 자리에서 정제 주석이 합법인가.
+    /// -> (Type, Refinement or None). allow: whether a refinement annotation is legal in this position.
     fn type_r(&mut self, allow: bool) -> R<(Type, Option<Refinement>)> {
         let t = self.peek(0).clone();
         if self.at("(", 0) {
@@ -337,7 +337,7 @@ impl Parser {
         if self.at("[", 0) {
             self.bump();
             let e = self.ident()?;
-            // G2 A5: [bool] 허용, 오류 글자 갱신
+            // G2 A5: allow [bool], update the error text
             if e.val != "i64" && e.val != "u8" && e.val != "bool" {
                 if is_upper(&e.val) {
                     return Err(self.unsupported(&format!("[{}]", e.val), &e));
@@ -419,7 +419,7 @@ impl Parser {
             let tn = if n.val == "Option" { "option" } else { "result" };
             ty = tn.to_string();
         } else {
-            // 사용자 타입: 이름 해석은 검사기가 한다. 내장 Type 이름의 소문자 철자는 별칭이 되면 안 된다.
+            // User type: name resolution is done by the checker. The lowercase spelling of a built-in Type name must not become an alias.
             if matches!(n.val.as_str(), "unit" | "array" | "option" | "result" | "array_u8" | "array_bool" | "array_i32") {
                 return Err(self.err(
                     format!("unknown type {}", repr_str(&n.val)),
@@ -435,7 +435,7 @@ impl Parser {
             }
             self.bump();
             let (lo, hi) = self.ref_range()?;
-            // i64 이 아닌 기본 타입은 refine.rs 가 type/refinement_base 로 보고한다
+            // A base type other than i64 is reported by refine.rs as type/refinement_base
             return Ok((
                 ty,
                 Some(Refinement { line: t.line, col: t.col, shape: "scalar".to_string(), base: n.val, lo: Some(lo), hi: Some(hi), maxlen: None }),
@@ -510,7 +510,7 @@ impl Parser {
         Ok(out)
     }
 
-    // ---- 문 ----
+    // ---- statements ----
     fn stmt(&mut self) -> R<Stmt> {
         let t = self.peek(0).clone();
         let (l, c) = (t.line, t.col);
@@ -646,7 +646,7 @@ impl Parser {
             return Ok(Stmt::Assign(Assign { line: l, col: c, name: n, value: v }));
         }
         if t.kind == Kind::Id && self.at("[", 1) {
-            // 인덱스 대입일 수도 있다
+            // It may also be an index assignment
             let save = self.i;
             let n = self.next().val;
             self.bump();
@@ -661,7 +661,7 @@ impl Parser {
             self.i = save;
         }
         if t.kind == Kind::Id && self.at(".", 1) {
-            // 필드 대입 `p.a.b = e;`, 아니면 식 문
+            // Field assignment `p.a.b = e;`, otherwise an expression statement
             let save = self.i;
             let n = self.next().val;
             let mut path = Vec::new();
@@ -690,7 +690,7 @@ impl Parser {
         if self.at("else", 0) {
             self.bump();
             if self.at("if", 0) {
-                // else if 사슬도 깊이로 센다(고친 뒤 확인: 셈 밖이라 100만 개에서 스택 넘침)
+                // An else-if chain is counted as depth too (checked after the fix: outside the count, a million of them overflowed the stack)
                 self.enter(1)?;
                 let r = self.if_();
                 self.leave(1);
@@ -702,7 +702,7 @@ impl Parser {
         Ok(If { line: t.line, col: t.col, cond, then, els })
     }
 
-    // ---- 식 (우선순위 상승) ----
+    // ---- expressions (precedence climbing) ----
     fn bin(t: &Tok, op: &str, l: Expr, r: Expr) -> Expr {
         Expr::Binary(Binary { line: t.line, col: t.col, op: op.to_string(), left: Box::new(l), right: Box::new(r), ty: None })
     }
@@ -728,7 +728,7 @@ impl Parser {
 
     fn or_(&mut self) -> R<Expr> {
         let mut l = self.and_()?;
-        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
+        let mut chain = 0; // a binary chain that piles up to the left is counted as depth too
         while self.at("||", 0) {
             let t = self.next();
             if let Err(e) = self.enter(1) {
@@ -751,7 +751,7 @@ impl Parser {
 
     fn and_(&mut self) -> R<Expr> {
         let mut l = self.cmp()?;
-        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
+        let mut chain = 0; // a binary chain that piles up to the left is counted as depth too
         while self.at("&&", 0) {
             let t = self.next();
             if let Err(e) = self.enter(1) {
@@ -791,7 +791,7 @@ impl Parser {
 
     fn add(&mut self) -> R<Expr> {
         let mut l = self.mul()?;
-        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
+        let mut chain = 0; // a binary chain that piles up to the left is counted as depth too
         while self.at("+", 0) || self.at("-", 0) {
             let t = self.next();
             if let Err(e) = self.enter(1) {
@@ -814,7 +814,7 @@ impl Parser {
 
     fn mul(&mut self) -> R<Expr> {
         let mut l = self.unary()?;
-        let mut chain = 0; // 왼쪽으로 쌓이는 이항 사슬도 깊이로 센다
+        let mut chain = 0; // a binary chain that piles up to the left is counted as depth too
         while self.at("*", 0) || self.at("/", 0) || self.at("%", 0) {
             let t = self.next();
             if let Err(e) = self.enter(1) {
@@ -854,7 +854,7 @@ impl Parser {
 
     fn postfix(&mut self) -> R<Expr> {
         let mut e = self.primary()?;
-        let mut chain = 0; // a[i][j].f 처럼 왼쪽으로 쌓이는 접미 사슬도 깊이로 센다
+        let mut chain = 0; // a postfix chain that piles up to the left, like a[i][j].f, is counted as depth too
         loop {
             if self.at("[", 0) {
                 let t = self.next();
@@ -875,7 +875,7 @@ impl Parser {
         Ok(e)
     }
 
-    /// `Enum::Variant` -> (enum 토큰, variant 토큰)
+    /// `Enum::Variant` -> (enum token, variant token)
     fn enum_ref(&mut self) -> R<(Tok, Tok)> {
         let en = self.ident()?;
         self.expect("::")?;
@@ -1046,14 +1046,14 @@ mod tests {
         let p = parse_source(&format!("fn f() -> i64 {{ return {}; }}", src)).unwrap();
         match &p.functions[0].body[0] {
             Stmt::Return(Return { value: Some(e), .. }) => e.clone(),
-            _ => panic!("return 아님"),
+            _ => panic!("not a return"),
         }
     }
 
     fn int_of(e: &Expr) -> (String, i64) {
         match e {
             Expr::IntLit(i) => (i.value.clone(), i.col),
-            other => panic!("IntLit 아님: {:?}", other),
+            other => panic!("not an IntLit: {:?}", other),
         }
     }
 

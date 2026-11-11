@@ -1,4 +1,4 @@
-//! 오류 형식(vast.PruvError). line/col 은 1부터, 유니코드 문자 단위.
+//! Error format (vast.PruvError). line/col are 1-based, in Unicode characters.
 
 use crate::pyjson::{dumps, Json};
 
@@ -26,7 +26,7 @@ impl PruvError {
         }
     }
 
-    /// 삽입 순서 stage,line,col,code,message,fix[,counterexample]; line/col 은 JSON 수.
+    /// Insertion order stage,line,col,code,message,fix[,counterexample]; line/col are JSON numbers.
     pub fn to_json_value(&self) -> Json {
         let mut kv = vec![
             ("stage".to_string(), Json::Str(self.stage.clone())),
@@ -42,7 +42,7 @@ impl PruvError {
         Json::Obj(kv)
     }
 
-    /// Python `json.dumps(d, ensure_ascii=False)` 와 같은 한 줄.
+    /// One line identical to Python `json.dumps(d, ensure_ascii=False)`.
     pub fn to_cli_json(&self) -> String {
         dumps(&self.to_json_value())
     }

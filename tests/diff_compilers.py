@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""Pruv 컴파일러 두 판(기본 a=py, b=rs)의 차분 대조 (docs/M3_C4_SPEC.md 5절).
+"""Differential cross-check of the two Pruv compiler implementations (default a=py, b=rs) (docs/M3_C4_SPEC.md section 5).
 
-    python tests/diff_compilers.py [--b-path P](생략 시 pruvc-rs/target/release/pruvc, Windows는 .exe) [--backend rust|llvm|both]
+    python tests/diff_compilers.py [--b-path P] (default pruvc-rs/target/release/pruvc, .exe on Windows) [--backend rust|llvm|both]
         [--a py|rs] [--a-path P] [--b py|rs] [--b-path P] [--input FILE ...] [--flag F ...]
         [--only must_reject|examples|runtime|bench] [--jobs N] [--timeout 300] [--save-dir DIR]
     python tests/diff_compilers.py --replay CASE_DIR
 
-같은 입력·플래그·backend 로 두 컴파일러를 입력마다 새 프로세스로 실행(a 다음 b, 한 작업자 안에서 순서대로 ->
-동시 실행 프로세스 수는 --jobs(기본 os.cpu_count()) 이하)해 비교한다.
-기본 입력: tests/must_reject/*.pruv, examples/*.pruv (default/no-verify/trust-callers),
-tests/runtime/*.pruv (.json 의 flags_matrix·flags·contract_budget), bench/solutions/pruv_agg/*.pruv,
-그리고 --input FILE (반복 가능, --flag 로 플래그 지정).
+Runs both compilers on the same input, flags and backend, each in a new process per input (a, then b, in order within one worker ->
+the number of concurrent processes is at most --jobs (default os.cpu_count())), and compares them.
+Default inputs: tests/must_reject/*.pruv, examples/*.pruv (default/no-verify/trust-callers),
+tests/runtime/*.pruv (flags_matrix, flags and contract_budget from the .json), bench/solutions/pruv_agg/*.pruv,
+and --input FILE (repeatable; set flags with --flag).
 
-비교: 종료 코드 / stdout JSON 줄(개수·순서, stage,line,col,code 는 정확히 같아야 하고 message·fix 도 비교하되
-작업 폴더·입력 경로·컴파일러 실행 파일 이름만 정규화) / 생성 파일(.rs, .ll, bindings) 바이트.
-CRLF->LF 로만 같은 경우는 같음으로 세되 별도로 센다.
+Comparison: exit code / stdout JSON lines (count and order; stage, line, col and code must match exactly, and message and fix are compared too,
+normalizing only the work directory, input path and compiler executable name) / bytes of the generated files (.rs, .ll, bindings).
+Cases that match only after CRLF->LF are counted as same but tallied separately.
 
-분류: same / diff / a_crash / b_crash / a_timeout / b_timeout / not_implemented
-  crash  = 종료 코드 0·1·2 가 아님(3 내부 오류, 신호, 101 panic 등) 또는 실행 실패
-  not_implemented = b 가 exit 2 로 'not implemented'·알 수 없는 옵션 류를 내고 a 는 exit 2 가 아닐 때(통과 아님)
-  not_implemented 판정: b 의 stderr(stdout 아님)에서 NI_RE(단어 경계)로 찾는다.
-  stdout JSON 의 'counterexample' 은 정확 비교에서 빼고 양쪽에 있는지만 비교한다. 값이 다르면 'cex_differs'
-  표시만 남기고 diff 로 세지 않는다(5절: 반례 숫자는 바이트 동일을 요구하지 않음).
-종료 코드: 0 전부 통과 / 1 diff·crash·timeout·입력 오류가 있음 / 2 --replay 사례 폴더 오류 /
-  3 not_implemented 가 1건 이상이고 diff·crash·timeout 은 없음(통과 아님, '미구현 N건, 통과 아님' 출력).
-  --allow-unimplemented 를 주면 3 대신 0 (출력 문구는 그대로).
+Classification: same / diff / a_crash / b_crash / a_timeout / b_timeout / not_implemented
+  crash  = exit code other than 0, 1, 2 (3 internal error, signal, 101 panic, etc.) or failure to start
+  not_implemented = b exits 2 with a 'not implemented' / unknown-option style message and a does not exit 2 (not a pass)
+  not_implemented verdict: looked for with NI_RE (word boundaries) in b's stderr (not stdout).
+  The stdout JSON 'counterexample' is left out of the exact comparison and only its presence on both sides is compared. If the values differ, only a 'cex_differs'
+  mark is left and it is not counted as diff (section 5: counterexample numbers need not be byte-identical).
+Exit codes: 0 all pass / 1 diff, crash, timeout or input error present / 2 --replay case folder error /
+  3 at least one not_implemented and no diff, crash or timeout (not a pass; prints 'N not implemented, not a pass').
+  With --allow-unimplemented, 0 instead of 3 (the printed wording is unchanged).
 """
 import argparse
 import concurrent.futures as cf
@@ -47,17 +47,18 @@ CLASSES = ["same", "diff", "a_crash", "b_crash", "a_timeout", "b_timeout", "not_
 FAILING = ("diff", "a_crash", "b_crash", "a_timeout", "b_timeout")
 REQUIRED_KEYS = ("stage", "line", "col", "code")
 COMPARED_TEXT_KEYS = ("message", "fix")
+# NOTE: the Korean alternative below is intentionally kept: NI_RE is matched against the compiler's stderr.
 NI_RE = re.compile(r"\b(?:not (?:yet )?(?:implemented|supported)|unimplemented|미구현|unrecognized (?:arguments?|option)"
                    r"|unknown (?:option|argument|flag)|unexpected argument|no such (?:option|flag))\b", re.I)
-CEX_KEY = "counterexample"  # 설계 5절: 반례 숫자는 바이트 동일을 요구하지 않음 -> 양쪽에 있는지만 비교
+CEX_KEY = "counterexample"  # design section 5: counterexample numbers need not be byte-identical -> only presence on both sides is compared
 EXAMPLE_MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 SRC_T, OUT_T, BIND_T = "@SRC@", "@OUT@", "@BIND@"
 
 
-# ---------------------------------------------------------------- 입력 목록
+# ---------------------------------------------------------------- input list
 
 def build_cases(args):
-    """[{name, src(절대 경로), flags}] (backend 는 나중에 곱한다). 입력 오류는 (cases, errors)."""
+    """[{name, src (absolute path), flags}] (backend is multiplied in later). Input errors come back as (cases, errors)."""
     cases, errors = [], []
     only = args.only
 
@@ -101,10 +102,10 @@ def build_cases(args):
     return cases, errors
 
 
-# ---------------------------------------------------------------- 정규화·비교
+# ---------------------------------------------------------------- normalization and comparison
 
 def norm_replacements(workdir, src, prefix):
-    """작업 폴더·입력 경로·컴파일러 실행 파일 이름/경로만 정규화한다."""
+    """Normalize only the work directory, the input path and the compiler executable name/path."""
     reps = []
     for p, tag in ((workdir, "<WORK>"), (src, "<SRC>")):
         for v in {p, os.path.realpath(p)}:
@@ -116,7 +117,7 @@ def norm_replacements(workdir, src, prefix):
     reps.sort(key=lambda r: -len(r[0]))
     reps = [r for r in reps if r[0]]
     if prefix and os.path.basename(prefix[-1]):
-        # pruvc.py / 바이너리 이름: 단어 경계로만 바꾼다(다른 낱말 속 글자열을 건드리지 않게). 경로 치환 뒤에 적용.
+        # pruvc.py / binary name: replace only on word boundaries (so strings inside other words are untouched). Applied after the path replacements.
         reps.append((re.compile(r"\b" + re.escape(os.path.basename(prefix[-1])) + r"\b"), "<COMPILER>"))
     return reps
 
@@ -146,7 +147,7 @@ def _norm_val(v, reps):
 
 
 def compare_stdout(ta, tb, reps_a, reps_b, cex_differs=None):
-    """-> 차이 목록. 'counterexample' 은 양쪽 유무만 비교하고, 값이 다르면 cex_differs(list)에 표시만 남긴다."""
+    """-> list of differences. 'counterexample' is compared only for presence on both sides; if the values differ, only a mark is left in cex_differs (a list)."""
     ia, ib = parse_stdout(ta, reps_a), parse_stdout(tb, reps_b)
     out = []
     if len(ia) != len(ib):
@@ -197,7 +198,7 @@ def first_diff(x, y):
 
 
 def compare_files(names, dir_a, dir_b):
-    """-> (details, crlf_only). 파일 있음/없음, 바이트 동일. CRLF->LF 로만 같으면 crlf_only."""
+    """-> (details, crlf_only). File present/absent, byte equality. crlf_only if equal only after CRLF->LF."""
     details, crlf = [], False
     for n in names:
         x, y = read_bytes(os.path.join(dir_a, n)), read_bytes(os.path.join(dir_b, n))
@@ -214,7 +215,7 @@ def compare_files(names, dir_a, dir_b):
 
 
 def classify(ra, rb, details):
-    """a·b 결과와 비교 상세 -> 분류."""
+    """Results of a and b plus the comparison details -> classification."""
     if ra.timed_out:
         return "a_timeout"
     if ra.kind == "crash":
@@ -228,14 +229,14 @@ def classify(ra, rb, details):
     return "diff" if details else "same"
 
 
-# ---------------------------------------------------------------- 한 사례 실행
+# ---------------------------------------------------------------- running one case
 
 def out_names(backend):
     return ("out.ll", "bind.rs") if backend == "llvm" else ("out.rs",)
 
 
 def template_argv(drv, backend, flags):
-    """@SRC@/@OUT@/@BIND@ 자리표시자가 든 argv 형판(저장·재실행용)."""
+    """argv template containing the @SRC@/@OUT@/@BIND@ placeholders (for saving and replay)."""
     extra = ["--rust-bindings", BIND_T] if backend == "llvm" else []
     return drv.argv(SRC_T, OUT_T, extra + list(flags), backend)
 
@@ -246,7 +247,7 @@ def fill(tmpl, src, out, bind):
 
 
 def run_pair(spec, tmpl_a, tmpl_b, work, timeout):
-    """한 사례를 a 다음 b 로 실행·비교. -> outcome dict (결과 객체와 작업 폴더 포함)."""
+    """Run and compare one case, a then b. -> outcome dict (including the result objects and work directories)."""
     backend = spec["backend"]
     names = out_names(backend)
     sides = {}
@@ -309,7 +310,7 @@ def save_case(case_dir, spec, tmpl_a, tmpl_b, outcome, versions, case_id):
          "exit": {"a": sides["a"]["res"].returncode, "b": sides["b"]["res"].returncode}}, indent=1, ensure_ascii=False))
 
 
-# ---------------------------------------------------------------- 재실행
+# ---------------------------------------------------------------- replay
 
 def replay(case_dir, args):
     try:
@@ -343,35 +344,35 @@ def replay(case_dir, args):
         if oc["cls"] in FAILING:
             return 1
         if oc["cls"] == "not_implemented":
-            print("미구현 1건, 통과 아님")
+            print("1 not implemented, not a pass")
             return 0 if args.allow_unimplemented else 3
         return 0
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
-# ---------------------------------------------------------------- 본 실행
+# ---------------------------------------------------------------- main run
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Pruv 컴파일러 두 판 차분 대조",
-        epilog="종료 코드: 0 = 전부 같음(또는 --allow-unimplemented 와 함께 미구현만 있음); "
-               "1 = diff/crash/timeout/입력 오류; 2 = --replay 사례 폴더 오류; "
-               "3 = 미구현(not_implemented)만 있고 diff/crash/timeout 은 없음(통과 아님).")
+        description="Differential cross-check of the two Pruv compiler implementations",
+        epilog="Exit codes: 0 = all same (or only not-implemented cases together with --allow-unimplemented); "
+               "1 = diff/crash/timeout/input error; 2 = --replay case folder error; "
+               "3 = only not_implemented, with no diff/crash/timeout (not a pass).")
     ap.add_argument("--allow-unimplemented", action="store_true",
-                    help="미구현(not_implemented)만 있으면 종료 코드 3 대신 0 (출력의 '미구현 N건, 통과 아님'은 그대로)")
+                    help="if there are only not_implemented cases, exit 0 instead of 3 (the printed 'N not implemented, not a pass' is unchanged)")
     ap.add_argument("--a", choices=["py", "rs"], default="py")
     ap.add_argument("--a-path", default=None)
     ap.add_argument("--b", choices=["py", "rs"], default="rs")
     ap.add_argument("--b-path", default=None)
     ap.add_argument("--backend", choices=["rust", "llvm", "both"], default="both")
-    ap.add_argument("--input", action="append", default=[], metavar="FILE", help="추가 입력(반복 가능)")
-    ap.add_argument("--flag", action="append", default=[], help="--input 파일에 줄 컴파일러 플래그(반복 가능)")
+    ap.add_argument("--input", action="append", default=[], metavar="FILE", help="additional input (repeatable)")
+    ap.add_argument("--flag", action="append", default=[], help="compiler flag to give the --input files (repeatable)")
     ap.add_argument("--only", choices=["must_reject", "examples", "runtime", "bench"], default=None)
-    ap.add_argument("--no-default-inputs", action="store_true", help="기본 입력 없이 --input 만")
+    ap.add_argument("--no-default-inputs", action="store_true", help="only --input, no default inputs")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
-    ap.add_argument("--timeout", type=int, default=300, help="컴파일러 프로세스당 초(기본 300)")
-    ap.add_argument("--save-dir", default=None, help="실패 사례 폴더 (기본 tests/_diff_fail/<시각>/)")
+    ap.add_argument("--timeout", type=int, default=300, help="seconds per compiler process (default 300)")
+    ap.add_argument("--save-dir", default=None, help="folder for failing cases (default tests/_diff_fail/<timestamp>/)")
     ap.add_argument("--keep-work", action="store_true")
     ap.add_argument("--replay", default=None, metavar="CASE_DIR")
     args = ap.parse_args()
@@ -419,10 +420,10 @@ def main():
     try:
         with cf.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
             futs = [pool.submit(job, i, s) for i, s in enumerate(specs)]
-            for fut in futs:  # 원래 순서대로 출력
+            for fut in futs:  # print in the original order
                 try:
                     spec, oc = fut.result()
-                except Exception as e:  # 장치 자체의 오류는 조용히 넘기지 않는다
+                except Exception as e:  # errors in the harness itself are never silently ignored
                     errors.append("harness: %r" % (e,))
                     continue
                 counts[oc["cls"]] += 1
@@ -432,33 +433,33 @@ def main():
                 if oc["cex_differs"]:
                     cex_count += 1
                     if oc["cls"] == "same":
-                        print("cex_differs %s [%s]  -- counterexample 값이 다름(diff 로 세지 않음)" % (
+                        print("cex_differs %s [%s]  -- counterexample values differ (not counted as diff)" % (
                             spec["name"], spec["backend"]), flush=True)
                 if oc["cls"] != "same":
                     print("%s %s [%s]  -- %s" % (oc["cls"].upper(), spec["name"], spec["backend"],
                                                  "; ".join(oc["details"])[:400]), flush=True)
     finally:
         if args.keep_work:
-            print("작업 폴더: " + root)
+            print("work directory: " + root)
         else:
             shutil.rmtree(root, ignore_errors=True)
 
-    print("---- 요약 (a=%s, b=%s) ----" % (da.name, db.name))
-    print("%-16s %6s" % ("분류", "건수") + "".join(" %8s" % b for b in backends))
+    print("---- summary (a=%s, b=%s) ----" % (da.name, db.name))
+    print("%-16s %6s" % ("class", "count") + "".join(" %8s" % b for b in backends))
     for c in CLASSES:
         print("%-16s %6d" % (c, counts[c]) + "".join(" %8d" % per_backend[b][c] for b in backends))
     print("TOTAL %d" % sum(counts.values()))
     if crlf_count:
-        print("CRLF->LF 정규화로만 같음: %d건 (same 에 포함)" % crlf_count)
+        print("same only after CRLF->LF normalization: %d (included in same)" % crlf_count)
     if cex_count:
-        print("cex_differs: counterexample 값만 다른 사례 %d건 (분류에 영향 없음)" % cex_count)
+        print("cex_differs: %d cases differing only in counterexample values (no effect on classification)" % cex_count)
     for e in errors:
-        print("입력/장치 오류: " + e)
+        print("input/harness error: " + e)
     if failed_dirs:
-        print("실패 사례 %d건 저장: %s  (재실행: --replay <폴더>)" % (len(failed_dirs), save_root))
+        print("%d failing cases saved: %s  (replay: --replay <folder>)" % (len(failed_dirs), save_root))
     bad = sum(counts[c] for c in FAILING) + len(errors)
     if counts["not_implemented"]:
-        print("미구현 %d건, 통과 아님" % counts["not_implemented"])
+        print("%d not implemented, not a pass" % counts["not_implemented"])
     if bad:
         return 1
     if counts["not_implemented"] and not args.allow_unimplemented:

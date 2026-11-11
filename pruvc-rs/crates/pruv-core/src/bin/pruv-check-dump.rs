@@ -1,6 +1,6 @@
-//! 사용법: pruv-check-dump FILE...
-//! 파일마다 정확히 한 줄(UTF-8, 끝에 \n)을 순서대로 stdout 에 쓴다(parse+check 결과).
-//! 줄마다 바로 내보내 비운다: 한 파일이 스택을 넘쳐 프로세스가 중단돼도 앞 파일의 줄은 남는다.
+//! Usage: pruv-check-dump FILE...
+//! Writes exactly one line (UTF-8, ending with \n) per file to stdout, in order (the parse+check result).
+//! Each line is flushed immediately: even if one file overflows the stack and the process aborts, the lines of earlier files remain.
 
 use std::io::Write;
 
@@ -25,7 +25,7 @@ fn main() {
         eprintln!("usage: pruv-check-dump FILE...");
         std::process::exit(2);
     }
-    // 깊게 중첩된 입력을 위해 큰 스택 스레드에서 돌린다(검사기도 재귀라 호출자가 스택을 잡는다).
+    // Run on a large-stack thread for deeply nested input (the checker is recursive too, so the caller provides the stack).
     let handle = std::thread::Builder::new().stack_size(1 << 30).spawn(move || work(files));
     match handle.map(|h| h.join()) {
         Ok(Ok(true)) => {}

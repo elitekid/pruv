@@ -1,5 +1,5 @@
-//! 컴파일 파이프라인. Python `compile_file` 순서 그대로:
-//! 읽기 → parse → check → (verify) → 출력 종류별 생성 → 모든 텍스트가 만들어진 뒤에야 파일 쓰기.
+//! Compile pipeline, in exactly the order of Python `compile_file`:
+//! read -> parse -> check -> (verify) -> generation per output kind -> files are written only after all the text has been produced.
 
 use crate::cli::{Args, Kind};
 use pruv_core::ast::Program;
@@ -10,15 +10,15 @@ use pruvc::target::Target;
 use std::io::Write;
 use std::path::Path;
 
-/// exe 의 C 진입 shim. `main__pruv_entry` 는 llvmgen::entry_of 가 내는 `define internal void` (인자 없는 unit main).
+/// The C entry shim of exe. `main__pruv_entry` is the `define internal void` emitted by llvmgen::entry_of (a unit main with no arguments).
 const MAIN_SHIM: &str = "define i32 @main() {\n  call void @main__pruv_entry()\n  ret i32 0\n}\n";
 
 enum Fail {
-    /// 언어·증명 오류(각각 한 줄, exit 1).
+    /// Language and proof errors (one line each, exit 1).
     Lang(Vec<PruvError>),
-    /// 새 빌드 진단(stage link/codegen, exit 1). 둘째는 stderr 에 남길 원문.
+    /// New build diagnostics (stage link/codegen, exit 1). The second is the raw text to leave on stderr.
     Build(PruvError, Option<String>),
-    /// 내부 오류(exit 3).
+    /// Internal error (exit 3).
     Internal(String),
 }
 
@@ -30,7 +30,7 @@ fn out_line(s: &str) {
     let _ = l.flush();
 }
 
-/// Python `json.dumps` 기본값(ensure_ascii=True)과 같은 문자열 이스케이프.
+/// String escaping identical to the Python `json.dumps` default (ensure_ascii=True).
 fn push_ascii_json_str(out: &mut String, s: &str) {
     out.push('"');
     for c in s.chars() {
@@ -54,7 +54,7 @@ fn push_ascii_json_str(out: &mut String, s: &str) {
     out.push('"');
 }
 
-/// 내부 오류 JSON 한 줄(Python 과 같은 키 순서·구분자).
+/// One internal-error JSON line (same key order and separators as Python).
 pub fn internal_json(msg: &str) -> String {
     let mut s = String::from("{\"stage\": \"internal\", \"line\": 0, \"col\": 0, \"code\": \"internal_error\", \"message\": ");
     push_ascii_json_str(&mut s, msg);
@@ -62,7 +62,7 @@ pub fn internal_json(msg: &str) -> String {
     s
 }
 
-/// 파이프라인을 돌려 종료 코드를 돌려준다.
+/// Runs the pipeline and returns the exit code.
 pub fn run(a: &Args) -> i32 {
     match compile(a) {
         Ok(()) => {
@@ -89,14 +89,14 @@ pub fn run(a: &Args) -> i32 {
     }
 }
 
-// 실패 문장은 Python open(path, "w") 의 OSError 와 같게(감사 필수 1).
+// The failure message matches the OSError of Python open(path, "w") (audit must-fix 1).
 fn write_text(path: &str, text: &str) -> Result<(), Fail> {
     std::fs::write(path, text).map_err(|e| Fail::Internal(pruv_core::pyio::io_error_message(Path::new(path), &e)))
 }
 
 fn generate(a: &Args, prog: &Program) -> Result<(String, String), Fail> {
-    // 6단계: Windows x64 대상이면 외부 wrapper 를 처음부터 대상 ABI(sret)로, 그 밖은 기존(Python 과 바이트 동일) 출력.
-    // --target 이 없으면 호스트 대상(설계 3절 "기본 호스트"). Windows 호스트의 ll 도 sret 형태여야 한다(6단계 감사 필수).
+    // Stage 6: for a Windows x64 target the external wrapper uses the target ABI (sret) from the start; otherwise the existing output (byte-identical to Python).
+    // Without --target the host target is used (design §3 "default host"). The ll of a Windows host must also be in sret form (stage 6 audit must-fix).
     let host = pruvc::target::Target::host().ok();
     let windows = match (&a.target, &host) {
         (Some(t), _) => t.is_windows(),
@@ -111,7 +111,7 @@ fn need_target(a: &Args) -> Result<&Target, Fail> {
     a.target.as_ref().ok_or_else(|| Fail::Internal("target was not resolved".to_string()))
 }
 
-/// compile_ir_to_object 의 오류: 대상·방출 문제는 codegen 진단(exit 1), IR 자체 결함은 내부 오류.
+/// Errors of compile_ir_to_object: target and emission problems become a codegen diagnostic (exit 1), defects in the IR itself become an internal error.
 fn codegen_fail(e: pruvc::Error) -> Fail {
     match e.code {
         "llvm_target" | "llvm_emit" | "target_mismatch" | "unsupported" | "unsupported_target" => {
@@ -121,13 +121,13 @@ fn codegen_fail(e: pruvc::Error) -> Fail {
     }
 }
 
-/// link::link 의 오류를 설계 3절의 link 진단으로.
+/// Turns an error of link::link into the link diagnostic of design §3.
 fn link_fail(e: pruvc::Error) -> Fail {
     match e.code {
         "io" | "no_main" | "invalid_argument" | "object_read" | "llvm_error" => Fail::Internal(e.to_string()),
         "link_spawn" => Fail::Build(PruvError::new("link", 0, 0, "linker_missing", e.message, ""), None),
         "link_failed" => {
-            // 진단에는 원인 한 줄(링커의 error/ld: 줄, 경고 제외, 없으면 첫 줄), 링커 원문은 stderr 로(감사 권고)
+            // The diagnostic gets one cause line (the linker's error/ld: line, warnings excluded, the first line if none); the raw linker text goes to stderr (audit recommendation)
             let first = e
                 .message
                 .lines()
@@ -141,7 +141,7 @@ fn link_fail(e: pruvc::Error) -> Fail {
     }
 }
 
-/// exe 진입점: `fn main() -> ()` 이고 매개변수가 없어야 한다.
+/// The exe entry point: must be `fn main() -> ()` with no parameters.
 fn check_entry(prog: &Program) -> Result<(), Fail> {
     let m = prog.functions.iter().find(|f| f.name == "main");
     if m.map_or(false, |f| f.params.is_empty() && f.ret == "unit") {
@@ -161,7 +161,7 @@ fn check_entry(prog: &Program) -> Result<(), Fail> {
     ))
 }
 
-/// 대상이 호스트가 아니거나 그 대상의 내장 런타임이 없으면 target_runtime_missing.
+/// target_runtime_missing if the target is not the host or has no built-in runtime.
 fn check_runtime(target: &Target) -> Result<(), Fail> {
     let msg = if !target.is_host() {
         Some(format!(
@@ -179,9 +179,9 @@ fn check_runtime(target: &Target) -> Result<(), Fail> {
 }
 
 fn compile(a: &Args) -> Result<(), Fail> {
-    // 읽기 실패·UTF-8 해독 실패는 내부 오류(Python open().read() 와 같은 취급)
+    // A read failure or UTF-8 decode failure is an internal error (handled like Python open().read())
     let src = pruv_core::pyio::read_source(Path::new(&a.input)).map_err(Fail::Internal)?;
-    // 깊이 한도 초과는 파서가 stage "internal" 로 알린다(Python RecursionError 처럼 exit 3).
+    // Exceeding the depth limit is reported by the parser as stage "internal" (exit 3, like Python RecursionError).
     let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
     let tt = pruv_core::check::check(&mut prog).map_err(|e| Fail::Lang(vec![e]))?;
     if a.verify {
@@ -195,7 +195,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
                 &opts,
                 if a.show_inferred { Some(&mut report) } else { None },
             );
-            // 내부 오류(Err)면 Python 은 예외로 아무것도 찍지 않는다. Ok 일 때만(검증 오류가 있어도) 기록을 남긴다.
+            // On an internal error (Err), Python prints nothing because of the exception. The record is left only when Ok (even if there is a verification error).
             let errs = r.map_err(Fail::Internal)?;
             for rec in &report {
                 eprintln!("{}", pruv_core::pyjson::dumps_sorted(rec));
@@ -210,15 +210,15 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    // G2: verify 뒤에도, 아직 코드 생성 층이 없는 배열 타입은 거부.
-    // A4·A5: [u8]·[bool] 은 모든 길(rust·llvm·ll·obj·exe·also_llvm)에서 허용.
+    // G2: even after verify, reject array types that do not yet have a code-generation layer.
+    // A4, A5: [u8] and [bool] are allowed on every path (rust, llvm, ll, obj, exe, also_llvm).
     let g2_err = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen", None, &["array_u8", "array_bool", "str"], None); // G2 B2
     if let Some(e) = g2_err {
         return Err(Fail::Lang(vec![e]));
     }
     match a.kind {
-        // 7단계: Rust 소스 뒷단. Python compile_file 처럼 모든 텍스트(rs, 그리고 --also-llvm 이면 ll·바인딩)를
-        // 먼저 만들고 나서 파일을 쓴다(생성기 오류면 아무 파일도 쓰지 않음). 쓰는 순서: OUT, LL, RS.
+        // Stage 7: the Rust-source backend. Like Python compile_file, all the text (rs, and with --also-llvm also ll and bindings)
+        // is produced first and only then are files written (on a generator error no file is written). Write order: OUT, LL, RS.
         Kind::Rs => {
             let rs_text = pruv_core::codegen::gen_rust(&prog, a.verify, a.trust_callers, a.budget).map_err(Fail::Internal)?;
             let llvm_texts = match &a.also_llvm {
@@ -234,7 +234,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
         Kind::Ll => {
             let (ir, bindings) = generate(a, &prog)?;
-            // Python 과 같은 순서: IR 먼저, 바인딩 다음
+            // Same order as Python: IR first, then the bindings
             write_text(&a.out, &ir)?;
             match &a.bindings {
                 Some(b) => write_text(b, &bindings),
@@ -244,7 +244,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
         Kind::Obj => {
             let target = need_target(a)?;
             let (ir, bindings) = generate(a, &prog)?;
-            // 객체는 임시 폴더에 만들어 성공했을 때만 -o 로 옮긴다(실패 시 기존 파일을 건드리지 않음)
+            // The object is built in a temporary folder and moved to -o only on success (an existing file is not touched on failure)
             let tmp = tempfile::tempdir().map_err(|e| Fail::Internal(format!("tempdir: {e}")))?;
             let obj = tmp.path().join("out.o");
             pruvc::llvm::compile_ir_to_object(ir.as_bytes(), &a.input, target, &a.cpu, &obj).map_err(codegen_fail)?;
