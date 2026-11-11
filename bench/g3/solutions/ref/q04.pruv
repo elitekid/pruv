@@ -1,0 +1,22 @@
+// G3 q04 reference: generic array copy with a pointwise postcondition, exposed through two concrete wrappers
+fn copy_all<T: Element>(a: [T]) -> [T] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[k]
+{
+  let out: [T] = copy(a);
+  return out;
+}
+
+fn copy_int(a: [i64]) -> [i64] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[k]
+{
+  return copy_all::<i64>(a);
+}
+
+fn copy_bool(a: [bool]) -> [bool] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[k]
+{
+  return copy_all::<bool>(a);
+}
