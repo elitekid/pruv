@@ -1,0 +1,6 @@
+// safe mode: alloc checks the length before the value range (n = -1 and v = 300 report the length).
+
+fn f(n: i64, v: i64) -> i64 ! alloc {
+  let a: [u8] = alloc(n, v);
+  return len(a);
+}

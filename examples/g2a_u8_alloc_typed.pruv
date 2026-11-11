@@ -1,0 +1,9 @@
+// typed [u8] alloc in a let, a reassignment and a return, all with values inside 0..=255.
+fn f(n: i64) -> [u8] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let mut a: [u8] = alloc(n, 255);
+  a = alloc(n, 7);
+  return alloc(n, 0);
+}

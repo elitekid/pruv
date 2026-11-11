@@ -1,0 +1,28 @@
+# Samples whose llvm rows expect a codegen/unsupported_type rejection (pruvc exit 1) until the LLVM backend opens [u8] in G2 A4.
+# tests/run_all.py and tests/cli_also_llvm.py read this file. Delete the file (or its lines) in A4. One repo-relative path per line.
+examples/g2a_u8_param.pruv
+examples/g2a_u8_call_result.pruv
+examples/g2a_u8_loop_havoc.pruv
+examples/g2a_u8_branch.pruv
+examples/g2a_u8_copy_store.pruv
+examples/g2a_u8_frontend_mix.pruv
+examples/g2a_u8_nested_let.pruv
+examples/g2a_u8_alloc_return.pruv
+examples/g2a_u8_ascii_refine.pruv
+examples/g2a_u8_loop_update.pruv
+examples/g2a_u8_alloc_typed.pruv
+tests/runtime/g2a_rt_extremes.pruv
+tests/runtime/g2a_rt_widen.pruv
+tests/runtime/g2a_rt_store_high.pruv
+tests/runtime/g2a_rt_store_negative.pruv
+tests/runtime/g2a_rt_alloc_zero_len.pruv
+tests/runtime/g2a_rt_alloc_len_first.pruv
+tests/runtime/g2a_rt_store_order.pruv
+tests/runtime/g2a_rt_copy_indep.pruv
+tests/runtime/g2a_rt_return.pruv
+tests/runtime/g2a_rt_reassign_early.pruv
+tests/runtime/g2a_rt_refine_entry.pruv
+tests/runtime/g2a_rt_refine_trust.pruv
+tests/runtime/g2a_rt_sorted_u8.pruv
+tests/runtime/g2a_rt_infer_havoc.pruv
+tests/runtime/g2a_rt_match_call.pruv

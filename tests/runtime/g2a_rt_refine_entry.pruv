@@ -1,0 +1,7 @@
+// a refined [u8 | 0..=127] parameter: an element 200 violates the entry check (requires violated) in every mode.
+
+fn f(a: [u8 | 0..=127]) -> i64
+  requires len(a) >= 1
+{
+  return a[0];
+}

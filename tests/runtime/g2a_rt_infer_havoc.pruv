@@ -1,0 +1,16 @@
+// with --infer: loop invariants for a [u8] store loop are inferred, so b[6] is provably in bounds and in range.
+
+fn f() -> i64 ! io, alloc {
+  let mut b: [u8] = alloc(8, 0);
+  let mut i: i64 = 0;
+  while i < 4
+    decreases 4 - i
+  {
+    b[i] = i * 30;
+    i = i + 1;
+  }
+  assert b[6] <= 255;
+  print(b[3]);
+  print(b[6]);
+  return b[3];
+}

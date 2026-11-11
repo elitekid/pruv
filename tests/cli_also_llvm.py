@@ -3,6 +3,8 @@ Run from the repo root: .venv/bin/python tests/cli_also_llvm.py
 
 a. accepted examples x {default, --no-verify, --trust-callers}: one --also-llvm run writes
    exactly what the separate rust run and llvm run write.
+   Exception: examples listed in tests/llvm_pending.txt (G2 A3, [u8] not yet in the llvm backend) use pending_case:
+   the plain rust run exits 0, the --also-llvm run exits 1 with a codegen/unsupported_type diagnostic and no files.
 b. must-reject programs (tests/must_reject/*.pruv and examples/bad_index.pruv): exit 1,
    no output file at all, same diagnostics as the plain run.
 c. usage errors exit 2 and write no output file.
@@ -81,6 +83,46 @@ def accepted_case(f, mode, flags, work):
         probs.append("c_bind.rs != b.rs")
     if r3.stdout != r1.stdout or r3.stdout.strip() != OK_LINE:
         probs.append("stdout %r vs %r" % (r3.stdout, r1.stdout))
+    return not probs, "; ".join(probs)
+
+
+def llvm_pending():
+    """Repo-relative sample paths listed in tests/llvm_pending.txt (empty set if the file is missing)."""
+    found = set()
+    try:
+        with open(os.path.join(HERE, "llvm_pending.txt"), encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    found.add(line)
+    except OSError:
+        pass
+    return found
+
+
+def pending_case(f, mode, flags, work):
+    """Example whose llvm side is not open yet: rust run exits 0; --also-llvm exits 1 with
+    codegen/unsupported_type on stdout and writes no file."""
+    stem = os.path.splitext(os.path.basename(f))[0] + "_" + mode
+    d = os.path.join(work, stem)
+    os.makedirs(d)
+    P = lambda n: os.path.join(d, n)
+    r1 = run([f, "-o", P("a.rs")] + flags)
+    r3 = run([f, "-o", P("c.rs"), "--also-llvm", P("c.ll"), P("c_bind.rs")] + flags)
+    probs = []
+    if r1.returncode != 0:
+        probs.append("rust run exit %d %s" % (r1.returncode, r1.stdout + r1.stderr))
+    elif r1.stdout.strip() != OK_LINE or not os.path.exists(P("a.rs")):
+        probs.append("rust run: stdout %r, a.rs exists %s" % (r1.stdout, os.path.exists(P("a.rs"))))
+    if r3.returncode != 1:
+        probs.append("also-llvm exit %d (expected 1) %s" % (r3.returncode, r3.stdout + r3.stderr))
+    if ("codegen", "unsupported_type") not in [k[:2] for k in diag_keys(r3.stdout)]:
+        probs.append("no codegen/unsupported_type diagnostic: %r" % (diag_keys(r3.stdout),))
+    elif "the llvm codegen layer" not in r3.stdout:
+        probs.append("unsupported_type diagnostic does not name the llvm codegen layer: %r" % r3.stdout[:300])
+    left = [n for n in ("c.rs", "c.ll", "c_bind.rs") if os.path.exists(P(n))]
+    if left:
+        probs.append("files written: %s" % left)
     return not probs, "; ".join(probs)
 
 
@@ -194,14 +236,16 @@ def main():
     try:
         examples = sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv")))
         rejects = sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/*.pruv")))
+        pending = llvm_pending()
         for f in examples:
             base = os.path.basename(f)
             if base == "bad_index.pruv":
                 rejects.append(f)  # rejected example: handled as must-reject
                 continue
+            case = pending_case if "examples/" + base in pending else accepted_case
             for mode, flags in MODES:
                 jobs.append(("examples/%s [%s]" % (base, mode),
-                             lambda f=f, m=mode, fl=flags: accepted_case(f, m, fl, work)))
+                             lambda f=f, m=mode, fl=flags, case=case: case(f, m, fl, work)))
         for f in rejects:
             jobs.append(("reject/" + os.path.relpath(f, ROOT), lambda f=f: reject_case(f, work)))
         usage = [

@@ -1,0 +1,20 @@
+// loop that rewrites each element of a copied [u8] (cap at 200, else +1); needs the element range after the loop havoc.
+fn bump(a: [u8]) -> [u8] ! alloc
+  ensures len(result) == len(a)
+{
+  let mut b: [u8] = copy(a);
+  let mut i: i64 = 0;
+  while i < len(b)
+    invariant 0 <= i && i <= len(b)
+    invariant len(b) == len(a)
+    decreases len(b) - i
+  {
+    if b[i] > 200 {
+      b[i] = 200;
+    } else {
+      b[i] = b[i] + 1;
+    }
+    i = i + 1;
+  }
+  return b;
+}

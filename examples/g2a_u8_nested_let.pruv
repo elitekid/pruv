@@ -1,0 +1,9 @@
+// [u8] let inside a nested else block (the guard must look inside nested blocks).
+fn f(n: i64) -> i64 ! alloc {
+  if n > 0 {
+    return 1;
+  } else {
+    let a: [u8] = alloc(1, 0);
+  }
+  return 0;
+}

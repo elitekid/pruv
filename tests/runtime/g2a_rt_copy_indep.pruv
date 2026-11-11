@@ -1,0 +1,9 @@
+// copy of a [u8] is independent: a store into the copy does not change the original.
+
+fn run() -> () ! io, alloc {
+  let a: [u8] = alloc(2, 1);
+  let mut c: [u8] = copy(a);
+  c[0] = 9;
+  print(a[0]);
+  print(c[0]);
+}

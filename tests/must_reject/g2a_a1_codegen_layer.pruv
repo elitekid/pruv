@@ -1,3 +1,0 @@
-fn fresh() -> [u8] ! alloc {
-  return alloc(3, 0);
-}

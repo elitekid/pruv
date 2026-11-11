@@ -1,0 +1,7 @@
+// the same refined parameter with --trust-callers: the entry check is skipped, so 200 is read as is.
+
+fn f(a: [u8 | 0..=127]) -> i64
+  requires len(a) >= 1
+{
+  return a[0];
+}

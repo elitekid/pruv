@@ -210,8 +210,21 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    // G2: verify 뒤에도, 아직 코드 생성 층이 없는 배열 타입은 거부(A3·A4 까지).
-    if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen") {
+    // G2: verify 뒤에도, 아직 코드 생성 층이 없는 배열 타입은 거부.
+    // 순수 Rust 소스 뒷단(Kind::Rs, --also-llvm 없음)은 [u8] 을 허용(A3).
+    // llvmgen 을 쓰는 모든 길(ll·obj·exe·also_llvm)은 A4 까지 [u8] 거부.
+    let g2_err = if matches!(a.kind, Kind::Rs) && a.also_llvm.is_none() {
+        pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen", None, &["array_u8"], None)
+    } else {
+        pruv_core::typeinfo::g2_unimplemented_error(
+            &prog,
+            "codegen",
+            Some("llvm codegen"),
+            &[],
+            Some("use --backend rust or [i64] for now"),
+        )
+    };
+    if let Some(e) = g2_err {
         return Err(Fail::Lang(vec![e]));
     }
     match a.kind {

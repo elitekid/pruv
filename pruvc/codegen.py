@@ -32,6 +32,8 @@ or contains `__`, error code reserved_name, so user names never collide with the
                     pruv_mul pruv_div pruv_rem pruv_neg pruv_alloc (safe mode) and
                     pruv_ud pruv_cidx pruv_cadd pruv_csub pruv_cmul pruv_cneg pruv_cdiv pruv_crem
                     (requires evaluation).  Local temporaries pruv_* are also reserved.
+                    [u8] programs also get pruv_elem_oor pruv_get_u8 pruv_set_u8 pruv_alloc_u8
+                    (safe mode) and pruv_cidx_u8 (requires evaluation).
 
 Run-time requires evaluation uses i128 (contracts are mathematical integers).  Contract
 / and % are Euclidean (div_euclid/rem_euclid, as z3 Int).  Anything undefined there
@@ -46,7 +48,7 @@ Standard types are always written `::std::vec::Vec` / `::std::option::Option` /
 `::std::result::Result` so user types named Vec etc. cannot collide.
 """
 from vast import *
-from typeinfo import TypeTable, is_user_type
+from typeinfo import TypeTable, is_user_type, is_array, uses_array_type
 
 ALLOW = ("#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, "
          "dead_code, unreachable_code, unreachable_patterns, "
@@ -121,6 +123,33 @@ fn pruv_cdiv(a: i128, b: i128) -> i128 { if b == 0 { pruv_ud("division by zero i
 fn pruv_crem(a: i128, b: i128) -> i128 { if b == 0 { pruv_ud("division by zero in %") } a.checked_rem_euclid(b).unwrap_or_else(|| pruv_ud("i128 overflow in %")) }
 """
 
+SAFE_PRELUDE_U8 = """\
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_elem_oor(v: i64) -> ! { panic!("pruv: element out of range: {} (u8 0..=255)", v) }
+#[allow(dead_code)]
+#[inline]
+fn pruv_get_u8(a: &[u8], i: i64) -> i64 { a[pruv_idx(i, a.len())] as i64 }
+#[allow(dead_code)]
+#[inline]
+fn pruv_set_u8(a: &mut [u8], i: i64, v: i64) { let k = pruv_idx(i, a.len()); if v < 0 || v > 255 { pruv_elem_oor(v) } a[k] = v as u8; }
+#[allow(dead_code)]
+#[inline]
+fn pruv_alloc_u8(n: i64, v: i64) -> ::std::vec::Vec<u8> { if n < 0 || n > (1i64 << 40) { pruv_ovf("alloc length outside 0..2^40") } if v < 0 || v > 255 { pruv_elem_oor(v) } vec![v as u8; n as usize] }
+"""
+
+CONTRACT_PRELUDE_U8 = """\
+#[allow(dead_code)]
+#[inline]
+fn pruv_cidx_u8(a: &[u8], i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a[i as usize] as i128 } else { pruv_ud("array index out of range") } }
+"""
+
+
+def is_u8_array(t):
+    return t is not None and t.name == "array_u8"
+
+
 SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div", "%": "pruv_rem"}
 CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
 
@@ -132,6 +161,8 @@ def rty(t, param=False):
         return simple[t.name]
     if t.name == "array":
         return "&[i64]" if param else "::std::vec::Vec<i64>"
+    if t.name == "array_u8":
+        return "&[u8]" if param else "::std::vec::Vec<u8>"
     if is_user_type(t):
         return t.name
     raise Exception("codegen: unsupported type %r" % (t,))
@@ -290,10 +321,15 @@ class Gen:
         types = emit_public_types(s.prog)
         if types:
             s.out.append(types)
+        u8_used = uses_array_type(s.prog, "array_u8")
         if not s.verified:
             s.out.append(SAFE_PRELUDE)
+            if u8_used:
+                s.out.append(SAFE_PRELUDE_U8)
         if s.has_req and not s.trust:
             s.out.append(CONTRACT_PRELUDE)
+            if u8_used:
+                s.out.append(CONTRACT_PRELUDE_U8)
             ctypes = s.contract_types()
             if ctypes:
                 s.out.append(ctypes)
@@ -331,6 +367,7 @@ class Gen:
 
     def fn(s, f):
         s.params = {p.name for p in f.params}
+        s.vt = {p.name: p.type for p in f.params}
         ps = ", ".join("%s: %s" % (p.name, rty(p.type, True)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
         body_name = f.name + "__pruv_body" if f.requires else f.name
@@ -401,6 +438,8 @@ class Gen:
                 return "%s(%s, %s)" % (CONTRACT_ARITH[op], s.c(e.left), s.c(e.right))
             return "(%s %s %s)" % (s.c(e.left), op, s.c(e.right))
         if isinstance(e, Index):
+            if is_u8_array(e.array.ty):
+                return "pruv_cidx_u8(%s, %s)" % (s.carr(e.array), s.c(e.index))
             return "pruv_cidx(%s, %s)" % (s.carr(e.array), s.c(e.index))
         if isinstance(e, Ctor):
             if e.name == "None":
@@ -456,10 +495,13 @@ class Gen:
             # O(n) equivalent (docs/M0_CONTRACTS.md C): forall pruv_sk in 1..len(a): a[pruv_sk-1] <= a[pruv_sk]
             L = dict(line=e.line, col=e.col)
             kv = Var(name="pruv_sk", **L)
+            aty = e.hi.args[0].ty            # type of the original array variable
+            ity = e.body.body.left.ty        # type of the original a[i] node
             e = Quant(kind="forall", var="pruv_sk", lo=IntLit(value=1, **L), hi=e.hi,
-                      body=Binary(op="<=", left=Index(array=Var(name=arr, **L),
-                                                       index=Binary(op="-", left=kv, right=IntLit(value=1, **L), **L), **L),
-                                  right=Index(array=Var(name=arr, **L), index=kv, **L), **L), **L)
+                      body=Binary(op="<=", left=Index(array=Var(name=arr, ty=aty, **L),
+                                                       index=Binary(op="-", left=kv, right=IntLit(value=1, **L), **L),
+                                                       ty=ity, **L),
+                                  right=Index(array=Var(name=arr, ty=aty, **L), index=kv, ty=ity, **L), **L), **L)
         s.tmp += 1
         n = s.tmp
         lo, hi = s.c(e.lo), s.c(e.hi)   # bounds see only the outer scope
@@ -488,12 +530,15 @@ class Gen:
 
     # ---------- statements / code expressions ----------
     def block(s, stmts, ind):
+        saved = dict(s.vt)
         for st in stmts:
             s.stmt(st, ind)
+        s.vt = saved
 
     def stmt(s, st, ind):
         if isinstance(st, Let):
             s.emit(ind, "let %s%s: %s = %s;" % ("mut " if st.mutable else "", st.name, rty(st.type), s.e(st.value)))
+            s.vt[st.name] = st.type
         elif isinstance(st, Assign):
             s.emit(ind, "%s = %s;" % (st.name, s.e(st.value)))
         elif isinstance(st, FieldAssign):
@@ -502,7 +547,14 @@ class Gen:
             decl = "let pruv_v: %s = " % rty(vty) if vty is not None else "let pruv_v = "
             s.emit(ind, "{ %s%s; %s.%s = pruv_v; }" % (decl, s.e(st.value), st.name, ".".join(st.fields)))
         elif isinstance(st, IndexAssign):
-            if s.verified:
+            if is_u8_array(s.vt.get(st.name)):
+                if s.verified:
+                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x as u8; } }" %
+                           (s.e(st.index), s.e(st.value), st.name))
+                else:
+                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; pruv_set_u8(&mut %s, pruv_i, pruv_x); }" %
+                           (s.e(st.index), s.e(st.value), st.name))
+            elif s.verified:
                 s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x; } }" %
                        (s.e(st.index), s.e(st.value), st.name))
             else:
@@ -562,6 +614,10 @@ class Gen:
                 return "%s(%s, %s)" % (SAFE_ARITH[e.op], s.e(e.left), s.e(e.right))
             return "(%s %s %s)" % (s.e(e.left), e.op, s.e(e.right))
         if isinstance(e, Index):
+            if is_u8_array(e.array.ty):
+                if not s.verified:
+                    return "pruv_get_u8(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
+                return "((unsafe { *%s.get_unchecked((%s) as usize) }) as i64)" % (s.e(e.array), s.e(e.index))
             if not s.verified:
                 return "pruv_get(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
             return "(unsafe { *%s.get_unchecked((%s) as usize) })" % (s.e(e.array), s.e(e.index))
@@ -584,6 +640,10 @@ class Gen:
             if n == "len":
                 return "(%s.len() as i64)" % s.e(a[0])
             if n == "alloc":
+                if is_u8_array(e.ty):
+                    if not s.verified:
+                        return "pruv_alloc_u8(%s, %s)" % (s.e(a[0]), s.e(a[1]))
+                    return "{ let pruv_n: i64 = %s; let pruv_v: i64 = %s; vec![pruv_v as u8; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]))
                 if not s.verified:
                     return "pruv_alloc(%s, %s)" % (s.e(a[0]), s.e(a[1]))
                 # source order: n before v (vec![v; n] would evaluate v first)
@@ -592,7 +652,7 @@ class Gen:
                 return "%s.to_vec()" % s.e(a[0])
             if n == "print":
                 return 'println!("{}", %s)' % s.e(a[0])
-            args = [s.arr_ref(x) if x.ty == ARRAY else s.e(x) for x in a]
+            args = [s.arr_ref(x) if (x.ty is not None and is_array(x.ty)) else s.e(x) for x in a]
             if s.verified and n in s.has_req:
                 n = n + "__pruv_body"   # caller proved requires
             return "%s(%s)" % (n, ", ".join(args))
@@ -601,7 +661,7 @@ class Gen:
 
 def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30):
     from typeinfo import g2_unimplemented_error
-    g2err = g2_unimplemented_error(prog, "codegen")
+    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8",))
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
     g = Gen(prog, verified, trust_callers, budget)

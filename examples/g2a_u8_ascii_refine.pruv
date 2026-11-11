@@ -1,0 +1,18 @@
+// [u8 | 0..=127] parameter copied, then lowercase letters (97..=122) are turned into uppercase by a loop.
+fn upper(a: [u8 | 0..=127]) -> [u8] ! alloc
+  ensures len(result) == len(a)
+{
+  let mut b: [u8] = copy(a);
+  let mut i: i64 = 0;
+  while i < len(b)
+    invariant 0 <= i && i <= len(b)
+    invariant len(b) == len(a)
+    decreases len(b) - i
+  {
+    if b[i] >= 97 && b[i] <= 122 {
+      b[i] = b[i] - 32;
+    }
+    i = i + 1;
+  }
+  return b;
+}

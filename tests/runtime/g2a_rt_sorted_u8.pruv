@@ -1,0 +1,7 @@
+// a sortedness requires over a [u8]: the runtime check reads elements with pruv_cidx_u8 and rejects [3, 1].
+
+fn f(a: [u8]) -> i64
+  requires forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]
+{
+  return len(a);
+}

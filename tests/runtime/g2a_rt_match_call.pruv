@@ -1,0 +1,23 @@
+// [u8] let and store inside a match arm, and indexing a call result / copy of a call result directly.
+fn make() -> [u8] ! alloc
+  ensures len(result) == 3
+{
+  return alloc(3, 9);
+}
+fn f(o: Option<i64>) -> i64 ! io, alloc {
+  let x: i64 = make()[1];
+  print(x);
+  match o {
+    Some(v) => {
+      let mut b: [u8] = alloc(2, 0);
+      if v >= 0 && v <= 255 {
+        b[1] = v;
+      }
+      print(b[1]);
+    }
+    None => {
+      print(0 - 1);
+    }
+  }
+  return copy(make())[2];
+}

@@ -714,3 +714,21 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
   - 기록만(3): 추론의 원소 타입 표가 이름 기반이라 형제 블록에서 같은 이름을 다른 배열 타입으로 선언하면 섞일 수 있다(후보는 최종 검증을 거쳐 건전성 영향 없음, bool이 열리는 A5에서 처리). `g2a_a1_verify_layer` 이름이 지금 내용(codegen 층 거부)과 다르다. u8 함수의 pc에 전칭 가정이 들어가 의무가 많은 함수에서 느려질 수 있다(측정 안 함).
 - **확인 감사(Claude Opus):** 필수 0·권고 1(불변식 없는 루프 안 잘못된 저장 + `--infer` 표본이 빠짐) → 반영. 미룬 권고 3건이 건전성에 영향 없음(후보는 최종 검증을 거치고, 느려지면 `verify_unknown`으로 거부될 뿐)도 확인했다.
 - 측정 못 한 것: u8 함수의 증명 시간(R5), Windows·Linux 실행.
+
+## 36. G2 A3: `[u8]` Rust 소스 실행 (2026-11-11)
+`[u8]` 프로그램을 이제 Rust 소스 뒷단(`--backend rust`)에서 실행 코드로 만든다. LLVM 뒷단은 A4까지 codegen `unsupported_type`("the llvm codegen layer is not implemented")으로 거부한다(결정 16). 두 판이 같은 바이트를 내도록 생성 글자를 `docs/G2_A3_IMPL.md`에 고정했다.
+
+- **생성:** 매개변수 `&[u8]`, 지역·반환 `Vec<u8>`, 읽기는 i64로 넓힘. 증명 모드는 `get_unchecked` + 증명된 값만 `as u8`(저장·alloc 두 곳). 안전 모드(`--no-verify`)는 `pruv_get_u8`·`pruv_set_u8`·`pruv_alloc_u8`이 검사한 뒤 줄인다: 저장은 색인 → 값, alloc은 길이 → 값(길이 0이어도 값 검사). 새 실패 문구 `pruv: element out of range: <v> (u8 0..=255)`(종료 101). requires 실행 검사의 원소 읽기는 `pruv_cidx_u8`(정렬 requires의 O(n) 다시 쓰기도 원소 타입을 이어받음).
+- **기존 출력 불변:** u8 helper는 프로그램이 `[u8]`를 쓸 때만 덧붙인다. `[i64]`만 쓰는 프로그램의 생성 소스는 바이트 그대로다.
+- **가드:** 드라이버는 순수 Rust 뒷단에서만 `[u8]`를 통과시키고, llvmgen을 쓰는 모든 길(`--backend llvm`, `--also-llvm`, Rust 판 `--emit ll/obj/exe`)은 거부한다. 생성기 자체 가드도 같은 기준(llvmgen 가드는 그대로).
+- **범위 조정:** `runtime.c` 크기·정렬 일반화는 A4로 옮겼다. 런타임은 LLVM 뒷단만 쓰고, Rust allocator 판에 v2 host helper extern을 넣으면 아직 그 helper가 없는 기존 바인딩 링크가 깨지기 때문이다(v2 런타임과 v2 바인딩은 함께 들어가야 함).
+- **표본:** 증명 통과 must_reject 10쌍을 지우고(이제 rust 뒷단에서 통과) 양성 표본으로 옮겼다. examples `g2a_u8_*` 11개(옮긴 8 + ASCII 정제 대문자화·루프 원소 변경·타입 alloc 3), runtime `g2a_rt_*` 15개(양 끝값, 읽기 확대, 256/-1 저장 거부, 길이 0 alloc 값 검사, alloc 길이 우선, 저장 평가·검사 순서, 복사 독립, 반환, 재대입·조기 반환, 정제 진입 검사, trust, 정렬 requires, `--infer` havoc, match 팔·호출 결과 색인). 이들의 llvm 행은 `tests/llvm_pending.txt`로 "llvm 층 거부"를 기대한다(A4에서 지움). G2_SPEC 8.2의 u8 항목을 덮고, bool 배치·raw bool은 A5·A4, i32는 A6.
+- **회귀(마지막 실행):**
+  - run_all `--backend both` 두 판 590/590(행 목록 590 = 488 − 10 + 112, 빠진 행·실패 0)
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - diff_rust·diff_llvm 모두 same, cli_also_llvm 두 판 280/280
+  - diff_trace 451(감사 반영 표본 1개 더하기 전): 플래그 없이 same 422·cex_only 29, `--infer` same 423·cex_only 26·same_unknown 2. 새 표본은 두 모드 모두 same(결정 11, 더한 1개도 단독 대조 same). 나머지 분류 수는 A2와 같다.
+  - m3_all 9단계 ok(compilers 752), `tests/inference --regress` 두 판 252/252, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·`model::tests` 1
+- **감사(Claude Opus):** 필수 0·권고 5, 모두 반영: Rust 정렬 다시 쓰기의 Index ty 고정을 명세 문구에 맞춤, Python prelude의 u8 사용 판정 한 번만, run_all pending 검사가 "llvm codegen" 층 문구와 목록 파일 존재까지 확인, cli_also_llvm pending이 rust 실행의 출력·파일까지 확인, match 팔·호출 결과 직접 색인 표본 추가.
+- **확인 감사(Claude Opus):** 필수 0, 반영 5건 모두 맞음. 권고 1(cli_also_llvm pending도 층 문구 확인) → 반영.
+- 측정 못 한 것: u8 함수의 증명 시간, 생성 코드 성능, Windows·Linux 실행.

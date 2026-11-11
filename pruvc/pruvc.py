@@ -73,8 +73,13 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    # G2: runs after verify too; array types that have no code-generation layer yet are rejected (until A3·A4)
-    g2err = g2_unimplemented_error(prog, "codegen")
+    # G2: runs after verify too; array types that have no code-generation layer yet are rejected.
+    # The pure Rust-source path implements [u8] (A3); every path that uses llvmgen still rejects it (until A4).
+    if backend == "llvm" or also_llvm:
+        g2err = g2_unimplemented_error(prog, "codegen", layer="llvm codegen",
+                                       fix="use --backend rust or [i64] for now")
+    else:
+        g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8",))
     if g2err is not None:
         return [g2err]
     if backend == "llvm":

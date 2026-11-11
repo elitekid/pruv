@@ -1,0 +1,4 @@
+// function that builds a typed [u8] with alloc and returns it.
+fn fresh() -> [u8] ! alloc {
+  return alloc(3, 0);
+}

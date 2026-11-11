@@ -15,6 +15,9 @@ pub fn rty(t: &str, param: bool) -> String {
         "array" => {
             if param { "&[i64]".to_string() } else { "::std::vec::Vec<i64>".to_string() }
         }
+        "array_u8" => {
+            if param { "&[u8]".to_string() } else { "::std::vec::Vec<u8>".to_string() }
+        }
         other => other.to_string(),
     }
 }
@@ -283,6 +286,8 @@ mod tests {
     fn types() {
         assert_eq!(rty("array", true), "&[i64]");
         assert_eq!(rty("array", false), "::std::vec::Vec<i64>");
+        assert_eq!(rty("array_u8", true), "&[u8]");
+        assert_eq!(rty("array_u8", false), "::std::vec::Vec<u8>");
         assert_eq!(cty("Point"), "pruv_contract__Point");
         assert_eq!(conv("option", "x"), "x.map(|v| v as i128)");
         assert!(try_cty("unit").is_err());

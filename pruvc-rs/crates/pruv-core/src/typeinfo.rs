@@ -52,30 +52,31 @@ pub fn type_name(ty: &str) -> String {
     }
 }
 
-fn g2_in_stmts(stmts: &[Stmt]) -> Option<(i64, i64, String)> {
+/// 걷기 공통: `pick(타입 이름)` 이 참인 첫 자리.
+fn g2_in_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool) -> Option<(i64, i64, String)> {
     for s in stmts {
         match s {
             Stmt::Let(l) => {
-                if is_array_name(&l.ty) && l.ty != "array" {
+                if pick(&l.ty) {
                     return Some((l.line, l.col, l.ty.clone()));
                 }
             }
             Stmt::If(i) => {
-                if let Some(r) = g2_in_stmts(&i.then) {
+                if let Some(r) = g2_in_stmts(&i.then, pick) {
                     return Some(r);
                 }
-                if let Some(r) = g2_in_stmts(&i.els) {
+                if let Some(r) = g2_in_stmts(&i.els, pick) {
                     return Some(r);
                 }
             }
             Stmt::While(w) => {
-                if let Some(r) = g2_in_stmts(&w.body) {
+                if let Some(r) = g2_in_stmts(&w.body, pick) {
                     return Some(r);
                 }
             }
             Stmt::Match(m) => {
                 for arm in &m.arms {
-                    if let Some(r) = g2_in_stmts(&arm.body) {
+                    if let Some(r) = g2_in_stmts(&arm.body, pick) {
                         return Some(r);
                     }
                 }
@@ -86,35 +87,56 @@ fn g2_in_stmts(stmts: &[Stmt]) -> Option<(i64, i64, String)> {
     None
 }
 
-/// [i64] 가 아닌 배열 타입(아직 구현 안 한 층)이 처음 나오는 곳: (line, col, 내부 타입 이름).
-/// 함수 순서대로, 각 함수에서 매개변수 → 반환 타입 → 본문 Let 선언 타입(소스 순서 깊이 우선).
-pub fn first_g2_unimplemented(prog: &Program) -> Option<(i64, i64, String)> {
+fn g2_walk(prog: &Program, pick: &dyn Fn(&str) -> bool) -> Option<(i64, i64, String)> {
     for f in &prog.functions {
         for p in &f.params {
-            if is_array_name(&p.ty) && p.ty != "array" {
+            if pick(&p.ty) {
                 return Some((f.line, f.col, p.ty.clone()));
             }
         }
-        if is_array_name(&f.ret) && f.ret != "array" {
+        if pick(&f.ret) {
             return Some((f.line, f.col, f.ret.clone()));
         }
-        if let Some(r) = g2_in_stmts(&f.body) {
+        if let Some(r) = g2_in_stmts(&f.body, pick) {
             return Some(r);
         }
     }
     None
 }
 
+/// [i64] 가 아닌 배열 타입(아직 구현 안 한 층)이 처음 나오는 곳: (line, col, 내부 타입 이름).
+/// 함수 순서대로, 각 함수에서 매개변수 → 반환 타입 → 본문 Let 선언 타입(소스 순서 깊이 우선).
+/// `skip` 에 든 내부 이름은 건너뛴다.
+pub fn first_g2_unimplemented(prog: &Program, skip: &[&str]) -> Option<(i64, i64, String)> {
+    g2_walk(prog, &|t: &str| is_array_name(t) && t != "array" && !skip.contains(&t))
+}
+
+/// 프로그램의 매개변수·반환·let 타입 중 내부 이름이 `name` 인 자리가 있는가.
+pub fn uses_array_type(prog: &Program, name: &str) -> bool {
+    g2_walk(prog, &|t: &str| t == name).is_some()
+}
+
 /// `first_g2_unimplemented` 를 진단으로. stage 는 "verify" / "codegen" 등 막힌 층 이름.
-pub fn g2_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diagnostic::PruvError> {
-    let (line, col, ty) = first_g2_unimplemented(prog)?;
+/// layer 가 있으면 메시지의 층 이름으로 쓰고, fix 가 있으면 고침 안내를 바꾼다.
+pub fn g2_unimplemented_error(
+    prog: &Program,
+    stage: &str,
+    layer: Option<&str>,
+    skip: &[&str],
+    fix: Option<&str>,
+) -> Option<crate::diagnostic::PruvError> {
+    let (line, col, ty) = first_g2_unimplemented(prog, skip)?;
     Some(crate::diagnostic::PruvError::new(
         stage,
         line,
         col,
         "unsupported_type",
-        format!("{} arrays are not supported yet: the {} layer is not implemented", type_name(&ty), stage),
-        "use [i64] for now",
+        format!(
+            "{} arrays are not supported yet: the {} layer is not implemented",
+            type_name(&ty),
+            layer.unwrap_or(stage)
+        ),
+        fix.unwrap_or("use [i64] for now"),
     ))
 }
 

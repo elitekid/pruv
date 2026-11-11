@@ -1,0 +1,10 @@
+// copy of a [u8] parameter, then a store into the copy: the copy is independent and stays in range.
+fn f(a: [u8]) -> i64 ! alloc
+  requires len(a) >= 2
+{
+  let mut c: [u8] = copy(a);
+  c[0] = 255;
+  assert c[0] == 255;
+  assert c[1] <= 255;
+  return 0;
+}

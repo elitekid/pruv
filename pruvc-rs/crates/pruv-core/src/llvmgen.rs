@@ -1832,7 +1832,7 @@ const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-
 
 /// 대상 ABI 를 고른 생성. SysV 는 gen_llvm 과 바이트 동일.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
-    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen") {
+    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &[], None) {
         return Err(format!("unsupported_type: {}", e.message));
     }
     let tt = TypeTable::new(&prog.types);

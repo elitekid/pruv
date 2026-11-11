@@ -1,0 +1,17 @@
+// safe mode: `b[idx()] = val();` evaluates idx, then val, then checks the index (before the value range).
+
+fn idx() -> i64 ! io {
+  print(1);
+  return 5;
+}
+
+fn val() -> i64 ! io {
+  print(2);
+  return 300;
+}
+
+fn f() -> i64 ! io, alloc {
+  let mut b: [u8] = alloc(2, 0);
+  b[idx()] = val();
+  return 0;
+}

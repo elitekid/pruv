@@ -39,52 +39,88 @@ def type_name(ty: Type) -> str:
     return _BUILTIN_PRINT.get(ty.name, ty.name)
 
 
-def _first_g2_in_block(stmts):
+def _g2_hit(ty, skip):
+    return is_array(ty) and ty != ARRAY and ty.name not in skip
+
+
+def _first_g2_in_block(stmts, skip=()):
     """first (line, col, ty) of a Let with a non-[i64] array type, source order, depth first"""
     for st in stmts:
         if isinstance(st, Let):
-            if is_array(st.type) and st.type != ARRAY:
+            if _g2_hit(st.type, skip):
                 return (st.line, st.col, st.type)
         elif isinstance(st, If):
-            r = _first_g2_in_block(st.then) or _first_g2_in_block(st.els)
+            r = _first_g2_in_block(st.then, skip) or _first_g2_in_block(st.els, skip)
             if r:
                 return r
         elif isinstance(st, While):
-            r = _first_g2_in_block(st.body)
+            r = _first_g2_in_block(st.body, skip)
             if r:
                 return r
         elif isinstance(st, Match):
             for arm in st.arms:
-                r = _first_g2_in_block(arm.body)
+                r = _first_g2_in_block(arm.body, skip)
                 if r:
                     return r
     return None
 
 
-def first_g2_unimplemented(prog):
+def first_g2_unimplemented(prog, skip=()):
     """G2: first non-[i64] array type the proof/codegen layers do not implement yet.
-    -> (line, col, ty) or None. Order per function: params, return type, body lets."""
+    -> (line, col, ty) or None. Order per function: params, return type, body lets.
+    skip: internal type names (e.g. "array_u8") that are ignored."""
     for fn in prog.functions:
         for p in fn.params:
-            if is_array(p.type) and p.type != ARRAY:
+            if _g2_hit(p.type, skip):
                 return (fn.line, fn.col, p.type)
-        if is_array(fn.ret) and fn.ret != ARRAY:
+        if _g2_hit(fn.ret, skip):
             return (fn.line, fn.col, fn.ret)
-        r = _first_g2_in_block(fn.body)
+        r = _first_g2_in_block(fn.body, skip)
         if r:
             return r
     return None
 
 
-def g2_unimplemented_error(prog, stage):
+def _any_array_named(stmts, name):
+    for st in stmts:
+        if isinstance(st, Let):
+            if st.type.name == name:
+                return True
+        elif isinstance(st, If):
+            if _any_array_named(st.then, name) or _any_array_named(st.els, name):
+                return True
+        elif isinstance(st, While):
+            if _any_array_named(st.body, name):
+                return True
+        elif isinstance(st, Match):
+            for arm in st.arms:
+                if _any_array_named(arm.body, name):
+                    return True
+    return False
+
+
+def uses_array_type(prog, name):
+    """True if some param, return type or let type of the program is the internal type `name`."""
+    for fn in prog.functions:
+        for p in fn.params:
+            if p.type.name == name:
+                return True
+        if fn.ret.name == name:
+            return True
+        if _any_array_named(fn.body, name):
+            return True
+    return False
+
+
+def g2_unimplemented_error(prog, stage, layer=None, skip=(), fix=None):
     """PruvError for the first unimplemented array type, or None. stage: "verify" | "codegen"."""
-    f = first_g2_unimplemented(prog)
+    f = first_g2_unimplemented(prog, skip)
     if f is None:
         return None
     line, col, ty = f
     return PruvError(stage, line, col, "unsupported_type",
-                     "%s arrays are not supported yet: the %s layer is not implemented" % (type_name(ty), stage),
-                     "use [i64] for now")
+                     "%s arrays are not supported yet: the %s layer is not implemented" % (type_name(ty), layer or stage),
+                     fix or "use [i64] for now")
 
 
 class TypeTable:

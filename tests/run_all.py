@@ -28,7 +28,9 @@ variant and reused; every job uses its own work file names.
 Optional runtime json field "contract_budget": N appends
 ["--contract-budget", str(N)] to the pruvc flags of every matrix row (labels unchanged).
 Optional runtime json field "ll_contains": [strings] (llvm backend only) must each occur in
-the WHOLE generated .ll text (not just __pruv_body functions)."""
+the WHOLE generated .ll text (not just __pruv_body functions).
+tests/llvm_pending.txt (one repo-relative sample path per line, # comments): the llvm rows of the listed examples and
+runtime samples expect pruvc exit 1 with a codegen/unsupported_type diagnostic (nothing is linked or run)."""
 import concurrent.futures, glob, json, os, platform, re, shutil, subprocess, sys, tempfile, threading
 
 CPU_FLAG = "-mcpu=native" if platform.machine().lower() in ("arm64", "aarch64") else "-march=native"
@@ -127,6 +129,47 @@ def rel_sample(p):
     return os.path.relpath(p, ROOT).replace(os.sep, "/")
 
 
+_pending = None  # set of repo-relative sample paths from tests/llvm_pending.txt (read once)
+
+
+def llvm_pending():
+    """Sample paths whose llvm rows expect a codegen/unsupported_type rejection (empty set if the file is missing)."""
+    global _pending
+    if _pending is None:
+        found = set()
+        try:
+            with open(os.path.join(HERE, "llvm_pending.txt"), encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        found.add(line)
+        except OSError:
+            pass
+        missing = sorted(x for x in found if not os.path.exists(os.path.join(ROOT, x)))
+        if missing:  # a stale or misspelled entry must not be ignored silently
+            raise RuntimeError("tests/llvm_pending.txt lists missing files: %s" % missing)
+        _pending = found  # assigned only when complete (jobs run in threads)
+    return _pending
+
+
+def pending_result(c):
+    """(ok, detail) for a pruvc run of a pending sample: exit 1 and a stage=codegen code=unsupported_type diagnostic."""
+    diags = []
+    layer_ok = False   # the message must name the llvm codegen layer (driver guard, not some other rejection)
+    for line in c.stdout.splitlines():
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(d, dict):
+            diags.append((d.get("stage"), d.get("code")))
+            if d.get("code") == "unsupported_type" and "the llvm codegen layer" in (d.get("message") or ""):
+                layer_ok = True
+    ok = c.returncode == 1 and ("codegen", "unsupported_type") in diags and layer_ok
+    return ok, "pending: exit %d (expected 1), diagnostics %s (expected codegen/unsupported_type) %s" % (
+        c.returncode, diags, c.stderr)
+
+
 def safe(name, fn, row=None):
     """Wrap a job body so that it always returns (name, ok, detail).
     row: {"sample", "backend", "flags", "mode"} describing this test row (stored as job.row)."""
@@ -204,6 +247,8 @@ def example_job(f, mode, flags, llvm, name):
             ll = os.path.join(work, key + ".ll")
             rs = os.path.join(work, key + ".rs")
             c = pruvc_llvm(f, ll, rs, flags)
+            if rel_sample(f) in llvm_pending():
+                return pending_result(c)
             if c.returncode != 0:
                 return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
             text = open(ll).read()
@@ -274,6 +319,8 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             ll = os.path.join(work, key + ".ll")
             gen = os.path.join(work, key + "_gen.rs")
             c = pruvc_llvm(pruv, ll, gen, flags)
+            if rel_sample(pruv) in llvm_pending():
+                return pending_result(c)
         else:
             key = t + suffix
             gen = os.path.join(work, key + "_gen.rs")

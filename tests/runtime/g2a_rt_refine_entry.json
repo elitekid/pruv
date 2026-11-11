@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": [], "stderr_contains": "pruv: requires violated: f:", "gen_contains": ["pruv_cidx_u8"]}

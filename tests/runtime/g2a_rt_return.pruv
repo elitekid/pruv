@@ -1,0 +1,11 @@
+// a function builds a [u8] and returns it (Vec<u8> in Rust); the driver prints its length and elements.
+
+fn make(n: i64) -> [u8] ! alloc
+  requires n >= 2 && n <= 8
+  ensures len(result) == n
+{
+  let mut a: [u8] = alloc(n, 7);
+  a[0] = 200;
+  a[1] = 255;
+  return a;
+}

@@ -1,0 +1,12 @@
+// [u8] extremes: 0 and 255 are stored, read back and printed.
+
+fn run() -> () ! io, alloc {
+  let mut a: [u8] = alloc(2, 255);
+  a[1] = 0;
+  print(a[0]);
+  print(a[1]);
+  a[0] = 0;
+  a[1] = 255;
+  print(a[0]);
+  print(a[1]);
+}

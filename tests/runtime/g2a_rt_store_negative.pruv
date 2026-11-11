@@ -1,0 +1,8 @@
+// safe mode: storing -1 into a [u8] element panics (after the print before the store).
+
+fn f(v: i64) -> i64 ! io, alloc {
+  let mut a: [u8] = alloc(1, 0);
+  print(1);
+  a[0] = v;
+  return a[0];
+}

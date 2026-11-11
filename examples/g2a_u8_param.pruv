@@ -1,0 +1,8 @@
+// [u8] parameter: reads are provably within 0..=255 (domain assumption enters at function entry).
+fn f(a: [u8]) -> i64
+  requires len(a) >= 1
+{
+  assert a[0] <= 255;
+  assert a[0] >= 0;
+  return 0;
+}
