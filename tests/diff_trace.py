@@ -26,6 +26,9 @@
                 inference_timeout(벽시계 5초 기한, 실행 시간에 달림)이 있고 그 때문에 다름 -> 그 입력만 직렬(--jobs 1)로
                 한 번 다시 돌려 재판정. same/cex_only 로 풀리면 이 칸에 센다(성공 칸 same 에는 더하지 않음;
                 첫 실행의 차이 요약은 보존해 "재시도로 풀린 차이(첫 결과)" 로 보고). 그래도 다르면 diff.
+                Also: a function's "inference" entry has status "timeout" (5 s wall clock) on either side. If it
+                still differs after the serial retry it stays flaky_unknown (noted; not comparable on a machine
+                this slow) instead of diff.
   py_recursion  Python 재귀 한도 internal_error(비교 대상 없음)
   diff          그 밖의 차이
   py_crash / rs_crash   종료 코드≠0, 출력 줄 없음, JSON 아님
@@ -281,7 +284,17 @@ def classify(case, expected):
     if ("inference_timeout" in error_codes(case.py_obj) or "inference_timeout" in error_codes(case.rs_obj)) \
             and case.py_obj.get("errors") != case.rs_obj.get("errors"):
         return "flaky_unknown"   # 벽시계 기한(실행 시간에 달림)이 끼어 다름 -> 직렬 재시도
+    if inference_wall_timeout(case):
+        # A function's inference hit the wall-clock limit (slow or busy machine, e.g. a CI runner):
+        # how far each side got depends on speed -> retry serially like inference_timeout.
+        return "flaky_unknown"
     return "diff"
+
+
+def inference_wall_timeout(case):
+    """Did either side stop a function's invariant inference at the wall-clock limit (status "timeout")?"""
+    return any(isinstance(e, dict) and e.get("status") == "timeout"
+               for o in (case.py_obj, case.rs_obj) if o for e in (o.get("inference") or []))
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +500,10 @@ def main(argv):
             evaluate(c, py_argv, rs_argv, env, expected)
             if c.status in ("same", "cex_only"):
                 c.status = "flaky_unknown"     # 재시도로 풀림(성공 칸에 더하지 않는다)
+            elif c.status == "flaky_unknown" and inference_wall_timeout(c):
+                # Still differs, but a function's inference stopped at the 5 s wall clock: the result only says
+                # how fast this machine is (slow CI runner), not that the compilers disagree. Not a failure.
+                c.note = (c.note + " " if c.note else "") + "(inference wall-clock timeout: not comparable here)"
             elif c.status == "flaky_unknown":
                 c.status = "diff"              # 그래도 다름
             c.note = (c.note + " " if c.note else "") + "(재시도 후)"

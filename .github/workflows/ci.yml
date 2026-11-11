@@ -1,19 +1,19 @@
-# 3개 OS(macOS·Linux·Windows)에서 Rust 판 컴파일러(pruvc-rs)를 빌드하고 시험한다.
+# Build and test the Rust compiler (pruvc-rs) on macOS, Linux and Windows.
 #
-# OS 마다 다른 점
-# - LLVM 22: llvm-sys(=221.1.2, force-static)가 llvm-config 와 정적 LLVM 라이브러리를 요구한다.
-#     macOS   = Homebrew llvm@22 (README 빌드법과 같은 위치)
-#     Linux   = apt.llvm.org 의 llvm-22-dev·clang-22
-#     Windows = LLVM 공식 릴리스 묶음 clang+llvm-*-x86_64-pc-windows-msvc (llvm-config·정적 .lib 포함, 캐시)
-# - z3 는 vendored(z3-src)라 OS 마다 소스에서 빌드된다. 오래 걸려서 cargo 캐시(rust-cache)를 쓴다.
-# - Python 대조판(pruvc/pruvc.py)은 z3-solver 를 .venv 에 깔아 쓴다(tests/compiler_driver.py 가 .venv 를 찾는다).
+# Per-OS setup
+# - LLVM 22: llvm-sys (=221.1.2, force-static) needs llvm-config and the static LLVM libraries.
+#     macOS   = Homebrew llvm@22 (same location as the README build instructions)
+#     Linux   = llvm-22-dev and clang-22 from apt.llvm.org
+#     Windows = official release archive clang+llvm-*-x86_64-pc-windows-msvc (has llvm-config and static .lib; cached)
+# - z3 is vendored (z3-src), so every OS builds it from source. That is slow, so the cargo cache (rust-cache) is used.
+# - The Python reference compiler (pruvc/pruvc.py) runs from .venv with z3-solver (tests/compiler_driver.py looks there).
 #
-# Windows 에서 뺀 시험과 이유
-# - run_all 의 examples·runtime 묶음, m3_all 의 compilers·standalone·abi·abi_v2·abi_bool·abi_utf8 단계:
-#   생성한 코드를 실행 파일로 링크해 돌려 봐야 하는데, Windows 대상 exe 링크는 아직 지원하지 않는다(README).
-#   Windows ABI 실행은 별도 워크플로 windows-abi.yml 이 맡는다.
-# - Windows 에서는 링크가 필요 없는 시험만 돈다: cargo test, run_all must_reject(거부해야 할 프로그램),
-#   m3_all parse·check·trace·trace_infer·llvm·rust(두 판 결과 대조).
+# Tests left out on Windows, and why
+# - run_all groups examples and runtime, and m3_all stages compilers, standalone, abi, abi_v2, abi_bool, abi_utf8:
+#   they link the generated code into an executable and run it, and linking Windows executables is not supported
+#   yet (see README). Running the Windows ABI is covered by the separate workflow windows-abi.yml.
+# - Windows runs only the tests that need no linking: cargo test, run_all must_reject (programs that must be
+#   rejected), and m3_all parse, check, trace, trace_infer, llvm, rust (comparison of the two compilers' output).
 
 name: ci
 
@@ -54,13 +54,13 @@ jobs:
           python-version: "3.9"
 
       # ---------- LLVM 22 ----------
-      - name: LLVM 22 설치 (macOS)
+      - name: Install LLVM 22 (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install llvm@22 zstd
           echo "LLVM_SYS_221_PREFIX=$(brew --prefix llvm@22)" >> "$GITHUB_ENV"
 
-      - name: LLVM 22 설치 (Linux)
+      - name: Install LLVM 22 (Linux)
         if: runner.os == 'Linux'
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
@@ -68,10 +68,10 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q llvm-22-dev libpolly-22-dev clang-22 lld-22 libzstd-dev zlib1g-dev libxml2-dev
           echo "LLVM_SYS_221_PREFIX=/usr/lib/llvm-22" >> "$GITHUB_ENV"
-          # 시험이 PATH 의 clang·opt·llvm-nm 을 찾는다(LLVM 22 IR 을 읽어야 한다).
+          # The tests look up clang, opt and llvm-nm on PATH (they must read LLVM 22 IR).
           echo "/usr/lib/llvm-22/bin" >> "$GITHUB_PATH"
 
-      - name: LLVM 22 캐시 (Windows)
+      - name: Cache LLVM 22 (Windows)
         if: runner.os == 'Windows'
         id: llvm-cache
         uses: actions/cache@v4
@@ -79,7 +79,7 @@ jobs:
           path: C:\llvm
           key: llvm-${{ env.LLVM_VERSION }}-x86_64-pc-windows-msvc
 
-      - name: LLVM 22 내려받기 (Windows)
+      - name: Download LLVM 22 (Windows)
         if: runner.os == 'Windows' && steps.llvm-cache.outputs.cache-hit != 'true'
         run: |
           name="clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc"
@@ -88,32 +88,40 @@ jobs:
           tar -xf llvm.tar.xz -C /c/llvm --strip-components=1
           rm llvm.tar.xz
 
-      - name: LLVM 22 경로 (Windows)
+      # The official Windows LLVM lists libxml2 (xml2s.lib) in `llvm-config --system-libs`, but the archive does not
+      # ship it. Only LLVM's Windows manifest code uses libxml2 and pruvc never calls it, so the linker pulls no
+      # libxml2 symbol: an empty placeholder library is enough to satisfy the `xml2s.lib` input.
+      - name: LLVM 22 paths and xml2s.lib placeholder (Windows)
         if: runner.os == 'Windows'
         run: |
           echo "LLVM_SYS_221_PREFIX=C:\\llvm" >> "$GITHUB_ENV"
           echo "C:\\llvm\\bin" >> "$GITHUB_PATH"
+          mkdir -p /c/xml2stub
+          echo 'int pruv_xml2_placeholder;' > /c/xml2stub/stub.c
+          /c/llvm/bin/clang-cl.exe -c /c/xml2stub/stub.c -Fo"C:\\xml2stub\\stub.obj"
+          /c/llvm/bin/llvm-lib.exe -out:"C:\\xml2stub\\xml2s.lib" "C:\\xml2stub\\stub.obj"
+          echo "RUSTFLAGS=-L native=C:\\xml2stub" >> "$GITHUB_ENV"
 
-      # ---------- Python 대조판 ----------
-      - name: Python 대조판 환경 (.venv + z3-solver)
+      # ---------- Python reference compiler ----------
+      - name: Python reference environment (.venv + z3-solver)
         run: |
           python -m venv .venv
           if [ "$RUNNER_OS" = Windows ]; then py=.venv/Scripts/python.exe; else py=.venv/bin/python; fi
           "$py" -m pip install -q "z3-solver==${Z3_SOLVER_VERSION}"
           "$py" -c "import z3; print('z3', z3.get_version_string())"
 
-      # ---------- 빌드 ----------
+      # ---------- Build ----------
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: pruvc-rs
 
-      - name: 도구 버전
+      - name: Tool versions
         run: |
           rustc -vV
           "$LLVM_SYS_221_PREFIX/bin/llvm-config" --version
           python --version
 
-      - name: 빌드 (cargo build --release --locked)
+      - name: Build (cargo build --release --locked)
         working-directory: pruvc-rs
         run: cargo build --release --locked
 
@@ -121,25 +129,25 @@ jobs:
         working-directory: pruvc-rs
         run: cargo test --release --locked --workspace
 
-      # ---------- 시험: macOS·Linux (전체) ----------
-      - name: run_all 두 백엔드 (행 목록 대조)
+      # ---------- Tests: macOS and Linux (everything) ----------
+      - name: run_all, both backends (compared with the saved row list)
         if: runner.os != 'Windows'
         run: python tests/run_all.py --backend both --compare-rows tests/run_all_rows.txt
 
-      - name: m3_all 두 판 대조 (--quick)
+      - name: m3_all, Python vs Rust comparison (--quick)
         if: runner.os != 'Windows'
         run: python tests/m3_all.py --quick --log-dir m3-logs
 
-      # ---------- 시험: Windows (링크 없는 것만, 위 머리 주석 참고) ----------
+      # ---------- Tests: Windows (no linking; see the header comment) ----------
       - name: run_all must_reject (Windows)
         if: runner.os == 'Windows'
         run: python tests/run_all.py --only must_reject
 
-      - name: m3_all 링크 없는 단계 (Windows, --quick)
+      - name: m3_all stages without linking (Windows, --quick)
         if: runner.os == 'Windows'
         run: python tests/m3_all.py --quick --only parse,check,trace,trace_infer,llvm,rust --log-dir m3-logs
 
-      - name: m3_all 기록 올리기
+      - name: Upload m3_all logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
