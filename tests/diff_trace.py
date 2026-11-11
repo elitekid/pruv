@@ -4,6 +4,7 @@
 
   python tests/diff_trace.py [--rs-path P] [--python P] [--only GROUP[,GROUP]] [--seeds 41,56,57]
                              [--fuzz-count 40] [--jobs N] [--save-dir DIR] [--input FILE ...]
+                             [--flags "STR"]
 
 그룹: must_reject examples runtime bench check_edge fuzz input
   (--input 만 주고 --only 가 없으면 input 그룹만 돈다)
@@ -11,14 +12,24 @@
 새 프로세스로 돌린다(셸 없음, timeout 300). 한 입력의 두 실행은 같은 작업자에서 차례로 한다.
 
 분류 (입력 하나당 하나):
-  same          두 stdout 한 줄이 바이트 동일
+  option_mismatch 두 출력의 "options" 가 기대값(expected = {"infer": "--infer" in --flags})과 다름(실패).
+                  다른 분류보다 먼저 검사한다.
+  same          두 stdout 한 줄이 바이트 동일, 어느 attempt result 도 unknown/error 가 아니고 errors 에
+                verify_unknown·inference_timeout 이 없음
+  same_unknown  바이트 동일하나 위 unknown/error/verify_unknown/inference_timeout 이 있음. 성공으로 세지 않는다.
+                errors 에 inference_timeout 이 있으면 실패, 그 밖에는 실패로 치지 않되 따로 보고
   cex_only      errors 의 counterexample 값만 다르고 나머지 동일(통과로 침, 수는 따로 보고)
   flaky_unknown 어느 쪽 attempt result 가 "unknown" 이고 그 차이 때문에 다름 -> 그 입력만 직렬(--jobs 1)로
-                한 번 다시 돌려 재판정. same/cex_only 로 풀리면 이 칸에 센다(통과). 그래도 다르면 diff.
+                한 번 다시 돌려 재판정. same/cex_only 로 풀리면 이 칸에 센다(성공 칸 same 에는 더하지 않음;
+                첫 실행의 차이 요약은 보존해 "재시도로 풀린 차이(첫 결과)" 로 보고). 그래도 다르면 diff.
+  py_recursion  Python 재귀 한도 internal_error(비교 대상 없음)
   diff          그 밖의 차이
   py_crash / rs_crash   종료 코드≠0, 출력 줄 없음, JSON 아님
   timeout       어느 쪽이든 시간 초과
-종료 코드: 0 = diff·crash·timeout 0, 1 = 그 외, 2 = 인자/바이너리 없음.
+별도 집계 verified: 상태가 same 또는 cex_only 이고 Python errors 가 빈 입력 수(두 판이 같고 검증까지 끝남).
+--flags=STR(옵션 모양 값이라 `=` 로 붙여 쓴다, 예: --flags=--infer): 공백으로 나눈 토큰을 Python(`adapter trace FLAGS FILE`)과 Rust(`pruv-trace-dump FLAGS FILE`)에 똑같이 넘김.
+종료 코드: 0 = diff·crash·timeout·option_mismatch 0 이고 inference_timeout 든 same_unknown 0,
+          1 = 그 외, 2 = 인자/바이너리 없음.
 Python 3.9 표준 라이브러리만 쓴다.
 """
 import argparse
@@ -48,7 +59,8 @@ GROUP_DIRS = [
     ("check_edge", "tests/check_edge", "ok_*.pruv"),
 ]
 ALL_GROUPS = [g for g, _, _ in GROUP_DIRS] + ["fuzz", "input"]
-COLS = ("inputs", "same", "cex_only", "flaky_unknown", "py_recursion", "diff", "py_crash", "rs_crash", "timeout")
+COLS = ("inputs", "same", "same_unknown", "cex_only", "flaky_unknown", "py_recursion", "diff", "option_mismatch",
+        "py_crash", "rs_crash", "timeout")
 
 
 class Case(object):
@@ -61,6 +73,8 @@ class Case(object):
         self.py_obj = None
         self.rs_obj = None
         self.flaky_first = False   # 처음에 flaky_unknown 으로 판정돼 재시도 했는가
+        self.first_summary = None  # 첫 실행의 diff_summary 결과(재시도 때 보존)
+        self.first_status = None   # 첫 실행의 상태
 
 
 def rel(path):
@@ -146,7 +160,7 @@ def run_one_proc(argv, env):
     return "ok", out, obj, ""
 
 
-def evaluate(case, py_argv, rs_argv, env):
+def evaluate(case, py_argv, rs_argv, env, expected):
     case.py_raw = case.rs_raw = case.py_obj = case.rs_obj = None
     case.note = ""
     k, case.py_raw, case.py_obj, note = run_one_proc(py_argv + [case.path], env)
@@ -161,7 +175,7 @@ def evaluate(case, py_argv, rs_argv, env):
         case.status = "timeout" if k2 == "timeout" else "rs_crash"
         case.note = "rs: " + note2
         return
-    case.status = classify(case)
+    case.status = classify(case, expected)
 
 
 def strip_cex(obj):
@@ -211,8 +225,23 @@ def py_recursion(obj):
                and "maximum recursion depth" in str(e.get("message", "")) for e in obj.get("errors", []))
 
 
-def classify(case):
+def error_codes(obj):
+    return [e.get("code") for e in obj.get("errors", []) if isinstance(e, dict)]
+
+
+def has_unknown_or_error(obj):
+    """attempt result 가 unknown/error 이거나 errors 에 verify_unknown/inference_timeout 이 있는가"""
+    if any(r in ("unknown", "error") for r in results_of(obj)):
+        return True
+    return any(c in ("verify_unknown", "inference_timeout") for c in error_codes(obj))
+
+
+def classify(case, expected):
+    if case.py_obj.get("options") != expected or case.rs_obj.get("options") != expected:
+        return "option_mismatch"
     if case.py_raw == case.rs_raw:
+        if has_unknown_or_error(case.py_obj) or has_unknown_or_error(case.rs_obj):
+            return "same_unknown"
         return "same"
     if py_recursion(case.py_obj):
         return "py_recursion"
@@ -364,7 +393,10 @@ def main(argv):
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     ap.add_argument("--save-dir", default=None)
     ap.add_argument("--input", action="append", default=[], metavar="FILE", help="input 그룹 파일(여러 번 가능)")
+    ap.add_argument("--flags", default="", help="두 판에 똑같이 넘길 옵션(공백 구분), 예: --flags=--infer")
     args = ap.parse_args(argv)
+    flag_toks = args.flags.split()
+    expected = {"infer": "--infer" in flag_toks}
 
     args.seeds = [parse_seed(t) for t in args.seeds.split(",") if t.strip() != ""]
     if args.fuzz_count < 0 or args.jobs < 1:
@@ -397,8 +429,8 @@ def main(argv):
     if not os.path.isfile(adapter):
         print("오류: %s 가 없다" % adapter, file=sys.stderr)
         return 2
-    py_argv = [py, adapter, "trace"]
-    rs_argv = [rs]
+    py_argv = [py, adapter, "trace"] + flag_toks
+    rs_argv = [rs] + flag_toks
     env = dict(os.environ)
     env.setdefault("PYTHONUTF8", "1")
 
@@ -408,22 +440,30 @@ def main(argv):
         all_cases = [c for g in ALL_GROUPS for c in per_group[g]]
 
         def work(c):
-            evaluate(c, py_argv, rs_argv, env)
+            evaluate(c, py_argv, rs_argv, env, expected)
             return c
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as ex:
             list(ex.map(work, all_cases))
 
-        # flaky_unknown 재시도: 직렬(--jobs 1)
+        # flaky_unknown 재시도: 직렬(--jobs 1). 첫 실행의 차이 요약과 상태는 case 에 보존한다
         flaky = [c for c in all_cases if c.status == "flaky_unknown"]
         for c in flaky:
             c.flaky_first = True
-            evaluate(c, py_argv, rs_argv, env)
+            c.first_status = c.status
+            c.first_summary = diff_summary(c.py_obj, c.rs_obj)
+            evaluate(c, py_argv, rs_argv, env, expected)
             if c.status in ("same", "cex_only"):
-                c.status = "flaky_unknown"     # 재시도로 풀림
+                c.status = "flaky_unknown"     # 재시도로 풀림(성공 칸에 더하지 않는다)
             elif c.status == "flaky_unknown":
                 c.status = "diff"              # 그래도 다름
             c.note = (c.note + " " if c.note else "") + "(재시도 후)"
+
+        def verified(c):
+            return c.status in ("same", "cex_only") and c.py_obj is not None and c.py_obj.get("errors") == []
+
+        def inf_timeout(c):
+            return c.status == "same_unknown" and "inference_timeout" in error_codes(c.py_obj)
 
         diffs = [c for c in all_cases if c.status == "diff"]
         crashes = [c for c in all_cases if c.status in ("py_crash", "rs_crash", "timeout")]
@@ -437,17 +477,23 @@ def main(argv):
         print("py: %s" % py)
         print("jobs: %d" % args.jobs)
         print("")
-        print("%-12s" % "group" + "".join("%15s" % c for c in COLS))
+        print("flags: %s (기대 options=%s)" % (args.flags or "(없음)", json.dumps(expected, sort_keys=True)))
+        print("%-12s" % "group" + "".join("%15s" % c for c in COLS) + "%15s" % "| verified")
         total = collections.Counter()
         for g in ALL_GROUPS:
             if g not in selected:
                 continue
             st = collections.Counter(c.status for c in per_group[g])
             st["inputs"] = len(per_group[g])
-            print("%-12s" % g + "".join("%15d" % st[c] for c in COLS))
+            st["verified"] = sum(1 for c in per_group[g] if verified(c))
+            print("%-12s" % g + "".join("%15d" % st[c] for c in COLS) + "%15d" % st["verified"])
             total.update(st)
-        print("%-12s" % "TOTAL" + "".join("%15d" % total[c] for c in COLS))
-        print("(cex_only %d건은 통과로 친다; flaky_unknown 은 직렬 재시도로 풀린 수)" % total["cex_only"])
+        print("%-12s" % "TOTAL" + "".join("%15d" % total[c] for c in COLS) + "%15d" % total["verified"])
+        print("(cex_only %d건은 통과로 친다; flaky_unknown 은 직렬 재시도로 풀린 수, 성공 칸에 안 더한다)" % total["cex_only"])
+        print("(verified = same 또는 cex_only 이고 py errors 가 빈 입력: 두 판이 같고 검증까지 끝남)")
+        print("(same_unknown %d건: 두 판 바이트 동일하나 unknown/error/verify_unknown/inference_timeout 이 있음, "
+              "성공으로 세지 않음; 그중 inference_timeout %d건은 실패)" % (
+                  total["same_unknown"], sum(1 for c in all_cases if inf_timeout(c))))
         for n in notes:
             print(n)
 
@@ -491,6 +537,21 @@ def main(argv):
                 print("[%s] %s" % (c.group, c.name))
                 for ln in diff_summary(c.py_obj, c.rs_obj):
                     print("  " + ln)
+        mism = [c for c in all_cases if c.status == "option_mismatch"]
+        if mism:
+            print("")
+            print("== option_mismatch (최대 %d개 / 전체 %d) ==" % (MAX_SHOWN, len(mism)))
+            for c in mism[:MAX_SHOWN]:
+                print("[%s] %s: 기대 %s py=%s rs=%s" % (c.group, c.name, json.dumps(expected, sort_keys=True),
+                                                    short(c.py_obj.get("options")), short(c.rs_obj.get("options"))))
+        retried = [c for c in all_cases if c.first_summary is not None and c.status != "diff"]
+        if retried:
+            print("")
+            print("== 재시도로 풀린 차이(첫 결과) (최대 %d개 / 전체 %d) ==" % (MAX_SHOWN, len(retried)))
+            for c in retried[:MAX_SHOWN]:
+                print("[%s] %s: 첫 상태 %s -> 재시도 후 %s" % (c.group, c.name, c.first_status, c.status))
+                for ln in c.first_summary:
+                    print("  " + ln)
         if crashes:
             print("")
             print("== crash/timeout (최대 %d개 / 전체 %d) ==" % (MAX_SHOWN, len(crashes)))
@@ -502,7 +563,8 @@ def main(argv):
         print("")
         print("걸린 시간: %.1f초" % (time.time() - t0))
 
-    clean = all(total[k] == 0 for k in ("diff", "py_crash", "rs_crash", "timeout"))
+    clean = all(total[k] == 0 for k in ("diff", "py_crash", "rs_crash", "timeout", "option_mismatch")) \
+        and not any(inf_timeout(c) for c in all_cases)
     print("결과: %s" % ("성공" if clean else "실패"))
     return 0 if clean else 1
 

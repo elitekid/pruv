@@ -9,20 +9,44 @@
 //! 5. 그 밖에는 `seen` 에 키를 넣고 오류를 만든다: sat(또는 relaxed 있음)이면 `cannot prove`+반례,
 //!    아니면 `verify_unknown`.
 //!
-//! 각 시도의 SMT-LIB 는 `(set-option :timeout 8000)\n` + `Solver::to_smt2()` 이며 **check 전에** 뽑는다.
+//! 각 시도의 SMT-LIB 는 `(set-option :timeout T)\n` + (rlimit 있으면 `(set-option :rlimit R)\n`) +
+//! (seed 있으면 `(set-option :random_seed S)\n`) + `Solver::to_smt2()` 이며 **check 전에** 뽑는다(T 기본 8000).
+//!
+//! trace v2(어댑터 형식): 의무에 `phase`("verification"|"inference")·`round`·`cand`(없으면 null)·(skipped 일 때만) `skipped`,
+//! 시도에 `status`(proved|not_proved|timeout|resource_unknown)·`timeout_ms`·`rlimit`·`seed`·`reason_unknown`(Unknown 일 때만) 을 남긴다.
+//! 시제품 형식(`trace_json`)은 바뀌지 않는다. 설정은 `FnVerifier.qcfg`(`QueryConfig`).
 
 use pruv_core::diagnostic::PruvError;
 use pruv_core::pyjson::Json;
 use serde_json::{json, Value};
 
-use crate::symbolic::{Env, FnVerifier, Pos, State, Val, TIMEOUT_MS};
+use crate::symbolic::{Env, FnVerifier, Pos, State, Val};
 use crate::sys::{Ast, Sat, Solver, ZModel};
+
+/// verify.py `query_status`: 판정 + `reason_unknown` → 기록용 상태.
+pub fn query_status(result: Sat, reason: Option<&str>) -> &'static str {
+    match result {
+        Sat::Unsat => "proved",
+        Sat::Sat => "not_proved",
+        Sat::Unknown => match reason {
+            Some("timeout") | Some("canceled") => "timeout",
+            _ => "resource_unknown",
+        },
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Attempt {
     pub lemmas: bool,
     pub smt2: String,
     pub result: Sat,
+    /// `query_status(result, reason_unknown)`
+    pub status: String,
+    pub timeout_ms: u32,
+    pub rlimit: Option<u32>,
+    pub seed: Option<u32>,
+    /// Unknown 일 때만 `Some(sol.reason_unknown())`.
+    pub reason_unknown: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -36,6 +60,10 @@ pub struct Obligation {
     pub attempts: Vec<Attempt>,
     /// 어댑터 형식에서 `key in fv.seen` 이라 질의 없이 지나간 의무.
     pub skipped: bool,
+    /// "verification" | "inference"
+    pub phase: String,
+    pub round: Option<u32>,
+    pub cand: Option<String>,
 }
 
 #[derive(Debug)]
@@ -65,7 +93,17 @@ impl Trace {
     }
 
     /// `prove` 진입: 항목을 만들고 위치를 돌려준다(기록하지 않으면 None).
-    pub(crate) fn begin(&mut self, fname: &str, node: Pos, code: &str, skipped: bool) -> Option<usize> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn begin(
+        &mut self,
+        fname: &str,
+        node: Pos,
+        code: &str,
+        skipped: bool,
+        phase: &str,
+        round: Option<u32>,
+        cand: Option<String>,
+    ) -> Option<usize> {
         if !self.record || (skipped && !self.adapter) {
             return None;
         }
@@ -79,6 +117,9 @@ impl Trace {
             code: code.to_string(),
             attempts: Vec::new(),
             skipped,
+            phase: phase.to_string(),
+            round,
+            cand,
         });
         Some(self.obligations.len() - 1)
     }
@@ -166,6 +207,21 @@ impl<'a> FnVerifier<'a> {
         self.prove_core(&st.env, &st.pc, g, ob, node, code, "", key_extra);
     }
 
+    /// 후보 식별자(`cand`)를 기록에 남기는 `prove`(추론 질의용).
+    #[allow(clippy::too_many_arguments)]
+    pub fn prove_cand(
+        &mut self,
+        st: &State,
+        g: &[Ast],
+        ob: &Ast,
+        node: Pos,
+        code: &str,
+        key_extra: Option<&str>,
+        cand: Option<&str>,
+    ) {
+        self.prove_core_cand(&st.env, &st.pc, g, ob, node, code, "", key_extra, cand);
+    }
+
     /// verify.py `prove(st, g, ob, node, code, what, key_extra)` (254행). 상태는 (env, pc) 로 받는다.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prove_core(
@@ -179,9 +235,34 @@ impl<'a> FnVerifier<'a> {
         what: &str,
         key_extra: Option<&str>,
     ) {
+        self.prove_core_cand(senv, pc, g, ob, node, code, what, key_extra, None);
+    }
+
+    /// `prove_core` + 기록용 `cand`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn prove_core_cand(
+        &mut self,
+        senv: &Env,
+        pc: &[Ast],
+        g: &[Ast],
+        ob: &Ast,
+        node: Pos,
+        code: &str,
+        what: &str,
+        key_extra: Option<&str>,
+        cand: Option<&str>,
+    ) {
         let key = (node.0, node.1, code.to_string(), key_extra.map(|s| s.to_string()));
         let skipped = self.seen.contains(&key);
-        let idx = self.trace.begin(&self.fname, node, code, skipped);
+        let idx = self.trace.begin(
+            &self.fname,
+            node,
+            code,
+            skipped,
+            &self.qcfg.phase,
+            self.qcfg.round,
+            cand.map(|s| s.to_string()),
+        );
         if skipped {
             return;
         }
@@ -238,7 +319,8 @@ impl<'a> FnVerifier<'a> {
 
     /// verify.py 내부 `run(with_lemmas)` (258~269행): (solver, 판정).
     fn run_attempt(&mut self, pc: &[Ast], g: &[Ast], ob: &Ast, with_lemmas: bool, idx: Option<usize>) -> (Solver, Sat) {
-        let mut sol = Solver::new(&self.z, TIMEOUT_MS);
+        let q = &self.qcfg;
+        let mut sol = Solver::with_options(&self.z, q.timeout_ms, q.rlimit, q.seed);
         for p in pc {
             sol.add(p);
         }
@@ -252,12 +334,31 @@ impl<'a> FnVerifier<'a> {
         }
         sol.add(&ob.not());
         let smt2 = if self.trace.record {
-            format!("(set-option :timeout {})\n{}", TIMEOUT_MS, sol.to_smt2())
+            let mut head = format!("(set-option :timeout {})\n", q.timeout_ms);
+            if let Some(r) = q.rlimit {
+                head.push_str(&format!("(set-option :rlimit {})\n", r));
+            }
+            if let Some(s) = q.seed {
+                head.push_str(&format!("(set-option :random_seed {})\n", s));
+            }
+            format!("{}{}", head, sol.to_smt2())
         } else {
             String::new()
         };
         let result = sol.check();
-        self.trace.attempt(idx, Attempt { lemmas: with_lemmas, smt2, result });
+        let reason = if result == Sat::Unknown { Some(sol.reason_unknown()) } else { None };
+        let status = query_status(result, reason.as_deref()).to_string();
+        let attempt = Attempt {
+            lemmas: with_lemmas,
+            smt2,
+            result,
+            status,
+            timeout_ms: q.timeout_ms,
+            rlimit: q.rlimit,
+            seed: q.seed,
+            reason_unknown: reason,
+        };
+        self.trace.attempt(idx, attempt);
         (sol, result)
     }
 
@@ -360,7 +461,21 @@ pub fn trace_json(sample: &str, trace: &Trace, z3_version: &str) -> Value {
     json!({ "sample": sample, "obligations": obligations, "z3_version": z3_version })
 }
 
-/// 어댑터 `pruv-trace-v1` 의 `obligations` 배열(키 정렬은 `dumps_sorted` 가 한다).
+fn opt_u32(v: Option<u32>) -> Json {
+    match v {
+        Some(n) => Json::int(n as i64),
+        None => Json::Null,
+    }
+}
+
+fn opt_str(v: &Option<String>) -> Json {
+    match v {
+        Some(s) => Json::Str(s.clone()),
+        None => Json::Null,
+    }
+}
+
+/// 어댑터 `pruv-trace-v2` 의 `obligations` 배열(키 정렬은 `dumps_sorted` 가 한다).
 pub fn adapter_obligations_json(trace: &Trace) -> Json {
     let items: Vec<Json> = trace
         .obligations
@@ -374,6 +489,11 @@ pub fn adapter_obligations_json(trace: &Trace) -> Json {
                         ("lemmas".to_string(), Json::Bool(a.lemmas)),
                         ("smt2".to_string(), Json::Str(a.smt2.clone())),
                         ("result".to_string(), Json::str(a.result.as_str())),
+                        ("status".to_string(), Json::str(&a.status)),
+                        ("timeout_ms".to_string(), Json::int(a.timeout_ms as i64)),
+                        ("rlimit".to_string(), opt_u32(a.rlimit)),
+                        ("seed".to_string(), opt_u32(a.seed)),
+                        ("reason_unknown".to_string(), opt_str(&a.reason_unknown)),
                     ])
                 })
                 .collect();
@@ -384,6 +504,9 @@ pub fn adapter_obligations_json(trace: &Trace) -> Json {
                 ("col".to_string(), Json::int(o.col as i64)),
                 ("code".to_string(), Json::Str(o.code.clone())),
                 ("attempts".to_string(), Json::Arr(attempts)),
+                ("phase".to_string(), Json::Str(o.phase.clone())),
+                ("round".to_string(), opt_u32(o.round)),
+                ("cand".to_string(), opt_str(&o.cand)),
             ];
             if o.skipped {
                 kv.push(("skipped".to_string(), Json::Bool(true)));

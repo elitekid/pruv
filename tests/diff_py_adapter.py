@@ -7,6 +7,20 @@
   diff_py_adapter.py seeds --out DIR [--inputs manifest|all] [--python PATH]
   diff_py_adapter.py _all FILE [flags]      (internal: parse+check+trace in ONE process)
 
+Only --no-verify, --trust-callers, --contract-budget N are known trace options; anything else
+-> stderr "diff_py_adapter: unknown option(s): ..." and exit code 2.
+
+Trace schema "pruv-trace-v2" (one JSON object):
+  schema, options {"infer": bool}, errors [error dicts], obligations [...], timeout_ms (only if verification ran)
+  obligation: seq, fn, line, col, code, attempts [...], phase ("verification"|...), round (int|null),
+              cand (null|candidate id), and "skipped": true only when the (line,col,code[,extra]) key was
+              already reported (then attempts is empty)
+  attempt:    lemmas (bool: aggregate lemmas included), smt2 (exact text sent: set-option lines + sexpr),
+              result ("sat"|"unsat"|"unknown"|"error"), status ("proved"|"not_proved"|"timeout"|
+              "resource_unknown"|"error"), timeout_ms, rlimit (int|null), seed (int|null),
+              reason_unknown (str|null)
+Recording is done by verify.TraceRecorder (official query boundary in verify.py), no monkey patching.
+
 All JSON is written with sort_keys=True, ensure_ascii=False, UTF-8, to stdout / files.
 AST test schema "pruv-ast-v1": integers are decimal strings, None is null, list order is kept.
 A language error is reported as {"schema":..., "error": {...}} with exit code 0; any adapter
@@ -191,76 +205,19 @@ def check_result(path):
 # ---------------------------------------------------------------------------
 # trace
 # ---------------------------------------------------------------------------
-class _Z3Proxy(object):
-    """stand-in for the `z3` name inside verify.py: everything real, except Solver"""
-    def __init__(self, real, solver):
-        object.__setattr__(self, "_real", real)
-        object.__setattr__(self, "Solver", solver)
-
-    def __getattr__(self, name):
-        return getattr(object.__getattribute__(self, "_real"), name)
-
-
-class _Recorder(object):
-    def __init__(self):
-        self.obligations = []
-        self.cur = None
-
-
-class _Instrumented(object):
-    """wrap FnVerifier.prove and swap verify.z3.Solver for a recording subclass; verify.py is not edited"""
-    def __init__(self, verify, rec):
-        self.verify, self.rec = verify, rec
-
-    def __enter__(self):
-        verify, rec = self.verify, self.rec
-        real_z3 = verify.z3
-        self.saved = (real_z3, verify.FnVerifier.prove)
-
-        class RecSolver(real_z3.Solver):
-            def check(self, *a):
-                text = "(set-option :timeout %d)\n" % verify.TIMEOUT_MS + self.sexpr()
-                r = real_z3.Solver.check(self, *a)
-                ob = rec.cur
-                if ob is not None:
-                    ob["attempts"].append({"lemmas": len(ob["attempts"]) >= 1, "smt2": text, "result": str(r)})
-                return r
-
-        orig = verify.FnVerifier.prove
-
-        def prove(fv, st, g, ob, node, code, what, key_extra=None):
-            key = (node.line, node.col, code) if key_extra is None else (node.line, node.col, code, key_extra)
-            entry = {"seq": len(rec.obligations), "fn": fv.f.name, "line": node.line, "col": node.col,
-                     "code": code, "attempts": []}
-            if key in fv.seen:
-                entry["skipped"] = True
-            rec.obligations.append(entry)
-            rec.cur = entry
-            try:
-                return orig(fv, st, g, ob, node, code, what, key_extra)
-            finally:
-                rec.cur = None
-
-        verify.z3 = _Z3Proxy(real_z3, RecSolver)
-        verify.FnVerifier.prove = prove
-        return self
-
-    def __exit__(self, *exc):
-        self.verify.z3, self.verify.FnVerifier.prove = self.saved
-        return False
-
-
 def trace_result(path, verify_on=True):
-    errors, rec = [], _Recorder()
-    out = {"schema": "pruv-trace-v1", "errors": errors, "obligations": rec.obligations}
+    errors = []
+    rec = None
+    out = {"schema": "pruv-trace-v2", "options": {"infer": False}, "errors": errors, "obligations": []}
     try:
         prog = pruv_parse(read_source(path))
         check_mod.check(prog)
         if verify_on:
             import verify
+            rec = verify.TraceRecorder()
+            out["obligations"] = rec.obligations
             out["timeout_ms"] = verify.TIMEOUT_MS
-            with _Instrumented(verify, rec):
-                errs = verify.verify_program(prog)
+            errs = verify.verify_program(prog, rec=rec)
             errors.extend(err_dict(e) for e in errs)
     except PruvError as e:
         errors.append(err_dict(e))
@@ -510,21 +467,17 @@ def cmd_seeds(out_dir, mode, py):
 
 
 # ---------------------------------------------------------------------------
-def trace_flags(extra):
-    ap = argparse.ArgumentParser(add_help=False)
-    ap.add_argument("--no-verify", action="store_true")
-    ap.add_argument("--trust-callers", action="store_true")
-    ap.add_argument("--contract-budget", default=None)
-    a, rest = ap.parse_known_args(extra)
-    return a, rest
-
-
 def main(argv):
     ap = argparse.ArgumentParser(prog="diff_py_adapter.py")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("parse", "check", "trace", "_all"):
         p = sub.add_parser(n)
         p.add_argument("file")
+        if n in ("trace", "_all"):
+            # the only known trace options; trust-callers / contract-budget do not change the proof
+            p.add_argument("--no-verify", action="store_true")
+            p.add_argument("--trust-callers", action="store_true")
+            p.add_argument("--contract-budget", default=None)
     for n in ("snapshot", "seeds"):
         p = sub.add_parser(n)
         p.add_argument("--out", required=True)
@@ -537,12 +490,14 @@ def main(argv):
         emit(parse_result(a.file) if a.cmd == "parse" else check_result(a.file))
         return 0
     if a.cmd in ("trace", "_all"):
-        flags, _ignored = trace_flags(extra)   # trust-callers / budget / backend flags do not change the proof
+        if extra:
+            sys.stderr.write("diff_py_adapter: unknown option(s): %s\n" % " ".join(extra))
+            return 2
         if a.cmd == "trace":
-            emit(trace_result(a.file, not flags.no_verify))
+            emit(trace_result(a.file, not a.no_verify))
         else:
             emit({"schema": "pruv-snapshot-item-v1", "parse": parse_result(a.file),
-                  "check": check_result(a.file), "trace": trace_result(a.file, not flags.no_verify)})
+                  "check": check_result(a.file), "trace": trace_result(a.file, not a.no_verify)})
         return 0
     if extra:
         ap.error("unexpected arguments: %s" % extra)

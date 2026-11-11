@@ -28,6 +28,23 @@ pub const MAX_LEN: i64 = 1 << 40;
 /// verify.py 8행.
 pub const TIMEOUT_MS: u32 = 8000;
 
+/// verify.py `QueryConfig`: solver 질의 한 번의 기록 경계(단계·라운드·자원 한도).
+#[derive(Clone, Debug)]
+pub struct QueryConfig {
+    /// "verification" | "inference"
+    pub phase: String,
+    pub round: Option<u32>,
+    pub timeout_ms: u32,
+    pub rlimit: Option<u32>,
+    pub seed: Option<u32>,
+}
+
+impl Default for QueryConfig {
+    fn default() -> Self {
+        QueryConfig { phase: "verification".to_string(), round: None, timeout_ms: TIMEOUT_MS, rlimit: None, seed: None }
+    }
+}
+
 /// verify.py `in_range` (168행). `x >= I64_MIN` 은 파이썬 int 와의 비교라 뒤집지 않는다(raw).
 pub fn in_range(z: &Z3, x: &Ast) -> Ast {
     z.and(&[x.raw_ge(&z.int(i64::MIN)), x.raw_le(&z.int(i64::MAX))])
@@ -309,6 +326,8 @@ pub struct FnVerifier<'a> {
     pub(crate) funcs: HashMap<String, &'a ast::Function>,
     /// `s.f`: 증명 대상 함수(시제품 경로에서는 None).
     pub(crate) f: Option<&'a ast::Function>,
+    /// solver 질의 설정(기본: verification, TIMEOUT_MS, rlimit/seed 없음).
+    pub qcfg: QueryConfig,
 }
 
 impl<'a> FnVerifier<'a> {
@@ -331,6 +350,7 @@ impl<'a> FnVerifier<'a> {
             errors: Vec::new(),
             funcs: HashMap::new(),
             f: None,
+            qcfg: QueryConfig::default(),
         }
     }
 

@@ -751,15 +751,29 @@ pub struct Solver {
 impl Solver {
     /// z3py `s = Solver(); s.set("timeout", ms)`.
     pub fn new(z: &Z3, timeout_ms: u32) -> Solver {
+        Solver::with_options(z, timeout_ms, None, None)
+    }
+
+    /// z3py `s.set("timeout", t)`, (있으면) `s.set("rlimit", r)`, (있으면) `s.set("random_seed", s)` 를 이 순서로.
+    pub fn with_options(z: &Z3, timeout_ms: u32, rlimit: Option<u32>, seed: Option<u32>) -> Solver {
         let key = z.sym("timeout");
+        let rkey = rlimit.map(|_| z.sym("rlimit"));
+        let skey = seed.map(|_| z.sym("random_seed"));
         let c = z.raw();
         // SAFETY: S1 S5 — solver/params 는 생성 직후 inc_ref, params 는 set 직후 dec_ref, solver 는 Drop 에서 dec_ref.
+        // 심볼(key/rkey/skey)은 같은 컨텍스트에서 만든 것이다(S1).
         unsafe {
             let s = nn(z::Z3_mk_solver(c));
             z::Z3_solver_inc_ref(c, s);
             let p = nn(z::Z3_mk_params(c));
             z::Z3_params_inc_ref(c, p);
             z::Z3_params_set_uint(c, p, key, timeout_ms as c_uint);
+            if let (Some(k), Some(r)) = (rkey, rlimit) {
+                z::Z3_params_set_uint(c, p, k, r as c_uint);
+            }
+            if let (Some(k), Some(sd)) = (skey, seed) {
+                z::Z3_params_set_uint(c, p, k, sd as c_uint);
+            }
             z::Z3_solver_set_params(c, s, p);
             z::Z3_params_dec_ref(c, p);
             Solver { z: z.clone(), raw: s }

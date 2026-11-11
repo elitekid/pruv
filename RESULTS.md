@@ -478,3 +478,19 @@ Vow가 만든 Rust, 작업자 Rust, 참조 Rust가 대부분 측정 흔들림(�
 
 - 감사(Claude Opus): 두 판에 직접 넣어 본 사례 20여 개(재대입·원소 저장·`copy`/`alloc` 재대입·if·match·루프 안 대입 뒤 return·중첩 while·형제 블록·havoc 뒤 옛 길이·이름 포획·정수 경계·실행 모드)에서 **건전성 구멍 0**, 두 판 판정 같음. 필수 1 — 원소 저장마다 배열 전체 `forall` 합성 assert가 경로에 쌓여 저장 200개에 18.1초(정제 없이 0.13초) → 저장 노드에 원소 범위를 달고 이미 평가한 저장 값만 한 번 증명하게 바꿈: **0.18초**(Python 판 0.30초). 같이 고침: 범위 밖 저장 뒤 엉뚱한 연쇄 오류 없어짐(오류 정확히 1개), Rust 이중 펼침 표식, 경계 뒤 식·`[i64; 3]`·`0x10` 진단, 감사 수동 사례를 회귀 시험 11개 + 성능 표본(`refine_many_stores`, 직선 저장 62개)으로. 남긴 권고: 합성 requires/ensures/invariant 메시지에 출처 문구 없음(B에서), 실행 검사에서 원소를 두 번 읽음, 항상 참인 i64 전체 범위 검사도 생성, 정제 오류 위치가 주석 위치(원소 저장만 저장문 위치).
 - 확인 감사(Claude Opus): 필수 0. 저장 값을 증명만 하고 경로에 가정하지 않아도 같은 경로 조건이 범위를 함의해 건전함을 루프·분기·호출·비선형 저장 사례로 두 판에서 확인(trace sha1 같음), 새 거부 시험이 의도한 code·줄로 거부됨. 권고 2 반영: 루프·분기 안 저장 뒤 정제 불변식·합계가 증명되는 실행 시험 `refine_loop_store` 추가, `diff_trace` 대조에 `bench/solutions/pruv_refine` 그룹 추가(trace·llvm·rust·compilers 다시 모두 같음, compilers 576).
+
+## 27. 1단계 B1: solver 질의 기록 경계·대조기 고침 (2026-11-11)
+B 묶음(템플릿 Houdini 불변식 추론)의 첫 작업(STAGE1_SPEC 0절 11·13). 추론 자체는 아직 없다.
+
+1. **질의 기록 경계**: 두 판 검증기의 모든 z3 질의가 한 곳(`verify.py` `prove` 안 `run`, `obligation.rs` `run_attempt`)을 지나며, 설정은 `QueryConfig`(단계·회차·timeout·rlimit·seed)로 받는다. 시도마다 판정과 상태(`proved / not_proved / resource_unknown / timeout / error`), 실제 timeout·rlimit·seed, `reason_unknown`을 기록한다. 시험 어댑터는 이제 `z3.Solver`를 몽키패치하지 않고 이 공식 경계(`verify.TraceRecorder`)로 기록한다. trace 스키마 `pruv-trace-v2`(의무에 `phase/round/cand`, 시도에 위 값, 최상위 `options`).
+2. **대조기**(`tests/diff_trace.py`): "두 판 같음"과 "검증 완료"를 따로 센다(`verified` 칸). 바이트 같아도 unknown·`verify_unknown`·`inference_timeout`이 끼면 `same_unknown`(성공으로 안 셈, `inference_timeout`이면 실패). 재시도로 풀린 차이는 첫 결과를 남겨 보고한다. `--flags=--infer`처럼 넘긴 옵션이 두 판 출력의 `options`에 실제로 반영됐는지 검사(`option_mismatch`는 실패). 어댑터·`pruv-trace-dump`는 모르는 옵션에 종료 코드 2(전에는 어댑터가 무시했다).
+
+| 확인 | 결과 |
+|---|---|
+| `--infer` 없는 경로 SMT 불변: 코퍼스 231개 파일의 의무별 SMT 텍스트·판정·오류를 HEAD(aec7d1d)와 비교 | **바이트 동일** |
+| `tests/m3_all.py` | 8단계 모두 ok, trace 351입력 same 333·cex_only 18·same_unknown 0, verified 164 |
+| `run_all --backend both` Rust 판 / Python 판 | 444/444 / 444/444 |
+| `cli_also_llvm` | 213/213 |
+| `--flags=--infer`(아직 미구현) | 두 판 모두 모르는 옵션으로 거부 → 대조 실패로 잡힘(의도대로) |
+
+- 감사는 B 묶음 전체(B2 추론까지)에 한 번 + 확인 한 번으로 한다.

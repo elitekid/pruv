@@ -14,6 +14,44 @@ Opt, Res = z3.CreateDatatypes(_o, _r)
 _MODEL_SEQ = [0]
 
 
+def query_status(result, reason):
+    """map a z3 check result (+ reason_unknown) to the trace status vocabulary"""
+    if result == z3.unsat:
+        return "proved"
+    if result == z3.sat:
+        return "not_proved"
+    if reason in ("timeout", "canceled"):
+        return "timeout"
+    return "resource_unknown"
+
+
+class QueryConfig:
+    """how one solver query is configured; rlimit/seed None = option not set (no text line either)"""
+
+    def __init__(s, phase="verification", round=None, timeout_ms=TIMEOUT_MS, rlimit=None, seed=None):
+        s.phase, s.round, s.timeout_ms, s.rlimit, s.seed = phase, round, timeout_ms, rlimit, seed
+
+
+class TraceRecorder:
+    """official query-recording boundary: one entry per obligation, one attempt per solver check"""
+
+    def __init__(s):
+        s.obligations = []
+
+    def begin(s, fn, node, code, skipped, phase, round_, cand):
+        entry = {"seq": len(s.obligations), "fn": fn, "line": node.line, "col": node.col, "code": code,
+                 "attempts": [], "phase": phase, "round": round_, "cand": cand}
+        if skipped:
+            entry["skipped"] = True
+        s.obligations.append(entry)
+        return len(s.obligations) - 1
+
+    def attempt(s, idx, lemmas, smt2, result, status, timeout_ms, rlimit, seed, reason_unknown):
+        s.obligations[idx]["attempts"].append({
+            "lemmas": lemmas, "smt2": smt2, "result": result, "status": status, "timeout_ms": timeout_ms,
+            "rlimit": rlimit, "seed": seed, "reason_unknown": reason_unknown})
+
+
 class Model:
     """Per-program z3 model of the user structs/enums (G1). Built once in verify_program.
     struct[name] = (constructor, [accessor per field])
@@ -189,7 +227,9 @@ FIX = {
 
 
 class FnVerifier:
-    def __init__(s, prog, f, errors, model=None):
+    def __init__(s, prog, f, errors, model=None, rec=None, qcfg=None):
+        s.rec = rec
+        s.qcfg = qcfg if qcfg is not None else QueryConfig()
         s.funcs = {g.name: g for g in prog.functions}
         s.model = model if model is not None else Model(prog)
         s.f, s.errors = f, errors
@@ -253,13 +293,22 @@ class FnVerifier:
         return ctor(*vals)
 
     # ---------- obligations ----------
-    def prove(s, st, g, ob, node, code, what, key_extra=None):
+    def prove(s, st, g, ob, node, code, what, key_extra=None, cand=None):
         key = (node.line, node.col, code) if key_extra is None else (node.line, node.col, code, key_extra)
-        if key in s.seen:
+        skipped = key in s.seen
+        idx = None
+        if s.rec is not None:
+            idx = s.rec.begin(s.f.name, node, code, skipped, s.qcfg.phase, s.qcfg.round, cand)
+        if skipped:
             return
         def run(with_lemmas):
+            cfg = s.qcfg
             sol = z3.Solver()
-            sol.set("timeout", TIMEOUT_MS)
+            sol.set("timeout", cfg.timeout_ms)
+            if cfg.rlimit is not None:
+                sol.set("rlimit", cfg.rlimit)
+            if cfg.seed is not None:
+                sol.set("random_seed", cfg.seed)
             for p in st.pc:
                 sol.add(p)
             for p in g:
@@ -268,7 +317,26 @@ class FnVerifier:
                 for p in s.lemmas:
                     sol.add(p)
             sol.add(z3.Not(ob))
-            return sol, sol.check()
+            text = None
+            if s.rec is not None:
+                text = "(set-option :timeout %d)\n" % cfg.timeout_ms
+                if cfg.rlimit is not None:
+                    text += "(set-option :rlimit %d)\n" % cfg.rlimit
+                if cfg.seed is not None:
+                    text += "(set-option :random_seed %d)\n" % cfg.seed
+                text += sol.sexpr()
+            try:
+                r = sol.check()
+            except z3.Z3Exception as e:
+                if s.rec is not None:
+                    s.rec.attempt(idx, with_lemmas, text, "error", "error", cfg.timeout_ms, cfg.rlimit,
+                                  cfg.seed, str(e))
+                raise
+            if s.rec is not None:
+                reason = sol.reason_unknown() if r == z3.unknown else None
+                s.rec.attempt(idx, with_lemmas, text, str(r), query_status(r, reason), cfg.timeout_ms,
+                              cfg.rlimit, cfg.seed, reason)
+            return sol, r
 
         # first without aggregate lemmas: fewer assumptions, so unsat here is still a sound proof,
         # and it keeps quantified lemmas out of the many obligations that never need them
@@ -873,9 +941,9 @@ class FnVerifier:
                 s.ensures_ok(end, None, f)
 
 
-def verify_program(prog):
+def verify_program(prog, rec=None):
     errors = []
     model = Model(prog)
     for f in prog.functions:
-        FnVerifier(prog, f, errors, model).run()
+        FnVerifier(prog, f, errors, model, rec=rec).run()
     return errors
