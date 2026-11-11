@@ -1,0 +1,17 @@
+// G6: a trusted Rust function (std::cmp::min / max) used under its contract
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+trusted rust fn rust_max(a: i64, b: i64) -> i64
+  ensures result >= a && result >= b
+  ensures result == a || result == b
+  = "::std::cmp::max";
+
+fn clamp(x: i64, lo: i64, hi: i64) -> i64
+  requires lo <= hi
+  ensures lo <= result && result <= hi
+{
+  return rust_min(rust_max(x, lo), hi);
+}

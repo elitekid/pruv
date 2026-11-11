@@ -1,0 +1,10 @@
+// G6: assemble a UTF-8 String and hand it out as a str
+fn greet(name: str) -> str ! alloc
+  requires len(name) <= 1000
+  ensures len(result) == 7 + len(name)
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, "hello, ");
+  s = string_push_str(move s, name);
+  return string_to_str(s);
+}

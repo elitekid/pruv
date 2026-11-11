@@ -1,0 +1,32 @@
+// G6: a scalar-key histogram with HashMap<i64, i64> (map_get / map_insert, borrowed and taken maps)
+fn bump(take m: HashMap<i64, i64>, k: i64) -> HashMap<i64, i64> ! alloc
+  requires len(m) < 1000000
+  ensures len(result) <= len(m) + 1
+{
+  let c: Option<i64> = map_get::<i64, i64>(m, k);
+  match c {
+    Some(n) => {
+      if n < 1000000 {
+        return map_insert::<i64, i64>(move m, k, n + 1);
+      }
+      return move m;
+    }
+    None => { return map_insert::<i64, i64>(move m, k, 1); }
+  }
+}
+
+fn count_of(m: HashMap<i64, i64>, k: i64) -> i64 {
+  let c: Option<i64> = map_get::<i64, i64>(m, k);
+  match c {
+    Some(n) => { return n; }
+    None => { return 0; }
+  }
+}
+
+fn most_of_three(a: i64, b: i64, c: i64) -> i64 ! alloc {
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  m = bump(move m, a);
+  m = bump(move m, b);
+  m = bump(move m, c);
+  return count_of(m, a);
+}

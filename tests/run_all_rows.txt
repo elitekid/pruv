@@ -169,6 +169,10 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g3_swap_pair.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g3_tagged_bump.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g3_wrapper_instances.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_histogram.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_min_clamp.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_string_build.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_vec_running_sum.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/prefix.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/sum.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_ensures_prev.pruv"}
@@ -368,6 +372,10 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g3_swap_pair.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g3_tagged_bump.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g3_wrapper_instances.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_histogram.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_min_clamp.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_string_build.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_vec_running_sum.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/prefix.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/sum.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
@@ -489,6 +497,10 @@
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g3_swap_pair.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g3_tagged_bump.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g3_wrapper_instances.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_histogram.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_min_clamp.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_string_build.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_vec_running_sum.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/prefix.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/sum.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_ensures_prev.pruv"}
@@ -786,6 +798,10 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g3_swap_pair.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g3_tagged_bump.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g3_wrapper_instances.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_histogram.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_min_clamp.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_string_build.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g6_vec_running_sum.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/prefix.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/sum.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_ensures_prev.pruv"}
@@ -985,6 +1001,10 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g3_swap_pair.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g3_tagged_bump.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g3_wrapper_instances.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_histogram.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_min_clamp.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_string_build.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g6_vec_running_sum.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/prefix.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/sum.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
@@ -1106,6 +1126,10 @@
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g3_swap_pair.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g3_tagged_bump.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g3_wrapper_instances.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_histogram.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_min_clamp.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_string_build.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g6_vec_running_sum.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/prefix.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/sum.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_ensures_prev.pruv"}

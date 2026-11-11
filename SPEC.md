@@ -232,6 +232,51 @@ let o: Option<bool> = Some::<bool>(true);   // also None::<bool>, Ok::<bool>(x),
   non-`Element` argument for an `Element` parameter), `generic_main` (`main` may not be generic), and
   `specialization_limit` (above).
 
+## 6d. Calling Rust and standard collections (G6)
+Full contract: `docs/G6_SPEC.md` (§10–§13 are the implemented decisions). Examples: `examples/g6_*.pruv`.
+```
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+fn push_two(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc
+  requires len(v) < 1000
+  ensures len(result) == len(v) + 2 && result[len(v)] == x
+{
+  let mut w: Vec<i64> = vec_push::<i64>(move v, x);
+  w = vec_push::<i64>(move w, x);
+  return move w;
+}
+```
+- **Trust.** A `trusted rust fn` has no body; it names a Rust function by absolute path (`::std::...` or a crate given
+  with `--rust-extern NAME=PATH`). The prover checks that callers satisfy its `requires` and then **assumes** its
+  `ensures`; the Rust code itself is not proved. A wrong contract can make wrong code "verify", so contracts are listed in
+  `<out>.foreign.json`. Signatures use `i64`, `bool`, `Option`/`Result` of those, read-only `[i64]`/`[u8]`/`[bool]`/`str`
+  parameters, and `i64`/`bool`/`()`/`Option`/`Result` results; at least one `ensures` (`ensures true` is allowed).
+- **Collections.** `Vec<T>`, `HashMap<K, V>` (`K` is `i64` or `bool`) and `String` hold values (no nested collections,
+  no collections inside structs/Options/arrays). Operations, always with explicit type arguments: `vec_new`, `vec_push`,
+  `vec_get`, `map_new`, `map_insert`, `map_get` (returns `Option<V>`), `string_new`, `string_push_str`, `string_byte`,
+  `string_to_str` (copies into a `str`), and `len`. Allocating operations need `! alloc`. In contracts only: `v[i]`, `s[i]`,
+  `map_lookup::<K, V>(m, k)` and `map_updated::<K, V>(after, before, k, v)` (the whole new map: k set, size, others kept).
+- **Ownership.** A collection has one owner. An unmarked collection parameter is borrowed for the call (read only, cannot
+  be moved, returned or aliased). `take` parameters and locals own their collection. Pass ownership with `move x`
+  (into a `take` argument, a `let`, an assignment or a `return`); after that `x` is dead until reassigned. A binding
+  moved on only some paths cannot be used after the join; a loop must leave every outer owner alive at the end of each
+  iteration. Collections are freed automatically. `ensures` may mention a consumed parameter: it means the value at entry.
+- **Run-time boundary checks** (`--foreign-checks`): `requires` (default) checks foreign and catalog preconditions at
+  run time; `all` also checks their postconditions (snapshots; slower, repeated appends become quadratic); `off` skips
+  both (only with verification). Failures exit 101 with `pruv: foreign requires violated:`, `pruv: foreign ensures
+  violated:`, `pruv: foreign contract undefined:` or `pruv: foreign panic:`.
+- **Build.** The Rust backend supports all of the above. The LLVM backend supports collections of `i64`/`bool` and trusted
+  functions over `i64`/`bool`/arrays/`str` returning `i64`/`bool`/`()`, built by compiling the generated bindings
+  (which then contain the Rust shim) with rustc together with the object; `--emit exe|obj` is not available for such
+  programs (`codegen/foreign_target`), and a `--no-verify` LLVM build cannot check a `requires` that uses `v[i]`, `s[i]`,
+  `map_lookup` or `map_updated` (`codegen/unsupported_type`). Collection-bearing functions are internal: expose them through functions with
+  ordinary parameter and result types.
+- **New error codes:** `foreign_syntax`, `foreign_path`, `foreign_signature`, `foreign_owned_type`, `foreign_move`,
+  `foreign_borrow`, `foreign_loop_move`, `foreign_contract`, `foreign_export`, `foreign_target`.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.

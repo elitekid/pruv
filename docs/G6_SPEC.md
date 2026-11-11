@@ -557,6 +557,7 @@ These narrow §5.3–§5.4 to a first LLVM bridge that both compilers emit byte-
 
 - Collections whose element, key and value types are `i64` or `bool`: `Vec<i64|bool>`, `HashMap<i64|bool, i64|bool>`, `String`; `map_get` results `Option<i64|bool>`.
 - `trusted rust fn` with parameters `i64`, `bool`, `[i64]`, `[u8]`, `[bool]`, `str` and results `i64`, `bool`, `()`.
+- Run-time `requires` evaluation (generated only for `--no-verify` builds of collection-bearing functions on LLVM) supports `len(c)` but not `v[i]`, `s[i]`, `map_lookup` or `map_updated`; such a requires is outside the subset on LLVM (fixed after the A3 audit; the Rust backend supports them).
 - Anything else G6 on LLVM (other element types, Option/Result in trusted signatures) keeps `codegen/unsupported_type` with the message "G6 foreign calls and collections are not implemented by the llvm codegen layer yet" at the first such construct (those runtime fixtures stay in `tests/llvm_pending.txt`).
 - The supported build is the **Rust host build**: the generated bindings file (`--rust-bindings`), compiled by rustc together with the LLVM object and the runtime object (exactly how `tests/run_all.py` links LLVM rows). The canonical driver's `--emit exe|obj` for a G6 program reports `codegen/foreign_target` "a G6 program on the LLVM backend needs the Rust host build (generated bindings compiled by rustc)".
 
@@ -583,4 +584,4 @@ Both compilers emit identical `.ll` and bindings text for G6 programs (`tests/di
 
 ### 13.6 Deferred from §5.3–§5.4/§7.5
 
-Bundle digest symbol `pruv_g6_bundle_<sha256>`, aggregate (G3 value) payloads across the bridge, `--emit exe/obj` link driver via rustc, `--rust-search`, the 16-probe ABI suite and other targets than the host. They are follow-ups after A4 and do not block the Rust-source path.
+Collection observers in LLVM run-time `requires` (13.1); the `all`-mode byte comparison of `string_to_str` on LLVM (the copy is made by the existing `pruv_copy` from the borrowed bytes, so the shim has no separate snapshot to compare); bundle digest symbol `pruv_g6_bundle_<sha256>`, aggregate (G3 value) payloads across the bridge, `--emit exe/obj` link driver via rustc, `--rust-search`, the 16-probe ABI suite and other targets than the host. They are follow-ups after A4 and do not block the Rust-source path.
