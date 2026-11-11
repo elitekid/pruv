@@ -1,9 +1,0 @@
-// unsupported_type(codegen): B1부터 증명은 통과하고 생성 층이 거부한다 — 중첩 블록의 str Let(5:5)과 뒤 리터럴이 섞여도 가드는 함수 안 최소 위치를 고른다
-fn f(n: i64) -> i64 ! alloc
-{
-  if n > 0 {
-    let t: str = "ab";
-    let k: i64 = len(t);
-  }
-  return len("xyz");
-}

@@ -1,0 +1,15 @@
+// str literal escapes \" \\ \n \r \t \0: the byte length and every byte survive to the host (6 bytes: 34 92 10 13 9 0).
+fn esc() -> str ! alloc {
+  let s: str = "\"\\\n\r\t\0";
+  assert len(s) == 6;
+  assert s[0] == 34;
+  assert s[1] == 92;
+  return s;
+}
+
+fn byte(i: i64) -> i64 ! alloc
+  requires 0 <= i && i < 6
+{
+  let s: str = "\"\\\n\r\t\0";
+  return s[i];
+}

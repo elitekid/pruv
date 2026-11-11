@@ -35,7 +35,7 @@ import re
 from vast import *
 import codegen
 from codegen import show
-from typeinfo import TypeTable, is_user_type, is_array, uses_array_type
+from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str  # G2 B2: uses_str
 
 SIGNED_MIN128 = -170141183460469231731687303715884105728
 OPT = "{ i1, i64 }"
@@ -77,13 +77,25 @@ declare void @pruv_panic_elem(i64, ptr) noreturn cold nounwind
 # G2 A5 (docs/G2_A5_IMPL.md 4.2): only emitted when the program uses [bool]
 DECLS_BOOL = "declare void @pruv_check_bool(ptr nocapture readonly, i64) nounwind\n"
 
+# G2 B2 (docs/G2_B2_IMPL.md 2.7): only emitted when the program uses str
+DECLS_STR = ("declare i32 @pruv_str_boundary(ptr nocapture readonly, i64, i64) nounwind willreturn memory(argmem: read)\n"
+             "declare noalias ptr @pruv_substr(ptr nocapture readonly, i64, i64, i64) nounwind\n"
+             "declare void @pruv_check_utf8(ptr nocapture readonly, i64) nounwind\n")
+
+
+def is_arr(t):  # G2 B2: array-like type (arrays and str share the { ptr, i64 } representation)
+    return is_array(t) or t.name == "str"
+
 
 def elem_ty(t):
-    """element info carried in V/Slot.ty of an array: ARRAY_U8 for [u8], ARRAY_BOOL for [bool], None for [i64]"""
+    """element info carried in V/Slot.ty of an array: ARRAY_U8 for [u8], ARRAY_BOOL for [bool], STR for str,
+    None for [i64]"""
     if t is not None and t.name == "array_u8":
         return ARRAY_U8
     if t is not None and t.name == "array_bool":  # G2 A5
         return ARRAY_BOOL
+    if t is not None and t.name == "str":  # G2 B2
+        return STR
     return None
 
 
@@ -91,8 +103,12 @@ def is_u8(v):
     return v.ty is not None and v.ty.name == "array_u8"
 
 
-def is_bytes(v):  # G2 A5: byte-sized element arrays ([u8] or [bool])
-    return v.ty is not None and v.ty.name in ("array_u8", "array_bool")
+def is_bytes(v):  # G2 A5/B2: byte-sized element arrays ([u8], [bool] or str)
+    return v.ty is not None and v.ty.name in ("array_u8", "array_bool", "str")
+
+
+def is_strv(v):  # G2 B2
+    return v.ty is not None and v.ty.name == "str"
 
 
 def is_boolarr(v):  # G2 A5
@@ -106,13 +122,13 @@ def mangle(n):
 def lty(t):
     """internal SSA type of a Pruv type"""
     r = {"i64": "i64", "bool": "i1", "unit": "void", "array": ARR, "array_u8": ARR, "array_bool": ARR,
-         "option": OPT, "result": OPT}.get(t.name)
+         "str": ARR, "option": OPT, "result": OPT}.get(t.name)
     return r if r is not None else "%%pruv_t_%s" % t.name
 
 
 def vkind(t):
     return {"i64": "i64", "bool": "i1", "unit": "unit", "array": "arr", "array_u8": "arr", "array_bool": "arr",
-            "option": "opt", "result": "opt"}.get(t.name, "agg")
+            "str": "arr", "option": "opt", "result": "opt"}.get(t.name, "agg")
 
 
 def st(t, c=False):
@@ -204,7 +220,7 @@ def ir_params(f):
     out = []
     for p in f.params:
         n = mangle(p.name)
-        if is_array(p.type):
+        if is_arr(p.type):
             out += [("ptr", "%%p.%s.a" % n), ("i64", "%%p.%s.n" % n)]
         elif p.type == BOOL:
             out.append(("i1", "%%p.%s" % n))
@@ -542,7 +558,7 @@ class FnGen:
         names = {}
         for p in s.f.params:
             n = mangle(p.name)
-            if is_array(p.type):
+            if is_arr(p.type):
                 names[p.name] = ("ssa", V("arr", "%%p.%s.a" % n, "%%p.%s.n" % n, elem_ty(p.type)))
             elif p.type == BOOL:
                 names[p.name] = ("ssa", V("i1", "%%p.%s" % n))
@@ -801,10 +817,15 @@ class FnGen:
             if is_boolarr(a):  # G2 A5
                 x = s.op("load i8, ptr %s" % g)
                 return V("i1", s.op("icmp ne i8 %s, 0" % x))
-            if is_u8(a):
+            if is_u8(a) or is_strv(a):  # G2 B2: str reads like u8
                 x = s.op("load i8, ptr %s" % g)
                 return V("i64", s.op("zext i8 %s to i64" % x))
             return V("i64", s.op("load i64, ptr %s" % g))
+        if isinstance(e, StrLit):  # G2 B2
+            nm = s.m.string(e.value.decode("utf-8"))
+            ln = str(len(e.value))
+            p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (nm, ln))
+            return s.temp_arr(V("arr", p, ln, STR), owned)
         if isinstance(e, Ctor):
             if e.name == "None":
                 return V("opt", "false", "0")
@@ -884,6 +905,23 @@ class FnGen:
                 return s.temp_arr(V("arr", p, src.b, src.ty), owned)
             p = s.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (src.a, src.b))
             return s.temp_arr(V("arr", p, src.b), owned)
+        if n == "is_char_boundary":  # G2 B2: s then i
+            sv = s.ev(a[0])
+            iv = s.ev(a[1])
+            r = s.op("call i32 @pruv_str_boundary(ptr %s, i64 %s, i64 %s)" % (sv.a, sv.b, iv.a))
+            return V("i1", s.op("icmp ne i32 %s, 0" % r))
+        if n == "substr":  # G2 B2: s, lo, hi in order
+            sv = s.ev(a[0])
+            lo = s.ev(a[1])
+            hi = s.ev(a[2])
+            if s.verified:
+                d = s.op("sub i64 %s, %s" % (hi.a, lo.a))
+                g = s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (sv.a, lo.a))
+                p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (g, d))
+            else:
+                p = s.op("call ptr @pruv_substr(ptr %s, i64 %s, i64 %s, i64 %s)" % (sv.a, sv.b, lo.a, hi.a))
+                d = s.op("sub i64 %s, %s" % (hi.a, lo.a))
+            return s.temp_arr(V("arr", p, d, STR), owned)
         if n == "print":
             x = s.ev(a[0])
             if x.k == "i1":
@@ -917,7 +955,7 @@ class FnGen:
             return V("agg", r, None, f.ret)
         x0 = s.op("extractvalue %s %s, 0" % (lty(f.ret), r))
         x1 = s.op("extractvalue %s %s, 1" % (lty(f.ret), r))
-        if is_array(f.ret):
+        if is_arr(f.ret):
             return s.temp_arr(V("arr", x0, x1, elem_ty(f.ret)), owned)
         return V("opt", x0, x1)
 
@@ -926,7 +964,7 @@ class FnGen:
         s.place("start")
         for p in s.f.params:
             n = mangle(p.name)
-            if is_array(p.type):
+            if is_arr(p.type):
                 s.cenv[p.name] = V("arr", "%%p.%s.a" % n, "%%p.%s.n" % n, elem_ty(p.type))
             elif p.type == BOOL:
                 s.cenv[p.name] = V("i1", "%%p.%s" % n)
@@ -997,13 +1035,15 @@ class FnGen:
                 g = s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (a.a, ii))
                 x = s.op("load i8, ptr %s" % g)
                 return V("i1", s.op("icmp ne i8 %s, 0" % x))
-            if is_u8(a):
+            if is_u8(a) or is_strv(a):  # G2 B2: str reads like u8
                 g = s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (a.a, ii))
                 x = s.op("load i8, ptr %s" % g)
                 return V("i128", s.op("zext i8 %s to i128" % x))
             g = s.op("getelementptr inbounds i64, ptr %s, i64 %s" % (a.a, ii))
             x = s.op("load i64, ptr %s" % g)
             return V("i128", s.op("sext i64 %s to i128" % x))
+        if isinstance(e, StrLit):  # G2 B2: no copy
+            return V("arr", s.m.string(e.value.decode("utf-8")), str(len(e.value)), STR)
         if isinstance(e, Ctor):
             if e.name == "None":
                 return V("opt", "false", "0")
@@ -1035,6 +1075,15 @@ class FnGen:
             n, a = e.name, e.args
             if n == "len":
                 return V("i128", s.op("zext i64 %s to i128" % s.cev(a[0]).b))
+            if n == "is_char_boundary":  # G2 B2
+                sv = s.cev(a[0])
+                iv = s.cev(a[1])
+                ln = s.op("zext i64 %s to i128" % sv.b)
+                ok = s.op("icmp ule i128 %s, %s" % (iv.a, ln))
+                t = s.op("trunc i128 %s to i64" % iv.a)
+                u = s.op("select i1 %s, i64 %s, i64 -1" % (ok, t))
+                r = s.op("call i32 @pruv_str_boundary(ptr %s, i64 %s, i64 %s)" % (sv.a, sv.b, u))
+                return V("i1", s.op("icmp ne i32 %s, 0" % r))
             if n in ("is_some", "is_ok"):
                 return V("i1", s.cev(a[0]).a)
             if n in ("some_val", "ok_val", "err_val"):
@@ -1102,7 +1151,7 @@ class FnGen:
     def cquant(s, e):
         if e.kind == "forall":
             sorted_arr = codegen.match_sorted_requires(e)
-            if sorted_arr is not None:
+            if sorted_arr is not None and not (sorted_arr in s.cenv and is_strv(s.cenv[sorted_arr])):  # G2 B2: no fast path for str
                 q = s.nq
                 s.nq += 1
                 return s.csorted(sorted_arr, q)
@@ -1314,10 +1363,12 @@ def abi_of(f, tt):
             ext.append("i64 %%a.%s" % q)
             pre.append("%%c.%s = icmp ne i64 %%a.%s, 0" % (q, q))
             args.append("i1 %%c.%s" % q)
-        elif is_array(p.type):
+        elif is_arr(p.type):
             ext += ["ptr %%a.%s.a" % q, "i64 %%a.%s.n" % q]
             if p.type.name == "array_bool":  # G2 A5: representation check before entry
                 pre.append("call void @pruv_check_bool(ptr %%a.%s.a, i64 %%a.%s.n)" % (q, q))
+            elif p.type.name == "str":  # G2 B2: UTF-8 check before requires/body
+                pre.append("call void @pruv_check_utf8(ptr %%a.%s.a, i64 %%a.%s.n)" % (q, q))
             args += ["ptr %%a.%s.a" % q, "i64 %%a.%s.n" % q]
         else:
             ext += ["i64 %%a.%s.t" % q, "i64 %%a.%s.v" % q]
@@ -1328,7 +1379,7 @@ def abi_of(f, tt):
     rt = f.ret
     entry = "@%s__pruv_entry" % n
     body = ["  " + x for x in pre]
-    if is_array(rt):
+    if is_arr(rt):
         ext.append("ptr %out")
         body.append("  %%r = call %s %s(%s)" % (lty(rt), entry, ", ".join(args)))
         body.append("  %%x0 = extractvalue %s %%r, 0" % lty(rt))
@@ -1370,9 +1421,10 @@ def abi_of(f, tt):
         body.append("  ret i64 %r")
         ret = "i64"
     out = "define %s @pruv_abi_%s(%s) {\nentry:\n%s\n}\n" % (ret, n, ", ".join(ext), "\n".join(body))
-    if any(p.type.name == "array_bool" for p in f.params):
-        # G2 A5: typed Rust bindings pass &[bool] (valid by type) to this entry without the byte check
-        tb = [x for x in body if not x.startswith("  call void @pruv_check_bool(")]
+    if any(p.type.name in ("array_bool", "str") for p in f.params):
+        # G2 A5/B2: typed Rust bindings pass &[bool] / &str (valid by type) to this entry without the check
+        tb = [x for x in body if not (x.startswith("  call void @pruv_check_bool(")
+                                      or x.startswith("  call void @pruv_check_utf8("))]
         out += "\ndefine %s @pruv_abi_%s__typed(%s) {\nentry:\n%s\n}\n" % (ret, n, ", ".join(ext), "\n".join(tb))
     return out
 
@@ -1419,7 +1471,7 @@ c2:
 # ---------- Rust bindings ----------
 def typed_abi_name(f):
     """G2 A5: the bindings call pruv_abi_<f>__typed (no [bool] byte check) when f has a [bool] parameter"""
-    return f.name + ("__typed" if any(p.type.name == "array_bool" for p in f.params) else "")
+    return f.name + ("__typed" if any(p.type.name in ("array_bool", "str") for p in f.params) else "")  # G2 B2
 
 
 def rust_ty(t, param):
@@ -1429,6 +1481,8 @@ def rust_ty(t, param):
         return "&[u8]" if param else "::std::vec::Vec<u8>"
     if t.name == "array_bool":  # G2 A5
         return "&[bool]" if param else "::std::vec::Vec<bool>"
+    if t.name == "str":  # G2 B2
+        return "&str" if param else "::std::string::String"
     return {"i64": "i64", "bool": "bool", "unit": "()", "option": "::std::option::Option<i64>",
             "result": "::std::result::Result<i64, i64>"}.get(t.name) or (
         "&[i64]" if param else "::std::vec::Vec<i64>")
@@ -1517,6 +1571,9 @@ def gen_bindings(prog):
     if uses_array_type(prog, "array_bool"):  # G2 A5
         o.append(ALLOW)
         o.append("#[repr(C)]\npub struct Pruv__ArrayBool { pub data: *mut u8, pub len: i64 }")
+    if uses_str(prog):  # G2 B2
+        o.append(ALLOW)
+        o.append("#[repr(C)]\npub struct Pruv__Str { pub data: *mut u8, pub len: i64 }")
     o.append(ALLOW)
     o.append("#[repr(C)]\npub struct Pruv__Tagged { pub tag: i64, pub value: i64 }")
     o.append(ALLOW)
@@ -1591,14 +1648,14 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
         unsafe { ::std::alloc::dealloc(data, layout) };
     }
 }""")
-    returns_array = any(is_array(f.ret) for f in prog.functions)
+    returns_array = any(is_arr(f.ret) for f in prog.functions)  # G2 B2: str counts
     decls = []
     for f in prog.functions:
         if mangle(f.name) != f.name:
             raise Exception("llvmgen: function name %s needs mangling; the bindings use the raw name" % f.name)
         ps = []
         for p in f.params:
-            if p.type.name in ("array_u8", "array_bool"):  # G2 A5
+            if p.type.name in ("array_u8", "array_bool", "str"):  # G2 A5/B2
                 ps += ["*const u8", "i64"]
             elif p.type == ARRAY:
                 ps += ["*const i64", "i64"]
@@ -1612,6 +1669,8 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
             ps.append("*mut Pruv__ArrayU8")
         elif f.ret.name == "array_bool":  # G2 A5
             ps.append("*mut Pruv__ArrayBool")
+        elif f.ret.name == "str":  # G2 B2
+            ps.append("*mut Pruv__Str")
         elif f.ret == ARRAY:
             ps.append("*mut Pruv__Array")
         elif is_user_type(f.ret):
@@ -1620,6 +1679,8 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
         decls.append("    fn pruv_abi_%s(%s)%s;" % (typed_abi_name(f), ", ".join("p%d: %s" % (i, t) for i, t in enumerate(ps)), ret))
     if any(f.ret.name == "array_bool" for f in prog.functions):  # G2 A5
         decls.append("    fn pruv_check_bool(p0: *const u8, p1: i64);")
+    if any(f.ret.name == "str" for f in prog.functions):  # G2 B2
+        decls.append("    fn pruv_check_utf8(p0: *const u8, p1: i64);")
     if returns_array:
         decls.append("    fn pruv_runtime_rust_allocator_v2();")
     o.append(ALLOW)
@@ -1635,6 +1696,8 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
                 args.append("%s as i64" % p.name)
             elif p.type.name == "array_bool":  # G2 A5
                 args += ["%s.as_ptr() as *const u8" % p.name, "%s.len() as i64" % p.name]
+            elif p.type.name == "str":  # G2 B2
+                args += ["%s.as_ptr()" % p.name, "%s.len() as i64" % p.name]
             elif is_array(p.type):
                 args += ["%s.as_ptr()" % p.name, "%s.len() as i64" % p.name]
             elif is_user_type(p.type):
@@ -1653,7 +1716,7 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
         body = []
         if "io" in f.effects:
             body.append("::std::io::Write::flush(&mut ::std::io::stdout());")
-        if is_array(f.ret):
+        if is_arr(f.ret):
             body.append("let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v2 as unsafe extern \"C\" fn());")
         body += pre
         call = "pruv_abi_%s(%s)" % (typed_abi_name(f), ", ".join(args))
@@ -1670,6 +1733,12 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
             body.append("pruv_check_bool(pruv__out.data, pruv__out.len);")
             body.append("if pruv__out.len > 0 { ::std::vec::Vec::from_raw_parts(pruv__out.data as *mut bool, pruv__out.len as usize, "
                         "pruv__out.len as usize) } else { ::std::vec::Vec::new() }")
+        elif f.ret.name == "str":  # G2 B2
+            body.append("let mut pruv__out = Pruv__Str { data: ::std::ptr::null_mut(), len: 0 };")
+            body.append(callo + ";")
+            body.append("pruv_check_utf8(pruv__out.data, pruv__out.len);")
+            body.append("if pruv__out.len > 0 { ::std::string::String::from_utf8_unchecked(::std::vec::Vec::from_raw_parts("
+                        "pruv__out.data, pruv__out.len as usize, pruv__out.len as usize)) } else { ::std::string::String::new() }")
         elif is_array(f.ret):
             body.append("let mut pruv__out = %s { data: ::std::ptr::null_mut(), len: 0 };"
                         % ("Pruv__ArrayU8" if f.ret.name == "array_u8" else "Pruv__Array"))
@@ -1695,7 +1764,7 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
 
 def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30):
     from typeinfo import g2_unimplemented_error
-    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool"))  # G2 A5
+    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
     tt = TypeTable(prog)
@@ -1712,7 +1781,10 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30):
         chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
         chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
         chunks.append(abi_of(f, tt))
+    has_str = uses_str(prog)  # G2 B2: walk the AST once
     ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + (
-        DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool")) else "") + (
-        DECLS_BOOL if uses_array_type(prog, "array_bool") else "") + "\n" + "\n".join(chunks)  # G2 A5
+        DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool") or has_str)
+        else "") + (
+        DECLS_BOOL if uses_array_type(prog, "array_bool") else "") + (
+        DECLS_STR if has_str else "") + "\n" + "\n".join(chunks)  # G2 A5/B2
     return ir, gen_bindings(prog)

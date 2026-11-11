@@ -1,0 +1,20 @@
+// safe mode: substr(fs(), lo(), hi()) evaluates all three arguments (prints 1 2 3) before the range check fails (3..1, len 6).
+fn fs() -> str ! io, alloc {
+  print(1);
+  return "héllo";
+}
+
+fn lo() -> i64 ! io {
+  print(2);
+  return 3;
+}
+
+fn hi() -> i64 ! io {
+  print(3);
+  return 1;
+}
+
+fn f() -> i64 ! io, alloc {
+  let t: str = substr(fs(), lo(), hi());
+  return len(t);
+}

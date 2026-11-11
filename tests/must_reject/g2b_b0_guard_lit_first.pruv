@@ -1,7 +1,0 @@
-// unsupported_type(codegen): B1부터 증명은 통과하고 생성 층이 거부한다 — 리터럴(4:20)이 뒤의 str Let(5:3)보다 앞 (Let 을 먼저 보면 5:3 이 나와 실패)
-fn f(n: i64) -> i64 ! alloc
-{
-  let k: i64 = len("x");
-  let s: str = "e";
-  return k + len(s);
-}

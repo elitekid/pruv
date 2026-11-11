@@ -1,0 +1,18 @@
+// nested str temporaries (call result -> substr/copy -> len / is_char_boundary) are freed at the end of the statement (alloc balance).
+fn g() -> str ! alloc
+  ensures len(result) == 15
+  ensures is_char_boundary(result, 3)
+  ensures is_char_boundary(result, 6)
+{
+  return "안녕하세요";
+}
+
+fn nt() -> i64 ! alloc {
+  let a: i64 = len(substr(g(), 3, 6));
+  let b: i64 = len(copy(g()));
+  let mut c: i64 = 0;
+  if is_char_boundary(substr(g(), 0, 6), 3) {
+    c = 1;
+  }
+  return a * 10000 + b * 100 + c;
+}

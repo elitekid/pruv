@@ -45,6 +45,7 @@
  *   pruv: invalid representation: <v> (<what>)
  * and exits 101; pruv_check_bool(data, len) (G2 A5) calls it for the first byte
  * of a [bool] array that is not 0 or 1 (raw ABI entry check).
+ * str (G2 B2): pruv_str_boundary(data, len, i) is the UTF-8 character boundary test (i == 0 or i == len, else 0 < i < len and data[i] is not a continuation byte); pruv_substr(data, len, lo, hi) checks the range then both boundaries ("pruv: string slice out of bounds: lo..hi (len n)" / "pruv: UTF-8 boundary error: lo..hi (len n)", exit 101) and returns a fresh copy (v2 layout 1,1); pruv_check_utf8(data, len) rejects a negative len (pruv_panic_repr(len, "str length")), NULL data with len > 0 (pruv_panic_repr(len, "str NULL data")) and ill-formed UTF-8 (Unicode Table 3-7) with pruv_panic_repr(offset, "str UTF-8, byte offset").
  */
 #include <stdint.h>
 #include <inttypes.h>
@@ -66,6 +67,11 @@ void *pruv_copy_v2(const void *src, int64_t len, int64_t size, int64_t align);
 void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align);
 _Noreturn void pruv_panic_elem(int64_t v, const char *range);
 _Noreturn void pruv_panic_repr(int64_t v, const char *what);
+void pruv_check_bool(const uint8_t *data, int64_t len);
+_Noreturn void pruv_panic_slice(const char *what, int64_t lo, int64_t hi, int64_t len);
+int32_t pruv_str_boundary(const uint8_t *data, int64_t len, int64_t i);
+void *pruv_substr(const uint8_t *data, int64_t len, int64_t lo, int64_t hi);
+void pruv_check_utf8(const uint8_t *data, int64_t len);
 
 #ifdef PRUV_RUST_ALLOCATOR
 extern int64_t *pruv_host_alloc(int64_t len);
@@ -122,6 +128,13 @@ _Noreturn void pruv_panic_repr(int64_t v, const char *what) {
     PRUV_HOST_FLUSH();
     fflush(stdout);
     fprintf(stderr, "pruv: invalid representation: %" PRId64 " (%s)\n", v, what);
+    exit(101);
+}
+
+_Noreturn void pruv_panic_slice(const char *what, int64_t lo, int64_t hi, int64_t len) {
+    PRUV_HOST_FLUSH();
+    fflush(stdout);
+    fprintf(stderr, "pruv: %s: %" PRId64 "..%" PRId64 " (len %" PRId64 ")\n", what, lo, hi, len);
     exit(101);
 }
 
@@ -242,6 +255,71 @@ void pruv_check_bool(const uint8_t *data, int64_t len) {
     for (int64_t k = 0; k < len; k++)
         if (data[k] > 1)
             pruv_panic_repr((int64_t)data[k], "bool 0..=1");
+}
+
+int32_t pruv_str_boundary(const uint8_t *data, int64_t len, int64_t i) {
+    if (i == 0 || i == len)
+        return 1;
+    if (i < 0 || i > len)
+        return 0;
+    return (data[i] & 0xC0) != 0x80;
+}
+
+void *pruv_substr(const uint8_t *data, int64_t len, int64_t lo, int64_t hi) {
+    if (!(lo >= 0 && lo <= hi && hi <= len))
+        pruv_panic_slice("string slice out of bounds", lo, hi, len);
+    if (!(pruv_str_boundary(data, len, lo) && pruv_str_boundary(data, len, hi)))
+        pruv_panic_slice("UTF-8 boundary error", lo, hi, len);
+    if (hi == lo)
+        return NULL;
+    return pruv_copy_v2(data + lo, hi - lo, 1, 1);
+}
+
+void pruv_check_utf8(const uint8_t *data, int64_t len) {
+    if (len < 0)
+        pruv_panic_repr(len, "str length");
+    if (len == 0)
+        return;
+    if (data == NULL)
+        pruv_panic_repr(len, "str NULL data");
+    int64_t k = 0;
+    while (k < len) {
+        uint8_t b = data[k];
+        int64_t need = 0;
+        uint8_t lo = 0x80, hi = 0xBF;
+        if (b < 0x80) {
+            k++;
+            continue;
+        } else if (b >= 0xC2 && b <= 0xDF) {
+            need = 1;
+        } else if (b == 0xE0) {
+            need = 2;
+            lo = 0xA0;
+        } else if ((b >= 0xE1 && b <= 0xEC) || b == 0xEE || b == 0xEF) {
+            need = 2;
+        } else if (b == 0xED) {
+            need = 2;
+            hi = 0x9F;
+        } else if (b == 0xF0) {
+            need = 3;
+            lo = 0x90;
+        } else if (b >= 0xF1 && b <= 0xF3) {
+            need = 3;
+        } else if (b == 0xF4) {
+            need = 3;
+            hi = 0x8F;
+        } else {
+            pruv_panic_repr(k, "str UTF-8, byte offset");
+        }
+        if (len - k <= need)
+            pruv_panic_repr(k, "str UTF-8, byte offset");
+        if (data[k + 1] < lo || data[k + 1] > hi)
+            pruv_panic_repr(k, "str UTF-8, byte offset");
+        for (int64_t j = 2; j <= need; j++)
+            if ((data[k + j] & 0xC0) != 0x80)
+                pruv_panic_repr(k, "str UTF-8, byte offset");
+        k += need + 1;
+    }
 }
 
 void pruv_print_i64(int64_t v) {

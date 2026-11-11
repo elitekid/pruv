@@ -1,0 +1,17 @@
+// B2: 생성·실행까지 통과 — ASCII 부분 문자열: 결과 길이와 바이트가 원본과 같음을 ensures 로 증명
+fn mid(s: str, lo: i64, hi: i64) -> str ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(s)
+  requires is_char_boundary(s, lo)
+  requires is_char_boundary(s, hi)
+  ensures len(result) == hi - lo
+  ensures len(result) > 0 ==> result[0] == s[lo]
+{
+  return substr(s, lo, hi);
+}
+
+fn demo() -> i64 ! alloc {
+  let r: str = mid("hello", 1, 4);
+  assert len(r) == 3;
+  assert r[0] == 101;
+  return 0;
+}

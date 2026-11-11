@@ -1,0 +1,11 @@
+// an embedded NUL does not truncate a str: length 3, middle byte 0, and the returned String keeps all 3 bytes.
+fn mid() -> i64 ! alloc {
+  let s: str = "a\0b";
+  assert len(s) == 3;
+  assert s[1] == 0;
+  return s[1];
+}
+
+fn whole() -> str ! alloc {
+  return "a\0b";
+}

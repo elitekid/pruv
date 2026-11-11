@@ -22,6 +22,10 @@ pub fn rty(t: &str, param: bool) -> String {
         "array_bool" => {
             if param { "&[bool]".to_string() } else { "::std::vec::Vec<bool>".to_string() }
         }
+        // G2 B2: str 은 매개변수 &str, 지역·반환 String
+        "str" => {
+            if param { "&str".to_string() } else { "::std::string::String".to_string() }
+        }
         other => other.to_string(),
     }
 }

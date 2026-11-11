@@ -249,6 +249,28 @@ pub fn uses_array_type(prog: &Program, name: &str) -> bool {
     g2_walk(prog, &|t: &str| t == name).is_some()
 }
 
+/// G2 B2: 매개변수·반환·(중첩) let 타입이 `str` 이거나 requires/ensures/본문 어느 식이든 StrLit 이 있는가.
+pub fn uses_str(prog: &Program) -> bool {
+    let pick = |t: &str| t == "str";
+    for f in &prog.functions {
+        if f.params.iter().any(|p| p.ty == "str") || f.ret == "str" {
+            return true;
+        }
+        let mut best: Option<(i64, i64, String)> = None;
+        for e in &f.requires {
+            g2_cand_expr(e, true, &mut best);
+        }
+        for e in &f.ensures {
+            g2_cand_expr(e, true, &mut best);
+        }
+        g2_cand_stmts(&f.body, &pick, true, &mut best);
+        if best.is_some() {
+            return true;
+        }
+    }
+    false
+}
+
 /// `first_g2_unimplemented` 를 진단으로. stage 는 "verify" / "codegen" 등 막힌 층 이름.
 /// layer 가 있으면 메시지의 층 이름으로 쓰고, fix 가 있으면 고침 안내를 바꾼다.
 pub fn g2_unimplemented_error(

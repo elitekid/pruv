@@ -1,0 +1,22 @@
+// 경계: [bool] 인자 + Option<i64> 반환 (sret 와 __typed 진입의 조합: 진입 pruv_check_bool, Windows 는 첫 sret)
+fn count_opt(a: [bool]) -> Option<i64>
+  requires len(a) <= 1_000_000
+  ensures is_some(result) ==> (0 < some_val(result) && some_val(result) <= len(a))
+{
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant 0 <= c && c <= i
+    decreases len(a) - i
+  {
+    if a[i] {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  if c > 0 {
+    return Some(c);
+  }
+  return None;
+}

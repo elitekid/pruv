@@ -1,0 +1,24 @@
+// is_char_boundary is false for -1, len + 1, i64::MAX and -i64::MAX: in the code (i64) and in requires (i128, also 2^64 and -2^64 whose low 64 bits are 0), in every mode.
+fn chk(s: str) -> i64
+  requires len(s) <= 1000000
+  requires !is_char_boundary(s, -1)
+  requires !is_char_boundary(s, len(s) + 1)
+  requires !is_char_boundary(s, 9223372036854775807)
+  requires !is_char_boundary(s, -9223372036854775807)
+  requires !is_char_boundary(s, 9223372036854775807 * 2 + 2)
+  requires !is_char_boundary(s, 0 - 9223372036854775807 * 2 - 2)
+{
+  if is_char_boundary(s, -1) {
+    return 1;
+  }
+  if is_char_boundary(s, len(s) + 1) {
+    return 2;
+  }
+  if is_char_boundary(s, 9223372036854775807) {
+    return 3;
+  }
+  if is_char_boundary(s, -9223372036854775807) {
+    return 4;
+  }
+  return 0;
+}

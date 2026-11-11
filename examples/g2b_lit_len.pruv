@@ -1,0 +1,19 @@
+// B2: 생성·실행까지 통과 — 리터럴 바이트 길이·바이트 값 assert 가 증명되고 두 뒷단이 코드를 낸다
+fn f() -> i64 ! alloc {
+  assert len("") == 0;
+  assert len("a") == 1;
+  assert len("é") == 2;
+  assert len("안") == 3;
+  assert len("😀") == 4;
+  assert len("\0") == 1;
+  assert len("a\0b") == 3;
+  assert len("안녕") == 6;
+  let e: str = "é";
+  let z: str = "\0";
+  let h: str = "안";
+  assert e[0] == 195;
+  assert e[1] == 169;
+  assert z[0] == 0;
+  assert h[0] == 236;
+  return 0;
+}

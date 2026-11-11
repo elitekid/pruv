@@ -1,0 +1,5 @@
+// safe mode: a negative lo fails the range check (not the boundary check): pruv: string slice out of bounds: -1..1 (len 3).
+fn f() -> i64 ! alloc {
+  let s: str = substr("abc", -1, 1);
+  return len(s);
+}

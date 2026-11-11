@@ -1,0 +1,5 @@
+// safe mode: substr("abc", 2, 1) has lo > hi, so the range check fails: pruv: string slice out of bounds: 2..1 (len 3).
+fn f() -> i64 ! alloc {
+  let s: str = substr("abc", 2, 1);
+  return len(s);
+}

@@ -111,6 +111,32 @@ def uses_array_type(prog, name):
     return False
 
 
+def _has_str_node(node):
+    """True if a StrLit or a Let of type str occurs under node (generic dataclass walk; Types are skipped)."""
+    if isinstance(node, list):
+        return any(_has_str_node(x) for x in node)
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return False
+    if isinstance(node, StrLit):
+        return True
+    if isinstance(node, Let) and node.type.name == "str":
+        return True
+    for fname in node.__dataclass_fields__:
+        if _has_str_node(getattr(node, fname)):
+            return True
+    return False
+
+
+def uses_str(prog):
+    """G2 B2: True if some param/return/let type is str or any requires/ensures/body expression has a string literal."""
+    if uses_array_type(prog, "str"):
+        return True
+    for fn in prog.functions:
+        if _has_str_node(fn.requires) or _has_str_node(fn.ensures) or _has_str_node(fn.body):
+            return True
+    return False
+
+
 def g2_unimplemented_error(prog, stage, layer=None, skip=(), fix=None):
     """PruvError for the first unimplemented array type, or None. stage: "verify" | "codegen"."""
     f = first_g2_unimplemented(prog, skip)

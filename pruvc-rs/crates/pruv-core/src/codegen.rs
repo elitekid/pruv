@@ -7,7 +7,7 @@
 use crate::ast::*;
 use crate::emit_common::{emit_public_types, match_sorted_requires, rstr, rty, show, try_conv, try_cty};
 use crate::pyrepr::repr_str;
-use crate::typeinfo::{array_elem_name, is_array_name, is_user_type, uses_array_type, TypeTable};
+use crate::typeinfo::{array_elem_name, is_array_name, is_user_type, uses_array_type, uses_str, TypeTable};
 use std::collections::{HashMap, HashSet};
 
 pub type R<T> = Result<T, String>;
@@ -120,6 +120,53 @@ pub const CONTRACT_PRELUDE_BOOL: &str = r##"#[allow(dead_code)]
 #[inline]
 fn pruv_cidx_bool(a: &[bool], i: i128) -> bool { if i >= 0 && i < (a.len() as i128) { a[i as usize] } else { pruv_ud("array index out of range") } }
 "##;
+
+// G2 B2: str 을 쓰는 프로그램에 모드 무관으로 사용자 타입 다음에 붙는다.
+pub const STR_PRELUDE: &str = r##"#[allow(dead_code)]
+#[inline]
+fn pruv_str_boundary(a: &str, i: i64) -> bool { i >= 0 && (i as u64) <= (a.len() as u64) && a.is_char_boundary(i as usize) }
+"##;
+
+// G2 B2: str 을 쓰는 프로그램의 안전 모드에만 SAFE_PRELUDE_BOOL(있으면) 다음에 덧붙는다.
+pub const SAFE_PRELUDE_STR: &str = r##"#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_slice_oob(lo: i64, hi: i64, len: usize) -> ! { panic!("pruv: string slice out of bounds: {}..{} (len {})", lo, hi, len) }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_slice_cut(lo: i64, hi: i64, len: usize) -> ! { panic!("pruv: UTF-8 boundary error: {}..{} (len {})", lo, hi, len) }
+#[allow(dead_code)]
+#[inline]
+fn pruv_get_str(a: &str, i: i64) -> i64 { a.as_bytes()[pruv_idx(i, a.len())] as i64 }
+#[allow(dead_code)]
+#[inline]
+fn pruv_substr(a: &str, lo: i64, hi: i64) -> ::std::string::String { if !(lo >= 0 && lo <= hi && (hi as u64) <= (a.len() as u64)) { pruv_slice_oob(lo, hi, a.len()) } if !(a.is_char_boundary(lo as usize) && a.is_char_boundary(hi as usize)) { pruv_slice_cut(lo, hi, a.len()) } ::std::string::String::from(&a[(lo as usize)..(hi as usize)]) }
+"##;
+
+// G2 B2: str 을 쓰는 프로그램의 requires 실행 검사에만 CONTRACT_PRELUDE_BOOL(있으면) 다음에 덧붙는다.
+pub const CONTRACT_PRELUDE_STR: &str = r##"#[allow(dead_code)]
+#[inline]
+fn pruv_cidx_str(a: &str, i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a.as_bytes()[i as usize] as i128 } else { pruv_ud("array index out of range") } }
+#[allow(dead_code)]
+#[inline]
+fn pruv_cboundary(a: &str, i: i128) -> bool { i >= 0 && i <= (a.len() as i128) && a.is_char_boundary(i as usize) }
+"##;
+
+/// G2 B2: 문자열 리터럴 글자 LIT(명세 1.2). 바이트는 파서가 보장한 UTF-8.
+fn lit_str(bytes: &[u8]) -> String {
+    let mut s = String::from("\"");
+    for ch in String::from_utf8_lossy(bytes).chars() {
+        let c = ch as u32;
+        if (0x20..=0x7E).contains(&c) && ch != '"' && ch != '\\' {
+            s.push(ch);
+        } else {
+            s.push_str(&format!("\\u{{{:x}}}", c));
+        }
+    }
+    s.push('"');
+    s
+}
 
 /// 식의 배열 원소 타입 이름(배열이 아니면 "i64").
 fn elem_of(e: &Expr) -> &'static str {
@@ -295,6 +342,10 @@ impl<'a> Gen<'a> {
         }
         let u8_used = uses_array_type(self.prog, "array_u8");
         let bool_used = uses_array_type(self.prog, "array_bool"); // G2 A5
+        let str_used = uses_str(self.prog); // G2 B2
+        if str_used {
+            self.out.push(STR_PRELUDE.to_string());
+        }
         if !self.verified {
             self.out.push(SAFE_PRELUDE.to_string());
             if u8_used {
@@ -302,6 +353,9 @@ impl<'a> Gen<'a> {
             }
             if bool_used {
                 self.out.push(SAFE_PRELUDE_BOOL.to_string());
+            }
+            if str_used {
+                self.out.push(SAFE_PRELUDE_STR.to_string());
             }
         }
         if !self.has_req.is_empty() && !self.trust {
@@ -311,6 +365,9 @@ impl<'a> Gen<'a> {
             }
             if bool_used {
                 self.out.push(CONTRACT_PRELUDE_BOOL.to_string());
+            }
+            if str_used {
+                self.out.push(CONTRACT_PRELUDE_STR.to_string());
             }
             let ctypes = self.contract_types()?;
             if !ctypes.is_empty() {
@@ -463,6 +520,7 @@ impl<'a> Gen<'a> {
     fn carr(&self, e: &Expr) -> R<String> {
         match e {
             Expr::Var(x) => Ok(x.name.clone()),
+            Expr::StrLit(x) => Ok(lit_str(&x.value)), // G2 B2
             other => Err(format!("codegen: unsupported array expression in contract: {:?}", other)),
         }
     }
@@ -475,7 +533,7 @@ impl<'a> Gen<'a> {
                 format!("{}i128", x.value)
             }),
             Expr::BoolLit(x) => Ok((if x.value { "true" } else { "false" }).to_string()),
-            Expr::StrLit(_) => Err("codegen: unsupported expression in requires: string literal".to_string()), // G2 B0: B2
+            Expr::StrLit(x) => Ok(lit_str(&x.value)), // G2 B2
             Expr::Var(x) => {
                 if self.bound.iter().any(|b| b == &x.name) {
                     return Ok(x.name.clone());
@@ -518,6 +576,10 @@ impl<'a> Gen<'a> {
             Expr::Index(x) => {
                 let a = self.carr(&x.array)?;
                 let i = self.c(&x.index)?;
+                if expr_ty(&x.array).as_deref() == Some("str") {
+                    // G2 B2: elem_of 에 닿기 전에 가른다
+                    return Ok(format!("pruv_cidx_str({}, {})", a, i));
+                }
                 if elem_of(&x.array) == "u8" {
                     return Ok(format!("pruv_cidx_u8({}, {})", a, i));
                 }
@@ -599,6 +661,12 @@ impl<'a> Gen<'a> {
                 if n == "len" {
                     return Ok(format!("({}.len() as i128)", self.carr(arg(a, 0)?)?));
                 }
+                if n == "is_char_boundary" {
+                    // G2 B2
+                    let s0 = self.carr(arg(a, 0)?)?;
+                    let i0 = self.c(arg(a, 1)?)?;
+                    return Ok(format!("pruv_cboundary({}, {})", s0, i0));
+                }
                 if n == "is_some" {
                     return Ok(format!("{}.is_some()", self.c(arg(a, 0)?)?));
                 }
@@ -627,14 +695,17 @@ impl<'a> Gen<'a> {
         // 정렬 requires 는 O(n) 동치형으로 바꾼다(docs/M0_CONTRACTS.md C):
         // forall pruv_sk in 1..len(a): a[pruv_sk-1] <= a[pruv_sk]
         let owned: Quant;
-        let q: &Quant = match match_sorted_requires(e) {
+        // 원래 배열 변수의 타입: e.hi 의 `len(a)` 인자 Var 의 ty
+        let arr_ty0: Option<String> = match &*q0.hi {
+            Expr::Call(c) => c.args.first().and_then(|x| expr_ty(x).clone()),
+            _ => None,
+        };
+        // G2 B2: str 배열에는 정렬 빠른 길을 쓰지 않는다(일반 길)
+        let sorted = if arr_ty0.as_deref() == Some("str") { None } else { match_sorted_requires(e) };
+        let q: &Quant = match sorted {
             Some(arr) => {
                 let (line, col) = (e.line(), e.col());
-                // 원래 배열 변수의 타입: e.hi 의 `len(a)` 인자 Var 의 ty
-                let arr_ty: Option<String> = match &*q0.hi {
-                    Expr::Call(c) => c.args.first().and_then(|x| expr_ty(x).clone()),
-                    _ => None,
-                };
+                let arr_ty: Option<String> = arr_ty0.clone();
                 let var = |n: &str| Expr::Var(Var { line, col, name: n.to_string(), ty: None });
                 let one = Expr::IntLit(IntLit { line, col, value: "1".to_string(), ty: None });
                 let kv = var("pruv_sk");
@@ -900,6 +971,7 @@ impl<'a> Gen<'a> {
                 Ok(if x.value.starts_with('-') { format!("({}i64)", x.value) } else { format!("{}i64", x.value) })
             }
             Expr::BoolLit(x) => Ok((if x.value { "true" } else { "false" }).to_string()),
+            Expr::StrLit(x) => Ok(format!("::std::string::String::from({})", lit_str(&x.value))), // G2 B2
             Expr::Var(x) => Ok(x.name.clone()),
             Expr::Unary(x) => {
                 if !self.verified && x.op == "-" {
@@ -918,6 +990,17 @@ impl<'a> Gen<'a> {
                 let l = self.e(&x.left)?;
                 let r = self.e(&x.right)?;
                 Ok(format!("({} {} {})", l, x.op, r))
+            }
+            Expr::Index(x) if expr_ty(&x.array).as_deref() == Some("str") => {
+                // G2 B2: elem_of 에 닿기 전에 가른다
+                if !self.verified {
+                    let a = self.arr_ref(&x.array)?;
+                    let i = self.e(&x.index)?;
+                    return Ok(format!("pruv_get_str({}, {})", a, i));
+                }
+                let a = self.e(&x.array)?;
+                let i = self.e(&x.index)?;
+                Ok(format!("((unsafe {{ *{}.as_bytes().get_unchecked(({}) as usize) }}) as i64)", a, i))
             }
             Expr::Index(x) => {
                 let u8r = elem_of(&x.array) == "u8";
@@ -1013,14 +1096,37 @@ impl<'a> Gen<'a> {
                     ));
                 }
                 if n == "copy" {
+                    if expr_ty(arg(a, 0)?).as_deref() == Some("str") {
+                        // G2 B2
+                        return Ok(format!("{}.to_owned()", self.e(arg(a, 0)?)?));
+                    }
                     return Ok(format!("{}.to_vec()", self.e(arg(a, 0)?)?));
                 }
                 if n == "print" {
                     return Ok(format!("println!(\"{{}}\", {})", self.e(arg(a, 0)?)?));
                 }
+                if n == "is_char_boundary" {
+                    // G2 B2
+                    let s0 = self.arr_ref(arg(a, 0)?)?;
+                    let i0 = self.e(arg(a, 1)?)?;
+                    return Ok(format!("pruv_str_boundary({}, {})", s0, i0));
+                }
+                if n == "substr" {
+                    // G2 B2: 인자 평가 순서 s → lo → hi
+                    let s0 = self.arr_ref(arg(a, 0)?)?;
+                    let lo = self.e(arg(a, 1)?)?;
+                    let hi = self.e(arg(a, 2)?)?;
+                    if !self.verified {
+                        return Ok(format!("pruv_substr({}, {}, {})", s0, lo, hi));
+                    }
+                    return Ok(format!(
+                        "{{ let pruv_s: &str = {}; let pruv_lo: i64 = {}; let pruv_hi: i64 = {}; ::std::string::String::from(unsafe {{ pruv_s.get_unchecked((pruv_lo as usize)..(pruv_hi as usize)) }}) }}",
+                        s0, lo, hi
+                    ));
+                }
                 let mut args: Vec<String> = Vec::new();
                 for x in a {
-                    if expr_ty(x).as_deref().map_or(false, is_array_name) {
+                    if expr_ty(x).as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
                         args.push(self.arr_ref(x)?);
                     } else {
                         args.push(self.e(x)?);
@@ -1039,7 +1145,7 @@ impl<'a> Gen<'a> {
 
 /// Pruv -> Rust 소스. Err 는 Python 이 Exception 을 내는 자리의 str(e).
 pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
-    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool"], None) {
+    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) { // G2 B2
         return Err(format!("unsupported_type: {}", e.message));
     }
     let mut g = Gen::new(prog, verified, trust_callers, budget);

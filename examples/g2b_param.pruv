@@ -1,0 +1,17 @@
+// B2: 생성·실행까지 통과 — str 매개변수와 str 호출 결과의 바이트가 0..255 로 가정된다
+fn dup(s: str) -> str ! alloc
+  ensures len(result) == len(s)
+{
+  return copy(s);
+}
+
+fn first(s: str) -> i64 ! alloc
+  requires len(s) > 0
+{
+  let b: i64 = s[0];
+  assert b >= 0 && b <= 255;
+  let c: str = dup(s);
+  let d: i64 = c[0];
+  assert d >= 0 && d <= 255;
+  return d;
+}

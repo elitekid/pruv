@@ -811,3 +811,24 @@ B0에서 앞단까지 연 `str`을 증명 층에서 다루게 했다. 실행·AB
 - **확인 감사(Claude Opus):** 필수 0, 1차 반영 5건 확인. 권고 2 반영: run_all이 진단 "포함"만 보므로 "첫 진단" 표현을 주석·명세에서 고침(의무 순서는 직접 실행으로 확인), 128 문턱을 내리는 변이용 `"a~"`(126) assert 추가(127은 리터럴에 쓸 수 없어 남음).
 - **Windows CI:** CI 경로를 건드리지 않아 실행되지 않음. `winci/prepare.py --check`로 52파일 동일 확인.
 - 측정 못 한 것: str 증명 시간(감사의 diff_trace 0.2~0.3초 외), Windows·Linux 실행, diff_parse 건수가 B0 기록(3981)과 다르게 세어지는 이유, 실행 경계 판정과 SMT boundary 일치(B2에서).
+
+## 41. G2 B2: `str` 실행·raw ABI (2026-11-11)
+
+B1까지 증명만 되던 `str`을 Rust 소스 뒷단·LLVM 뒷단·raw ABI·`--rust-bindings`·C 런타임에서 연다. 이제 `str`과 리터럴을 쓰는 프로그램이 끝까지 생성·실행된다. 생성 글자(리터럴 이스케이프, 경계·substr Rust/IR, 런타임 함수, 패닉 문구, 바인딩)는 `docs/G2_B2_IMPL.md`에 먼저 고정했고, 다섯 갈래로 나눠 구현한 두 판이 첫 비교에서 바이트까지 같았다.
+
+- **표현:** 실행 str 은 `{ ptr, i64 }`(길이 = 바이트 수, 원소 `i8`, v2 배치 (1,1)). Rust 소스는 매개변수 `&str`, 지역·반환 `String`. 리터럴은 Rust `String::from("…")`(0x20..0x7E 중 `"`·`\` 아닌 것만 그대로, 나머지 `\u{X}`), LLVM 은 `@.str.N` 전역을 `pruv_copy_v2` 로 복사(계약 안 리터럴은 복사 없음). 읽기 `s[i]` 는 u8 과 같은 zext.
+- **경계:** 런타임 `pruv_str_boundary`·Rust `pruv_str_boundary`(i64)·`pruv_cboundary`(i128)·LLVM 계약 길(`icmp ule i128` → `select -1`)이 모두 B1 SMT 식과 같은 뜻(0·len 참, 음수·초과 거짓, 그 밖 continuation 아님). 2^64·-2^64(아래 64비트 0) 계약 값도 거짓으로 시험.
+- **substr:** 인자 s → lo → hi 평가 뒤, 증명 모드는 검사 없이 새 버퍼 복사(Rust `get_unchecked`, LLVM `getelementptr inbounds` + `pruv_copy_v2`), 안전 모드는 범위 → 경계 순서로 검사(`pruv: string slice out of bounds: LO..HI (len N)` / `pruv: UTF-8 boundary error: LO..HI (len N)`, 종료 101, 두 뒷단 같은 글자) 뒤 복사. 결과는 원본과 독립된 버퍼.
+- **raw ABI(결정 13 a):** `pruv_abi_<f>` 의 str 매개변수는 requires·본문 전에 `pruv_check_utf8`(Unicode Table 3-7: 고립 continuation, 잘린 다중 바이트, overlong, surrogate, U+10FFFF 초과; 감사 뒤 음수 길이·길이 양수인 NULL 도)로 검사, `--trust-callers` 에서도 유지. 생성 Rust 바인딩은 검사 줄 없는 `__typed` 진입을 부르고(`&str` 은 언어가 보장), str 반환은 `pruv_check_utf8` 뒤 `String::from_utf8_unchecked` 로 인수.
+- **가드:** 생성 층 가드 6곳 skip 에 `str`(모든 G2 타입이 열림, A6 i32 용으로 함수는 남김). 정렬 requires 빠른 길은 str 에 쓰지 않음.
+- **표본:** 생성 층 거부를 기대하던 옛 str 표본 16쌍(`g2b_b0_*` 8, `g2b_b1_ok_*` 8) 삭제. 증명 양성 7개는 `examples/g2b_*` 로 옮기고 ASCII 부분 문자열·경계 분기 2개 추가(examples 9). runtime `g2b_rt_*` 16개(이스케이프·NUL·빈 문자열·다중 바이트·큰 경계·양 끝·잘못된 범위/경계/음수 3·평가 순서·평가 순서 뒤 실패·재대입·중첩 임시값·반환 소유권·계약 읽기·`--infer`; 할당 균형 3표본). must_reject 짝 2(`g2b_b2_bad_slice_range`·`_cut`). raw UTF-8 시험 `tests/abi/check_utf8_repr.py`(유효 10·거부 12·표현 먼저·음수 길이·NULL, 기본·trust 빌드 × 두 컴파일러 = 104경우, m3_all 단계 `abi_utf8`). ABI 생성물 `g2b_str_ret`·`g2a_bool_opt`(A5 확인 감사 권고: [bool] 인자 + Option 반환 sret) + `check_generated.py` 에 `__typed` 서명·정의 검사(A5 권고). 행 목록 719 → 833.
+- **회귀(마지막 실행):**
+  - run_all `--backend both` 두 판 833/833(행 목록 833, 빠진 행·실패 0)
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - 새·바뀐 str 표본 27개 trace 대조 same(`g2b_rt_infer` 는 `--infer`)
+  - diff_compilers `--only must_reject --backend both` 386 same(옛 표본 삭제로 414에서 줄어듦), diff_parse parse 3649(same 3647 + Py 재귀 한도 2)·check 4254(same 4252 + 2) 성공
+  - m3_all 12단계 ok(llvm·rust 생성물 두 판 same, compilers 1050, standalone 50 same, abi_bool 16/16, abi_utf8 104/104), cli_also_llvm 두 판 373/373, `tests/inference --regress` 두 판 325/325, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1, winci `prepare.py --check` 60파일 동일
+- **감사(Claude Opus):** 필수 0·권고 6. (a) raw 선검사, (b) SMT·실행 경계 일치, (c) substr 바이트 관계·해제 모두 결함 없음. 반영: `pruv_check_utf8` 음수 길이·NULL 거부, 경계 끝값 UTF-8 표본 11, 2^64 계약 경계 표본, `pruv_str_boundary` 선언에 `willreturn memory(argmem: read)`, Py `uses_str` 한 번만 계산. `__typed` 공개 기호(A5 와 같은 설계)와 바인딩 반환 재검사(`--trust-callers` 에서의 방어)는 이유를 명세 5.5에 적고 유지.
+- **확인 감사(Claude Opus):** 필수 0, 고침 6건 확인(`memory(argmem: read)` 는 clang 22·Apple clang 17 이 받고 런타임 함수가 실제로 인자 메모리만 읽음). 권고 2 반영: 음수 길이·NULL 시험 추가, 런타임·시험 머리 주석 갱신.
+- 남긴 것: `[i64]`·`[u8]`·`[bool]` raw 진입의 음수 길이·NULL 거부(B2 전부터 있던 공백, str 만 고침).
+- 측정 못 한 것: str 증명·실행 시간, Linux 실행, windows-latest clang 이 `memory(...)` 문법(LLVM 16+)을 받는지는 CI 결과로만 확인.

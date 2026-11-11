@@ -1,0 +1,8 @@
+// requires that read str bytes and test boundaries (contract side: pruv_cidx_str / pruv_cboundary); the code returns the byte.
+fn pk(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  requires 0 <= i && i < len(s) && s[i] != 0
+  requires 0 <= i && i < len(s) && (is_char_boundary(s, i) ==> (s[i] < 128 || s[i] >= 192))
+{
+  return s[i];
+}

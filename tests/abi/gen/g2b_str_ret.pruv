@@ -1,0 +1,10 @@
+// 경계: str 인자·반환 (out 포인터, 진입에서 pruv_check_utf8, 중간 copy·substr)
+fn cut(s: str, i: i64) -> str ! alloc
+  requires 0 <= i && i <= len(s)
+  requires is_char_boundary(s, i)
+  ensures len(result) == i
+{
+  let c: str = copy(s);
+  let d: str = substr(c, 0, i);
+  return d;
+}

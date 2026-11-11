@@ -1,0 +1,10 @@
+// the ends 0 and len are always boundaries: substr(s, 0, len) copies everything, substr(s, len, len) is empty.
+fn ends(s: str) -> i64 ! alloc
+  requires len(s) <= 100
+{
+  assert is_char_boundary(s, 0);
+  assert is_char_boundary(s, len(s));
+  let a: str = substr(s, 0, len(s));
+  let b: str = substr(s, len(s), len(s));
+  return len(a) * 1000 + len(b);
+}

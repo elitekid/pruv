@@ -1,0 +1,5 @@
+count_opt(&[]) = None
+count_opt(&[false, false]) = None
+count_opt(&[true, false, true]) = Some(2)
+count_opt(&[true]) = Some(1)
+repeat count_opt n=20000 sum=-7861648826990316462

@@ -1,0 +1,5 @@
+// safe mode: substr("é", 0, 1) is in range but cuts the 2-byte é in the middle: pruv: UTF-8 boundary error: 0..1 (len 2).
+fn f() -> i64 ! alloc {
+  let s: str = substr("é", 0, 1);
+  return len(s);
+}

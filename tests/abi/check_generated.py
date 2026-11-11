@@ -59,8 +59,8 @@ def is_tagged(ret_ty):
 
 
 def is_array(ret_ty):
-    """배열 반환(`[i64]`, `[u8]`, 정제 `[u8 | L..=U; <=N]`): 마지막 out 포인터 + void, sret 없음."""
-    return ret_ty.startswith("[")
+    """배열·str 반환(`[i64]`, `[u8]`, 정제 `[u8 | L..=U; <=N]`, `str`): 마지막 out 포인터 + void, sret 없음."""
+    return ret_ty.startswith("[") or ret_ty == "str"
 
 
 def expected_ret(ret_ty):
@@ -79,6 +79,11 @@ def abi_defs(ir_text):
     return {n: (sigs[n], lines[n]) for n in lines if n in sigs}
 
 
+def binding_typed(rs_text):
+    """바인딩 .rs 가 부르는 `pruv_abi_*__typed` extern 이름 목록 (G2 A5·B2: [bool]·str 매개변수 함수)."""
+    return sorted(set(re.findall(r"fn\s+(pruv_abi_\w+__typed)\s*\(", rs_text)))
+
+
 def binding_tagged(rs_text):
     """바인딩 .rs 의 extern 선언에서 {pruv_abi_이름: 반환이 Pruv__Tagged 인가}."""
     out = {}
@@ -94,6 +99,7 @@ def check_one(src, a, tools, ref_sigs, ref_err, work):
     stem = src.stem
     res = {"hdr": True, "ver": True, "sret": True, "obj": True, "host": True, "ref": True}
     notes = []
+    typed_names = []
 
     def fail(k, msg):
         res[k] = False
@@ -146,7 +152,19 @@ def check_one(src, a, tools, ref_sigs, ref_err, work):
                     fail("sret", "%s: 반환 %s (기대 %s)" % (name, ret, expected_ret(t)))
                 if is_array(t) and not (params and params[-1].startswith("ptr")):
                     fail("sret", "%s: 배열 반환인데 마지막 인자가 out 포인터(ptr)가 아님: %s" % (name, line[:120]))
+        # G2 B2: `__typed` define 은 원래 define 과 서명이 같아야 하고, 바인딩이 부르는 `__typed` 는 IR 에 정의돼 있어야 한다
+        for name in sorted(defs):
+            if name.endswith("__typed"):
+                typed_names.append(name)
+                base = name[:-len("__typed")]
+                if base not in defs:
+                    fail("sret", "__typed 의 원래 정의 없음: " + name)
+                elif defs[base][0] != defs[name][0]:
+                    fail("sret", "%s 서명이 원래와 다름: %s / %s" % (name, defs[name][0], defs[base][0]))
         if rs.exists():
+            for tn in binding_typed(rs.read_text()):
+                if tn not in defs:
+                    fail("sret", "바인딩이 부르는 %s 가 IR 에 정의돼 있지 않음" % tn)
             bt = binding_tagged(rs.read_text())
             for name, t in sorted(want.items()):
                 if name not in bt:
@@ -186,7 +204,7 @@ def check_one(src, a, tools, ref_sigs, ref_err, work):
             fail("obj", "COFF x86-64 아님")
         rc, so, _ = run([tools["llvm-nm"], "--defined-only", str(obj)])
         defined = {ln.split()[-1] for ln in so.splitlines() if ln.strip()}
-        for name in sorted(want):
+        for name in sorted(list(want) + typed_names):
             if name not in defined:
                 fail("obj", "정의 기호 없음: " + name)
 

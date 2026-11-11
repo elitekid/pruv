@@ -1,0 +1,16 @@
+// B2: 생성·실행까지 통과 — is_char_boundary 의 모든 경계 판정(0·len·가운데·음수·len 초과)
+fn f() -> i64 ! alloc {
+  assert is_char_boundary("é", 0);
+  assert !is_char_boundary("é", 1);
+  assert is_char_boundary("é", 2);
+  assert !is_char_boundary("é", -1);
+  assert !is_char_boundary("é", 3);
+  assert is_char_boundary("", 0);
+  assert is_char_boundary("abc", 1);
+  assert !is_char_boundary("😀", 1);
+  assert !is_char_boundary("😀", 2);
+  assert !is_char_boundary("😀", 3);
+  assert is_char_boundary("😀", 4);
+  assert is_char_boundary("안a", 3);
+  return 0;
+}

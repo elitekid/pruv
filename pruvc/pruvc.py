@@ -74,8 +74,8 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
     # G2: runs after verify too; array types that have no code-generation layer yet are rejected.
-    # [u8] (A3·A4) and [bool] (A5) are implemented by every back end.
-    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool"))  # G2 A5
+    # [u8] (A3·A4), [bool] (A5) and str (B2) are implemented by every back end.
+    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:
         return [g2err]
     if backend == "llvm":

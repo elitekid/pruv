@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"]], "exit": 0, "stdout_lines": ["2", "6", "6"], "alloc_balance": true, "llvm_fn_contains": {"f": ["call void @pruv_free_v2(", "call ptr @pruv_copy_v2("]}}

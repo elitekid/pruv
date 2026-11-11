@@ -1,7 +1,0 @@
-// unsupported_type(codegen, --no-verify): ensures 안 리터럴(4:25)이 본문 리터럴보다 앞이라 그 위치로 거부
-fn f(a: [u8]) -> i64 ! alloc
-  requires len(a) >= 0
-  ensures result >= len("")
-{
-  return len("q") - 1 + 1;
-}

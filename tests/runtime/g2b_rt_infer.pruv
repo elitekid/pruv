@@ -1,0 +1,12 @@
+// --infer: a loop without an invariant over a str is proved with 0 <= i && i <= len(s); the code runs through both backends.
+fn last_byte(s: str) -> i64 {
+  let mut i: i64 = 0;
+  let mut last: i64 = 0;
+  while i < len(s)
+    decreases len(s) - i
+  {
+    last = s[i];
+    i = i + 1;
+  }
+  return last;
+}

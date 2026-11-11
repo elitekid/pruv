@@ -1,0 +1,23 @@
+// B2: 생성·실행까지 통과 — 리터럴 → copy → substr → 함수 반환 → 호출자 흐름
+fn head(s: str, i: i64) -> str ! alloc
+  requires 0 <= i && i <= len(s)
+  requires is_char_boundary(s, i)
+  ensures len(result) == i
+  ensures forall k in 0..i: k < len(result) && result[k] == s[k]
+{
+  let c: str = copy(s);
+  let d: str = substr(c, 0, i);
+  return d;
+}
+
+fn driver() -> i64 ! alloc {
+  let a: str = "안녕";
+  let b: str = head(a, 3);
+  assert len(b) == 3;
+  assert b[0] == 236;
+  let t: str = substr("héllo", 1, 3);
+  assert len(t) == 2;
+  assert t[0] == 195;
+  assert t[1] == 169;
+  return 0;
+}

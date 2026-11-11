@@ -48,7 +48,7 @@ Standard types are always written `::std::vec::Vec` / `::std::option::Option` /
 `::std::result::Result` so user types named Vec etc. cannot collide.
 """
 from vast import *
-from typeinfo import TypeTable, is_user_type, is_array, uses_array_type
+from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str
 
 ALLOW = ("#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, "
          "dead_code, unreachable_code, unreachable_patterns, "
@@ -174,6 +174,56 @@ def is_bool_array(t):
     return t is not None and t.name == "array_bool"
 
 
+# G2 B2: str preludes (emitted only for programs that use str)
+STR_PRELUDE = """\
+#[allow(dead_code)]
+#[inline]
+fn pruv_str_boundary(a: &str, i: i64) -> bool { i >= 0 && (i as u64) <= (a.len() as u64) && a.is_char_boundary(i as usize) }
+"""
+
+SAFE_PRELUDE_STR = """\
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_slice_oob(lo: i64, hi: i64, len: usize) -> ! { panic!("pruv: string slice out of bounds: {}..{} (len {})", lo, hi, len) }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_slice_cut(lo: i64, hi: i64, len: usize) -> ! { panic!("pruv: UTF-8 boundary error: {}..{} (len {})", lo, hi, len) }
+#[allow(dead_code)]
+#[inline]
+fn pruv_get_str(a: &str, i: i64) -> i64 { a.as_bytes()[pruv_idx(i, a.len())] as i64 }
+#[allow(dead_code)]
+#[inline]
+fn pruv_substr(a: &str, lo: i64, hi: i64) -> ::std::string::String { if !(lo >= 0 && lo <= hi && (hi as u64) <= (a.len() as u64)) { pruv_slice_oob(lo, hi, a.len()) } if !(a.is_char_boundary(lo as usize) && a.is_char_boundary(hi as usize)) { pruv_slice_cut(lo, hi, a.len()) } ::std::string::String::from(&a[(lo as usize)..(hi as usize)]) }
+"""
+
+CONTRACT_PRELUDE_STR = """\
+#[allow(dead_code)]
+#[inline]
+fn pruv_cidx_str(a: &str, i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) { a.as_bytes()[i as usize] as i128 } else { pruv_ud("array index out of range") } }
+#[allow(dead_code)]
+#[inline]
+fn pruv_cboundary(a: &str, i: i128) -> bool { i >= 0 && i <= (a.len() as i128) && a.is_char_boundary(i as usize) }
+"""
+
+
+def is_str(t):
+    return t is not None and t.name == "str"
+
+
+def str_lit(bs):
+    """Rust literal of UTF-8 bytes: printable ASCII except " and \\ as is, everything else \\u{hex}."""
+    out = []
+    for ch in bs.decode("utf-8"):
+        o = ord(ch)
+        if 0x20 <= o <= 0x7E and ch != '"' and ch != "\\":
+            out.append(ch)
+        else:
+            out.append("\\u{%x}" % o)
+    return '"' + "".join(out) + '"'
+
+
 SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div", "%": "pruv_rem"}
 CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
 
@@ -189,6 +239,8 @@ def rty(t, param=False):
         return "&[u8]" if param else "::std::vec::Vec<u8>"
     if t.name == "array_bool":  # G2 A5
         return "&[bool]" if param else "::std::vec::Vec<bool>"
+    if t.name == "str":  # G2 B2
+        return "&str" if param else "::std::string::String"
     if is_user_type(t):
         return t.name
     raise Exception("codegen: unsupported type %r" % (t,))
@@ -282,6 +334,8 @@ def show(e):
         return "is_variant(%s, %s::%s)" % (show(e.value), e.enum_name, e.variant)
     if isinstance(e, VariantField):
         return "variant_field(%s, %s::%s, %s)" % (show(e.value), e.enum_name, e.variant, e.field)
+    if isinstance(e, StrLit):  # G2 B2
+        return "<str>"
     return "?"
 
 
@@ -349,18 +403,25 @@ class Gen:
             s.out.append(types)
         u8_used = uses_array_type(s.prog, "array_u8")
         bool_used = uses_array_type(s.prog, "array_bool")  # G2 A5
+        str_used = uses_str(s.prog)  # G2 B2
+        if str_used:
+            s.out.append(STR_PRELUDE)
         if not s.verified:
             s.out.append(SAFE_PRELUDE)
             if u8_used:
                 s.out.append(SAFE_PRELUDE_U8)
             if bool_used:
                 s.out.append(SAFE_PRELUDE_BOOL)
+            if str_used:
+                s.out.append(SAFE_PRELUDE_STR)
         if s.has_req and not s.trust:
             s.out.append(CONTRACT_PRELUDE)
             if u8_used:
                 s.out.append(CONTRACT_PRELUDE_U8)
             if bool_used:
                 s.out.append(CONTRACT_PRELUDE_BOOL)
+            if str_used:
+                s.out.append(CONTRACT_PRELUDE_STR)
             ctypes = s.contract_types()
             if ctypes:
                 s.out.append(ctypes)
@@ -440,9 +501,13 @@ class Gen:
     def carr(s, e):
         if isinstance(e, Var):
             return e.name
+        if isinstance(e, StrLit):  # G2 B2: &'static str
+            return str_lit(e.value)
         raise Exception("codegen: unsupported array expression in contract: %r" % e)
 
     def c(s, e):
+        if isinstance(e, StrLit):  # G2 B2
+            return str_lit(e.value)
         if isinstance(e, IntLit):
             return "(%di128)" % e.value if e.value < 0 else "%di128" % e.value
         if isinstance(e, BoolLit):
@@ -469,6 +534,8 @@ class Gen:
                 return "%s(%s, %s)" % (CONTRACT_ARITH[op], s.c(e.left), s.c(e.right))
             return "(%s %s %s)" % (s.c(e.left), op, s.c(e.right))
         if isinstance(e, Index):
+            if is_str(e.array.ty):  # G2 B2
+                return "pruv_cidx_str(%s, %s)" % (s.carr(e.array), s.c(e.index))
             if is_bool_array(e.array.ty):  # G2 A5
                 return "pruv_cidx_bool(%s, %s)" % (s.carr(e.array), s.c(e.index))
             if is_u8_array(e.array.ty):
@@ -510,6 +577,8 @@ class Gen:
             n, a = e.name, e.args
             if n == "len":
                 return "(%s.len() as i128)" % s.carr(a[0])
+            if n == "is_char_boundary":  # G2 B2
+                return "pruv_cboundary(%s, %s)" % (s.carr(a[0]), s.c(a[1]))
             if n == "is_some":
                 return "%s.is_some()" % s.c(a[0])
             if n == "some_val":
@@ -524,6 +593,8 @@ class Gen:
 
     def cquant(s, e):
         arr = match_sorted_requires(e)
+        if arr is not None and is_str(e.hi.args[0].ty):  # G2 B2: no sorted fast path for str
+            arr = None
         if arr is not None:
             # O(n) equivalent (docs/M0_CONTRACTS.md C): forall pruv_sk in 1..len(a): a[pruv_sk-1] <= a[pruv_sk]
             L = dict(line=e.line, col=e.col)
@@ -653,7 +724,13 @@ class Gen:
             if not s.verified and e.op in SAFE_ARITH:
                 return "%s(%s, %s)" % (SAFE_ARITH[e.op], s.e(e.left), s.e(e.right))
             return "(%s %s %s)" % (s.e(e.left), e.op, s.e(e.right))
+        if isinstance(e, StrLit):  # G2 B2
+            return "::std::string::String::from(%s)" % str_lit(e.value)
         if isinstance(e, Index):
+            if is_str(e.array.ty):  # G2 B2
+                if not s.verified:
+                    return "pruv_get_str(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
+                return "((unsafe { *%s.as_bytes().get_unchecked((%s) as usize) }) as i64)" % (s.e(e.array), s.e(e.index))
             if is_bool_array(e.array.ty):  # G2 A5
                 if not s.verified:
                     return "pruv_get_bool(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
@@ -697,10 +774,20 @@ class Gen:
                 # source order: n before v (vec![v; n] would evaluate v first)
                 return "{ let pruv_n: i64 = %s; let pruv_v: i64 = %s; vec![pruv_v; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]))
             if n == "copy":
+                if is_str(a[0].ty):  # G2 B2
+                    return "%s.to_owned()" % s.e(a[0])
                 return "%s.to_vec()" % s.e(a[0])
             if n == "print":
                 return 'println!("{}", %s)' % s.e(a[0])
-            args = [s.arr_ref(x) if (x.ty is not None and is_array(x.ty)) else s.e(x) for x in a]
+            if n == "is_char_boundary":  # G2 B2
+                return "pruv_str_boundary(%s, %s)" % (s.arr_ref(a[0]), s.e(a[1]))
+            if n == "substr":  # G2 B2
+                if not s.verified:
+                    return "pruv_substr(%s, %s, %s)" % (s.arr_ref(a[0]), s.e(a[1]), s.e(a[2]))
+                return ("{ let pruv_s: &str = %s; let pruv_lo: i64 = %s; let pruv_hi: i64 = %s; "
+                        "::std::string::String::from(unsafe { pruv_s.get_unchecked((pruv_lo as usize)..(pruv_hi as usize)) }) }") % (
+                            s.arr_ref(a[0]), s.e(a[1]), s.e(a[2]))
+            args = [s.arr_ref(x) if (x.ty is not None and (is_array(x.ty) or is_str(x.ty))) else s.e(x) for x in a]
             if s.verified and n in s.has_req:
                 n = n + "__pruv_body"   # caller proved requires
             return "%s(%s)" % (n, ", ".join(args))
@@ -709,7 +796,7 @@ class Gen:
 
 def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30):
     from typeinfo import g2_unimplemented_error
-    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool"))  # G2 A5
+    g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
     g = Gen(prog, verified, trust_callers, budget)

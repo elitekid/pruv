@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use crate::emit_common::emit_public_types;
-use crate::typeinfo::{is_array_name, is_user_type, uses_array_type, TypeTable};
+use crate::typeinfo::{is_array_name, is_user_type, uses_array_type, uses_str, TypeTable};
 
 pub const ALLOW: &str = "#[allow(dead_code, non_snake_case, unused)]";
 
@@ -111,7 +111,8 @@ fn needs_mangling(n: &str) -> bool {
 
 /// G2 A5: [bool] 매개변수가 있으면 바인딩은 바이트 검사 없는 pruv_abi_<f>__typed 를 부른다.
 fn typed_abi_name(f: &Function) -> String {
-    if f.params.iter().any(|p| p.ty == "array_bool") {
+    // G2 B2: &str 도 같다
+    if f.params.iter().any(|p| p.ty == "array_bool" || p.ty == "str") {
         format!("{}__typed", f.name)
     } else {
         f.name.clone()
@@ -130,6 +131,7 @@ fn rust_ty(t: &str, param: bool) -> String {
         "result" => "::std::result::Result<i64, i64>".to_string(),
         "array_u8" => (if param { "&[u8]" } else { "::std::vec::Vec<u8>" }).to_string(),
         "array_bool" => (if param { "&[bool]" } else { "::std::vec::Vec<bool>" }).to_string(), // G2 A5
+        "str" => (if param { "&str" } else { "::std::string::String" }).to_string(), // G2 B2
         _ => (if param { "&[i64]" } else { "::std::vec::Vec<i64>" }).to_string(),
     }
 }
@@ -256,13 +258,18 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         o.push(ALLOW.to_string());
         o.push("#[repr(C)]\npub struct Pruv__ArrayBool { pub data: *mut u8, pub len: i64 }".to_string());
     }
+    if uses_str(prog) {
+        // G2 B2
+        o.push(ALLOW.to_string());
+        o.push("#[repr(C)]\npub struct Pruv__Str { pub data: *mut u8, pub len: i64 }".to_string());
+    }
     o.push(ALLOW.to_string());
     o.push("#[repr(C)]\npub struct Pruv__Tagged { pub tag: i64, pub value: i64 }".to_string());
     for h in [HOST_ALLOC, HOST_ALLOC_ZEROED, HOST_FLUSH, HOST_FREE, HOST_ALLOC_V2, HOST_ALLOC_ZEROED_V2, HOST_FREE_V2] {
         o.push(ALLOW.to_string());
         o.push(h.to_string());
     }
-    let returns_array = prog.functions.iter().any(|f| is_array_name(&f.ret));
+    let returns_array = prog.functions.iter().any(|f| is_array_name(&f.ret) || f.ret == "str"); // G2 B2: str 반환도 센다
     let mut decls: Vec<String> = Vec::new();
     for f in &prog.functions {
         if needs_mangling(&f.name) {
@@ -273,8 +280,8 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         }
         let mut ps: Vec<&str> = Vec::new();
         for p in &f.params {
-            if p.ty == "array_u8" || p.ty == "array_bool" {
-                // G2 A5: bool 도 *const u8
+            if p.ty == "array_u8" || p.ty == "array_bool" || p.ty == "str" {
+                // G2 A5: bool 도 *const u8 (G2 B2: str 도)
                 ps.extend(["*const u8", "i64"]);
             } else if p.ty == "array" {
                 ps.extend(["*const i64", "i64"]);
@@ -290,6 +297,8 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             ps.push("*mut Pruv__ArrayU8");
         } else if f.ret == "array_bool" {
             ps.push("*mut Pruv__ArrayBool"); // G2 A5
+        } else if f.ret == "str" {
+            ps.push("*mut Pruv__Str"); // G2 B2
         } else if f.ret == "array" {
             ps.push("*mut Pruv__Array");
         } else if is_user_type(&f.ret) {
@@ -308,6 +317,10 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
     if prog.functions.iter().any(|f| f.ret == "array_bool") {
         // G2 A5: 모든 pruv_abi_* 줄 뒤, marker 줄 앞
         decls.push("    fn pruv_check_bool(p0: *const u8, p1: i64);".to_string());
+    }
+    if prog.functions.iter().any(|f| f.ret == "str") {
+        // G2 B2: check_bool 줄 뒤, marker 줄 앞
+        decls.push("    fn pruv_check_utf8(p0: *const u8, p1: i64);".to_string());
     }
     if returns_array {
         decls.push("    fn pruv_runtime_rust_allocator_v2();".to_string());
@@ -328,6 +341,10 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             } else if p.ty == "array_bool" {
                 // G2 A5
                 args.push(format!("{}.as_ptr() as *const u8", p.name));
+                args.push(format!("{}.len() as i64", p.name));
+            } else if p.ty == "str" {
+                // G2 B2
+                args.push(format!("{}.as_ptr()", p.name));
                 args.push(format!("{}.len() as i64", p.name));
             } else if is_array_name(&p.ty) {
                 args.push(format!("{}.as_ptr()", p.name));
@@ -358,7 +375,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         if f.effects.iter().any(|e| e == "io") {
             body.push("::std::io::Write::flush(&mut ::std::io::stdout());".to_string());
         }
-        if is_array_name(&f.ret) {
+        if is_array_name(&f.ret) || f.ret == "str" {
             body.push(
                 "let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v2 as unsafe extern \"C\" fn());".to_string(),
             );
@@ -382,6 +399,16 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             body.push(
                 "if pruv__out.len > 0 { ::std::vec::Vec::from_raw_parts(pruv__out.data as *mut bool, pruv__out.len as usize, \
                  pruv__out.len as usize) } else { ::std::vec::Vec::new() }"
+                    .to_string(),
+            );
+        } else if f.ret == "str" {
+            // G2 B2: 검사 뒤에 Rust String 으로 인수
+            body.push("let mut pruv__out = Pruv__Str { data: ::std::ptr::null_mut(), len: 0 };".to_string());
+            body.push(format!("{};", callo));
+            body.push("pruv_check_utf8(pruv__out.data, pruv__out.len);".to_string());
+            body.push(
+                "if pruv__out.len > 0 { ::std::string::String::from_utf8_unchecked(::std::vec::Vec::from_raw_parts(pruv__out.data, \
+                 pruv__out.len as usize, pruv__out.len as usize)) } else { ::std::string::String::new() }"
                     .to_string(),
             );
         } else if is_array_name(&f.ret) {

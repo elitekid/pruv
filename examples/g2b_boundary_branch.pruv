@@ -1,0 +1,10 @@
+// B2: 생성·실행까지 통과 — 경계이면 앞부분, 아니면 복사본을 돌려주는 분기
+fn cut(s: str, i: i64) -> str ! alloc
+  requires 0 <= i && i <= len(s)
+{
+  if is_char_boundary(s, i) {
+    return substr(s, 0, i);
+  } else {
+    return copy(s);
+  }
+}

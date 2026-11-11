@@ -1,0 +1,20 @@
+// multi-byte text (Hangul 3 bytes, emoji 4 bytes): bytes, boundaries and substrings agree with Rust's str (len 10; boundaries 0 3 6 10).
+fn han() -> str ! alloc {
+  return "안녕😀";
+}
+
+fn cutb(s: str, lo: i64, hi: i64) -> str ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(s)
+  requires is_char_boundary(s, lo)
+  requires is_char_boundary(s, hi)
+{
+  return substr(s, lo, hi);
+}
+
+fn bnd(s: str, i: i64) -> bool {
+  return is_char_boundary(s, i);
+}
+
+fn pick() -> str ! alloc {
+  return cutb("안녕😀", 3, 6);
+}

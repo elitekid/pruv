@@ -1,0 +1,16 @@
+// a `let mut t: str` reassigned in a loop frees its old buffer each time (alloc balance); the length is 2 or 6.
+fn f(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 5
+{
+  let mut t: str = "ab";
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(t) == 2 || len(t) == 6
+    decreases n - i
+  {
+    t = "héllo";
+    i = i + 1;
+  }
+  return len(t);
+}

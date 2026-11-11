@@ -1,0 +1,1 @@
+{"flags_matrix": [["--no-verify"]], "exit": 101, "stdout_lines": ["1", "2", "3"], "stderr_contains": "pruv: string slice out of bounds: 3..1 (len 6)"}

@@ -47,6 +47,15 @@
     "bools(&[])", "bools(&[true, false, true])", "bools(&[false])",
     {"repeat": "bools", "args": "&[i % 2 == 0, i % 3 == 0, true]", "n": 20000}
   ],
+  "g2a_bool_opt.pruv": [
+    "count_opt(&[])", "count_opt(&[false, false])", "count_opt(&[true, false, true])", "count_opt(&[true])",
+    {"repeat": "count_opt", "args": "&[i % 2 == 0, i % 3 == 0, false]", "n": 20000}
+  ],
+  "g2b_str_ret.pruv": [
+    "cut(\"\", 0)", "cut(\"hello\", 0)", "cut(\"hello\", 5)", "cut(\"h\\u{e9}llo\", 3)", "cut(\"h\\u{e9}llo\", 6)",
+    "cut(\"\\u{ac00}\\u{1f600}\", 3)", "cut(\"\\u{ac00}\\u{1f600}\", 7)",
+    {"repeat": "cut", "args": "\"abc\\u{ac00}\", [0i64, 1, 2, 3, 6][(i % 5) as usize]", "n": 20000}
+  ],
   "arr_ret.pruv": [
     "arr(&[])", "arr(&[1, 2, 3])", "arr(&[i64::MIN, 0, i64::MAX])",
     {"repeat": "arr", "args": "&[i, i + 1, i + 2]", "n": 20000}

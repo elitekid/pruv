@@ -164,7 +164,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
     let mut w = Words::new(tt);
     for p in &f.params {
         let q = mangle(&p.name);
-        if is_array_name(&p.ty) {
+        if is_array_name(&p.ty) || p.ty == "str" {
             ext.push(format!("ptr %a.{}.a", q));
             ext.push(format!("i64 %a.{}.n", q));
             args.push(format!("ptr %a.{}.a", q));
@@ -172,6 +172,10 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
             if p.ty == "array_bool" {
                 // G2 A5: raw 진입에서 모든 바이트가 0/1 인지 먼저 검사
                 pre.push(format!("call void @pruv_check_bool(ptr %a.{}.a, i64 %a.{}.n)", q, q));
+            }
+            if p.ty == "str" {
+                // G2 B2: raw 진입에서 바이트열이 유효 UTF-8 인지 먼저 검사
+                pre.push(format!("call void @pruv_check_utf8(ptr %a.{}.a, i64 %a.{}.n)", q, q));
             }
         } else if is_user_type(&p.ty) {
             ext.push(format!("ptr %a.{}", q));
@@ -199,7 +203,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
     let argl = args.join(", ");
     let mut body: Vec<String> = pre.iter().map(|x| format!("  {}", x)).collect();
     let ret: &str;
-    if is_array_name(rt) {
+    if is_array_name(rt) || rt == "str" {
         ext.push("ptr %out".to_string());
         body.push(format!("  %r = call {} {}({})", lty(rt), entry, argl));
         body.push(format!("  %x0 = extractvalue {} %r, 0", lty(rt)));
@@ -257,12 +261,13 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
         ret = "i64";
     }
     let mut out = format!("define {} @pruv_abi_{}({}) {{\nentry:\n{}\n}}\n", ret, n, ext.join(", "), body.join("\n"));
-    if f.params.iter().any(|p| p.ty == "array_bool") {
+    if f.params.iter().any(|p| p.ty == "array_bool" || p.ty == "str") {
         // G2 A5: typed Rust 바인딩은 타입으로 유효한 &[bool] 을 바이트 검사 없는 이 진입으로 넘긴다
+        // G2 B2: &str 도 같다(유효 UTF-8 검사 줄을 뺀다)
         let tb: Vec<&str> = body
             .iter()
             .map(|x| x.as_str())
-            .filter(|x| !x.starts_with("  call void @pruv_check_bool("))
+            .filter(|x| !x.starts_with("  call void @pruv_check_bool(") && !x.starts_with("  call void @pruv_check_utf8("))
             .collect();
         out.push_str(&format!("\ndefine {} @pruv_abi_{}__typed({}) {{\nentry:\n{}\n}}\n", ret, n, ext.join(", "), tb.join("\n")));
     }

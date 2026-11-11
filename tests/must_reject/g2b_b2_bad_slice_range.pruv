@@ -1,0 +1,5 @@
+// string_slice_range(verify): substr("abc", 2, 1) 은 lo > hi 라 범위 의무가 실패한다 (runtime g2b_rt_bad_slice_range 와 같은 본문: 안전 모드에서만 돈다)
+fn f() -> i64 ! alloc {
+  let s: str = substr("abc", 2, 1);
+  return len(s);
+}
