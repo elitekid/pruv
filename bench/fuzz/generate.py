@@ -15,6 +15,9 @@ Option/Result returns and parameters (params type "Option<i64>"/"Result<i64>", i
 and top-level struct/enum (about 70% in the parameters/return of f, the rest in inner locals and helper functions).
 The struct template also puts struct literals, enums, and Option/Result ==/!= into requires, and occasionally uses an empty struct (`Unit {}`),
 Result fields, and enum fields. There is also a variant that observes evaluation order, single evaluation, and two-field overflow order via `tap(v) ! io`.
+
+G2 mode (generate_case(.., g2=True)) and G3 mode (generate_case(.., g3=True), generics, see the G3 block and bench/fuzz/README.md) use their own
+rng streams and templates; without them the output for a given seed is unchanged.
 """
 import argparse
 import copy
@@ -3114,6 +3117,718 @@ def g2_candidate_inputs(case, rng, n):
     return out
 
 
+# ---------------------------------------------------------------- G3 mode (--g3)
+# Generics (docs/G3_SPEC.md 7.8, SPEC.md 6c). Only generate_case(seed, index, g3=True) uses this block; it creates its own rng
+# ("g3:<seed>:<index>"), so the streams of the existing modes (and of --g2) are untouched.
+#
+# A G3 case is built from generic *fragments* (verified library functions such as `first<T: Element>`, `get_or<T>`,
+# `swap<A, B>`, `rev<T: Element>`; see G3_FRAGS) plus one concrete entry `fn f(..)`, which is what the harness executes.
+# Generic functions are not exported (SPEC 6c), so `f` is a non-generic wrapper that calls instances at i64 and bool
+# with explicit type arguments. Values that cross the `f` boundary are limited to i64, bool, [i64], [bool], Option<i64|bool>
+# and Result<i64|bool>; generic structs/enums (Pair, Choice, Tagged) and Option<Pair<..>> live inside the body only, because
+# the Rust names of struct instances are compiler-mangled (`pruv_g3_t_4_Pair_2_i_b`) and not part of the contract.
+#
+# About G3_BAD_SHARE of the cases are *deliberately unproved but well-typed*: one requires clause is dropped, a false
+# ensures is added, a loop invariant is dropped, or a fragment gets a wrong body (wrong payload, missing guard). They are
+# expected to be rejected by the verifier and are then only run in safe mode; if the verifier accepts one anyway it is
+# treated like any verified program (checked against the oracle in proof mode).
+
+G3_BAD_SHARE = 0.30
+
+G3_TYPES = ("Pair", "Choice", "Tagged")     # fragments that are type declarations (placed first)
+
+G3_FRAGS = {
+    "Pair": "struct Pair<A, B> {\n  first: A,\n  second: B\n}",
+    "Choice": "enum Choice<A, B> {\n  Left(value: A),\n  Right(value: B)\n}",
+    "Tagged": "struct Tagged<T> {\n  tag: i64,\n  value: T\n}",
+    "id": "fn id<T>(x: T) -> T\n  ensures result == x\n{\n  return x;\n}",
+    "wrap": ("fn wrap<T>(x: T) -> Option<T>\n  ensures is_some(result) && some_val(result) == x\n"
+             "{\n  return Some::<T>(x);\n}"),
+    "get_or": ("fn get_or<T>(o: Option<T>, d: T) -> T\n  ensures is_some(o) ==> result == some_val(o)\n"
+               "  ensures !is_some(o) ==> result == d\n{\n  match o {\n    Some(v) => { return v; }\n"
+               "    None => { return d; }\n  }\n}"),
+    "forward": ("fn forward<U>(x: U) -> Option<U>\n  ensures is_some(result) && some_val(result) == x\n"
+                "{\n  return wrap::<U>(id::<U>(x));\n}"),
+    "wrap_twice": ("fn wrap_twice<T>(x: T) -> Option<Option<T>>\n"
+                   "  ensures is_some(result) && is_some(some_val(result)) && some_val(some_val(result)) == x\n"
+                   "{\n  let inner: Option<T> = wrap::<T>(x);\n  return Some::<Option<T>>(inner);\n}"),
+    "result_or": ("fn result_or<T>(r: Result<T>, d: T) -> T\n  ensures is_ok(r) ==> result == ok_val(r)\n"
+                  "  ensures !is_ok(r) ==> result == d\n{\n  match r {\n    Ok(v) => { return v; }\n"
+                  "    Err(c) => { return d; }\n  }\n}"),
+    "fail": ("fn fail<T>(code: i64) -> Result<T>\n  ensures !is_ok(result) && err_val(result) == code\n"
+             "{\n  return Err::<T>(code);\n}"),
+    "to_result": ("fn to_result<T>(o: Option<T>, code: i64) -> Result<T>\n"
+                  "  ensures is_some(o) ==> is_ok(result) && ok_val(result) == some_val(o)\n"
+                  "  ensures !is_some(o) ==> !is_ok(result) && err_val(result) == code\n"
+                  "{\n  match o {\n    Some(v) => { return Ok::<T>(v); }\n    None => { return Err::<T>(code); }\n  }\n}"),
+    "first": ("fn first<T: Element>(a: [T]) -> T\n  requires len(a) > 0\n  ensures result == a[0]\n"
+              "{\n  return a[0];\n}"),
+    "last": ("fn last<T: Element>(a: [T]) -> T\n  requires len(a) > 0\n  ensures result == a[len(a) - 1]\n"
+             "{\n  return a[len(a) - 1];\n}"),
+    "len_of": "fn len_of<T: Element>(a: [T]) -> i64\n  ensures result == len(a)\n{\n  return len(a);\n}",
+    "set_first": ("fn set_first<T: Element>(a: [T], v: T) -> [T] ! alloc\n  requires len(a) > 0\n"
+                  "  ensures len(result) == len(a)\n  ensures result[0] == v\n"
+                  "{\n  let mut out: [T] = copy(a);\n  out[0] = v;\n  return out;\n}"),
+    "swap_ends": ("fn swap_ends<T: Element>(a: [T]) -> [T] ! alloc\n  requires len(a) >= 2\n"
+                  "  ensures len(result) == len(a)\n  ensures result[0] == a[len(a) - 1]\n"
+                  "  ensures result[len(a) - 1] == a[0]\n"
+                  "{\n  let mut out: [T] = copy(a);\n  let n: i64 = len(a);\n  let x: T = a[0];\n"
+                  "  let y: T = a[n - 1];\n  out[0] = y;\n  out[n - 1] = x;\n  return out;\n}"),
+    "copy_all": ("fn copy_all<T: Element>(a: [T]) -> [T] ! alloc\n  ensures len(result) == len(a)\n"
+                 "  ensures forall k in 0..len(a): result[k] == a[k]\n{\n  let out: [T] = copy(a);\n  return out;\n}"),
+    "copy_loop": ("fn copy_loop<T: Element>(a: [T]) -> [T] ! alloc\n  ensures len(result) == len(a)\n"
+                  "  ensures forall k in 0..len(a): result[k] == a[k]\n{\n  let mut out: [T] = copy(a);\n"
+                  "  let mut i: i64 = 0;\n  while i < len(a)\n    invariant 0 <= i && i <= len(a)\n"
+                  "    invariant len(out) == len(a)\n    invariant forall j in 0..len(a): out[j] == a[j]\n"
+                  "    decreases len(a) - i\n  {\n    out[i] = a[i];\n    i = i + 1;\n  }\n  return out;\n}"),
+    "rev": ("fn rev<T: Element>(a: [T]) -> [T] ! alloc\n  ensures len(result) == len(a)\n"
+            "  ensures forall k in 0..len(a): result[k] == a[len(a) - 1 - k]\n"
+            "{\n  let mut out: [T] = copy(a);\n  let mut i: i64 = 0;\n  while i < len(a)\n"
+            "    invariant 0 <= i && i <= len(a)\n    invariant len(out) == len(a)\n"
+            "    invariant forall j in 0..i: out[j] == a[len(a) - 1 - j]\n    decreases len(a) - i\n"
+            "  {\n    out[i] = a[len(a) - 1 - i];\n    i = i + 1;\n  }\n  return out;\n}"),
+    "repeat": ("fn repeat<T: Element>(n: i64, value: T) -> [T] ! alloc\n  requires 0 <= n && n <= 100\n"
+               "  ensures len(result) == n\n  ensures forall k in 0..n: result[k] == value\n"
+               "{\n  let out: [T] = alloc(n, value);\n  return out;\n}"),
+    "fill_loop": ("fn fill_loop<T: Element>(n: i64, v: T) -> [T] ! alloc\n  requires 0 <= n && n <= 100\n"
+                  "  ensures len(result) == n\n  ensures forall k in 0..n: result[k] == v\n"
+                  "{\n  let mut out: [T] = alloc(n, v);\n  let mut i: i64 = 0;\n  while i < n\n"
+                  "    invariant 0 <= i && i <= n\n    invariant len(out) == n\n"
+                  "    invariant forall j in 0..n: out[j] == v\n    decreases n - i\n"
+                  "  {\n    out[i] = v;\n    i = i + 1;\n  }\n  return out;\n}"),
+    "mk_pair": ("fn mk_pair<A, B>(a: A, b: B) -> Pair<A, B>\n  ensures result.first == a\n  ensures result.second == b\n"
+                "{\n  return Pair::<A, B> { first: a, second: b };\n}"),
+    "swap": ("fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>\n  ensures result.first == p.second\n"
+             "  ensures result.second == p.first\n"
+             "{\n  return Pair::<B, A> {\n    first: p.second,\n    second: p.first\n  };\n}"),
+    "fst": "fn fst<A, B>(p: Pair<A, B>) -> A\n  ensures result == p.first\n{\n  return p.first;\n}",
+    "snd": "fn snd<A, B>(p: Pair<A, B>) -> B\n  ensures result == p.second\n{\n  return p.second;\n}",
+    "set_pair_first": ("fn set_pair_first<A, B>(p: Pair<A, B>, v: A) -> Pair<A, B>\n  ensures result.first == v\n"
+                       "  ensures result.second == p.second\n"
+                       "{\n  let mut q: Pair<A, B> = p;\n  q.first = v;\n  return q;\n}"),
+    "pick_by": ("fn pick_by<A, B>(flag: bool, a: A, a2: A, b: B) -> Pair<A, B>\n  ensures flag ==> result.first == a\n"
+                "  ensures !flag ==> result.first == a2\n  ensures result.second == b\n"
+                "{\n  let mut chosen: A = a2;\n  if flag {\n    chosen = a;\n  }\n"
+                "  return Pair::<A, B> { first: chosen, second: b };\n}"),
+    "left_or": ("fn left_or<A, B>(c: Choice<A, B>, d: A) -> A\n"
+                "  ensures is_variant(c, Choice::Left) ==> result == variant_field(c, Choice::Left, value)\n"
+                "  ensures !is_variant(c, Choice::Left) ==> result == d\n"
+                "{\n  match c {\n    Choice::Left(x) => { return x; }\n    Choice::Right(y) => { return d; }\n  }\n}"),
+    "flip": ("fn flip<A, B>(c: Choice<A, B>) -> Choice<B, A>\n"
+             "  ensures is_variant(result, Choice::Right) == is_variant(c, Choice::Left)\n"
+             "{\n  match c {\n    Choice::Left(x) => { return Choice::<B, A>::Right(x); }\n"
+             "    Choice::Right(y) => { return Choice::<B, A>::Left(y); }\n  }\n}"),
+    "bump_tag": ("fn bump_tag<T>(t: Tagged<T>) -> Tagged<T>\n  requires -1000 < t.tag && t.tag < 1000\n"
+                 "  ensures result.tag == t.tag + 1\n  ensures result.value == t.value\n"
+                 "{\n  return Tagged::<T> { tag: t.tag + 1, value: t.value };\n}"),
+    "retag": ("fn retag<T>(t: Tagged<T>, tag: i64) -> Tagged<T>\n  ensures result.value == t.value\n"
+              "  ensures result.tag == tag\n{\n  return Tagged::<T> { tag: tag, value: t.value };\n}"),
+}
+
+# Fragments that need other fragments (type declarations or callees).
+G3_DEPS = {"forward": ["wrap", "id"], "wrap_twice": ["wrap"], "mk_pair": ["Pair"], "swap": ["Pair"], "fst": ["Pair"],
+           "snd": ["Pair"], "set_pair_first": ["Pair"], "pick_by": ["Pair"], "left_or": ["Choice"],
+           "flip": ["Choice"], "bump_tag": ["Tagged"], "retag": ["Tagged"]}
+
+# Defective versions of a fragment: well-typed, but the verifier must not prove the fragment's own contract.
+G3_BAD_FRAGS = {
+    "first": G3_FRAGS["first"].replace("  requires len(a) > 0\n", ""),                            # deleted bounds guard
+    "last": G3_FRAGS["last"].replace("return a[len(a) - 1];", "return a[0];"),                    # wrong element
+    "get_or": G3_FRAGS["get_or"].replace("Some(v) => { return v; }", "Some(v) => { return d; }"),  # wrong active payload
+    "left_or": G3_FRAGS["left_or"].replace("Choice::Left(x) => { return x; }", "Choice::Left(x) => { return d; }"),
+    "set_first": G3_FRAGS["set_first"].replace("out[0] = v;", "out[len(a) - 1] = v;"),            # store at the wrong index
+    "swap_ends": G3_FRAGS["swap_ends"].replace("out[0] = y;", "out[0] = x;"),
+    "copy_loop": G3_FRAGS["copy_loop"].replace("    invariant forall j in 0..len(a): out[j] == a[j]\n", ""),
+    "rev": G3_FRAGS["rev"].replace("out[i] = a[len(a) - 1 - i];", "out[i] = a[len(a) - i];"),      # index out of range at i == 0
+    "fill_loop": G3_FRAGS["fill_loop"].replace("    invariant forall j in 0..n: out[j] == v\n", ""),
+    "repeat": G3_FRAGS["repeat"].replace("alloc(n, value)", "alloc(n + 1, value)"),               # wrong length
+    "bump_tag": G3_FRAGS["bump_tag"].replace("tag: t.tag + 1", "tag: t.tag + 2"),
+}
+
+# fragments that can be added to a program without being called (an unused definition is still type-checked and proved)
+G3_UNUSED = ["id", "wrap", "get_or", "first", "last", "copy_all", "len_of", "result_or", "fail", "swap", "fst", "mk_pair"]
+
+
+class G3P(object):
+    """Parts of one G3 case under construction."""
+
+    def __init__(self, rng, bad):
+        self.rng, self.bad = rng, bad
+        self.frags = []        # fragment names used (dependencies are added when rendering)
+        self.frag_bad = []     # [(fragment, defective text)] offered to the defect step
+        self.frag_text = {}    # fragment -> replacement text (set by the defect step)
+        self.params = []       # [[name, type tag]]: "i64" "bool" "array" "array_bool" "Option<i64|bool>" "Result<i64|bool>"
+        self.ret = "i64"
+        self.effects = []
+        self.requires = []
+        self.ensures = []
+        self.false_ens = []    # contract clauses that are false (offered to the defect step)
+        self.body = []
+        self.hints = {"ranges": {}, "minlen": {}}
+        self.feats = set()
+        self.mutation = None
+
+    def use(self, *names):
+        for n in names:
+            if n not in self.frags:
+                self.frags.append(n)
+            if n in G3_BAD_FRAGS and all(n != b[0] for b in self.frag_bad):
+                self.frag_bad.append((n, G3_BAD_FRAGS[n]))
+
+
+def g3_ty(tag):
+    """Type tag -> source text."""
+    return {"array": "[i64]", "array_bool": "[bool]"}.get(tag, tag)
+
+
+def g3_elem(rng):
+    return rng.choice(["i64", "i64", "bool"])
+
+
+def g3_arr(X):
+    return "array" if X == "i64" else "array_bool"
+
+
+# -- scenarios: each fills in params/ret/effects/requires/ensures/false_ens/body/hints/feats of a G3P
+
+def g3_sc_ident(P):
+    rng = P.rng
+    X = g3_elem(rng)
+    P.params = [["x", X]]
+    P.ret = X
+    P.use("id")
+    P.feats.update(["generic_fn", "ident"])
+    v = rng.randrange(5 if X == "i64" else 4)
+    P.ensures = ["result == x"]
+    P.false_ens = ["result != x"]
+    if v == 0:
+        P.body = ["  let y: %s = id::<%s>(x);" % (X, X), "  return y;"]
+    elif v == 1:
+        P.body = ["  return id::<%s>(id::<%s>(x));" % (X, X)]
+        P.feats.add("nested_call")
+    elif v == 2:
+        P.use("wrap", "get_or")
+        P.body = ["  let o: Option<%s> = wrap::<%s>(x);" % (X, X), "  return get_or::<%s>(o, x);" % X]
+        P.feats.update(["option", "guarded_payload"])
+    elif v == 3:
+        P.use("wrap", "get_or")
+        P.body = ["  let o: Option<%s> = wrap::<%s>(x);" % (X, X),
+                  "  let w: Option<Option<%s>> = wrap::<Option<%s>>(o);" % (X, X),
+                  "  let inner: Option<%s> = get_or::<Option<%s>>(w, None::<%s>);" % (X, X, X),
+                  "  return get_or::<%s>(inner, x);" % X]
+        P.feats.update(["option", "nested_option", "nested_call", "guarded_payload"])
+    else:
+        K = rng.choice([1, 2, 5, 10])
+        P.requires = ["-1000000 <= x && x <= 1000000"]
+        P.hints["ranges"]["x"] = (-1000000, 1000000)
+        P.ensures = ["result == x + %d" % K]
+        P.false_ens = ["result == x"]
+        P.body = ["  let y: i64 = id::<i64>(x);", "  return y + %d;" % K]
+        P.feats.add("bounded_int")
+
+
+def g3_sc_optfallback(P):
+    rng = P.rng
+    X = g3_elem(rng)
+    P.ret = X
+    P.feats.update(["generic_fn", "option", "guarded_payload"])
+    v = rng.randrange(4)
+    if v in (0, 1):
+        P.use("get_or")
+        P.params = [["o", "Option<%s>" % X], ["d", X]]
+        P.ensures = ["is_some(o) ==> result == some_val(o)", "!is_some(o) ==> result == d"]
+        P.false_ens = ["result == d", "is_some(o) ==> result != some_val(o)"]
+        if v == 0:
+            P.body = ["  return get_or::<%s>(o, d);" % X]
+        else:
+            P.use("wrap")
+            P.body = ["  let w: Option<Option<%s>> = wrap::<Option<%s>>(o);" % (X, X),
+                      "  let inner: Option<%s> = get_or::<Option<%s>>(w, None::<%s>);" % (X, X, X),
+                      "  return get_or::<%s>(inner, d);" % X]
+            P.feats.update(["nested_option", "nested_call"])
+    elif v == 2:
+        P.use("result_or")
+        P.params = [["r", "Result<%s>" % X], ["d", X]]
+        P.ensures = ["is_ok(r) ==> result == ok_val(r)", "!is_ok(r) ==> result == d"]
+        P.false_ens = ["result == d"]
+        P.body = ["  return result_or::<%s>(r, d);" % X]
+        P.feats.add("result")
+    else:
+        P.use("to_result", "result_or")
+        P.params = [["o", "Option<%s>" % X], ["code", "i64"], ["d", X]]
+        P.ensures = ["is_some(o) ==> result == some_val(o)", "!is_some(o) ==> result == d"]
+        P.false_ens = ["result == d"]
+        P.body = ["  let r: Result<%s> = to_result::<%s>(o, code);" % (X, X), "  return result_or::<%s>(r, d);" % X]
+        P.feats.update(["result", "nested_call"])
+
+
+def g3_sc_optret(P):
+    rng = P.rng
+    X = g3_elem(rng)
+    P.feats.update(["generic_fn", "option_ret"])
+    v = rng.randrange(4)
+    if v in (0, 1):
+        P.params = [["x", X]]
+        P.ret = "Option<%s>" % X
+        P.use("wrap" if v == 0 else "forward")
+        P.body = ["  return %s::<%s>(x);" % ("wrap" if v == 0 else "forward", X)]
+        P.ensures = ["is_some(result) && some_val(result) == x"]
+        P.false_ens = ["!is_some(result)"]
+        if v == 1:
+            P.feats.add("nested_call")
+    elif v == 2:
+        P.use("to_result")
+        P.params = [["o", "Option<%s>" % X], ["code", "i64"]]
+        P.ret = "Result<%s>" % X
+        P.body = ["  return to_result::<%s>(o, code);" % X]
+        P.ensures = ["is_some(o) ==> is_ok(result) && ok_val(result) == some_val(o)",
+                     "!is_some(o) ==> !is_ok(result) && err_val(result) == code"]
+        P.false_ens = ["is_ok(result)"]
+        P.feats.update(["result", "guarded_payload"])
+    else:
+        P.use("fail")
+        P.params = [["code", "i64"]]
+        P.ret = "Result<%s>" % X
+        P.body = ["  return fail::<%s>(code);" % X]
+        P.ensures = ["!is_ok(result) && err_val(result) == code"]
+        P.false_ens = ["is_ok(result)"]
+        P.feats.add("result")
+
+
+def g3_sc_arrfirst(P):
+    rng = P.rng
+    X = g3_elem(rng)
+    P.params = [["a", g3_arr(X)]]
+    P.ret = X
+    P.requires = ["len(a) > 0"]
+    P.hints["minlen"]["a"] = 1
+    P.feats.update(["generic_fn", "array_T"])
+    v = rng.randrange(5)
+    if v == 0:
+        P.use("first")
+        P.body = ["  return first::<%s>(a);" % X]
+        P.ensures = ["result == a[0]"]
+        P.false_ens = ["result != a[0]"]
+    elif v == 1:
+        P.use("last")
+        P.body = ["  return last::<%s>(a);" % X]
+        P.ensures = ["result == a[len(a) - 1]"]
+        P.false_ens = ["result != a[len(a) - 1]"]
+    elif v == 2:
+        P.use("copy_all", "first")
+        P.effects = ["alloc"]
+        P.body = ["  let c: [%s] = copy_all::<%s>(a);" % (X, X), "  return first::<%s>(c);" % X]
+        P.ensures = ["result == a[0]"]
+        P.false_ens = ["result != a[0]"]
+        P.feats.update(["copy", "nested_call"])
+    elif v == 3:
+        P.use("set_first", "first")
+        P.params.append(["v", X])
+        P.effects = ["alloc"]
+        P.body = ["  let c: [%s] = set_first::<%s>(a, v);" % (X, X), "  return first::<%s>(c);" % X]
+        P.ensures = ["result == v"]
+        P.false_ens = ["result != v"]
+        P.feats.update(["store", "nested_call"])
+    else:
+        P.use("rev", "first")
+        P.effects = ["alloc"]
+        P.body = ["  let c: [%s] = rev::<%s>(a);" % (X, X), "  return first::<%s>(c);" % X]
+        P.ensures = ["result == a[len(a) - 1]"]
+        P.false_ens = ["result != a[len(a) - 1]"]
+        P.feats.update(["loop_invariant", "forall", "nested_call"])
+
+
+def g3_sc_dual(P):
+    """One wrapper that calls the i64 and the bool instance of the same generic function."""
+    rng = P.rng
+    P.params = [["a", "array"], ["b", "array_bool"]]
+    P.ret = "i64"
+    P.hints["minlen"].update({"a": 1, "b": 1})
+    P.feats.update(["generic_fn", "array_T", "dual_instance"])
+    if rng.random() < 0.5:
+        P.use("first")
+        P.requires = ["len(a) > 0", "len(b) > 0"]
+        P.body = ["  let x: i64 = first::<i64>(a);", "  let y: bool = first::<bool>(b);",
+                  "  if y {", "    return x;", "  }", "  return 0;"]
+        P.ensures = ["b[0] ==> result == a[0]", "!b[0] ==> result == 0"]
+        P.false_ens = ["result == a[0]"]
+    else:
+        P.use("len_of")
+        P.body = ["  return len_of::<i64>(a) + len_of::<bool>(b);"]
+        P.ensures = ["result == len(a) + len(b)"]
+        P.false_ens = ["result == len(a)"]
+        P.hints["minlen"] = {}
+
+
+def g3_sc_arrays(P):
+    """[T] copies / stores / allocation behind a concrete wrapper, bounded forall in the contract, loops with invariants."""
+    rng = P.rng
+    X = g3_elem(rng)
+    at = g3_arr(X)
+    P.ret = at
+    P.effects = ["alloc"]
+    P.feats.update(["generic_fn", "array_T", "alloc"])
+    v = rng.choice(["set_first", "swap_ends", "copy_all", "copy_loop", "rev", "repeat", "fill_loop"])
+    if v in ("repeat", "fill_loop"):
+        P.use(v)
+        P.params = [["n", "i64"], ["v", X]]
+        P.requires = ["0 <= n && n <= 100"]
+        P.hints["ranges"]["n"] = (0, 100)
+        P.body = ["  return %s::<%s>(n, v);" % (v, X)]
+        P.ensures = ["len(result) == n", "forall k in 0..n: result[k] == v"]
+        P.false_ens = ["len(result) == n + 1"]
+        P.feats.add("forall")
+        if v == "fill_loop":
+            P.feats.add("loop_invariant")
+        return
+    P.use(v)
+    P.params = [["a", at]]
+    if v == "set_first":
+        P.params.append(["v", X])
+        P.requires = ["len(a) > 0"]
+        P.hints["minlen"]["a"] = 1
+        P.body = ["  return set_first::<%s>(a, v);" % X]
+        P.ensures = ["len(result) == len(a)", "result[0] == v"]
+        P.false_ens = ["result[0] != v"]
+        P.feats.add("store")
+        return
+    if v == "swap_ends":
+        P.requires = ["len(a) >= 2"]
+        P.hints["minlen"]["a"] = 2
+        P.body = ["  return swap_ends::<%s>(a);" % X]
+        P.ensures = ["len(result) == len(a)", "result[0] == a[len(a) - 1]", "result[len(a) - 1] == a[0]"]
+        P.false_ens = ["result[0] == a[0]"]
+        P.feats.add("store")
+        return
+    P.body = ["  return %s::<%s>(a);" % (v, X)]
+    P.ensures = ["len(result) == len(a)"]
+    if v == "rev":
+        P.ensures.append("forall k in 0..len(a): result[k] == a[len(a) - 1 - k]")
+    else:
+        P.ensures.append("forall k in 0..len(a): result[k] == a[k]")
+    P.false_ens = ["len(result) == len(a) + 1"]
+    P.feats.update(["forall", "copy"])
+    if v in ("copy_loop", "rev"):
+        P.feats.add("loop_invariant")
+
+
+def g3_sc_loopcount(P):
+    """Concrete loop with invariants that reads the length through a generic instance."""
+    rng = P.rng
+    use_bool = rng.random() < 0.5
+    cnt = rng.random() < 0.4
+    X = "bool" if use_bool else "i64"
+    P.use("len_of")
+    P.params = [["a", g3_arr(X)]] + ([] if use_bool else [["x", "i64"]])
+    P.ret = "i64"
+    test = "a[i]" if use_bool else "a[i] == x"
+    in_contract = "a[k] == true" if use_bool else "a[k] == x"
+    invs = ["0 <= i && i <= n", "n == len(a)", "0 <= c && c <= i"]
+    P.ensures = ["0 <= result && result <= len(a)"]
+    if cnt:
+        invs.append("c == count(k in 0..i: %s)" % in_contract)
+        P.ensures.append("result == count(k in 0..len(a): %s)" % in_contract)
+        P.feats.add("count")
+    P.false_ens = ["result == len(a)"]
+    P.body = ["  let n: i64 = len_of::<%s>(a);" % X, "  let mut c: i64 = 0;", "  let mut i: i64 = 0;",
+              "  while i < n"] + ["    invariant " + e for e in invs] + \
+             ["    decreases n - i", "  {", "    if %s {" % test, "      c = c + 1;", "    }", "    i = i + 1;", "  }",
+              "  return c;"]
+    P.feats.update(["generic_fn", "loop_invariant", "array_T"])
+
+
+def g3_sc_pairs(P):
+    rng = P.rng
+    A, B = rng.choice([("i64", "bool"), ("bool", "i64"), ("i64", "i64"), ("bool", "bool")])
+    PT = "Pair<%s, %s>" % (A, B)
+    mk = "Pair::<%s, %s> { first: a, second: b }" % (A, B)
+    P.feats.update(["generic_fn", "pair"])
+    P.use("Pair")
+    v = rng.randrange(6)
+    if v in (0, 1):
+        P.use("mk_pair", "swap", "snd" if v == 0 else "fst")
+        P.params = [["a", A], ["b", B]]
+        P.ret = A if v == 0 else B
+        P.body = ["  let p: %s = mk_pair::<%s, %s>(a, b);" % (PT, A, B),
+                  "  let q: Pair<%s, %s> = swap::<%s, %s>(p);" % (B, A, A, B),
+                  ("  return snd::<%s, %s>(q);" if v == 0 else "  return fst::<%s, %s>(q);") % (B, A)]
+        P.ensures = ["result == %s" % ("a" if v == 0 else "b")]
+        P.false_ens = ["result != %s" % ("a" if v == 0 else "b")]
+        P.feats.add("nested_call")
+    elif v == 2:
+        P.use("swap")
+        P.params = [["a", A], ["b", B]]
+        P.ret = B
+        P.body = ["  let p: %s = %s;" % (PT, mk),
+                  "  let q: Pair<%s, %s> = swap::<%s, %s>(p);" % (B, A, A, B),
+                  "  let r: %s = swap::<%s, %s>(q);" % (PT, B, A),
+                  "  return r.second;"]
+        P.ensures = ["result == b"]
+        P.false_ens = ["result != b"]
+        P.feats.add("nested_call")
+    elif v == 3:
+        P.use("wrap", "get_or")
+        P.params = [["a", A], ["b", B], ["d", A]]
+        P.ret = A
+        P.body = ["  let p: %s = %s;" % (PT, mk),
+                  "  let o: Option<%s> = wrap::<%s>(p);" % (PT, PT),
+                  "  let dflt: %s = Pair::<%s, %s> { first: d, second: b };" % (PT, A, B),
+                  "  let q: %s = get_or::<%s>(o, dflt);" % (PT, PT),
+                  "  return q.first;"]
+        P.ensures = ["result == a"]
+        P.false_ens = ["result != a"]
+        P.feats.update(["option", "option_pair", "guarded_payload", "nested_call"])
+    elif v == 4:
+        P.use("mk_pair", "set_pair_first")
+        P.params = [["a", A], ["b", B], ["v", A]]
+        first = rng.random() < 0.5
+        P.ret = A if first else B
+        P.body = ["  let p: %s = mk_pair::<%s, %s>(a, b);" % (PT, A, B),
+                  "  let q: %s = set_pair_first::<%s, %s>(p, v);" % (PT, A, B),
+                  "  return q.first;" if first else "  return q.second;"]
+        P.ensures = ["result == v" if first else "result == b"]
+        P.false_ens = ["result != v" if first else "result != b"]
+        P.feats.update(["struct_update", "nested_call"])
+    else:
+        P.use("pick_by")
+        P.params = [["flag", "bool"], ["a", A], ["a2", A], ["b", B]]
+        first = rng.random() < 0.6
+        P.ret = A if first else B
+        P.body = ["  let p: %s = pick_by::<%s, %s>(flag, a, a2, b);" % (PT, A, B),
+                  "  return p.first;" if first else "  return p.second;"]
+        if first:
+            P.ensures = ["flag ==> result == a", "!flag ==> result == a2"]
+            P.false_ens = ["result == a"]
+        else:
+            P.ensures = ["result == b"]
+            P.false_ens = ["result != b"]
+
+
+def g3_sc_choice(P):
+    rng = P.rng
+    P.use("Choice")
+    P.feats.update(["generic_fn", "choice"])
+    if rng.random() < 0.6:
+        P.use("left_or")
+        P.params = [["t", "bool"], ["x", "i64"], ["y", "bool"], ["d", "i64"]]
+        P.ret = "i64"
+        P.body = ["  if t {", "    let c: Choice<i64, bool> = Choice::<i64, bool>::Left(x);",
+                  "    return left_or::<i64, bool>(c, d);", "  }",
+                  "  let e: Choice<i64, bool> = Choice::<i64, bool>::Right(y);",
+                  "  return left_or::<i64, bool>(e, d);"]
+        P.ensures = ["t ==> result == x", "!t ==> result == d"]
+        P.false_ens = ["result == x"]
+        P.feats.add("guarded_payload")
+    else:
+        P.use("flip")
+        P.params = [["t", "bool"], ["x", "i64"], ["y", "bool"]]
+        P.ret = "bool"
+        P.body = ["  if t {", "    let c: Choice<i64, bool> = Choice::<i64, bool>::Left(x);",
+                  "    let g: Choice<bool, i64> = flip::<i64, bool>(c);", "    match g {",
+                  "      Choice::Left(p) => { return false; }", "      Choice::Right(q) => { return true; }",
+                  "    }", "  }",
+                  "  let e: Choice<i64, bool> = Choice::<i64, bool>::Right(y);",
+                  "  let h: Choice<bool, i64> = flip::<i64, bool>(e);", "  match h {",
+                  "    Choice::Left(r) => { return false; }", "    Choice::Right(s) => { return true; }", "  }"]
+        P.ensures = ["result == t"]
+        P.false_ens = ["result != t"]
+        P.feats.update(["match", "nested_call"])
+
+
+def g3_sc_tagged(P):
+    rng = P.rng
+    X = g3_elem(rng)
+    P.use("Tagged")
+    P.feats.update(["generic_fn", "tagged", "bounded_int"])
+    mk = "Tagged::<%s> { tag: t, value: v }" % X
+    v = rng.randrange(3)
+    P.params = [["t", "i64"], ["v", X]]
+    if v == 2:
+        P.use("retag")
+        P.params.append(["k", "i64"])
+        P.ret = "i64"
+        P.body = ["  let a: Tagged<%s> = %s;" % (X, mk),
+                  "  let c: Tagged<%s> = retag::<%s>(a, k);" % (X, X), "  return c.tag;"]
+        P.ensures = ["result == k"]
+        P.false_ens = ["result == t"]
+        return
+    P.use("bump_tag")
+    P.requires = ["-1000 < t && t < 1000"]
+    P.hints["ranges"]["t"] = (-1000, 1000)
+    P.body = ["  let a: Tagged<%s> = %s;" % (X, mk), "  let b: Tagged<%s> = bump_tag::<%s>(a);" % (X, X)]
+    if v == 0:
+        P.ret = "i64"
+        P.body.append("  return b.tag;")
+        P.ensures = ["result == t + 1"]
+        P.false_ens = ["result == t"]
+    else:
+        P.use("retag")
+        P.ret = X
+        P.body += ["  let c: Tagged<%s> = retag::<%s>(b, 0);" % (X, X), "  return c.value;"]
+        P.ensures = ["result == v"]
+        P.false_ens = ["result != v"]
+        P.feats.add("nested_call")
+
+
+def g3_sc_forward(P):
+    rng = P.rng
+    X = g3_elem(rng)
+    P.params = [["x", X]]
+    P.ret = X
+    P.feats.update(["generic_fn", "option", "nested_call", "match"])
+    P.ensures = ["result == x"]
+    P.false_ens = ["result != x"]
+    if rng.random() < 0.6:
+        P.use("forward")
+        P.body = ["  let o: Option<%s> = forward::<%s>(x);" % (X, X), "  match o {",
+                  "    Some(w) => { return w; }", "    None => { return x; }", "  }"]
+    else:
+        P.use("wrap_twice")
+        P.body = ["  let oo: Option<Option<%s>> = wrap_twice::<%s>(x);" % (X, X), "  match oo {",
+                  "    Some(o) => {", "      match o {", "        Some(w) => { return w; }",
+                  "        None => { return x; }", "      }", "    }", "    None => { return x; }", "  }"]
+        P.feats.add("nested_option")
+
+
+G3_SCENARIOS = [("ident", g3_sc_ident, 1.0), ("optfallback", g3_sc_optfallback, 2.0), ("optret", g3_sc_optret, 1.5),
+                ("arrfirst", g3_sc_arrfirst, 2.0), ("dual", g3_sc_dual, 1.0), ("arrays", g3_sc_arrays, 3.0),
+                ("loopcount", g3_sc_loopcount, 1.5), ("pairs", g3_sc_pairs, 3.0), ("choice", g3_sc_choice, 1.0),
+                ("tagged", g3_sc_tagged, 1.0), ("forward", g3_sc_forward, 1.0)]
+
+
+def g3_pad(P):
+    """Make sure the input space has at least 8 distinct points: a parameter list made only of bool/Option<bool> gets an
+    extra (unused) i64 parameter."""
+    large = [t for _n, t in P.params if t in ("i64", "array", "array_bool", "Option<i64>") or t.startswith("Result<")]
+    if not large:
+        P.params.append(["pad", "i64"])
+
+
+def g3_defect(P):
+    """Turn the case into a deliberately unproved (but well-typed) one."""
+    rng = P.rng
+    kinds = []
+    if P.requires:
+        kinds.append("drop_requires")
+    if P.false_ens:
+        kinds.append("false_ensures")
+    if P.frag_bad:
+        kinds.append("bad_fragment")
+    if any(l.strip().startswith("invariant ") for l in P.body):
+        kinds.append("drop_invariant")
+    k = rng.choice(kinds)
+    if k == "drop_requires":
+        P.requires.pop(rng.randrange(len(P.requires)))
+    elif k == "false_ensures":
+        P.ensures.append(rng.choice(P.false_ens))
+    elif k == "bad_fragment":
+        name, text = rng.choice(P.frag_bad)
+        P.frag_text[name] = text
+        k += ":" + name
+    else:
+        idx = [i for i, l in enumerate(P.body) if l.strip().startswith("invariant ")]
+        del P.body[rng.choice(idx)]
+    P.mutation = k
+
+
+def g3_render(P, kind):
+    rng = P.rng
+    names = []
+
+    def add(n):
+        for d in G3_DEPS.get(n, []):
+            add(d)
+        if n not in names:
+            names.append(n)
+
+    for n in P.frags:
+        add(n)
+    types = [n for n in names if n in G3_TYPES]
+    fns = [n for n in names if n not in G3_TYPES]
+    if rng.random() < 0.3:
+        rng.shuffle(fns)
+    parts = ["// g3 fuzz case: %s%s" % (kind, " (defect: %s)" % P.mutation if P.mutation else "")]
+    parts += [P.frag_text.get(n, G3_FRAGS[n]) for n in types + fns]
+    head = "fn f(%s) -> %s" % (", ".join("%s: %s" % (n, g3_ty(t)) for n, t in P.params), g3_ty(P.ret))
+    if P.effects:
+        head += " ! " + ", ".join(P.effects)
+    out = [head] + ["  requires " + r for r in P.requires] + ["  ensures " + e for e in P.ensures] + ["{"] + P.body + ["}"]
+    parts.append("\n".join(out))
+    return "\n\n".join(parts) + "\n"
+
+
+def generate_g3_case(seed, index):
+    rng = random.Random("g3:%s:%s" % (seed, index))
+    bad = rng.random() < G3_BAD_SHARE
+    P = G3P(rng, bad)
+    kind, fn, _w = rng.choices(G3_SCENARIOS, weights=[w for _k, _f, w in G3_SCENARIOS])[0]
+    fn(P)
+    g3_pad(P)
+    if rng.random() < 0.25:
+        P.use(rng.choice(G3_UNUSED))
+    if bad:
+        g3_defect(P)
+        P.hints["violate"] = 0.3      # unproved cases: reach the unguarded paths in safe mode more often
+    src = g3_render(P, kind)
+    ret = {"array": "[i64]"}.get(P.ret, P.ret)
+    return {"name": "c%s_%s" % (seed, index), "src": src, "entry": "f", "params": P.params, "ret": ret,
+            "kind": "g3_" + kind, "input_hints": P.hints, "g3": True, "g3_bad": bad, "g3_mutation": P.mutation,
+            "g3_features": sorted(P.feats)}
+
+
+def g3_int_value(rng, rg):
+    r = rng.random()
+    if rg is not None:
+        lo, hi = rg
+        if r < 0.12:
+            return rng.choice([lo, hi])
+        if r < 0.18:
+            return rng.choice([lo - 1, hi + 1])          # just outside the requires range
+        if r < 0.55:
+            a, b = max(lo, -6), min(hi, 9)
+            if a <= b:
+                return rng.randint(a, b)
+        return rng.randint(lo, hi)
+    if r < 0.06:
+        return rng.choice(EXTREMES)
+    if r < 0.5:
+        return rng.randint(-5, 9)
+    return rng.choice([0, 1, -1, 2, 3, 7, 10, 100, -100, 1000, 123456, -987654])
+
+
+def g3_value(rng, tag, name, h):
+    if tag == "i64":
+        return g3_int_value(rng, h["ranges"].get(name))
+    if tag == "bool":
+        return rng.random() < 0.5
+    if tag in ("array", "array_bool"):
+        lo = h["minlen"].get(name, 0)
+        n = rng.choice([0, 1, 1, 2, 3, 3, 4, 5, 6, 8])
+        n = rng.randint(0, max(0, lo - 1)) if rng.random() < h.get("violate", 0.08) else max(n, lo)
+        if tag == "array":
+            return [g3_int_value(rng, None) for _ in range(n)]
+        m = rng.random()
+        if m < 0.15:
+            return [True] * n
+        if m < 0.3:
+            return [False] * n
+        return [rng.random() < 0.5 for _ in range(n)]
+    if tag.startswith("Option<"):
+        if rng.random() < 0.3:
+            return {"tag": "None"}
+        return {"tag": "Some", "v": rng.random() < 0.5 if tag == "Option<bool>" else g3_int_value(rng, None)}
+    if tag.startswith("Result<"):
+        if rng.random() < 0.65:
+            return {"tag": "Ok", "v": rng.random() < 0.5 if tag == "Result<bool>" else g3_int_value(rng, None)}
+        return {"tag": "Err", "v": rng.choice([-1, 0, 1, 2, 7, -7, 100])}
+    raise ValueError("unknown G3 parameter type %r" % (tag,))
+
+
+def g3_candidate_inputs(case, rng, n):
+    h = case["input_hints"]
+    return [[g3_value(rng, tag, name, h) for name, tag in case["params"]] for _ in range(n)]
+
+
 # ---------------------------------------------------------------- case assembly
 
 def render(ctx, body):
@@ -3137,7 +3852,9 @@ def render(ctx, body):
     return fsrc + "\n"
 
 
-def generate_case(seed, index, g2=False):
+def generate_case(seed, index, g2=False, g3=False):
+    if g3:
+        return generate_g3_case(seed, index)
     if g2:
         return generate_g2_case(seed, index)
     rng = random.Random("%s:%s" % (seed, index))
@@ -3354,6 +4071,8 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g3"):
+        return g3_candidate_inputs(case, rng, n)
     if case.get("g2"):
         return g2_candidate_inputs(case, rng, n)
     h = case["input_hints"]
@@ -3403,10 +4122,11 @@ def main(argv=None):
     ap.add_argument("--count", type=int, default=20)
     ap.add_argument("--out", default="bench/fuzz/out/generated")
     ap.add_argument("--g2", action="store_true", help="G2 mode: generate [u8], [bool], and str programs")
+    ap.add_argument("--g3", action="store_true", help="G3 mode: generate generic programs (some deliberately unproved)")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=True) if a.g2 else generate_case(a.seed, i)
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3)
         with open(os.path.join(a.out, case["name"] + ".pruv"), "w", encoding="utf-8") as fh:
             fh.write(case["src"])
     print("wrote %d files to %s" % (a.count, a.out))

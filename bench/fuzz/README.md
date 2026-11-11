@@ -118,6 +118,77 @@ python bench/fuzz/run.py --replay bench/fuzz/out/41_rs_g2/failures/<kind>_<case>
 | Seed | Compiler | Verification passes | Rejected safe builds | Minimum inputs per program | Short of inputs | Passes per tag | Failures |
 |---|---|---|---|---|---|---|---|
 
+## G3 mode (`--g3`)
+
+A separate mode for generics (`docs/G3_SPEC.md` §7.8, `SPEC.md` §6c). Without `--g3` the generator, the output folder and the `summary.json` keys are unchanged
+(the same seed generates the same programs; `generate_case(seed, index, g2=False, g3=False)`).
+
+```
+python bench/fuzz/run.py --g3 --seed 41 --programs 100 --compiler rs     # then again with --compiler py
+python bench/fuzz/run.py --g3 --seeds 41,56,57 --programs 100 --max-candidates 400 --compiler rs
+python bench/fuzz/generate.py --g3 --seed 41 --count 20 --out /tmp/pruvgen_g3
+python bench/fuzz/oracle.py                                               # oracle self-test, includes the G3 cases
+python bench/fuzz/run.py --replay bench/fuzz/out/41_rs_g3/failures/<kind>_<case>
+```
+
+(`--seeds` runs one child process per seed with the other options unchanged, and with `--out DIR` each seed writes to `DIR/<seed>`. The default output folder ends with `_g3`:
+`out/<seed>_rs_g3`, `out/<seed>_g3` for `--compiler py`.)
+
+**Generator** (`generate.py`, `generate_g3_case`, rng `"g3:<seed>:<index>"`). Each case is a few verified generic *fragments* (`G3_FRAGS`) plus one concrete entry `fn f(..)`:
+
+- generic functions over `T`, `T: Element`, `A, B`: `id`, `wrap`, `get_or`, `forward`, `wrap_twice`, `result_or`, `fail`, `to_result`, `first`, `last`, `len_of`, `set_first`,
+  `swap_ends`, `copy_all`, `copy_loop`, `rev`, `repeat`, `fill_loop`, `mk_pair`, `swap`, `fst`, `snd`, `set_pair_first`, `pick_by`, `left_or`, `flip`, `bump_tag`, `retag`;
+- generic structs/enums `Pair<A, B>`, `Choice<A, B>`, `Tagged<T>`, and `Option<X>` / `Result<X>` with `X` in `i64`, `bool`, `Pair<..>`, `Option<..>`;
+- explicit type arguments everywhere, nested generic calls (`get_or::<Option<X>>(wrap::<Option<X>>(o), None::<X>)`), `[T]` reads/copies/stores/`alloc`;
+- contracts with abstract equality, guarded payload access (`is_some(o) ==> result == some_val(o)`, `is_variant`/`variant_field`), bounded `forall` over `[T]`,
+  `count` over equality, loops with invariants (`copy_loop`, `rev`, `fill_loop`, counting loops over `[bool]`/`[i64]` that read the length through `len_of::<T>`);
+- the entry `f` is a non-generic wrapper (generic functions are not exported) that calls instances at `i64` and `bool`. Values at the `f` boundary are
+  `i64`, `bool`, `[i64]`, `[bool]`, `Option<i64|bool>`, `Result<i64|bool>` (inputs as `{"tag": "Some", "v": ..}`); `Pair`/`Choice`/`Tagged` stay inside the body because
+  the Rust name of a struct instance (`pruv_g3_t_4_Pair_2_i_b`) is compiler-defined. A case with only bool-like parameters gets an unused `pad: i64` parameter so that at least 8 distinct inputs exist;
+- 11 scenario families (`G3_SCENARIOS`: ident, optfallback, optret, arrfirst, dual, arrays, loopcount, pairs, choice, tagged, forward); occasionally an extra unused fragment is added
+  (an unused definition is still proved).
+- **About 30% are deliberately unproved but well-typed** (`g3_defect`): a dropped `requires` clause, a false `ensures`, a dropped loop invariant, or a defective fragment
+  (`G3_BAD_FRAGS`: deleted bounds guard, wrong element, wrong active payload, store at the wrong index, off-by-one index, wrong length, `tag + 2`). They are expected to be rejected
+  and are then built/run only in the two safe modes. `case["g3_bad"]` and `case["g3_mutation"]` say what was done (also in the first source line as a comment). If the verifier accepts one anyway it is treated as any verified program.
+
+**Oracle** (`oracle.py`). The existing independent interpreter (own lexer/parser/interpreter written from `SPEC.md`, no import from `pruvc`) got a generic mode that is switched on
+only when the source has generic syntax (`fn f<T>`, `struct S<A>`, `enum E<A>` or an explicit `::<..>`), so non-generic sources behave exactly as before:
+`<T, U: Element>` declaration lists, type applications (`Pair<i64, bool>`, `Option<Option<T>>`, `[T]`), explicit instantiations `f::<..>(..)`, `Some::<T>(x)`, `None::<T>`,
+`Ok::<T>(x)`, `Err::<T>(c)`, `Pair::<A, B> { .. }`, `Choice::<A, B>::Left(x)`. Values are untyped at run time, so type arguments are parsed and dropped; equality of abstract values in contracts is
+structural (an enum compares only its active payload). It evaluates code in i64 (overflow/`oob`/`div_domain` faults, safe mode checks every call's `requires`, proof mode records
+`call_requires` instead) and contracts over unbounded integers, exactly as in the other modes. Anything it cannot evaluate raises `OracleUnsupported`, which is a failure in G3 mode.
+`python bench/fuzz/oracle.py` runs `_selftest_g3` (Option fallback at bool, nested `Option<Option<i64>>`, `Pair` swap with a false-ensures check, `Choice` + `variant_field`, `rev` over `[bool]`).
+
+**Harness** (`run.py --g3`).
+
+- Per program: at least 8 inputs (`--inputs` is raised to 8), 3/4 satisfying `requires`; verified programs run in 4 modes (`rust-proof`, `rust-safe`, `llvm-proof`, `llvm-safe`), unproved ones in the 2 safe modes. Each mode is compared with its own oracle result (proof/safe), rust-X == llvm-X, as in the other modes.
+- Both compilers: run the same seed once with `--compiler rs` and once with `--compiler py`. Programs and inputs are identical (the generator and the input rng do not depend on the compiler),
+  and `summary.json` has `g3_digest` (hash of status, exit code, stdout and the `pruv:` line per mode and input) and `g3_digest_exit_stdout` (without the `pruv:` line); equal digests mean the two compilers did exactly the same.
+- `--g3-safe-only N` (default 20): number of deliberately unproved programs that must be built and run in safe mode. Generation continues until `--programs` (+10%) programs verified and `N` (+5) unproved ones were rejected
+  (or `--max-candidates` is reached; raise it, about 1.6 candidates per verified program are needed). A few rejected programs that were meant to verify are also run in safe mode and their source + verifier output saved in `unexpected_rejects/`.
+- In G3 mode the callee name in `pruv: requires violated: <fn>` is matched without the trailing colon, because the run-time name of a generic instance is compiler-defined.
+- Counted as success (`g3_verified`, `g3_safe_only`): a g3 case with at least `--inputs` inputs, run results for all modes without timeout or harness exception, no recorded failure, and (verified) at least one input that satisfies `requires`
+  and that the proof-mode oracle compared to the end (not `limit`, not an oracle error). Crashes, timeouts, `limit`, oracle errors, unsupported or unparsable programs are never counted as success.
+- Report per seed (printed, and as keys in `summary.json`): `g3_generated`, `g3_verified`, `g3_safe_only`, `g3_executions_compared` (and `g3_executions_not_compared`), `g3_failures`, plus `g3_kinds_verified`, `g3_features_verified`,
+  `g3_inputs_per_program_min`, `g3_unproved_by_design_verified_anyway`, `g3_unexpected_rejects` (count, names, error codes), `compiler`.
+- Gate / extra failure kinds: `g3_shortfall` (fewer counted verified programs than `--programs` or fewer counted safe-only programs than `--g3-safe-only`; the value is the sum of the shortfalls, details in `summary["g3_shortfall"]`),
+  `g3_generator_invalid` (a generated program did not type-check; the first 10 are in `generator_invalid/`), `g3_oracle_gap` (the oracle could not parse/evaluate a generated program; the first 10 are in `oracle_gap/`).
+  The other failure kinds are those of the table below. Exit code 1 if any failure.
+- `results.json` of a g3 case also has `g3`, `g3_features`, `g3_unproved_by_design`, `g3_mutation`. `--replay` treats a source with `::<` as a G3 case.
+
+**Known gaps (G3).**
+
+- `main` is not generated or run (the driver calls `f`); struct/enum instances do not cross the `f` boundary (see above), so the ABI of generic struct instances is not exercised by this mode.
+- The generator is template-based (fragments + 11 families with random type choices), not a free-form grammar; type errors (`generic_bound`, `type_arity`, ...) and contract-domain errors are not generated on purpose.
+- Specialization limits, resource limits of the contract iteration budget (2^30) and arrays above 100 elements are not reached (loops are capped at 100 iterations, arrays at 8 elements).
+- Unproved cases are only well-typed mutations of the templates; a mutant the verifier proves anyway (a redundant `requires`) is simply checked as a verified program.
+- Unverified assumption: unused parameters (`pad`) and forward references to generic functions are accepted by the type checker; if not, `g3_generator_invalid` shows it immediately.
+
+### G3 run log (filled in by the main)
+
+| Seed | Compiler | Generated | Verified | Safe-only | Executions compared | Failures | Digest |
+|---|---|---|---|---|---|---|---|
+
 ## Failure kinds
 
 | kind | Meaning |
@@ -132,6 +203,9 @@ python bench/fuzz/run.py --replay bench/fuzz/out/41_rs_g2/failures/<kind>_<case>
 | `oracle_error` | The oracle threw an exception (suspect an oracle bug) |
 | `harness_error` | An exception of this tool itself |
 | `g2_shortfall` | (`--g2` only) Fewer verification-passing g2 programs than `--programs`, or fewer rejected safe-mode builds than `--rejected-sample`. The value is the sum of the shortfalls |
+| `g3_shortfall` | (`--g3` only) Fewer counted verified programs than `--programs`, or fewer counted unproved safe-only programs than `--g3-safe-only`. The value is the sum of the shortfalls |
+| `g3_generator_invalid` | (`--g3` only) A generated program did not pass parse/type/effect checking (the generator must only produce well-typed programs) |
+| `g3_oracle_gap` | (`--g3` only) The oracle could not parse or evaluate a generated program (`oracle_unsupported` / `oracle_parse_error`) |
 
 ## Oracle independence
 

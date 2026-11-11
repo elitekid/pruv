@@ -982,3 +982,38 @@ G3a (spec `docs/G3_SPEC.md`): type parameters on `fn`/`struct`/`enum`, the `Elem
 - The Q batch: fuzzing, mutation, measurements, independent use.
 - Advisory items: boundary tests at 4096 / 65536, and repeated encoding in specialization.
 - SPEC.md §6c (user rules) and the `docs/G3_SPEC.md` implementation notes were written with this section.
+
+## 46. G3 Q: fuzzing, mutation, independent use (2026-11-12)
+
+**Fuzzing (`bench/fuzz/run.py --g3`, commit below).** Template-based generator of generic programs (11 scenarios:
+generic functions over `T`/`T: Element`, `Pair`/`Choice`/`Tagged`, `Option<X>`/`Result<X>` with X in i64, bool, Pair and
+nested Option, nested explicit calls, `[T]` read/copy/store/alloc, abstract equality, guarded payloads, bounded forall,
+`count`, loop invariants), about 30% deliberately defective but well-typed programs, an independent Python oracle,
+at least 8 inputs per program, both backends and verified/safe modes.
+
+| Seed | Compiler | Generated | Verified | Safe-only | Executions compared | Failures |
+|---|---|---|---|---|---|---|
+| 41 | rs / py | 172 / 176 | 110 / 110 | 25 / 25 | 3920 / 3920 | 0 / 0 |
+| 56 | rs / py | 180 / 181 | 110 / 110 | 25 / 25 | 3920 / 3920 | 0 / 0 |
+| 57 | rs / py | 169 / 169 | 110 / 110 | 25 / 25 | 3920 / 3920 | 0 / 0 |
+
+The result digests of the two compilers are identical per seed. "Meant to be unproved but verified": 1 each in seeds
+56 and 57; the seed 56 case (`c56_40`, defect `drop_invariant`) dropped `invariant n == len(a)` for an immutable
+`let n`, which the loop does not havoc, so the program is still correct (a harmless defect, not a soundness gap).
+First run had 8 `oracle_mismatch` failures caused by the harness expecting the source name in `requires violated:`
+while a specialized callee reports its instance name (`pruv_g3_f_9_set_first_1_i`); the G3 mode now compares only the
+message kind.
+
+**Mutation (`bench/g3/mutate_ops.py`, RESULTS commit d1862d1).** 581 mutants of the reference solutions, the 24 G3
+proofs and the 22 G3 examples: 196 independently classified incorrect (11 by execution, 185 by rule), **0 incorrectly
+verified**, 0 crashes, 0 Python/Rust verdict differences. 9 mutants change behavior in functions without `ensures`
+(`main` prints, uncontracted helpers) and are reported as `out_of_contract`; a field swap that turns an ensures into a
+tautology `x == x` is not counted as incorrect.
+
+**Independent use (`bench/g3/PROBLEMS.md`, d4e7da9).** An author given only SPEC.md and the problem text in an isolated
+folder (no compiler) solved all four problems on the first attempt: 16/16 problem runs (two compilers × two backends).
+Limitation: it was not enforced that the author could read nothing outside that folder. SPEC §6c now states the two
+points the author found unclear.
+
+**G3a is complete** (A0–A5 in RESULTS §45, Q here). Remaining advisory items: boundary tests at the 4096/65536 limits,
+repeated encoding during specialization.

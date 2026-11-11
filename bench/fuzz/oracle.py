@@ -20,6 +20,11 @@ G2 (docs/G2_Q1_IMPL.md 5.1): types [u8] ("array_u8"), [bool] ("array_bool"), str
   a reassignment of that variable, right after `return`; faults elem_range / slice_range / slice_cut.
   `[u8 | ..]` refinements and `==`/`!=` on str -> OracleUnsupported.
 
+G3 (docs/G3_SPEC.md, SPEC.md 6c; switched on only when the source has generic syntax): `fn f<T, U: Element>`, `struct S<A, B>`,
+  `enum E<A, B>`, type applications (`Pair<i64, bool>`, `Option<Option<T>>`, `Option<Pair<..>>`, `[T]`) and explicit instantiations
+  `f::<..>(..)`, `Some::<T>(x)`, `None::<T>`, `Ok::<T>(x)`, `Err::<T>(c)`, `S::<A, B> { .. }`, `E::<A, B>::V(..)`. Values are untyped at run
+  time, so type arguments are parsed and dropped; abstract equality in contracts is structural equality of the values.
+
 VALUES: i64 int, bool bool, array list, unit None.  Option/Result are JSON-friendly dicts
   {"tag": "Some", "v": 3} / {"tag": "None"} / {"tag": "Ok", "v": 3} / {"tag": "Err", "v": -2}; this is also the
   format run()/check_requires() take for arguments and run() gives back for the return value.
@@ -160,6 +165,10 @@ class _Parser(object):
         self.p = 0
         # pre-scan so type names are known regardless of declaration order
         self.struct_names, self.enum_names = set(), set()
+        # G3: generic syntax (`fn f<T>`, `struct S<A>`, `enum E<A>`, or an explicit `::<..>`) switches generic parsing on.
+        # Without it the parser behaves exactly as before (e.g. Option<Option<i64>> stays unsupported).
+        self.g3 = False
+        self.tparams = set()    # type parameter names of the declaration being parsed
         for i in range(len(self.t) - 1):
             a, b = self.t[i], self.t[i + 1]
             if a[0] == "id" and b[0] == "id":
@@ -167,6 +176,11 @@ class _Parser(object):
                     self.struct_names.add(b[1])
                 elif a[1] == "enum":
                     self.enum_names.add(b[1])
+                if a[1] in ("fn", "struct", "enum") and i + 2 < len(self.t) and self.t[i + 2][1] == "<" \
+                        and self.t[i + 2][0] == "op":
+                    self.g3 = True
+            if a[0] == "op" and a[1] == "::" and b[0] == "op" and b[1] == "<":
+                self.g3 = True
 
     def peek(self, k=0):
         return self.t[min(self.p + k, len(self.t) - 1)]
@@ -209,6 +223,10 @@ class _Parser(object):
                     raise OracleUnsupported("refined array type")
                 self.eat("]")
                 return "array_u8" if el[1] == "u8" else "array_bool"
+            if self.g3 and el[0] == "id" and el[1] in self.tparams:     # G3: [T] with T: Element
+                self.next()
+                self.eat("]")
+                return "arr"
             self.eat("i64")
             if self.is_("|"):
                 raise OracleUnsupported("refined array type")
@@ -224,17 +242,51 @@ class _Parser(object):
         if t[0] == "id" and t[1] in ("Option", "Result"):
             self.next()
             self.eat("<")
-            if not self.is_("i64"):
-                raise OracleUnsupported("unsupported type argument of %s" % t[1])
-            self.next()
+            if self.g3:
+                self.type_()    # G3: i64, bool, T, Pair<..>, Option<..>, ... (values are untyped at run time)
+            else:
+                if not self.is_("i64"):
+                    raise OracleUnsupported("unsupported type argument of %s" % t[1])
+                self.next()
             self.eat(">")
             return t[1]
         if t[0] == "id" and (t[1] in self.struct_names or t[1] in self.enum_names):
             self.next()
+            if self.g3 and self.is_("<"):
+                self.type_args()
             return t[1]
+        if self.g3 and t[0] == "id" and t[1] in self.tparams:
+            self.next()
+            return "T"
         if t[0] == "id":
             raise OracleUnsupported("unsupported type %s" % t[1])
         self.err("expected type")
+
+    def type_args(self):
+        """G3: `<T1, T2, ..>` of a type application or an explicit call/constructor instantiation."""
+        self.eat("<")
+        out = [self.type_()]
+        while self.is_(","):
+            self.next()
+            out.append(self.type_())
+        self.eat(">")
+        return out
+
+    def tparam_list(self):
+        """G3: optional `<T, U: Element>` after the name of a fn/struct/enum -> set of type parameter names."""
+        names = set()
+        if self.g3 and self.is_("<"):
+            self.next()
+            while True:
+                names.add(self.ident())
+                if self.is_(":"):
+                    self.next()
+                    self.ident()
+                if not self.is_(","):
+                    break
+                self.next()
+            self.eat(">")
+        return names
 
     # program
     def program(self):
@@ -250,12 +302,14 @@ class _Parser(object):
                 name = self.ident()
                 if name in structs or name in enums:
                     self.err("duplicate type %s" % name)
+                self.tparams = self.tparam_list()
                 structs[name] = self.fields_("{", "}")
             elif self.is_("enum"):
                 self.next()
                 name = self.ident()
                 if name in structs or name in enums:
                     self.err("duplicate type %s" % name)
+                self.tparams = self.tparam_list()
                 self.eat("{")
                 variants = {}
                 while not self.is_("}"):
@@ -295,6 +349,7 @@ class _Parser(object):
     def fn(self):
         line = self.eat("fn")[2]
         name = self.ident()
+        self.tparams = self.tparam_list()
         self.eat("(")
         params = []
         while not self.is_(")"):
@@ -561,6 +616,53 @@ class _Parser(object):
         self.eat("..")
         return lo, self.add()
 
+    def generic_primary(self, name, line):
+        """G3: `f::<T>(..)`, `Some::<T>(x)`, `None::<T>`, `Ok::<T>(x)`, `Err::<T>(c)`, `S::<A, B> { .. }`,
+        `E::<A, B>::V(..)`. The type arguments are parsed and dropped: values carry no type at run time."""
+        self.next()
+        self.next()
+        self.type_args()
+        if name == "None":
+            return ("ctor", "None", None)
+        if name in ("Some", "Ok", "Err"):
+            self.eat("(")
+            a = self.imp()
+            self.eat(")")
+            return ("ctor", name, a)
+        if name in self.struct_names and self.is_("{"):
+            self.next()
+            fields = []
+            while not self.is_("}"):
+                fname = self.ident()
+                self.eat(":")
+                fields.append((fname, self.imp()))
+                if not self.is_("}"):
+                    self.eat(",")
+            self.eat("}")
+            return ("slit", name, fields)
+        if name in self.enum_names and self.is_("::"):
+            self.next()
+            vn = self.ident()
+            args = []
+            if self.is_("("):
+                self.next()
+                while not self.is_(")"):
+                    args.append(self.imp())
+                    if not self.is_(")"):
+                        self.eat(",")
+                self.eat(")")
+            return ("ector", name, vn, args)
+        if self.is_("("):
+            self.next()
+            args = []
+            while not self.is_(")"):
+                args.append(self.imp())
+                if not self.is_(")"):
+                    self.eat(",")
+            self.eat(")")
+            return ("call", name, args, line)
+        self.err("bad generic expression")
+
     def primary(self):
         t = self.peek()
         if t[0] == "int":
@@ -577,6 +679,8 @@ class _Parser(object):
         if t[0] != "id":
             self.err("expected expression")
         name = t[1]
+        if self.g3 and self.is_("::", 1) and self.is_("<", 2):
+            return self.generic_primary(name, t[2])
         if name == "None":
             self.next()
             return ("ctor", "None", None)
@@ -1823,5 +1927,78 @@ def _selftest_values(go):
     assert not any(m == "pruvc" or m.startswith("pruvc.") for m in sys.modules)
 
 
+def _selftest_g3():
+    """G3 (docs/G3_SPEC.md, SPEC.md 6c): generic declarations, explicit type arguments, nested type applications.
+    Values are untyped at run time, so type arguments are parsed and dropped."""
+    def go(src, fn, args, **kw):
+        return run(parse_program(src), fn, args, **kw)
+
+    # Option<T> fallback at bool, guarded payload access in the contract
+    src = ("fn get_or<T>(o: Option<T>, d: T) -> T\n"
+           "  ensures is_some(o) ==> result == some_val(o)\n"
+           "  ensures !is_some(o) ==> result == d\n"
+           "{\n  match o {\n    Some(v) => { return v; }\n    None => { return d; }\n  }\n}\n"
+           "fn f(o: Option<bool>, d: bool) -> bool\n"
+           "  ensures is_some(o) ==> result == some_val(o)\n"
+           "{\n  return get_or::<bool>(o, d);\n}\n")
+    r = go(src, "f", [{"tag": "Some", "v": True}, False])
+    assert r["kind"] == "ok" and r["value"] is True and not r["contract_failures"], r
+    r = go(src, "f", [{"tag": "None"}, False])
+    assert r["kind"] == "ok" and r["value"] is False and not r["contract_failures"], r
+    # nested Option and Result with explicit constructors
+    src = ("fn wrap<T>(x: T) -> Option<T>\n  ensures is_some(result) && some_val(result) == x\n"
+           "{\n  return Some::<T>(x);\n}\n"
+           "fn f(x: i64) -> Option<Option<i64>> {\n  let o: Option<i64> = wrap::<i64>(x);\n"
+           "  return wrap::<Option<i64>>(o);\n}\n"
+           "fn g(c: i64) -> Result<bool> {\n  return Err::<bool>(c);\n}\n"
+           "fn h() -> Option<bool> {\n  return None::<bool>;\n}\n")
+    prog = parse_program(src)
+    r = run(prog, "f", [4])
+    assert r["value"] == {"tag": "Some", "v": {"tag": "Some", "v": 4}} and not r["contract_failures"], r
+    assert format_value(r["value"]) == "Some(Some(4))"
+    assert run(prog, "g", [7])["value"] == {"tag": "Err", "v": 7}
+    assert run(prog, "h", [])["value"] == {"tag": "None"}
+    # generic struct, swap, projections at i64/bool
+    src = ("struct Pair<A, B> {\n  first: A,\n  second: B\n}\n"
+           "fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>\n  ensures result.first == p.second\n"
+           "{\n  return Pair::<B, A> { first: p.second, second: p.first };\n}\n"
+           "fn f(a: i64, b: bool) -> i64\n  ensures result == a\n{\n"
+           "  let p: Pair<i64, bool> = Pair::<i64, bool> { first: a, second: b };\n"
+           "  let q: Pair<bool, i64> = swap::<i64, bool>(p);\n  return q.second;\n}\n")
+    r = go(src, "f", [5, True])
+    assert r["kind"] == "ok" and r["value"] == 5 and not r["contract_failures"], r
+    # a false ensures is recorded, not a fault
+    r = go(src.replace("ensures result == a", "ensures result == a + 1"), "f", [5, True])
+    assert r["kind"] == "ok" and r["contract_failures"] == ["ensures f clause 1"], r
+    # generic enum, match and variant_field
+    src = ("enum Choice<A, B> {\n  Left(value: A),\n  Right(value: B)\n}\n"
+           "fn left_or<A, B>(c: Choice<A, B>, d: A) -> A\n"
+           "  ensures is_variant(c, Choice::Left) ==> result == variant_field(c, Choice::Left, value)\n"
+           "{\n  match c {\n    Choice::Left(x) => { return x; }\n    Choice::Right(y) => { return d; }\n  }\n}\n"
+           "fn f(t: bool, x: i64, y: bool, d: i64) -> i64 {\n  if t {\n"
+           "    let c: Choice<i64, bool> = Choice::<i64, bool>::Left(x);\n    return left_or::<i64, bool>(c, d);\n  }\n"
+           "  let e: Choice<i64, bool> = Choice::<i64, bool>::Right(y);\n  return left_or::<i64, bool>(e, d);\n}\n")
+    assert go(src, "f", [True, 3, False, 9])["value"] == 3
+    assert go(src, "f", [False, 3, False, 9])["value"] == 9
+    # [T] reads, copies and stores; bounded forall in the contract and a loop invariant
+    src = ("fn rev<T: Element>(a: [T]) -> [T] ! alloc\n  ensures len(result) == len(a)\n"
+           "  ensures forall k in 0..len(a): result[k] == a[len(a) - 1 - k]\n{\n"
+           "  let mut out: [T] = copy(a);\n  let mut i: i64 = 0;\n  while i < len(a)\n"
+           "    invariant 0 <= i && i <= len(a)\n    invariant len(out) == len(a)\n"
+           "    invariant forall j in 0..i: out[j] == a[len(a) - 1 - j]\n    decreases len(a) - i\n  {\n"
+           "    out[i] = a[len(a) - 1 - i];\n    i = i + 1;\n  }\n  return out;\n}\n"
+           "fn f(a: [bool]) -> [bool] ! alloc {\n  return rev::<bool>(a);\n}\n")
+    r = go(src, "f", [[True, False, False]])
+    assert r["value"] == [False, False, True] and not r["contract_failures"], r
+    assert format_value(r["value"]) == "[false, false, true]"
+    # without generic syntax the old restriction stays
+    try:
+        go("fn f(o: Option<bool>) -> i64 { return 0; }", "f", [{"tag": "None"}])
+        assert False
+    except OracleUnsupported:
+        pass
+
+
 if __name__ == "__main__":
     _selftest()
+    _selftest_g3()

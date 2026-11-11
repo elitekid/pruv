@@ -1,6 +1,6 @@
 # G3: Generics — Type Parameters and Parametric Contracts
 
-Status: **Implemented (G3a A0–A5), 2026-11-12; Q (fuzzing/mutation/measurements/independent use) pending**
+Status: **Implemented (G3a A0–A5 and Q), 2026-11-12 — RESULTS §45–46**
 
 This document defines the first release of G3, called **G3a**. Its implementation batches are A0–A5 and Q. All test counts below are acceptance requirements, not measured results.
 
