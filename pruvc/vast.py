@@ -232,7 +232,9 @@ class Match(Stmt):
 class Refinement:
     """Position (line, col) = first token of the annotated type. Pure metadata: Type stays the base type.
     shape "scalar": `i64 | lo..=hi` (base = the written base type name; only "i64" is valid).
-    shape "array":  `[i64 | lo..=hi; <=maxlen]`; lo/hi both None (no element range), maxlen None (no length bound).
+    shape "array":  `[i64 | lo..=hi; <=maxlen]` or `[u8 | lo..=hi; <=maxlen]`; base is "i64" or "u8" (the written
+                    element name; u8 bounds must lie in 0..=255); lo/hi both None (no element range),
+                    maxlen None (no length bound).
     Bounds are unchecked Python ints here; refine.py reports type/refinement_bounds."""
     line: int
     col: int

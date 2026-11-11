@@ -1,0 +1,3 @@
+fn f(x: array_bool) -> i64 {
+  return 0;
+}

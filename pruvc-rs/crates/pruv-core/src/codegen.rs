@@ -887,6 +887,9 @@ impl<'a> Gen<'a> {
 
 /// Pruv -> Rust 소스. Err 는 Python 이 Exception 을 내는 자리의 str(e).
 pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
+    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen") {
+        return Err(format!("unsupported_type: {}", e.message));
+    }
     let mut g = Gen::new(prog, verified, trust_callers, budget);
     g.prelude()?;
     for f in &prog.functions {

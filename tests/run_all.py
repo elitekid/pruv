@@ -148,8 +148,18 @@ def must_reject_jobs():
     for f in sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/*.pruv"))):
         name = "must_reject/" + os.path.basename(f)
 
-        def fn(f=f):
-            c = pruvc(f, os.path.join(WORK, "mr_%s.rs" % os.path.splitext(os.path.basename(f))[0]))
+        jf0 = os.path.splitext(f)[0] + ".json"
+        flags = []
+        if os.path.exists(jf0):
+            try:
+                fl = json.load(open(jf0)).get("flags")
+            except (OSError, ValueError, AttributeError):
+                fl = None
+            if isinstance(fl, list) and all(isinstance(x, str) for x in fl):
+                flags = list(fl)
+
+        def fn(f=f, flags=flags):
+            c = pruvc(f, os.path.join(WORK, "mr_%s.rs" % os.path.splitext(os.path.basename(f))[0]), flags)
             ok = c.returncode == 1
             detail = "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr)
             jf = os.path.splitext(f)[0] + ".json"
@@ -168,7 +178,7 @@ def must_reject_jobs():
                     want.get("stage"), want.get("code"),
                     [(d.get("stage"), d.get("code")) for d in diags])
             return ok, detail
-        jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,"flags": [], "mode": None,
+        jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": list(flags), "mode": None,
                                      "group": "must_reject"}))
     return jobs
 
@@ -429,6 +439,11 @@ def main():
         except (OSError, ValueError) as e:
             print("--compare-rows: cannot read %s: %r" % (compare_file, e))
             return 2
+        old = [r for r in saved_rows if not isinstance(r, dict) or "group" not in r]
+        if old:
+            print("--compare-rows: %d row(s) in %s have no \"group\" key (old format); regenerate it with --list-rows" % (
+                len(old), compare_file))
+            return 2
     if "--ir-tool" in argv:
         i = argv.index("--ir-tool")
         tool = argv[i + 1] if i + 1 < len(argv) else None
@@ -502,10 +517,15 @@ def main():
     print("TOTAL %d/%d" % (passed, total))
     rc = 0 if passed == total else 1
     if saved_rows is not None:
-        scope = set((r.get("group"), r.get("backend")) for r in rows)
+        # scope comes from the arguments (--only/--backend), not from the rows that actually ran
+        scope = set()
+        for g in ("must_reject", "examples", "runtime"):
+            if only in (None, g):
+                for b in ([None] if g == "must_reject" else backends):
+                    scope.add((g, b))
         in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
         outside = len(saved_rows) - len(in_scope)
-        saved_compilers = set(r.get("compiler") for r in saved_rows)
+        saved_compilers = set(r.get("compiler") for r in in_scope)
         with_c = saved_compilers == {DRIVER.name}
         saved_keys = [row_key(r, with_c) for r in in_scope]
         run_keys = [row_key(r, with_c) for r in rows]
@@ -513,7 +533,7 @@ def main():
         missing = sorted(saved_set - run_set)
         extra = sorted(run_set - saved_set)
         failed = sorted(set(row_key(r, with_c) for r in failed_rows))
-        if not with_c:
+        if not with_c and in_scope:
             print("note: saved compiler %s != this run's %s; compiler field ignored" % (
                 sorted(str(c) for c in saved_compilers), DRIVER.name))
         for k in missing:

@@ -67,6 +67,10 @@ pub fn verify_program_opts(
     opts: &VerifyOptions,
     mut report: Option<&mut Vec<pruv_core::pyjson::Json>>,
 ) -> Result<Vec<PruvError>, String> {
+    // G2: [i64] 밖의 배열 타입은 증명 층이 아직 없다. z3 컨텍스트·순번을 만들기 전에 막는다.
+    if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(prog, "verify") {
+        return Ok(vec![e]);
+    }
     let mut local = Trace::off();
     let trace: &mut Trace = match rec {
         Some(t) => t,

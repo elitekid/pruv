@@ -1537,6 +1537,10 @@ pub extern "C" fn pruv_host_free(data: *mut i64, len: i64) {
 
 
 def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30):
+    from typeinfo import g2_unimplemented_error
+    g2err = g2_unimplemented_error(prog, "codegen")
+    if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
+        raise RuntimeError("unsupported_type: %s" % g2err.message)
     tt = TypeTable(prog)
     m = Mod(tt)
     funcs = {f.name: f for f in prog.functions}

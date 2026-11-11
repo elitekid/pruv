@@ -47,6 +47,9 @@ def _validate(r):
     if r.maxlen is not None and not 0 <= r.maxlen <= MAX_LEN:
         _terr(r, "refinement_bounds", "refinement length bound %d is outside 0..=2^40" % r.maxlen,
               "the length bound `<=N` needs 0 <= N <= 1_099_511_627_776")
+    if r.shape == "array" and r.base == "u8" and r.lo is not None and (r.lo < 0 or r.hi > 255):
+        _terr(r, "refinement_bounds", "element range %d..=%d is outside the u8 range 0..=255" % (r.lo, r.hi),
+              "use bounds within 0..=255")
 
 
 # ---------- generic AST helpers ----------

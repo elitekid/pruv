@@ -96,7 +96,7 @@ impl Ty {
             Ty::I64 => "i64",
             Ty::Bool => "bool",
             Ty::Unit => "unit",
-            Ty::Array(e) => pruv_core::typeinfo::array_of_elem_name(e.name()).unwrap(),
+            Ty::Array(e) => pruv_core::typeinfo::array_of_elem_name(e.name()).expect("every Elem name has an array type name"),
             Ty::Opt => "option",
             Ty::Res => "result",
             Ty::User(n) => n,
@@ -499,8 +499,10 @@ mod tests {
 
     #[test]
     fn array_type_names_round_trip() {
-        for n in ["array", "array_u8", "array_bool"] {
+        for e in [Elem::I64, Elem::U8, Elem::Bool] {
+            let n = pruv_core::typeinfo::array_of_elem_name(e.name()).expect("array name for every Elem");
             let t = Ty::from_name(n);
+            assert_eq!(t, Ty::Array(e));
             assert_eq!(t.name(), n);
             assert!(t.is_array());
         }

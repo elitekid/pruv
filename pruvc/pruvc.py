@@ -40,6 +40,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust  # noqa: E402
+from typeinfo import g2_unimplemented_error  # noqa: E402
 
 USAGE = ("usage: pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers] "
          "[--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]")
@@ -72,6 +73,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
+    if not verify:
+        # G2: verify_program already rejects unimplemented array types; without it the codegen guard applies
+        g2err = g2_unimplemented_error(prog, "codegen")
+        if g2err is not None:
+            return [g2err]
     if backend == "llvm":
         from llvmgen import gen_llvm  # lazy: only the llvm backend needs it
         ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget)

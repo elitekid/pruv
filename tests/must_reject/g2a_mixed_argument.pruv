@@ -1,0 +1,7 @@
+fn take(a: [i64]) -> i64 {
+  return 0;
+}
+
+fn f(b: [u8]) -> i64 {
+  return take(b);
+}

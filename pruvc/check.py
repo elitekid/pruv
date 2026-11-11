@@ -1,7 +1,7 @@
 """Pruv type / effect / structure checker. Fills Expr.ty."""
 import re
 from vast import *
-from typeinfo import TypeTable, type_name, is_user_type
+from typeinfo import TypeTable, type_name, is_user_type, is_array
 from refine import expand as refine_expand
 
 CONTRACT_ONLY = {"is_some": (OPTION, BOOL), "some_val": (OPTION, I64), "is_ok": (RESULT, BOOL),
@@ -28,6 +28,7 @@ class Checker:
         s.calls = {}
         s.decls = {}      # type name -> TypeDecl (first declaration)
         s.tt = None
+        s.alloc_hint = None   # G2: (alloc Call node, expected array type) for the three allowed sites
 
     def run(s):
         refine_expand(s.prog)  # STAGE1 A: validate refinement annotations, desugar them into contracts/asserts
@@ -88,7 +89,7 @@ class Checker:
             groups = [d.fields] if isinstance(d, StructDecl) else [v.fields for v in d.variants]
             for fields in groups:
                 for f in fields:
-                    if f.type == UNIT or f.type == ARRAY:
+                    if f.type == UNIT or is_array(f.type):
                         terr(f, "field_type", "field %s cannot have type %s" % (f.name, type_name(f.type)),
                              "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum")
                     s.check_type_ref(f, f.type)
@@ -194,8 +195,9 @@ class Checker:
             if st.type == UNIT:
                 terr(st, "unit_let", "cannot bind a () value")
             s.check_type_ref(st, st.type)
+            s.alloc_hint_for(st.value, st.type)
             s.expect(st.value, st.type, scope)
-            if st.type == ARRAY:
+            if is_array(st.type):
                 s.array_source(st, st.value, scope)
             scope[st.name] = (st.type, st.mutable, "local")
         elif isinstance(st, Assign):
@@ -203,16 +205,17 @@ class Checker:
             if not v[1]:
                 terr(st, "immutable", "%s is not mutable" % st.name,
                      "declare it with `let mut`" if v[2] == "local" else "parameters are immutable; copy into a `let mut` local")
+            s.alloc_hint_for(st.value, v[0])
             s.expect(st.value, v[0], scope)
-            if v[0] == ARRAY:
+            if is_array(v[0]):
                 s.array_source(st, st.value, scope)
         elif isinstance(st, IndexAssign):
             v = s.lookup(st, st.name, scope)
-            if v[0] != ARRAY:
+            if not is_array(v[0]):
                 terr(st, "not_array", "%s is not an array" % st.name)
             if not v[1]:
                 terr(st, "immutable", "array %s is read-only" % st.name,
-                     "use `let mut b: [i64] = copy(%s);` (needs alloc)" % st.name)
+                     "use `let mut b: %s = copy(%s);` (needs alloc)" % (type_name(v[0]), st.name))
             s.expect(st.index, I64, scope)
             s.expect(st.value, I64, scope)
         elif isinstance(st, FieldAssign):
@@ -244,8 +247,9 @@ class Checker:
             else:
                 if f.ret == UNIT:
                     terr(st, "return_type", "function returns (); use `return;`")
+                s.alloc_hint_for(st.value, f.ret)
                 s.expect(st.value, f.ret, scope)
-                if f.ret == ARRAY:
+                if is_array(f.ret):
                     s.array_source(st, st.value, scope, allow_local_var=True)
         elif isinstance(st, Assert):
             s.expect(st.cond, BOOL, scope, contract=True)
@@ -315,6 +319,19 @@ class Checker:
         terr(st, "array_alias", "an array value here must come from alloc(), copy() or a function call",
              "write copy(x) to make an explicit copy (needs `! alloc`)")
 
+    def alloc_hint_for(s, value, expected):
+        """G2: only a builtin alloc call that IS the right-hand side of a typed let / array reassignment /
+        return takes its array type from the expected type"""
+        if isinstance(value, Call) and value.name == "alloc" and is_array(expected):
+            s.alloc_hint = (value, expected)
+
+    def expect_array(s, e, scope, c):
+        """the argument must be an array of any element type; same diagnostic as expect(e, ARRAY, ...)"""
+        t = s.expr(e, scope, c)
+        if not is_array(t):
+            terr(e, "type_mismatch", "expected %s, found %s" % (type_name(ARRAY), type_name(t)))
+        return t
+
     def lookup(s, node, name, scope):
         if name not in scope:
             terr(node, "unknown_name", "unknown variable %s" % name)
@@ -355,7 +372,7 @@ class Checker:
                 s.expect(e.left, I64, scope, c); s.expect(e.right, I64, scope, c); return BOOL
             if op in ("==", "!="):
                 lt = s.expr(e.left, scope, c)
-                if lt == ARRAY:
+                if is_array(lt):
                     terr(e, "eq_type", "arrays cannot be compared with ==",
                          "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]")
                 if lt not in (I64, BOOL) and not c:
@@ -369,7 +386,7 @@ class Checker:
                     terr(e, "contract_only", "==> is only allowed in contracts")
                 s.expect(e.left, BOOL, scope, c); s.expect(e.right, BOOL, scope, c); return BOOL
         if isinstance(e, Index):
-            s.expect(e.array, ARRAY, scope, c)
+            s.expect_array(e.array, scope, c)
             s.expect(e.index, I64, scope, c)
             return I64
         if isinstance(e, Ctor):
@@ -491,15 +508,17 @@ class Checker:
             if len(a) != k:
                 terr(e, "arity", "%s takes %d argument(s), got %d" % (n, k, len(a)))
         if n == "len":
-            arity(1); s.expect(a[0], ARRAY, scope, c); return I64
+            arity(1); s.expect_array(a[0], scope, c); return I64
         if n == "alloc":
             if c: terr(e, "effect_in_contract", "alloc not allowed in contracts")
             arity(2); s.expect(a[0], I64, scope, c); s.expect(a[1], I64, scope, c)
-            s.used_effects.add("alloc"); return ARRAY
+            s.used_effects.add("alloc")
+            h = s.alloc_hint
+            return h[1] if h is not None and h[0] is e else ARRAY
         if n == "copy":
             if c: terr(e, "effect_in_contract", "copy not allowed in contracts")
-            arity(1); s.expect(a[0], ARRAY, scope, c)
-            s.used_effects.add("alloc"); return ARRAY
+            arity(1); at = s.expect_array(a[0], scope, c)
+            s.used_effects.add("alloc"); return at
         if n == "print":
             if c: terr(e, "effect_in_contract", "print not allowed in contracts")
             arity(1)

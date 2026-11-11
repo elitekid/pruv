@@ -1,0 +1,5 @@
+fn f(a: [u8], b: [u8]) -> i64
+  requires a == b
+{
+  return 0;
+}

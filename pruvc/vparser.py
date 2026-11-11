@@ -36,7 +36,7 @@ def _bar_after_type(toks):
     a, b = toks[-1], toks[-2]
     if a.kind != "id" or b.kind != "op" or b.val not in (":", "->", "[", "<"):
         return False
-    return a.val in ("i64", "bool", "Option", "Result") or a.val[:1].isupper()
+    return a.val in ("i64", "bool", "u8", "Option", "Result") or a.val[:1].isupper()
 
 
 def lex(src):
@@ -236,10 +236,11 @@ class Parser:
         if s.at("["):
             s.next()
             e = s.ident()
-            if e.val != "i64":
+            if e.val not in ("i64", "u8"):
                 if e.val[0].isupper():
                     s.unsupported("[%s]" % e.val, e)
-                s.err("only [i64] arrays exist", "use [i64]", e)
+                s.err("only [i64] and [u8] arrays exist", "use [i64] or [u8]", e)
+            aty = ARRAY if e.val == "i64" else ARRAY_U8
             lo = hi = maxlen = None
             if s.at("|"):
                 if not allow:
@@ -257,9 +258,13 @@ class Parser:
                              "write the length bound as `<=N`, e.g. [i64; <=8]")
             s.expect("]")
             if lo is None and maxlen is None:
-                return ARRAY, None
-            return ARRAY, Refinement(t.line, t.col, "array", "i64", lo, hi, maxlen)
+                return aty, None
+            return aty, Refinement(t.line, t.col, "array", e.val, lo, hi, maxlen)
         n = s.ident()
+        if n.val in ("u8", "i32"):
+            raise PruvError("parse", n.line, n.col, "element_storage_type",
+                            "%s is only an array element type" % n.val,
+                            "use i64 for a scalar, or [u8] for a byte array")
         if n.val == "i64": ty = I64
         elif n.val == "bool": ty = BOOL
         elif n.val in ("Option", "Result"):
@@ -268,7 +273,7 @@ class Parser:
             if s.at("|"):
                 s.ref_position(s.peek())
             if e.val != "i64":
-                if e.val[0].isupper():
+                if e.val[0].isupper() or e.val in ("u8", "i32"):
                     s.unsupported("%s<%s>" % (n.val, e.val), e)
                 s.err("%s only holds i64" % n.val, "use %s<i64>" % n.val, e)
             s.expect(">")
@@ -276,7 +281,7 @@ class Parser:
         else:
             # a user type: the checker resolves the name. Lower-case spellings of the
             # built-in Type names must not alias them.
-            if n.val in ("unit", "array", "option", "result"):
+            if n.val in ("unit", "array", "option", "result", "array_u8", "array_bool", "array_i32"):
                 s.err("unknown type %r" % n.val, "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum", n)
             ty = Type(n.val)
         if s.at("|"):

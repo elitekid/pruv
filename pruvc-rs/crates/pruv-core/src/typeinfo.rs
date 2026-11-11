@@ -4,7 +4,8 @@
 use crate::ast::*;
 use std::collections::{HashMap, HashSet};
 
-pub const BUILTIN_TYPE_NAMES: [&str; 6] = ["i64", "bool", "unit", "array", "option", "result"];
+pub const BUILTIN_TYPE_NAMES: [&str; 8] =
+    ["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool"];
 
 /// 내장이 아닌 이름이면 사용자 타입(선언 여부와 무관).
 pub fn is_user_type(ty: &str) -> bool {
@@ -43,10 +44,78 @@ pub fn type_name(ty: &str) -> String {
         "bool" => "bool".to_string(),
         "unit" => "()".to_string(),
         "array" => "[i64]".to_string(),
+        "array_u8" => "[u8]".to_string(),
+        "array_bool" => "[bool]".to_string(),
         "option" => "Option<i64>".to_string(),
         "result" => "Result<i64>".to_string(),
         other => other.to_string(),
     }
+}
+
+fn g2_in_stmts(stmts: &[Stmt]) -> Option<(i64, i64, String)> {
+    for s in stmts {
+        match s {
+            Stmt::Let(l) => {
+                if is_array_name(&l.ty) && l.ty != "array" {
+                    return Some((l.line, l.col, l.ty.clone()));
+                }
+            }
+            Stmt::If(i) => {
+                if let Some(r) = g2_in_stmts(&i.then) {
+                    return Some(r);
+                }
+                if let Some(r) = g2_in_stmts(&i.els) {
+                    return Some(r);
+                }
+            }
+            Stmt::While(w) => {
+                if let Some(r) = g2_in_stmts(&w.body) {
+                    return Some(r);
+                }
+            }
+            Stmt::Match(m) => {
+                for arm in &m.arms {
+                    if let Some(r) = g2_in_stmts(&arm.body) {
+                        return Some(r);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// [i64] 가 아닌 배열 타입(아직 구현 안 한 층)이 처음 나오는 곳: (line, col, 내부 타입 이름).
+/// 함수 순서대로, 각 함수에서 매개변수 → 반환 타입 → 본문 Let 선언 타입(소스 순서 깊이 우선).
+pub fn first_g2_unimplemented(prog: &Program) -> Option<(i64, i64, String)> {
+    for f in &prog.functions {
+        for p in &f.params {
+            if is_array_name(&p.ty) && p.ty != "array" {
+                return Some((f.line, f.col, p.ty.clone()));
+            }
+        }
+        if is_array_name(&f.ret) && f.ret != "array" {
+            return Some((f.line, f.col, f.ret.clone()));
+        }
+        if let Some(r) = g2_in_stmts(&f.body) {
+            return Some(r);
+        }
+    }
+    None
+}
+
+/// `first_g2_unimplemented` 를 진단으로. stage 는 "verify" / "codegen" 등 막힌 층 이름.
+pub fn g2_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diagnostic::PruvError> {
+    let (line, col, ty) = first_g2_unimplemented(prog)?;
+    Some(crate::diagnostic::PruvError::new(
+        stage,
+        line,
+        col,
+        "unsupported_type",
+        format!("{} arrays are not supported yet: the {} layer is not implemented", type_name(&ty), stage),
+        "use [i64] for now",
+    ))
 }
 
 impl TypeDecl {
@@ -190,5 +259,10 @@ mod tests {
         assert_eq!(type_name("Point"), "Point");
         assert!(is_user_type("Point"));
         assert!(!is_user_type("i64"));
+        assert_eq!(type_name("array_u8"), "[u8]");
+        assert_eq!(type_name("array_bool"), "[bool]");
+        assert!(!is_user_type("array_u8"));
+        assert!(!is_user_type("array_bool"));
+        assert_eq!(BUILTIN_TYPE_NAMES.len(), 8);
     }
 }

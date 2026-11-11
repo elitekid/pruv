@@ -309,12 +309,13 @@ impl Parser {
         if self.at("[", 0) {
             self.bump();
             let e = self.ident()?;
-            if e.val != "i64" {
+            if e.val != "i64" && e.val != "u8" {
                 if is_upper(&e.val) {
                     return Err(self.unsupported(&format!("[{}]", e.val), &e));
                 }
-                return Err(self.err("only [i64] arrays exist", "use [i64]", Some(&e)));
+                return Err(self.err("only [i64] and [u8] arrays exist", "use [i64] or [u8]", Some(&e)));
             }
+            let arr_name: &str = if e.val == "u8" { "array_u8" } else { "array" };
             let (mut lo, mut hi, mut maxlen): (Option<String>, Option<String>, Option<String>) = (None, None, None);
             if self.at("|", 0) {
                 if !allow {
@@ -343,16 +344,25 @@ impl Parser {
             }
             self.expect("]")?;
             if lo.is_none() && maxlen.is_none() {
-                return Ok(("array".to_string(), None));
+                return Ok((arr_name.to_string(), None));
             }
             return Ok((
-                "array".to_string(),
-                Some(Refinement { line: t.line, col: t.col, shape: "array".to_string(), base: "i64".to_string(), lo, hi, maxlen }),
+                arr_name.to_string(),
+                Some(Refinement { line: t.line, col: t.col, shape: "array".to_string(), base: e.val.clone(), lo, hi, maxlen }),
             ));
         }
         let n = self.ident()?;
         let ty: Type;
-        if n.val == "i64" {
+        if n.val == "u8" || n.val == "i32" {
+            return Err(PruvError::new(
+                "parse",
+                n.line,
+                n.col,
+                "element_storage_type",
+                format!("{} is only an array element type", n.val),
+                "use i64 for a scalar, or [u8] for a byte array",
+            ));
+        } else if n.val == "i64" {
             ty = "i64".to_string();
         } else if n.val == "bool" {
             ty = "bool".to_string();
@@ -363,7 +373,7 @@ impl Parser {
                 return Err(self.ref_position(&self.peek(0).clone()));
             }
             if e.val != "i64" {
-                if is_upper(&e.val) {
+                if is_upper(&e.val) || e.val == "u8" || e.val == "i32" {
                     return Err(self.unsupported(&format!("{}<{}>", n.val, e.val), &e));
                 }
                 return Err(self.err(format!("{} only holds i64", n.val), format!("use {}<i64>", n.val), Some(&e)));
@@ -373,7 +383,7 @@ impl Parser {
             ty = tn.to_string();
         } else {
             // 사용자 타입: 이름 해석은 검사기가 한다. 내장 Type 이름의 소문자 철자는 별칭이 되면 안 된다.
-            if matches!(n.val.as_str(), "unit" | "array" | "option" | "result") {
+            if matches!(n.val.as_str(), "unit" | "array" | "option" | "result" | "array_u8" | "array_bool" | "array_i32") {
                 return Err(self.err(
                     format!("unknown type {}", repr_str(&n.val)),
                     "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum",

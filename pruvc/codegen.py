@@ -600,6 +600,10 @@ class Gen:
 
 
 def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30):
+    from typeinfo import g2_unimplemented_error
+    g2err = g2_unimplemented_error(prog, "codegen")
+    if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
+        raise RuntimeError("unsupported_type: %s" % g2err.message)
     g = Gen(prog, verified, trust_callers, budget)
     g.prelude()
     for f in prog.functions:

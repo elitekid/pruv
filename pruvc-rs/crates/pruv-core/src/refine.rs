@@ -89,6 +89,18 @@ fn validate(r: &Refinement) -> Res<()> {
             ));
         }
     }
+    if r.shape == "array" && r.base == "u8" {
+        if let (Some(lo), Some(hi)) = (&r.lo, &r.hi) {
+            if cmp_dec(lo, "0") == Ordering::Less || cmp_dec(hi, "255") == Ordering::Greater {
+                return Err(terr(
+                    r,
+                    "refinement_bounds",
+                    format!("element range {}..={} is outside the u8 range 0..=255", lo, hi),
+                    "use bounds within 0..=255",
+                ));
+            }
+        }
+    }
     Ok(())
 }
 

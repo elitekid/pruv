@@ -61,7 +61,7 @@ fn bar_after_type(toks: &[Tok]) -> bool {
     if a.kind != Kind::Id || b.kind != Kind::Op || !matches!(b.val.as_str(), ":" | "->" | "[" | "<") {
         return false;
     }
-    matches!(a.val.as_str(), "i64" | "bool" | "Option" | "Result")
+    matches!(a.val.as_str(), "i64" | "u8" | "bool" | "Option" | "Result")
         || a.val.chars().next().map_or(false, |c| c.is_ascii_uppercase())
 }
 

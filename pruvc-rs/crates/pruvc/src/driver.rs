@@ -210,6 +210,12 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
+    // G2: [i64] 밖의 배열 타입은 코드 생성 층이 아직 없다(증명을 켠 경로는 verify 가드가 먼저 막는다).
+    if !a.verify {
+        if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen") {
+            return Err(Fail::Lang(vec![e]));
+        }
+    }
     match a.kind {
         // 7단계: Rust 소스 뒷단. Python compile_file 처럼 모든 텍스트(rs, 그리고 --also-llvm 이면 ll·바인딩)를
         // 먼저 만들고 나서 파일을 쓴다(생성기 오류면 아무 파일도 쓰지 않음). 쓰는 순서: OUT, LL, RS.

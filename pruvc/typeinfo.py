@@ -5,9 +5,9 @@ from typing import Dict, List, Optional
 
 from vast import *
 
-BUILTIN_TYPE_NAMES = frozenset(["i64", "bool", "unit", "array", "option", "result"])
+BUILTIN_TYPE_NAMES = frozenset(["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool"])
 _BUILTIN_PRINT = {"i64": "i64", "bool": "bool", "unit": "()", "array": "[i64]", "option": "Option<i64>",
-                  "result": "Result<i64>"}
+                  "result": "Result<i64>", "array_u8": "[u8]", "array_bool": "[bool]"}
 
 
 # G2 A0: one place for array type queries (internal array types -> element type).
@@ -37,6 +37,54 @@ def is_user_type(ty: Type) -> bool:
 def type_name(ty: Type) -> str:
     """Source-level spelling of a type; a user type prints as its own name."""
     return _BUILTIN_PRINT.get(ty.name, ty.name)
+
+
+def _first_g2_in_block(stmts):
+    """first (line, col, ty) of a Let with a non-[i64] array type, source order, depth first"""
+    for st in stmts:
+        if isinstance(st, Let):
+            if is_array(st.type) and st.type != ARRAY:
+                return (st.line, st.col, st.type)
+        elif isinstance(st, If):
+            r = _first_g2_in_block(st.then) or _first_g2_in_block(st.els)
+            if r:
+                return r
+        elif isinstance(st, While):
+            r = _first_g2_in_block(st.body)
+            if r:
+                return r
+        elif isinstance(st, Match):
+            for arm in st.arms:
+                r = _first_g2_in_block(arm.body)
+                if r:
+                    return r
+    return None
+
+
+def first_g2_unimplemented(prog):
+    """G2: first non-[i64] array type the proof/codegen layers do not implement yet.
+    -> (line, col, ty) or None. Order per function: params, return type, body lets."""
+    for fn in prog.functions:
+        for p in fn.params:
+            if is_array(p.type) and p.type != ARRAY:
+                return (fn.line, fn.col, p.type)
+        if is_array(fn.ret) and fn.ret != ARRAY:
+            return (fn.line, fn.col, fn.ret)
+        r = _first_g2_in_block(fn.body)
+        if r:
+            return r
+    return None
+
+
+def g2_unimplemented_error(prog, stage):
+    """PruvError for the first unimplemented array type, or None. stage: "verify" | "codegen"."""
+    f = first_g2_unimplemented(prog)
+    if f is None:
+        return None
+    line, col, ty = f
+    return PruvError(stage, line, col, "unsupported_type",
+                     "%s arrays are not supported yet: the %s layer is not implemented" % (type_name(ty), stage),
+                     "use [i64] for now")
 
 
 class TypeTable:

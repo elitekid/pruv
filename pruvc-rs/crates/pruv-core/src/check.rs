@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
-use crate::typeinfo::{is_user_type, type_name, TypeTable};
+use crate::typeinfo::{is_array_name, is_user_type, type_name, TypeTable};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
@@ -105,6 +105,8 @@ struct Checker {
     cur_name: String,
     cur_ret: String,
     used_effects: BTreeSet<String>,
+    /// let/재대입/return 의 오른쪽 식 자체가 alloc 호출일 때만 켜는 기대 배열 타입(alloc 가 바로 꺼낸다).
+    alloc_want: Option<String>,
 }
 
 /// 프로그램을 검사해 식마다 ty 를 채우고 타입 표를 돌려준다.
@@ -176,7 +178,17 @@ impl Checker {
             cur_name: String::new(),
             cur_ret: String::new(),
             used_effects: BTreeSet::new(),
+            alloc_want: None,
         })
+    }
+
+    /// 값이 alloc 호출 자체이고 기대 타입이 배열이면 alloc 의 결과 타입을 그 배열 타입으로 정한다.
+    fn want_alloc(&mut self, value: &Expr, ty: &str) {
+        if let Expr::Call(c) = value {
+            if c.name == "alloc" && is_array_name(ty) {
+                self.alloc_want = Some(ty.to_string());
+            }
+        }
     }
 
     fn run(&mut self, prog: &mut Program) -> Res<()> {
@@ -297,7 +309,7 @@ impl Checker {
             };
             for fields in groups {
                 for f in fields {
-                    if f.ty == UNIT || f.ty == ARRAY {
+                    if f.ty == UNIT || is_array_name(&f.ty) {
                         return Err(terr(
                             f.line,
                             f.col,
@@ -497,8 +509,9 @@ impl Checker {
                     return Err(terr(s.line, s.col, "unit_let", "cannot bind a () value", ""));
                 }
                 self.check_type_ref(s.line, s.col, &s.ty)?;
+                self.want_alloc(&s.value, &s.ty);
                 self.expect(&mut s.value, &s.ty, scope, false)?;
-                if s.ty == ARRAY {
+                if is_array_name(&s.ty) {
                     self.array_source(s.line, s.col, &s.value, scope, false)?;
                 }
                 scope.insert(s.name.clone(), Entry { ty: s.ty.clone(), mutable: s.mutable, kind: "local" });
@@ -508,14 +521,15 @@ impl Checker {
                 if !v.mutable {
                     return Err(terr(s.line, s.col, "immutable", format!("{} is not mutable", s.name), Self::immutable_fix(v.kind)));
                 }
+                self.want_alloc(&s.value, &v.ty);
                 self.expect(&mut s.value, &v.ty, scope, false)?;
-                if v.ty == ARRAY {
+                if is_array_name(&v.ty) {
                     self.array_source(s.line, s.col, &s.value, scope, false)?;
                 }
             }
             Stmt::IndexAssign(s) => {
                 let v = self.lookup(s.line, s.col, &s.name, scope)?;
-                if v.ty != ARRAY {
+                if !is_array_name(&v.ty) {
                     return Err(terr(s.line, s.col, "not_array", format!("{} is not an array", s.name), ""));
                 }
                 if !v.mutable {
@@ -524,7 +538,7 @@ impl Checker {
                         s.col,
                         "immutable",
                         format!("array {} is read-only", s.name),
-                        format!("use `let mut b: [i64] = copy({});` (needs alloc)", s.name),
+                        format!("use `let mut b: {} = copy({});` (needs alloc)", type_name(&v.ty), s.name),
                     ));
                 }
                 self.expect(&mut s.index, I64, scope, false)?;
@@ -584,8 +598,9 @@ impl Checker {
                         if ret == UNIT {
                             return Err(terr(s.line, s.col, "return_type", "function returns (); use `return;`", ""));
                         }
+                        self.want_alloc(v, &ret);
                         self.expect(v, &ret, scope, false)?;
-                        if ret == ARRAY {
+                        if is_array_name(&ret) {
                             self.array_source(s.line, s.col, v, scope, true)?;
                         }
                     }
@@ -790,7 +805,7 @@ impl Checker {
                     }
                     "==" | "!=" => {
                         let lt = self.expr(&mut x.left, scope, c)?;
-                        if lt == ARRAY {
+                        if is_array_name(&lt) {
                             return Err(terr(
                                 x.line,
                                 x.col,
@@ -822,7 +837,16 @@ impl Checker {
                 }
             }
             Expr::Index(x) => {
-                self.expect(&mut x.array, ARRAY, scope, c)?;
+                let at = self.expr(&mut x.array, scope, c)?;
+                if !is_array_name(&at) {
+                    return Err(terr(
+                        x.array.line(),
+                        x.array.col(),
+                        "type_mismatch",
+                        format!("expected {}, found {}", type_name(ARRAY), type_name(&at)),
+                        "",
+                    ));
+                }
                 self.expect(&mut x.index, I64, scope, c)?;
                 Ok(I64.to_string())
             }
@@ -1043,10 +1067,20 @@ impl Checker {
         match n.as_str() {
             "len" => {
                 arity(1)?;
-                self.expect(&mut e.args[0], ARRAY, scope, c)?;
+                let at = self.expr(&mut e.args[0], scope, c)?;
+                if !is_array_name(&at) {
+                    return Err(terr(
+                        e.args[0].line(),
+                        e.args[0].col(),
+                        "type_mismatch",
+                        format!("expected {}, found {}", type_name(ARRAY), type_name(&at)),
+                        "",
+                    ));
+                }
                 return Ok(I64.to_string());
             }
             "alloc" => {
+                let want = self.alloc_want.take();
                 if c {
                     return Err(terr(line, col, "effect_in_contract", "alloc not allowed in contracts", ""));
                 }
@@ -1054,16 +1088,25 @@ impl Checker {
                 self.expect(&mut e.args[0], I64, scope, c)?;
                 self.expect(&mut e.args[1], I64, scope, c)?;
                 self.used_effects.insert("alloc".to_string());
-                return Ok(ARRAY.to_string());
+                return Ok(want.unwrap_or_else(|| ARRAY.to_string()));
             }
             "copy" => {
                 if c {
                     return Err(terr(line, col, "effect_in_contract", "copy not allowed in contracts", ""));
                 }
                 arity(1)?;
-                self.expect(&mut e.args[0], ARRAY, scope, c)?;
+                let at = self.expr(&mut e.args[0], scope, c)?;
+                if !is_array_name(&at) {
+                    return Err(terr(
+                        e.args[0].line(),
+                        e.args[0].col(),
+                        "type_mismatch",
+                        format!("expected {}, found {}", type_name(ARRAY), type_name(&at)),
+                        "",
+                    ));
+                }
                 self.used_effects.insert("alloc".to_string());
-                return Ok(ARRAY.to_string());
+                return Ok(at);
             }
             "print" => {
                 if c {

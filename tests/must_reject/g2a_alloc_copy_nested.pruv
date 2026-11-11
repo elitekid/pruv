@@ -1,0 +1,4 @@
+fn f() -> i64 ! alloc {
+  let a: [u8] = copy(alloc(4, 0));
+  return 0;
+}

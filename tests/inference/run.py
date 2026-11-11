@@ -151,7 +151,9 @@ def run_regress_reject(drv, pruv):
                 expect = v
         except (OSError, ValueError):
             pass
-    res, errors, _ = compile_one(drv, pruv, ["--infer"])
+    extra = expect.get("flags")  # must_reject 표본 json 의 선택 키 flags(run_all 과 같은 뜻)
+    extra = list(extra) if isinstance(extra, list) and all(isinstance(x, str) for x in extra) else []
+    res, errors, _ = compile_one(drv, pruv, ["--infer"] + extra)
     if res.crashed:
         return name, ["컴파일러 비정상 종료/시간 초과: rc=%s" % res.returncode]
     if res.returncode != 1:

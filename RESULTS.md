@@ -662,3 +662,30 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
   - Rust 왕복 시험이 `Elem` 변형 전체를 돌지 않는다(`unwrap`→`expect`).
   - 다음 시험 도구를 손볼 때 고친다.
 - 측정 못 한 것: 없음(이번 묶음은 동작 불변이 기준이고, 성능 변화는 재지 않았다).
+
+## 34. G2 A1: `[u8]` 앞단(문법·타입 검사) (2026-11-11)
+`[u8]`를 소스로 쓸 수 있게 됐지만 **앞단(파싱·타입 검사·정제 검증)만**이다. 증명·코드 생성 층은 아직 `[u8]`를 모르므로, 검사를 통과한 `[u8]` 프로그램은 명시 진단으로 거부한다(`docs/G2_SPEC.md` 0.0 결정 16). 아직 G2a 사용 가능 기능으로 치지 않는다.
+
+- **문법:** `[u8]`, 정제 `[u8 | L..=U; <=N]`(정제 `base`는 쓴 원소 이름 `u8`). 스칼라 `u8`·`i32`는 parse `element_storage_type`, `Option<u8>`·`Result<i32>`는 parse `unsupported_type`, `[bool]`·`[i32]`는 아직 parse `syntax`("only [i64] and [u8] arrays exist"). 내부 이름 `array_u8`·`array_bool`·`array_i32`는 소스에서 parse `syntax`(결정 7). 예전엔 type `unknown_type`이었다. `u8`은 변수 이름으로 계속 쓸 수 있다. 렉서의 정제 막대 `|` 판정에 `u8`을 더했다.
+- **타입 검사:** 배열 규칙(별칭 금지·원소 대입·`==` 금지·필드 금지·`len`·색인·`copy`)을 `[i64]` 비교에서 모든 배열 타입으로 넓혔다. 읽기 결과는 i64, 저장 값도 i64 식이다. `copy`는 입력 타입을 보존한다. `alloc`은 결정 6대로, 타입을 적은 let의 오른쪽 식 자체·배열 변수 재대입의 오른쪽 식 자체·return 바로 뒤에서만 기대 배열 타입을 받는다. 그 밖(`copy(alloc(..))`·함수 인자·`len(alloc(..))`)은 `[i64]`라서 `[u8]` 자리에 쓰면 type `type_mismatch`다. 내장 타입 표와 출력 표에 `array_u8`(`[u8]`)·`array_bool`(`[bool]`)을 넣어 내부 이름이 진단과 `is_user_type`으로 새지 않는다(A0 감사 권고). `[i64]` 입력의 진단·문구·순서는 그대로다.
+- **정제:** `[u8 | L..=U]`는 범위 전체가 0..=255 안이어야 하고, 밖이면 type `refinement_bounds`(교집합으로 해석하지 않음). 펼침은 바꾸지 않았다. u8의 암묵 범위 0..255는 A2에서 정의역 도입 지점에만 넣는다.
+- **미구현 층 가드(결정 16):** 두 판 `first_g2_unimplemented`가 함수 순서대로 매개변수 → 반환 타입 → 본문 Let(블록 깊이 우선)에서 `[i64]`가 아닌 첫 배열 타입을 찾는다. 검증을 켜면 verify 진입(Python `verify_program`, Rust `verify_program_opts`)에서 verify `unsupported_type`으로, `--no-verify`면 드라이버에서 codegen `unsupported_type`으로 거부한다(종료 1, 메시지에 미구현 층 이름). 생성기 함수(`gen_rust`·`gen_llvm`)도 첫머리에서 같은 문구의 내부 오류 문자열을 낸다. 드라이버를 거치지 않는 대조 도구용이고, 두 판 모두 `internal`로 같게 분류된다. 선언 없이 `[u8]` 값을 만드는 길은 지금 없어서 우회로는 없다고 감사가 판정했다. 뒤 묶음에서 기대 타입 전달을 넓히면 가드도 넓혀야 한다.
+- **표본:** `tests/must_reject/g2a_*` 21쌍. G2_SPEC 6.2 중 앞단 해당분 13(scalar_u8·scalar_i32·nested_array·user_element·option_u8·array_field·mixed_argument(`[u8]`→`[i64]`)·param_store·alias·array_eq·refine_wide·return_mismatch·missing_alloc), 내부 이름 2(internal_name·internal_name_bool), alloc 위치 2(alloc_copy_nested·alloc_argument), 가드 4(a1_verify_layer·a1_codegen_layer·a1_guard_nested·a1_guard_nested_nv). 정상 위치의 alloc·`len(alloc(..))`·지역 변수 이름 `u8`·정제 매개변수는 a1_verify_layer가 검사를 통과하는지로 확인한다. bool 표본(bool_fill 등)은 A5, verify 표본(u8_negative 등)은 A2 몫이다. must_reject json에 선택 키 `flags`를 두어 `--no-verify` 표본을 돌린다(`run_all`·`tests/inference/run.py`).
+- **시험 도구(A0 확인 감사 권고):** `--compare-rows` 비교 범위를 실행된 행이 아니라 `--only`·`--backend` 인자로 만든다. `group` 없는 옛 형식 행이 있으면 종료 2다. compiler 판정은 범위 안 행으로 한다. Rust 왕복 시험은 `Elem` 전체를 돌고 `unwrap`을 `expect`로 바꿨다. 행 목록 `tests/run_all_rows.txt`는 465행(444 + must_reject 21)으로 다시 저장했다.
+- **회귀(고친 뒤 마지막 실행):**
+  - run_all `--backend both` 두 판 465/465, 행 비교 결과 빠진 행·새 행·실패 모두 0
+  - m3_all 9단계 ok(parse/check dump 두 판 모두 same, compilers 618)
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - `diff_trace --flags=--infer` 413 성공(same 384·cex_only 27·same_unknown 2), 플래그 없이 413 성공(same 384·cex_only 29). 새 21건은 모두 same이다.
+  - `tests/inference --regress` 두 판 231/231, cli_also_llvm 234
+  - 퍼저 seed 41×200 실패 0, cargo test pruv-core 41·`model::tests` 1
+- **감사(Claude Opus):** 필수 0·권고 6.
+  - 반영(2): 가드가 블록 안 Let으로 내려가는 표본(guard_nested 둘), 범위 안 저장 행이 0일 때 쓸데없는 안내 줄.
+  - 기록만(4):
+    - `u8 | ..` 처럼 홑 `|`를 잘못 쓴 입력은 예전 렉서 `bad_char` 대신 parse `syntax`가 나온다. 두 판 같음을 실행해 확인했다.
+    - 가드는 선언 타입만 본다(뒤 묶음에서 넓힘).
+    - 매개변수·반환에서 걸리면 진단 위치가 함수 위치다.
+    - `len`·`copy`·색인 오류 문구가 모든 배열을 받는데도 "expected [i64]"다. 기존 바이트를 지키려고 그대로 뒀다.
+- **메인이 직접 고친 것:** Rust 가드 진단의 stage가 "type"으로 고정돼 있던 것을 층 이름으로 바꿨다. Python 생성기 가드를 Rust `Err(String)`과 같은 내부 오류로 맞췄다(diff_rust·diff_llvm 8건 불일치 해소). 추론 회귀 도구가 표본 `flags`를 읽게 했다.
+- **확인 감사(Claude Opus):** 필수 0, 반영 항목 모두 맞음. 권고 1: 표본 json은 stage/code만 봐서 진단 위치 회귀는 시험이 못 잡는다(하네스 확장은 범위 밖).
+- 측정 못 한 것: 성능 변화(앞단에 배열 판정 몇 곳과 컴파일당 1~3회 문장 훑기만 더했다), Windows·Linux 실행.

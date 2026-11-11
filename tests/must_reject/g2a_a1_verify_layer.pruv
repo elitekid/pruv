@@ -1,0 +1,19 @@
+fn mk(a: [u8 | 0..=127; <=16], n: i64) -> [u8] ! alloc
+  requires n >= 0 && n <= 8
+  ensures len(result) >= 0
+{
+  let u8: i64 = 3;
+  let mut b: [u8] = alloc(n, 0);
+  b = alloc(2, 1);
+  b[0] = 7;
+  let x: i64 = b[0] + 1;
+  let c: [u8] = copy(a);
+  let k: i64 = len(alloc(4, 0));
+  return b;
+}
+
+fn fresh() -> [u8] ! alloc
+  ensures len(result) == 3
+{
+  return alloc(3, 0);
+}
