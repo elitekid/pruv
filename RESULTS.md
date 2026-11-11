@@ -786,4 +786,5 @@ G2b(문자열)의 첫 묶음으로 `str` 타입과 문자열 리터럴을 렉서
   - m3_all 11단계 ok(compilers 894), cli_also_llvm 두 판 332/332, `tests/inference --regress` 두 판 299/299, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1
 - **감사(Claude Opus):** 필수 0·권고 4. 반영: 가드 위치 두 판 대조(위치 표본 2 + diff_compilers), code를 공유하는 표본(`g2b_eq`·`g2b_alias`·`g2b_param_return`)에 문구 고정(`cex_contains`), 끝 줄바꿈 없는 표본을 `.gitattributes -text`로 고정. Py 가드 순회 비용은 가장 큰 표본에서 1회 0.125ms라 그대로 둠.
 - **확인 감사(Claude Opus):** 필수 0, 1차 반영 4건 확인. 권고 3 반영: 리터럴이 Let보다 앞인 위치 표본(`g2b_b0_guard_lit_first`), 명세 9.1 표에 새 표본·문구 고정 추가, `.gitattributes` 주석 정정.
+- **Windows CI:** 이번 변경은 CI 경로(`tests/abi/winci/**`·`pruvc/runtime.c`·워크플로)를 건드리지 않아 푸시 뒤 실행되지 않았다. 대신 `winci/prepare.py --check`로 52파일이 생성 결과와 같음을 확인했다(마지막 Windows 통과는 run 42992603822).
 - 측정 못 한 것: Windows에서 Python 판 실행(로캘 인코딩 변화 영향), Linux 실행.
