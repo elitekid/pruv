@@ -1,4 +1,5 @@
 """Pruv verifier: symbolic execution + z3. Proves bounds, overflow, contracts, loops."""
+import time
 import z3
 from vast import *
 from typeinfo import TypeTable
@@ -30,6 +31,58 @@ class QueryConfig:
 
     def __init__(s, phase="verification", round=None, timeout_ms=TIMEOUT_MS, rlimit=None, seed=None):
         s.phase, s.round, s.timeout_ms, s.rlimit, s.seed = phase, round, timeout_ms, rlimit, seed
+
+
+class BudgetExhausted(Exception):
+    """STAGE1 B2: the per-function exploration query budget is used up (infer.py catches it)"""
+
+
+class InferenceTimeout(Exception):
+    """STAGE1 B2: wall-clock safety limit or a solver timeout during exploration (infer.py catches it)"""
+
+
+class Probe:
+    """STAGE1 B2 exploration state of one function (shared by all its rounds).
+    queries: attempts made so far (budget counter); failed: this round's failed candidates
+    {cand id: (obligation code, attempt status)} in the order they failed."""
+
+    def __init__(s, max_queries, deadline):
+        s.max_queries, s.deadline = max_queries, deadline
+        s.queries = 0
+        s.failed = {}
+
+    def begin_round(s):
+        s.failed = {}
+
+    def tick(s):
+        """called before every attempt: budget first, then the wall clock, then count the attempt"""
+        if s.queries >= s.max_queries:
+            raise BudgetExhausted()
+        if time.monotonic() > s.deadline:
+            raise InferenceTimeout()
+        s.queries += 1
+
+    def fail(s, cand, code, status):
+        s.failed[cand] = (code, status)
+
+
+def walk_loops(stmts):
+    """(While, block, index in block) for every loop, preorder: statements in order, a While before its body,
+    If then -> els, Match arms in order (STAGE1 B2 loop numbering = position in this sequence)"""
+    for i, st in enumerate(stmts):
+        if isinstance(st, While):
+            yield st, stmts, i
+            for x in walk_loops(st.body):
+                yield x
+        elif isinstance(st, If):
+            for x in walk_loops(st.then):
+                yield x
+            for x in walk_loops(st.els):
+                yield x
+        elif isinstance(st, Match):
+            for a in st.arms:
+                for x in walk_loops(a.body):
+                    yield x
 
 
 class TraceRecorder:
@@ -227,9 +280,14 @@ FIX = {
 
 
 class FnVerifier:
-    def __init__(s, prog, f, errors, model=None, rec=None, qcfg=None):
+    def __init__(s, prog, f, errors, model=None, rec=None, qcfg=None, extra=None, probe=None):
         s.rec = rec
         s.qcfg = qcfg if qcfg is not None else QueryConfig()
+        # STAGE1 B2: extra = {loop number: [(cand id, expr, text)]} (inferred invariants); probe = exploration
+        # state (only candidate obligations are queried, nothing is reported). Both empty = the old path.
+        s.extra = extra or {}
+        s.probe = probe
+        s.loop_no = {id(w): n for n, (w, _, _) in enumerate(walk_loops(f.body))} if s.extra else {}
         s.funcs = {g.name: g for g in prog.functions}
         s.model = model if model is not None else Model(prog)
         s.f, s.errors = f, errors
@@ -294,8 +352,11 @@ class FnVerifier:
 
     # ---------- obligations ----------
     def prove(s, st, g, ob, node, code, what, key_extra=None, cand=None):
+        probing = s.probe is not None
+        if probing and (cand is None or cand in s.probe.failed):
+            return      # exploration looks only at candidate obligations that have not failed this round
         key = (node.line, node.col, code) if key_extra is None else (node.line, node.col, code, key_extra)
-        skipped = key in s.seen
+        skipped = False if probing else key in s.seen
         idx = None
         if s.rec is not None:
             idx = s.rec.begin(s.f.name, node, code, skipped, s.qcfg.phase, s.qcfg.round, cand)
@@ -338,6 +399,9 @@ class FnVerifier:
                               cfg.rlimit, cfg.seed, reason)
             return sol, r
 
+        if probing:
+            s._probe_attempts(run, code, cand)
+            return
         # first without aggregate lemmas: fewer assumptions, so unsat here is still a sound proof,
         # and it keeps quantified lemmas out of the many obligations that never need them
         sol, r = run(False)
@@ -358,6 +422,28 @@ class FnVerifier:
         else:
             code2, msg = "verify_unknown", "solver gave up proving %s in %s (%s)" % (what, s.f.name, sol.reason_unknown())
         s.errors.append(PruvError("verify", node.line, node.col, code2, msg, FIX.get(code, ""), cex))
+
+    def _probe_attempts(s, run, code, cand):
+        """STAGE1 B2 exploration of one candidate obligation: the same two stages as prove (without lemmas, then
+        with them if there are any and the first was not unsat); every attempt checks the budget and the clock
+        first. A last attempt that is not proved marks the candidate failed for this round."""
+        pr = s.probe
+        status = None
+        for with_lemmas in (False, True):
+            if with_lemmas and not s.lemmas:
+                break
+            pr.tick()
+            try:
+                sol, r = run(with_lemmas)
+            except z3.Z3Exception:
+                status = "error"
+                break
+            status = query_status(r, sol.reason_unknown() if r == z3.unknown else None)
+            if status == "timeout":
+                raise InferenceTimeout()
+            if r == z3.unsat:
+                return
+        pr.fail(cand, code, status)
 
     def cex(s, m, st):
         out = {}
@@ -604,12 +690,14 @@ class FnVerifier:
             out.append((d, code))
         return out
 
-    def check_dom(s, st, g, e, node, what, env=None):
-        """prove D(e) separately per code (variant_domain / contract_domain); returns the proven domains"""
+    def check_dom(s, st, g, e, node, what, env=None, cand=None):
+        """prove D(e) separately per code (variant_domain / contract_domain); returns the proven domains.
+        cand: STAGE1 B2 candidate id (keys the duplicate suppression and tags the obligation)"""
         obs = s.dom_obligations(e, st, g, st.env if env is None else env)
         for d, code in obs:
             s.prove(st, g, d, node, code, what if code == "variant_domain" else what.replace(
-                "variant_field lookups", "partial operations (index, /, %, some_val/ok_val/err_val, max/min)"))
+                "variant_field lookups", "partial operations (index, /, %, some_val/ok_val/err_val, max/min)"),
+                key_extra=cand, cand=cand)
         return [d for d, _ in obs]
 
     def aggregate(s, kind, k, lo, hi, T):
@@ -864,16 +952,26 @@ class FnVerifier:
         raise Exception("exec: %r" % stmt)
 
     def loop(s, w, st):
+        # (cand id | None, expr, text): the written invariants (required refinement first, then user), then the
+        # STAGE1 B2 inferred candidates of this loop in their sorted order
+        invs = [(None, inv, None) for inv in w.invariants]
+        if s.extra:
+            invs = invs + list(s.extra.get(s.loop_no[id(w)], []))
         prev = []   # invariants run in order: an earlier one (proven here) may justify a later one's lookups
-        for inv in w.invariants:
-            prev.extend(s.check_dom(st, prev, inv, inv, "variant_field lookups in loop invariant (entry) are defined"))
+        for cid, inv, text in invs:
+            if cid is None:
+                w_dom, w_ob = "variant_field lookups in loop invariant (entry) are defined", "loop invariant on entry"
+            else:
+                w_dom = "partial operations in inferred loop invariant `%s` (entry) are defined" % text
+                w_ob = "inferred loop invariant `%s` on entry" % text
+            prev.extend(s.check_dom(st, prev, inv, inv, w_dom, cand=cid))
             ob = s.ev(inv, st, [], False)
-            s.prove(st, [], ob, inv, "invariant_entry", "loop invariant on entry")
+            s.prove(st, [], ob, inv, "invariant_entry", w_ob, cid, cid)
             prev.append(ob)
         names = s.assigned(w.body, set())
         # one arbitrary iteration; the invariants held (and were defined) at its start
         b = s.havoc(st, names)
-        for inv in w.invariants:
+        for _cid, inv, _text in invs:
             d = s.dom(inv, b, [], b.env, "variant")
             if d is not None:
                 b.pc.append(d)
@@ -885,15 +983,21 @@ class FnVerifier:
         s.prove(b, [], d0 >= 0, w.decreases, "decreases_nonneg", "decreases >= 0")
         for end in s.exec_block(w.body, b):
             prev = []
-            for inv in w.invariants:
-                prev.extend(s.check_dom(end, prev, inv, inv, "variant_field lookups in loop invariant (preserved) are defined"))
+            for cid, inv, text in invs:
+                if cid is None:
+                    w_dom, w_ob = ("variant_field lookups in loop invariant (preserved) are defined",
+                                   "loop invariant preserved")
+                else:
+                    w_dom = "partial operations in inferred loop invariant `%s` (preserved) are defined" % text
+                    w_ob = "inferred loop invariant `%s` preserved" % text
+                prev.extend(s.check_dom(end, prev, inv, inv, w_dom, cand=cid))
                 ob = s.ev(inv, end, [], False)
-                s.prove(end, [], ob, inv, "invariant_preserved", "loop invariant preserved")
+                s.prove(end, [], ob, inv, "invariant_preserved", w_ob, cid, cid)
                 prev.append(ob)
             if _has_vf(w.decreases):
                 # decreases is read at the end of the body: the invariants just proved may justify its lookups
                 extra = []
-                for inv in w.invariants:
+                for _cid, inv, _text in invs:
                     d = s.dom(inv, end, [], end.env)
                     if d is not None:
                         extra.append(d)
@@ -903,7 +1007,7 @@ class FnVerifier:
                     "decreases strictly decreases")
         # after the loop
         a = s.havoc(st, names)
-        for inv in w.invariants:
+        for _cid, inv, _text in invs:
             d = s.dom(inv, a, [], a.env, "variant")
             if d is not None:
                 a.pc.append(d)
@@ -941,9 +1045,27 @@ class FnVerifier:
                 s.ensures_ok(end, None, f)
 
 
-def verify_program(prog, rec=None):
+def verify_program(prog, rec=None, infer=False, report=None):
+    """infer=True (STAGE1 B2, --infer): per function, explore template invariant candidates (infer.py), then
+    verify the whole function with the survivors as extra loop invariants. report (a list) receives one record
+    per loop (docs/STAGE1_B_INFER.md section 5). infer=False: exactly the old path."""
     errors = []
     model = Model(prog)
+    if not infer:
+        for f in prog.functions:
+            FnVerifier(prog, f, errors, model, rec=rec).run()
+        return errors
+    import infer as infer_mod      # lazy: infer.py imports this module
     for f in prog.functions:
-        FnVerifier(prog, f, errors, model, rec=rec).run()
+        res = infer_mod.infer_function(prog, f, model, rec)
+        before = len(errors)
+        if res.status == "timeout":
+            errors.append(PruvError(
+                "verify", f.line, f.col, "inference_timeout",
+                "invariant inference for %s hit the time safety limit (5 s per function, 500 ms per query)" % f.name,
+                "write the loop invariants explicitly, or compile without --infer"))
+        else:
+            FnVerifier(prog, f, errors, model, rec=rec, extra=res.extra()).run()
+        if report is not None:
+            report.extend(res.records(len(errors) - before))
     return errors

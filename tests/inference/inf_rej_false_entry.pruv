@@ -1,0 +1,11 @@
+fn start_too_high(a: [i64]) -> i64
+  ensures result <= len(a)
+{
+  let mut i: i64 = 5;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    i = i + 1;
+  }
+  return i;
+}

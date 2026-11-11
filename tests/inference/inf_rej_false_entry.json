@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "dropped": ["i <= len(a)"], "note": "카운터가 5 에서 시작해 진입에서 i <= len(a) 가 거짓(len(a) 가 작을 수 있음): 후보는 탈락하고 result <= len(a) 는 증명되지 않아야 함"}

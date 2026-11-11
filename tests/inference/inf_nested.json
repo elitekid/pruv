@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant 0 <= i", "invariant i <= len(a)", "invariant 0 <= j", "invariant j <= len(a)"], "note": "중첩 루프, 사용자 불변식 없음: 안쪽 a[i] 색인은 바깥 후보 0 <= i 가, 루프 뒤 result == len(a) 는 i <= len(a) 가 필요"}

@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant c == count(k_1 in 0..i: a[k_1] < x)", "invariant c >= 0", "invariant c <= i"], "status": {"count_less": "verified"}, "note": "p07 에서 불변식을 지운 조건부 개수 루프: 개수 후보(7)와 개수 범위(11)"}

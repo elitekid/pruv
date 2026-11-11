@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "index_oob"}, "note": "while i <= len(a) 에서 a[i]: 경계 후보 i <= len(a) + 1 이 남아도 i == len(a) 색인은 index_oob"}

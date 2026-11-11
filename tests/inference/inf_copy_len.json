@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant len(b) == len(a)"], "status": {"copy_first": "verified"}, "note": "alloc(len(a), 0) 로 만든 b 를 원소 저장으로만 채운 뒤 b[0] 을 읽음: 길이 후보(4)가 있어야 루프 뒤 b[0] 이 정의됨"}

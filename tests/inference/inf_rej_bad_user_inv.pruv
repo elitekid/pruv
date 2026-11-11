@@ -1,0 +1,12 @@
+fn wrong_inv(a: [i64]) -> i64
+  requires len(a) <= 1000
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant i == 1
+    decreases len(a) - i
+  {
+    i = i + 1;
+  }
+  return i;
+}

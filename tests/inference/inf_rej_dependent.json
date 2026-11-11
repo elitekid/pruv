@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "kept": ["invariant c <= i - n"], "dropped": ["i <= len(a)", "j <= len(a) + 1"], "dropped_round": {"j <= len(a) + 1": 2}, "note": "두 후보(c <= i - n, i <= len(a))에 기대던 후보가 의존 후보 탈락 뒤 2회차에 빠짐; 낡은 후보로 증명되면 안 됨"}

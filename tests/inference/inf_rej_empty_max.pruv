@@ -1,0 +1,16 @@
+fn unguarded_max(a: [i64]) -> i64
+  requires len(a) <= 1_000_000
+  ensures result == max(k in 0..len(a): a[k])
+{
+  let mut m: i64 = a[0];
+  let mut i: i64 = 1;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    if a[i] > m {
+      m = a[i];
+    }
+    i = i + 1;
+  }
+  return m;
+}

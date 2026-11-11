@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant 0 < i ==> m == min(k_1 in 0..i: a[k_1])"], "dropped": ["1 < i ==> m == min(k_1 in 1..i: a[k_1])"], "status": {"min_of": "verified"}, "note": "inf_max 의 최솟값 판: 비교가 < 이면 min 후보(8)를 만든다"}

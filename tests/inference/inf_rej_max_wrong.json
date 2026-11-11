@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "kept": ["invariant 0 < i ==> m == min(k_1 in 0..i: a[k_1])"], "note": "비교 방향이 틀려(< 이면 최솟값) 구한 값을 max 로 약속: min 후보는 남지만 max ensures 는 증명되면 안 됨"}

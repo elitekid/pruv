@@ -1,0 +1,13 @@
+fn replace(n: i64) -> i64 ! alloc
+  requires n >= 1 && n <= 100
+{
+  let mut b: [i64] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < 3
+    decreases 3 - i
+  {
+    b = alloc(1, 0);
+    i = i + 1;
+  }
+  return b[n - 1];
+}

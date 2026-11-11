@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant s == sum(k_1 in 0..i: a[k_1] * b[k_1])", "invariant s >= -1000000000000 * i", "invariant s <= 1000000000000 * i"], "status": {"dot": "verified"}, "note": "p09 에서 불변식을 지운 내적: 항 범위 rng(a[i]*b[i]) = ±1e12 로 합 범위 후보를 만든다"}

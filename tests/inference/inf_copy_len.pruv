@@ -1,0 +1,14 @@
+fn copy_first(a: [i64]) -> i64 ! alloc
+  requires len(a) <= 1_000_000
+  requires len(a) > 0
+{
+  let mut b: [i64] = alloc(len(a), 0);
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    b[i] = a[i];
+    i = i + 1;
+  }
+  return b[0];
+}

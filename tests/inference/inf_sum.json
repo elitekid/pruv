@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant 0 <= i", "invariant s == sum(k_1 in 0..i: a[k_1])"], "status": {"sum_array": "verified"}, "note": "p01 에서 불변식을 지운 합 루프: 카운터 범위·합 정의·합 범위 후보로 --infer 증명"}

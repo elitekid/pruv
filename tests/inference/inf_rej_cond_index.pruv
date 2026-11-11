@@ -1,0 +1,14 @@
+fn off_by_one(a: [i64]) -> i64
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): a[k] >= -1000 && a[k] <= 1000
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i <= len(a)
+    decreases len(a) - i + 1
+  {
+    s = s + a[i];
+    i = i + 1;
+  }
+  return s;
+}

@@ -1,0 +1,21 @@
+fn dot(a: [i64], b: [i64]) -> Result<i64>
+  requires len(a) <= 1_000_000 && len(b) <= 1_000_000
+  requires forall k in 0..len(a): a[k] >= -1_000_000 && a[k] <= 1_000_000
+  requires forall k in 0..len(b): b[k] >= -1_000_000 && b[k] <= 1_000_000
+  ensures is_ok(result) == (len(a) == len(b))
+  ensures !is_ok(result) ==> err_val(result) == 1
+  ensures is_ok(result) ==> ok_val(result) == sum(k in 0..len(a): a[k] * b[k])
+{
+  if len(a) != len(b) {
+    return Err(1);
+  }
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    s = s + a[i] * b[i];
+    i = i + 1;
+  }
+  return Ok(s);
+}

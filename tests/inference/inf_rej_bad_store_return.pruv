@@ -1,0 +1,13 @@
+fn bad_store(n: i64) -> i64 ! alloc
+  requires 1 <= n && n <= 3
+{
+  let mut b: [i64 | 0..=9; <=3] = alloc(3, 0);
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    b[i] = 20;
+    return b[0];
+  }
+  return b[0];
+}

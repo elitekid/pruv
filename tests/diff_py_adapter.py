@@ -2,16 +2,21 @@
 
   diff_py_adapter.py parse FILE
   diff_py_adapter.py check FILE
-  diff_py_adapter.py trace FILE [--no-verify] [--trust-callers] [--contract-budget N]
+  diff_py_adapter.py trace FILE [--no-verify] [--trust-callers] [--contract-budget N] [--infer]
   diff_py_adapter.py snapshot --out DIR [--inputs manifest|all] [--python PATH]
   diff_py_adapter.py seeds --out DIR [--inputs manifest|all] [--python PATH]
   diff_py_adapter.py _all FILE [flags]      (internal: parse+check+trace in ONE process)
 
-Only --no-verify, --trust-callers, --contract-budget N are known trace options; anything else
+Only --no-verify, --trust-callers, --contract-budget N, --infer are known trace options; anything else
 -> stderr "diff_py_adapter: unknown option(s): ..." and exit code 2.
+--infer (STAGE1 B2, docs/STAGE1_B_INFER.md): options {"infer": true}; verification runs with template
+invariant inference, so the exploration queries (phase "inference", round r, cand set) and the final
+queries are all in "obligations"; the top-level key "inference" holds the per-loop report records (the
+--show-inferred lines, same objects). Without --infer there is no "inference" key.
 
 Trace schema "pruv-trace-v2" (one JSON object):
-  schema, options {"infer": bool}, errors [error dicts], obligations [...], timeout_ms (only if verification ran)
+  schema, options {"infer": bool}, errors [error dicts], obligations [...], timeout_ms (only if verification ran),
+  inference (only with --infer: list of per-loop report records)
   obligation: seq, fn, line, col, code, attempts [...], phase ("verification"|...), round (int|null),
               cand (null|candidate id), and "skipped": true only when the (line,col,code[,extra]) key was
               already reported (then attempts is empty)
@@ -205,10 +210,14 @@ def check_result(path):
 # ---------------------------------------------------------------------------
 # trace
 # ---------------------------------------------------------------------------
-def trace_result(path, verify_on=True):
+def trace_result(path, verify_on=True, infer=False):
     errors = []
     rec = None
-    out = {"schema": "pruv-trace-v2", "options": {"infer": False}, "errors": errors, "obligations": []}
+    out = {"schema": "pruv-trace-v2", "options": {"infer": bool(infer)}, "errors": errors, "obligations": []}
+    rep = None
+    if infer:
+        rep = []
+        out["inference"] = rep
     try:
         prog = pruv_parse(read_source(path))
         check_mod.check(prog)
@@ -217,7 +226,10 @@ def trace_result(path, verify_on=True):
             rec = verify.TraceRecorder()
             out["obligations"] = rec.obligations
             out["timeout_ms"] = verify.TIMEOUT_MS
-            errs = verify.verify_program(prog, rec=rec)
+            if infer:
+                errs = verify.verify_program(prog, rec=rec, infer=True, report=rep)
+            else:
+                errs = verify.verify_program(prog, rec=rec)
             errors.extend(err_dict(e) for e in errs)
     except PruvError as e:
         errors.append(err_dict(e))
@@ -478,6 +490,7 @@ def main(argv):
             p.add_argument("--no-verify", action="store_true")
             p.add_argument("--trust-callers", action="store_true")
             p.add_argument("--contract-budget", default=None)
+            p.add_argument("--infer", action="store_true")
     for n in ("snapshot", "seeds"):
         p = sub.add_parser(n)
         p.add_argument("--out", required=True)
@@ -494,10 +507,10 @@ def main(argv):
             sys.stderr.write("diff_py_adapter: unknown option(s): %s\n" % " ".join(extra))
             return 2
         if a.cmd == "trace":
-            emit(trace_result(a.file, not a.no_verify))
+            emit(trace_result(a.file, not a.no_verify, a.infer))
         else:
             emit({"schema": "pruv-snapshot-item-v1", "parse": parse_result(a.file),
-                  "check": check_result(a.file), "trace": trace_result(a.file, not a.no_verify)})
+                  "check": check_result(a.file), "trace": trace_result(a.file, not a.no_verify, a.infer)})
         return 0
     if extra:
         ap.error("unexpected arguments: %s" % extra)

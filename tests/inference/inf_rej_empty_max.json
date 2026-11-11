@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "contract_domain"}, "note": "빈 배열 보호 없는 max: ensures 의 max(k in 0..len(a)) 정의역(빈 범위)이 추론으로 가려지면 안 됨(a[0] 의 index_oob 도 함께 날 수 있음)"}

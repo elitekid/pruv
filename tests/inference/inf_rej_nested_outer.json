@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "index_oob"}, "dropped": ["len(b) == n"], "note": "중첩 루프: 안쪽 루프가 b 길이를 새로 만들어 바깥 길이 후보가 보존에서 빠지고, 바깥 저장·최종 b[0] 이 증명되면 안 됨"}

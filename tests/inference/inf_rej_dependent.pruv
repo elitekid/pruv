@@ -1,0 +1,26 @@
+// a candidate that depends on two others: loop 1 keeps `c <= i - n` but drops `i <= len(a)` (false on entry: i
+// starts at n). Loop 2 starts at c; its bound `j <= len(a) + 1` needs c <= i - n and i <= len(a) after loop 1, so it
+// survives round 1 and is dropped in round 2. The ensures happens to hold, but without the dropped facts it is not
+// provable: the program must be rejected rather than proved with a stale candidate.
+fn chain(a: [i64], n: i64) -> i64
+  requires 0 <= n && n <= 1000 && len(a) <= 1000
+  ensures result <= len(a) + 1
+{
+  let mut c: i64 = 0;
+  let mut i: i64 = n;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    if a[i] > 0 {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  let mut j: i64 = c;
+  while j < len(a) + 1
+    decreases len(a) + 1 - j
+  {
+    j = j + 1;
+  }
+  return j;
+}

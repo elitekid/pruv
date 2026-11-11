@@ -1,9 +1,15 @@
 """pruvc: Pruv compiler CLI.
 
   python pruvc/pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers]
-                      [--backend rust|llvm] [--rust-bindings PATH]
+                      [--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]
 
 --no-verify      skip the proof; emit safe code (checked indexing/arithmetic)
+--infer          STAGE1 B2: infer loop invariants from fixed templates (Houdini) and use the surviving
+                 ones as extra invariants in the proof (docs/STAGE1_B_INFER.md). Off by default; without it
+                 the proof and its solver queries are unchanged. Generated code is unchanged.
+--show-inferred  with --infer only (otherwise a usage error): one JSON line per loop on stderr (fn, loop,
+                 line, col, status, invariants, generated, capped, kept, dropped, rounds, queries).
+                 With --no-verify the single line {"status": "skipped_no_verify"}.
 --trust-callers  public entry points skip the run-time `requires` check (benchmarking)
 --backend        rust (default): OUT is Rust source.
                  llvm: OUT is textual LLVM IR (.ll); Rust bindings are written to
@@ -36,7 +42,7 @@ from check import check  # noqa: E402
 from codegen import gen_rust  # noqa: E402
 
 USAGE = ("usage: pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers] "
-         "[--backend rust|llvm] [--rust-bindings PATH]")
+         "[--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]")
 
 
 def default_bindings_path(out):
@@ -44,7 +50,7 @@ def default_bindings_path(out):
 
 
 def compile_file(path, out, verify=True, trust_callers=False, backend="rust", rust_bindings=None,
-                 budget=None, also_llvm=None):
+                 budget=None, also_llvm=None, infer=False, show_inferred=False):
     if budget is None:
         budget = 1 << 30
     assert 1 <= budget <= 2 ** 62
@@ -55,9 +61,17 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     check(prog)
     if verify:
         from verify import verify_program
-        errs = verify_program(prog)
+        if infer:
+            report = [] if show_inferred else None
+            errs = verify_program(prog, infer=True, report=report)
+            for rec in report or []:
+                print(json.dumps(rec, sort_keys=True, ensure_ascii=False), file=sys.stderr)
+        else:
+            errs = verify_program(prog)
         if errs:
             return errs
+    elif infer and show_inferred:
+        print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
     if backend == "llvm":
         from llvmgen import gen_llvm  # lazy: only the llvm backend needs it
         ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget)
@@ -98,11 +112,15 @@ def main(argv):
     ap.add_argument("--trust-callers", action="store_true")
     ap.add_argument("--backend", choices=["rust", "llvm"], default="rust")
     ap.add_argument("--rust-bindings", default=None)
+    ap.add_argument("--infer", action="store_true")
+    ap.add_argument("--show-inferred", dest="show_inferred", action="store_true")
     ap.add_argument("--contract-budget", dest="budget", type=int, default=None,
                     help=argparse.SUPPRESS)
     ap.add_argument("--also-llvm", dest="also_llvm", nargs=2, metavar=("LL", "RS"), default=None,
                     help=argparse.SUPPRESS)
     a = ap.parse_args(argv[1:])
+    if a.show_inferred and not a.infer:
+        ap.error("--show-inferred requires --infer")
     if a.also_llvm is not None:
         if a.backend != "rust":
             ap.error("--also-llvm requires --backend rust")
@@ -121,7 +139,8 @@ def main(argv):
             ap.error("--rust-bindings path must differ from -o path")
     try:
         errs = compile_file(a.input, a.out, not a.no_verify, a.trust_callers, a.backend, bindings,
-                          a.budget, tuple(a.also_llvm) if a.also_llvm else None)
+                          a.budget, tuple(a.also_llvm) if a.also_llvm else None,
+                          infer=a.infer, show_inferred=a.show_inferred)
     except PruvError as e:
         errs = [e]
     except Exception as e:  # compiler-internal failure, not a language error

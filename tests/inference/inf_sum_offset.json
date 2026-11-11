@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant s == 5 + sum(k_1 in 0..i: a[k_1])", "invariant s == sum(k_1 in 1..i: a[k_1])", "invariant 1 <= i"], "status": {"sum_plus5": "verified", "sum_from1": "verified"}, "note": "초기값 s = 5(c0 != 0)와 시작 인덱스 1(lo = 1, N(v) = i - 1) 합: 후보 6 의 c0 + sum 꼴과 lo..v 범위"}

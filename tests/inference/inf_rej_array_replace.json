@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "index_oob"}, "note": "루프 안에서 b 를 통째로 바꾸면(IndexAssign 만이 아님) 길이 후보 len(b) == n 이 만들어지지 않아 루프 뒤 b[n - 1] 이 증명되면 안 됨(t03_array_len_loop 의 불변식 없는 판)"}

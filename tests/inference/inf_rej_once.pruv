@@ -1,0 +1,21 @@
+// round dependence: loop 1's candidate `i <= len(a)` is false on entry (i starts at n, possibly > len(a)) and is
+// dropped in round 1. In round 1 it is still assumed after loop 1, so loop 2's `j <= len(a) + 5` passes its entry
+// check once; in round 2 (without it) that entry fails and it is dropped. The false ensures must stay rejected.
+fn two_loops(a: [i64], n: i64) -> i64
+  requires 0 <= n && n <= 1000 && len(a) <= 1000
+  ensures result <= len(a) + 5
+{
+  let mut i: i64 = n;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    i = i + 1;
+  }
+  let mut j: i64 = i;
+  while j < len(a) + 5
+    decreases len(a) + 5 - j
+  {
+    j = j + 1;
+  }
+  return j;
+}

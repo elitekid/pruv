@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "dropped": ["i <= len(a)", "j <= len(a) + 5"], "dropped_round": {"j <= len(a) + 5": 2}, "note": "1회차엔 남고 2회차에 빠지는 후보: loop 1 의 진입 거짓 후보가 빠진 뒤 loop 2 의 경계 후보 진입이 깨짐; ensures 는 실제로 거짓(n=1000, 빈 a)"}

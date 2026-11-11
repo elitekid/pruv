@@ -1,0 +1,1 @@
+{"expect": "ok", "noinfer": "reject", "kept": ["invariant 0 < i ==> m == max(k_1 in 0..i: a[k_1])"], "dropped": ["1 < i ==> m == max(k_1 in 1..i: a[k_1])"], "status": {"max_of": "verified"}, "note": "m = a[0], i = 1 최댓값 루프: 시작 후보 b=0(init(m)==a[0])은 남고 b=1 후보는 보존에서 탈락"}

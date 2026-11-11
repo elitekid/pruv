@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "refinement_assign"}, "note": "정제 원소 범위 0..=9 를 어기는 저장(20) 직후 return: 추론 후보가 이 위반을 가리지 않아야 함"}
