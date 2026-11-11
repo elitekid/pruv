@@ -41,15 +41,45 @@ pub extern "C" fn pruv_host_free(data: *mut i64, len: i64) {
     }
 }
 #[allow(dead_code, non_snake_case, unused)]
+#[no_mangle]
+pub extern "C" fn pruv_host_alloc_v2(len: i64, size: i64, align: i64) -> *mut u8 {
+    let layout = match (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        Some(l) => l,
+        None => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<u8>()),
+    };
+    let p = unsafe { ::std::alloc::alloc(layout) };
+    if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
+    p
+}
+#[allow(dead_code, non_snake_case, unused)]
+#[no_mangle]
+pub extern "C" fn pruv_host_alloc_zeroed_v2(len: i64, size: i64, align: i64) -> *mut u8 {
+    let layout = match (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        Some(l) => l,
+        None => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<u8>()),
+    };
+    let p = unsafe { ::std::alloc::alloc_zeroed(layout) };
+    if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
+    p
+}
+#[allow(dead_code, non_snake_case, unused)]
+#[no_mangle]
+pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i64) {
+    if data.is_null() || len <= 0 { return; }
+    if let Some(layout) = (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        unsafe { ::std::alloc::dealloc(data, layout) };
+    }
+}
+#[allow(dead_code, non_snake_case, unused)]
 extern "C" {
     fn pruv_abi_arr(p0: *const i64, p1: i64, p2: *mut Pruv__Array);
-    fn pruv_runtime_rust_allocator_v1();
+    fn pruv_runtime_rust_allocator_v2();
 }
 #[allow(dead_code, non_snake_case, unused)]
 #[inline]
 pub fn arr(a: &[i64]) -> ::std::vec::Vec<i64> {
     unsafe {
-        let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v1 as unsafe extern "C" fn());
+        let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v2 as unsafe extern "C" fn());
         let mut pruv__out = Pruv__Array { data: ::std::ptr::null_mut(), len: 0 };
         pruv_abi_arr(a.as_ptr(), a.len() as i64, &mut pruv__out);
         if pruv__out.len > 0 { ::std::vec::Vec::from_raw_parts(pruv__out.data, pruv__out.len as usize, pruv__out.len as usize) } else { ::std::vec::Vec::new() }

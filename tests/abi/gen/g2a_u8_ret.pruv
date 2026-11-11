@@ -1,0 +1,9 @@
+// 경계: [u8] 인자·반환 (out 포인터, sret 없음)
+fn bytes(a: [u8]) -> [u8] ! alloc
+  requires len(a) <= 1_000_000
+  ensures len(result) == len(a)
+{
+  let t: [u8] = copy(a);
+  let c: [u8] = copy(t);
+  return c;
+}

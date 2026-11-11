@@ -27,6 +27,13 @@
 | `win_x64/ref.c` | clang 이 C 의 2×int64 반환을 어떻게 하강하는지 기준(declare 와 define 서명) |
 | `win_x64/rust_extern.rs` | Windows CI 에서 실행할 Rust extern 호출 드라이버 |
 
+## 런타임 v2 링크 시험
+`check_runtime_v2.py [--pruvc PATH]` 는 G2 A4(`docs/G2_A4_IMPL.md` 6절)의 6경우를 호스트 대상에서 실제로 링크해 본다:
+새 바인딩+새 런타임(`g2a_u8_ret`·`arr_ret`)은 성공(`[u8]` 쪽은 `pruv-alloc-balance` 확인), 새 바인딩+옛 런타임,
+v2 helper 를 뺀 옛 바인딩 흉내+새 런타임, 새 바인딩+malloc 런타임(marker 없음)은 `rustc` 링크 실패와 기대 심볼 이름을 요구한다.
+`runtime_v1.c` 는 A3 커밋(1b884b7)의 `pruvc/runtime.c` 를 그대로 얼린 사본이며 옛 런타임 역할만 한다(수정 금지).
+경우마다 `ok <이름>` / `FAIL <이름>: 이유` 한 줄, 하나라도 FAIL 이면 exit 1. `tests/m3_all.py` 의 `abi_v2` 단계로도 돈다.
+
 ## Windows CI 에서 할 일 (이 맥에서는 불가)
 1. 표본·실제 생성 IR 을 객체화해 MSVC 링커로 `rust_extern.rs` 및 C 호출자와 링크, 실행.
 2. 네이티브 실행: Some/None, Ok/Err, i64 MIN/MAX, 인자 0·1·5개, 반복 호출(10만 회 이상),

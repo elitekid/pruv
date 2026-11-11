@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["9", "77", "9"]}
+{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["9", "77", "9"], "alloc_balance": true}

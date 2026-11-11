@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use crate::llvmgen::{lty, mangle, st, words, R, OPT};
-use crate::typeinfo::{is_user_type, TypeTable};
+use crate::typeinfo::{is_array_name, is_user_type, TypeTable};
 
 pub struct Words<'a> {
     tt: &'a TypeTable,
@@ -164,7 +164,12 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
     let mut w = Words::new(tt);
     for p in &f.params {
         let q = mangle(&p.name);
-        if is_user_type(&p.ty) {
+        if is_array_name(&p.ty) {
+            ext.push(format!("ptr %a.{}.a", q));
+            ext.push(format!("i64 %a.{}.n", q));
+            args.push(format!("ptr %a.{}.a", q));
+            args.push(format!("i64 %a.{}.n", q));
+        } else if is_user_type(&p.ty) {
             ext.push(format!("ptr %a.{}", q));
             let x = w.de(&p.ty, &format!("%a.{}", q), 0)?;
             args.push(format!("{} {}", lty(&p.ty), x));
@@ -176,11 +181,6 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
             ext.push(format!("i64 %a.{}", q));
             pre.push(format!("%c.{} = icmp ne i64 %a.{}, 0", q, q));
             args.push(format!("i1 %c.{}", q));
-        } else if p.ty == "array" {
-            ext.push(format!("ptr %a.{}.a", q));
-            ext.push(format!("i64 %a.{}.n", q));
-            args.push(format!("ptr %a.{}.a", q));
-            args.push(format!("i64 %a.{}.n", q));
         } else {
             ext.push(format!("i64 %a.{}.t", q));
             ext.push(format!("i64 %a.{}.v", q));
@@ -195,7 +195,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget) -> R<String> {
     let argl = args.join(", ");
     let mut body: Vec<String> = pre.iter().map(|x| format!("  {}", x)).collect();
     let ret: &str;
-    if rt == "array" {
+    if is_array_name(rt) {
         ext.push("ptr %out".to_string());
         body.push(format!("  %r = call {} {}({})", lty(rt), entry, argl));
         body.push(format!("  %x0 = extractvalue {} %r, 0", lty(rt)));

@@ -5,7 +5,7 @@
 
 use crate::abi::{abi_of, AbiTarget};
 use crate::ast::*;
-use crate::typeinfo::{is_user_type, TypeTable};
+use crate::typeinfo::{is_array_name, is_user_type, uses_array_type, TypeTable};
 use std::collections::HashMap;
 
 pub type R<T> = Result<T, String>;
@@ -34,6 +34,29 @@ pub const DECLS: &str = concat!(
     "declare { i128, i1 } @llvm.smul.with.overflow.i128(i128, i128)\n",
 );
 
+/// `[u8]` 프로그램에만 DECLS 바로 뒤에 붙는 선언(G2 A4 2.9절).
+pub const DECLS_U8: &str = concat!(
+    "declare noalias ptr @pruv_alloc_u8(i64, i64) nounwind\n",
+    "declare noalias ptr @pruv_copy_v2(ptr nocapture readonly, i64, i64, i64) nounwind\n",
+    "declare void @pruv_free_v2(ptr nocapture, i64, i64, i64) nounwind\n",
+    "declare void @pruv_panic_elem(i64, ptr) noreturn cold nounwind\n",
+);
+
+const ARRAY_U8: &str = "array_u8";
+
+fn is_u8_ty(t: &Option<String>) -> bool {
+    t.as_deref() == Some(ARRAY_U8)
+}
+
+/// 원소 IR 타입 E (u8 배열이면 i8, 아니면 i64)
+fn elem_ir(v: &V) -> &'static str {
+    if is_u8_ty(&v.ty) {
+        "i8"
+    } else {
+        "i64"
+    }
+}
+
 const NONE_ATTR: &str = "'NoneType' object has no attribute 'name'";
 const IDX_ERR: &str = "list index out of range";
 
@@ -57,7 +80,7 @@ pub fn lty(t: &str) -> String {
         "i64" => "i64".to_string(),
         "bool" => "i1".to_string(),
         "unit" => "void".to_string(),
-        "array" => ARR.to_string(),
+        "array" | "array_u8" => ARR.to_string(),
         "option" | "result" => OPT.to_string(),
         _ => format!("%pruv_t_{}", t),
     }
@@ -93,7 +116,7 @@ pub fn vkind(t: &str) -> Kind {
         "i64" => Kind::I64,
         "bool" => Kind::I1,
         "unit" => Kind::Unit,
-        "array" => Kind::Arr,
+        "array" | "array_u8" => Kind::Arr,
         "option" | "result" => Kind::Opt,
         _ => Kind::Agg,
     }
@@ -309,7 +332,7 @@ pub fn ir_params(f: &Function) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for p in &f.params {
         let n = mangle(&p.name);
-        if p.ty == "array" {
+        if is_array_name(&p.ty) {
             out.push(("ptr".to_string(), format!("%p.{}.a", n)));
             out.push(("i64".to_string(), format!("%p.{}.n", n)));
         } else if p.ty == "bool" {
@@ -341,6 +364,8 @@ pub enum Fail {
     Panic1(&'static str, String),
     Oob(String, String),
     Requires(String, String),
+    /// u8 원소 범위 위반: (값 SSA, 범위 문구). 문자열은 fail 블록을 내보낼 때 등록한다.
+    Elem(String, &'static str),
 }
 
 fn expr_ty(e: &Expr) -> &Option<String> {
@@ -472,6 +497,10 @@ impl<'a> FnGen<'a> {
             }
             Fail::Oob(i, n) => self.ins(format!("call void @pruv_panic_oob(i64 {}, i64 {})", i, n)),
             Fail::Requires(a, b) => self.ins(format!("call void @pruv_panic_requires(ptr {}, ptr {})", a, b)),
+            Fail::Elem(v, range) => {
+                let s = self.m.string(range);
+                self.ins(format!("call void @pruv_panic_elem(i64 {}, ptr {})", v, s))
+            }
         }
     }
 
@@ -523,7 +552,11 @@ impl<'a> FnGen<'a> {
             Kind::Arr => {
                 self.allocas.push(format!("{} = alloca ptr", a));
                 self.allocas.push(format!("{} = alloca i64", b));
-                V::with_b(Kind::Arr, a, b)
+                let mut sl = V::with_b(Kind::Arr, a, b);
+                if ty == ARRAY_U8 {
+                    sl.ty = Some(ARRAY_U8.to_string());
+                }
+                sl
             }
             Kind::Agg => {
                 self.allocas.push(format!("{} = alloca {}", a, lty(ty)));
@@ -551,7 +584,9 @@ impl<'a> FnGen<'a> {
             Kind::Arr => {
                 let p = self.op(format!("load ptr, ptr {}", sl.a))?;
                 let n = self.op(format!("load i64, ptr {}", sl.b))?;
-                Ok(V::with_b(Kind::Arr, p, n))
+                let mut v = V::with_b(Kind::Arr, p, n);
+                v.ty = sl.ty.clone();
+                Ok(v)
             }
             _ => {
                 let t = self.op(format!("load i1, ptr {}", sl.a))?;
@@ -593,6 +628,9 @@ impl<'a> FnGen<'a> {
     }
 
     pub fn free_val(&mut self, v: &V) -> R<()> {
+        if is_u8_ty(&v.ty) {
+            return self.ins(format!("call void @pruv_free_v2(ptr {}, i64 {}, i64 1, i64 1)", v.a, v.b));
+        }
         self.ins(format!("call void @pruv_free(ptr {}, i64 {})", v.a, v.b))
     }
 
@@ -890,8 +928,12 @@ impl<'a> FnGen<'a> {
         let mut names: HashMap<String, Bind> = HashMap::new();
         for p in &f.params {
             let n = mangle(&p.name);
-            if p.ty == "array" {
-                names.insert(p.name.clone(), Bind::Ssa(V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n))));
+            if is_array_name(&p.ty) {
+                let mut av = V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n));
+                if p.ty == ARRAY_U8 {
+                    av.ty = Some(ARRAY_U8.to_string());
+                }
+                names.insert(p.name.clone(), Bind::Ssa(av));
             } else if p.ty == "bool" {
                 names.insert(p.name.clone(), Bind::Ssa(V::new(Kind::I1, format!("%p.{}", n))));
             } else if p.ty == "i64" {
@@ -1000,7 +1042,16 @@ impl<'a> FnGen<'a> {
                 let v = self.ev(&x.value, false)?;
                 let a = self.load(&sl)?;
                 let g = self.index_ptr(&a, &i)?;
-                self.ins(format!("store i64 {}, ptr {}", v.a, g))?;
+                if is_u8_ty(&a.ty) {
+                    if !self.verified {
+                        let ok = self.op(format!("icmp ule i64 {}, 255", v.a))?;
+                        self.guard(&ok, Fail::Elem(v.a.clone(), "u8 0..=255"), false)?;
+                    }
+                    let b = self.op(format!("trunc i64 {} to i8", v.a))?;
+                    self.ins(format!("store i8 {}, ptr {}", b, g))?;
+                } else {
+                    self.ins(format!("store i64 {}, ptr {}", v.a, g))?;
+                }
                 self.end_temps()
             }
             Stmt::If(x) => {
@@ -1171,7 +1222,7 @@ impl<'a> FnGen<'a> {
             let ok = self.op(format!("icmp ult i64 {}, {}", i.a, a.b))?;
             self.guard(&ok, Fail::Oob(i.a.clone(), a.b.clone()), false)?;
         }
-        self.op(format!("getelementptr inbounds i64, ptr {}, i64 {}", a.a, i.a))
+        self.op(format!("getelementptr inbounds {}, ptr {}, i64 {}", elem_ir(a), a.a, i.a))
     }
 
     pub fn checked(&mut self, ty: &str, name: &str, sym: &str, a: &str, b: &str) -> R<String> {
@@ -1236,6 +1287,11 @@ impl<'a> FnGen<'a> {
                 let a = self.ev(&x.array, false)?;
                 let i = self.ev(&x.index, false)?;
                 let g = self.index_ptr(&a, &i)?;
+                if is_u8_ty(&a.ty) {
+                    let x8 = self.op(format!("load i8, ptr {}", g))?;
+                    let r = self.op(format!("zext i8 {} to i64", x8))?;
+                    return Ok(V::new(Kind::I64, r));
+                }
                 let r = self.op(format!("load i64, ptr {}", g))?;
                 Ok(V::new(Kind::I64, r))
             }
@@ -1324,15 +1380,32 @@ impl<'a> FnGen<'a> {
         if n == "alloc" {
             let cnt = self.ev(arg(a, 0)?, false)?; // 모든 모드에서 소스 순서: n 다음 v
             let v = self.ev(arg(a, 1)?, false)?;
+            let u8a = is_u8_ty(&e.ty);
             if !self.verified {
                 let ok = self.op(format!("icmp ult i64 {}, 1099511627777", cnt.a))?;
                 self.guard(&ok, Fail::Panic1("pruv_panic_arith", "alloc length outside 0..2^40".to_string()), false)?;
+                if u8a {
+                    let ok2 = self.op(format!("icmp ule i64 {}, 255", v.a))?;
+                    self.guard(&ok2, Fail::Elem(v.a.clone(), "u8 0..=255"), false)?;
+                }
+            }
+            if u8a {
+                let p = self.op(format!("call ptr @pruv_alloc_u8(i64 {}, i64 {})", cnt.a, v.a))?;
+                let mut rv = V::with_b(Kind::Arr, p, cnt.a.clone());
+                rv.ty = Some(ARRAY_U8.to_string());
+                return self.temp_arr(rv, owned);
             }
             let p = self.op(format!("call ptr @pruv_alloc(i64 {}, i64 {})", cnt.a, v.a))?;
             return self.temp_arr(V::with_b(Kind::Arr, p, cnt.a.clone()), owned);
         }
         if n == "copy" {
             let src = self.ev(arg(a, 0)?, false)?;
+            if is_u8_ty(&src.ty) {
+                let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", src.a, src.b))?;
+                let mut rv = V::with_b(Kind::Arr, p, src.b.clone());
+                rv.ty = src.ty.clone();
+                return self.temp_arr(rv, owned);
+            }
             let p = self.op(format!("call ptr @pruv_copy(ptr {}, i64 {})", src.a, src.b))?;
             return self.temp_arr(V::with_b(Kind::Arr, p, src.b.clone()), owned);
         }
@@ -1385,8 +1458,12 @@ impl<'a> FnGen<'a> {
         }
         let x0 = self.op(format!("extractvalue {} {}, 0", lty(&f.ret), r))?;
         let x1 = self.op(format!("extractvalue {} {}, 1", lty(&f.ret), r))?;
-        if f.ret == "array" {
-            return self.temp_arr(V::with_b(Kind::Arr, x0, x1), owned);
+        if is_array_name(&f.ret) {
+            let mut rv = V::with_b(Kind::Arr, x0, x1);
+            if f.ret == ARRAY_U8 {
+                rv.ty = Some(ARRAY_U8.to_string());
+            }
+            return self.temp_arr(rv, owned);
         }
         Ok(V::with_b(Kind::Opt, x0, x1))
     }
@@ -1397,8 +1474,12 @@ impl<'a> FnGen<'a> {
         let f = self.f;
         for p in &f.params {
             let n = mangle(&p.name);
-            if p.ty == "array" {
-                self.cenv.insert(p.name.clone(), V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n)));
+            if is_array_name(&p.ty) {
+                let mut av = V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n));
+                if p.ty == ARRAY_U8 {
+                    av.ty = Some(ARRAY_U8.to_string());
+                }
+                self.cenv.insert(p.name.clone(), av);
             } else if p.ty == "bool" {
                 self.cenv.insert(p.name.clone(), V::new(Kind::I1, format!("%p.{}", n)));
             } else if p.ty == "i64" {
@@ -1497,6 +1578,12 @@ impl<'a> FnGen<'a> {
                 let ok = self.op(format!("icmp ult i128 {}, {}", i.a, ln))?;
                 self.guard(&ok, und("array index out of range".to_string()), false)?;
                 let ii = self.op(format!("trunc i128 {} to i64", i.a))?;
+                if is_u8_ty(&a.ty) {
+                    let g = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", a.a, ii))?;
+                    let x8 = self.op(format!("load i8, ptr {}", g))?;
+                    let r = self.op(format!("zext i8 {} to i128", x8))?;
+                    return Ok(V::new(Kind::I128, r));
+                }
                 let g = self.op(format!("getelementptr inbounds i64, ptr {}, i64 {}", a.a, ii))?;
                 let v = self.op(format!("load i64, ptr {}", g))?;
                 let r = self.op(format!("sext i64 {} to i128", v))?;
@@ -1607,11 +1694,22 @@ impl<'a> FnGen<'a> {
         self.place(&bl);
         self.spend()?;
         let pk = self.op(format!("sub i64 {}, 1", kv))?;
-        let g0 = self.op(format!("getelementptr inbounds i64, ptr {}, i64 {}", arr.a, pk))?;
-        let g1 = self.op(format!("getelementptr inbounds i64, ptr {}, i64 {}", arr.a, kv))?;
-        let x0 = self.op(format!("load i64, ptr {}", g0))?;
-        let x1 = self.op(format!("load i64, ptr {}", g1))?;
-        let le = self.op(format!("icmp sle i64 {}, {}", x0, x1))?;
+        let le;
+        if is_u8_ty(&arr.ty) {
+            let g0 = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", arr.a, pk))?;
+            let g1 = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", arr.a, kv))?;
+            let x0 = self.op(format!("load i8, ptr {}", g0))?;
+            let x1 = self.op(format!("load i8, ptr {}", g1))?;
+            let z0 = self.op(format!("zext i8 {} to i64", x0))?;
+            let z1 = self.op(format!("zext i8 {} to i64", x1))?;
+            le = self.op(format!("icmp sle i64 {}, {}", z0, z1))?;
+        } else {
+            let g0 = self.op(format!("getelementptr inbounds i64, ptr {}, i64 {}", arr.a, pk))?;
+            let g1 = self.op(format!("getelementptr inbounds i64, ptr {}, i64 {}", arr.a, kv))?;
+            let x0 = self.op(format!("load i64, ptr {}", g0))?;
+            let x1 = self.op(format!("load i64, ptr {}", g1))?;
+            le = self.op(format!("icmp sle i64 {}, {}", x0, x1))?;
+        }
         let stop = self.label("qstop");
         self.condbr(&le, &nl, &stop)?;
         self.place(&stop);
@@ -1832,7 +1930,7 @@ const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-
 
 /// 대상 ABI 를 고른 생성. SysV 는 gen_llvm 과 바이트 동일.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
-    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &[], None) {
+    if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8"], None) {
         return Err(format!("unsupported_type: {}", e.message));
     }
     let tt = TypeTable::new(&prog.types);
@@ -1860,12 +1958,13 @@ pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget:
         chunks.push(abi_of(f, &tt, target)?);
     }
     let ir = format!(
-        "{}{}\n{}{}{}\n{}",
+        "{}{}\n{}{}{}{}\n{}",
         if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
         type_defs(&tt),
         if prog.types.is_empty() { "" } else { "\n" },
         DECLS,
+        if uses_array_type(prog, "array_u8") { DECLS_U8 } else { "" },
         chunks.join("\n")
     );
     let bindings = crate::bindings::gen_bindings(prog)?;

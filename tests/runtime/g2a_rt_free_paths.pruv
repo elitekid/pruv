@@ -1,0 +1,63 @@
+// [u8] free paths: loop reassignment, early return from a branch (with a copy alive), call-result temporaries, copy of a temporary, moving a local out to a pruv caller, [u8] arguments, a [u8] call used only for its length.
+fn make(n: i64) -> [u8] ! alloc
+  requires n >= 1 && n <= 8
+  ensures len(result) == n
+{
+  return alloc(n, 3);
+}
+
+fn pick(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 6
+{
+  let mut a: [u8] = alloc(2, 1);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(a) >= 2
+    decreases n - i
+  {
+    a = alloc(i + 2, 10);
+    if i == 2 {
+      let c: [u8] = copy(a);
+      return len(c) + c[0];
+    }
+    i = i + 1;
+  }
+  return len(a) + a[0];
+}
+
+fn tmp(n: i64) -> i64 ! alloc
+  requires n >= 1 && n <= 8
+{
+  let x: i64 = len(make(n));
+  let y: i64 = make(n)[0];
+  let z: i64 = copy(make(n))[n - 1];
+  return x + y + z;
+}
+
+fn mk2(n: i64) -> [u8] ! alloc
+  requires n >= 1 && n <= 8
+  ensures len(result) == n
+{
+  let a: [u8] = alloc(n, 7);
+  if n > 3 {
+    return a;
+  }
+  let b: [u8] = alloc(n, 2);
+  return b;
+}
+
+fn sum2(a: [u8]) -> i64
+  requires len(a) >= 1 && len(a) <= 8
+  ensures result >= 1 && result <= 263
+{
+  return a[0] + len(a);
+}
+
+fn pass_on(n: i64) -> i64 ! alloc
+  requires n >= 1 && n <= 8
+{
+  let a: [u8] = mk2(n);
+  let d: i64 = len(mk2(n));
+  return sum2(a) + sum2(mk2(n)) + d - n;
+}

@@ -58,6 +58,11 @@ def is_tagged(ret_ty):
     return ret_ty.startswith("Option<") or ret_ty.startswith("Result<")
 
 
+def is_array(ret_ty):
+    """배열 반환(`[i64]`, `[u8]`, 정제 `[u8 | L..=U; <=N]`): 마지막 out 포인터 + void, sret 없음."""
+    return ret_ty.startswith("[")
+
+
 def expected_ret(ret_ty):
     """sret 없는 wrapper 의 기대 반환: i64/bool = i64, 나머지 = void."""
     return "i64" if ret_ty in ("i64", "bool") else "void"
@@ -137,6 +142,8 @@ def check_one(src, a, tools, ref_sigs, ref_err, work):
                     fail("sret", "%s: sret 가 있으면 안 됨" % name)
                 if ret != expected_ret(t):
                     fail("sret", "%s: 반환 %s (기대 %s)" % (name, ret, expected_ret(t)))
+                if is_array(t) and not (params and params[-1].startswith("ptr")):
+                    fail("sret", "%s: 배열 반환인데 마지막 인자가 out 포인터(ptr)가 아님: %s" % (name, line[:120]))
         if rs.exists():
             bt = binding_tagged(rs.read_text())
             for name, t in sorted(want.items()):

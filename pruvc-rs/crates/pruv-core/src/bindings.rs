@@ -3,7 +3,7 @@
 
 use crate::ast::*;
 use crate::emit_common::emit_public_types;
-use crate::typeinfo::{is_user_type, TypeTable};
+use crate::typeinfo::{is_array_name, is_user_type, uses_array_type, TypeTable};
 
 pub const ALLOW: &str = "#[allow(dead_code, non_snake_case, unused)]";
 
@@ -27,6 +27,36 @@ pub extern "C" fn pruv_host_alloc_zeroed(len: i64) -> *mut i64 {
     let p = unsafe { ::std::alloc::alloc_zeroed(layout) } as *mut i64;
     if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
     p
+}"##;
+
+const HOST_ALLOC_V2: &str = r##"#[no_mangle]
+pub extern "C" fn pruv_host_alloc_v2(len: i64, size: i64, align: i64) -> *mut u8 {
+    let layout = match (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        Some(l) => l,
+        None => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<u8>()),
+    };
+    let p = unsafe { ::std::alloc::alloc(layout) };
+    if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
+    p
+}"##;
+
+const HOST_ALLOC_ZEROED_V2: &str = r##"#[no_mangle]
+pub extern "C" fn pruv_host_alloc_zeroed_v2(len: i64, size: i64, align: i64) -> *mut u8 {
+    let layout = match (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        Some(l) => l,
+        None => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<u8>()),
+    };
+    let p = unsafe { ::std::alloc::alloc_zeroed(layout) };
+    if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
+    p
+}"##;
+
+const HOST_FREE_V2: &str = r##"#[no_mangle]
+pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i64) {
+    if data.is_null() || len <= 0 { return; }
+    if let Some(layout) = (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        unsafe { ::std::alloc::dealloc(data, layout) };
+    }
 }"##;
 
 const HOST_FLUSH: &str = r##"#[no_mangle]
@@ -89,6 +119,7 @@ fn rust_ty(t: &str, param: bool) -> String {
         "unit" => "()".to_string(),
         "option" => "::std::option::Option<i64>".to_string(),
         "result" => "::std::result::Result<i64, i64>".to_string(),
+        "array_u8" => (if param { "&[u8]" } else { "::std::vec::Vec<u8>" }).to_string(),
         _ => (if param { "&[i64]" } else { "::std::vec::Vec<i64>" }).to_string(),
     }
 }
@@ -206,13 +237,17 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
     }
     o.push(ALLOW.to_string());
     o.push("#[repr(C)]\npub struct Pruv__Array { pub data: *mut i64, pub len: i64 }".to_string());
+    if uses_array_type(prog, "array_u8") {
+        o.push(ALLOW.to_string());
+        o.push("#[repr(C)]\npub struct Pruv__ArrayU8 { pub data: *mut u8, pub len: i64 }".to_string());
+    }
     o.push(ALLOW.to_string());
     o.push("#[repr(C)]\npub struct Pruv__Tagged { pub tag: i64, pub value: i64 }".to_string());
-    for h in [HOST_ALLOC, HOST_ALLOC_ZEROED, HOST_FLUSH, HOST_FREE] {
+    for h in [HOST_ALLOC, HOST_ALLOC_ZEROED, HOST_FLUSH, HOST_FREE, HOST_ALLOC_V2, HOST_ALLOC_ZEROED_V2, HOST_FREE_V2] {
         o.push(ALLOW.to_string());
         o.push(h.to_string());
     }
-    let returns_array = prog.functions.iter().any(|f| f.ret == "array");
+    let returns_array = prog.functions.iter().any(|f| is_array_name(&f.ret));
     let mut decls: Vec<String> = Vec::new();
     for f in &prog.functions {
         if needs_mangling(&f.name) {
@@ -223,7 +258,9 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         }
         let mut ps: Vec<&str> = Vec::new();
         for p in &f.params {
-            if p.ty == "array" {
+            if p.ty == "array_u8" {
+                ps.extend(["*const u8", "i64"]);
+            } else if p.ty == "array" {
                 ps.extend(["*const i64", "i64"]);
             } else if p.ty == "option" || p.ty == "result" {
                 ps.extend(["i64", "i64"]);
@@ -233,7 +270,9 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
                 ps.push("i64");
             }
         }
-        if f.ret == "array" {
+        if f.ret == "array_u8" {
+            ps.push("*mut Pruv__ArrayU8");
+        } else if f.ret == "array" {
             ps.push("*mut Pruv__Array");
         } else if is_user_type(&f.ret) {
             ps.push("*mut i64");
@@ -249,7 +288,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         decls.push(format!("    fn pruv_abi_{}({}){};", f.name, plist.join(", "), ret));
     }
     if returns_array {
-        decls.push("    fn pruv_runtime_rust_allocator_v1();".to_string());
+        decls.push("    fn pruv_runtime_rust_allocator_v2();".to_string());
     }
     o.push(ALLOW.to_string());
     o.push(format!("extern \"C\" {{\n{}\n}}", decls.join("\n")));
@@ -264,7 +303,7 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
                 args.push(p.name.clone());
             } else if p.ty == "bool" {
                 args.push(format!("{} as i64", p.name));
-            } else if p.ty == "array" {
+            } else if is_array_name(&p.ty) {
                 args.push(format!("{}.as_ptr()", p.name));
                 args.push(format!("{}.len() as i64", p.name));
             } else if is_user_type(&p.ty) {
@@ -293,9 +332,9 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
         if f.effects.iter().any(|e| e == "io") {
             body.push("::std::io::Write::flush(&mut ::std::io::stdout());".to_string());
         }
-        if f.ret == "array" {
+        if is_array_name(&f.ret) {
             body.push(
-                "let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v1 as unsafe extern \"C\" fn());".to_string(),
+                "let _ = ::std::hint::black_box(pruv_runtime_rust_allocator_v2 as unsafe extern \"C\" fn());".to_string(),
             );
         }
         body.extend(pre);
@@ -309,8 +348,9 @@ pub fn gen_bindings(prog: &Program) -> Result<String, String> {
             body.push(call);
         } else if f.ret == "bool" {
             body.push(format!("{} != 0", call));
-        } else if f.ret == "array" {
-            body.push("let mut pruv__out = Pruv__Array { data: ::std::ptr::null_mut(), len: 0 };".to_string());
+        } else if is_array_name(&f.ret) {
+            let out_ty = if f.ret == "array_u8" { "Pruv__ArrayU8" } else { "Pruv__Array" };
+            body.push(format!("let mut pruv__out = {} {{ data: ::std::ptr::null_mut(), len: 0 }};", out_ty));
             body.push(format!("{};", callo));
             body.push(
                 "if pruv__out.len > 0 { ::std::vec::Vec::from_raw_parts(pruv__out.data, pruv__out.len as usize, \

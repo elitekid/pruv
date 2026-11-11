@@ -732,3 +732,21 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
 - **감사(Claude Opus):** 필수 0·권고 5, 모두 반영: Rust 정렬 다시 쓰기의 Index ty 고정을 명세 문구에 맞춤, Python prelude의 u8 사용 판정 한 번만, run_all pending 검사가 "llvm codegen" 층 문구와 목록 파일 존재까지 확인, cli_also_llvm pending이 rust 실행의 출력·파일까지 확인, match 팔·호출 결과 직접 색인 표본 추가.
 - **확인 감사(Claude Opus):** 필수 0, 반영 5건 모두 맞음. 권고 1(cli_also_llvm pending도 층 문구 확인) → 반영.
 - 측정 못 한 것: u8 함수의 증명 시간, 생성 코드 성능, Windows·Linux 실행.
+
+## 37. G2 A4: `[u8]` LLVM 뒷단·`--rust-bindings`·런타임 v2 (2026-11-11)
+`[u8]` 프로그램을 이제 LLVM 뒷단(`--backend llvm`, `--also-llvm`, Rust 판 `--emit ll/obj/exe`)과 `--rust-bindings`로도 만든다. 이로써 `[u8]`는 앞단·증명·두 실행 뒷단·ABI 전 층이 열렸다(`[bool]`은 A5까지 `unsupported_type`). 두 판이 같은 바이트를 내도록 IR·바인딩·런타임 글자를 `docs/G2_A4_IMPL.md`에 먼저 고정했고, 두 판은 첫 비교에서 바로 IR·바인딩 바이트가 같았다.
+
+- **IR:** 집합체는 `{ ptr, i64 }` 그대로(길이 = 원소 수), u8 원소는 `i8`(크기·정렬 1·1), 읽기는 `zext` → i64, 저장은 `trunc` → `i8`. 배열 값·슬롯에 원소 타입을 싣고(매개변수·슬롯 load·alloc·copy·호출 결과에서 채움) GEP·load·store·복사·해제가 그것을 따른다. 안전 모드는 Rust 뒷단과 같은 순서·문구로 검사한다: 저장 색인 → 값(`icmp ule 255`), alloc 길이 → 값(길이 0이어도), `pruv: element out of range: <v> (u8 0..=255)`(종료 101). 증명 모드는 검사 없이 줄인다(`elem_range`가 증명). requires의 원소 읽기와 정렬 requires O(n) 검사도 `i8`로 읽는다. u8 선언 4줄은 u8 프로그램에만 붙여 **`[i64]`만 쓰는 프로그램의 IR은 바이트 그대로**다.
+- **런타임 v2(`pruvc/runtime.c`):** 기존 `pruv_alloc/copy/free`·v1 host helper·v1 marker는 그대로 두고 `pruv_alloc_u8`·`pruv_copy_v2`·`pruv_free_v2`(원소 수·크기·정렬)·`pruv_panic_elem`을 더했다. 크기 계산은 곱하기 전에 배치(1·1/4·4/8·8)·`len <= 2^40`·`len*size <= SIZE_MAX`를 검사한다. Rust allocator 판은 v2 host helper(`pruv_host_alloc_v2`·`_zeroed_v2`·`pruv_host_free_v2`, `Layout(len*size, align)`)를 부르고 marker `pruv_runtime_rust_allocator_v2`를 정의한다.
+- **바인딩:** `[u8]` 인자 `*const u8, len`, 반환 `Pruv__ArrayU8 { data: *mut u8, len }` out 포인터(기존 `Pruv__Array` 유지), 공개 함수는 `&[u8]`/`Vec<u8>`. v2 host helper 셋은 **모든 프로그램의 바인딩에 늘 들어가고**, 배열을 돌려주는 함수는 v2 marker를 참조한다. 그래서 바인딩 글자는 모든 프로그램에서 바뀌었다(G2_SPEC 5.4 호환성 3·4항: 재생성·재링크 필요). Windows CI 고정 결과물 `tests/abi/winci/out`을 다시 만들고 u8 표본 호출 목록을 더했다(48파일, `--check` 동일).
+- **링크 시험(`tests/abi/check_runtime_v2.py`, m3_all `abi_v2` 단계):** 6경우 모두 기대대로 — 새 바인딩+새 런타임 성공(u8은 런타임 안 해제 ≥1·할당 = 해제 + 1), 새 바인딩+옛 런타임(`tests/abi/runtime_v1.c` = A3 런타임 사본) 실패(u8·i64 둘 다, v2 marker 없음), v2 helper를 뺀 옛 바인딩 흉내+새 런타임 실패, 새 바인딩+malloc 런타임 실패.
+- **가드:** 드라이버·두 생성기 모두 모든 길에서 `array_u8`만 건너뛰는 하나의 가드로 합쳤다. `tests/llvm_pending.txt`를 지워 examples `g2a_u8_*` 11·runtime `g2a_rt_*` 15의 llvm 행이 "거부 기대"에서 실제 링크·실행 검사로 바뀌었다(행 목록은 그대로).
+- **할당/해제 균형:** 종료 0인 u8 runtime 표본 6개에 `alloc_balance`를 붙였다(돌려준 배열을 Rust가 놓는 `g2a_rt_return`, 할당 0인 `g2a_rt_refine_trust`, panic으로 끝나는 7개는 제외). 새 표본 `g2a_rt_free_paths`: 루프 재대입, 분기 조기 반환(살아 있는 copy와 함께), 호출 결과 임시값, 지역 배열을 pruv 호출자에게 옮기는 반환, `[u8]` 인자 전달을 두 모드에서 돌리고 균형 + 함수 본문 IR 글자(`call void @pruv_free_v2(`·`call ptr @pruv_copy_v2(` 있음, i64 helper 없음)를 본다.
+- **회귀(마지막 실행):**
+  - run_all `--backend both` 두 판 594/594(행 목록 594 = 590 + 새 표본 4, 빠진 행·실패 0). 감사 반영 뒤 `--only runtime` 두 판 348행 실패 0
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - diff_llvm 모두 same(두 판 u8 IR·바인딩 바이트 동일), m3_all 10단계 ok(compilers 760, rust·llvm·trace·trace_infer·standalone·abi·abi_v2 포함), cli_also_llvm 두 판 280/280, check_generated 통과(u8 반환 = out 포인터 + void)
+  - 새 표본 diff_trace 두 모드 same(결정 11), `tests/inference --regress` 두 판 254/254, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42
+- **감사(Claude Opus):** 필수 0·권고 6, 모두 반영: u8 표본에 해제 helper IR 글자 검사(횟수만으로는 i64 크기 해제 퇴행을 못 잡음), requires u8 읽기에 통과 경우 더함(정렬·정제 진입), 링크 시험 판정 조임(런타임 안 해제 ≥1, 옛 런타임 u8은 marker 필수), 명세의 링크 실패 문구를 실제 보장 범위로 좁힘, `alloc_balance` 예외 기록, 옮기는 반환·인자 전달 경로 표본.
+- **확인 감사(Claude Opus):** 필수 0, 반영 6건 중 5건 맞음. 권고 3: 해제·복사 helper 전체 .ll 검사가 u8 선언 줄 때문에 늘 참 → 함수 본문 `llvm_fn_contains`로 바꿈, 명세 링크 시험 표의 옛 균형 기준·기대 심볼 갱신, 명세 표본 설명에 새 경로 기록 → 모두 반영.
+- 측정 못 한 것: u8 함수의 증명 시간과 생성 코드 성능, Windows(MSVC 런타임 컴파일·실행 — 푸시 뒤 Windows CI)·Linux 실행.

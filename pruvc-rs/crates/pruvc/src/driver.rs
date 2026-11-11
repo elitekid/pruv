@@ -211,19 +211,8 @@ fn compile(a: &Args) -> Result<(), Fail> {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
     // G2: verify 뒤에도, 아직 코드 생성 층이 없는 배열 타입은 거부.
-    // 순수 Rust 소스 뒷단(Kind::Rs, --also-llvm 없음)은 [u8] 을 허용(A3).
-    // llvmgen 을 쓰는 모든 길(ll·obj·exe·also_llvm)은 A4 까지 [u8] 거부.
-    let g2_err = if matches!(a.kind, Kind::Rs) && a.also_llvm.is_none() {
-        pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen", None, &["array_u8"], None)
-    } else {
-        pruv_core::typeinfo::g2_unimplemented_error(
-            &prog,
-            "codegen",
-            Some("llvm codegen"),
-            &[],
-            Some("use --backend rust or [i64] for now"),
-        )
-    };
+    // A4: [u8] 은 모든 길(rust·llvm·ll·obj·exe·also_llvm)에서 허용. [bool] 은 거부.
+    let g2_err = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen", None, &["array_u8"], None);
     if let Some(e) = g2_err {
         return Err(Fail::Lang(vec![e]));
     }

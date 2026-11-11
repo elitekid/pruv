@@ -1,1 +1,1 @@
-{"flags_matrix": [["--infer"]], "exit": 0, "stdout_lines": ["90", "0", "90"]}
+{"flags_matrix": [["--infer"]], "exit": 0, "stdout_lines": ["90", "0", "90"], "alloc_balance": true}

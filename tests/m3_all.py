@@ -5,7 +5,7 @@
     python tests/m3_all.py [--only NAME[,NAME]] [--skip NAME[,NAME]] [--quick]
                            [--rs-dir DIR] [--log-dir DIR] [--timeout SEC]
 
-단계(순서대로): parse, check, trace, trace_infer, llvm, rust, compilers, standalone, abi
+단계(순서대로): parse, check, trace, trace_infer, llvm, rust, compilers, standalone, abi, abi_v2
   parse      tests/diff_parse.py --mode parse   (pruv-parse-dump)
   check      tests/diff_parse.py --mode check   (pruv-check-dump)
   trace      tests/diff_trace.py                (pruv-trace-dump)
@@ -15,11 +15,12 @@
   compilers  tests/diff_compilers.py --b rs --backend both (pruvc)
   standalone tests/standalone/run.py            (pruvc)
   abi        tests/abi/check_generated.py       (pruvc)
+  abi_v2     tests/abi/check_runtime_v2.py      (pruvc; 런타임 v2 링크 성공·실패 6경우)
 
 옵션:
   --only/--skip  단계 이름 쉼표 목록(둘 다 주면 only 에서 skip 을 뺌)
   --quick        작은 입력: parse/check/llvm/rust 는 --fuzz-count 20, trace·trace_infer 는 --fuzz-count 5
-                 (diff_compilers·standalone·abi 는 해당 옵션이 없어 그대로)
+                 (diff_compilers·standalone·abi·abi_v2 는 해당 옵션이 없어 그대로)
   --rs-dir       Rust 바이너리 폴더(기본 pruvc-rs/target/release, 상대 경로는 저장소 루트 기준)
   --log-dir      단계별 NAME.log(stdout+stderr, 실행 중 바로 기록) 저장 폴더
                  (기본 tempfile.mkdtemp, 상대 경로는 저장소 루트 기준)
@@ -52,6 +53,7 @@ STAGES = [
     ("compilers", "tests/diff_compilers.py", "pruvc", "--b-path", ["--b", "rs", "--backend", "both"], []),
     ("standalone", "tests/standalone/run.py", "pruvc", "--rs-path", [], []),
     ("abi", "tests/abi/check_generated.py", "pruvc", "--pruvc", [], []),
+    ("abi_v2", "tests/abi/check_runtime_v2.py", "pruvc", "--pruvc", [], []),
 ]
 NAMES = [s[0] for s in STAGES]
 
