@@ -39,4 +39,4 @@
 - 주의: bench p04 성능 구간은 공개 함수를 n번 부르므로 검사가 O(n)이어도 전체는 O(n^2)다. 알고리즘 속도 비교는 계속 `--trust-callers`.
 
 ## D. 퍼징
-다음 묶음. `bench/fuzz/{generate,oracle,run}.py`, 독립 oracle(임의 정밀도 해석기), Rust·LLVM × 증명·안전 4모드 대조. 설계 초안의 D절 계획을 따른다.
+완료(2026-11-11, RESULTS 10~12·25절). `bench/fuzz/{generate,oracle,run}.py`, 독립 oracle(임의 정밀도 해석기), Rust·LLVM × 증명·안전 4모드 대조. 설계 초안의 D절 계획을 따른다.
