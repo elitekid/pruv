@@ -196,6 +196,11 @@ def main(argv):
             status = "ok" if code == 0 else "FAIL"
         results.append((name, status, secs, last_line(read_tail(log_path))))
         print("[%s] done: %s (exit code %d, %.1f s)" % (name, status, code, secs), flush=True)
+        if status != "ok":
+            # CI keeps only stdout: show the end of the failing stage's log so the cause is visible there
+            tail = read_tail(log_path, 12 * 1024).splitlines()[-120:]
+            print("[%s] --- last %d log lines ---\n%s\n[%s] --- end of log ---" % (name, len(tail), "\n".join(tail), name),
+                  flush=True)
 
     print("", flush=True)
     rows = [("stage", "result", "sec", "last line")]
