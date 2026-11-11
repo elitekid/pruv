@@ -8,7 +8,17 @@ from typing import List, Optional
 # ---------- types ----------
 @dataclass(frozen=True)
 class Type:
-    name: str  # "i64" | "bool" | "unit" | "array" | "option" | "result"
+    """name: "i64" | "bool" | "unit" | "array" | "option" | "result" | ... | a user nominal name | a parameter name.
+    G3 A0 optional fields (all defaults leave every legacy type unchanged, so legacy equality/hash/print are as before):
+      args:  type arguments of a structured type: Option<X> / Result<X> -> (X,); [X] -> (X,); D<X0,..> -> (X0,..).
+      owner/index: set only on a bound type parameter: owner is the declaration identity ("fn:<name>" or
+             "type:<name>", see typeinfo.fn_owner/decl_owner) and index its position in that declaration's list.
+    Build structured types with the mk_* constructors: they normalize to the legacy constants
+    (Option<i64> -> OPTION, Result<i64> -> RESULT, [i64]/[u8]/[bool] -> ARRAY/ARRAY_U8/ARRAY_BOOL)."""
+    name: str
+    args: tuple = ()
+    owner: Optional[str] = None
+    index: int = -1
 
 I64 = Type("i64"); BOOL = Type("bool"); UNIT = Type("unit")
 ARRAY = Type("array"); OPTION = Type("option"); RESULT = Type("result")
@@ -17,6 +27,27 @@ U8 = Type("u8")
 ARRAY_U8 = Type("array_u8"); ARRAY_BOOL = Type("array_bool")
 # G2 B0: the string type (not an array); internal name equals the source spelling
 STR = Type("str")
+
+# ---------- G3 A0: structured type constructors ----------
+def mk_param(owner: str, index: int, name: str) -> Type:
+    """A bound type parameter: identity is (owner, index); the name is for printing."""
+    return Type(name, (), owner, index)
+
+def mk_option(x: Type) -> Type:
+    return OPTION if x == I64 else Type("option", (x,))
+
+def mk_result(x: Type) -> Type:
+    return RESULT if x == I64 else Type("result", (x,))
+
+def mk_array(x: Type) -> Type:
+    if x == I64: return ARRAY
+    if x == U8: return ARRAY_U8
+    if x == BOOL: return ARRAY_BOOL
+    return Type("array", (x,))
+
+def mk_nominal(name: str, args=()) -> Type:
+    """User struct/enum type, applied to args (empty for a non-generic declaration)."""
+    return Type(name, tuple(args))
 
 # ---------- expressions ----------
 @dataclass
