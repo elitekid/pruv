@@ -1,0 +1,6 @@
+fn f(n: i64) -> i64 ! alloc
+  requires n == -1
+{
+  let b: [u8] = alloc(n, 0);
+  return 0;
+}

@@ -73,11 +73,10 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    if not verify:
-        # G2: verify_program already rejects unimplemented array types; without it the codegen guard applies
-        g2err = g2_unimplemented_error(prog, "codegen")
-        if g2err is not None:
-            return [g2err]
+    # G2: runs after verify too; array types that have no code-generation layer yet are rejected (until A3·A4)
+    g2err = g2_unimplemented_error(prog, "codegen")
+    if g2err is not None:
+        return [g2err]
     if backend == "llvm":
         from llvmgen import gen_llvm  # lazy: only the llvm backend needs it
         ir, bindings = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget)

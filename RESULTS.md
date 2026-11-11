@@ -689,3 +689,28 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
 - **메인이 직접 고친 것:** Rust 가드 진단의 stage가 "type"으로 고정돼 있던 것을 층 이름으로 바꿨다. Python 생성기 가드를 Rust `Err(String)`과 같은 내부 오류로 맞췄다(diff_rust·diff_llvm 8건 불일치 해소). 추론 회귀 도구가 표본 `flags`를 읽게 했다.
 - **확인 감사(Claude Opus):** 필수 0, 반영 항목 모두 맞음. 권고 1: 표본 json은 stage/code만 봐서 진단 위치 회귀는 시험이 못 잡는다(하네스 확장은 범위 밖).
 - 측정 못 한 것: 성능 변화(앞단에 배열 판정 몇 곳과 컴파일당 1~3회 문장 훑기만 더했다), Windows·Linux 실행.
+
+## 35. G2 A2: `[u8]` 증명 (2026-11-11)
+`[u8]` 프로그램을 이제 증명한다. 코드 생성 층은 아직 없으므로, 검증을 통과한 `[u8]` 프로그램은 드라이버에서 codegen `unsupported_type`으로 거부한다(결정 16, A3·A4에서 풂). 두 판이 같은 SMT·의무 순서·문구를 내도록 구현 명세를 `docs/G2_A2_IMPL.md`에 고정했다.
+
+- **정의역(결정 2):** u8 기호 배열에는 `forall k: 0 <= k < n ==> 0 <= A[k] <= 255`(묶인 변수 고정 이름 `elem!k`, 순번 카운터를 쓰지 않음)를 **세 곳에서만** 가정한다: 함수 진입 매개변수, 사용자 함수 호출 결과, 루프 havoc(모두 길이 가정 바로 뒤). alloc·copy·재바인딩·저장 뒤에는 넣지 않고, 코드의 원소 읽기는 지금처럼 i64 범위만 가정한다.
+- **`elem_range` 의무(verify, 새 코드):** `alloc(n, v)`는 `alloc_negative` → `elem_range`(v가 0..=255) 순서, 원소 저장은 `index_oob` → `elem_range` → 정제의 `refinement_assign` 순서. 위치는 alloc 호출식·저장문. 후보 의무가 아니므로 `--infer` 탐색에서는 빠지고 최종 전체 검증에서만 판정된다(결정 4). 원소 타입은 검사기가 alloc 호출 노드에 단 타입에서 얻는다.
+- **`--infer` 필터(결정 4):** 함수의 배열 이름 → 원소 타입 표(매개변수·Let)를 만들어, 종류 5는 같은 원소 타입 배열에서 온 범위만 쓰고, 종류 5 이상 후보 중 bool 배열 원소를 읽는 것은 버린다(지금은 `[bool]`이 파서에서 막혀 실제로 걸리지 않음). u8 암묵 범위를 새 후보로 넣지 않았다.
+- **가드:** verify 단계 가드를 지웠다. 드라이버 codegen 가드는 verify를 켰을 때도 돈다(두 판). A1 표본 `g2a_a1_verify_layer`·`g2a_a1_guard_nested`의 기대는 verify → codegen `unsupported_type`으로 바꿨다(이름은 A1 때 것 그대로).
+- **표본 23쌍(must_reject 152):**
+  - verify 거부 10: u8_negative·u8_high·alloc_value(+ alloc_value_reassign·alloc_value_return, 감사 반영)는 `elem_range`, store_index `index_oob`, refined_store `refinement_assign`, contract_oob `contract_domain`, alloc_length `alloc_negative`, store_then_read(300 저장 뒤 읽어 `10 / (x - 300)`) `div` — 읽기에서 0..255를 가정하면 경로가 모순돼 div가 공허하게 증명되므로 이를 잡는다.
+  - 잘못된 저장 뒤 루프 탈출·반환·호출 3종 × `--infer` 끔/켬 = 6, 그리고 불변식 없는 루프 본문 안 잘못된 저장 + `--infer` 1(bad_store_in_loop_inf, 확인 감사 반영), 모두 `elem_range`.
+  - 증명 통과(기대 codegen `unsupported_type`) 6: ok_param·ok_call_result·ok_loop_havoc·ok_branch·ok_copy_store·ok_loop_havoc_inf. param·call_result·copy_store·loop_havoc(둘)는 각 정의역 없이는 실패한다(ok_loop_havoc_inf는 `[i64]`로 바꾸면 assert 실패를 확인).
+  - G2_SPEC 6.2 u8 거부 표본은 이것으로 다 찼다. bool(bool_fill 등)·infer_bool·sum_bool은 A5, i32는 A6.
+- **회귀(마지막 실행):**
+  - run_all `--backend both` 두 판 488/488(행 목록 488 = 465 + 23, 빠진 행·실패 0)
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - diff_trace 플래그 없이 435 성공(same 406·cex_only 29), `--infer` 435 성공(same 407·cex_only 26·same_unknown 2). 새 22건은 두 모드 모두 same(결정 11). 확인 감사 뒤 더한 1건도 단독 대조에서 두 모드 same(전체 대조는 그 전 435건으로 실행). 나머지 분류는 A1 때와 같은 수준이고 반례 값만 흔들린다.
+  - `tests/inference --regress` 두 판 251/251(Python 판은 병렬 부하에서 inf_budget이 한 번 시간 초과, 다시 돌려 통과)
+  - m3_all 9단계 ok(compilers 664)·cli_also_llvm 257(표본을 다 더한 뒤), 퍼저 seed 41×200 실패 0(감사 반영 표본을 더하기 전), cargo test pruv-core 41·`model::tests` 1
+- **처음 대조에서 고친 것:** 불변식 없는 `_inf` 표본 2개가 플래그 없는 대조에서 cex_only(반례의 i 값만 두 판이 다름)였다. 끔 표본과 같은 내용(불변식 포함)에 `--infer` 플래그만 두도록 바꿨고, 불변식 없는 추론 경로는 bad_store_return_inf·ok_loop_havoc_inf가 맡는다.
+- **감사(Claude Opus):** 필수 0·권고 5.
+  - 반영(2): alloc 재대입·return 지점 거부 표본 추가, ok_loop_havoc_inf가 추론된 접두 불변식(`forall k in 0..i: b[k] == k * 30`)으로 정의역 없이도 통과하던 것을 접두 밖 원소 검사로 바꿈.
+  - 기록만(3): 추론의 원소 타입 표가 이름 기반이라 형제 블록에서 같은 이름을 다른 배열 타입으로 선언하면 섞일 수 있다(후보는 최종 검증을 거쳐 건전성 영향 없음, bool이 열리는 A5에서 처리). `g2a_a1_verify_layer` 이름이 지금 내용(codegen 층 거부)과 다르다. u8 함수의 pc에 전칭 가정이 들어가 의무가 많은 함수에서 느려질 수 있다(측정 안 함).
+- **확인 감사(Claude Opus):** 필수 0·권고 1(불변식 없는 루프 안 잘못된 저장 + `--infer` 표본이 빠짐) → 반영. 미룬 권고 3건이 건전성에 영향 없음(후보는 최종 검증을 거치고, 느려지면 `verify_unknown`으로 거부될 뿐)도 확인했다.
+- 측정 못 한 것: u8 함수의 증명 시간(R5), Windows·Linux 실행.

@@ -1,0 +1,19 @@
+fn take(a: [u8]) -> i64 {
+  return 0;
+}
+
+fn f() -> i64 ! alloc {
+  let mut b: [u8] = alloc(4, 0);
+  let mut i: i64 = 0;
+  while i < 4
+    invariant 0 <= i && i <= 4
+    invariant len(b) == 4
+    decreases 4 - i
+  {
+    b[i] = i;
+    i = i + 1;
+  }
+  b[1] = 256;
+  let r: i64 = take(b);
+  return r;
+}

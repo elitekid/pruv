@@ -1,0 +1,13 @@
+fn f() -> [u8] ! alloc {
+  let mut b: [u8] = alloc(10, 0);
+  let mut i: i64 = 0;
+  while i < 10
+    invariant 0 <= i && i <= 10
+    invariant len(b) == 10
+    decreases 10 - i
+  {
+    b[i] = i + 250;
+    i = i + 1;
+  }
+  return b;
+}

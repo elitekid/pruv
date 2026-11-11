@@ -449,6 +449,71 @@ fn conj_terms(e: &Expr) -> Vec<&Expr> {
     }
 }
 
+/// 배열 내부 타입 이름 → 원소 타입 이름("i64"/"u8"/"bool"). 배열이 아니면 None.
+fn arr_elem_of(ty: &str) -> Option<&'static str> {
+    match ty {
+        "array" => Some("i64"),
+        "array_u8" => Some("u8"),
+        "array_bool" => Some("bool"),
+        _ => None,
+    }
+}
+
+fn let_elem_types(stmts: &[Stmt], out: &mut Vec<(String, &'static str)>) {
+    for st in stmts {
+        match st {
+            Stmt::Let(x) => {
+                if let Some(e) = arr_elem_of(&x.ty) {
+                    if !out.iter().any(|(n, _)| *n == x.name) {
+                        out.push((x.name.clone(), e));
+                    }
+                }
+            }
+            Stmt::If(x) => {
+                let_elem_types(&x.then, out);
+                let_elem_types(&x.els, out);
+            }
+            Stmt::While(x) => let_elem_types(&x.body, out),
+            Stmt::Match(m) => {
+                for a in &m.arms {
+                    let_elem_types(&a.body, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 함수의 배열 이름 → 원소 타입 표(매개변수, 그 뒤 본문의 Let 선언; 같은 이름은 먼저 나온 것).
+fn elem_types(f: &ast::Function) -> Vec<(String, &'static str)> {
+    let mut out: Vec<(String, &'static str)> = Vec::new();
+    for p in &f.params {
+        if let Some(e) = arr_elem_of(&p.ty) {
+            if !out.iter().any(|(n, _)| *n == p.name) {
+                out.push((p.name.clone(), e));
+            }
+        }
+    }
+    let_elem_types(&f.body, &mut out);
+    out
+}
+
+fn elem_type_of<'t>(tab: &'t [(String, &'static str)], name: &str) -> Option<&'t str> {
+    tab.iter().find(|(n, _)| n == name).map(|(_, e)| *e)
+}
+
+/// e 안에 원소 타입이 bool 인 배열의 Index 가 있는가.
+fn reads_bool_elem(e: &Expr, tab: &[(String, &'static str)]) -> bool {
+    if let Expr::Index(x) = e {
+        if let Expr::Var(a) = &*x.array {
+            if elem_type_of(tab, &a.name) == Some("bool") {
+                return true;
+            }
+        }
+    }
+    kids(e).into_iter().any(|c| reads_bool_elem(c, tab))
+}
+
 /// `forall K in 0..len(x): A && B` requires 에서 {배열 이름: (L, U)}(배열마다 처음 것). requires 순서를 유지한다.
 fn elem_ranges(f: &ast::Function) -> Vec<(String, Rng)> {
     let mut out: Vec<(String, Rng)> = Vec::new();
@@ -970,6 +1035,7 @@ fn gen(
     f: &ast::Function,
 ) -> Vec<Cand> {
     let b = Bld { line: w.line, col: w.col, k: kname.to_string() };
+    let etab = elem_types(f);
     let m = assigned(&w.body);
     let mut loc: BTreeSet<String> = BTreeSet::new();
     locals(&w.body, &mut loc);
@@ -1341,7 +1407,12 @@ fn gen(
         }
         push(&mut out, 4, Some(b.bin("==", b.length(bn), b.cl(&e_node))));
         let mut pairs: Vec<Rng> = Vec::new();
-        for (_, (lo_, hi_)) in ranges {
+        for (src, (lo_, hi_)) in ranges {
+            // 범위의 출처 배열과 대상 배열의 원소 타입이 같을 때만(표에서 못 찾으면 쓰지 않는다)
+            match (elem_type_of(&etab, src), elem_type_of(&etab, bn)) {
+                (Some(a), Some(c2)) if a == c2 => {}
+                _ => continue,
+            }
             let p = match c {
                 Some(cv) => ((*lo_).min(cv), (*hi_).max(cv)),
                 None => (*lo_, *hi_),
@@ -1372,6 +1443,8 @@ fn gen(
             push(&mut out, 5, e5);
         }
     }
+    // 원소 타입이 bool 인 배열을 읽거나 쓰는 후보(종류 5~14)는 만들지 않는다.
+    out.retain(|c| !(c.kind >= 5 && reads_bool_elem(&c.expr, &etab)));
     out
 }
 

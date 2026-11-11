@@ -727,6 +727,9 @@ impl<'a> FnVerifier<'a> {
                     let nv = self.try_fresh(n, &Ty::Array(old_arr.elem))?;
                     let a = nv.try_arr()?.clone();
                     h.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
+                    if a.elem == Elem::U8 {
+                        h.pc.push(self.u8_dom(&a));
+                    }
                     h.env.set(n, Val::Arr(a));
                 }
                 Val::Int(_) => {
@@ -780,6 +783,16 @@ impl<'a> FnVerifier<'a> {
     pub fn exists_q(&self, k: &Ast, lo: &Ast, hi: &Ast, body: &Ast) -> Ast {
         let rng = self.z.and(&[k.ge(lo), k.lt(hi)]);
         self.z.exists(std::slice::from_ref(k), &self.z.and(&[rng, body.clone()]), &[])
+    }
+
+    /// G2 A2: U8 배열의 원소 정의역 `ForAll([k], Implies(And(k >= 0, k < n), And(A[k] >= 0, A[k] <= 255)))`.
+    /// 묶인 변수는 고정 이름 `elem!k`(self.k 를 건드리지 않는다). patterns 없음.
+    pub fn u8_dom(&self, arr: &Arr) -> Ast {
+        let k = self.z.int_const("elem!k");
+        let rng = self.z.and(&[k.ge_i(0), k.lt(&arr.n)]);
+        let sel = arr.a.select(&k);
+        let body = self.z.and(&[sel.ge_i(0), sel.le_i(255)]);
+        self.z.forall(std::slice::from_ref(&k), &rng.implies(&body), &[])
     }
 
     // ---------- 집계 + 보조정리 (545~602행) ----------
@@ -1106,12 +1119,29 @@ impl<'a> FnVerifier<'a> {
                 let a1 = arg(1)?.try_ast()?.clone();
                 let ob = self.z.and(&[a0.ge_i(0), a0.le_i(MAX_LEN)]);
                 self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "alloc_negative", "alloc length in 0..2^40", None);
+                let aelem = match x.ty.as_deref() {
+                    Some("array_u8") => Elem::U8,
+                    _ => Elem::I64,
+                };
+                if aelem == Elem::U8 {
+                    let ob = self.z.and(&[a1.ge_i(0), a1.le_i(255)]);
+                    self.prove_core(
+                        &st.env,
+                        &st.pc,
+                        g,
+                        &ob,
+                        pos(e),
+                        "elem_range",
+                        "u8 element range 0..=255 for the alloc fill value",
+                        None,
+                    );
+                }
                 self.k += 1;
                 return Ok(Val::Arr(Arr::new(
                     self.z.const_array(&self.z.int_sort(), &a1),
                     a0,
                     "alloc".to_string(),
-                    Elem::I64,
+                    aelem,
                 )));
             }
             "copy" => {
@@ -1158,6 +1188,10 @@ impl<'a> FnVerifier<'a> {
         if let Val::Arr(ra) = &res {
             let w = self.z.and(&[ra.n.ge_i(0), ra.n.le_i(MAX_LEN)]);
             self.assume(st, g, w);
+            if ra.elem == Elem::U8 {
+                let d = self.u8_dom(ra);
+                self.assume(st, g, d);
+            }
         } else if let Some(w) = self.wf(&ret, res.try_ast()?) {
             self.assume(st, g, w);
         }
@@ -1444,6 +1478,19 @@ impl<'a> FnVerifier<'a> {
                     &format!("index in bounds for {}[...] =", s.name),
                     None,
                 );
+                if arr.elem == Elem::U8 {
+                    let ob = self.z.and(&[v.ge_i(0), v.le_i(255)]);
+                    self.prove_core(
+                        &st.env,
+                        &st.pc,
+                        &[],
+                        &ob,
+                        spos,
+                        "elem_range",
+                        &format!("u8 element range 0..=255 for {}[...] =", s.name),
+                        None,
+                    );
+                }
                 if let Some((lo, hi, what)) = &s.elem_refine {
                     // refine.rs: 저장 값(이미 계산됨)의 범위 의무 하나. 정의역 검사·재평가·forall 없음, 뒤에 가정하지 않는다.
                     let lo: i64 = lo.parse().map_err(|_| format!("refinement bound '{}'", lo))?;
@@ -1662,7 +1709,12 @@ impl<'a> FnVerifier<'a> {
             let pty = Ty::from_name(&p.ty);
             let v = self.try_fresh(&p.name, &pty)?;
             match &v {
-                Val::Arr(a) => pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)])),
+                Val::Arr(a) => {
+                    pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
+                    if a.elem == Elem::U8 {
+                        pc.push(self.u8_dom(a));
+                    }
+                }
                 other => {
                     if let Some(w) = self.wf(&pty, other.try_ast()?) {
                         pc.push(w);

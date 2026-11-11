@@ -1,0 +1,5 @@
+fn f() -> i64 ! alloc {
+  let mut b: [u8] = alloc(2, 0);
+  b = alloc(2, 256);
+  return 0;
+}

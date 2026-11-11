@@ -250,6 +250,43 @@ def _elem_ranges(f):
     return out
 
 
+_ELEM_NAME = {"array": "i64", "array_u8": "u8", "array_bool": "bool"}
+
+
+def _elem_types(f):
+    """G2 A2: {array name: "i64" | "u8" | "bool"} from the parameters and every (nested) Let of array type"""
+    out = {}
+
+    def put(name, ty):
+        t = _ELEM_NAME.get(getattr(ty, "name", None))
+        if t is not None and name not in out:
+            out[name] = t
+
+    def walk(stmts):
+        for st in stmts:
+            if isinstance(st, Let):
+                put(st.name, st.type)
+            elif isinstance(st, If):
+                walk(st.then); walk(st.els)
+            elif isinstance(st, While):
+                walk(st.body)
+            elif isinstance(st, Match):
+                for a in st.arms:
+                    walk(a.body)
+
+    for p in f.params:
+        put(p.name, p.type)
+    walk(f.body)
+    return out
+
+
+def _reads_bool_array(e, et):
+    """does e contain an Index whose array is a Var naming a [bool] array"""
+    if isinstance(e, Index) and isinstance(e.array, Var) and et.get(e.array.name) == "bool":
+        return True
+    return any(_reads_bool_array(c, et) for c in _kids(e))
+
+
 def _rng(e, ranges, M):
     """(low, high) of a term, or None (3.1 rng)"""
     if isinstance(e, IntLit):
@@ -346,10 +383,14 @@ def _gen(f, w, block, idx, kname, ranges):
     NS = M | loc
     asg = _assign_stmts(w.body, [])
     out = []
+    et = _elem_types(f)
 
     def add(kind, build):
         try:
             e = build()
+            # G2 A2: kinds 5..14 never read/write an element of a [bool] array
+            if kind >= 5 and _reads_bool_array(e, et):
+                return
             # soundness: in contract context a call assumes the callee's ensures without checking its
             # requires, so only `len` calls are allowed (dropped before sorting / de-duplication / cap)
             if _has_foreign_call(e):
@@ -512,7 +553,10 @@ def _gen(f, w, block, idx, kname, ranges):
             continue
         add(4, lambda b=b, E=E: B.bin("==", B.length(b), B.clone(E)))
         pairs = []
-        for (lo_, hi_) in ranges.values():
+        for src, (lo_, hi_) in ranges.items():
+            # G2 A2: use a range only when its source array has the same element type as b (both known)
+            if et.get(src) is None or et.get(src) != et.get(b):
+                continue
             p = (min(lo_, c), max(hi_, c)) if c is not None else (lo_, hi_)
             if p not in pairs:
                 pairs.append(p)

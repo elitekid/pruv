@@ -210,11 +210,9 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    // G2: [i64] 밖의 배열 타입은 코드 생성 층이 아직 없다(증명을 켠 경로는 verify 가드가 먼저 막는다).
-    if !a.verify {
-        if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen") {
-            return Err(Fail::Lang(vec![e]));
-        }
+    // G2: verify 뒤에도, 아직 코드 생성 층이 없는 배열 타입은 거부(A3·A4 까지).
+    if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(&prog, "codegen") {
+        return Err(Fail::Lang(vec![e]));
     }
     match a.kind {
         // 7단계: Rust 소스 뒷단. Python compile_file 처럼 모든 텍스트(rs, 그리고 --also-llvm 이면 ll·바인딩)를

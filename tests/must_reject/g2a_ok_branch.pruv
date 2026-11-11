@@ -1,0 +1,10 @@
+fn f(c: i64) -> i64 ! alloc {
+  let mut b: [u8] = alloc(1, 0);
+  if c > 0 {
+    b[0] = 1;
+  } else {
+    b[0] = 200;
+  }
+  assert b[0] <= 200;
+  return 0;
+}

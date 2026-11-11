@@ -1,0 +1,12 @@
+fn f() -> [u8] ! alloc {
+  let mut b: [u8] = alloc(8, 0);
+  let mut i: i64 = 0;
+  while i < 8
+    decreases 8 - i
+  {
+    b[i] = i;
+    i = i + 1;
+  }
+  b[0] = 999;
+  return b;
+}

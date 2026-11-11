@@ -267,6 +267,14 @@ def in_range(x):
     return z3.And(x >= I64_MIN, x <= I64_MAX)
 
 
+def u8_dom(arr):
+    """G2 A2: every element of a U8 symbolic array is in 0..=255 (bound variable `elem!k`, fixed name, no counter)."""
+    k = z3.Int("elem!k")
+    A = arr.a
+    return z3.ForAll([k], z3.Implies(z3.And(k >= 0, k < arr.n),
+                                     z3.And(z3.Select(A, k) >= 0, z3.Select(A, k) <= 255)))
+
+
 FIX = {
     "index_oob": "add a requires/invariant/if that bounds the index, e.g. `invariant 0 <= i && i <= len(a)`",
     "overflow": "bound the operands with requires (element ranges, len(a) <= N) and loop invariants on accumulators",
@@ -283,6 +291,7 @@ FIX = {
     "decreases_decrease": "the decreases expression must strictly decrease each iteration",
     "variant_domain": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
     "contract_domain": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
+    "elem_range": "store or fill only values in 0..=255 into a [u8] array: bound the value with requires, an if, or a loop invariant",
 }
 
 
@@ -781,8 +790,12 @@ class FnVerifier:
         if n == "alloc":
             s.prove(st, g, z3.And(args[0] >= 0, args[0] <= MAX_LEN), e, "alloc_negative",
                     "alloc length in 0..2^40")
+            aelem = U8 if getattr(e.ty, "name", None) == "array_u8" else I64
+            if aelem == U8:
+                s.prove(st, g, z3.And(args[1] >= 0, args[1] <= 255), e, "elem_range",
+                        "u8 element range 0..=255 for the alloc fill value")
             s.k += 1
-            return mk_arr(z3.K(z3.IntSort(), args[1]), args[0], "alloc", I64)
+            return mk_arr(z3.K(z3.IntSort(), args[1]), args[0], "alloc", aelem)
         if n == "copy":
             return mk_arr(args[0].a, args[0].n, "copy", args[0].elem)
         if n == "print":
@@ -806,6 +819,8 @@ class FnVerifier:
         res = s.fresh("ret_" + n, f.ret)
         if isinstance(res, Arr):
             s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
+            if res.elem == U8:
+                s.assume(st, g, u8_dom(res))
         else:
             w = s.wf(f.ret, res)
             if w is not None:
@@ -862,6 +877,8 @@ class FnVerifier:
             if isinstance(old, Arr):
                 nv = s.fresh(n, array_of(old.elem))
                 h.pc.append(z3.And(nv.n >= 0, nv.n <= MAX_LEN))
+                if nv.elem == U8:
+                    h.pc.append(u8_dom(nv))
                 h.env[n] = nv
             elif z3.is_int(old):
                 nv = s.fresh(n, I64)
@@ -893,6 +910,9 @@ class FnVerifier:
             i = s.ev(stmt.index, st, [], True)
             v = s.ev(stmt.value, st, [], True)
             s.prove(st, [], z3.And(i >= 0, i < arr.n), stmt, "index_oob", "index in bounds for %s[...] =" % stmt.name)
+            if arr.elem == U8:
+                s.prove(st, [], z3.And(v >= 0, v <= 255), stmt, "elem_range",
+                        "u8 element range 0..=255 for %s[...] =" % stmt.name)
             if stmt.elem_refine is not None:
                 # refine.py: the stored value (already evaluated) must lie in the element range. One query, no
                 # domain check, no re-evaluation, no forall; not assumed afterwards (it is implied by the path).
@@ -1037,6 +1057,8 @@ class FnVerifier:
             v = s.fresh(p.name, p.type)
             if isinstance(v, Arr):
                 pc.append(z3.And(v.n >= 0, v.n <= MAX_LEN))
+                if v.elem == U8:
+                    pc.append(u8_dom(v))
             else:
                 w = s.wf(p.type, v)
                 if w is not None:
@@ -1062,10 +1084,6 @@ def verify_program(prog, rec=None, infer=False, report=None):
     """infer=True (STAGE1 B2, --infer): per function, explore template invariant candidates (infer.py), then
     verify the whole function with the survivors as extra loop invariants. report (a list) receives one record
     per loop (docs/STAGE1_B_INFER.md section 5). infer=False: exactly the old path."""
-    from typeinfo import g2_unimplemented_error
-    g2err = g2_unimplemented_error(prog, "verify")
-    if g2err is not None:
-        return [g2err]
     errors = []
     model = Model(prog)
     if not infer:

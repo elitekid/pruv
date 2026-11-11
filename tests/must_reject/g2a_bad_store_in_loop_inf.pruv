@@ -1,0 +1,15 @@
+fn f() -> i64 ! alloc {
+  let mut b: [u8] = alloc(8, 0);
+  let mut i: i64 = 0;
+  while i < 8
+    decreases 8 - i
+  {
+    if i == 3 {
+      b[i] = 256;
+    } else {
+      b[i] = i;
+    }
+    i = i + 1;
+  }
+  return 0;
+}
