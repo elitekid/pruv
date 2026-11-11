@@ -26,8 +26,12 @@ Classification of every mutant (the verifier verdict is one input; the ground tr
   undetectable_trust     accepted, and the lie is not observable by the tests nor by `--foreign-checks all`
                          (effect lies; wrong results the contract does not constrain): a trust limitation
   equivalent             accepted and indistinguishable on the tests in all modes (a harmless or redundant change)
-Anomalies: crash (compiler crash/timeout or a rustc failure on accepted code), undecided (verify_unknown only),
-py_rs_diff is reported separately (py and rs compilers disagree in verdict).
+Accepted mutants run on every accepting compiler and both backends (rust, llvm); each configuration is classified
+separately (`runs`) and the worst one decides (crash > wrong_but_verified > undetectable_trust >
+caught_at_runtime_all > equivalent).
+Anomalies: crash (compiler crash/timeout, a rustc failure on accepted code, or a test-run timeout), undecided
+(verify_unknown only). py_rs_diff is reported separately (the compilers disagree in verdict, or configurations
+disagree in class).
 Exit code 1 if a pruv/ownership mutant is wrong_but_verified, a crash was seen, or fewer than 60 mutants exist.
 """
 import glob
@@ -59,6 +63,7 @@ CLASSES = ["rejected_by_prover", "rejected_by_checker", "caught_at_runtime_all",
            "undetectable_trust", "equivalent"]
 RP, RC, CA, WV, UT, EQ = CLASSES
 CHECK_STAGES = ("parse", "type", "effect")
+BAD_RUN = ("compile_error", "pruv_error", "missing", "timeout")
 
 
 # ------------------------------------------------------------------ mutant catalogue
@@ -285,25 +290,35 @@ def brief(r):
 
 
 def exec_class(it, r0, r1):
-    """Ground truth of an accepted mutant. r0: default mode run, r1: --foreign-checks all run (foreign kind only)."""
-    if r0["status"] in ("compile_error", "pruv_error", "missing"):
+    """Ground truth of an accepted mutant in one configuration. r0: default mode run, r1: --foreign-checks all run
+    (foreign kind only). Timeouts and build failures are anomalies (crash); a mutant only counts as caught when a
+    `pruv: foreign ...` diagnostic is seen."""
+    if r0["status"] in BAD_RUN:
         return "crash", "default run: %s" % r0["status"], None
     if it["kind"] != "foreign":
         if r0["status"] == "ok":
             return EQ, "tests pass", None
         return WV, "tests fail in default mode: %s" % r0.get("first_failure", r0["status"]), None
-    if r1["status"] in ("compile_error", "pruv_error", "missing"):
+    if r1["status"] in BAD_RUN:
         return "crash", "all-mode run: %s" % r1["status"], None
     if r0["status"] == "ok":
         if r1["status"] == "ok":
             return (UT, "no test and no runtime check sees the lie", None) if it["unobservable"] else \
                 (EQ, "tests pass in default and all mode", None)
-        return CA, "tests pass by default; all mode: %s" % (r1.get("first_panic") or r1.get("first_failure")), "all"
+        if foreign_panic(r1):
+            return CA, "tests pass by default; all mode: %s" % r1.get("first_panic"), "all"
+        return WV, "tests pass by default but fail in all mode without a foreign diagnostic: %s" % (
+            r1.get("first_failure") or r1["status"]), None
     if foreign_panic(r0):
         return CA, "foreign failure already in default mode: %s" % r0.get("first_panic"), "requires"
     if foreign_panic(r1):
         return CA, "wrong results by default; all mode: %s" % r1.get("first_panic"), "all"
-    return UT, "wrong results by default, not caught by --foreign-checks all: %s" % r0.get("first_failure"), None
+    return UT, "tests observe wrong results, not caught by --foreign-checks all: %s" % r0.get("first_failure"), None
+
+
+# worst class wins when configurations disagree
+SEVERITY = ["crash", WV, UT, CA, EQ]
+CONFIGS = [(c, b) for c in ("py", "rs") for b in ("rust", "llvm")]
 
 
 def classify_item(it, work, rlibs):
@@ -328,14 +343,25 @@ def classify_item(it, work, rlibs):
         else:
             out.update({"class": "undecided", "detail": "verify_unknown in both compilers"})
         return out
-    comp = "rs" if vs["rs"]["verdict"] == "accepted" else "py"
-    r0 = G.grade_one(path, it["pid"], comp, "rust", [], work, rl)
-    r1 = None
-    if it["kind"] == "foreign" and r0["status"] not in ("pruv_error", "compile_error"):
-        r1 = G.grade_one(path, it["pid"], comp, "rust", ["--foreign-checks", "all"], work, rl)
-    cls, detail, det_in = exec_class(it, r0, r1)
-    out.update({"class": cls, "detail": detail, "detected_in": det_in, "run_default": brief(r0), "run_all": brief(r1),
-                "execution_compiler": comp})
+    # run every accepted compiler on both backends; the worst configuration decides the class
+    runs = {}
+    for comp, backend in CONFIGS:
+        if vs[comp]["verdict"] != "accepted":
+            continue
+        r0 = G.grade_one(path, it["pid"], comp, backend, [], work, rl)
+        r1 = None
+        if it["kind"] == "foreign" and r0["status"] not in BAD_RUN:
+            r1 = G.grade_one(path, it["pid"], comp, backend, ["--foreign-checks", "all"], work, rl)
+        cls, detail, det_in = exec_class(it, r0, r1)
+        runs["%s_%s" % (comp, backend)] = {"class": cls, "detail": detail, "detected_in": det_in,
+                                            "run_default": brief(r0), "run_all": brief(r1)}
+    worst = min(runs, key=lambda k: SEVERITY.index(runs[k]["class"]))
+    w = runs[worst]
+    classes = sorted(set(r["class"] for r in runs.values()))
+    out.update({"class": w["class"], "detail": "%s: %s" % (worst, w["detail"]), "detected_in": w["detected_in"],
+                "runs": runs, "config_diff": len(classes) > 1})
+    if len(classes) > 1:
+        out["py_rs_diff"] = True
     return out
 
 
@@ -353,7 +379,8 @@ def summarize(results):
                                     "got": r["class"], "detail": r.get("detail")})
         if r["py_rs_diff"]:
             s["py_rs_diff"].append({"id": r["id"], "desc": r["desc"],
-                                    "py": r["verdicts"]["py"]["verdict"], "rs": r["verdicts"]["rs"]["verdict"]})
+                                    "py": r["verdicts"]["py"]["verdict"], "rs": r["verdicts"]["rs"]["verdict"],
+                                    "runs": dict((k, v["class"]) for k, v in r.get("runs", {}).items())})
         if r["class"] == "crash":
             s["crash"].append({"id": r["id"], "desc": r["desc"], "detail": r.get("detail")})
         if r["class"] == WV:
@@ -433,6 +460,8 @@ def main():
                 only = v
             else:
                 kind = v
+    if any(a.startswith("-") for a in args):
+        sys.exit("usage: mutate_ops.py [--self-test] [--list] [--jobs N] [--only ID|TEXT] [--kind K] [OUT.json]")
     out = args[0] if args else os.path.join(HERE, "results", "mutants.json")
     items = [it for it in ITEMS if (not kind or it["kind"] == kind) and (not only or only in it["desc"] or only == it["id"])]
 

@@ -259,6 +259,9 @@ fn push_two(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc
   `vec_get`, `map_new`, `map_insert`, `map_get` (returns `Option<V>`), `string_new`, `string_push_str`, `string_byte`,
   `string_to_str` (copies into a `str`), and `len`. Allocating operations need `! alloc`. In contracts only: `v[i]`, `s[i]`,
   `map_lookup::<K, V>(m, k)` and `map_updated::<K, V>(after, before, k, v)` (the whole new map: k set, size, others kept).
+  A map whose values grow in a loop (counters, histograms) needs either a saturating update (`if c < LIMIT { c + 1 }`)
+  (preferred) or an invariant bounding every value (quantifying over all keys is expensive and may time out); an
+  invariant about only the queried key cannot bound the others, so `count + 1` is then not provably free of overflow.
 - **Ownership.** A collection has one owner. An unmarked collection parameter is borrowed for the call (read only, cannot
   be moved, returned or aliased). `take` parameters and locals own their collection. Pass ownership with `move x`
   (into a `take` argument, a `let`, an assignment or a `return`); after that `x` is dead until reassigned. A binding

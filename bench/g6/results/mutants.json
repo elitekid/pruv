@@ -33,7 +33,7 @@
     "desc": "count lookup uses the queried value instead of the element",
     "expect": "rejected_by_prover",
     "got": "equivalent",
-    "detail": "tests pass"
+    "detail": "py_rust: tests pass"
    }
   ],
   "py_rs_diff": [],
@@ -43,16 +43,16 @@
    {
     "id": "m61",
     "desc": "hidden global call counter, correct results",
-    "detail": "no test and no runtime check sees the lie"
+    "detail": "py_rust: no test and no runtime check sees the lie"
    },
    {
     "id": "m62",
     "desc": "writes to stderr, correct results",
-    "detail": "no test and no runtime check sees the lie"
+    "detail": "py_rust: no test and no runtime check sees the lie"
    }
   ],
   "versions": {
-   "git_head": "f87531785e885c6c678070c6c34014b87d8ede39",
+   "git_head": "7843dbacb3d41e07a4d9c5fb9628b165f214597f",
    "z3_python": "5.3.3",
    "z3_src_crate": "503.3.0",
    "compiler_sources_dirty": false,
@@ -565,16 +565,59 @@
    },
    "py_rs_diff": false,
    "class": "equivalent",
-   "detail": "tests pass",
+   "detail": "py_rust: tests pass",
    "detected_in": null,
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 288,
-    "tests_total": 288,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "equivalent",
+     "detail": "tests pass",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 288,
+      "tests_total": 288,
+      "panics": 0
+     },
+     "run_all": null
+    },
+    "py_llvm": {
+     "class": "equivalent",
+     "detail": "tests pass",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 288,
+      "tests_total": 288,
+      "panics": 0
+     },
+     "run_all": null
+    },
+    "rs_rust": {
+     "class": "equivalent",
+     "detail": "tests pass",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 288,
+      "tests_total": 288,
+      "panics": 0
+     },
+     "run_all": null
+    },
+    "rs_llvm": {
+     "class": "equivalent",
+     "detail": "tests pass",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 288,
+      "tests_total": 288,
+      "panics": 0
+     },
+     "run_all": null
+    }
    },
-   "run_all": null,
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m19",
@@ -1246,21 +1289,79 @@
    },
    "py_rs_diff": false,
    "class": "equivalent",
-   "detail": "tests pass in default and all mode",
+   "detail": "py_rust: tests pass in default and all mode",
    "detected_in": null,
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "py_llvm": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_rust": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_llvm": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    }
    },
-   "run_all": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m43",
@@ -1344,21 +1445,79 @@
    },
    "py_rs_diff": false,
    "class": "equivalent",
-   "detail": "tests pass in default and all mode",
+   "detail": "py_rust: tests pass in default and all mode",
    "detected_in": null,
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "py_llvm": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_rust": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_llvm": {
+     "class": "equivalent",
+     "detail": "tests pass in default and all mode",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    }
    },
-   "run_all": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m46",
@@ -1414,23 +1573,81 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+   "detail": "py_rust: tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
    "detected_in": "all",
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 33,
+      "tests_total": 145,
+      "panics": 112,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 33,
+      "tests_total": 145,
+      "panics": 112,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 33,
-    "tests_total": 145,
-    "panics": 112,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m48",
@@ -1542,23 +1759,81 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+   "detail": "py_rust: tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
    "detected_in": "all",
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 33,
+      "tests_total": 145,
+      "panics": 112,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 33,
+      "tests_total": 145,
+      "panics": 112,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 33,
-    "tests_total": 145,
-    "panics": 112,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m52",
@@ -1611,24 +1886,85 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+   "detail": "py_rust: wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
    "detected_in": "all",
-   "run_default": {
-    "status": "wrong",
-    "tests_passed": 116,
-    "tests_total": 145,
-    "panics": 0,
-    "first_failure": "digit_or want 0 got 1"
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 116,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "digit_or want 0 got 1"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 88,
+      "tests_total": 145,
+      "panics": 57,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+      "first_failure": "is_digit want true got PANIC pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 4"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 116,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "digit_or want 0 got 1"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 116,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "digit_or want 0 got 1"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 88,
+      "tests_total": 145,
+      "panics": 57,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+      "first_failure": "is_digit want true got PANIC pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 4"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 116,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "digit_or want 0 got 1"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 88,
-    "tests_total": 145,
-    "panics": 57,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
-    "first_failure": "is_digit want true got PANIC pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 4"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m54",
@@ -1653,24 +1989,85 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detail": "py_rust: wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
    "detected_in": "all",
-   "run_default": {
-    "status": "wrong",
-    "tests_passed": 121,
-    "tests_total": 145,
-    "panics": 0,
-    "first_failure": "is_digit want false got true"
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 121,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 114,
+      "tests_total": 145,
+      "panics": 31,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 121,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 121,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 114,
+      "tests_total": 145,
+      "panics": 31,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 121,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 114,
-    "tests_total": 145,
-    "panics": 31,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m55",
@@ -1695,24 +2092,85 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+   "detail": "py_rust: wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
    "detected_in": "all",
-   "run_default": {
-    "status": "wrong",
-    "tests_passed": 132,
-    "tests_total": 145,
-    "panics": 0,
-    "first_failure": "is_digit want false got true"
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 132,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 132,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 132,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 132,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 126,
-    "tests_total": 145,
-    "panics": 19,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m56",
@@ -1737,23 +2195,81 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+   "detail": "py_rust: tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
    "detected_in": "all",
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 33,
+      "tests_total": 145,
+      "panics": 112,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 33,
+      "tests_total": 145,
+      "panics": 112,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 33,
-    "tests_total": 145,
-    "panics": 112,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m57",
@@ -1778,24 +2294,85 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detail": "py_rust: wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
    "detected_in": "all",
-   "run_default": {
-    "status": "wrong",
-    "tests_passed": 128,
-    "tests_total": 145,
-    "panics": 0,
-    "first_failure": "is_digit want false got true"
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 128,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 120,
+      "tests_total": 145,
+      "panics": 25,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 128,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 128,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 120,
+      "tests_total": 145,
+      "panics": 25,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 128,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 120,
-    "tests_total": 145,
-    "panics": 25,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m58",
@@ -1820,24 +2397,85 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detail": "py_rust: wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
    "detected_in": "all",
-   "run_default": {
-    "status": "wrong",
-    "tests_passed": 133,
-    "tests_total": 145,
-    "panics": 0,
-    "first_failure": "is_digit want false got true"
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 12,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 12,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 133,
-    "tests_total": 145,
-    "panics": 12,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m59",
@@ -1862,24 +2500,85 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detail": "py_rust: wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
    "detected_in": "all",
-   "run_default": {
-    "status": "wrong",
-    "tests_passed": 133,
-    "tests_total": 145,
-    "panics": 0,
-    "first_failure": "is_digit want false got true"
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+     "detected_in": "all",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 133,
+      "tests_total": 145,
+      "panics": 0,
+      "first_failure": "is_digit want false got true"
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 126,
-    "tests_total": 145,
-    "panics": 19,
-    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
-    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m60",
@@ -1904,25 +2603,83 @@
    },
    "py_rs_diff": false,
    "class": "caught_at_runtime_all",
-   "detail": "foreign failure already in default mode: pruv: foreign panic: parse_digit",
+   "detail": "py_rust: foreign failure already in default mode: pruv: foreign panic: parse_digit",
    "detected_in": "requires",
-   "run_default": {
-    "status": "wrong",
-    "tests_passed": 126,
-    "tests_total": 145,
-    "panics": 19,
-    "first_panic": "pruv: foreign panic: parse_digit",
-    "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
+   "runs": {
+    "py_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "foreign failure already in default mode: pruv: foreign panic: parse_digit",
+     "detected_in": "requires",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
+     }
+    },
+    "py_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "foreign failure already in default mode: pruv: foreign panic: parse_digit",
+     "detected_in": "requires",
+     "run_default": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "exit_code": 101
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "exit_code": 101
+     }
+    },
+    "rs_rust": {
+     "class": "caught_at_runtime_all",
+     "detail": "foreign failure already in default mode: pruv: foreign panic: parse_digit",
+     "detected_in": "requires",
+     "run_default": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
+     },
+     "run_all": {
+      "status": "wrong",
+      "tests_passed": 126,
+      "tests_total": 145,
+      "panics": 19,
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
+     }
+    },
+    "rs_llvm": {
+     "class": "caught_at_runtime_all",
+     "detail": "foreign failure already in default mode: pruv: foreign panic: parse_digit",
+     "detected_in": "requires",
+     "run_default": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "exit_code": 101
+     },
+     "run_all": {
+      "status": "wrong",
+      "first_panic": "pruv: foreign panic: parse_digit",
+      "exit_code": 101
+     }
+    }
    },
-   "run_all": {
-    "status": "wrong",
-    "tests_passed": 126,
-    "tests_total": 145,
-    "panics": 19,
-    "first_panic": "pruv: foreign panic: parse_digit",
-    "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m61",
@@ -1947,21 +2704,79 @@
    },
    "py_rs_diff": false,
    "class": "undetectable_trust",
-   "detail": "no test and no runtime check sees the lie",
+   "detail": "py_rust: no test and no runtime check sees the lie",
    "detected_in": null,
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "py_llvm": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_rust": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_llvm": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    }
    },
-   "run_all": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m62",
@@ -1986,21 +2801,79 @@
    },
    "py_rs_diff": false,
    "class": "undetectable_trust",
-   "detail": "no test and no runtime check sees the lie",
+   "detail": "py_rust: no test and no runtime check sees the lie",
    "detected_in": null,
-   "run_default": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
+   "runs": {
+    "py_rust": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "py_llvm": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_rust": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    },
+    "rs_llvm": {
+     "class": "undetectable_trust",
+     "detail": "no test and no runtime check sees the lie",
+     "detected_in": null,
+     "run_default": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     },
+     "run_all": {
+      "status": "ok",
+      "tests_passed": 145,
+      "tests_total": 145,
+      "panics": 0
+     }
+    }
    },
-   "run_all": {
-    "status": "ok",
-    "tests_passed": 145,
-    "tests_total": 145,
-    "panics": 0
-   },
-   "execution_compiler": "rs"
+   "config_diff": false
   },
   {
    "id": "m63",

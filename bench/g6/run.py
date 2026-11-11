@@ -186,7 +186,13 @@ fn chk(st: &mut St, name: &str, f: &dyn Fn() -> String, want: &str) {
     }
 }
 fn main() {
-    std::panic::set_hook(Box::new(|_| {}));
+    // print the panic message to stderr: on LLVM a foreign panic ends the process (exit 101) and the
+    // grader reads the diagnostic from stderr; on the Rust backend stderr is ignored when the run exits 0
+    std::panic::set_hook(Box::new(|i| {
+        let m = i.payload().downcast_ref::<String>().cloned()
+            .or_else(|| i.payload().downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+        eprintln!("{}", m.replace('\n', " "));
+    }));
     let mut st = St { passed: 0, total: 0, first: None, panics: 0, first_panic: None };
 @CHECKS@
     println!("TESTS {} {}", st.passed, st.total);

@@ -116,6 +116,7 @@ _CONTRACT_FNS = ("is_some", "some_val", "is_ok", "ok_val", "err_val")
 # G6: executable catalog (name -> arity); contract-only map_lookup/map_updated are handled in cev
 _CATALOG = {"vec_new": 0, "vec_push": 2, "vec_get": 2, "map_new": 0, "map_get": 2, "map_insert": 3,
             "string_new": 0, "string_push_str": 2, "string_byte": 2, "string_to_str": 1}
+_FRESH_CATALOG = frozenset(["vec_new", "vec_push", "map_new", "map_insert", "string_new", "string_push_str"])
 _G6_NAMES = frozenset(list(_CATALOG) + ["map_lookup", "map_updated", "trusted", "Vec", "HashMap", "String"])
 _FOREIGN_NATIVE = {"::std::cmp::min": lambda a, b: min(a, b), "::std::cmp::max": lambda a, b: max(a, b)}
 
@@ -1245,7 +1246,9 @@ class _Interp(object):
         if name == "vec_new":
             return []
         if name == "vec_push":
-            return list(need(a[0], list, "Vec")) + [a[1]]
+            v = list(need(a[0], list, "Vec"))
+            v.append(_cp(a[1]))
+            return v
         if name == "vec_get":
             v = need(a[0], list, "Vec")
             in_range(a[1], len(v))
@@ -1259,7 +1262,7 @@ class _Interp(object):
             return {"tag": "None"}
         if name == "map_insert":
             m = _GMap(need(a[0], _GMap, "HashMap").d)
-            m.d[a[1]] = a[2]
+            m.d[a[1]] = _cp(a[2])
             return m
         if name == "string_new":
             return b""
@@ -1360,7 +1363,12 @@ class _Interp(object):
         if k == "let" or k == "assign":
             if k == "assign" and s[2] not in env:
                 raise OracleUnsupported("assignment to unbound %s" % s[2])
-            env[s[2]] = _cp(self.ev(s[3], env))
+            e = s[3]
+            v = self.ev(e, env)
+            # constructor results are fresh values (they copy their inserted argument, and the catalog never
+            # mutates an element in place): skip the second copy so repeated appends cost one copy each
+            fresh = e[0] == "call" and e[1] in _FRESH_CATALOG and e[1] not in self.prog.fns
+            env[s[2]] = v if fresh else _cp(v)
         elif k == "aassign":
             a = env.get(s[2])
             if not isinstance(a, list):
