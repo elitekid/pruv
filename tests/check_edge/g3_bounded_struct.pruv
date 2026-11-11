@@ -1,0 +1,17 @@
+// G3 A1 accepted: a struct parameter bounded by Element; the bound must hold at every application
+struct Buf<T: Element> {
+  head: T,
+  count: i64
+}
+
+fn make_buf<T: Element>(x: T) -> Buf<T> {
+  return Buf::<T> { head: x, count: 1 };
+}
+
+fn make_int(x: i64) -> Buf<i64> {
+  return make_buf::<i64>(x);
+}
+
+fn make_bool(b: bool) -> Buf<bool> {
+  return Buf::<bool> { head: b, count: 2 };
+}

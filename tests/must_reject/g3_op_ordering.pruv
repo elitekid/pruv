@@ -1,0 +1,4 @@
+// generic_operation: ordering on abstract values
+fn f<T>(x: T, y: T) -> bool {
+  return x < y;
+}

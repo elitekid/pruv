@@ -1,0 +1,4 @@
+// generic_main: main cannot declare type parameters
+fn main<T>(x: T) -> T {
+  return x;
+}

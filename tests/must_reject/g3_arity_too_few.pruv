@@ -1,0 +1,8 @@
+// type_arity: two type parameters, one type argument
+fn pick<A, B>(a: A, b: B) -> A {
+  return a;
+}
+
+fn use_it() -> i64 {
+  return pick::<i64>(1, 2);
+}

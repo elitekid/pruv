@@ -1,0 +1,4 @@
+// type_parameter: U is used in a generic declaration but never declared
+fn f<T>(x: T) -> U {
+  return x;
+}

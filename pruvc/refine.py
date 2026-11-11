@@ -42,6 +42,11 @@ def _validate(r):
         _terr(r, "refinement_base",
               "a refinement `| L..=U` does not apply to [bool]; only its length can be bounded",
               "remove `| L..=U`; keep `; <=N` if a length bound is needed")
+    # G3: an element range applies to concrete i64/u8 elements only, never to a type parameter or other element
+    if r.shape == "array" and r.base not in ("i64", "u8", "bool") and r.lo is not None:
+        _terr(r, "refinement_base",
+              "a refinement `| L..=U` does not apply to [%s]; only its length can be bounded" % r.base,
+              "remove `| L..=U`; keep `; <=N` if a length bound is needed")
     for what, v in (("lower bound", r.lo), ("upper bound", r.hi)):
         if v is not None and not I64_MIN <= v <= I64_MAX:
             _terr(r, "refinement_bounds", "refinement %s %d is outside the i64 range" % (what, v),

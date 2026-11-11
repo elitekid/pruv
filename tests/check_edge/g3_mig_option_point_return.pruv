@@ -1,0 +1,6 @@
+// G3 migration (was parse_edge/unsup_option_struct: parse/unsupported_type): Option<Point> as a return type
+struct Point { x: i64, y: i64 }
+
+fn f() -> Option<Point> {
+  return None::<Point>;
+}

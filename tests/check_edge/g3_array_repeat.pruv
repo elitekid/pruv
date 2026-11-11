@@ -1,0 +1,16 @@
+// G3 A1 accepted: alloc with the expected array type [T] (direct typed let), forall over abstract elements
+fn repeat<T: Element>(n: i64, value: T) -> [T] ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k] == value
+{
+  let out: [T] = alloc(n, value);
+  return out;
+}
+
+fn trues(n: i64) -> [bool] ! alloc
+  requires 0 <= n && n <= 10
+{
+  let out: [bool] = repeat::<bool>(n, true);
+  return out;
+}

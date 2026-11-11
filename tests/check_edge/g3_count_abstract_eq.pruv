@@ -1,0 +1,7 @@
+// G3 A1 accepted: count over a bool condition that compares abstract elements (contract equality only)
+fn all_same<T: Element>(a: [T], v: T) -> bool
+  requires forall k in 0..len(a): a[k] == v
+  ensures count(k in 0..len(a): a[k] == v) == len(a)
+{
+  return true;
+}

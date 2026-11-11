@@ -1,0 +1,8 @@
+// type_arity: a generic function is called without type arguments (they are never inferred)
+fn identity<T>(x: T) -> T {
+  return x;
+}
+
+fn use_it(x: i64) -> i64 {
+  return identity(x);
+}

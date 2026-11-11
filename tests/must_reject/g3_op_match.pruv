@@ -1,0 +1,7 @@
+// generic_operation: match directly on an abstract value
+fn f<T>(x: T) -> i64 {
+  match x {
+    Some(v) => { return 1; }
+    None => { return 0; }
+  }
+}

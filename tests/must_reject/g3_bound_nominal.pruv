@@ -1,0 +1,12 @@
+// generic_bound: Buf<T: Element> cannot be applied to the non-Element type Point
+struct Buf<T: Element> {
+  head: T
+}
+
+struct Point {
+  x: i64
+}
+
+fn f(b: Buf<Point>) -> i64 {
+  return 0;
+}

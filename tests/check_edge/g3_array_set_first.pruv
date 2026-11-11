@@ -1,0 +1,18 @@
+// G3 A1 accepted: copy and element store on a mutable [T]; the stored value must be exactly T
+fn set_first<T: Element>(a: [T], v: T) -> [T] ! alloc
+  requires len(a) > 0
+  ensures len(result) == len(a)
+  ensures result[0] == v
+{
+  let mut out: [T] = copy(a);
+  out[0] = v;
+  return out;
+}
+
+fn copy_all<T: Element>(a: [T]) -> [T] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[k]
+{
+  let out: [T] = copy(a);
+  return out;
+}

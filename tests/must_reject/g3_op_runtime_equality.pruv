@@ -1,0 +1,4 @@
+// generic_operation: runtime == on abstract values (== on T is legal in contracts only)
+fn f<T>(x: T, y: T) -> bool {
+  return x == y;
+}

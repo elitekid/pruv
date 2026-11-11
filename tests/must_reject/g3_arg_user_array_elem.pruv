@@ -1,0 +1,8 @@
+// type_argument: a user value cannot be an array element
+struct Point {
+  x: i64
+}
+
+fn f(n: i64) -> [Point] ! alloc {
+  return alloc(n, 0);
+}

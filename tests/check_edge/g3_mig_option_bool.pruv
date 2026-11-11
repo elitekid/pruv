@@ -1,0 +1,4 @@
+// G3 migration (was parse_edge/option_bool: parse/syntax): Option<bool> as a return type
+fn f() -> Option<bool> {
+  return None::<bool>;
+}

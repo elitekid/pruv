@@ -1,0 +1,30 @@
+// G3 A1 accepted: contract-only is_some / some_val / is_ok / ok_val / err_val over Option<T> and Result<T>
+fn get_or<T>(o: Option<T>, d: T) -> T
+  ensures is_some(o) ==> result == some_val(o)
+  ensures !is_some(o) ==> result == d
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return d; }
+  }
+}
+
+fn result_or<T>(r: Result<T>, d: T) -> T
+  ensures is_ok(r) ==> result == ok_val(r)
+  ensures !is_ok(r) ==> result == d
+{
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return d; }
+  }
+}
+
+fn code_of<T>(r: Result<T>) -> i64
+  requires !is_ok(r)
+  ensures result == err_val(r)
+{
+  match r {
+    Ok(v) => { return 0; }
+    Err(c) => { return c; }
+  }
+}

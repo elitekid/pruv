@@ -1,0 +1,4 @@
+// generic_syntax: bound lists are not supported (Element is the only bound)
+fn f<T: Element + Copy>(x: T) -> T {
+  return x;
+}

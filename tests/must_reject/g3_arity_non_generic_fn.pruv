@@ -1,0 +1,8 @@
+// type_arity: type arguments on a function that declares no type parameters
+fn plain(x: i64) -> i64 {
+  return x;
+}
+
+fn use_it(x: i64) -> i64 {
+  return plain::<i64>(x);
+}

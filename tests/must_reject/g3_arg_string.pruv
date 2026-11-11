@@ -1,0 +1,8 @@
+// type_argument: str is not a valid type argument
+struct Wrap<T> {
+  value: T
+}
+
+fn f(w: Wrap<str>) -> i64 {
+  return 0;
+}

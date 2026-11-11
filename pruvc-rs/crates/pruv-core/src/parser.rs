@@ -2,8 +2,10 @@
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
+use crate::gtype::{fn_owner, decl_owner, mk_array, mk_option, mk_param, mk_result, GType};
 use crate::lexer::{lex, Kind, Tok};
 use crate::pyrepr::repr_str;
+use std::collections::HashMap;
 
 type R<T> = Result<T, PruvError>;
 
@@ -13,7 +15,7 @@ const CMP_OPS: [&str; 6] = ["==", "!=", "<=", ">=", "<", ">"];
 pub fn parse_source(src: &str) -> R<Program> {
     let norm = src.replace("\r\n", "\n").replace('\r', "\n");
     let chars: Vec<char> = norm.chars().collect();
-    let mut p = Parser { t: lex(&chars)?, i: 0, depth: 0 };
+    let mut p = Parser { t: lex(&chars)?, i: 0, depth: 0, scope: HashMap::new() };
     p.program()
 }
 
@@ -66,6 +68,8 @@ struct Parser {
     /// Depth of the AST path being built (recursion plus binary/postfix chains that pile up to the left). Beyond MAX_DEPTH it stops with an internal error,
     /// like Python's RecursionError: an AST that deep can overflow even a 1GB stack in the recursion of the parser, checker, verifier and generator.
     depth: usize,
+    /// G3: type-parameter name -> bound parameter type, inside a generic declaration (empty elsewhere).
+    scope: HashMap<String, GType>,
 }
 
 /// AST depth limit. Python stops with RecursionError at about 1000 levels (outside the cross-check range), so this is set much larger than that,
@@ -188,18 +192,158 @@ impl Parser {
         Ok(out)
     }
 
+    // ---- G3 A1: type parameters and type applications ----
+    fn generic_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
+        PruvError::new("parse", tok.line, tok.col, "generic_syntax", msg, fix)
+    }
+
+    /// `<T, U: Element>` (the `<` is the current token). Also installs the parse scope: inside the declaration a bare
+    /// parameter name is a bound parameter type (owner identity + index).
+    fn type_params(&mut self, owner: &str) -> R<Vec<TParam>> {
+        self.expect("<")?;
+        if self.at(">", 0) {
+            let t = self.peek(0).clone();
+            return Err(self.generic_syntax(
+                &t,
+                "a type-parameter list cannot be empty",
+                "remove `<>`, or declare at least one parameter, e.g. <T>",
+            ));
+        }
+        let mut out: Vec<TParam> = Vec::new();
+        loop {
+            let n = self.ident()?;
+            let mut bound: Option<String> = None;
+            if self.at(":", 0) {
+                self.bump();
+                let b = self.peek(0).clone();
+                if b.kind != Kind::Id {
+                    return Err(self.generic_syntax(&b, "expected a bound name after ':'", "the only bound is Element: <T: Element>"));
+                }
+                self.bump();
+                bound = Some(b.val.clone());
+                if self.at("+", 0) {
+                    let t = self.peek(0).clone();
+                    return Err(self.generic_syntax(
+                        &t,
+                        "bound lists are not supported",
+                        "a parameter has at most one bound: <T: Element>",
+                    ));
+                }
+            }
+            out.push(TParam { line: n.line, col: n.col, name: n.val, bound });
+            if !self.at(",", 0) {
+                break;
+            }
+            self.bump();
+            if self.at(">", 0) {
+                let t = self.peek(0).clone();
+                return Err(self.generic_syntax(&t, "a type-parameter list has no trailing comma", "remove the last ','"));
+            }
+        }
+        self.expect(">")?;
+        self.scope = HashMap::new();
+        for (i, tp) in out.iter().enumerate() {
+            self.scope.entry(tp.name.clone()).or_insert_with(|| mk_param(owner, i, &tp.name));
+        }
+        Ok(out)
+    }
+
+    /// Type arguments after an already consumed `<`, through the closing `>`. expr: expression position,
+    /// where a malformed list is a generic_syntax error.
+    fn type_arg_list(&mut self, expr: bool) -> R<Vec<GType>> {
+        let mut out: Vec<GType> = Vec::new();
+        loop {
+            if self.at(">", 0) || self.at(",", 0) {
+                let t = self.peek(0).clone();
+                return Err(self.generic_syntax(
+                    &t,
+                    "missing type argument",
+                    "write a type between the angle brackets, e.g. Pair<i64, bool>",
+                ));
+            }
+            out.push(self.type_g(false)?.0);
+            if !self.at(",", 0) {
+                break;
+            }
+            self.bump();
+        }
+        if !self.at(">", 0) {
+            if expr {
+                let t = self.peek(0).clone();
+                return Err(self.generic_syntax(
+                    &t,
+                    "malformed type application: expected '>' after the type arguments",
+                    "write f::<T>(x), Pair::<A, B> { .. } or Choice::<A, B>::Left(x)",
+                ));
+            }
+            self.expect(">")?;
+        }
+        self.bump();
+        Ok(out)
+    }
+
+    /// At `::` `<` in an expression: consumes `::<T, ...>`.
+    fn expr_targs(&mut self) -> R<Vec<GType>> {
+        self.expect("::")?;
+        self.expect("<")?;
+        self.type_arg_list(true)
+    }
+
+    /// n: an already consumed identifier naming a type parameter, Option/Result or a user type (no refinement;
+    /// type arguments are parsed here).
+    fn named_type(&mut self, n: &Tok) -> R<GType> {
+        if n.val == "Option" || n.val == "Result" {
+            self.expect("<")?;
+            let a = self.peek(0).clone();
+            if a.kind == Kind::Id && (a.val == "u8" || a.val == "i32") {
+                return Err(self.unsupported(&format!("{}<{}>", n.val, a.val), &a));
+            }
+            let mut args = self.type_arg_list(false)?;
+            if args.len() == 1 {
+                let x = args.swap_remove(0);
+                return Ok(if n.val == "Option" { mk_option(x) } else { mk_result(x) });
+            }
+            // wrong arity: the checker reports it
+            return Ok(GType::new(if n.val == "Option" { "option" } else { "result" }, args));
+        }
+        if self.at("<", 0) {
+            self.bump();
+            // also a parameter applied to arguments (`T<X>`): kept unresolved, the checker reports it
+            let args = self.type_arg_list(false)?;
+            return Ok(GType::new(&n.val, args));
+        }
+        if let Some(t) = self.scope.get(&n.val) {
+            return Ok(t.clone());
+        }
+        Ok(GType::new(&n.val, Vec::new()))
+    }
+
+    /// The name string of a declaration/call/literal with its G3 suffix.
+    fn with_targs(name: &str, targs: &Option<Vec<GType>>) -> String {
+        match targs {
+            Some(v) => {
+                let keys: Vec<String> = v.iter().map(|t| t.to_key()).collect();
+                g3_join(name, &keys.join(&G3_SEP.to_string()))
+            }
+            None => name.to_string(),
+        }
+    }
+
     fn struct_decl(&mut self) -> R<StructDecl> {
         let kw = self.expect_tok("struct")?;
         let n = self.ident()?;
+        let tparams = if self.at("<", 0) { self.type_params(&decl_owner(&n.val))? } else { Vec::new() };
         self.expect("{")?;
         let fields = self.field_list("}")?;
         self.expect("}")?;
-        Ok(StructDecl { line: kw.line, col: kw.col, name: n.val, fields })
+        self.scope = HashMap::new();
+        Ok(StructDecl { line: kw.line, col: kw.col, name: g3_join(&n.val, &encode_tparams(&tparams)), fields })
     }
 
     fn enum_decl(&mut self) -> R<EnumDecl> {
         let kw = self.expect_tok("enum")?;
         let n = self.ident()?;
+        let tparams = if self.at("<", 0) { self.type_params(&decl_owner(&n.val))? } else { Vec::new() };
         self.expect("{")?;
         let mut variants = Vec::new();
         while !self.at("}", 0) {
@@ -223,7 +367,8 @@ impl Parser {
             }
         }
         self.expect("}")?;
-        Ok(EnumDecl { line: kw.line, col: kw.col, name: n.val, variants })
+        self.scope = HashMap::new();
+        Ok(EnumDecl { line: kw.line, col: kw.col, name: g3_join(&n.val, &encode_tparams(&tparams)), variants })
     }
 
     /// A type in a position where refinement annotations are not allowed (fields, etc.)
@@ -328,29 +473,36 @@ impl Parser {
 
     /// -> (Type, Refinement or None). allow: whether a refinement annotation is legal in this position.
     fn type_r(&mut self, allow: bool) -> R<(Type, Option<Refinement>)> {
+        let (g, r) = self.type_g(allow)?;
+        Ok((g.to_key(), r))
+    }
+
+    /// The structured form of `type_r`.
+    fn type_g(&mut self, allow: bool) -> R<(GType, Option<Refinement>)> {
         let t = self.peek(0).clone();
         if self.at("(", 0) {
             self.bump();
             self.expect(")")?;
-            return Ok(("unit".to_string(), None));
+            return Ok((GType::unit(), None));
         }
         if self.at("[", 0) {
             self.bump();
             let e = self.ident()?;
-            // G2 A5: allow [bool], update the error text
-            if e.val != "i64" && e.val != "u8" && e.val != "bool" {
-                if is_upper(&e.val) {
-                    return Err(self.unsupported(&format!("[{}]", e.val), &e));
-                }
-                return Err(self.err("only [i64], [u8] and [bool] arrays exist", "use [i64], [u8] or [bool]", Some(&e)));
-            }
-            let arr_name: &str = if e.val == "u8" {
-                "array_u8"
+            let elem: GType = if e.val == "i64" {
+                GType::i64()
+            } else if e.val == "u8" {
+                GType::u8()
             } else if e.val == "bool" {
-                "array_bool"
+                GType::bool()
+            } else if is_upper(&e.val) {
+                // G3: a type parameter (the checker: needs Element); other types: the checker rejects them
+                self.named_type(&e)?
             } else {
-                "array"
+                // G2 A5: [bool] joins the element names
+                return Err(self.err("only [i64], [u8] and [bool] arrays exist", "use [i64], [u8] or [bool]", Some(&e)));
             };
+            // [i64]/[u8]/[bool] -> the legacy constants (G2 A5)
+            let arr_ty = mk_array(elem);
             let (mut lo, mut hi, mut maxlen): (Option<String>, Option<String>, Option<String>) = (None, None, None);
             if self.at("|", 0) {
                 if !allow {
@@ -379,15 +531,15 @@ impl Parser {
             }
             self.expect("]")?;
             if lo.is_none() && maxlen.is_none() {
-                return Ok((arr_name.to_string(), None));
+                return Ok((arr_ty, None));
             }
             return Ok((
-                arr_name.to_string(),
+                arr_ty,
                 Some(Refinement { line: t.line, col: t.col, shape: "array".to_string(), base: e.val.clone(), lo, hi, maxlen }),
             ));
         }
         let n = self.ident()?;
-        let ty: Type;
+        let ty: GType;
         if n.val == "u8" || n.val == "i32" {
             return Err(PruvError::new(
                 "parse",
@@ -398,28 +550,14 @@ impl Parser {
                 "use i64 for a scalar, or [u8] for a byte array",
             ));
         } else if n.val == "i64" {
-            ty = "i64".to_string();
+            ty = GType::i64();
         } else if n.val == "bool" {
-            ty = "bool".to_string();
+            ty = GType::bool();
         } else if n.val == "str" {
-            ty = "str".to_string();
-        } else if n.val == "Option" || n.val == "Result" {
-            self.expect("<")?;
-            let e = self.ident()?;
-            if self.at("|", 0) {
-                return Err(self.ref_position(&self.peek(0).clone()));
-            }
-            if e.val != "i64" {
-                if is_upper(&e.val) || e.val == "u8" || e.val == "i32" || e.val == "str" {
-                    return Err(self.unsupported(&format!("{}<{}>", n.val, e.val), &e));
-                }
-                return Err(self.err(format!("{} only holds i64", n.val), format!("use {}<i64>", n.val), Some(&e)));
-            }
-            self.expect(">")?;
-            let tn = if n.val == "Option" { "option" } else { "result" };
-            ty = tn.to_string();
+            ty = GType::str();
         } else {
-            // User type: name resolution is done by the checker. The lowercase spelling of a built-in Type name must not become an alias.
+            // Option/Result, a type parameter or a user type (G3: with optional type arguments); the checker resolves the names.
+            // The lowercase spelling of a built-in Type name must not become an alias.
             if matches!(n.val.as_str(), "unit" | "array" | "option" | "result" | "array_u8" | "array_bool" | "array_i32") {
                 return Err(self.err(
                     format!("unknown type {}", repr_str(&n.val)),
@@ -427,7 +565,7 @@ impl Parser {
                     Some(&n),
                 ));
             }
-            ty = n.val.clone();
+            ty = self.named_type(&n)?;
         }
         if self.at("|", 0) {
             if !allow {
@@ -447,6 +585,7 @@ impl Parser {
     fn function(&mut self) -> R<Function> {
         let kw = self.expect_tok("fn")?;
         let name = self.ident()?.val;
+        let tparams = if self.at("<", 0) { self.type_params(&fn_owner(&name))? } else { Vec::new() };
         self.expect("(")?;
         let mut params = Vec::new();
         while !self.at(")", 0) {
@@ -487,6 +626,8 @@ impl Parser {
             }
         }
         let body = self.block()?;
+        self.scope = HashMap::new();
+        let name = g3_join(&name, &encode_tparams(&tparams));
         Ok(Function { line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine })
     }
 
@@ -906,14 +1047,19 @@ impl Parser {
         }
         if self.at("None", 0) {
             self.bump();
-            return Ok(Expr::Ctor(Ctor { line, col, name: "None".to_string(), arg: None, ty: None }));
+            let mut targs: Option<Vec<GType>> = None;
+            if self.at("::", 0) && self.at("<", 1) {
+                targs = Some(self.expr_targs()?); // G3: None::<T>
+            }
+            return Ok(Expr::Ctor(Ctor { line, col, name: Self::with_targs("None", &targs), arg: None, ty: None }));
         }
         if self.at("Some", 0) || self.at("Ok", 0) || self.at("Err", 0) {
             self.bump();
+            let targs = if self.at("::", 0) && self.at("<", 1) { Some(self.expr_targs()?) } else { None }; // G3: Some::<T>(x)
             self.expect("(")?;
             let a = self.expr()?;
             self.expect(")")?;
-            return Ok(Expr::Ctor(Ctor { line, col, name: t.val, arg: Some(Box::new(a)), ty: None }));
+            return Ok(Expr::Ctor(Ctor { line, col, name: Self::with_targs(&t.val, &targs), arg: Some(Box::new(a)), ty: None }));
         }
         if self.at("result", 0) {
             self.bump();
@@ -972,6 +1118,19 @@ impl Parser {
         }
         if t.kind == Kind::Id {
             self.bump();
+            let mut targs: Option<Vec<GType>> = None;
+            if self.at("::", 0) && self.at("<", 1) {
+                // G3: f::<T>(x), S::<A, B> { .. }, E::<A, B>::V(x)
+                targs = Some(self.expr_targs()?);
+                if !(self.at("::", 0) || self.at("(", 0) || (self.at("{", 0) && is_upper(&t.val))) {
+                    let p = self.peek(0).clone();
+                    return Err(self.generic_syntax(
+                        &p,
+                        "a type application must be followed by `(`, `{` or `::Variant`",
+                        "write f::<T>(x), Pair::<A, B> { .. } or Choice::<A, B>::Left(x)",
+                    ));
+                }
+            }
             if self.at("::", 0) {
                 self.bump();
                 let vt = self.ident()?;
@@ -996,7 +1155,7 @@ impl Parser {
                     }
                     self.expect(")")?;
                 }
-                return Ok(Expr::EnumCtor(EnumCtor { line, col, enum_name: t.val, variant: vt.val, args, ty: None }));
+                return Ok(Expr::EnumCtor(EnumCtor { line, col, enum_name: Self::with_targs(&t.val, &targs), variant: vt.val, args, ty: None }));
             }
             if is_upper(&t.val) && self.at("{", 0) {
                 self.bump();
@@ -1011,7 +1170,7 @@ impl Parser {
                     }
                 }
                 self.expect("}")?;
-                return Ok(Expr::StructLit(StructLit { line, col, name: t.val, fields: inits, ty: None }));
+                return Ok(Expr::StructLit(StructLit { line, col, name: Self::with_targs(&t.val, &targs), fields: inits, ty: None }));
             }
             if self.at("(", 0) {
                 self.bump();
@@ -1023,7 +1182,7 @@ impl Parser {
                     }
                 }
                 self.expect(")")?;
-                return Ok(Expr::Call(Call { line, col, name: t.val, args, ty: None }));
+                return Ok(Expr::Call(Call { line, col, name: Self::with_targs(&t.val, &targs), args, ty: None }));
             }
             return Ok(Expr::Var(Var { line, col, name: t.val, ty: None }));
         }

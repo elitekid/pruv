@@ -1,0 +1,20 @@
+// G3 A1 accepted: [T] with T: Element; indexing returns T; concrete wrappers instantiate i64 and bool
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return a[0];
+}
+
+fn first_i64(a: [i64]) -> i64
+  requires len(a) > 0
+{
+  return first::<i64>(a);
+}
+
+fn first_bool(a: [bool]) -> bool
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return first::<bool>(a);
+}

@@ -1,0 +1,14 @@
+// G3 A1 accepted: non-generic wrappers instantiate a generic function for i64 and bool arrays
+fn len_of<T: Element>(a: [T]) -> i64
+  ensures result == len(a)
+{
+  return len(a);
+}
+
+fn len_i64(a: [i64]) -> i64 {
+  return len_of::<i64>(a);
+}
+
+fn len_bool(a: [bool]) -> i64 {
+  return len_of::<bool>(a);
+}

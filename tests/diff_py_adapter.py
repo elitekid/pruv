@@ -53,6 +53,7 @@ import vast  # noqa: E402
 from vast import PruvError  # noqa: E402
 from vparser import parse as pruv_parse  # noqa: E402
 import check as check_mod  # noqa: E402
+from typeinfo import format_type  # noqa: E402
 
 AST_SCHEMA = "pruv-ast-v1"
 PROCESS_TIMEOUT = 300
@@ -139,6 +140,37 @@ def _verify_schema():
     _checked.append(True)
 
 
+def tyname(t):
+    """a Type as printed in the dumps: a legacy type keeps its internal name (as before G3); a structured type
+    (type arguments or a bound parameter) uses the shared A0 source formatting, e.g. "Pair<i64, bool>", "[T]", "T"."""
+    if t.args or t.owner is not None:
+        return format_type(t)
+    return t.name
+
+
+# G3 A1: optional extras, written ONLY when present, so the dump of a program without G3 syntax is byte-identical
+#   tparams (Function / StructDecl / EnumDecl): list of {"kind": "TypeParam", line, col, name, bound (string|null)}
+#   targs (Call / StructLit / EnumCtor / Ctor): the explicit type arguments as written (list of type strings)
+#   inst  (same four nodes, check dump only): {"decl", "args", "subst": [{"index": "i", "owner", "type"}]}
+#   enum_ty (IsVariant / VariantField, check dump only): the instantiated enum type, only when it has type arguments
+def _g3_extras(v, out):
+    tps = getattr(v, "tparams", ())
+    if tps:
+        out["tparams"] = [{"kind": "TypeParam", "line": str(tp.line), "col": str(tp.col), "name": tp.name,
+                           "bound": tp.bound} for tp in tps]
+    ta = getattr(v, "targs", None)
+    if ta is not None:
+        out["targs"] = [tyname(t) for t in ta]
+    inst = getattr(v, "inst", None)
+    if inst is not None:
+        out["inst"] = {"decl": inst["decl"], "args": [tyname(t) for t in inst["args"]],
+                       "subst": [{"index": str(i), "owner": o, "type": tyname(t)}
+                                 for (o, i), t in inst["subst"].items()]}
+    et = getattr(v, "enum_ty", None)
+    if et is not None and et.args:
+        out["enum_ty"] = tyname(et)
+
+
 def ser(v):
     """serialize one value (node, Type, list, scalar); unknown things raise"""
     if v is None or isinstance(v, (str, bool)):
@@ -150,7 +182,7 @@ def ser(v):
     if isinstance(v, list):
         return [ser(x) for x in v]
     if isinstance(v, vast.Type):
-        return v.name
+        return tyname(v)
     name = type(v).__name__
     if name not in NODE_FIELDS or not dataclasses.is_dataclass(v):
         raise RuntimeError("adapter: unknown AST value %r (%s)" % (v, name))
@@ -164,6 +196,7 @@ def ser(v):
         x = getattr(v, f)
         if x is not None:
             out[f] = ser(x)
+    _g3_extras(v, out)
     return out
 
 

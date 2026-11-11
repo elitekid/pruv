@@ -1,0 +1,7 @@
+// G3 migration (was parse_edge/unsup_array_of_struct: parse/unsupported_type): now type/type_argument
+// (a user value cannot be an array element)
+struct Point { x: i64, y: i64 }
+
+fn f(a: [Point]) -> i64 {
+  return 1;
+}

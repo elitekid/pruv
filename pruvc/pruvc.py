@@ -40,7 +40,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust  # noqa: E402
-from typeinfo import g2_unimplemented_error  # noqa: E402
+from typeinfo import g2_unimplemented_error, g3_unimplemented_error  # noqa: E402
 
 USAGE = ("usage: pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers] "
          "[--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]")
@@ -60,6 +60,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     src = open(path, encoding="utf-8").read()
     prog = parse(src)
     check(prog)
+    # G3 A1 staging guard: the verifier and both code generators do not support generics yet; reject explicitly
+    # (also with --no-verify) instead of crashing. Removed when the later G3 batches land.
+    g3err = g3_unimplemented_error(prog, "codegen")
+    if g3err is not None:
+        return [g3err]
     if verify:
         from verify import verify_program
         if infer:

@@ -2053,6 +2053,9 @@ const WIN_X64_HEADER: &str = "target datalayout = \"e-m:w-p270:32:32-p271:32:32-
 
 /// Generation with a chosen target ABI. SysV is byte-identical to gen_llvm.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
+    if let Some(e) = crate::typeinfo::g3_unimplemented_error(prog, "codegen") { // G3 A1: generics stop here until A4
+        return Err(format!("unsupported_type: {}", e.message));
+    }
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) {
         // G2 B2: str also opens the generation layer
         return Err(format!("unsupported_type: {}", e.message));

@@ -1,0 +1,4 @@
+// generic_operation: arithmetic on an abstract value
+fn f<T>(x: T) -> T {
+  return x + x;
+}

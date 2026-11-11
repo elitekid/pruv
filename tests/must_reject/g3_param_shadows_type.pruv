@@ -1,0 +1,8 @@
+// type_parameter: a parameter cannot shadow a declared type
+struct Point {
+  x: i64
+}
+
+fn f<Point>(x: Point) -> Point {
+  return x;
+}

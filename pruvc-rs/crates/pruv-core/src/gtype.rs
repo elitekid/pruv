@@ -140,6 +140,72 @@ impl GType {
     }
 }
 
+// ---------- keys: the string form carried in the AST (ast.rs `Type = String`) ----------
+
+/// Whether an AST type string is a structured (G3) key rather than a legacy plain name.
+pub fn is_g3_key(s: &str) -> bool {
+    s.contains('<') || s.contains('\u{1}')
+}
+
+impl GType {
+    /// The AST string of this type: the plain name for a legacy type (unchanged from before G3),
+    /// `name<k0,k1>` for an application, `\u{1}owner\u{1}index\u{1}name` for a bound parameter.
+    pub fn to_key(&self) -> String {
+        if let Some(o) = &self.owner {
+            return format!("\u{1}{}\u{1}{}\u{1}{}", o, self.index, self.name);
+        }
+        if self.args.is_empty() {
+            return self.name.clone();
+        }
+        let inner = self.args.iter().map(|a| a.to_key()).collect::<Vec<_>>().join(",");
+        format!("{}<{}>", self.name, inner)
+    }
+
+    /// Inverse of `to_key` (a legacy plain name parses to the legacy type).
+    pub fn from_key(s: &str) -> GType {
+        let b = s.as_bytes();
+        let mut i = 0usize;
+        parse_key(b, &mut i)
+    }
+}
+
+fn take_until(b: &[u8], i: &mut usize, stop: &dyn Fn(u8) -> bool) -> String {
+    let start = *i;
+    while *i < b.len() && !stop(b[*i]) {
+        *i += 1;
+    }
+    String::from_utf8_lossy(&b[start..*i]).to_string()
+}
+
+fn parse_key(b: &[u8], i: &mut usize) -> GType {
+    if *i < b.len() && b[*i] == 1 {
+        *i += 1;
+        let owner = take_until(b, i, &|c| c == 1);
+        *i += 1;
+        let index: usize = take_until(b, i, &|c| c == 1).parse().unwrap_or(0);
+        *i += 1;
+        let name = take_until(b, i, &|c| c == b',' || c == b'>');
+        return GType { name, args: Vec::new(), owner: Some(owner), index };
+    }
+    let name = take_until(b, i, &|c| c == b'<' || c == b',' || c == b'>');
+    let mut args = Vec::new();
+    if *i < b.len() && b[*i] == b'<' {
+        *i += 1;
+        loop {
+            args.push(parse_key(b, i));
+            if *i < b.len() && b[*i] == b',' {
+                *i += 1;
+                continue;
+            }
+            break;
+        }
+        if *i < b.len() && b[*i] == b'>' {
+            *i += 1;
+        }
+    }
+    GType { name, args, owner: None, index: 0 }
+}
+
 // ---------- constructors ----------
 
 /// A bound type parameter: identity is (owner, index); the name is for printing.

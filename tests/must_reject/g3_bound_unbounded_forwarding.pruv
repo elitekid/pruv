@@ -1,0 +1,8 @@
+// generic_bound: an unbounded parameter U cannot be forwarded to a callee that requires Element
+fn id_el<T: Element>(x: T) -> T {
+  return x;
+}
+
+fn g<U>(x: U) -> U {
+  return id_el::<U>(x);
+}

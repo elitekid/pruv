@@ -1,0 +1,17 @@
+// G3 A1 accepted: assignment to a field whose substituted type is T (abstract) or i64 (concrete)
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn set_first<A, B>(p: Pair<A, B>, v: A) -> Pair<A, B> {
+  let mut q: Pair<A, B> = p;
+  q.first = v;
+  return q;
+}
+
+fn bump(p: Pair<i64, bool>) -> Pair<i64, bool> {
+  let mut q: Pair<i64, bool> = p;
+  q.first = q.first + 1;
+  return q;
+}

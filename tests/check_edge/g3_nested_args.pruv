@@ -1,0 +1,24 @@
+// G3 A1 accepted: nested type applications; the closing '>' tokens need no spaces
+fn nested(a: Option<Option<bool>>) -> bool {
+  match a {
+    Some(inner) => {
+      match inner {
+        Some(b) => { return b; }
+        None => { return false; }
+      }
+    }
+    None => { return false; }
+  }
+}
+
+fn deep<T>(x: Result<Option<T>>, d: T) -> T {
+  match x {
+    Ok(o) => {
+      match o {
+        Some(v) => { return v; }
+        None => { return d; }
+      }
+    }
+    Err(c) => { return d; }
+  }
+}

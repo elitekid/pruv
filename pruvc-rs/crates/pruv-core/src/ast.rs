@@ -5,6 +5,82 @@
 pub type Type = String;
 pub type Ty = Option<String>;
 
+// ---------- G3 A1: generics carried inside existing strings ----------
+// The AST structs are shared with later layers that construct them literally, so they cannot grow fields. The G3 extras
+// therefore ride in plain strings (the later layers never see them: every program that uses G3 is rejected right after check):
+//  * a structured type is a `GType` key string (gtype.rs `to_key`/`from_key`); a legacy type is its plain name, as before;
+//  * the type parameters of a fn/struct/enum are a suffix of its `name`: `name` MARK `line:col:T:Bound` SEP ...;
+//  * the type arguments written on a Call / StructLit / EnumCtor / Ctor are a suffix of its name: `name` MARK key SEP key ...
+// Python keeps these as class attributes (vast.py `tparams`, `targs`).
+pub const G3_MARK: char = '\u{1}';
+pub const G3_SEP: char = '\u{2}';
+
+/// The plain name of a name string that may carry a G3 suffix.
+pub fn g3_base(s: &str) -> &str {
+    match s.find(G3_MARK) {
+        Some(i) => &s[..i],
+        None => s,
+    }
+}
+
+/// The G3 suffix of a name string (None when there is none).
+pub fn g3_extra(s: &str) -> Option<&str> {
+    s.find(G3_MARK).map(|i| &s[i + G3_MARK.len_utf8()..])
+}
+
+/// `base` with the suffix `extra` attached; `extra` None/empty leaves `base` unchanged.
+pub fn g3_join(base: &str, extra: &str) -> String {
+    if extra.is_empty() {
+        base.to_string()
+    } else {
+        format!("{}{}{}", base, G3_MARK, extra)
+    }
+}
+
+/// One entry of a type-parameter list (`T` or `T: Element`); `bound` is the bound's spelling.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TParam {
+    pub line: i64,
+    pub col: i64,
+    pub name: String,
+    pub bound: Option<String>,
+}
+
+pub fn encode_tparams(tps: &[TParam]) -> String {
+    let parts: Vec<String> = tps
+        .iter()
+        .map(|t| format!("{}:{}:{}:{}", t.line, t.col, t.name, t.bound.clone().unwrap_or_default()))
+        .collect();
+    parts.join(&G3_SEP.to_string())
+}
+
+pub fn decode_tparams(s: &str) -> Vec<TParam> {
+    let mut out = Vec::new();
+    for part in s.split(G3_SEP) {
+        let f: Vec<&str> = part.splitn(4, ':').collect();
+        if f.len() != 4 {
+            continue;
+        }
+        out.push(TParam {
+            line: f[0].parse().unwrap_or(0),
+            col: f[1].parse().unwrap_or(0),
+            name: f[2].to_string(),
+            bound: if f[3].is_empty() { None } else { Some(f[3].to_string()) },
+        });
+    }
+    out
+}
+
+/// The type parameters a declaration name carries (empty when it is not generic).
+pub fn name_tparams(name: &str) -> Vec<TParam> {
+    g3_extra(name).map(decode_tparams).unwrap_or_default()
+}
+
+/// The type-argument keys a call/literal/constructor name carries (None = no type application written).
+pub fn name_targs(name: &str) -> Option<Vec<String>> {
+    g3_extra(name).map(|e| e.split(G3_SEP).map(|s| s.to_string()).collect())
+}
+
 // ---------- expressions ----------
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntLit { pub line: i64, pub col: i64, pub value: String, pub ty: Ty }

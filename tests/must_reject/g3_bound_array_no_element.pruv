@@ -1,0 +1,4 @@
+// generic_bound: [T] needs T: Element
+fn f<T>(a: [T]) -> i64 {
+  return len(a);
+}

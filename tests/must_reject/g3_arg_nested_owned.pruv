@@ -1,0 +1,4 @@
+// type_argument: an owned payload (an array) nested inside Option<Option<..>>
+fn f(o: Option<Option<[i64]>>) -> i64 {
+  return 0;
+}

@@ -1,0 +1,19 @@
+// G3 A1 accepted: three type parameters and nested generic applications in types and struct literals
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn nest<A, B, C>(a: A, b: B, c: C) -> Pair<Pair<A, B>, C> {
+  return Pair::<Pair<A, B>, C> { first: Pair::<A, B> { first: a, second: b }, second: c };
+}
+
+fn unnest<A, B, C>(p: Pair<Pair<A, B>, C>) -> B {
+  return p.first.second;
+}
+
+fn dup<T>(x: T) -> Pair<T, T>
+  ensures result.first == result.second
+{
+  return Pair::<T, T> { first: x, second: x };
+}

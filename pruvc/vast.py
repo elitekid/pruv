@@ -317,6 +317,33 @@ class Program:
     functions: List[Function] = field(default_factory=list)
     types: List[TypeDecl] = field(default_factory=list)
 
+# ---------- G3 A1: generics ----------
+# Plain class attributes, deliberately NOT dataclass fields: the legacy AST schema and the parse/check dumps
+# (tests/diff_py_adapter.py) stay byte-identical, and a node without G3 syntax never carries a value here.
+class TypeParam:
+    """One entry of a declaration's type-parameter list: `T` or `T: Element` (bound is the bound's spelling)."""
+    def __init__(self, line, col, name, bound=None):
+        self.line, self.col, self.name, self.bound = line, col, name, bound
+
+Function.tparams = ()      # tuple/list of TypeParam; empty = not generic
+TypeDecl.tparams = ()      # inherited by StructDecl / EnumDecl
+# explicit type arguments as written (list of Type) on `f::<..>(..)`, `S::<..> {..}`, `E::<..>::V(..)`,
+# `Some::<T>(x)` / `None::<T>` / `Ok::<T>(x)` / `Err::<T>(c)`; None = no type application written
+Call.targs = None
+StructLit.targs = None
+EnumCtor.targs = None
+Ctor.targs = None
+# set by the checker on those four nodes when they were instantiated explicitly:
+# {"decl": "fn:f" | "type:S" | "builtin:Some" ..., "args": tuple of Type, "subst": {(owner, index): Type}}
+Call.inst = None
+StructLit.inst = None
+EnumCtor.inst = None
+Ctor.inst = None
+# set by the checker on IsVariant / VariantField: the complete instantiated enum type of the scrutinee
+IsVariant.enum_ty = None
+VariantField.enum_ty = None
+
+
 class PruvError(Exception):
     """Raise for any compile error. stage: parse|type|effect|verify|rustc."""
     def __init__(self, stage, line, col, code, message, fix="", counterexample=None):

@@ -1,0 +1,4 @@
+// generic_bound: Copy is not a bound (Element is the only one)
+fn f<T: Copy>(x: T) -> T {
+  return x;
+}

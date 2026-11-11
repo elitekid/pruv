@@ -1,0 +1,5 @@
+// type_argument: the explicit constructor argument None::<str> is not an admissible type
+fn f() -> i64 {
+  let o: Option<i64> = None::<str>;
+  return 0;
+}

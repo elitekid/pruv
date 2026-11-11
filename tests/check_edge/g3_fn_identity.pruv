@@ -1,0 +1,16 @@
+// G3 A1 accepted: a generic function and explicit type arguments at the call
+fn identity<T>(x: T) -> T
+  ensures result == x
+{
+  return x;
+}
+
+fn use_identity(x: i64) -> i64
+  ensures result == x
+{
+  return identity::<i64>(x);
+}
+
+fn use_bool(b: bool) -> bool {
+  return identity::<bool>(b);
+}

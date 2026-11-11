@@ -1,0 +1,16 @@
+// G3 A1 accepted: unqualified Some/None/Ok/Err keep the legacy i64 meaning; Some::<i64> is the same type
+fn legacy(x: i64) -> Option<i64> {
+  let a: Option<i64> = Some(x);
+  let b: Result<i64> = Ok(1);
+  let c: Result<i64> = Err(2);
+  let d: Option<i64> = None;
+  return a;
+}
+
+fn same_type(x: i64) -> Option<i64> {
+  return Some::<i64>(x);
+}
+
+fn same_result(x: i64) -> Result<i64> {
+  return Ok::<i64>(x);
+}

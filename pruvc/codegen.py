@@ -795,7 +795,10 @@ class Gen:
 
 
 def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30):
-    from typeinfo import g2_unimplemented_error
+    from typeinfo import g2_unimplemented_error, g3_unimplemented_error
+    g3err = g3_unimplemented_error(prog, "codegen")  # G3 A1: generics stop here until A3/A4
+    if g3err is not None:
+        raise RuntimeError("unsupported_type: %s" % g3err.message)
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)

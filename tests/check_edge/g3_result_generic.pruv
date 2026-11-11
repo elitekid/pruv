@@ -1,0 +1,25 @@
+// G3 A1 accepted: Result<T> generalized (the error payload stays i64); Ok::<T>, Err::<T>
+fn code_or<T>(r: Result<T>, d: T) -> T {
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return d; }
+  }
+}
+
+fn fail(code: i64) -> Result<bool> {
+  return Err::<bool>(code);
+}
+
+fn succeed(b: bool) -> Result<bool> {
+  return Ok::<bool>(b);
+}
+
+fn err_code(r: Result<bool>) -> i64
+  requires !is_ok(r)
+  ensures result == err_val(r)
+{
+  match r {
+    Ok(v) => { return 0; }
+    Err(c) => { return c; }
+  }
+}

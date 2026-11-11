@@ -1,0 +1,4 @@
+// type_arity: Option takes exactly one type argument
+fn f(o: Option<i64, bool>) -> i64 {
+  return 0;
+}

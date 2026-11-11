@@ -2,6 +2,7 @@
 //! `type_name` gives the source spelling of every type, and `TypeTable` indexes the declarations of the checked program.
 
 use crate::ast::*;
+use crate::gtype::{dependencies, format_type, is_g3_key, GType};
 use std::collections::{HashMap, HashSet};
 
 pub const BUILTIN_TYPE_NAMES: [&str; 9] =
@@ -305,11 +306,185 @@ pub fn g2_unimplemented_error(
     ))
 }
 
+// ---------------------------------------------------------------------------
+// G3 A1 staging guard (G3_SPEC 7.3): the verifier and both code generators do not support generics yet.
+// ---------------------------------------------------------------------------
+type G3Cands = Vec<(i64, i64, String)>;
+
+fn g3_push(out: &mut G3Cands, line: i64, col: i64, what: String) {
+    out.push((line, col, what));
+}
+
+fn g3_ty(out: &mut G3Cands, line: i64, col: i64, ty: &str) {
+    if is_g3_key(ty) {
+        g3_push(out, line, col, format!("type {}", format_type(&GType::from_key(ty))));
+    }
+}
+
+fn g3_expr(e: &Expr, out: &mut G3Cands) {
+    let app = |out: &mut G3Cands, line: i64, col: i64, name: &str| {
+        if g3_extra(name).is_some() {
+            g3_push(out, line, col, "a type application".to_string());
+        }
+    };
+    match e {
+        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
+        Expr::Unary(x) => g3_expr(&x.operand, out),
+        Expr::Binary(x) => {
+            g3_expr(&x.left, out);
+            g3_expr(&x.right, out);
+        }
+        Expr::Call(x) => {
+            app(out, x.line, x.col, &x.name);
+            for a in &x.args {
+                g3_expr(a, out);
+            }
+        }
+        Expr::Index(x) => {
+            g3_expr(&x.array, out);
+            g3_expr(&x.index, out);
+        }
+        Expr::Ctor(x) => {
+            app(out, x.line, x.col, &x.name);
+            if let Some(a) = &x.arg {
+                g3_expr(a, out);
+            }
+        }
+        Expr::Quant(x) => {
+            g3_expr(&x.lo, out);
+            g3_expr(&x.hi, out);
+            g3_expr(&x.body, out);
+        }
+        Expr::StructLit(x) => {
+            app(out, x.line, x.col, &x.name);
+            for f in &x.fields {
+                g3_expr(&f.value, out);
+            }
+        }
+        Expr::EnumCtor(x) => {
+            app(out, x.line, x.col, &x.enum_name);
+            for a in &x.args {
+                g3_expr(a, out);
+            }
+        }
+        Expr::FieldAccess(x) => g3_expr(&x.base, out),
+        Expr::IsVariant(x) => g3_expr(&x.value, out),
+        Expr::VariantField(x) => g3_expr(&x.value, out),
+    }
+}
+
+fn g3_stmts(stmts: &[Stmt], out: &mut G3Cands) {
+    for s in stmts {
+        match s {
+            Stmt::Let(l) => {
+                g3_ty(out, l.line, l.col, &l.ty);
+                g3_expr(&l.value, out);
+            }
+            Stmt::Assign(a) => g3_expr(&a.value, out),
+            Stmt::IndexAssign(a) => {
+                g3_expr(&a.index, out);
+                g3_expr(&a.value, out);
+            }
+            Stmt::If(i) => {
+                g3_expr(&i.cond, out);
+                g3_stmts(&i.then, out);
+                g3_stmts(&i.els, out);
+            }
+            Stmt::While(w) => {
+                g3_expr(&w.cond, out);
+                for inv in &w.invariants {
+                    g3_expr(inv, out);
+                }
+                g3_expr(&w.decreases, out);
+                g3_stmts(&w.body, out);
+            }
+            Stmt::Return(r) => {
+                if let Some(v) = &r.value {
+                    g3_expr(v, out);
+                }
+            }
+            Stmt::Assert(a) => g3_expr(&a.cond, out),
+            Stmt::ExprStmt(e) => g3_expr(&e.expr, out),
+            Stmt::FieldAssign(f) => g3_expr(&f.value, out),
+            Stmt::Match(m) => {
+                g3_expr(&m.scrutinee, out);
+                for arm in &m.arms {
+                    g3_stmts(&arm.body, out);
+                }
+            }
+        }
+    }
+}
+
+/// First G3 construct of a checked program -> (line, col, what): a type-parameter list, a type application or
+/// parameter in any signature / field / let type, or an explicit type application. The smallest (line, col) wins
+/// (the first one seen on a tie), exactly like Python.
+pub fn first_g3_use(prog: &Program) -> Option<(i64, i64, String)> {
+    let mut cands: G3Cands = Vec::new();
+    for d in &prog.types {
+        if !d.tparams().is_empty() {
+            g3_push(&mut cands, d.line(), d.col(), format!("generic type {}", d.name()));
+        }
+        for f in d.all_fields() {
+            g3_ty(&mut cands, f.line, f.col, &f.ty);
+        }
+    }
+    for f in &prog.functions {
+        if !name_tparams(&f.name).is_empty() {
+            g3_push(&mut cands, f.line, f.col, format!("generic function {}", g3_base(&f.name)));
+        }
+        for p in &f.params {
+            g3_ty(&mut cands, f.line, f.col, &p.ty);
+        }
+        g3_ty(&mut cands, f.line, f.col, &f.ret);
+        for e in &f.requires {
+            g3_expr(e, &mut cands);
+        }
+        for e in &f.ensures {
+            g3_expr(e, &mut cands);
+        }
+        g3_stmts(&f.body, &mut cands);
+    }
+    let mut best: Option<(i64, i64, String)> = None;
+    for c in cands {
+        let better = match &best {
+            None => true,
+            Some(b) => (c.0, c.1) < (b.0, b.1),
+        };
+        if better {
+            best = Some(c);
+        }
+    }
+    best
+}
+
+/// PruvError (unsupported_type) for the first G3 construct, or None. Run after type checking, before the verifier,
+/// so that --no-verify and every back end reject generics explicitly instead of crashing.
+pub fn g3_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diagnostic::PruvError> {
+    let (line, col, what) = first_g3_use(prog)?;
+    Some(crate::diagnostic::PruvError::new(
+        stage,
+        line,
+        col,
+        "unsupported_type",
+        format!("generics are not supported yet ({}): the verify and codegen layers are not implemented", what),
+        "avoid type parameters and type arguments for now",
+    ))
+}
+
 impl TypeDecl {
+    /// The declared name (without the G3 type-parameter suffix).
     pub fn name(&self) -> &str {
         match self {
-            TypeDecl::Struct(s) => &s.name,
-            TypeDecl::Enum(e) => &e.name,
+            TypeDecl::Struct(s) => g3_base(&s.name),
+            TypeDecl::Enum(e) => g3_base(&e.name),
+        }
+    }
+    /// The declared type parameters (empty for a non-generic declaration).
+    pub fn tparams(&self) -> Vec<TParam> {
+        match self {
+            TypeDecl::Struct(s) => name_tparams(&s.name),
+            TypeDecl::Enum(e) => name_tparams(&e.name),
         }
     }
     pub fn line(&self) -> i64 {
@@ -364,8 +539,11 @@ impl TypeTable {
     pub fn deps(&self, d: &TypeDecl) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for f in d.all_fields() {
-            if is_user_type(&f.ty) && self.index.contains_key(&f.ty) && !out.contains(&f.ty) {
-                out.push(f.ty.clone());
+            // G3: a nominal reference anywhere inside the field type (nested arguments included) is an edge
+            for n in dependencies(&GType::from_key(&f.ty)) {
+                if self.index.contains_key(&n) && !out.contains(&n) {
+                    out.push(n);
+                }
             }
         }
         out

@@ -330,6 +330,65 @@ def g2_unimplemented_error(prog, stage, layer=None, skip=(), fix=None):
                      fix or "use [i64] for now")
 
 
+# ---------------------------------------------------------------------------
+# G3 A1 staging guard (G3_SPEC 7.3): the verifier and both code generators do not support generics yet.
+# ---------------------------------------------------------------------------
+def _g3_type_hit(ty) -> bool:
+    return isinstance(ty, Type) and (bool(ty.args) or ty.owner is not None)
+
+
+def _g3_candidates(node, out):
+    """collect (line, col, what) of G3 constructs under node (generic walk over dataclass fields;
+    Expr.ty values are not walked: every typed expression starts from a declared type or a type application)."""
+    if isinstance(node, list):
+        for x in node:
+            _g3_candidates(x, out)
+        return
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return
+    line, col = getattr(node, "line", None), getattr(node, "col", None)
+    if line is not None and getattr(node, "targs", None) is not None:
+        out.append((line, col, "a type application"))
+    if line is not None and isinstance(node, (Let, FieldDecl)) and _g3_type_hit(node.type):
+        out.append((line, col, "type %s" % type_name(node.type)))
+    for fname in node.__dataclass_fields__:
+        _g3_candidates(getattr(node, fname), out)
+
+
+def first_g3_use(prog):
+    """first G3 construct of a checked program -> (line, col, what) or None: a type-parameter list, a type
+    application or parameter in any signature / field / let type, or an explicit type application."""
+    cands = []
+    for d in prog.types:
+        if d.tparams:
+            cands.append((d.line, d.col, "generic type %s" % d.name))
+        _g3_candidates(d.fields if isinstance(d, StructDecl) else [v.fields for v in d.variants], cands)
+    for fn in prog.functions:
+        if fn.tparams:
+            cands.append((fn.line, fn.col, "generic function %s" % fn.name))
+        for p in fn.params:
+            if _g3_type_hit(p.type):
+                cands.append((fn.line, fn.col, "type %s" % type_name(p.type)))
+        if _g3_type_hit(fn.ret):
+            cands.append((fn.line, fn.col, "type %s" % type_name(fn.ret)))
+        _g3_candidates(fn.requires, cands)
+        _g3_candidates(fn.ensures, cands)
+        _g3_candidates(fn.body, cands)
+    return min(cands, key=lambda c: (c[0], c[1])) if cands else None
+
+
+def g3_unimplemented_error(prog, stage="codegen"):
+    """PruvError (unsupported_type) for the first G3 construct, or None. Run after type checking, before the
+    verifier, so that --no-verify and every back end reject generics explicitly instead of crashing."""
+    hit = first_g3_use(prog)
+    if hit is None:
+        return None
+    line, col, what = hit
+    return PruvError(stage, line, col, "unsupported_type",
+                     "generics are not supported yet (%s): the verify and codegen layers are not implemented" % what,
+                     "avoid type parameters and type arguments for now")
+
+
 class TypeTable:
     def __init__(self, prog: Program):
         # first declaration wins if a name is repeated (the checker rejects duplicates)
@@ -344,8 +403,10 @@ class TypeTable:
     def _deps(self, d: TypeDecl) -> List[str]:
         out: List[str] = []
         for f in self._all_fields(d):
-            if is_user_type(f.type) and f.type.name in self.decls and f.type.name not in out:
-                out.append(f.type.name)
+            # G3: a nominal reference anywhere inside the field type (nested arguments included) is an edge
+            for n in dependencies(f.type):
+                if n in self.decls and n not in out:
+                    out.append(n)
         return out
 
     @staticmethod

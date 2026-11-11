@@ -1,0 +1,13 @@
+// G3 A1 accepted: a field whose substituted type is i64 keeps integer operations; one that is T stays abstract
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn total<T>(p: Pair<T, i64>, q: Pair<i64, T>) -> i64 {
+  return p.second + q.first;
+}
+
+fn pick_first<T>(p: Pair<T, i64>) -> T {
+  return p.first;
+}

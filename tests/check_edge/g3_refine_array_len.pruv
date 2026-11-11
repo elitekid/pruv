@@ -1,0 +1,10 @@
+// G3 A1 accepted: a length refinement on [T] with T: Element (an element range would be refinement_base)
+fn clip<T: Element>(a: [T; <=8]) -> i64
+  ensures result == len(a)
+{
+  return len(a);
+}
+
+fn clip_bool(a: [bool; <=4]) -> i64 {
+  return clip::<bool>(a);
+}

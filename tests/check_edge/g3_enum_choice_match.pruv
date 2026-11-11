@@ -1,0 +1,26 @@
+// G3 A1 accepted: a generic enum, explicit enum constructors, exhaustive match (patterns take no type arguments)
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B)
+}
+
+fn flip<A, B>(c: Choice<A, B>) -> Choice<B, A> {
+  match c {
+    Choice::Left(x) => { return Choice::<B, A>::Right(x); }
+    Choice::Right(y) => { return Choice::<B, A>::Left(y); }
+  }
+}
+
+fn left_or(c: Choice<i64, bool>, d: i64) -> i64 {
+  match c {
+    Choice::Left(x) => { return x; }
+    Choice::Right(y) => { return d; }
+  }
+}
+
+fn make(n: i64) -> Choice<i64, bool> {
+  if n > 0 {
+    return Choice::<i64, bool>::Left(n);
+  }
+  return Choice::<i64, bool>::Right(false);
+}

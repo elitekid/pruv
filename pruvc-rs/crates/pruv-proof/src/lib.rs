@@ -67,6 +67,7 @@ pub fn verify_program_opts(
     opts: &VerifyOptions,
     mut report: Option<&mut Vec<pruv_core::pyjson::Json>>,
 ) -> Result<Vec<PruvError>, String> {
+    if let Some(e) = pruv_core::typeinfo::g3_unimplemented_error(prog, "verify") { return Ok(vec![e]); } // G3 A1: until A2
     if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(prog, "verify", None, &["array_u8", "array_bool", "str"], None) { return Ok(vec![e]); } // G2 B1
     let mut local = Trace::off();
     let trace: &mut Trace = match rec {

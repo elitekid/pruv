@@ -1,0 +1,4 @@
+// generic_operation: field access directly on an abstract value
+fn f<T>(x: T) -> i64 {
+  return x.value;
+}

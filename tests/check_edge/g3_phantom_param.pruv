@@ -1,0 +1,26 @@
+// G3 A1 accepted: unused (phantom) type parameters and payload-free generic variants
+struct Tagged<T, U> {
+  value: T
+}
+
+enum Marker<T> {
+  Present,
+  Absent
+}
+
+fn tag<T, U>(x: T) -> Tagged<T, U> {
+  return Tagged::<T, U> { value: x };
+}
+
+fn mark<T>(b: bool) -> Marker<T> {
+  if b {
+    return Marker::<T>::Present;
+  }
+  return Marker::<T>::Absent;
+}
+
+fn use_it() -> i64 {
+  let t: Tagged<i64, bool> = tag::<i64, bool>(5);
+  let m: Marker<bool> = mark::<bool>(true);
+  return t.value;
+}

@@ -1145,6 +1145,9 @@ impl<'a> Gen<'a> {
 
 /// Pruv -> Rust source. Err is the str(e) at the place where Python raises an Exception.
 pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
+    if let Some(e) = crate::typeinfo::g3_unimplemented_error(prog, "codegen") { // G3 A1: generics stop here until A3
+        return Err(format!("unsupported_type: {}", e.message));
+    }
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) { // G2 B2
         return Err(format!("unsupported_type: {}", e.message));
     }

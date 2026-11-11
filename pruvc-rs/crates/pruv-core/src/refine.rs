@@ -66,6 +66,15 @@ fn validate(r: &Refinement) -> Res<()> {
             "remove `| L..=U`; keep `; <=N` if a length bound is needed",
         ));
     }
+    // G3: an element range applies to concrete i64/u8 elements only, never to a type parameter or other element
+    if r.shape == "array" && !matches!(r.base.as_str(), "i64" | "u8" | "bool") && r.lo.is_some() {
+        return Err(terr(
+            r,
+            "refinement_base",
+            format!("a refinement `| L..=U` does not apply to [{}]; only its length can be bounded", r.base),
+            "remove `| L..=U`; keep `; <=N` if a length bound is needed",
+        ));
+    }
     for (what, v) in [("lower bound", &r.lo), ("upper bound", &r.hi)] {
         if let Some(v) = v {
             if !in_i64(v) {
@@ -138,7 +147,7 @@ fn expr_names(e: &Expr, out: &mut HashSet<String>) {
             out.insert(x.name.clone());
         }
         Expr::Call(x) => {
-            out.insert(x.name.clone());
+            out.insert(g3_base(&x.name).to_string()); // G3: without the type-argument suffix
         }
         Expr::Quant(x) => {
             out.insert(x.var.clone());

@@ -1,0 +1,18 @@
+// G3 A1 accepted: is_variant / variant_field on a generic enum take no type arguments; equality of abstract values in contracts
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B)
+}
+
+fn left(x: i64) -> Choice<i64, bool>
+  ensures is_variant(result, Choice::Left)
+  ensures variant_field(result, Choice::Left, value) == x
+{
+  return Choice::<i64, bool>::Left(x);
+}
+
+fn keep<A, B>(c: Choice<A, B>) -> Choice<A, B>
+  ensures result == c
+{
+  return c;
+}

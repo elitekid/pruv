@@ -1,0 +1,9 @@
+// generic_syntax: a type argument is missing before the closing '>'
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn f(p: Pair<i64, >) -> i64 {
+  return 0;
+}

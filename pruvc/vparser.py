@@ -1,6 +1,7 @@
 """Pruv lexer + recursive-descent parser -> vast.Program"""
 import re
 from vast import *
+from typeinfo import decl_owner, fn_owner
 
 KEYWORDS = {"fn", "let", "mut", "if", "else", "while", "return", "match", "true", "false",
             "invariant", "decreases", "requires", "ensures", "assert", "forall", "exists",
@@ -137,6 +138,7 @@ class Parser:
     def __init__(s, src):
         s.t = lex(src)
         s.i = 0
+        s.scope = {}   # G3: type-parameter name -> bound parameter Type, inside a generic declaration
 
     # helpers
     def peek(s, k=0):
@@ -199,17 +201,105 @@ class Parser:
                 s.expect(",")
         return out
 
+    # ---- G3 A1: type parameters and type applications ----
+    def generic_syntax(s, tok, msg, fix=""):
+        raise PruvError("parse", tok.line, tok.col, "generic_syntax", msg, fix)
+
+    def type_params(s, owner):
+        """`<T, U: Element>` (the `<` is the current token) -> [TypeParam]. Also installs the parse scope:
+        inside the declaration a bare parameter name is a bound parameter type (owner identity + index)."""
+        s.expect("<")
+        if s.at(">"):
+            s.generic_syntax(s.peek(), "a type-parameter list cannot be empty",
+                             "remove `<>`, or declare at least one parameter, e.g. <T>")
+        out = []
+        while True:
+            n = s.ident()
+            bound = None
+            if s.at(":"):
+                s.next()
+                b = s.peek()
+                if b.kind != "id":
+                    s.generic_syntax(b, "expected a bound name after ':'", "the only bound is Element: <T: Element>")
+                s.next()
+                bound = b.val
+                if s.at("+"):
+                    s.generic_syntax(s.peek(), "bound lists are not supported",
+                                     "a parameter has at most one bound: <T: Element>")
+            out.append(TypeParam(n.line, n.col, n.val, bound))
+            if not s.at(","):
+                break
+            s.next()
+            if s.at(">"):
+                s.generic_syntax(s.peek(), "a type-parameter list has no trailing comma", "remove the last ','")
+        s.expect(">")
+        s.scope = {}
+        for i, tp in enumerate(out):
+            s.scope.setdefault(tp.name, mk_param(owner, i, tp.name))
+        return out
+
+    def type_arg_list(s, expr):
+        """type arguments after an already consumed `<`, through the closing `>` -> [Type].
+        expr: expression position, where a malformed list is a generic_syntax error."""
+        out = []
+        while True:
+            if s.at(">") or s.at(","):
+                s.generic_syntax(s.peek(), "missing type argument",
+                                 "write a type between the angle brackets, e.g. Pair<i64, bool>")
+            out.append(s.type_r(False)[0])
+            if not s.at(","):
+                break
+            s.next()
+        if not s.at(">"):
+            if expr:
+                s.generic_syntax(s.peek(), "malformed type application: expected '>' after the type arguments",
+                                 "write f::<T>(x), Pair::<A, B> { .. } or Choice::<A, B>::Left(x)")
+            s.expect(">")
+        s.next()
+        return out
+
+    def expr_targs(s):
+        """at `::` `<` in an expression: consume `::<T, ...>` -> [Type]"""
+        s.expect("::")
+        s.expect("<")
+        return s.type_arg_list(True)
+
+    def named_type(s, n):
+        """n: an already consumed identifier naming a type parameter, Option/Result or a user type
+        -> Type (no refinement; type arguments are parsed here)."""
+        if n.val in ("Option", "Result"):
+            s.expect("<")
+            a = s.peek()
+            if a.kind == "id" and a.val in ("u8", "i32"):
+                s.unsupported("%s<%s>" % (n.val, a.val), a)
+            args = s.type_arg_list(False)
+            if len(args) == 1:
+                return mk_option(args[0]) if n.val == "Option" else mk_result(args[0])
+            return Type("option" if n.val == "Option" else "result", tuple(args))   # wrong arity: the checker reports it
+        if s.at("<"):
+            s.next()
+            # also a parameter applied to arguments (`T<X>`): kept unresolved, the checker reports it
+            return Type(n.val, tuple(s.type_arg_list(False)))
+        if n.val in s.scope:
+            return s.scope[n.val]
+        return Type(n.val)
+
     def struct_decl(s):
         kw = s.expect("struct")
         n = s.ident()
+        tparams = s.type_params(decl_owner(n.val)) if s.at("<") else ()
         s.expect("{")
         fields = s.field_list("}")
         s.expect("}")
-        return StructDecl(kw.line, kw.col, n.val, fields)
+        s.scope = {}
+        d = StructDecl(kw.line, kw.col, n.val, fields)
+        d.tparams = tparams
+        return d
 
     def enum_decl(s):
         kw = s.expect("enum")
         n = s.ident()
+        tparams = s.type_params(decl_owner(n.val)) if s.at("<") else ()
         s.expect("{")
         variants = []
         while not s.at("}"):
@@ -226,7 +316,10 @@ class Parser:
             if not s.at("}"):
                 s.expect(",")
         s.expect("}")
-        return EnumDecl(kw.line, kw.col, n.val, variants)
+        s.scope = {}
+        d = EnumDecl(kw.line, kw.col, n.val, variants)
+        d.tparams = tparams
+        return d
 
     def type_(s):
         """a type in a position where refinements are not allowed (fields, ...)"""
@@ -297,12 +390,14 @@ class Parser:
         if s.at("["):
             s.next()
             e = s.ident()
-            if e.val not in ("i64", "u8", "bool"):
-                if e.val[0].isupper():
-                    s.unsupported("[%s]" % e.val, e)
+            if e.val in ("i64", "u8", "bool"):
+                elem = {"i64": I64, "u8": U8, "bool": BOOL}[e.val]
+            elif e.val[0].isupper():
+                elem = s.named_type(e)   # G3: a type parameter (checker: needs Element); other types: checker rejects
+            else:
                 # G2 A5: [bool] joins the element names
                 s.err("only [i64], [u8] and [bool] arrays exist", "use [i64], [u8] or [bool]", e)
-            aty = {"i64": ARRAY, "u8": ARRAY_U8, "bool": ARRAY_BOOL}[e.val]  # G2 A5
+            aty = mk_array(elem)   # [i64]/[u8]/[bool] -> the legacy constants (G2 A5)
             lo = hi = maxlen = None
             if s.at("|"):
                 if not allow:
@@ -330,23 +425,12 @@ class Parser:
         if n.val == "i64": ty = I64
         elif n.val == "bool": ty = BOOL
         elif n.val == "str": ty = STR   # G2 B0
-        elif n.val in ("Option", "Result"):
-            s.expect("<")
-            e = s.ident()
-            if s.at("|"):
-                s.ref_position(s.peek())
-            if e.val != "i64":
-                if e.val[0].isupper() or e.val in ("u8", "i32", "str"):
-                    s.unsupported("%s<%s>" % (n.val, e.val), e)
-                s.err("%s only holds i64" % n.val, "use %s<i64>" % n.val, e)
-            s.expect(">")
-            ty = OPTION if n.val == "Option" else RESULT
         else:
-            # a user type: the checker resolves the name. Lower-case spellings of the
-            # built-in Type names must not alias them.
+            # Option/Result, a type parameter or a user type (G3: with optional type arguments); the checker
+            # resolves the names. Lower-case spellings of the built-in Type names must not alias them.
             if n.val in ("unit", "array", "option", "result", "array_u8", "array_bool", "array_i32"):
                 s.err("unknown type %r" % n.val, "use i64, bool, (), [i64], Option<i64>, Result<i64> or a declared struct/enum", n)
-            ty = Type(n.val)
+            ty = s.named_type(n)
         if s.at("|"):
             if not allow:
                 s.ref_position(s.peek())
@@ -359,6 +443,7 @@ class Parser:
     def function(s):
         kw = s.expect("fn")
         name = s.ident().val
+        tparams = s.type_params(fn_owner(name)) if s.at("<") else ()
         s.expect("(")
         params = []
         while not s.at(")"):
@@ -387,7 +472,10 @@ class Parser:
             k = s.next().val
             (req if k == "requires" else ens).append(s.expr())
         body = s.block()
-        return Function(kw.line, kw.col, name, params, ret, effects, req, ens, body, ret_refine)
+        s.scope = {}
+        f = Function(kw.line, kw.col, name, params, ret, effects, req, ens, body, ret_refine)
+        f.tparams = tparams
+        return f
 
     def block(s):
         s.expect("{")
@@ -608,10 +696,18 @@ class Parser:
         if s.at("("):
             s.next(); e = s.expr(); s.expect(")"); return e
         if s.at("None"):
-            s.next(); return Ctor(t.line, t.col, "None", None)
+            s.next()
+            c = Ctor(t.line, t.col, "None", None)
+            if s.at("::") and s.at("<", 1):
+                c.targs = s.expr_targs()      # G3: None::<T>
+            return c
         if s.at("Some") or s.at("Ok") or s.at("Err"):
-            s.next(); s.expect("("); a = s.expr(); s.expect(")")
-            return Ctor(t.line, t.col, t.val, a)
+            s.next()
+            targs = s.expr_targs() if (s.at("::") and s.at("<", 1)) else None   # G3: Some::<T>(x)
+            s.expect("("); a = s.expr(); s.expect(")")
+            c = Ctor(t.line, t.col, t.val, a)
+            c.targs = targs
+            return c
         if s.at("result"):
             s.next(); return Var(t.line, t.col, "result")
         if s.at("forall") or s.at("exists"):
@@ -646,6 +742,13 @@ class Parser:
             return VariantField(t.line, t.col, v, en.val, vt.val, f.val)
         if t.kind == "id":
             s.next()
+            targs = None
+            if s.at("::") and s.at("<", 1):
+                # G3: f::<T>(x), S::<A, B> { .. }, E::<A, B>::V(x)
+                targs = s.expr_targs()
+                if not (s.at("::") or s.at("(") or (s.at("{") and t.val[0].isupper())):
+                    s.generic_syntax(s.peek(), "a type application must be followed by `(`, `{` or `::Variant`",
+                                     "write f::<T>(x), Pair::<A, B> { .. } or Choice::<A, B>::Left(x)")
             if s.at("::"):
                 s.next()
                 vt = s.ident()
@@ -661,7 +764,9 @@ class Parser:
                         if not s.at(")"):
                             s.expect(",")
                     s.expect(")")
-                return EnumCtor(t.line, t.col, t.val, vt.val, args)
+                ec = EnumCtor(t.line, t.col, t.val, vt.val, args)
+                ec.targs = targs
+                return ec
             if t.val[0].isupper() and s.at("{"):
                 s.next()
                 inits = []
@@ -672,7 +777,9 @@ class Parser:
                     if not s.at("}"):
                         s.expect(",")
                 s.expect("}")
-                return StructLit(t.line, t.col, t.val, inits)
+                sl = StructLit(t.line, t.col, t.val, inits)
+                sl.targs = targs
+                return sl
             if s.at("("):
                 s.next()
                 args = []
@@ -681,7 +788,9 @@ class Parser:
                     if not s.at(")"):
                         s.expect(",")
                 s.expect(")")
-                return Call(t.line, t.col, t.val, args)
+                call = Call(t.line, t.col, t.val, args)
+                call.targs = targs
+                return call
             return Var(t.line, t.col, t.val)
         s.err("expected an expression, found %r" % (t.val,))
 

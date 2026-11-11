@@ -1,0 +1,4 @@
+// type_parameter: a parameter name must start with an upper-case letter
+fn f<t>(x: t) -> t {
+  return x;
+}

@@ -2,6 +2,7 @@
 //! Integers, line and col are decimal strings, bool is a JSON bool, None is null, Type is its name string.
 
 use crate::ast::*;
+use crate::gtype::{decl_owner, fn_owner, format_type, is_g3_key, GType};
 use crate::parser::parse_source;
 use crate::pyjson::{dumps_sorted, Json};
 
@@ -9,10 +10,107 @@ fn js(s: &str) -> Json {
     Json::Str(s.to_string())
 }
 
+/// A type string of the AST: a legacy name is printed as it always was; a structured (G3) type with the shared
+/// source formatting (`Pair<i64, bool>`, `[T]`, `Option<bool>`), like the Python adapter.
+fn tys(s: &str) -> Json {
+    if is_g3_key(s) {
+        js(&format_type(&GType::from_key(s)))
+    } else {
+        js(s)
+    }
+}
+
 fn ty(t: &Ty) -> Json {
     match t {
-        Some(s) => js(s),
+        Some(s) => tys(s),
         None => Json::Null,
+    }
+}
+
+type Fields = Vec<(&'static str, Json)>;
+
+/// The declared type parameters of a fn/struct/enum, only when it is generic.
+fn tparams_extra(f: &mut Fields, name: &str) {
+    let tps = name_tparams(name);
+    if tps.is_empty() {
+        return;
+    }
+    let items: Vec<Json> = tps
+        .iter()
+        .map(|t| {
+            node(
+                "TypeParam",
+                Some((t.line, t.col)),
+                vec![
+                    ("name", js(&t.name)),
+                    ("bound", match &t.bound {
+                        Some(b) => js(b),
+                        None => Json::Null,
+                    }),
+                ],
+            )
+        })
+        .collect();
+    f.push(("tparams", Json::Arr(items)));
+}
+
+/// The explicit type arguments of a call/literal/constructor and, once checked (`checked`), its recorded instantiation.
+/// owner: the declaration identity (`fn:f`, `type:S`, `builtin:Some`).
+fn targs_extra(f: &mut Fields, name: &str, owner: String, checked: bool) {
+    let keys = match name_targs(name) {
+        Some(k) => k,
+        None => return,
+    };
+    f.push(("targs", Json::Arr(keys.iter().map(|k| tys(k)).collect())));
+    if checked {
+        let subst: Vec<Json> = keys
+            .iter()
+            .enumerate()
+            .map(|(i, k)| {
+                Json::Obj(vec![
+                    ("index".to_string(), Json::Str(i.to_string())),
+                    ("owner".to_string(), js(&owner)),
+                    ("type".to_string(), tys(k)),
+                ])
+            })
+            .collect();
+        f.push((
+            "inst",
+            Json::Obj(vec![
+                ("args".to_string(), Json::Arr(keys.iter().map(|k| tys(k)).collect())),
+                ("decl".to_string(), js(&owner)),
+                ("subst".to_string(), Json::Arr(subst)),
+            ]),
+        ));
+    }
+}
+
+fn expr_ty(e: &Expr) -> &Ty {
+    match e {
+        Expr::IntLit(x) => &x.ty,
+        Expr::BoolLit(x) => &x.ty,
+        Expr::StrLit(x) => &x.ty,
+        Expr::Var(x) => &x.ty,
+        Expr::Unary(x) => &x.ty,
+        Expr::Binary(x) => &x.ty,
+        Expr::Call(x) => &x.ty,
+        Expr::Index(x) => &x.ty,
+        Expr::Ctor(x) => &x.ty,
+        Expr::Quant(x) => &x.ty,
+        Expr::StructLit(x) => &x.ty,
+        Expr::EnumCtor(x) => &x.ty,
+        Expr::FieldAccess(x) => &x.ty,
+        Expr::IsVariant(x) => &x.ty,
+        Expr::VariantField(x) => &x.ty,
+    }
+}
+
+/// IsVariant / VariantField: the complete instantiated enum type of the scrutinee, only when it has type arguments.
+fn enum_ty_extra(f: &mut Fields, value: &Expr) {
+    if let Some(k) = expr_ty(value) {
+        if is_g3_key(k) && !GType::from_key(k).args.is_empty() {
+            f.push(("enum_ty", tys(k)));
+        }
     }
 }
 
@@ -65,28 +163,28 @@ pub fn expr(e: &Expr) -> Json {
             Some((x.line, x.col)),
             vec![("op", js(&x.op)), ("left", bx(&x.left)), ("right", bx(&x.right)), ("ty", ty(&x.ty))],
         ),
-        Expr::Call(x) => node(
-            "Call",
-            Some((x.line, x.col)),
-            vec![("name", js(&x.name)), ("args", list(&x.args, expr)), ("ty", ty(&x.ty))],
-        ),
+        Expr::Call(x) => {
+            let mut f: Fields = vec![("name", js(g3_base(&x.name))), ("args", list(&x.args, expr)), ("ty", ty(&x.ty))];
+            targs_extra(&mut f, &x.name, fn_owner(g3_base(&x.name)), x.ty.is_some());
+            node("Call", Some((x.line, x.col)), f)
+        }
         Expr::Index(x) => node(
             "Index",
             Some((x.line, x.col)),
             vec![("array", bx(&x.array)), ("index", bx(&x.index)), ("ty", ty(&x.ty))],
         ),
-        Expr::Ctor(x) => node(
-            "Ctor",
-            Some((x.line, x.col)),
-            vec![
-                ("name", js(&x.name)),
+        Expr::Ctor(x) => {
+            let mut f: Fields = vec![
+                ("name", js(g3_base(&x.name))),
                 ("arg", match &x.arg {
                     Some(a) => bx(a),
                     None => Json::Null,
                 }),
                 ("ty", ty(&x.ty)),
-            ],
-        ),
+            ];
+            targs_extra(&mut f, &x.name, format!("builtin:{}", g3_base(&x.name)), x.ty.is_some());
+            node("Ctor", Some((x.line, x.col)), f)
+        }
         Expr::Quant(x) => node(
             "Quant",
             Some((x.line, x.col)),
@@ -99,47 +197,48 @@ pub fn expr(e: &Expr) -> Json {
                 ("ty", ty(&x.ty)),
             ],
         ),
-        Expr::StructLit(x) => node(
-            "StructLit",
-            Some((x.line, x.col)),
-            vec![("name", js(&x.name)), ("fields", list(&x.fields, field_init)), ("ty", ty(&x.ty))],
-        ),
-        Expr::EnumCtor(x) => node(
-            "EnumCtor",
-            Some((x.line, x.col)),
-            vec![
-                ("enum_name", js(&x.enum_name)),
+        Expr::StructLit(x) => {
+            let mut f: Fields =
+                vec![("name", js(g3_base(&x.name))), ("fields", list(&x.fields, field_init)), ("ty", ty(&x.ty))];
+            targs_extra(&mut f, &x.name, decl_owner(g3_base(&x.name)), x.ty.is_some());
+            node("StructLit", Some((x.line, x.col)), f)
+        }
+        Expr::EnumCtor(x) => {
+            let mut f: Fields = vec![
+                ("enum_name", js(g3_base(&x.enum_name))),
                 ("variant", js(&x.variant)),
                 ("args", list(&x.args, expr)),
                 ("ty", ty(&x.ty)),
-            ],
-        ),
+            ];
+            targs_extra(&mut f, &x.enum_name, decl_owner(g3_base(&x.enum_name)), x.ty.is_some());
+            node("EnumCtor", Some((x.line, x.col)), f)
+        }
         Expr::FieldAccess(x) => node(
             "FieldAccess",
             Some((x.line, x.col)),
             vec![("base", bx(&x.base)), ("field", js(&x.field)), ("ty", ty(&x.ty))],
         ),
-        Expr::IsVariant(x) => node(
-            "IsVariant",
-            Some((x.line, x.col)),
-            vec![
+        Expr::IsVariant(x) => {
+            let mut f: Fields = vec![
                 ("value", bx(&x.value)),
                 ("enum_name", js(&x.enum_name)),
                 ("variant", js(&x.variant)),
                 ("ty", ty(&x.ty)),
-            ],
-        ),
-        Expr::VariantField(x) => node(
-            "VariantField",
-            Some((x.line, x.col)),
-            vec![
+            ];
+            enum_ty_extra(&mut f, &x.value);
+            node("IsVariant", Some((x.line, x.col)), f)
+        }
+        Expr::VariantField(x) => {
+            let mut f: Fields = vec![
                 ("value", bx(&x.value)),
                 ("enum_name", js(&x.enum_name)),
                 ("variant", js(&x.variant)),
                 ("field", js(&x.field)),
                 ("ty", ty(&x.ty)),
-            ],
-        ),
+            ];
+            enum_ty_extra(&mut f, &x.value);
+            node("VariantField", Some((x.line, x.col)), f)
+        }
     }
 }
 
@@ -148,7 +247,7 @@ fn field_init(f: &FieldInit) -> Json {
 }
 
 fn field_decl(f: &FieldDecl) -> Json {
-    node("FieldDecl", Some((f.line, f.col)), vec![("name", js(&f.name)), ("type", js(&f.ty))])
+    node("FieldDecl", Some((f.line, f.col)), vec![("name", js(&f.name)), ("type", tys(&f.ty))])
 }
 
 fn variant_decl(v: &VariantDecl) -> Json {
@@ -157,16 +256,16 @@ fn variant_decl(v: &VariantDecl) -> Json {
 
 fn type_decl(d: &TypeDecl) -> Json {
     match d {
-        TypeDecl::Struct(s) => node(
-            "StructDecl",
-            Some((s.line, s.col)),
-            vec![("name", js(&s.name)), ("fields", list(&s.fields, field_decl))],
-        ),
-        TypeDecl::Enum(e) => node(
-            "EnumDecl",
-            Some((e.line, e.col)),
-            vec![("name", js(&e.name)), ("variants", list(&e.variants, variant_decl))],
-        ),
+        TypeDecl::Struct(s) => {
+            let mut f: Fields = vec![("name", js(g3_base(&s.name))), ("fields", list(&s.fields, field_decl))];
+            tparams_extra(&mut f, &s.name);
+            node("StructDecl", Some((s.line, s.col)), f)
+        }
+        TypeDecl::Enum(e) => {
+            let mut f: Fields = vec![("name", js(g3_base(&e.name))), ("variants", list(&e.variants, variant_decl))];
+            tparams_extra(&mut f, &e.name);
+            node("EnumDecl", Some((e.line, e.col)), f)
+        }
     }
 }
 
@@ -189,7 +288,7 @@ fn match_arm(a: &MatchArm) -> Json {
 pub fn stmt(s: &Stmt) -> Json {
     match s {
         Stmt::Let(x) => {
-            let mut f = vec![("name", js(&x.name)), ("mutable", Json::Bool(x.mutable)), ("type", js(&x.ty)), ("value", expr(&x.value))];
+            let mut f = vec![("name", js(&x.name)), ("mutable", Json::Bool(x.mutable)), ("type", tys(&x.ty)), ("value", expr(&x.value))];
             if let Some(r) = &x.refine {
                 f.push(("refine", refinement(r)));
             }
@@ -278,7 +377,7 @@ fn refinement(r: &Refinement) -> Json {
 }
 
 fn param(p: &Param) -> Json {
-    let mut f = vec![("name", js(&p.name)), ("type", js(&p.ty))];
+    let mut f = vec![("name", js(&p.name)), ("type", tys(&p.ty))];
     if let Some(r) = &p.refine {
         f.push(("refine", refinement(r)));
     }
@@ -287,9 +386,9 @@ fn param(p: &Param) -> Json {
 
 fn function(f: &Function) -> Json {
     let mut fields = vec![
-        ("name", js(&f.name)),
+        ("name", js(g3_base(&f.name))),
         ("params", list(&f.params, param)),
-        ("ret", js(&f.ret)),
+        ("ret", tys(&f.ret)),
         ("effects", strs(&f.effects)),
         ("requires", list(&f.requires, expr)),
         ("ensures", list(&f.ensures, expr)),
@@ -298,6 +397,7 @@ fn function(f: &Function) -> Json {
     if let Some(r) = &f.ret_refine {
         fields.push(("ret_refine", refinement(r)));
     }
+    tparams_extra(&mut fields, &f.name);
     node("Function", Some((f.line, f.col)), fields)
 }
 

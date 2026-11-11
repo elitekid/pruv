@@ -1,0 +1,4 @@
+// generic_operation: a boolean operator on an abstract value
+fn f<T>(x: T) -> bool {
+  return x && true;
+}

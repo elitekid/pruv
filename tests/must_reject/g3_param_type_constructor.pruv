@@ -1,0 +1,4 @@
+// type_parameter: a type parameter is not a type constructor
+fn f<T>(x: T<i64>) -> i64 {
+  return 0;
+}

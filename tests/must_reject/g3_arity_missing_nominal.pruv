@@ -1,0 +1,9 @@
+// type_arity: a generic struct is named without its type arguments
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn f(p: Pair) -> i64 {
+  return 0;
+}
