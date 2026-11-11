@@ -57,7 +57,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     assert 1 <= budget <= 2 ** 62
     if also_llvm and backend != "rust":
         raise ValueError("also_llvm requires backend='rust'")
-    src = open(path).read()
+    src = open(path, encoding="utf-8").read()
     prog = parse(src)
     check(prog)
     if verify:

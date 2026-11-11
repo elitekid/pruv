@@ -1,0 +1,5 @@
+// type_mismatch: [u8] 값을 str 지역에 대입
+fn f(b: [u8]) -> i64 {
+  let s: str = b;
+  return len(s);
+}

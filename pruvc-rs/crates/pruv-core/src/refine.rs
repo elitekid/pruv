@@ -128,6 +128,7 @@ fn kids(e: &Expr) -> Vec<&Expr> {
         Expr::IsVariant(x) => vec![x.value.as_ref()],
         Expr::VariantField(x) => vec![x.value.as_ref()],
         Expr::IntLit(_) | Expr::BoolLit(_) | Expr::Var(_) => Vec::new(),
+        Expr::StrLit(_) => Vec::new(),
     }
 }
 

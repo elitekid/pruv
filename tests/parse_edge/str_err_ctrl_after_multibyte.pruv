@@ -1,0 +1,5 @@
+// string_character(제어 문자): 한글 두 글자 뒤 실제 TAB(0x09) — 열 번호가 바이트가 아니라 문자 단위인지 본다
+fn f() -> i64 {
+  let s: str = "한글	x";
+  return 0;
+}

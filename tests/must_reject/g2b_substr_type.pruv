@@ -1,0 +1,5 @@
+// type_mismatch: substr 의 둘째 인수가 bool (i64 이어야 한다)
+fn f(s: str) -> i64 ! alloc {
+  let t: str = substr(s, true, 1);
+  return len(t);
+}

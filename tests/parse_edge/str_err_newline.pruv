@@ -1,0 +1,6 @@
+// string_character(줄바꿈): 리터럴 안 실제 줄바꿈, 위치는 그 줄바꿈 문자 (같은 줄의 열)
+fn f() -> i64 {
+  let s: str = "ab
+cd";
+  return 0;
+}

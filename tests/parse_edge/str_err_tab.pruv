@@ -1,0 +1,5 @@
+// string_character(제어 문자): 리터럴 안에 실제 TAB(0x09) 문자가 있다 (3번째 줄 "a" 와 "b" 사이)
+fn f() -> i64 {
+  let s: str = "a	b";
+  return 0;
+}

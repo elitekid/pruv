@@ -1,0 +1,5 @@
+// syntax: 식별자 자리에 작은따옴표가 든 문자열 토큰 — found 의 repr 이 따옴표 선택을 바꾸는지 (두 판 repr 동일해야 함)
+fn f() -> i64 {
+  let "it's" = 1;
+  return 0;
+}

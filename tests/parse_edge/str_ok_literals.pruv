@@ -1,0 +1,17 @@
+// ok: 문자열 리터럴 — ASCII·한글·2/3/4바이트·빈 문자열·\0·이스케이프 6종·문자열 안 특수문자·리터럴 색인·한 줄 여러 리터럴·뒤 주석
+fn g(a: str, b: str, c: str) -> i64 {
+  return 0;
+}
+fn f() -> i64 ! alloc {
+  let a: str = "hello";
+  let b: str = "안녕 세계";
+  let c: str = "é한😀";
+  let d: str = "";
+  let e: str = "a\0b";
+  let h: str = "\"\\\n\r\t\0";
+  let i: str = "// ( ] | ' not a comment";
+  let j: i64 = "ab"[1];
+  g("a", "bb", "ccc"); // trailing "comment" here
+  g("한", "", "😀"); // 열 번호는 문자 단위
+  return j;
+}

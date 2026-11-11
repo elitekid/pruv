@@ -1,0 +1,2 @@
+// field_type: 열거형 payload 필드 타입이 str
+enum E { A(s: str), B }

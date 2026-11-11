@@ -17,6 +17,34 @@ pub fn parse_source(src: &str) -> R<Program> {
     p.program()
 }
 
+/// 문자열 토큰 원문(따옴표 포함, 렉서가 이미 검사함)을 UTF-8 바이트열로 푼다.
+fn decode_str_lit(raw: &str) -> Vec<u8> {
+    let chars: Vec<char> = raw.chars().collect();
+    let mut out: Vec<u8> = Vec::new();
+    let mut i = 1usize;
+    let end = chars.len().saturating_sub(1);
+    let mut buf = [0u8; 4];
+    while i < end {
+        let c = chars[i];
+        if c == '\\' && i + 1 < end {
+            i += 1;
+            let b = match chars[i] {
+                '"' => b'"',
+                '\\' => b'\\',
+                'n' => b'\n',
+                'r' => b'\r',
+                't' => b'\t',
+                _ => 0u8,
+            };
+            out.push(b);
+        } else {
+            out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+        }
+        i += 1;
+    }
+    out
+}
+
 /// 음수 접기용 십진 문자열 부호 반전("0" 은 그대로).
 fn negate(v: &str) -> String {
     if v == "0" {
@@ -373,6 +401,8 @@ impl Parser {
             ty = "i64".to_string();
         } else if n.val == "bool" {
             ty = "bool".to_string();
+        } else if n.val == "str" {
+            ty = "str".to_string();
         } else if n.val == "Option" || n.val == "Result" {
             self.expect("<")?;
             let e = self.ident()?;
@@ -380,7 +410,7 @@ impl Parser {
                 return Err(self.ref_position(&self.peek(0).clone()));
             }
             if e.val != "i64" {
-                if is_upper(&e.val) || e.val == "u8" || e.val == "i32" {
+                if is_upper(&e.val) || e.val == "u8" || e.val == "i32" || e.val == "str" {
                     return Err(self.unsupported(&format!("{}<{}>", n.val, e.val), &e));
                 }
                 return Err(self.err(format!("{} only holds i64", n.val), format!("use {}<i64>", n.val), Some(&e)));
@@ -859,6 +889,10 @@ impl Parser {
         if t.kind == Kind::Int {
             self.bump();
             return Ok(Expr::IntLit(IntLit { line, col, value: t.val, ty: None }));
+        }
+        if t.kind == Kind::Str {
+            self.bump();
+            return Ok(Expr::StrLit(StrLit { line, col, value: decode_str_lit(&t.val), ty: None }));
         }
         if self.at("true", 0) || self.at("false", 0) {
             self.bump();

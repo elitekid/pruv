@@ -22,7 +22,7 @@ class Checker:
         for f in prog.functions:
             if f.name in s.funcs:
                 terr(f, "dup_fn", "function %s defined twice" % f.name)
-            if f.name in ("len", "alloc", "copy", "print") or f.name in CONTRACT_ONLY:
+            if f.name in ("len", "alloc", "copy", "print", "is_char_boundary", "substr") or f.name in CONTRACT_ONLY:
                 terr(f, "reserved", "%s is a builtin name" % f.name, "rename the function")
             s.funcs[f.name] = f
         s.calls = {}
@@ -89,7 +89,7 @@ class Checker:
             groups = [d.fields] if isinstance(d, StructDecl) else [v.fields for v in d.variants]
             for fields in groups:
                 for f in fields:
-                    if f.type == UNIT or is_array(f.type):
+                    if f.type == UNIT or is_array(f.type) or f.type == STR:
                         terr(f, "field_type", "field %s cannot have type %s" % (f.name, type_name(f.type)),
                              "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum")
                     s.check_type_ref(f, f.type)
@@ -197,7 +197,7 @@ class Checker:
             s.check_type_ref(st, st.type)
             s.alloc_hint_for(st.value, st.type)
             s.expect(st.value, st.type, scope)
-            if is_array(st.type):
+            if is_array(st.type) or st.type == STR:
                 s.array_source(st, st.value, scope)
             scope[st.name] = (st.type, st.mutable, "local")
         elif isinstance(st, Assign):
@@ -207,10 +207,13 @@ class Checker:
                      "declare it with `let mut`" if v[2] == "local" else "parameters are immutable; copy into a `let mut` local")
             s.alloc_hint_for(st.value, v[0])
             s.expect(st.value, v[0], scope)
-            if is_array(v[0]):
+            if is_array(v[0]) or v[0] == STR:
                 s.array_source(st, st.value, scope)
         elif isinstance(st, IndexAssign):
             v = s.lookup(st, st.name, scope)
+            if v[0] == STR:
+                terr(st, "immutable_string", "%s is a str; its bytes cannot be changed" % st.name,
+                     "build a new str with substr() or copy() instead")
             if not is_array(v[0]):
                 terr(st, "not_array", "%s is not an array" % st.name)
             if not v[1]:
@@ -250,7 +253,7 @@ class Checker:
                     terr(st, "return_type", "function returns (); use `return;`")
                 s.alloc_hint_for(st.value, f.ret)
                 s.expect(st.value, f.ret, scope)
-                if is_array(f.ret):
+                if is_array(f.ret) or f.ret == STR:
                     s.array_source(st, st.value, scope, allow_local_var=True)
         elif isinstance(st, Assert):
             s.expect(st.cond, BOOL, scope, contract=True)
@@ -313,10 +316,13 @@ class Checker:
 
     def array_source(s, st, value, scope, allow_local_var=False):
         """arrays are moved/borrowed explicitly: new arrays come only from alloc/copy/calls"""
-        if isinstance(value, Call):
+        if isinstance(value, (Call, StrLit)):
             return
         if allow_local_var and isinstance(value, Var) and scope.get(value.name, (None, None, ""))[2] == "local":
             return
+        if value.ty == STR:   # G2 B0
+            terr(st, "array_alias", "a str value here must come from a string literal, copy(), substr() or a function call",
+                 "write copy(x) to make an explicit copy (needs `! alloc`)")
         terr(st, "array_alias", "an array value here must come from alloc(), copy() or a function call",
              "write copy(x) to make an explicit copy (needs `! alloc`)")
 
@@ -327,9 +333,9 @@ class Checker:
             s.alloc_hint = (value, expected)
 
     def expect_array(s, e, scope, c):
-        """the argument must be an array of any element type; same diagnostic as expect(e, ARRAY, ...)"""
+        """the argument must be an array of any element type (G2 B0: or a str); same diagnostic as expect(e, ARRAY, ...)"""
         t = s.expr(e, scope, c)
-        if not is_array(t):
+        if not is_array(t) and t != STR:
             terr(e, "type_mismatch", "expected %s, found %s" % (type_name(ARRAY), type_name(t)))
         return t
 
@@ -357,6 +363,10 @@ class Checker:
             return I64
         if isinstance(e, BoolLit):
             return BOOL
+        if isinstance(e, StrLit):   # G2 B0
+            if not c:
+                s.used_effects.add("alloc")
+            return STR
         if isinstance(e, Var):
             if e.name == "result" and "result" not in scope:
                 terr(e, "result_scope", "`result` is only allowed in ensures")
@@ -376,6 +386,9 @@ class Checker:
                 if is_array(lt):
                     terr(e, "eq_type", "arrays cannot be compared with ==",
                          "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]")
+                if lt == STR:   # G2 B0
+                    terr(e, "eq_type", "str values cannot be compared with ==",
+                         "compare lengths and bytes: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]")
                 if lt not in (I64, BOOL) and not c:
                     terr(e, "eq_type", "== only compares i64 or bool in code", "use match")
                 s.expect(e.right, lt, scope, c)
@@ -522,6 +535,13 @@ class Checker:
             if c: terr(e, "effect_in_contract", "copy not allowed in contracts")
             arity(1); at = s.expect_array(a[0], scope, c)
             s.used_effects.add("alloc"); return at
+        if n == "is_char_boundary":   # G2 B0
+            arity(2); s.expect(a[0], STR, scope, c); s.expect(a[1], I64, scope, c)
+            return BOOL
+        if n == "substr":   # G2 B0
+            if c: terr(e, "effect_in_contract", "substr not allowed in contracts")
+            arity(3); s.expect(a[0], STR, scope, c); s.expect(a[1], I64, scope, c); s.expect(a[2], I64, scope, c)
+            s.used_effects.add("alloc"); return STR
         if n == "print":
             if c: terr(e, "effect_in_contract", "print not allowed in contracts")
             arity(1)

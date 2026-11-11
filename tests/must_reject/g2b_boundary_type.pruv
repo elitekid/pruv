@@ -1,0 +1,4 @@
+// type_mismatch: is_char_boundary 의 첫 인수가 [u8] (str 이어야 한다)
+fn f(b: [u8]) -> bool {
+  return is_char_boundary(b, 0);
+}

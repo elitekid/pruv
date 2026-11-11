@@ -1,0 +1,6 @@
+// string_escape: 역슬래시 바로 뒤에 실제 줄바꿈이 온다 (줄 잇기는 없다)
+fn f() -> i64 ! alloc {
+  let s: str = "ab\
+cd";
+  return len(s);
+}

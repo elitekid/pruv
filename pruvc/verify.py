@@ -1090,6 +1090,10 @@ def verify_program(prog, rec=None, infer=False, report=None):
     """infer=True (STAGE1 B2, --infer): per function, explore template invariant candidates (infer.py), then
     verify the whole function with the survivors as extra loop invariants. report (a list) receives one record
     per loop (docs/STAGE1_B_INFER.md section 5). infer=False: exactly the old path."""
+    from typeinfo import g2_unimplemented_error
+    g2err = g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool"))  # G2 B0
+    if g2err is not None:
+        return [g2err]
     errors = []
     model = Model(prog)
     if not infer:

@@ -770,3 +770,20 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
 - **확인 감사(Claude Opus):** 필수 0, 1차 지적 7건 해소. 권고 2(남김): `check_generated.py`가 `__typed` 정의 자체의 서명·COFF 기호는 보지 않음(Windows CI 링크에서야 드러남), winci에 `[bool]` 인자 + Option/Result 반환(Windows sret) 조합 표본 없음.
 - **Windows CI(푸시 뒤, run 42992603822):** 통과 — 새 bool 표본 `g2a_bool_ret`(`__typed` 진입·`Pruv__ArrayBool` 반환)을 포함한 바인딩을 Windows에서 링크·실행해 맥 기대 출력과 같음.
 - 측정 못 한 것: bool 배열 증명 시간·생성 코드 성능, Linux 실행.
+
+## 39. G2 B0: `str` 앞단 (2026-11-11)
+G2b(문자열)의 첫 묶음으로 `str` 타입과 문자열 리터럴을 렉서·파서·타입/효과 검사·정제·dump까지 열었다. 증명(B1)·실행·ABI(B2)는 아직 없으므로 `str`이나 문자열 리터럴을 쓰는 프로그램은 증명 층에서 `verify/unsupported_type`, `--no-verify`면 생성 층에서 `codegen/unsupported_type`으로 거부한다(결정 16). 진단 문구·dump 글자는 `docs/G2_B0_IMPL.md`에 먼저 고정했고 두 판이 첫 비교에서 바이트가 같았다.
+
+- **리터럴:** `"..."`는 UTF-8 바이트열(Py `bytes`, Rs `Vec<u8>`). 이스케이프는 `\" \\ \n \r \t \0`만. 새 parse 오류 3종: `string_escape`(그 밖의 이스케이프, `\` 뒤 실제 줄바꿈 포함, 위치는 역슬래시), `string_unterminated`(입력 끝, 위치는 여는 따옴표), `string_character`(실제 줄바꿈·ASCII 제어 문자·0x7F). 열 번호는 문자 단위 그대로. 문자열 안 `//`·괄호·`|`는 일반 문자. dump의 `StrLit.value`는 소문자 16진.
+- **타입:** 내부 이름은 소스 철자와 같은 `"str"`(결정 7의 누출 없음). `str`은 배열이 아니다. `len`·색인(결과 i64)·`copy`는 배열과 `str` 모두 받음. 새 builtin `is_char_boundary(s, i) -> bool`(코드·계약), `substr(s, lo, hi) -> str`(`alloc`, 계약 안 `effect_in_contract`). 원소 대입은 `type/immutable_string`, 소유권은 배열과 같되 리터럴도 출처(매개변수 반환에 `copy`), 문자열 전체 `==`/`!=`는 코드·계약 모두 `eq_type`, 구조체·열거형 필드 `field_type`, `Option<str>`·`Result<str>`은 `parse/unsupported_type`. 코드 안 리터럴은 `alloc` 효과, 계약 안 리터럴은 효과 없음. `substr`·`is_char_boundary`는 예약 함수 이름이 됐다.
+- **가드:** `first_g2_unimplemented`가 `str` 타입과 **식 안의 리터럴**까지 본다(전에는 선언 타입만). 함수마다 매개변수 → 반환 → 함수 안 후보(str Let·requires/ensures/본문의 모든 리터럴) 중 가장 앞 위치. 증명 층 진입(Py `verify_program`, Rs `verify_program_opts`) 맨 앞에 가드를 새로 뒀다(전에는 verify 뒤 codegen 가드뿐이라 str이 증명에 들어가면 내부 오류가 날 자리였다). `--infer`도 이 앞에서 끝난다. 배열의 가드 결과는 그대로.
+- **바뀐 기존 동작:** `"`는 이제 `bad_char`가 아니다(`tests/parse_edge/badchar_dquote.pruv`는 parse 성공·check `print_type`). Py 판 소스 읽기를 `open(path, encoding="utf-8")`로(Rs 판과 같은 엄격 UTF-8).
+- **표본:** must_reject(`g2b_*`: 렉서 6, `Option<str>`, type 15, effect 1, 층 가드 8 — verify·리터럴만·`--infer`·`--no-verify`·계약 리터럴·위치 순서 3), 모두 31쌍. parse_edge 10, check_edge 6. `diff_parse` 필수 코드에 새 4종. 행 목록 663 → 694. G2_SPEC 6.3의 verify 표본 5개(`g2b_slice_range`·`_slice_start`·`_slice_end`·`_index`·`_contract_index`)는 B1.
+- **회귀(마지막 실행):**
+  - run_all `--backend both` 두 판 통과(행 목록 694, 빠진 행·실패 0)
+  - diff_parse parse·check 두 판 3981개 모두 same, diff_compilers `--only must_reject --backend both` 362건 same
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - m3_all 11단계 ok(compilers 894), cli_also_llvm 두 판 332/332, `tests/inference --regress` 두 판 299/299, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1
+- **감사(Claude Opus):** 필수 0·권고 4. 반영: 가드 위치 두 판 대조(위치 표본 2 + diff_compilers), code를 공유하는 표본(`g2b_eq`·`g2b_alias`·`g2b_param_return`)에 문구 고정(`cex_contains`), 끝 줄바꿈 없는 표본을 `.gitattributes -text`로 고정. Py 가드 순회 비용은 가장 큰 표본에서 1회 0.125ms라 그대로 둠.
+- **확인 감사(Claude Opus):** 필수 0, 1차 반영 4건 확인. 권고 3 반영: 리터럴이 Let보다 앞인 위치 표본(`g2b_b0_guard_lit_first`), 명세 9.1 표에 새 표본·문구 고정 추가, `.gitattributes` 주석 정정.
+- 측정 못 한 것: Windows에서 Python 판 실행(로캘 인코딩 변화 영향), Linux 실행.

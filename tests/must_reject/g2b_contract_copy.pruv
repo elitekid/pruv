@@ -1,0 +1,6 @@
+// effect_in_contract: requires 안에서 copy(s) 호출 (계약에서 copy 금지)
+fn f(s: str) -> i64
+  requires len(copy(s)) >= 0
+{
+  return 0;
+}

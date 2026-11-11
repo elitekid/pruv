@@ -15,6 +15,8 @@ ARRAY = Type("array"); OPTION = Type("option"); RESULT = Type("result")
 # G2 A0: internal-only types (never accepted as source spelling). ARRAY stays the [i64] array.
 U8 = Type("u8")
 ARRAY_U8 = Type("array_u8"); ARRAY_BOOL = Type("array_bool")
+# G2 B0: the string type (not an array); internal name equals the source spelling
+STR = Type("str")
 
 # ---------- expressions ----------
 @dataclass
@@ -30,6 +32,11 @@ class IntLit(Expr):
 @dataclass
 class BoolLit(Expr):
     value: bool
+    ty: Optional[Type] = None
+
+@dataclass
+class StrLit(Expr):
+    value: bytes       # UTF-8 bytes of the literal (G2 B0)
     ty: Optional[Type] = None
 
 @dataclass

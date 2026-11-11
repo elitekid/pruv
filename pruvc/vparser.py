@@ -39,9 +39,70 @@ def _bar_after_type(toks):
     return a.val in ("i64", "bool", "u8", "Option", "Result") or a.val[:1].isupper()
 
 
+_STR_ESC = {'"': 0x22, "\\": 0x5C, "n": 0x0A, "r": 0x0D, "t": 0x09, "0": 0x00}
+
+
+def _lex_string(src, pos, line, lstart):
+    """G2 B0: read a string literal starting at the opening quote src[pos].
+    -> (raw text with quotes, position after the closing quote). Raises PruvError at the first bad character."""
+    qcol = pos - lstart + 1
+    i = pos + 1
+    n = len(src)
+    while True:
+        if i >= n:
+            raise PruvError("parse", line, qcol, "string_unterminated",
+                            "unterminated string literal", 'close it with "')
+        c = src[i]
+        if c == '"':
+            return src[pos:i + 1], i + 1
+        if c == "\\":
+            if i + 1 >= n:
+                raise PruvError("parse", line, qcol, "string_unterminated",
+                                "unterminated string literal", 'close it with "')
+            d = src[i + 1]
+            if d not in _STR_ESC:
+                raise PruvError("parse", line, i - lstart + 1, "string_escape",
+                                "unsupported escape %r in a string literal" % (c + d),
+                                'use one of \\" \\\\ \\n \\r \\t \\0')
+            i += 2
+            continue
+        if c == "\n":
+            raise PruvError("parse", line, i - lstart + 1, "string_character",
+                            "a string literal cannot span lines",
+                            "close the string before the line break, or write \\n")
+        o = ord(c)
+        if o < 0x20 or o == 0x7F:
+            raise PruvError("parse", line, i - lstart + 1, "string_character",
+                            "a string literal cannot contain the control character %r" % c,
+                            "write it as an escape (\\n, \\r, \\t, \\0) or remove it")
+        i += 1
+
+
+def _decode_string(raw):
+    """raw literal text (already validated by _lex_string) -> bytes"""
+    body = raw[1:-1]
+    out = bytearray()
+    i = 0
+    while i < len(body):
+        c = body[i]
+        if c == "\\":
+            out.append(_STR_ESC[body[i + 1]])
+            i += 2
+        else:
+            out.extend(c.encode("utf-8"))
+            i += 1
+    return bytes(out)
+
+
 def lex(src):
     toks, pos, line, lstart = [], 0, 1, 0
     while pos < len(src):
+        if src[pos] == '"':
+            raw, end_pos = _lex_string(src, pos, line, lstart)
+            col = pos - lstart + 1
+            toks.append(Tok("str", raw, line, col, col + len(raw)))
+            pos = end_pos
+            continue
         m = TOKEN_RE.match(src, pos)
         if not m:
             raise PruvError("parse", line, pos - lstart + 1, "bad_char",
@@ -268,13 +329,14 @@ class Parser:
                             "use i64 for a scalar, or [u8] for a byte array")
         if n.val == "i64": ty = I64
         elif n.val == "bool": ty = BOOL
+        elif n.val == "str": ty = STR   # G2 B0
         elif n.val in ("Option", "Result"):
             s.expect("<")
             e = s.ident()
             if s.at("|"):
                 s.ref_position(s.peek())
             if e.val != "i64":
-                if e.val[0].isupper() or e.val in ("u8", "i32"):
+                if e.val[0].isupper() or e.val in ("u8", "i32", "str"):
                     s.unsupported("%s<%s>" % (n.val, e.val), e)
                 s.err("%s only holds i64" % n.val, "use %s<i64>" % n.val, e)
             s.expect(">")
@@ -539,6 +601,8 @@ class Parser:
         t = s.peek()
         if t.kind == "int":
             s.next(); return IntLit(t.line, t.col, t.val)
+        if t.kind == "str":   # G2 B0
+            s.next(); return StrLit(t.line, t.col, _decode_string(t.val))
         if s.at("true") or s.at("false"):
             s.next(); return BoolLit(t.line, t.col, t.val == "true")
         if s.at("("):

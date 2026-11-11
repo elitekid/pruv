@@ -1,0 +1,5 @@
+// string_escape: "\x41" — 지원하지 않는 이스케이프, 위치는 그 역슬래시
+fn f() -> i64 ! alloc {
+  let s: str = "ab\x41";
+  return len(s);
+}

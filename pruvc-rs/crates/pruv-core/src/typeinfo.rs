@@ -4,8 +4,8 @@
 use crate::ast::*;
 use std::collections::{HashMap, HashSet};
 
-pub const BUILTIN_TYPE_NAMES: [&str; 8] =
-    ["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool"];
+pub const BUILTIN_TYPE_NAMES: [&str; 9] =
+    ["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str"];
 
 /// 내장이 아닌 이름이면 사용자 타입(선언 여부와 무관).
 pub fn is_user_type(ty: &str) -> bool {
@@ -42,6 +42,7 @@ pub fn type_name(ty: &str) -> String {
     match ty {
         "i64" => "i64".to_string(),
         "bool" => "bool".to_string(),
+        "str" => "str".to_string(),
         "unit" => "()".to_string(),
         "array" => "[i64]".to_string(),
         "array_u8" => "[u8]".to_string(),
@@ -104,11 +105,143 @@ fn g2_walk(prog: &Program, pick: &dyn Fn(&str) -> bool) -> Option<(i64, i64, Str
     None
 }
 
-/// [i64] 가 아닌 배열 타입(아직 구현 안 한 층)이 처음 나오는 곳: (line, col, 내부 타입 이름).
-/// 함수 순서대로, 각 함수에서 매개변수 → 반환 타입 → 본문 Let 선언 타입(소스 순서 깊이 우선).
+/// 후보 위치 중 (line, col) 이 가장 작은 것을 남긴다(같으면 먼저 본 것).
+fn g2_cand(best: &mut Option<(i64, i64, String)>, line: i64, col: i64, ty: &str) {
+    let better = match best {
+        None => true,
+        Some(b) => (line, col) < (b.0, b.1),
+    };
+    if better {
+        *best = Some((line, col, ty.to_string()));
+    }
+}
+
+/// 식 안의 모든 StrLit 을 후보로(와일드카드 없이 모든 변형을 나열).
+fn g2_cand_expr(e: &Expr, lits: bool, best: &mut Option<(i64, i64, String)>) {
+    match e {
+        Expr::IntLit(_) => {}
+        Expr::BoolLit(_) => {}
+        Expr::StrLit(x) => {
+            if lits {
+                g2_cand(best, x.line, x.col, "str");
+            }
+        }
+        Expr::Var(_) => {}
+        Expr::Unary(x) => g2_cand_expr(&x.operand, lits, best),
+        Expr::Binary(x) => {
+            g2_cand_expr(&x.left, lits, best);
+            g2_cand_expr(&x.right, lits, best);
+        }
+        Expr::Call(x) => {
+            for a in &x.args {
+                g2_cand_expr(a, lits, best);
+            }
+        }
+        Expr::Index(x) => {
+            g2_cand_expr(&x.array, lits, best);
+            g2_cand_expr(&x.index, lits, best);
+        }
+        Expr::Ctor(x) => {
+            if let Some(a) = &x.arg {
+                g2_cand_expr(a, lits, best);
+            }
+        }
+        Expr::Quant(x) => {
+            g2_cand_expr(&x.lo, lits, best);
+            g2_cand_expr(&x.hi, lits, best);
+            g2_cand_expr(&x.body, lits, best);
+        }
+        Expr::StructLit(x) => {
+            for f in &x.fields {
+                g2_cand_expr(&f.value, lits, best);
+            }
+        }
+        Expr::EnumCtor(x) => {
+            for a in &x.args {
+                g2_cand_expr(a, lits, best);
+            }
+        }
+        Expr::FieldAccess(x) => g2_cand_expr(&x.base, lits, best),
+        Expr::IsVariant(x) => g2_cand_expr(&x.value, lits, best),
+        Expr::VariantField(x) => g2_cand_expr(&x.value, lits, best),
+    }
+}
+
+/// 문장 안의 Let 타입(pick)과 모든 식의 StrLit 을 후보로(와일드카드 없이 모든 변형을 나열).
+fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, best: &mut Option<(i64, i64, String)>) {
+    for s in stmts {
+        match s {
+            Stmt::Let(l) => {
+                if pick(&l.ty) {
+                    g2_cand(best, l.line, l.col, &l.ty);
+                }
+                g2_cand_expr(&l.value, lits, best);
+            }
+            Stmt::Assign(a) => g2_cand_expr(&a.value, lits, best),
+            Stmt::IndexAssign(a) => {
+                g2_cand_expr(&a.index, lits, best);
+                g2_cand_expr(&a.value, lits, best);
+            }
+            Stmt::If(i) => {
+                g2_cand_expr(&i.cond, lits, best);
+                g2_cand_stmts(&i.then, pick, lits, best);
+                g2_cand_stmts(&i.els, pick, lits, best);
+            }
+            Stmt::While(w) => {
+                g2_cand_expr(&w.cond, lits, best);
+                for inv in &w.invariants {
+                    g2_cand_expr(inv, lits, best);
+                }
+                g2_cand_expr(&w.decreases, lits, best);
+                g2_cand_stmts(&w.body, pick, lits, best);
+            }
+            Stmt::Return(r) => {
+                if let Some(v) = &r.value {
+                    g2_cand_expr(v, lits, best);
+                }
+            }
+            Stmt::Assert(a) => g2_cand_expr(&a.cond, lits, best),
+            Stmt::ExprStmt(e) => g2_cand_expr(&e.expr, lits, best),
+            Stmt::FieldAssign(f) => g2_cand_expr(&f.value, lits, best),
+            Stmt::Match(m) => {
+                g2_cand_expr(&m.scrutinee, lits, best);
+                for arm in &m.arms {
+                    g2_cand_stmts(&arm.body, pick, lits, best);
+                }
+            }
+        }
+    }
+}
+
+/// 아직 구현 안 한 층의 타입(`[i64]` 가 아닌 배열, `str`)이 처음 나오는 곳: (line, col, 내부 타입 이름).
+/// 함수 선언 순서대로, 걸린 첫 함수에서: 매개변수 → 반환 타입 → 그 함수의 후보 위치(본문 Let 타입,
+/// `str` 이 skip 에 없으면 requires/ensures/본문 모든 식의 StrLit) 중 (line, col) 최소.
 /// `skip` 에 든 내부 이름은 건너뛴다.
 pub fn first_g2_unimplemented(prog: &Program, skip: &[&str]) -> Option<(i64, i64, String)> {
-    g2_walk(prog, &|t: &str| is_array_name(t) && t != "array" && !skip.contains(&t))
+    let pick = |t: &str| (t == "str" || (is_array_name(t) && t != "array")) && !skip.contains(&t);
+    let lits = !skip.contains(&"str");
+    for f in &prog.functions {
+        for p in &f.params {
+            if pick(&p.ty) {
+                return Some((f.line, f.col, p.ty.clone()));
+            }
+        }
+        if pick(&f.ret) {
+            return Some((f.line, f.col, f.ret.clone()));
+        }
+        let mut best: Option<(i64, i64, String)> = None;
+        for e in &f.requires {
+            g2_cand_expr(e, lits, &mut best);
+        }
+        for e in &f.ensures {
+            g2_cand_expr(e, lits, &mut best);
+        }
+        g2_cand_stmts(&f.body, &pick, lits, &mut best);
+        if best.is_some() {
+            return best;
+        }
+    }
+    None
 }
 
 /// 프로그램의 매개변수·반환·let 타입 중 내부 이름이 `name` 인 자리가 있는가.
@@ -126,6 +259,16 @@ pub fn g2_unimplemented_error(
     fix: Option<&str>,
 ) -> Option<crate::diagnostic::PruvError> {
     let (line, col, ty) = first_g2_unimplemented(prog, skip)?;
+    if ty == "str" {
+        return Some(crate::diagnostic::PruvError::new(
+            stage,
+            line,
+            col,
+            "unsupported_type",
+            format!("str is not supported yet: the {} layer is not implemented", layer.unwrap_or(stage)),
+            fix.unwrap_or("do not use str yet"),
+        ));
+    }
     Some(crate::diagnostic::PruvError::new(
         stage,
         line,
@@ -285,6 +428,6 @@ mod tests {
         assert_eq!(type_name("array_bool"), "[bool]");
         assert!(!is_user_type("array_u8"));
         assert!(!is_user_type("array_bool"));
-        assert_eq!(BUILTIN_TYPE_NAMES.len(), 8);
+        assert_eq!(BUILTIN_TYPE_NAMES.len(), 9);
     }
 }

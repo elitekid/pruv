@@ -1,0 +1,9 @@
+// unsupported_type(verify): str 매개변수 없이 중첩 블록의 str Let(5:5)과 그 뒤 리터럴들이 섞임 — 가드는 함수 안 최소 위치를 고른다
+fn f(n: i64) -> i64 ! alloc
+{
+  if n > 0 {
+    let t: str = "ab";
+    let k: i64 = len(t);
+  }
+  return len("xyz");
+}

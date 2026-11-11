@@ -50,6 +50,10 @@ pub fn expr(e: &Expr) -> Json {
     match e {
         Expr::IntLit(x) => node("IntLit", Some((x.line, x.col)), vec![("value", js(&x.value)), ("ty", ty(&x.ty))]),
         Expr::BoolLit(x) => node("BoolLit", Some((x.line, x.col)), vec![("value", Json::Bool(x.value)), ("ty", ty(&x.ty))]),
+        Expr::StrLit(x) => {
+            let hex: String = x.value.iter().map(|b| format!("{:02x}", b)).collect();
+            node("StrLit", Some((x.line, x.col)), vec![("value", Json::Str(hex)), ("ty", ty(&x.ty))])
+        }
         Expr::Var(x) => node("Var", Some((x.line, x.col)), vec![("name", js(&x.name)), ("ty", ty(&x.ty))]),
         Expr::Unary(x) => node(
             "Unary",

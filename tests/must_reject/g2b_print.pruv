@@ -1,0 +1,4 @@
+// print_type: print 에 str(리터럴)을 넘긴다 (print 는 i64·bool 만). 효과는 alloc, io 로 선언해 둠
+fn f() -> () ! alloc, io {
+  print("hi");
+}

@@ -1,0 +1,4 @@
+// missing_effect: 코드의 리터럴이 alloc 효과를 쓰는데 ! alloc 선언이 없다
+fn f() -> i64 {
+  return len("ab");
+}

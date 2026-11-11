@@ -1,0 +1,4 @@
+// array_alias: str 매개변수를 그대로 return (copy 필요)
+fn f(s: str) -> str {
+  return s;
+}

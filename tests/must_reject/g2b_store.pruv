@@ -1,0 +1,6 @@
+// immutable_string: 지역 str 의 바이트에 s[0] = 1 로 쓰기
+fn f() -> i64 ! alloc {
+  let mut s: str = "ab";
+  s[0] = 1;
+  return len(s);
+}

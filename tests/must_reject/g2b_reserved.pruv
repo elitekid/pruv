@@ -1,0 +1,4 @@
+// reserved: 함수 이름이 새 builtin substr
+fn substr(s: str) -> i64 {
+  return len(s);
+}

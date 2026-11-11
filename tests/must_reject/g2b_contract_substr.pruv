@@ -1,0 +1,6 @@
+// effect_in_contract: requires 안에서 substr(s, 0, 0) 호출 (계약에서 substr 금지)
+fn f(s: str) -> i64
+  requires len(substr(s, 0, 0)) == 0
+{
+  return 0;
+}

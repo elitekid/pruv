@@ -131,7 +131,7 @@ fn kids(e: &Expr) -> Vec<&Expr> {
         Expr::FieldAccess(x) => vec![&*x.base],
         Expr::IsVariant(x) => vec![&*x.value],
         Expr::VariantField(x) => vec![&*x.value],
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::Var(_) => Vec::new(),
+        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => Vec::new(),
     }
 }
 
@@ -221,6 +221,7 @@ fn shape_eq(a: &Expr, b: &Expr) -> bool {
     match (a, b) {
         (Expr::IntLit(x), Expr::IntLit(y)) => norm_int(&x.value) == norm_int(&y.value),
         (Expr::BoolLit(x), Expr::BoolLit(y)) => x.value == y.value,
+        (Expr::StrLit(x), Expr::StrLit(y)) => x.value == y.value,
         (Expr::Var(x), Expr::Var(y)) => x.name == y.name,
         (Expr::Unary(x), Expr::Unary(y)) => x.op == y.op && shape_eq(&x.operand, &y.operand),
         (Expr::Binary(x), Expr::Binary(y)) => {
@@ -746,6 +747,7 @@ impl Bld {
             }
             Expr::IntLit(x) => Expr::IntLit(ast::IntLit { line, col, value: x.value.clone(), ty: x.ty.clone() }),
             Expr::BoolLit(x) => Expr::BoolLit(ast::BoolLit { line, col, value: x.value, ty: x.ty.clone() }),
+            Expr::StrLit(x) => Expr::StrLit(ast::StrLit { line, col, value: x.value.clone(), ty: x.ty.clone() }),
             Expr::Unary(x) => Expr::Unary(ast::Unary {
                 line,
                 col,

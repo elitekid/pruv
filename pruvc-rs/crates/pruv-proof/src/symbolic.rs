@@ -939,6 +939,7 @@ impl<'a> FnVerifier<'a> {
         match e {
             Expr::IntLit(x) => Ok(Val::Int(self.z.int_str(&norm_int(&x.value)))),
             Expr::BoolLit(x) => Ok(Val::Bool(self.z.bool_val(x.value))),
+            Expr::StrLit(_) => Err("ev: string literal is not supported yet".to_string()),
             Expr::Var(x) => env.try_get(&x.name).cloned().ok_or_else(|| format!("'{}'", x.name)),
             Expr::Unary(x) => {
                 let v = self.ev_ast(&x.operand, st, g, code, env)?;

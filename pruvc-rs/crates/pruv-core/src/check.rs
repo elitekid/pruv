@@ -11,6 +11,7 @@ const I64: &str = "i64";
 const BOOL: &str = "bool";
 const UNIT: &str = "unit";
 const ARRAY: &str = "array";
+const STR: &str = "str";
 const OPTION: &str = "option";
 const RESULT: &str = "result";
 
@@ -131,6 +132,7 @@ fn set_ty(e: &mut Expr, t: &str) {
     match e {
         Expr::IntLit(x) => x.ty = v,
         Expr::BoolLit(x) => x.ty = v,
+        Expr::StrLit(x) => x.ty = v,
         Expr::Var(x) => x.ty = v,
         Expr::Unary(x) => x.ty = v,
         Expr::Binary(x) => x.ty = v,
@@ -154,7 +156,7 @@ impl Checker {
             if funcs.contains_key(&f.name) {
                 return Err(terr(f.line, f.col, "dup_fn", format!("function {} defined twice", f.name), ""));
             }
-            if matches!(f.name.as_str(), "len" | "alloc" | "copy" | "print") || contract_only(&f.name).is_some() {
+            if matches!(f.name.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr") || contract_only(&f.name).is_some() {
                 return Err(terr(f.line, f.col, "reserved", format!("{} is a builtin name", f.name), "rename the function"));
             }
             funcs.insert(
@@ -309,7 +311,7 @@ impl Checker {
             };
             for fields in groups {
                 for f in fields {
-                    if f.ty == UNIT || is_array_name(&f.ty) {
+                    if f.ty == UNIT || is_array_name(&f.ty) || f.ty == STR {
                         return Err(terr(
                             f.line,
                             f.col,
@@ -511,8 +513,8 @@ impl Checker {
                 self.check_type_ref(s.line, s.col, &s.ty)?;
                 self.want_alloc(&s.value, &s.ty);
                 self.expect(&mut s.value, &s.ty, scope, false)?;
-                if is_array_name(&s.ty) {
-                    self.array_source(s.line, s.col, &s.value, scope, false)?;
+                if is_array_name(&s.ty) || s.ty == STR {
+                    self.array_source(s.line, s.col, &s.value, scope, false, &s.ty)?;
                 }
                 scope.insert(s.name.clone(), Entry { ty: s.ty.clone(), mutable: s.mutable, kind: "local" });
             }
@@ -523,12 +525,21 @@ impl Checker {
                 }
                 self.want_alloc(&s.value, &v.ty);
                 self.expect(&mut s.value, &v.ty, scope, false)?;
-                if is_array_name(&v.ty) {
-                    self.array_source(s.line, s.col, &s.value, scope, false)?;
+                if is_array_name(&v.ty) || v.ty == STR {
+                    self.array_source(s.line, s.col, &s.value, scope, false, &v.ty)?;
                 }
             }
             Stmt::IndexAssign(s) => {
                 let v = self.lookup(s.line, s.col, &s.name, scope)?;
+                if v.ty == STR {
+                    return Err(terr(
+                        s.line,
+                        s.col,
+                        "immutable_string",
+                        format!("{} is a str; its bytes cannot be changed", s.name),
+                        "build a new str with substr() or copy() instead",
+                    ));
+                }
                 if !is_array_name(&v.ty) {
                     return Err(terr(s.line, s.col, "not_array", format!("{} is not an array", s.name), ""));
                 }
@@ -602,8 +613,8 @@ impl Checker {
                         }
                         self.want_alloc(v, &ret);
                         self.expect(v, &ret, scope, false)?;
-                        if is_array_name(&ret) {
-                            self.array_source(s.line, s.col, v, scope, true)?;
+                        if is_array_name(&ret) || ret == STR {
+                            self.array_source(s.line, s.col, v, scope, true, &ret)?;
                         }
                     }
                 }
@@ -727,8 +738,8 @@ impl Checker {
     }
 
     /// 배열은 명시적으로 옮기거나 빌린다: 새 배열은 alloc/copy/호출에서만 나온다.
-    fn array_source(&self, line: i64, col: i64, value: &Expr, scope: &Scope, allow_local_var: bool) -> Res<()> {
-        if matches!(value, Expr::Call(_)) {
+    fn array_source(&self, line: i64, col: i64, value: &Expr, scope: &Scope, allow_local_var: bool, ty: &str) -> Res<()> {
+        if matches!(value, Expr::Call(_) | Expr::StrLit(_)) {
             return Ok(());
         }
         if allow_local_var {
@@ -742,7 +753,11 @@ impl Checker {
             line,
             col,
             "array_alias",
-            "an array value here must come from alloc(), copy() or a function call",
+            if ty == STR {
+                "a str value here must come from a string literal, copy(), substr() or a function call"
+            } else {
+                "an array value here must come from alloc(), copy() or a function call"
+            },
             "write copy(x) to make an explicit copy (needs `! alloc`)",
         ))
     }
@@ -777,6 +792,12 @@ impl Checker {
                 Ok(I64.to_string())
             }
             Expr::BoolLit(_) => Ok(BOOL.to_string()),
+            Expr::StrLit(_) => {
+                if !c {
+                    self.used_effects.insert("alloc".to_string());
+                }
+                Ok(STR.to_string())
+            }
             Expr::Var(x) => {
                 if x.name == "result" && !scope.contains_key("result") {
                     return Err(terr(x.line, x.col, "result_scope", "`result` is only allowed in ensures", ""));
@@ -816,6 +837,15 @@ impl Checker {
                                 "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]",
                             ));
                         }
+                        if lt == STR {
+                            return Err(terr(
+                                x.line,
+                                x.col,
+                                "eq_type",
+                                "str values cannot be compared with ==",
+                                "compare lengths and bytes: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]",
+                            ));
+                        }
                         if lt != I64 && lt != BOOL && !c {
                             return Err(terr(x.line, x.col, "eq_type", "== only compares i64 or bool in code", "use match"));
                         }
@@ -840,7 +870,7 @@ impl Checker {
             }
             Expr::Index(x) => {
                 let at = self.expr(&mut x.array, scope, c)?;
-                if !is_array_name(&at) {
+                if !is_array_name(&at) && at != STR {
                     return Err(terr(
                         x.array.line(),
                         x.array.col(),
@@ -1074,7 +1104,7 @@ impl Checker {
             "len" => {
                 arity(1)?;
                 let at = self.expr(&mut e.args[0], scope, c)?;
-                if !is_array_name(&at) {
+                if !is_array_name(&at) && at != STR {
                     return Err(terr(
                         e.args[0].line(),
                         e.args[0].col(),
@@ -1104,7 +1134,7 @@ impl Checker {
                 }
                 arity(1)?;
                 let at = self.expr(&mut e.args[0], scope, c)?;
-                if !is_array_name(&at) {
+                if !is_array_name(&at) && at != STR {
                     return Err(terr(
                         e.args[0].line(),
                         e.args[0].col(),
@@ -1115,6 +1145,23 @@ impl Checker {
                 }
                 self.used_effects.insert("alloc".to_string());
                 return Ok(at);
+            }
+            "is_char_boundary" => {
+                arity(2)?;
+                self.expect(&mut e.args[0], STR, scope, c)?;
+                self.expect(&mut e.args[1], I64, scope, c)?;
+                return Ok(BOOL.to_string());
+            }
+            "substr" => {
+                if c {
+                    return Err(terr(line, col, "effect_in_contract", "substr not allowed in contracts", ""));
+                }
+                arity(3)?;
+                self.expect(&mut e.args[0], STR, scope, c)?;
+                self.expect(&mut e.args[1], I64, scope, c)?;
+                self.expect(&mut e.args[2], I64, scope, c)?;
+                self.used_effects.insert("alloc".to_string());
+                return Ok(STR.to_string());
             }
             "print" => {
                 if c {

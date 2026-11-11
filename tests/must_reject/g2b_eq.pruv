@@ -1,0 +1,4 @@
+// eq_type: 코드에서 str 전체를 == 로 비교
+fn f(a: str, b: str) -> bool {
+  return a == b;
+}

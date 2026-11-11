@@ -1,4 +1,4 @@
-//! Pruv AST (vast.py 대응): 식 14 + 문 10 + 선언/보조 9 = 33 노드.
+//! Pruv AST (vast.py 대응): 식 15 + 문 10 + 선언/보조 9 = 34 노드.
 //! Type 은 이름 문자열 하나. 정수는 부호+정규화 십진 문자열(임의 길이).
 //! `ty` 는 parse 단계에서 항상 None (검사 단계가 채운다).
 
@@ -10,6 +10,8 @@ pub type Ty = Option<String>;
 pub struct IntLit { pub line: i64, pub col: i64, pub value: String, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoolLit { pub line: i64, pub col: i64, pub value: bool, pub ty: Ty }
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrLit { pub line: i64, pub col: i64, pub value: Vec<u8>, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
 pub struct Var { pub line: i64, pub col: i64, pub name: String, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +47,7 @@ pub struct VariantField {
 pub enum Expr {
     IntLit(IntLit),
     BoolLit(BoolLit),
+    StrLit(StrLit),
     Var(Var),
     Unary(Unary),
     Binary(Binary),
@@ -64,6 +67,7 @@ impl Expr {
         match self {
             Expr::IntLit(x) => x.line,
             Expr::BoolLit(x) => x.line,
+            Expr::StrLit(x) => x.line,
             Expr::Var(x) => x.line,
             Expr::Unary(x) => x.line,
             Expr::Binary(x) => x.line,
@@ -82,6 +86,7 @@ impl Expr {
         match self {
             Expr::IntLit(x) => x.col,
             Expr::BoolLit(x) => x.col,
+            Expr::StrLit(x) => x.col,
             Expr::Var(x) => x.col,
             Expr::Unary(x) => x.col,
             Expr::Binary(x) => x.col,

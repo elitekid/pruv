@@ -1,0 +1,6 @@
+// array_alias: 재대입 RHS 가 다른 str 변수 (s = a;)
+fn f(a: str) -> i64 ! alloc {
+  let mut s: str = "x";
+  s = a;
+  return len(s);
+}

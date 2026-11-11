@@ -1,0 +1,6 @@
+// unsupported_type(codegen, --no-verify): 리터럴이 requires 에만 있다 (계약 안 리터럴은 효과 없음, 시그니처엔 str 없음) — 생성 층 가드가 리터럴 위치로 거부
+fn f(s: [u8]) -> i64
+  requires len(s) >= len("a")
+{
+  return 0;
+}

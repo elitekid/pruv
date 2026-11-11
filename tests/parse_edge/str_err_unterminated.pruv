@@ -1,0 +1,3 @@
+// string_unterminated: 닫는 따옴표 없이 파일이 끝난다 (파일 끝 줄바꿈 없음)
+fn f() -> i64 {
+  let s: str = "abc // not a comment

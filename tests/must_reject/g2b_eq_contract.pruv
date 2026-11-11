@@ -1,0 +1,6 @@
+// eq_type: requires 안에서 str 전체를 == 로 비교 (계약에서도 거부)
+fn f(a: str, b: str) -> i64
+  requires a == b
+{
+  return 0;
+}

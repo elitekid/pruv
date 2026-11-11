@@ -1,0 +1,48 @@
+// ok: str 매개변수·반환, 리터럴, len, 색인, copy, substr, is_char_boundary(코드·계약), 계약 안 리터럴, 전체 재대입, 지역 str 반환, 리터럴 인자 호출, 루프 안 바이트 읽기
+fn first(s: str) -> i64
+  requires len(s) > 0
+  requires is_char_boundary(s, 0)
+  requires len(s) >= len("a")
+  ensures result >= 0 || result < 0
+{
+  return s[0];
+}
+fn lit() -> str ! alloc {
+  return "hello";
+}
+fn dup(s: str) -> str ! alloc {
+  return copy(s);
+}
+fn cut(s: str, i: i64) -> str ! alloc
+  requires 0 <= i && i <= len(s)
+  requires is_char_boundary(s, i)
+{
+  return substr(s, 0, i);
+}
+fn bd(s: str, i: i64) -> bool {
+  return is_char_boundary(s, i);
+}
+fn loc() -> str ! alloc {
+  let mut s: str = "ab";
+  s = "cd";
+  s = copy(s);
+  s = lit();
+  return s;
+}
+fn caller() -> i64 ! alloc {
+  return first("xyz");
+}
+fn sumb(s: str) -> i64
+  requires len(s) >= 0
+{
+  let mut i: i64 = 0;
+  let mut t: i64 = 0;
+  while i < len(s)
+    invariant 0 <= i && i <= len(s)
+    decreases len(s) - i
+  {
+    t = t + s[i];
+    i = i + 1;
+  }
+  return t;
+}

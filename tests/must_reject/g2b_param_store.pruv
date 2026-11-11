@@ -1,0 +1,5 @@
+// immutable_string: str 매개변수의 바이트에 s[0] = 1 로 쓰기
+fn f(s: str) -> i64 {
+  s[0] = 1;
+  return len(s);
+}

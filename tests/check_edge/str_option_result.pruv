@@ -1,0 +1,4 @@
+// unsupported_type: Result<str> 은 지원하지 않는다 (Option<str> 과 같은 줄)
+fn f() -> Result<str> {
+  return None;
+}

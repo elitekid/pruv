@@ -23,6 +23,7 @@ pub enum Kind {
     Id,
     Kw,
     Op,
+    Str,
     Eof,
 }
 
@@ -95,6 +96,62 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
             line += 1;
             pos += 1;
             lstart = pos;
+        } else if c == '"' {
+            // G2 B0: 문자열 리터럴. val 은 원문(따옴표·역슬래시 포함), 디코드는 파서가 한다.
+            let start = pos;
+            pos += 1;
+            loop {
+                if pos >= n {
+                    return Err(PruvError::new("parse", line, col, "string_unterminated", "unterminated string literal", "close it with \""));
+                }
+                let ch = src[pos];
+                let ccol = (pos - lstart + 1) as i64;
+                if ch == '"' {
+                    pos += 1;
+                    break;
+                }
+                if ch == '\\' {
+                    if pos + 1 >= n {
+                        return Err(PruvError::new("parse", line, col, "string_unterminated", "unterminated string literal", "close it with \""));
+                    }
+                    let nx = src[pos + 1];
+                    if matches!(nx, '"' | '\\' | 'n' | 'r' | 't' | '0') {
+                        pos += 2;
+                    } else {
+                        let two: String = [ch, nx].iter().collect();
+                        return Err(PruvError::new(
+                            "parse",
+                            line,
+                            ccol,
+                            "string_escape",
+                            format!("unsupported escape {} in a string literal", repr_str(&two)),
+                            "use one of \\\" \\\\ \\n \\r \\t \\0",
+                        ));
+                    }
+                } else if ch == '\n' {
+                    return Err(PruvError::new(
+                        "parse",
+                        line,
+                        ccol,
+                        "string_character",
+                        "a string literal cannot span lines",
+                        "close the string before the line break, or write \\n",
+                    ));
+                } else if (ch as u32) < 0x20 || ch as u32 == 0x7F {
+                    return Err(PruvError::new(
+                        "parse",
+                        line,
+                        ccol,
+                        "string_character",
+                        format!("a string literal cannot contain the control character {}", repr_str(&ch.to_string())),
+                        "write it as an escape (\\n, \\r, \\t, \\0) or remove it",
+                    ));
+                } else {
+                    pos += 1;
+                }
+            }
+            let val: String = src[start..pos].iter().collect();
+            toks.push(Tok { kind: Kind::Str, val, line, col, end: col + (pos - start) as i64 });
         } else if c == '/' && pos + 1 < n && src[pos + 1] == '/' {
             while pos < n && src[pos] != '\n' {
                 pos += 1;

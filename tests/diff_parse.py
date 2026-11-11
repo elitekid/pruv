@@ -41,7 +41,8 @@ BATCH = 200
 RS_TIMEOUT = 300
 MAX_SHOWN = 10
 CONTEXT = 60
-REQUIRED_CODES = ("bad_char", "bad_int", "reserved_name", "unsupported_type", "syntax")
+REQUIRED_CODES = ("bad_char", "bad_int", "reserved_name", "unsupported_type", "syntax",
+                  "string_escape", "string_unterminated", "string_character")
 QUANT_KINDS = ("forall", "exists", "sum", "count", "max", "min")   # 직렬화에서 Quant 의 kind 가 이 값으로 덮인다
 
 GROUP_DIRS = [
@@ -56,7 +57,7 @@ PARSE_EDGE_DIR = "tests/parse_edge"
 ALL_GROUPS = [g for g, _ in GROUP_DIRS] + ["bytes", "fuzz", "mutate"]
 CHECK_CODES = (
     "arity array_alias call_in_contract contract_only dup_field dup_fn dup_param dup_type dup_variant "
-    "effect_in_contract empty_enum eq_type field_name field_type immutable int_range match_arity "
+    "effect_in_contract empty_enum eq_type field_name field_type immutable immutable_string int_range match_arity "
     "match_arms match_type missing_effect missing_return name_collision not_array not_enum not_struct "
     "print_type recursion recursive_type reserved result_scope return_type shadow struct_fields "
     "type_mismatch type_name unit_let unit_param unknown_field unknown_fn unknown_name unknown_type "
@@ -456,7 +457,7 @@ def coverage(all_cases, enforce):
     print("  안 나온 kind: %s" % (", ".join(missing_kinds) if missing_kinds else "없음"))
     extra = sorted(kinds - expected)
     if extra:
-        print("  vast 33 노드 밖의 kind 값: %s" % ", ".join(extra))
+        print("  vast 34 노드 밖의 kind 값: %s" % ", ".join(extra))
     print("parse 오류 code: %s" % (", ".join("%s=%d" % kv for kv in sorted(codes.items())) or "없음"))
     print("  빠진 필수 code: %s" % (", ".join(missing_codes) if missing_codes else "없음"))
     print("오류 message 앞머리 형태: %d종" % len(heads))

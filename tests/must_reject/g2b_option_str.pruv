@@ -1,0 +1,4 @@
+// unsupported_type: Option<str> 은 지원하지 않는다 (Option 은 i64 만)
+fn f() -> Option<str> {
+  return None;
+}

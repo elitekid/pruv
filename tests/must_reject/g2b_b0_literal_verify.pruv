@@ -1,0 +1,2 @@
+// unsupported_type(verify): str 타입 이름 없이 리터럴만 있어도 증명 층이 거부한다 (리터럴 위치 후보)
+fn f() -> i64 ! alloc { return len("abc"); }

@@ -1,4 +1,4 @@
-// bad_char: 큰따옴표 " — 메시지의 %r 은 '"' 모양
+// 이제 문자열 리터럴로 parse 성공(check에서는 print_type)
 fn main() -> () ! io {
   print("hi");
 }

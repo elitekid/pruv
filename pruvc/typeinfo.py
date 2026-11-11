@@ -5,9 +5,9 @@ from typing import Dict, List, Optional
 
 from vast import *
 
-BUILTIN_TYPE_NAMES = frozenset(["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool"])
+BUILTIN_TYPE_NAMES = frozenset(["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str"])
 _BUILTIN_PRINT = {"i64": "i64", "bool": "bool", "unit": "()", "array": "[i64]", "option": "Option<i64>",
-                  "result": "Result<i64>", "array_u8": "[u8]", "array_bool": "[bool]"}
+                  "result": "Result<i64>", "array_u8": "[u8]", "array_bool": "[bool]", "str": "str"}
 
 
 # G2 A0: one place for array type queries (internal array types -> element type).
@@ -40,34 +40,30 @@ def type_name(ty: Type) -> str:
 
 
 def _g2_hit(ty, skip):
-    return is_array(ty) and ty != ARRAY and ty.name not in skip
+    return ((is_array(ty) and ty != ARRAY) or ty == STR) and ty.name not in skip
 
 
-def _first_g2_in_block(stmts, skip=()):
-    """first (line, col, ty) of a Let with a non-[i64] array type, source order, depth first"""
-    for st in stmts:
-        if isinstance(st, Let):
-            if _g2_hit(st.type, skip):
-                return (st.line, st.col, st.type)
-        elif isinstance(st, If):
-            r = _first_g2_in_block(st.then, skip) or _first_g2_in_block(st.els, skip)
-            if r:
-                return r
-        elif isinstance(st, While):
-            r = _first_g2_in_block(st.body, skip)
-            if r:
-                return r
-        elif isinstance(st, Match):
-            for arm in st.arms:
-                r = _first_g2_in_block(arm.body, skip)
-                if r:
-                    return r
-    return None
+def _g2_candidates(node, skip, out):
+    """collect (line, col, ty) candidates under node: Lets with a hit type, and (when "str" is not
+    skipped) every StrLit. Generic walk over dataclass fields (Types are skipped)."""
+    if isinstance(node, list):
+        for x in node:
+            _g2_candidates(x, skip, out)
+        return
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return
+    if isinstance(node, Let) and _g2_hit(node.type, skip):
+        out.append((node.line, node.col, node.type))
+    elif isinstance(node, StrLit) and "str" not in skip:
+        out.append((node.line, node.col, STR))
+    for fname in node.__dataclass_fields__:
+        _g2_candidates(getattr(node, fname), skip, out)
 
 
 def first_g2_unimplemented(prog, skip=()):
-    """G2: first non-[i64] array type the proof/codegen layers do not implement yet.
-    -> (line, col, ty) or None. Order per function: params, return type, body lets.
+    """G2: first non-[i64] array type or str the proof/codegen layers do not implement yet.
+    -> (line, col, ty) or None. Per function (declaration order): first param, return type, then the
+    smallest (line, col) among body Lets and (unless "str" is skipped) string literals anywhere in the function.
     skip: internal type names (e.g. "array_u8") that are ignored."""
     for fn in prog.functions:
         for p in fn.params:
@@ -75,9 +71,12 @@ def first_g2_unimplemented(prog, skip=()):
                 return (fn.line, fn.col, p.type)
         if _g2_hit(fn.ret, skip):
             return (fn.line, fn.col, fn.ret)
-        r = _first_g2_in_block(fn.body, skip)
-        if r:
-            return r
+        cands = []
+        _g2_candidates(fn.requires, skip, cands)
+        _g2_candidates(fn.ensures, skip, cands)
+        _g2_candidates(fn.body, skip, cands)
+        if cands:
+            return min(cands, key=lambda c: (c[0], c[1]))
     return None
 
 
@@ -118,6 +117,10 @@ def g2_unimplemented_error(prog, stage, layer=None, skip=(), fix=None):
     if f is None:
         return None
     line, col, ty = f
+    if ty == STR:
+        return PruvError(stage, line, col, "unsupported_type",
+                         "str is not supported yet: the %s layer is not implemented" % (layer or stage),
+                         fix or "do not use str yet")
     return PruvError(stage, line, col, "unsupported_type",
                      "%s arrays are not supported yet: the %s layer is not implemented" % (type_name(ty), layer or stage),
                      fix or "use [i64] for now")

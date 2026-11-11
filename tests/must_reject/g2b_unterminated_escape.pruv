@@ -1,0 +1,3 @@
+// string_unterminated: 리터럴이 "ab\ 로 끝나고 바로 파일 끝 (역슬래시 뒤가 입력 끝, 파일 끝 줄바꿈 없음)
+fn f() -> i64 ! alloc {
+  let s: str = "ab\

@@ -156,6 +156,7 @@ fn expr_ty(e: &Expr) -> &Option<String> {
     match e {
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
+        Expr::StrLit(x) => &x.ty,
         Expr::Var(x) => &x.ty,
         Expr::Unary(x) => &x.ty,
         Expr::Binary(x) => &x.ty,
@@ -474,6 +475,7 @@ impl<'a> Gen<'a> {
                 format!("{}i128", x.value)
             }),
             Expr::BoolLit(x) => Ok((if x.value { "true" } else { "false" }).to_string()),
+            Expr::StrLit(_) => Err("codegen: unsupported expression in requires: string literal".to_string()), // G2 B0: B2
             Expr::Var(x) => {
                 if self.bound.iter().any(|b| b == &x.name) {
                     return Ok(x.name.clone());

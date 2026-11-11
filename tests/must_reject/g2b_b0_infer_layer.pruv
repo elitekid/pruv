@@ -1,0 +1,17 @@
+// unsupported_type(verify, --infer): while 루프가 있는 정상 str 프로그램은 --infer 도 증명 층 가드에서 끝난다 (불변식 추론에 닿지 않음)
+fn zeros(s: str) -> i64
+  requires len(s) >= 0
+{
+  let mut i: i64 = 0;
+  let mut z: i64 = 0;
+  while i < len(s)
+    invariant 0 <= i && i <= len(s)
+    decreases len(s) - i
+  {
+    if s[i] == 0 {
+      z = z + 1;
+    }
+    i = i + 1;
+  }
+  return z;
+}

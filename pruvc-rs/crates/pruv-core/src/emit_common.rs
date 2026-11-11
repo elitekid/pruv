@@ -113,6 +113,7 @@ pub fn show(e: &Expr) -> String {
     match e {
         Expr::IntLit(x) => x.value.clone(),
         Expr::BoolLit(x) => (if x.value { "true" } else { "false" }).to_string(),
+        Expr::StrLit(_) => "<str>".to_string(),
         Expr::Var(x) => x.name.clone(),
         Expr::Unary(x) => format!("{}{}", x.op, show(&x.operand)),
         Expr::Binary(x) => format!("({} {} {})", show(&x.left), x.op, show(&x.right)),

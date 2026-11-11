@@ -65,6 +65,7 @@ NODE_FIELDS = {
     # expressions
     "IntLit": ("value", "ty"),
     "BoolLit": ("value", "ty"),
+    "StrLit": ("value", "ty"),   # G2 B0: value = UTF-8 bytes, serialized as lowercase hex
     "Var": ("name", "ty"),
     "Unary": ("op", "operand", "ty"),
     "Binary": ("op", "left", "right", "ty"),
@@ -144,6 +145,8 @@ def ser(v):
         return v
     if isinstance(v, int):
         return str(v)
+    if isinstance(v, bytes):
+        return v.hex()   # G2 B0: StrLit.value, lowercase hex (empty -> "")
     if isinstance(v, list):
         return [ser(x) for x in v]
     if isinstance(v, vast.Type):
@@ -173,7 +176,7 @@ def internal_err(e):
 
 
 def read_source(path):
-    return open(path).read()   # same as pruvc.compile_file
+    return open(path, encoding="utf-8").read()   # same as pruvc.compile_file
 
 
 # ---------------------------------------------------------------------------

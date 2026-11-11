@@ -390,6 +390,7 @@ fn expr_ty(e: &Expr) -> &Option<String> {
     match e {
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
+        Expr::StrLit(x) => &x.ty,
         Expr::Var(x) => &x.ty,
         Expr::Unary(x) => &x.ty,
         Expr::Binary(x) => &x.ty,
@@ -1538,6 +1539,7 @@ impl<'a> FnGen<'a> {
         match e {
             Expr::IntLit(x) => Ok(V::new(Kind::I128, x.value.clone())),
             Expr::BoolLit(x) => Ok(V::new(Kind::I1, if x.value { "true" } else { "false" })),
+            Expr::StrLit(_) => Err("llvmgen: unsupported expression in requires: string literal".to_string().into()), // G2 B0: B2
             Expr::Var(x) => match self.cenv.get(&x.name) {
                 Some(v) => Ok(v.clone()),
                 None => Err(format!("llvmgen: unsupported variable in requires: {}", x.name)),

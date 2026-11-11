@@ -1,0 +1,5 @@
+// type_mismatch: str 값을 [u8] 지역에 대입 (str 은 배열이 아니다)
+fn f(s: str) -> i64 {
+  let b: [u8] = s;
+  return len(b);
+}

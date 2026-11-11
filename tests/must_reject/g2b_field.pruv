@@ -1,0 +1,2 @@
+// field_type: 구조체 필드 타입이 str (필드는 i64·bool 계열만)
+struct P { name: str, n: i64 }

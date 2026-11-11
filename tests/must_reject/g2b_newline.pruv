@@ -1,0 +1,6 @@
+// string_character: 리터럴 안에 실제 줄바꿈 (한 줄을 넘는 문자열 금지)
+fn f() -> i64 ! alloc {
+  let s: str = "ab
+cd";
+  return len(s);
+}

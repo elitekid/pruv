@@ -1,0 +1,5 @@
+// array_alias: let s: str = t; — 다른 str 변수로 별칭 (리터럴·copy·substr·호출만 허용)
+fn f(t: str) -> i64 {
+  let s: str = t;
+  return len(s);
+}

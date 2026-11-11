@@ -1,0 +1,5 @@
+// string_escape: 지원하지 않는 이스케이프 \x (리터럴 "\xFF")
+fn f() -> i64 ! alloc {
+  let s: str = "\xFF";
+  return len(s);
+}
