@@ -830,5 +830,6 @@ B1까지 증명만 되던 `str`을 Rust 소스 뒷단·LLVM 뒷단·raw ABI·`--
   - m3_all 12단계 ok(llvm·rust 생성물 두 판 same, compilers 1050, standalone 50 same, abi_bool 16/16, abi_utf8 104/104), cli_also_llvm 두 판 373/373, `tests/inference --regress` 두 판 325/325, 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1, winci `prepare.py --check` 60파일 동일
 - **감사(Claude Opus):** 필수 0·권고 6. (a) raw 선검사, (b) SMT·실행 경계 일치, (c) substr 바이트 관계·해제 모두 결함 없음. 반영: `pruv_check_utf8` 음수 길이·NULL 거부, 경계 끝값 UTF-8 표본 11, 2^64 계약 경계 표본, `pruv_str_boundary` 선언에 `willreturn memory(argmem: read)`, Py `uses_str` 한 번만 계산. `__typed` 공개 기호(A5 와 같은 설계)와 바인딩 반환 재검사(`--trust-callers` 에서의 방어)는 이유를 명세 5.5에 적고 유지.
 - **확인 감사(Claude Opus):** 필수 0, 고침 6건 확인(`memory(argmem: read)` 는 clang 22·Apple clang 17 이 받고 런타임 함수가 실제로 인자 메모리만 읽음). 권고 2 반영: 음수 길이·NULL 시험 추가, 런타임·시험 머리 주석 갱신.
+- **Windows CI:** runtime.c·winci 를 바꿔 실행됨. 푸시 뒤 run 43012869415(커밋 0600c22) success — windows-latest clang 이 `memory(argmem: read)` 선언과 str 생성물(`g2b_str_ret`·`g2a_bool_opt` 포함)을 받아 실행함.
 - 남긴 것: `[i64]`·`[u8]`·`[bool]` raw 진입의 음수 길이·NULL 거부(B2 전부터 있던 공백, str 만 고침).
-- 측정 못 한 것: str 증명·실행 시간, Linux 실행, windows-latest clang 이 `memory(...)` 문법(LLVM 16+)을 받는지는 CI 결과로만 확인.
+- 측정 못 한 것: str 증명·실행 시간, Linux 실행.
