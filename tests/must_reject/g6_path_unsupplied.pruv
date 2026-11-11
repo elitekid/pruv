@@ -1,0 +1,4 @@
+// foreign_path: the first segment names a crate that was not supplied with --rust-extern (no flags in this fixture)
+trusted rust fn parse_code(a: i64) -> i64
+  ensures true
+  = "::adapter::f";

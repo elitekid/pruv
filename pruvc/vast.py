@@ -127,6 +127,11 @@ class Quant(Expr):
     body: Expr
     ty: Optional[Type] = None
 
+@dataclass
+class Move(Expr):
+    name: str          # G6: `move name` (consumes an owned collection binding)
+    ty: Optional[Type] = None
+
 # ---------- G1: structs and enums ----------
 # A user type is Type("Point"): nominal, equal iff the names are equal.
 @dataclass
@@ -342,6 +347,12 @@ Ctor.inst = None
 # set by the checker on IsVariant / VariantField: the complete instantiated enum type of the scrutinee
 IsVariant.enum_ty = None
 VariantField.enum_ty = None
+
+# ---------- G6 A0: foreign declarations and ownership ----------
+# Same convention as G3: plain class attributes, so every dump of a G6-free program is unchanged.
+Param.take = False         # `take name: Type` (consuming collection parameter)
+Function.foreign = None    # trusted rust fn: {"path": "::std::cmp::min", "line": L, "col": C} (line/col of the path
+                           # string token); the body is []
 
 
 class PruvError(Exception):

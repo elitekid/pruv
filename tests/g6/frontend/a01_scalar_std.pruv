@@ -1,0 +1,23 @@
+// G6 A0 accept: trusted rust fn with scalar parameters, a std path, requires/ensures, called from a Pruv fn
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+trusted rust fn rust_max(a: i64, b: i64) -> i64
+  ensures result >= a && result >= b
+  = "::std::cmp::max";
+
+fn smaller_positive(a: i64, b: i64) -> i64
+  requires a > 0 && b > 0
+  ensures result > 0
+{
+  return rust_min(a, b);
+}
+
+fn spread(a: i64, b: i64) -> i64
+  requires 0 <= a && a <= 1000 && 0 <= b && b <= 1000
+  ensures result >= 0
+{
+  return rust_max(a, b) - rust_min(a, b);
+}

@@ -103,6 +103,16 @@ impl GType {
         self.owner.is_some()
     }
 
+    /// G6 A0: Vec / HashMap / String (internal names vec / hashmap / string), never a bound parameter.
+    pub fn is_collection(&self) -> bool {
+        self.owner.is_none() && collection_arity(&self.name).is_some()
+    }
+
+    /// G6 A0: this is a collection type or has one anywhere inside its type arguments.
+    pub fn contains_collection(&self) -> bool {
+        self.is_collection() || self.args.iter().any(|a| a.contains_collection())
+    }
+
     /// Whether this names a user struct/enum (declared or not); not a built-in name and not a parameter.
     pub fn is_user_type(&self) -> bool {
         self.owner.is_none() && !BUILTIN_TYPE_NAMES.contains(&self.name.as_str())
@@ -137,6 +147,34 @@ impl GType {
         } else {
             None
         }
+    }
+}
+
+/// G6 A0: the fixed owned collection types (G6_SPEC 10.1): internal name -> number of type arguments.
+pub fn collection_arity(name: &str) -> Option<usize> {
+    match name {
+        "vec" => Some(1),
+        "hashmap" => Some(2),
+        "string" => Some(0),
+        _ => None,
+    }
+}
+
+/// G6 A0: internal collection name -> source spelling.
+pub fn collection_spelling(name: &str) -> Option<&'static str> {
+    match name {
+        "vec" => Some("Vec"),
+        "hashmap" => Some("HashMap"),
+        "string" => Some("String"),
+        _ => None,
+    }
+}
+
+/// G6 A0: whether an AST type key (see `to_key`) denotes a collection type; a key that is not a collection (or not parseable) -> false.
+pub fn key_is_collection(key: &str) -> bool {
+    match GType::try_from_key(key) {
+        Ok(t) => t.is_collection(),
+        Err(_) => false,
     }
 }
 
@@ -329,6 +367,7 @@ fn builtin_print(name: &str) -> &str {
         "array_u8" => "[u8]",
         "array_bool" => "[bool]",
         "str" => "str",
+        "string" => "String", // G6 A0
         other => other,
     }
 }
@@ -346,7 +385,10 @@ pub fn format_type(ty: &GType) -> String {
         "array" => format!("[{}]", inner),
         "option" => format!("Option<{}>", inner),
         "result" => format!("Result<{}>", inner),
-        other => format!("{}<{}>", other, inner),
+        other => match collection_spelling(other) {
+            Some(sp) => format!("{}<{}>", sp, inner), // G6 A0
+            None => format!("{}<{}>", other, inner),
+        },
     }
 }
 
@@ -399,6 +441,19 @@ pub fn check_arity(ty: &GType, decls: Decls) -> Result<(), TypeArityError> {
         && ty.args.len() != 1
     {
         return Err(TypeArityError(format!("{} expects 1 type argument, got {}", ty.name, ty.args.len())));
+    }
+    // G6 A0: Vec<T>, HashMap<K, V>, String
+    if ty.owner.is_none() {
+        if let Some(want) = collection_arity(&ty.name) {
+            if ty.args.len() != want {
+                return Err(TypeArityError(format!(
+                    "{} expects {} type argument(s), got {}",
+                    collection_spelling(&ty.name).unwrap_or(""),
+                    want,
+                    ty.args.len()
+                )));
+            }
+        }
     }
     if is_nominal(ty) {
         if let Some((n, _)) = decls(&ty.name) {

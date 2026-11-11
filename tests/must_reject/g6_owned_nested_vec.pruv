@@ -1,0 +1,4 @@
+// foreign_owned_type: a Vec nested inside a Vec
+fn f(v: Vec<Vec<i64>>) -> i64 {
+  return 0;
+}

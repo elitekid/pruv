@@ -619,8 +619,8 @@ mod tests {
             col: 1,
             name: "f".into(),
             params: vec![
-                Param { name: "x".into(), ty: "i64".into(), refine: None },
-                Param { name: "b".into(), ty: "bool".into(), refine: None },
+                Param { name: "x".into(), ty: "i64".into(), refine: None, take: false },
+                Param { name: "b".into(), ty: "bool".into(), refine: None, take: false },
             ],
             ret: "bool".into(),
             effects: vec![],
@@ -629,6 +629,7 @@ mod tests {
             body: vec![],
             ret_refine: None,
             tparams: vec![],
+            foreign: None,
         };
         assert_eq!(
             abi_of(&f, &tt, AbiTarget::SysV, &mut Mod::new()).unwrap(),
@@ -646,7 +647,7 @@ mod tests {
             line: 1,
             col: 1,
             name: "f".into(),
-            params: vec![Param { name: "x".into(), ty: "i64".into(), refine: None }],
+            params: vec![Param { name: "x".into(), ty: "i64".into(), refine: None, take: false }],
             ret: "option".into(),
             effects: vec![],
             requires: vec![],
@@ -654,6 +655,7 @@ mod tests {
             body: vec![],
             ret_refine: None,
             tparams: vec![],
+            foreign: None,
         }
     }
 

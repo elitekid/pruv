@@ -3,8 +3,11 @@ import re
 from vast import *
 from typeinfo import (TypeTable, BUILTIN_TYPE_NAMES, type_name, is_user_type, is_array, array_elem,  # G2 A5: array_elem
                       TypeArityError, check_arity, bind_args, substitute, is_value, is_element,
-                      dependencies, decl_owner, fn_owner)  # G3 A1
+                      dependencies, decl_owner, fn_owner,  # G3 A1
+                      COLLECTION_ARITY, COLLECTION_SPELLING, is_collection, contains_collection)  # G6 A0
 from refine import expand as refine_expand
+from refine import _kids as expr_kids
+from foreign import (CATALOG, CATALOG_NAMES, CATALOG_CONTRACT_ONLY, check_foreign_decl, check_ownership)  # G6 A0
 
 # name -> (argument kind, result: BOOL | I64 | "payload" = the Option/Result payload type)
 CONTRACT_ONLY = {"is_some": ("option", BOOL), "some_val": ("option", "payload"), "is_ok": ("result", BOOL),
@@ -20,13 +23,14 @@ def terr(node, code, msg, fix="", stage="type"):
 
 
 class Checker:
-    def __init__(s, prog):
+    def __init__(s, prog, externs=()):
         s.prog = prog
+        s.externs = frozenset(externs)   # G6: crate names given with --rust-extern
         s.funcs = {}
         for f in prog.functions:
             if f.name in s.funcs:
                 terr(f, "dup_fn", "function %s defined twice" % f.name)
-            if f.name in BUILTIN_FNS or f.name in CONTRACT_ONLY:
+            if f.name in BUILTIN_FNS or f.name in CONTRACT_ONLY or f.name in CATALOG_NAMES:
                 terr(f, "reserved", "%s is a builtin name" % f.name, "rename the function")
             s.funcs[f.name] = f
         s.calls = {}
@@ -42,6 +46,7 @@ class Checker:
     def run(s):
         refine_expand(s.prog)  # STAGE1 A: validate refinement annotations, desugar them into contracts/asserts
         s.declare_types()      # names, duplicates
+        s.normalize_types()    # G6: Vec/HashMap/String become catalog types unless the program declares them
         s.arg_decls = {n: (len(d.tparams), []) for n, d in s.decls.items()}
         s.check_tparams()      # G3: type-parameter lists (type_parameter, generic_bound, generic_main)
         s.resolve_types()      # every type reference
@@ -79,6 +84,75 @@ class Checker:
                         terr(v, "dup_variant", "variant %s defined twice in enum %s" % (v.name, d.name))
                     seen.add(v.name)
                     s.check_field_names(v.fields, "variant %s::%s" % (d.name, v.name))
+
+    # ---- G6 A0: collection spellings ----
+    def norm_type(s, ty):
+        """the parser yields nominal Vec/HashMap/String; map them to the catalog types unless a user type of
+        that name is declared (an existing user type keeps its meaning)"""
+        if ty.owner is not None:
+            return ty
+        args = tuple(s.norm_type(a) for a in ty.args)
+        name = ty.name
+        if name not in s.decls and name in ("Vec", "HashMap", "String"):
+            name = {"Vec": "vec", "HashMap": "hashmap", "String": "string"}[name]
+        if name == ty.name and args == ty.args:
+            return ty
+        if name == "array" and len(args) == 1:
+            return mk_array(args[0])
+        if name == "option" and len(args) == 1:
+            return mk_option(args[0])
+        if name == "result" and len(args) == 1:
+            return mk_result(args[0])
+        return Type(name, args)
+
+    def normalize_types(s):
+        for d in s.prog.types:
+            for fd in (d.fields if isinstance(d, StructDecl) else [x for v in d.variants for x in v.fields]):
+                fd.type = s.norm_type(fd.type)
+        for f in s.prog.functions:
+            for p in f.params:
+                p.type = s.norm_type(p.type)
+            f.ret = s.norm_type(f.ret)
+            for e in f.requires + f.ensures:
+                s.norm_expr(e)
+            s.norm_stmts(f.body)
+
+    def norm_stmts(s, stmts):
+        for st in stmts:
+            if isinstance(st, Let):
+                st.type = s.norm_type(st.type)
+                s.norm_expr(st.value)
+            elif isinstance(st, (Assign, FieldAssign, Return)):
+                if st.value is not None:
+                    s.norm_expr(st.value)
+            elif isinstance(st, IndexAssign):
+                s.norm_expr(st.index)
+                s.norm_expr(st.value)
+            elif isinstance(st, If):
+                s.norm_expr(st.cond)
+                s.norm_stmts(st.then)
+                s.norm_stmts(st.els)
+            elif isinstance(st, While):
+                s.norm_expr(st.cond)
+                for i in st.invariants:
+                    s.norm_expr(i)
+                s.norm_expr(st.decreases)
+                s.norm_stmts(st.body)
+            elif isinstance(st, Assert):
+                s.norm_expr(st.cond)
+            elif isinstance(st, ExprStmt):
+                s.norm_expr(st.expr)
+            elif isinstance(st, Match):
+                s.norm_expr(st.scrutinee)
+                for a in st.arms:
+                    s.norm_stmts(a.body)
+
+    def norm_expr(s, e):
+        targs = getattr(e, "targs", None)
+        if targs is not None:
+            e.targs = [s.norm_type(t) for t in targs]
+        for k in expr_kids(e):
+            s.norm_expr(k)
 
     def check_field_names(s, fields, where):
         seen = set()
@@ -138,10 +212,26 @@ class Checker:
             for a in ty.args:
                 s.check_arg(node, a, None)
             return
+        if ty.name in COLLECTION_ARITY:      # G6: Vec<T>, HashMap<K, V>, String
+            for a in ty.args:
+                s.check_type_rec(node, a)
+            if ty.name == "vec":
+                s.collection_payload(node, ty.args[0], "a Vec element")
+            elif ty.name == "hashmap":
+                k = ty.args[0]
+                if contains_collection(k) or not is_element(k, s.elem_params):
+                    terr(node, "foreign_owned_type", "%s cannot be a HashMap key: only i64, bool and Element type "
+                         "parameters can" % type_name(k),
+                         "use i64 or bool keys, or declare the parameter `: Element`")
+                s.collection_payload(node, ty.args[1], "a HashMap value")
+            return
         if ty.name == "array":
             if ty.args:                      # [X] for X other than i64/u8/bool
                 el = ty.args[0]
                 s.check_type_rec(node, el)
+                if contains_collection(el):
+                    terr(node, "foreign_owned_type", "an array cannot hold the collection type %s" % type_name(el),
+                         "arrays hold i64, bool or an Element type parameter")
                 if el.owner is not None:
                     if (el.owner, el.index) not in s.elem_params:
                         terr(node, "generic_bound", "[%s] requires %s: Element" % (el.name, el.name),
@@ -165,9 +255,22 @@ class Checker:
         for a, tp in zip(ty.args, d.tparams):
             s.check_arg(node, a, tp)
 
+    def collection_payload(s, node, a, what):
+        """G6: a collection payload is a plain G3 value (never another collection)"""
+        if contains_collection(a):
+            terr(node, "foreign_owned_type", "%s cannot be the collection type %s" % (what, type_name(a)),
+                 "collection payloads are plain values; keep every collection in its own binding")
+        if not is_value(a, s.arg_decls):
+            terr(node, "foreign_owned_type", "%s cannot have type %s: only i64, bool, Option, Result, structs, "
+                 "enums and type parameters can" % (what, type_name(a)),
+                 "arrays, str and () cannot be collection payloads")
+
     def check_arg(s, node, a, tp):
         """a: a type argument; tp: the TypeParam it instantiates (None for Option/Result)"""
         s.check_type_rec(node, a)
+        if contains_collection(a):     # G6: collections are never type arguments of Option/Result/user declarations
+            terr(node, "foreign_owned_type", "%s cannot be a type argument" % type_name(a),
+                 "keep collections in their own bindings; Vec<T> and HashMap<K, V> are the only places they appear")
         if not is_value(a, s.arg_decls):
             terr(node, "type_argument", "%s is not a valid type argument: only i64, bool, Option, Result, "
                  "structs, enums and type parameters are" % type_name(a),
@@ -204,6 +307,10 @@ class Checker:
                         terr(f, "field_type", "field %s cannot have type %s" % (f.name, type_name(f.type)),
                              "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum")
                     s.check_type(f, f.type)
+                    if contains_collection(f.type):
+                        terr(f, "foreign_owned_type", "field %s cannot have the collection type %s" % (
+                            f.name, type_name(f.type)),
+                             "collections cannot be struct fields or enum payloads; pass them as separate bindings")
         for f in s.prog.functions:
             s.enter(fn_owner(f.name), f.tparams)
             for p in f.params:
@@ -258,12 +365,20 @@ class Checker:
         s.f = f
         s.enter(fn_owner(f.name), f.tparams)
         s.calls[f.name] = set()
+        if f.foreign is not None:
+            check_foreign_decl(f, s.externs)
+        elif f.name == "main" and (is_collection(f.ret) or any(is_collection(p.type) for p in f.params)):
+            terr(f, "foreign_export", "main cannot have a collection parameter or result",
+                 "give main plain value parameters and result; use collections inside it")
         scope = {}
         for p in f.params:
             if p.name in scope:
                 terr(f, "dup_param", "duplicate parameter %s" % p.name)
             if p.type == UNIT:
                 terr(f, "unit_param", "parameter %s cannot have type ()" % p.name)
+            if p.take and not is_collection(p.type):
+                terr(f, "foreign_move", "take is only for collection parameters",
+                     "remove `take` from %s; scalars, arrays and str are passed by value or borrowed" % p.name)
             scope[p.name] = (p.type, False, "param")
         s.used_effects = set()
         for r in f.requires:
@@ -273,6 +388,8 @@ class Checker:
             escope["result"] = (f.ret, False, "result")
         for e in f.ensures:
             s.expect(e, BOOL, escope, contract=True)
+        if f.foreign is not None:
+            return                       # a trusted rust fn has no body to check
         s.block(f.body, dict(scope))
         if f.ret != UNIT and not s.ends_in_return(f.body):
             terr(f, "missing_return", "function %s may reach its end without returning" % f.name,
@@ -282,6 +399,7 @@ class Checker:
                 terr(f, "missing_effect", "function %s uses effect `%s` but does not declare it" % (f.name, e),
                      "add `! %s` after the return type" % ", ".join(sorted(set(f.effects) | s.used_effects)),
                      stage="effect")
+        check_ownership(f, s.funcs)      # G6: liveness of collection bindings (after typing)
 
     def ends_in_return(s, stmts):
         if not stmts:
@@ -454,13 +572,14 @@ class Checker:
         if isinstance(value, Call) and value.name == "alloc" and is_array(expected):
             s.alloc_hint = (value, expected)
 
-    def expect_array(s, e, scope, c):
-        """the argument must be an array of any element type (G2 B0: or a str); same diagnostic as expect(e, ARRAY, ...)"""
+    def expect_array(s, e, scope, c, coll=False):
+        """the argument must be an array of any element type (G2 B0: or a str); same diagnostic as expect(e, ARRAY, ...)
+        coll (G6): a Vec/HashMap/String is accepted too"""
         t = s.expr(e, scope, c)
         if t.owner is not None:
             terr(e, "generic_operation", "%s is an abstract type parameter, not an array" % type_name(t),
                  "only [T] with T: Element can be indexed, measured or copied")
-        if not is_array(t) and t != STR:
+        if not is_array(t) and t != STR and not (coll and is_collection(t)):
             terr(e, "type_mismatch", "expected %s, found %s" % (type_name(ARRAY), type_name(t)))
         return t
 
@@ -522,6 +641,9 @@ class Checker:
                 s.expect(e.right, I64, scope, c, op="ordering"); return BOOL
             if op in ("==", "!="):
                 lt = s.expr(e.left, scope, c)
+                if is_collection(lt):   # G6
+                    terr(e, "eq_type", "collections cannot be compared with ==",
+                         "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]")
                 if is_array(lt):
                     terr(e, "eq_type", "arrays cannot be compared with ==",
                          "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]")
@@ -543,9 +665,21 @@ class Checker:
                     terr(e, "contract_only", "==> is only allowed in contracts")
                 s.expect(e.left, BOOL, scope, c, op="a boolean operation")
                 s.expect(e.right, BOOL, scope, c, op="a boolean operation"); return BOOL
+        if isinstance(e, Move):   # G6: liveness and position rules are checked by foreign.check_ownership
+            if c:
+                terr(e, "foreign_move", "move only where ownership is consumed",
+                     "contracts read parameters and locals directly; remove `move`")
+            return s.lookup(e, e.name, scope)[0]
         if isinstance(e, Index):
-            at = s.expect_array(e.array, scope, c)
+            at = s.expect_array(e.array, scope, c, coll=True)
+            if at.name == "hashmap" and at.owner is None:
+                terr(e.array, "type_mismatch", "expected %s, found %s" % (type_name(ARRAY), type_name(at)))
             s.expect(e.index, I64, scope, c)
+            if is_collection(at):     # G6: contract-only observation of a Vec / String
+                if not c:
+                    terr(e, "contract_only", "indexing a %s is only allowed in contracts" % type_name(at),
+                         "use vec_get in code" if at.name == "vec" else "use string_byte in code")
+                return at.args[0] if at.name == "vec" else I64
             return s.elem_type(at)  # G2 A5: bool array reads bool; G3: [T] reads T
         if isinstance(e, Ctor):
             return s.ctor(e, scope, c)
@@ -703,6 +837,21 @@ class Checker:
         s.expect(e.arg, I64 if e.name == "Err" else x, scope, c)
         return mk_option(x) if e.name == "Some" else mk_result(x)
 
+    def observer_args(s, e, f, m, scope, c):
+        """map_lookup / map_updated arguments: a key whose type differs from a map argument's key type is a
+        foreign_contract error; any other mismatch is the ordinary type_mismatch"""
+        got = [s.expr(arg, scope, c) for arg in e.args]
+        kidx = [p.name for p in f.params].index("k")
+        for g in got:
+            if g.name == "hashmap" and g.owner is None and g.args[0] != got[kidx]:
+                terr(e.args[kidx], "foreign_contract", "key of type %s does not match the map key type %s" % (
+                    type_name(got[kidx]), type_name(g.args[0])),
+                     "pass a key of the map's key type")
+        for arg, g, p in zip(e.args, got, f.params):
+            want = substitute(p.type, m)
+            if g != want:
+                terr(arg, "type_mismatch", "expected %s, found %s" % (type_name(want), type_name(g)))
+
     def call(s, e, scope, c):
         n, a = e.name, e.args
 
@@ -712,7 +861,7 @@ class Checker:
         if e.targs is not None and n not in s.funcs and (n in BUILTIN_FNS or n in CONTRACT_ONLY):
             terr(e, "type_arity", "builtin %s takes no type arguments" % n, "remove the `::<...>`")
         if n == "len":
-            arity(1); s.expect_array(a[0], scope, c); return I64
+            arity(1); s.expect_array(a[0], scope, c, coll=True); return I64   # G6: also Vec/HashMap/String
         if n == "alloc":
             if c: terr(e, "effect_in_contract", "alloc not allowed in contracts")
             arity(2); s.expect(a[0], I64, scope, c)
@@ -754,12 +903,26 @@ class Checker:
             if rt == "payload":     # G3: the payload type of Option<X> / Result<X>
                 return t.args[0] if t.args else I64
             return rt
-        if n not in s.funcs:
+        catalog = n in CATALOG       # G6: fixed standard catalog (G6_SPEC 10.3)
+        if catalog:
+            if n in CATALOG_CONTRACT_ONLY:
+                if not c:
+                    terr(e, "foreign_contract", "%s is only allowed in contracts" % n,
+                         "use map_get in code" if n == "map_lookup" else "state the update in ensures")
+            elif c:
+                terr(e, "foreign_contract", "%s cannot be called in a contract" % n,
+                     "contracts observe collections with len(x), x[i], map_lookup and map_updated")
+            f = CATALOG[n]
+        elif n not in s.funcs:
             if n in ("sum", "count", "max", "min"):
                 terr(e, "unknown_fn", "unknown function %s" % n,
                      "aggregates use the form sum(k in 0..len(a): a[k])")
             terr(e, "unknown_fn", "unknown function %s" % n)
-        f = s.funcs[n]
+        else:
+            f = s.funcs[n]
+            if c and f.foreign is not None:
+                terr(e, "foreign_contract", "trusted rust fn %s cannot be called in a contract" % n,
+                     "state the property with the arguments' own contents instead")
         # G3_SPEC 3.4: resolve + arity + admissibility + bounds, substitute the signature, check the arguments
         m = s.instantiate(e, "function %s" % n, fn_owner(n), f.tparams, e.targs)
         if m is not None:
@@ -767,8 +930,14 @@ class Checker:
         else:
             m = {}
         arity(len(f.params))
-        for arg, p in zip(a, f.params):
-            s.expect(arg, substitute(p.type, m), scope, c)
+        if n in CATALOG_CONTRACT_ONLY:
+            s.observer_args(e, f, m, scope, c)
+        else:
+            for arg, p in zip(a, f.params):
+                s.expect(arg, substitute(p.type, m), scope, c)
+        if catalog:
+            s.used_effects.update(f.effects)
+            return substitute(f.ret, m)
         if c and f.effects:
             terr(e, "effect_in_contract", "function %s has effects; not allowed in contracts" % n)
         if c:
@@ -779,5 +948,6 @@ class Checker:
         return substitute(f.ret, m)
 
 
-def check(prog):
-    Checker(prog).run()
+def check(prog, externs=()):
+    """externs: names given with --rust-extern (crates a trusted rust fn path may start with besides std)"""
+    Checker(prog, externs).run()

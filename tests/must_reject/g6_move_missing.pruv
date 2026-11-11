@@ -1,0 +1,6 @@
+// foreign_move: missing `move` on an owned binding passed to a consuming (take) argument
+fn f() -> i64 ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  let w: Vec<i64> = vec_push::<i64>(v, 1);
+  return len(w);
+}

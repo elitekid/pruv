@@ -1,0 +1,26 @@
+// G6 A0 accept: HashMap<bool, Pair<i64, bool>> with a struct value; insert, lookup and match on Option<Pair<..>>
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn store(take m: HashMap<bool, Pair<i64, bool>>, k: bool, a: i64) -> HashMap<bool, Pair<i64, bool>> ! alloc
+  requires len(m) < 1099511627776
+  ensures map_updated::<bool, Pair<i64, bool>>(result, m, k, Pair::<i64, bool> { first: a, second: k })
+{
+  return map_insert::<bool, Pair<i64, bool>>(move m, k, Pair::<i64, bool> { first: a, second: k });
+}
+
+fn read_first(m: HashMap<bool, Pair<i64, bool>>, k: bool) -> i64 {
+  let o: Option<Pair<i64, bool>> = map_get::<bool, Pair<i64, bool>>(m, k);
+  match o {
+    Some(p) => { return p.first; }
+    None => { return 0; }
+  }
+}
+
+fn demo() -> i64 ! alloc {
+  let mut m: HashMap<bool, Pair<i64, bool>> = map_new::<bool, Pair<i64, bool>>();
+  m = store(move m, true, 42);
+  return read_first(m, true);
+}

@@ -1,0 +1,33 @@
+// G6 A0 accept: trusted rust fn with io, alloc and unit results; callers declare the propagated effects
+trusted rust fn read_clock() -> i64 ! io
+  ensures result >= 0
+  = "::std::time::Instant::now";
+
+trusted rust fn make_table(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+  ensures true
+  = "::std::vec::from_elem";
+
+trusted rust fn log_code(code: i64) -> () ! io
+  ensures true
+  = "::std::io::stderr_write";
+
+trusted rust fn traced_table(n: i64) -> bool ! alloc, io
+  ensures true
+  = "::std::dbg";
+
+fn tick() -> i64 ! io {
+  log_code(1);
+  return read_clock();
+}
+
+fn build(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+{
+  return make_table(n);
+}
+
+fn both(n: i64) -> bool ! io, alloc {
+  log_code(n);
+  return traced_table(n);
+}

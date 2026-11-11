@@ -1,0 +1,10 @@
+// G6 A0 accept: a binding moved on one branch only becomes maybe at the join; reassignment makes it live again
+fn maybe_moved(c: bool) -> i64 ! alloc {
+  let mut a: Vec<i64> = vec_new::<i64>();
+  let mut b: Vec<i64> = vec_new::<i64>();
+  if c {
+    b = vec_push::<i64>(move a, 1);
+  }
+  a = vec_new::<i64>();
+  return len(a) + len(b);
+}

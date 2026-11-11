@@ -1,0 +1,6 @@
+// foreign_contract: map_lookup with a key of the wrong type (bool key for a HashMap<i64, i64>)
+fn f(m: HashMap<i64, i64>) -> bool
+  ensures is_some(map_lookup::<i64, i64>(m, true))
+{
+  return true;
+}

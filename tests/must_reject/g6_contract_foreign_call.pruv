@@ -1,0 +1,10 @@
+// foreign_contract: a user foreign declaration called inside an ensures
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a
+  = "::std::cmp::min";
+
+fn f(a: i64) -> i64
+  ensures result == rust_min(a, 0)
+{
+  return a;
+}

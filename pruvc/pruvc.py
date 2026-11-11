@@ -16,6 +16,11 @@
                  --rust-bindings PATH (default: OUT with the extension changed to .rs;
                  it is a usage error if that equals OUT).
 --rust-bindings  llvm backend only; giving it with the rust backend is a usage error.
+--rust-extern NAME=PATH  repeatable (G6): a crate a `trusted rust fn` path may start with (NAME: a Rust
+                 identifier, not std, no duplicates). A0: only NAME is used; the file is not opened.
+--rust-search PATH  repeatable (G6): rustc `-L dependency=PATH` directory (recorded only in A0).
+--foreign-checks requires|all|off  G6 boundary contract checks (default requires); `off` needs verification,
+                 so `--no-verify --foreign-checks off` is a usage error.
 --contract-budget N  internal/test-only (overrides the per-entry requires iteration
                  budget, default 2^30; not part of the language spec).
 --also-llvm LL RS  internal/test-only (used by bench/fuzz/run.py; not part of the language
@@ -33,18 +38,21 @@ stage "internal", code "internal_error" on stdout, exit 3.
 import argparse
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vast import PruvError  # noqa: E402
-from vparser import parse  # noqa: E402
+from vparser import parse, RUST_KEYWORDS  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust  # noqa: E402
 from typeinfo import g2_unimplemented_error, first_g3_use  # noqa: E402
 from mono import specialize  # noqa: E402
+from foreign import g6_unimplemented_error  # noqa: E402
 
 USAGE = ("usage: pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers] "
-         "[--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]")
+         "[--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]] "
+         "[--rust-extern NAME=PATH] [--rust-search PATH] [--foreign-checks requires|all|off]")
 
 
 def default_bindings_path(out):
@@ -52,7 +60,7 @@ def default_bindings_path(out):
 
 
 def compile_file(path, out, verify=True, trust_callers=False, backend="rust", rust_bindings=None,
-                 budget=None, also_llvm=None, infer=False, show_inferred=False):
+                 budget=None, also_llvm=None, infer=False, show_inferred=False, externs=()):
     if budget is None:
         budget = 1 << 30
     assert 1 <= budget <= 2 ** 62
@@ -60,7 +68,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
         raise ValueError("also_llvm requires backend='rust'")
     src = open(path, encoding="utf-8").read()
     prog = parse(src)
-    check(prog)
+    check(prog, externs=externs)
+    # G6 A0: foreign declarations, collections, take and move are checked but not lowered yet (also --no-verify)
+    g6err = g6_unimplemented_error(prog)
+    if g6err is not None:
+        return [g6err]
     if verify:
         from verify import verify_program
         if infer:
@@ -131,6 +143,10 @@ def main(argv):
     ap.add_argument("--rust-bindings", default=None)
     ap.add_argument("--infer", action="store_true")
     ap.add_argument("--show-inferred", dest="show_inferred", action="store_true")
+    ap.add_argument("--rust-extern", dest="rust_extern", action="append", default=[], metavar="NAME=PATH")
+    ap.add_argument("--rust-search", dest="rust_search", action="append", default=[], metavar="PATH")
+    ap.add_argument("--foreign-checks", dest="foreign_checks", choices=["requires", "all", "off"],
+                    default="requires")
     ap.add_argument("--contract-budget", dest="budget", type=int, default=None,
                     help=argparse.SUPPRESS)
     ap.add_argument("--also-llvm", dest="also_llvm", nargs=2, metavar=("LL", "RS"), default=None,
@@ -148,6 +164,19 @@ def main(argv):
         ap.error("--contract-budget must be in 1..2**62")
     if a.rust_bindings is not None and a.backend != "llvm":
         ap.error("--rust-bindings requires --backend llvm")
+    if a.foreign_checks == "off" and a.no_verify:
+        ap.error("--foreign-checks off requires verification (not allowed with --no-verify)")
+    externs = []
+    for spec in a.rust_extern:
+        name, sep, xpath = spec.partition("=")
+        if not sep or not xpath or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) \
+                or name == "std" or name in RUST_KEYWORDS:
+            ap.error("invalid --rust-extern %r: expected NAME=PATH with a Rust identifier NAME other than std" % spec)
+        if name in externs:
+            ap.error("duplicate --rust-extern name %s" % name)
+        externs.append(name)
+    if any(not p for p in a.rust_search):
+        ap.error("--rust-search needs a non-empty PATH")
     bindings = a.rust_bindings
     if a.backend == "llvm":
         if bindings is None:
@@ -157,7 +186,7 @@ def main(argv):
     try:
         errs = compile_file(a.input, a.out, not a.no_verify, a.trust_callers, a.backend, bindings,
                           a.budget, tuple(a.also_llvm) if a.also_llvm else None,
-                          infer=a.infer, show_inferred=a.show_inferred)
+                          infer=a.infer, show_inferred=a.show_inferred, externs=tuple(externs))
     except PruvError as e:
         errs = [e]
     except Exception as e:  # compiler-internal failure, not a language error

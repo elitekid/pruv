@@ -476,6 +476,7 @@ fn expr_ty(e: &Expr) -> &Option<String> {
         Expr::FieldAccess(x) => &x.ty,
         Expr::IsVariant(x) => &x.ty,
         Expr::VariantField(x) => &x.ty,
+        Expr::Move(x) => &x.ty,
     }
 }
 
@@ -1894,6 +1895,8 @@ impl<'a> FnGen<'a> {
                 let r = self.op(format!("icmp eq i64 {}, {}", tag, k))?;
                 Ok(V::new(Kind::I1, r))
             }
+            // G6 A0: `move` is checked but never lowered (the driver's A0 guard stops the program earlier)
+            Expr::Move(_) => Err("G6 move reached the LLVM generator".to_string()),
             Expr::VariantField(x) => {
                 let b = self.cev(&x.value)?;
                 let bty = need_ty(&b.ty)?.to_string();
@@ -2366,6 +2369,7 @@ mod tests {
             body: vec![],
             ret_refine: None,
             tparams: vec![],
+            foreign: None,
         };
         let mut m = Mod::new();
         let mut g = FnGen::new(&mut m, &tt, &funcs, &f, false);
@@ -2391,6 +2395,7 @@ mod tests {
                 body: vec![],
                 ret_refine: None,
                 tparams: vec![],
+                foreign: None,
             }],
             refined: false,
         }

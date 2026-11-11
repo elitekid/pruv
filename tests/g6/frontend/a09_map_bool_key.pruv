@@ -1,0 +1,21 @@
+// G6 A0 accept: HashMap with bool keys (HashMap<bool, i64> and HashMap<bool, bool>); Option results matched
+fn weight_of_true() -> i64 ! alloc {
+  let mut m: HashMap<bool, i64> = map_new::<bool, i64>();
+  m = map_insert::<bool, i64>(move m, true, 5);
+  m = map_insert::<bool, i64>(move m, false, 9);
+  let found: Option<i64> = map_get::<bool, i64>(m, true);
+  match found {
+    Some(x) => { return x; }
+    None => { return 0; }
+  }
+}
+
+fn flag_of_false() -> bool ! alloc {
+  let mut m: HashMap<bool, bool> = map_new::<bool, bool>();
+  m = map_insert::<bool, bool>(move m, false, true);
+  let found: Option<bool> = map_get::<bool, bool>(m, false);
+  match found {
+    Some(b) => { return b; }
+    None => { return false; }
+  }
+}

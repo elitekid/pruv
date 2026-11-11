@@ -131,7 +131,7 @@ fn kids(e: &Expr) -> Vec<&Expr> {
         Expr::FieldAccess(x) => vec![&*x.base],
         Expr::IsVariant(x) => vec![&*x.value],
         Expr::VariantField(x) => vec![&*x.value],
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => Vec::new(),
+        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => Vec::new(),
     }
 }
 
@@ -591,6 +591,7 @@ fn expr_ty(e: &Expr) -> Option<&String> {
         Expr::FieldAccess(x) => x.ty.as_ref(),
         Expr::IsVariant(x) => x.ty.as_ref(),
         Expr::VariantField(x) => x.ty.as_ref(),
+        Expr::Move(x) => x.ty.as_ref(),
     }
 }
 
@@ -812,6 +813,8 @@ impl Bld {
                 Some((n, f)) if x.name == n => f(),
                 _ => Expr::Var(ast::Var { line, col, name: x.name.clone(), ty: None }),
             },
+            // G6 A0: never reaches the proof layer (the driver's A0 guard stops the program earlier)
+            Expr::Move(x) => Expr::Move(ast::Move { line, col, name: x.name.clone(), ty: None }),
             Expr::Quant(x) => {
                 let inner = match sub {
                     Some((n, _)) if x.var == n => None,

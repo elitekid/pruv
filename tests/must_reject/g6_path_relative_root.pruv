@@ -1,0 +1,4 @@
+// foreign_path: a relative root (`crate`) is not allowed as the first segment
+trusted rust fn helper(a: i64) -> i64
+  ensures true
+  = "::crate::x";

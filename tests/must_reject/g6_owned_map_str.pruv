@@ -1,0 +1,4 @@
+// foreign_owned_type: HashMap<i64, str> (str value is not a G3 value)
+fn f(m: HashMap<i64, str>) -> i64 {
+  return 0;
+}

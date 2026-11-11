@@ -48,7 +48,16 @@ fn terr(r: &Refinement, code: &str, msg: String, fix: &str) -> PruvError {
     PruvError::new("type", r.line, r.col, code, msg, fix)
 }
 
-fn validate(r: &Refinement) -> Res<()> {
+fn validate(r: &Refinement, user: &HashSet<String>) -> Res<()> {
+    // G6: a refinement on a collection type (the catalog spelling, unless the program declares a type of that name)
+    if r.shape == "scalar" && matches!(r.base.as_str(), "Vec" | "HashMap" | "String") && !user.contains(&r.base) {
+        return Err(terr(
+            r,
+            "foreign_owned_type",
+            "a collection type cannot carry a refinement".to_string(),
+            "remove the annotation and state the property with requires/ensures",
+        ));
+    }
     if r.shape == "scalar" && r.base != "i64" {
         return Err(terr(
             r,
@@ -123,8 +132,9 @@ fn validate(r: &Refinement) -> Res<()> {
 }
 
 // ---------- general AST helpers ----------
-fn kids(e: &Expr) -> Vec<&Expr> {
+pub(crate) fn kids(e: &Expr) -> Vec<&Expr> {
     match e {
+        Expr::Move(_) => Vec::new(),
         Expr::Unary(x) => vec![x.operand.as_ref()],
         Expr::Binary(x) => vec![x.left.as_ref(), x.right.as_ref()],
         Expr::Index(x) => vec![x.array.as_ref(), x.index.as_ref()],
@@ -440,22 +450,22 @@ impl Expander {
     }
 }
 
-fn validate_block(stmts: &[Stmt]) -> Res<()> {
+fn validate_block(stmts: &[Stmt], user: &HashSet<String>) -> Res<()> {
     for st in stmts {
         match st {
             Stmt::Let(l) => {
                 if let Some(r) = &l.refine {
-                    validate(r)?;
+                    validate(r, user)?;
                 }
             }
             Stmt::If(i) => {
-                validate_block(&i.then)?;
-                validate_block(&i.els)?;
+                validate_block(&i.then, user)?;
+                validate_block(&i.els, user)?;
             }
-            Stmt::While(w) => validate_block(&w.body)?,
+            Stmt::While(w) => validate_block(&w.body, user)?,
             Stmt::Match(m) => {
                 for a in &m.arms {
-                    validate_block(&a.body)?;
+                    validate_block(&a.body, user)?;
                 }
             }
             _ => {}
@@ -490,16 +500,17 @@ pub fn expand(prog: &mut Program) -> Res<()> {
     if !has_refinements(prog) {
         return Ok(());
     }
+    let user: HashSet<String> = prog.types.iter().map(|d| d.name().to_string()).collect();
     for f in &prog.functions {
         for p in &f.params {
             if let Some(r) = &p.refine {
-                validate(r)?;
+                validate(r, &user)?;
             }
         }
         if let Some(r) = &f.ret_refine {
-            validate(r)?;
+            validate(r, &user)?;
         }
-        validate_block(&f.body)?;
+        validate_block(&f.body, &user)?;
     }
     for f in prog.functions.iter_mut() {
         let ex = Expander { k: pick_bound_name(&fn_names(f)) };

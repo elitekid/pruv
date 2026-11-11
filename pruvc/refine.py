@@ -32,7 +32,11 @@ def _terr(r, code, msg, fix=""):
     raise PruvError("type", r.line, r.col, code, msg, fix)
 
 
-def _validate(r):
+def _validate(r, user=()):
+    # G6: a refinement on a collection type (the catalog spelling, unless the program declares a type of that name)
+    if r.shape == "scalar" and r.base in ("Vec", "HashMap", "String") and r.base not in user:
+        _terr(r, "foreign_owned_type", "a collection type cannot carry a refinement",
+              "remove the annotation and state the property with requires/ensures")
     if r.shape == "scalar" and r.base != "i64":
         _terr(r, "refinement_base",
               "a refinement `| L..=U` applies only to i64 or [i64], not to %s" % r.base,
@@ -250,17 +254,17 @@ class _Expander:
         f.body = s.block(f.body, {})
 
 
-def _validate_block(stmts):
+def _validate_block(stmts, user=()):
     for st in stmts:
         if isinstance(st, Let) and st.refine is not None:
-            _validate(st.refine)
+            _validate(st.refine, user)
         elif isinstance(st, If):
-            _validate_block(st.then); _validate_block(st.els)
+            _validate_block(st.then, user); _validate_block(st.els, user)
         elif isinstance(st, While):
-            _validate_block(st.body)
+            _validate_block(st.body, user)
         elif isinstance(st, Match):
             for a in st.arms:
-                _validate_block(a.body)
+                _validate_block(a.body, user)
 
 
 def has_refinements(prog):
@@ -292,12 +296,13 @@ def expand(prog):
     prog._refined = True
     if not has_refinements(prog):
         return
+    user = set(d.name for d in prog.types)
     for f in prog.functions:
         for p in f.params:
             if p.refine is not None:
-                _validate(p.refine)
+                _validate(p.refine, user)
         if f.ret_refine is not None:
-            _validate(f.ret_refine)
-        _validate_block(f.body)
+            _validate(f.ret_refine, user)
+        _validate_block(f.body, user)
     for f in prog.functions:
         _Expander(f).run()

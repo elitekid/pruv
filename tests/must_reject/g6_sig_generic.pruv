@@ -1,0 +1,4 @@
+// foreign_signature: a user foreign declaration cannot be generic
+trusted rust fn pick<T>(a: i64) -> i64
+  ensures true
+  = "::std::cmp::min";

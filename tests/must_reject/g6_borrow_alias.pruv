@@ -1,0 +1,5 @@
+// foreign_borrow: saving a borrowed collection parameter as another binding
+fn f(v: Vec<i64>) -> i64 {
+  let w: Vec<i64> = v;
+  return len(w);
+}

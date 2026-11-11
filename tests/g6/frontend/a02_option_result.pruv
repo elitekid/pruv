@@ -1,0 +1,39 @@
+// G6 A0 accept: trusted rust fn with Option/Result parameters and results; results matched by the caller
+trusted rust fn parse_digit(c: i64) -> Option<i64>
+  requires 0 <= c && c <= 255
+  ensures is_some(result) ==> 0 <= some_val(result) && some_val(result) <= 9
+  = "::std::char::from_digit";
+
+trusted rust fn checked_half(x: i64) -> Result<i64>
+  ensures is_ok(result) ==> ok_val(result) * 2 <= x
+  = "::std::num::checked_half";
+
+trusted rust fn flag_or(o: Option<bool>, r: Result<bool>) -> Option<bool>
+  ensures true
+  = "::std::option::Option::or";
+
+fn digit_or(c: i64, d: i64) -> i64
+  requires 0 <= c && c <= 255
+{
+  let o: Option<i64> = parse_digit(c);
+  match o {
+    Some(x) => { return x; }
+    None => { return d; }
+  }
+}
+
+fn half_code(x: i64) -> i64 {
+  let r: Result<i64> = checked_half(x);
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return c; }
+  }
+}
+
+fn pick_flag(o: Option<bool>, r: Result<bool>) -> bool {
+  let p: Option<bool> = flag_or(o, r);
+  match p {
+    Some(b) => { return b; }
+    None => { return false; }
+  }
+}

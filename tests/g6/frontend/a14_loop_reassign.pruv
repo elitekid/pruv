@@ -1,0 +1,34 @@
+// G6 A0 accept: reassignment through move inside while loops (backedge restores liveness); invariants mention len(v)
+fn fill(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == n
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(v) == i
+    decreases n - i
+  {
+    v = vec_push::<i64>(move v, i);
+    i = i + 1;
+  }
+  return move v;
+}
+
+fn repeat_text(text: str, n: i64) -> String ! alloc
+  requires 0 <= n && n <= 100 && len(text) <= 1000
+  ensures len(result) == n * len(text)
+{
+  let mut s: String = string_new();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(s) == i * len(text)
+    decreases n - i
+  {
+    s = string_push_str(move s, text);
+    i = i + 1;
+  }
+  return move s;
+}

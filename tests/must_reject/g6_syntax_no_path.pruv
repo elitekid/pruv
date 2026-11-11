@@ -1,0 +1,3 @@
+// foreign_syntax: a trusted rust fn without `= "path"` (the declaration ends after its contracts)
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a;

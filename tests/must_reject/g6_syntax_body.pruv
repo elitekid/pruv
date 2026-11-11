@@ -1,0 +1,6 @@
+// foreign_syntax: a trusted rust fn declaration with a body
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a
+{
+  return a;
+}

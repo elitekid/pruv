@@ -1,5 +1,5 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof] [--backend rust|llvm|both]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend] [--backend rust|llvm|both]
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
 
@@ -254,6 +254,34 @@ def g3_proof_jobs():
     return jobs
 
 
+def g6_frontend_jobs():
+    """G6 A0 (docs/G6_SPEC.md 10.5): tests/g6/frontend/*.pruv are well-typed and pass the ownership rules, but no
+    later layer lowers G6 yet, so the compiler under test must stop with exactly codegen/unsupported_type
+    (and no earlier diagnostic), with and without --no-verify. Rows have group "g6_frontend", backend null."""
+    jobs = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/g6/frontend/*.pruv"))):
+        for mode, flags in (("default", []), ("no-verify", ["--no-verify"])):
+            name = "g6_frontend/%s [%s]" % (os.path.basename(f), mode)
+
+            def fn(f=f, flags=flags, mode=mode):
+                out = os.path.join(WORK, "g6f_%s_%s.rs" % (os.path.splitext(os.path.basename(f))[0], mode))
+                c = pruvc(f, out, flags)
+                diags = []
+                for line in c.stdout.splitlines():
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(d, dict):
+                        diags.append((d.get("stage"), d.get("code")))
+                ok = c.returncode == 1 and diags == [("codegen", "unsupported_type")]
+                return ok, "exit %d, diagnostics %s (expected exit 1 and only codegen/unsupported_type) %s" % (
+                    c.returncode, diags, (c.stdout + c.stderr)[-400:])
+            jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": flags, "mode": mode,
+                                         "group": "g6_frontend"}))
+    return jobs
+
+
 EXAMPLE_MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 ARITH_OR_INDEX = re.compile(r"\b(add|sub|mul|getelementptr)\b")
 
@@ -448,7 +476,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -535,7 +563,7 @@ def main():
     if "--only" in sys.argv:
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
-        if only not in ("must_reject", "examples", "runtime", "g3_proof"):
+        if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -554,6 +582,8 @@ def main():
             jobs += must_reject_jobs()
         if only in (None, "g3_proof"):
             jobs += g3_proof_jobs()
+        if only in (None, "g6_frontend"):
+            jobs += g6_frontend_jobs()
         for b in backends:
             if only in (None, "examples"):
                 jobs += examples_jobs(b)
@@ -596,9 +626,9 @@ def main():
     if saved_rows is not None:
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
-        for g in ("must_reject", "g3_proof", "examples", "runtime"):
+        for g in ("must_reject", "g3_proof", "g6_frontend", "examples", "runtime"):
             if only in (None, g):
-                for b in ([None] if g in ("must_reject", "g3_proof") else backends):
+                for b in ([None] if g in ("must_reject", "g3_proof", "g6_frontend") else backends):
                     scope.add((g, b))
         in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
         outside = len(saved_rows) - len(in_scope)

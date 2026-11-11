@@ -1,0 +1,23 @@
+// G6 A0 accept: borrowed Vec/HashMap/String parameters used several times in one call and forwarded to borrowing helpers
+fn head_less(v: Vec<i64>, i: i64, j: i64) -> bool
+  requires 0 <= i && i < len(v) && 0 <= j && j < len(v)
+{
+  return vec_get::<i64>(v, i) < vec_get::<i64>(v, j);
+}
+
+fn survey(v: Vec<i64>, m: HashMap<i64, i64>, s: String) -> bool
+  requires len(v) >= 3 && len(s) >= 1
+{
+  let a: i64 = vec_get::<i64>(v, 0);
+  let b: i64 = vec_get::<i64>(v, 1);
+  let c: i64 = vec_get::<i64>(v, len(v) - 1);
+  let lead: i64 = string_byte(s, 0);
+  let hit: Option<i64> = map_get::<i64, i64>(m, a);
+  if head_less(v, 0, 1) && head_less(v, 1, 2) {
+    match hit {
+      Some(x) => { return a < b && b <= c && lead > 0 && x >= 0; }
+      None => { return len(v) > len(s); }
+    }
+  }
+  return false;
+}

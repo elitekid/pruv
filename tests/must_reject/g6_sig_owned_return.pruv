@@ -1,0 +1,4 @@
+// foreign_signature: an owned (array) result is not allowed on a user foreign declaration
+trusted rust fn make_ints(n: i64) -> [i64]
+  ensures true
+  = "::std::vec::from_elem";

@@ -1,0 +1,17 @@
+// G6 A0 accept: Vec<bool>; a read-borrowed collection parameter is used by a helper and by its caller
+fn flag_at(v: Vec<bool>, i: i64) -> bool
+  requires 0 <= i && i < len(v)
+  ensures result == v[i]
+{
+  return vec_get::<bool>(v, i);
+}
+
+fn both_set() -> bool ! alloc {
+  let mut v: Vec<bool> = vec_new::<bool>();
+  v = vec_push::<bool>(move v, true);
+  v = vec_push::<bool>(move v, false);
+  if flag_at(v, 0) {
+    return flag_at(v, 1);
+  }
+  return false;
+}

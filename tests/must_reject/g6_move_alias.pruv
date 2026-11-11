@@ -1,0 +1,6 @@
+// foreign_move: an owned local aliased in a let without `move`
+fn f() -> i64 ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  let w: Vec<i64> = v;
+  return len(w);
+}

@@ -1,0 +1,19 @@
+// G6 A0 accept: early return of a moved collection inside a branch; the other path consumes it and returns the result
+fn grow_unless(take v: Vec<i64>, stop: bool) -> Vec<i64> ! alloc
+  requires len(v) < 1000
+  ensures len(result) >= len(v)
+{
+  if stop {
+    return move v;
+  }
+  let w: Vec<i64> = vec_push::<i64>(move v, 0);
+  return move w;
+}
+
+fn pick(take a: Vec<i64>, take b: Vec<i64>, first: bool) -> Vec<i64> {
+  if first {
+    return move a;
+  } else {
+    return move b;
+  }
+}

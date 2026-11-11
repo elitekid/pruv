@@ -1,0 +1,4 @@
+// foreign_owned_type: Vec<str> (str is not a G3 value)
+fn f(v: Vec<str>) -> i64 {
+  return 0;
+}

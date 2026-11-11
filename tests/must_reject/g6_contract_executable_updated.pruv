@@ -1,0 +1,4 @@
+// foreign_contract: map_updated is contract-only; using it in executable code is rejected
+fn f(a: HashMap<i64, i64>, b: HashMap<i64, i64>) -> bool {
+  return map_updated::<i64, i64>(a, b, 1, 2);
+}

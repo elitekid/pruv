@@ -1,0 +1,5 @@
+// foreign_move: returning an owned local without `move`
+fn f() -> Vec<i64> ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  return v;
+}

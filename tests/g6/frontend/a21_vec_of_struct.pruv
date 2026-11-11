@@ -1,0 +1,27 @@
+// G6 A0 accept: Vec of a generic struct instance (Vec<Pair<i64, bool>>) and a generic helper over Vec<Pair<T, T>>
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn push_pair(take v: Vec<Pair<i64, bool>>, a: i64, b: bool) -> Vec<Pair<i64, bool>> ! alloc
+  requires len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+  ensures result[len(v)].first == a && result[len(v)].second == b
+{
+  return vec_push::<Pair<i64, bool>>(move v, Pair::<i64, bool> { first: a, second: b });
+}
+
+fn first_of(v: Vec<Pair<i64, bool>>) -> i64
+  requires len(v) > 0
+{
+  let p: Pair<i64, bool> = vec_get::<Pair<i64, bool>>(v, 0);
+  return p.first;
+}
+
+fn push_twin<T>(take v: Vec<Pair<T, T>>, x: T) -> Vec<Pair<T, T>> ! alloc
+  requires len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+{
+  return vec_push::<Pair<T, T>>(move v, Pair::<T, T> { first: x, second: x });
+}

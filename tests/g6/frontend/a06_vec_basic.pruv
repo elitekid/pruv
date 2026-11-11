@@ -1,0 +1,20 @@
+// G6 A0 accept: vec_new / vec_push / vec_get / len on Vec<i64> with reassignment through move
+fn three() -> i64 ! alloc
+  ensures result == 3
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  v = vec_push::<i64>(move v, 10);
+  v = vec_push::<i64>(move v, 20);
+  v = vec_push::<i64>(move v, 30);
+  return len(v);
+}
+
+fn middle() -> i64 ! alloc
+  ensures result == 20
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  v = vec_push::<i64>(move v, 10);
+  v = vec_push::<i64>(move v, 20);
+  v = vec_push::<i64>(move v, 30);
+  return vec_get::<i64>(v, 1);
+}

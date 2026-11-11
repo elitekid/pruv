@@ -1,0 +1,9 @@
+// foreign_borrow: the same binding read-borrowed and then moved in one call
+fn mix(a: Vec<i64>, take b: Vec<i64>) -> i64 {
+  return len(a) + len(b);
+}
+
+fn f() -> i64 ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  return mix(v, move v);
+}

@@ -1,0 +1,8 @@
+// foreign_owned_type: a struct field of collection type
+struct Bag {
+  items: Vec<i64>
+}
+
+fn f(x: i64) -> i64 {
+  return x;
+}

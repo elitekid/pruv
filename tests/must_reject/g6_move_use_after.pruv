@@ -1,0 +1,6 @@
+// foreign_move: use after move (v is consumed by vec_push, then read)
+fn f() -> i64 ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  let w: Vec<i64> = vec_push::<i64>(move v, 1);
+  return len(w) + len(v);
+}

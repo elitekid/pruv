@@ -1,0 +1,22 @@
+// G6 A0 accept: contract-only v[i] on Vec and s[i] on String in requires/ensures; executable reads use vec_get/string_byte
+fn head_matches(v: Vec<i64>, x: i64) -> bool
+  requires len(v) > 0
+  ensures result == (v[0] == x)
+{
+  return vec_get::<i64>(v, 0) == x;
+}
+
+fn first_byte(s: String) -> i64
+  requires len(s) > 0
+  ensures result == s[0]
+  ensures 0 <= result && result <= 255
+{
+  return string_byte(s, 0);
+}
+
+fn last_flag(v: Vec<bool>) -> bool
+  requires len(v) > 0
+  ensures result == v[len(v) - 1]
+{
+  return vec_get::<bool>(v, len(v) - 1);
+}

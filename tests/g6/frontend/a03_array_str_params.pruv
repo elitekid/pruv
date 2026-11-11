@@ -1,0 +1,32 @@
+// G6 A0 accept: trusted rust fn with [i64], [u8], [bool] and str read parameters
+trusted rust fn ints_total(a: [i64]) -> i64
+  ensures true
+  = "::std::iter::sum";
+
+trusted rust fn bytes_hash(b: [u8]) -> i64
+  requires len(b) > 0
+  ensures result >= 0
+  = "::std::hash::hash_bytes";
+
+trusted rust fn any_set(f: [bool]) -> bool
+  ensures result == exists k in 0..len(f): f[k]
+  = "::std::iter::any";
+
+trusted rust fn text_is_ascii(s: str) -> bool
+  ensures true
+  = "::std::primitive::str::is_ascii";
+
+fn total_of(a: [i64]) -> i64 {
+  return ints_total(a);
+}
+
+fn hash_of(b: [u8]) -> i64
+  requires len(b) > 0
+  ensures result >= 0
+{
+  return bytes_hash(b);
+}
+
+fn check_all(f: [bool], s: str) -> bool {
+  return any_set(f) && text_is_ascii(s);
+}

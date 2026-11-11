@@ -5,7 +5,7 @@ use pruvc::target::{Cpu, Target};
 use std::path::{Component, Path, PathBuf};
 
 // The usage line on stdout is kept the same as Python pruvc.py (except for the executable name) (audit must-fix 3). New options are reported on stderr.
-pub const USAGE: &str = "usage: pruvc in.pruv -o OUT [--no-verify] [--trust-callers] [--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]]";
+pub const USAGE: &str = "usage: pruvc in.pruv -o OUT [--no-verify] [--trust-callers] [--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]] [--rust-extern NAME=PATH] [--rust-search PATH] [--foreign-checks requires|all|off]";
 pub const USAGE_MORE: &str = "       [--emit exe|obj|ll|rs] [--target TRIPLE] [-mcpu=CPU]";
 
 /// Internal output kind (the result of the backend x emit decision table).
@@ -41,6 +41,12 @@ pub struct Args {
     pub infer: bool,
     /// --show-inferred: prints the per-loop inference record to stderr (requires --infer).
     pub show_inferred: bool,
+    /// G6: crate names given with --rust-extern NAME=PATH (A0: only NAME is used, the file is not opened).
+    pub rust_extern: Vec<String>,
+    /// G6: --rust-search PATH values (recorded only in A0).
+    pub rust_search: Vec<String>,
+    /// G6: --foreign-checks requires|all|off (default requires).
+    pub foreign_checks: String,
     pub budget: u64,
     /// ll: always Some (default included), obj: only when given explicitly, None for the rest.
     pub bindings: Option<String>,
@@ -60,7 +66,7 @@ pub fn usage_error(msg: &str) -> i32 {
 }
 
 // Option names and the number of values they take. The declaration order is also the order of argparse's abbreviation-ambiguity message.
-static OPTS: [(&str, usize); 11] = [
+static OPTS: [(&str, usize); 14] = [
     ("-o", 1),
     ("--no-verify", 0),
     ("--trust-callers", 0),
@@ -68,6 +74,9 @@ static OPTS: [(&str, usize); 11] = [
     ("--rust-bindings", 1),
     ("--infer", 0),
     ("--show-inferred", 0),
+    ("--rust-extern", 1),
+    ("--rust-search", 1),
+    ("--foreign-checks", 1),
     ("--contract-budget", 1),
     ("--also-llvm", 2),
     ("--emit", 1),
@@ -85,6 +94,9 @@ struct Raw {
     show_inferred: bool,
     backend: Option<&'static str>,
     rust_bindings: Option<String>,
+    rust_extern: Vec<String>,
+    rust_search: Vec<String>,
+    foreign_checks: Option<&'static str>,
     budget: Option<i128>,
     also_llvm: Option<(String, String)>,
     emit: Option<Kind>,
@@ -250,6 +262,21 @@ fn parse_raw(argv: &[String]) -> Result<Raw, String> {
         match name {
             "-o" => r.out = vals.pop(),
             "--rust-bindings" => r.rust_bindings = vals.pop(),
+            "--rust-extern" => r.rust_extern.extend(vals.pop()),
+            "--rust-search" => r.rust_search.extend(vals.pop()),
+            "--foreign-checks" => {
+                let v = vals.pop().unwrap_or_default();
+                r.foreign_checks = Some(match v.as_str() {
+                    "requires" => "requires",
+                    "all" => "all",
+                    "off" => "off",
+                    _ => {
+                        return Err(format!(
+                            "argument --foreign-checks: invalid choice: '{v}' (choose from 'requires', 'all', 'off')"
+                        ))
+                    }
+                });
+            }
             "--target" => r.target = vals.pop(),
             "--backend" => {
                 let v = vals.pop().unwrap_or_default();
@@ -421,6 +448,39 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             Kind::Rs => return Err("--rust-bindings requires --backend llvm".to_string()),
         }
     }
+    // G6 (same order as pruvc.py main): --foreign-checks off needs verification, then the --rust-extern specs, then --rust-search
+    let foreign_checks = r.foreign_checks.unwrap_or("requires");
+    if foreign_checks == "off" && r.no_verify {
+        return Err("--foreign-checks off requires verification (not allowed with --no-verify)".to_string());
+    }
+    let mut rust_extern: Vec<String> = Vec::new();
+    for spec in &r.rust_extern {
+        let (name, xpath) = match spec.split_once('=') {
+            Some((n, x)) => (n, x),
+            None => (spec.as_str(), ""),
+        };
+        let has_sep = spec.contains('=');
+        let ident = {
+            let mut cs = name.chars();
+            match cs.next() {
+                Some(c) if c.is_ascii_alphabetic() || c == '_' => cs.all(|c| c.is_ascii_alphanumeric() || c == '_'),
+                _ => false,
+            }
+        };
+        if !has_sep || xpath.is_empty() || !ident || name == "std" || pruv_core::lexer::RUST_KEYWORDS.contains(&name) {
+            return Err(format!(
+                "invalid --rust-extern {}: expected NAME=PATH with a Rust identifier NAME other than std",
+                pruv_core::pyrepr::repr_str(spec)
+            ));
+        }
+        if rust_extern.iter().any(|x| x == name) {
+            return Err(format!("duplicate --rust-extern name {name}"));
+        }
+        rust_extern.push(name.to_string());
+    }
+    if r.rust_search.iter().any(|p| p.is_empty()) {
+        return Err("--rust-search needs a non-empty PATH".to_string());
+    }
 
     // Target and CPU
     let target = match (&r.target, kind) {
@@ -485,6 +545,9 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         trust_callers: r.trust_callers,
         infer: r.infer,
         show_inferred: r.show_inferred,
+        rust_extern,
+        rust_search: r.rust_search,
+        foreign_checks: foreign_checks.to_string(),
         budget,
         bindings,
         also_llvm: r.also_llvm,

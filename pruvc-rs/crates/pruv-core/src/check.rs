@@ -7,9 +7,12 @@
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
+use crate::foreign::{
+    catalog_fn, check_foreign_decl, check_ownership, is_catalog, is_catalog_contract_only, CatFn, Takes,
+};
 use crate::gtype::{
-    bind_args, check_arity, decl_owner, dependencies, fn_owner, format_type, is_element, is_value, mk_nominal, mk_option,
-    mk_result, substitute, GType, Mapping, ParamId,
+    bind_args, check_arity, collection_arity, decl_owner, dependencies, fn_owner, format_type, is_element, is_value,
+    key_is_collection, mk_array, mk_nominal, mk_option, mk_result, substitute, GType, Mapping, ParamId,
 };
 use crate::typeinfo::{TypeTable, BUILTIN_TYPE_NAMES};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -115,6 +118,7 @@ struct Entry {
 }
 type Scope = HashMap<String, Entry>;
 
+#[derive(Clone)]
 struct FuncInfo {
     line: i64,
     col: i64,
@@ -122,6 +126,8 @@ struct FuncInfo {
     ret: GType,
     effects: Vec<String>,
     tparams: Vec<TParam>,
+    /// G6: a `trusted rust fn` (cannot be called in a contract)
+    foreign: bool,
 }
 
 struct Checker {
@@ -141,11 +147,20 @@ struct Checker {
     elem_params: Vec<ParamId>,
     /// type name -> number of type parameters (for gtype::check_arity / is_value)
     arg_decls: HashMap<String, usize>,
+    /// G6: crate names given with --rust-extern
+    externs: Vec<String>,
+    /// G6: function name -> `take` flags of its parameters (for the ownership checker)
+    takes: Takes,
 }
 
 /// Checks the program, fills in ty for every expression, and returns the type table.
 pub fn check(prog: &mut Program) -> Result<TypeTable, PruvError> {
-    let mut c = Checker::new(prog)?;
+    check_with_externs(prog, &[])
+}
+
+/// `check` with the crate names given with --rust-extern (G6: crates a trusted rust fn path may start with besides std).
+pub fn check_with_externs(prog: &mut Program, externs: &[String]) -> Result<TypeTable, PruvError> {
+    let mut c = Checker::new(prog, externs)?;
     c.run(prog)?;
     Ok(c.tt)
 }
@@ -178,6 +193,7 @@ fn set_ty(e: &mut Expr, t: &GType) {
         Expr::FieldAccess(x) => x.ty = v,
         Expr::IsVariant(x) => x.ty = v,
         Expr::VariantField(x) => x.ty = v,
+        Expr::Move(x) => x.ty = v,
     }
 }
 
@@ -201,17 +217,22 @@ fn elem_type(at: &GType) -> GType {
 }
 
 impl Checker {
-    fn new(prog: &Program) -> Res<Checker> {
+    fn new(prog: &Program, externs: &[String]) -> Res<Checker> {
         let mut funcs: HashMap<String, Rc<FuncInfo>> = HashMap::new();
+        let mut takes: Takes = HashMap::new();
         let mut func_order = Vec::new();
         for f in &prog.functions {
             let name = f.name.clone();
             if funcs.contains_key(&name) {
                 return Err(terr(f.line, f.col, "dup_fn", format!("function {} defined twice", name), ""));
             }
-            if matches!(name.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr") || contract_only(&name).is_some() {
+            if matches!(name.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr")
+                || contract_only(&name).is_some()
+                || is_catalog(&name)
+            {
                 return Err(terr(f.line, f.col, "reserved", format!("{} is a builtin name", name), "rename the function"));
             }
+            takes.insert(name.clone(), f.params.iter().map(|p| p.take).collect());
             funcs.insert(
                 name.clone(),
                 Rc::new(FuncInfo {
@@ -221,6 +242,7 @@ impl Checker {
                     ret: GType::from_key(&f.ret),
                     effects: f.effects.clone(),
                     tparams: f.tparams.clone(),
+                    foreign: f.foreign.is_some(),
                 }),
             );
             func_order.push(name);
@@ -239,6 +261,8 @@ impl Checker {
             ctx_generic: false,
             elem_params: Vec::new(),
             arg_decls: HashMap::new(),
+            externs: externs.to_vec(),
+            takes,
         })
     }
 
@@ -254,6 +278,20 @@ impl Checker {
     fn run(&mut self, prog: &mut Program) -> Res<()> {
         crate::refine::expand(prog)?; // STAGE1 A: validate refinement annotations, then expand them into contracts/asserts
         self.declare_types(&prog.types)?;
+        self.normalize_types(prog); // G6: Vec/HashMap/String become catalog types unless the program declares them
+        // `decls` holds clones taken before normalization (Python shares the nodes): refresh them
+        for d in &prog.types {
+            self.decls.insert(d.name().to_string(), d.clone());
+        }
+        // likewise the signatures in `funcs` were taken before normalization (Python reads the shared nodes)
+        for f in &prog.functions {
+            if let Some(info) = self.funcs.get_mut(&f.name) {
+                let mut ni = (**info).clone();
+                ni.params = f.params.iter().map(|p| GType::from_key(&p.ty)).collect();
+                ni.ret = GType::from_key(&f.ret);
+                *info = Rc::new(ni);
+            }
+        }
         self.arg_decls = self.decls.iter().map(|(n, d)| (n.clone(), d.tparams().len())).collect();
         self.check_tparams(prog)?; // G3: type-parameter lists (type_parameter, generic_bound, generic_main)
         self.resolve_types(prog)?;
@@ -328,6 +366,177 @@ impl Checker {
             }
         }
         Ok(())
+    }
+
+    // ---- G6 A0: collection spellings ----
+    /// The parser yields nominal Vec/HashMap/String; map them to the catalog types unless a user type of that name
+    /// is declared (an existing user type keeps its meaning).
+    fn norm_type(&self, ty: &GType) -> GType {
+        if ty.owner.is_some() {
+            return ty.clone();
+        }
+        let args: Vec<GType> = ty.args.iter().map(|a| self.norm_type(a)).collect();
+        let mut name = ty.name.clone();
+        if !self.decls.contains_key(&name) {
+            name = match name.as_str() {
+                "Vec" => "vec".to_string(),
+                "HashMap" => "hashmap".to_string(),
+                "String" => "string".to_string(),
+                _ => name.clone(),
+            };
+        }
+        if name == ty.name && args == ty.args {
+            return ty.clone();
+        }
+        if args.len() == 1 {
+            if name == "array" {
+                return mk_array(args[0].clone());
+            }
+            if name == "option" {
+                return mk_option(args[0].clone());
+            }
+            if name == "result" {
+                return mk_result(args[0].clone());
+            }
+        }
+        GType::new(&name, args)
+    }
+
+    /// `norm_type` on an AST type key; a key without any of the three spellings is returned unchanged.
+    fn norm_key(&self, key: &str) -> String {
+        if !(key.contains("Vec") || key.contains("HashMap") || key.contains("String")) {
+            return key.to_string();
+        }
+        self.norm_type(&GType::from_key(key)).to_key()
+    }
+
+    fn normalize_types(&self, prog: &mut Program) {
+        for d in prog.types.iter_mut() {
+            match d {
+                TypeDecl::Struct(s) => {
+                    for fd in s.fields.iter_mut() {
+                        fd.ty = self.norm_key(&fd.ty);
+                    }
+                }
+                TypeDecl::Enum(e) => {
+                    for v in e.variants.iter_mut() {
+                        for fd in v.fields.iter_mut() {
+                            fd.ty = self.norm_key(&fd.ty);
+                        }
+                    }
+                }
+            }
+        }
+        for f in prog.functions.iter_mut() {
+            for p in f.params.iter_mut() {
+                p.ty = self.norm_key(&p.ty);
+            }
+            f.ret = self.norm_key(&f.ret);
+            for e in f.requires.iter_mut() {
+                self.norm_expr(e);
+            }
+            for e in f.ensures.iter_mut() {
+                self.norm_expr(e);
+            }
+            self.norm_stmts(&mut f.body);
+        }
+    }
+
+    fn norm_targs(&self, targs: &mut Option<Vec<GType>>) {
+        if let Some(v) = targs {
+            *v = v.iter().map(|t| self.norm_type(t)).collect();
+        }
+    }
+
+    fn norm_stmts(&self, stmts: &mut [Stmt]) {
+        for st in stmts.iter_mut() {
+            match st {
+                Stmt::Let(s) => {
+                    s.ty = self.norm_key(&s.ty);
+                    self.norm_expr(&mut s.value);
+                }
+                Stmt::Assign(s) => self.norm_expr(&mut s.value),
+                Stmt::FieldAssign(s) => self.norm_expr(&mut s.value),
+                Stmt::Return(s) => {
+                    if let Some(v) = s.value.as_mut() {
+                        self.norm_expr(v);
+                    }
+                }
+                Stmt::IndexAssign(s) => {
+                    self.norm_expr(&mut s.index);
+                    self.norm_expr(&mut s.value);
+                }
+                Stmt::If(s) => {
+                    self.norm_expr(&mut s.cond);
+                    self.norm_stmts(&mut s.then);
+                    self.norm_stmts(&mut s.els);
+                }
+                Stmt::While(s) => {
+                    self.norm_expr(&mut s.cond);
+                    for i in s.invariants.iter_mut() {
+                        self.norm_expr(i);
+                    }
+                    self.norm_expr(&mut s.decreases);
+                    self.norm_stmts(&mut s.body);
+                }
+                Stmt::Assert(s) => self.norm_expr(&mut s.cond),
+                Stmt::ExprStmt(s) => self.norm_expr(&mut s.expr),
+                Stmt::Match(s) => {
+                    self.norm_expr(&mut s.scrutinee);
+                    for a in s.arms.iter_mut() {
+                        self.norm_stmts(&mut a.body);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Explicit type arguments (`f::<..>`, `S::<..> {..}`, `E::<..>::V(..)`, `Some::<..>(..)`) of an expression tree.
+    fn norm_expr(&self, e: &mut Expr) {
+        match e {
+            Expr::Call(x) => {
+                self.norm_targs(&mut x.targs);
+                for a in x.args.iter_mut() {
+                    self.norm_expr(a);
+                }
+            }
+            Expr::Ctor(x) => {
+                self.norm_targs(&mut x.targs);
+                if let Some(a) = x.arg.as_mut() {
+                    self.norm_expr(a);
+                }
+            }
+            Expr::StructLit(x) => {
+                self.norm_targs(&mut x.targs);
+                for f in x.fields.iter_mut() {
+                    self.norm_expr(&mut f.value);
+                }
+            }
+            Expr::EnumCtor(x) => {
+                self.norm_targs(&mut x.targs);
+                for a in x.args.iter_mut() {
+                    self.norm_expr(a);
+                }
+            }
+            Expr::Unary(x) => self.norm_expr(&mut x.operand),
+            Expr::Binary(x) => {
+                self.norm_expr(&mut x.left);
+                self.norm_expr(&mut x.right);
+            }
+            Expr::Index(x) => {
+                self.norm_expr(&mut x.array);
+                self.norm_expr(&mut x.index);
+            }
+            Expr::Quant(x) => {
+                self.norm_expr(&mut x.lo);
+                self.norm_expr(&mut x.hi);
+                self.norm_expr(&mut x.body);
+            }
+            Expr::FieldAccess(x) => self.norm_expr(&mut x.base),
+            Expr::IsVariant(x) => self.norm_expr(&mut x.value),
+            Expr::VariantField(x) => self.norm_expr(&mut x.value),
+            Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+        }
     }
 
     fn check_field_names(&self, fields: &[FieldDecl], wher: &str) -> Res<()> {
@@ -455,11 +664,42 @@ impl Checker {
             }
             return Ok(());
         }
+        if collection_arity(&ty.name).is_some() {
+            // G6: Vec<T>, HashMap<K, V>, String
+            for a in &ty.args {
+                self.check_type_rec(line, col, a)?;
+            }
+            if ty.name == "vec" && ty.args.len() == 1 {
+                self.collection_payload(line, col, &ty.args[0], "a Vec element")?;
+            } else if ty.name == "hashmap" && ty.args.len() == 2 {
+                let k = &ty.args[0];
+                if k.contains_collection() || !is_element(k, &self.elem_params) {
+                    return Err(terr(
+                        line,
+                        col,
+                        "foreign_owned_type",
+                        format!("{} cannot be a HashMap key: only i64, bool and Element type parameters can", tn(k)),
+                        "use i64 or bool keys, or declare the parameter `: Element`",
+                    ));
+                }
+                self.collection_payload(line, col, &ty.args[1], "a HashMap value")?;
+            }
+            return Ok(());
+        }
         if ty.name == "array" {
             if !ty.args.is_empty() {
                 // [X] for X other than i64/u8/bool
                 let el = &ty.args[0];
                 self.check_type_rec(line, col, el)?;
+                if el.contains_collection() {
+                    return Err(terr(
+                        line,
+                        col,
+                        "foreign_owned_type",
+                        format!("an array cannot hold the collection type {}", tn(el)),
+                        "arrays hold i64, bool or an Element type parameter",
+                    ));
+                }
                 if let Some(o) = &el.owner {
                     if !self.elem_params.contains(&(o.clone(), el.index)) {
                         return Err(terr(
@@ -522,9 +762,48 @@ impl Checker {
         Ok(())
     }
 
+    /// G6: a collection payload is a plain G3 value (never another collection).
+    fn collection_payload(&self, line: i64, col: i64, a: &GType, what: &str) -> Res<()> {
+        if a.contains_collection() {
+            return Err(terr(
+                line,
+                col,
+                "foreign_owned_type",
+                format!("{} cannot be the collection type {}", what, tn(a)),
+                "collection payloads are plain values; keep every collection in its own binding",
+            ));
+        }
+        let ad = &self.arg_decls;
+        let look = |n: &str| ad.get(n).map(|k| (*k, Vec::<GType>::new()));
+        if !is_value(a, &look) {
+            return Err(terr(
+                line,
+                col,
+                "foreign_owned_type",
+                format!(
+                    "{} cannot have type {}: only i64, bool, Option, Result, structs, enums and type parameters can",
+                    what,
+                    tn(a)
+                ),
+                "arrays, str and () cannot be collection payloads",
+            ));
+        }
+        Ok(())
+    }
+
     /// a: a type argument; tp: the TypeParam it instantiates (None for Option/Result).
     fn check_arg(&self, line: i64, col: i64, a: &GType, tp: Option<&TParam>) -> Res<()> {
         self.check_type_rec(line, col, a)?;
+        if a.contains_collection() {
+            // G6: collections are never type arguments of Option/Result/user declarations
+            return Err(terr(
+                line,
+                col,
+                "foreign_owned_type",
+                format!("{} cannot be a type argument", tn(a)),
+                "keep collections in their own bindings; Vec<T> and HashMap<K, V> are the only places they appear",
+            ));
+        }
         let ad = &self.arg_decls;
         let look = |n: &str| ad.get(n).map(|k| (*k, Vec::<GType>::new()));
         if !is_value(a, &look) {
@@ -623,6 +902,15 @@ impl Checker {
                         ));
                     }
                     self.check_type(f.line, f.col, &ft)?;
+                    if ft.contains_collection() {
+                        return Err(terr(
+                            f.line,
+                            f.col,
+                            "foreign_owned_type",
+                            format!("field {} cannot have the collection type {}", f.name, tn(&ft)),
+                            "collections cannot be struct fields or enum payloads; pass them as separate bindings",
+                        ));
+                    }
                 }
             }
         }
@@ -731,6 +1019,17 @@ impl Checker {
         self.cur_name = fname.clone();
         self.cur_ret = ret.clone();
         self.calls.insert(fname.clone(), BTreeSet::new());
+        if f.foreign.is_some() {
+            check_foreign_decl(f, &self.externs)?; // G6: signature, then path of a trusted rust fn
+        } else if fname == "main" && (ret.is_collection() || f.params.iter().any(|p| key_is_collection(&p.ty))) {
+            return Err(terr(
+                f.line,
+                f.col,
+                "foreign_export",
+                "main cannot have a collection parameter or result",
+                "give main plain value parameters and result; use collections inside it",
+            ));
+        }
         let mut scope: Scope = HashMap::new();
         for p in &f.params {
             if scope.contains_key(&p.name) {
@@ -739,6 +1038,15 @@ impl Checker {
             let pt = GType::from_key(&p.ty);
             if pt == unitt() {
                 return Err(terr(f.line, f.col, "unit_param", format!("parameter {} cannot have type ()", p.name), ""));
+            }
+            if p.take && !pt.is_collection() {
+                return Err(terr(
+                    f.line,
+                    f.col,
+                    "foreign_move",
+                    "take is only for collection parameters",
+                    format!("remove `take` from {}; scalars, arrays and str are passed by value or borrowed", p.name),
+                ));
             }
             scope.insert(p.name.clone(), Entry { ty: pt, mutable: false, kind: "param" });
         }
@@ -752,6 +1060,9 @@ impl Checker {
         }
         for e in f.ensures.iter_mut() {
             self.expect(e, &boolt(), &escope, true, None)?;
+        }
+        if f.foreign.is_some() {
+            return Ok(()); // a trusted rust fn has no body to check
         }
         let mut body_scope = scope.clone();
         self.block(&mut f.body, &mut body_scope)?;
@@ -779,6 +1090,7 @@ impl Checker {
                 ));
             }
         }
+        check_ownership(f, &self.takes)?; // G6: liveness of collection bindings (after typing)
         Ok(())
     }
 
@@ -1096,8 +1408,8 @@ impl Checker {
         ))
     }
 
-    /// The argument must be an array of any element type (G2 B0: or a str).
-    fn expect_array(&mut self, e: &mut Expr, scope: &Scope, c: bool) -> Res<GType> {
+    /// The argument must be an array of any element type (G2 B0: or a str). coll (G6): a Vec/HashMap/String is accepted too.
+    fn expect_array(&mut self, e: &mut Expr, scope: &Scope, c: bool, coll: bool) -> Res<GType> {
         let t = self.expr(e, scope, c)?;
         if t.owner.is_some() {
             return Err(terr(
@@ -1108,7 +1420,7 @@ impl Checker {
                 "only [T] with T: Element can be indexed, measured or copied",
             ));
         }
-        if !t.is_array() && t != strt() {
+        if !t.is_array() && t != strt() && !(coll && t.is_collection()) {
             return Err(terr(
                 e.line(),
                 e.col(),
@@ -1199,6 +1511,16 @@ impl Checker {
                     }
                     "==" | "!=" => {
                         let lt = self.expr(&mut x.left, scope, c)?;
+                        if lt.is_collection() {
+                            // G6
+                            return Err(terr(
+                                x.line,
+                                x.col,
+                                "eq_type",
+                                "collections cannot be compared with ==",
+                                "compare lengths and elements: len(a) == len(b) && forall k in 0..len(a): a[k] == b[k]",
+                            ));
+                        }
                         if lt.is_array() {
                             return Err(terr(
                                 x.line,
@@ -1248,9 +1570,44 @@ impl Checker {
                     _ => Err(terr(x.line, x.col, "internal", "unknown expression", "")),
                 }
             }
+            Expr::Move(x) => {
+                // G6: liveness and position rules are checked by foreign::check_ownership
+                if c {
+                    return Err(terr(
+                        x.line,
+                        x.col,
+                        "foreign_move",
+                        "move only where ownership is consumed",
+                        "contracts read parameters and locals directly; remove `move`",
+                    ));
+                }
+                Ok(self.lookup(x.line, x.col, &x.name, scope)?.ty)
+            }
             Expr::Index(x) => {
-                let at = self.expect_array(&mut x.array, scope, c)?;
+                let at = self.expect_array(&mut x.array, scope, c, true)?;
+                if at.name == "hashmap" && at.owner.is_none() {
+                    return Err(terr(
+                        x.array.line(),
+                        x.array.col(),
+                        "type_mismatch",
+                        format!("expected {}, found {}", tn(&GType::array()), tn(&at)),
+                        "",
+                    ));
+                }
                 self.expect(&mut x.index, &i64t(), scope, c, None)?;
+                if at.is_collection() {
+                    // G6: contract-only observation of a Vec / String
+                    if !c {
+                        return Err(terr(
+                            x.line,
+                            x.col,
+                            "contract_only",
+                            format!("indexing a {} is only allowed in contracts", tn(&at)),
+                            if at.name == "vec" { "use vec_get in code" } else { "use string_byte in code" },
+                        ));
+                    }
+                    return Ok(if at.name == "vec" { at.args.first().cloned().unwrap_or_else(i64t) } else { i64t() });
+                }
                 // G2 A5: a bool array reads bool; G3: [T] reads T
                 Ok(elem_type(&at))
             }
@@ -1540,6 +1897,44 @@ impl Checker {
         Ok(if name == "Some" { mk_option(x) } else { mk_result(x) })
     }
 
+    /// map_lookup / map_updated arguments: a key whose type differs from a map argument's key type is a
+    /// foreign_contract error; any other mismatch is the ordinary type_mismatch.
+    fn observer_args(&mut self, e: &mut Call, cf: &CatFn, m: &Mapping, scope: &Scope, c: bool) -> Res<()> {
+        let mut got: Vec<GType> = Vec::new();
+        for arg in e.args.iter_mut() {
+            got.push(self.expr(arg, scope, c)?);
+        }
+        let kidx = cf.params.iter().position(|p| p.name == "k").unwrap_or(0);
+        for g in &got {
+            if g.name == "hashmap" && g.owner.is_none() {
+                if let (Some(k0), Some(kt)) = (g.args.first(), got.get(kidx)) {
+                    if k0 != kt {
+                        return Err(terr(
+                            e.args[kidx].line(),
+                            e.args[kidx].col(),
+                            "foreign_contract",
+                            format!("key of type {} does not match the map key type {}", tn(kt), tn(k0)),
+                            "pass a key of the map's key type",
+                        ));
+                    }
+                }
+            }
+        }
+        for ((arg, g), prm) in e.args.iter().zip(got.iter()).zip(cf.params.iter()) {
+            let want = substitute(&prm.ty, m);
+            if *g != want {
+                return Err(terr(
+                    arg.line(),
+                    arg.col(),
+                    "type_mismatch",
+                    format!("expected {}, found {}", tn(&want), tn(g)),
+                    "",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn call(&mut self, e: &mut Call, scope: &Scope, c: bool) -> Res<GType> {
         let n = e.name.clone();
         let targs = e.targs.clone();
@@ -1558,7 +1953,7 @@ impl Checker {
         match n.as_str() {
             "len" => {
                 arity(1)?;
-                self.expect_array(&mut e.args[0], scope, c)?;
+                self.expect_array(&mut e.args[0], scope, c, true)?; // G6: also Vec/HashMap/String
                 return Ok(i64t());
             }
             "alloc" => {
@@ -1582,7 +1977,7 @@ impl Checker {
                     return Err(terr(line, col, "effect_in_contract", "copy not allowed in contracts", ""));
                 }
                 arity(1)?;
-                let at = self.expect_array(&mut e.args[0], scope, c)?;
+                let at = self.expect_array(&mut e.args[0], scope, c, false)?;
                 self.used_effects.insert("alloc".to_string());
                 return Ok(at);
             }
@@ -1655,15 +2050,59 @@ impl Checker {
                 }
             });
         }
-        let f = match self.funcs.get(&n) {
-            Some(f) => Rc::clone(f),
-            None => {
-                let fix = if matches!(n.as_str(), "sum" | "count" | "max" | "min") {
-                    "aggregates use the form sum(k in 0..len(a): a[k])"
-                } else {
-                    ""
-                };
-                return Err(terr(line, col, "unknown_fn", format!("unknown function {}", n), fix));
+        // G6: fixed standard catalog (G6_SPEC 10.3)
+        let cat: Option<CatFn> = catalog_fn(&n);
+        let f: Rc<FuncInfo> = if let Some(cf) = &cat {
+            if is_catalog_contract_only(&n) {
+                if !c {
+                    return Err(terr(
+                        line,
+                        col,
+                        "foreign_contract",
+                        format!("{} is only allowed in contracts", n),
+                        if n == "map_lookup" { "use map_get in code" } else { "state the update in ensures" },
+                    ));
+                }
+            } else if c {
+                return Err(terr(
+                    line,
+                    col,
+                    "foreign_contract",
+                    format!("{} cannot be called in a contract", n),
+                    "contracts observe collections with len(x), x[i], map_lookup and map_updated",
+                ));
+            }
+            Rc::new(FuncInfo {
+                line: 0,
+                col: 0,
+                params: cf.params.iter().map(|p| p.ty.clone()).collect(),
+                ret: cf.ret.clone(),
+                effects: cf.effects.clone(),
+                tparams: cf.tparams.clone(),
+                foreign: false,
+            })
+        } else {
+            match self.funcs.get(&n) {
+                Some(f) => {
+                    if c && f.foreign {
+                        return Err(terr(
+                            line,
+                            col,
+                            "foreign_contract",
+                            format!("trusted rust fn {} cannot be called in a contract", n),
+                            "state the property with the arguments' own contents instead",
+                        ));
+                    }
+                    Rc::clone(f)
+                }
+                None => {
+                    let fix = if matches!(n.as_str(), "sum" | "count" | "max" | "min") {
+                        "aggregates use the form sum(k in 0..len(a): a[k])"
+                    } else {
+                        ""
+                    };
+                    return Err(terr(line, col, "unknown_fn", format!("unknown function {}", n), fix));
+                }
             }
         };
         // G3_SPEC 3.4: resolve + arity + admissibility + bounds, substitute the signature, check the arguments
@@ -1673,8 +2112,17 @@ impl Checker {
         }
         let m = m.unwrap_or_default();
         arity(f.params.len())?;
-        for (arg, p) in e.args.iter_mut().zip(f.params.iter()) {
-            self.expect(arg, &substitute(p, &m), scope, c, None)?;
+        match &cat {
+            Some(cf) if is_catalog_contract_only(&n) => self.observer_args(e, cf, &m, scope, c)?,
+            _ => {
+                for (arg, p) in e.args.iter_mut().zip(f.params.iter()) {
+                    self.expect(arg, &substitute(p, &m), scope, c, None)?;
+                }
+            }
+        }
+        if cat.is_some() {
+            self.used_effects.extend(f.effects.iter().cloned());
+            return Ok(substitute(&f.ret, &m));
         }
         if c && !f.effects.is_empty() {
             return Err(terr(

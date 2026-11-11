@@ -1281,6 +1281,8 @@ impl<'a> FnVerifier<'a> {
                 let vf = model.variant_fns(&ety, &x.variant)?;
                 Ok(Val::Bool(vf.rec.apply1(v.try_ast()?)))
             }
+            // G6 A0: never reaches the verifier (the driver's A0 guard stops the program earlier)
+            Expr::Move(_) => Err("G6 move reached the verifier".to_string()),
             Expr::VariantField(x) => {
                 let v = self.ev(&x.value, st, g, code, env)?;
                 let ety = enum_ty(&x.enum_name, &v);

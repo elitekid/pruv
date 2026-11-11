@@ -1,0 +1,8 @@
+// foreign_move: conditional move on one branch, then use after the join (binding may have been moved)
+fn f(c: bool) -> i64 ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  if c {
+    let w: Vec<i64> = vec_push::<i64>(move v, 1);
+  }
+  return len(v);
+}

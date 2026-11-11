@@ -1,0 +1,4 @@
+// foreign_signature: a foreign declaration needs at least one ensures (only a requires is given)
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  requires a > 0
+  = "::std::cmp::min";

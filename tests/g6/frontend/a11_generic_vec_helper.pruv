@@ -1,0 +1,25 @@
+// G6 A0 accept: generic helpers over Vec<T> with take parameters, `return move v;`, called with explicit type arguments
+fn append_one<T>(take v: Vec<T>, x: T) -> Vec<T> ! alloc
+  requires len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+  ensures result[len(v)] == x
+  ensures forall i in 0..len(v): result[i] == v[i]
+{
+  return vec_push::<T>(move v, x);
+}
+
+fn pass_through<T>(take v: Vec<T>) -> Vec<T>
+  ensures len(result) == len(v)
+{
+  return move v;
+}
+
+fn demo() -> i64 ! alloc
+  ensures result == 2
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  v = append_one::<i64>(move v, 7);
+  v = append_one::<i64>(move v, 9);
+  v = pass_through::<i64>(move v);
+  return len(v);
+}

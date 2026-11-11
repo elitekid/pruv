@@ -86,8 +86,13 @@ pub struct VariantField {
     pub variant: String, pub field: String, pub ty: Ty, pub enum_ty: Option<GType>,
 }
 
+/// G6 A0: `move name` (consumes an owned collection binding). Counterpart of vast.Move.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Move { pub line: i64, pub col: i64, pub name: String, pub ty: Ty }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    Move(Move),
     IntLit(IntLit),
     BoolLit(BoolLit),
     StrLit(StrLit),
@@ -108,6 +113,7 @@ pub enum Expr {
 impl Expr {
     pub fn line(&self) -> i64 {
         match self {
+            Expr::Move(x) => x.line,
             Expr::IntLit(x) => x.line,
             Expr::BoolLit(x) => x.line,
             Expr::StrLit(x) => x.line,
@@ -127,6 +133,7 @@ impl Expr {
     }
     pub fn col(&self) -> i64 {
         match self {
+            Expr::Move(x) => x.col,
             Expr::IntLit(x) => x.col,
             Expr::BoolLit(x) => x.col,
             Expr::StrLit(x) => x.col,
@@ -169,9 +176,14 @@ pub struct Refinement {
     pub line: i64, pub col: i64, pub shape: String, pub base: String,
     pub lo: Option<String>, pub hi: Option<String>, pub maxlen: Option<String>,
 }
-/// No line/col.
+/// No line/col. `take`: G6 A0 `take name: Type` (consuming collection parameter).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Param { pub name: String, pub ty: Type, pub refine: Option<Refinement> }
+pub struct Param { pub name: String, pub ty: Type, pub refine: Option<Refinement>, pub take: bool }
+
+/// G6 A0: the declaration data of a `trusted rust fn` (Python `Function.foreign`): the Rust path and the
+/// line/col of the path string token. The body of such a function is empty.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForeignInfo { pub path: String, pub line: i64, pub col: i64 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDecl {
@@ -232,6 +244,8 @@ pub struct Function {
     pub line: i64, pub col: i64, pub name: String, pub params: Vec<Param>, pub ret: Type,
     pub effects: Vec<String>, pub requires: Vec<Expr>, pub ensures: Vec<Expr>, pub body: Vec<Stmt>,
     pub ret_refine: Option<Refinement>, pub tparams: Vec<TParam>,
+    /// G6 A0: Some for a `trusted rust fn`.
+    pub foreign: Option<ForeignInfo>,
 }
 /// No line/col.
 #[derive(Debug, Clone, PartialEq, Default)]

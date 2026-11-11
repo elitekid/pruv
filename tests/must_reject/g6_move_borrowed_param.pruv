@@ -1,0 +1,5 @@
+// foreign_move: moving a borrowed (unmarked) collection parameter
+fn f(v: Vec<i64>) -> i64 ! alloc {
+  let w: Vec<i64> = vec_push::<i64>(move v, 1);
+  return len(w);
+}

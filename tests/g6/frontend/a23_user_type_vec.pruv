@@ -1,0 +1,17 @@
+// G6 A0 accept: a user struct named Vec keeps its meaning (no Vec catalog type in this file); String is still the catalog type
+struct Vec {
+  size: i64
+}
+
+fn make_vec(n: i64) -> Vec {
+  return Vec { size: n };
+}
+
+fn size_of(v: Vec) -> i64 {
+  return v.size;
+}
+
+fn text_len() -> i64 ! alloc {
+  let s: String = string_new();
+  return len(s) + size_of(make_vec(3));
+}

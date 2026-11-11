@@ -1,0 +1,4 @@
+// foreign_owned_type: a String inside Option
+fn f(o: Option<String>) -> i64 {
+  return 0;
+}

@@ -1,0 +1,16 @@
+// G6 A0 accept: string_new / string_push_str / string_byte / string_to_str; the String stays usable after a read borrow
+fn greeting() -> str ! alloc
+  ensures len(result) == 5
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, "hello");
+  return string_to_str(s);
+}
+
+fn first_plus_len() -> i64 ! alloc {
+  let mut s: String = string_new();
+  s = string_push_str(move s, "hi");
+  s = string_push_str(move s, "!");
+  let t: str = string_to_str(s);
+  return string_byte(s, 0) + len(t);
+}

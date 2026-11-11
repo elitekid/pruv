@@ -1,0 +1,16 @@
+// foreign_loop_move: the loop body restores the binding on one branch only (the else branch consumes it)
+fn f(n: i64, c: bool) -> i64 ! alloc {
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    if c {
+      v = vec_push::<i64>(move v, i);
+    } else {
+      let w: Vec<i64> = vec_push::<i64>(move v, 0);
+    }
+    i = i + 1;
+  }
+  return 0;
+}

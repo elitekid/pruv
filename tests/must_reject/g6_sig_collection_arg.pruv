@@ -1,0 +1,4 @@
+// foreign_signature: a collection (read) parameter is not allowed on a user foreign declaration
+trusted rust fn count_items(v: Vec<i64>) -> i64
+  ensures true
+  = "::std::vec::Vec::len";

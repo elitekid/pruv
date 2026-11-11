@@ -1,0 +1,12 @@
+// foreign_loop_move: an outer binding consumed in a loop body and never restored on the backedge
+fn f(n: i64) -> i64 ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    let w: Vec<i64> = vec_push::<i64>(move v, i);
+    i = i + 1;
+  }
+  return 0;
+}

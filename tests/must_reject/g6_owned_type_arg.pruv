@@ -1,0 +1,8 @@
+// foreign_owned_type: an ordinary user generic type instantiated with a collection
+struct Wrap<T> {
+  value: T
+}
+
+fn f(w: Wrap<Vec<i64>>) -> i64 {
+  return 0;
+}

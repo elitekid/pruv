@@ -1,0 +1,4 @@
+// foreign_syntax: `rust fn` at top level without the `trusted` marker
+rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a
+  = "::std::cmp::min";

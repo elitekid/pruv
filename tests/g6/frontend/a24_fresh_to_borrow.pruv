@@ -1,0 +1,8 @@
+// G6 A0 accept: a fresh call result passed to a borrow parameter and to a take parameter without move
+fn fresh_len() -> i64 ! alloc {
+  let n: i64 = len(vec_new::<i64>());
+  let m: i64 = len(map_new::<bool, i64>());
+  let t: i64 = len(string_to_str(string_new()));
+  let g: i64 = vec_get::<i64>(vec_push::<i64>(vec_new::<i64>(), 5), 0);
+  return n + m + t + g;
+}

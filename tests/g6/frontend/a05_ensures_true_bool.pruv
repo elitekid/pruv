@@ -1,0 +1,32 @@
+// G6 A0 accept: bool result with a defining ensures, `ensures true` documenting an unconstrained result, requires chain
+trusted rust fn is_even(x: i64) -> bool
+  requires x >= 0
+  ensures result == (x % 2 == 0)
+  = "::std::num::is_even";
+
+trusted rust fn opaque_score(x: i64) -> i64
+  ensures true
+  = "::std::convert::identity";
+
+trusted rust fn clamp_to(x: i64, lo: i64, hi: i64) -> i64
+  requires lo <= hi
+  ensures lo <= result && result <= hi
+  ensures x < lo ==> result == lo
+  = "::std::cmp::Ord::clamp";
+
+fn parity_bit(x: i64) -> i64
+  requires x >= 0
+  ensures result == 0 || result == 1
+{
+  if is_even(x) {
+    return 0;
+  }
+  return 1;
+}
+
+fn bounded(x: i64) -> i64
+  ensures 0 <= result && result <= 100
+{
+  let y: i64 = opaque_score(x);
+  return clamp_to(y, 0, 100);
+}

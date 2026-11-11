@@ -233,6 +233,7 @@ fn expr_ty(e: &Expr) -> &Option<String> {
         Expr::FieldAccess(x) => &x.ty,
         Expr::IsVariant(x) => &x.ty,
         Expr::VariantField(x) => &x.ty,
+        Expr::Move(x) => &x.ty,
     }
 }
 
@@ -671,6 +672,8 @@ impl<'a> Gen<'a> {
             Expr::IsVariant(x) => {
                 Ok(format!("matches!({}, pruv_contract__{}::{} {{ .. }})", self.c(&x.value)?, x.enum_name, x.variant))
             }
+            // G6 A0: `move` is checked but never lowered (the driver's A0 guard stops the program earlier)
+            Expr::Move(_) => Err("G6 move reached the Rust generator".to_string()),
             Expr::VariantField(x) => {
                 self.tmp += 1;
                 let tmp = format!("pruv_e{}", self.tmp);
@@ -1255,7 +1258,7 @@ mod tests {
             line: 1,
             col: 1,
             name: "f".into(),
-            params: vec![Param { name: "x".into(), ty: "i64".into(), refine: None }],
+            params: vec![Param { name: "x".into(), ty: "i64".into(), refine: None, take: false }],
             ret: "i64".into(),
             effects: vec![],
             requires,
@@ -1263,6 +1266,7 @@ mod tests {
             body: vec![Stmt::Return(Return { line: 1, col: 1, value: Some(bin("+", var("x", "i64"), int("1"))) })],
             ret_refine: None,
             tparams: vec![],
+            foreign: None,
         };
         Program { functions: vec![f], types: vec![], refined: false }
     }
@@ -1301,7 +1305,7 @@ mod tests {
             line: 1,
             col: 1,
             name: "g".into(),
-            params: vec![Param { name: "a".into(), ty: aty.into(), refine: None }],
+            params: vec![Param { name: "a".into(), ty: aty.into(), refine: None, take: false }],
             ret: "i64".into(),
             effects: vec![],
             requires: vec![],
@@ -1309,6 +1313,7 @@ mod tests {
             body: vec![Stmt::Return(Return { line: 1, col: 1, value: Some(idx) })],
             ret_refine: None,
             tparams: vec![],
+            foreign: None,
         };
         Program { functions: vec![f], types: vec![], refined: false }
     }

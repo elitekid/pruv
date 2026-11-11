@@ -1,0 +1,4 @@
+// foreign_export: main with a collection parameter
+fn main(v: Vec<i64>) -> () {
+  return;
+}

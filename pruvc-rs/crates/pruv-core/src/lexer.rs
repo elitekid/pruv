@@ -24,6 +24,8 @@ pub enum Kind {
     Kw,
     Op,
     Str,
+    /// G6 A0: the contextual `move` token (see `move_token`).
+    Move,
     Eof,
 }
 
@@ -64,6 +66,45 @@ fn bar_after_type(toks: &[Tok]) -> bool {
     }
     matches!(a.val.as_str(), "i64" | "u8" | "bool" | "Option" | "Result")
         || a.val.chars().next().map_or(false, |c| c.is_ascii_uppercase())
+}
+
+fn move_ahead_class(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '"' | '(' | '[')
+}
+
+/// G6 A0 (vparser.py `_move_token`): `move` is a move token only when a name, number, string, `(` or `[` follows it
+/// and it does not sit in a declaration position (after fn/let/mut, `.` or `::`); everywhere else it stays the old reserved_name error.
+/// The look-ahead is the regex `(?:[ \t\r\n]|//[^\n]*)*[A-Za-z_0-9"(\[]` (with its backtracking: a comment may be cut short,
+/// so any class character inside a comment after `//` also matches).
+fn move_token(src: &[char], end: usize, toks: &[Tok]) -> bool {
+    if let Some(last) = toks.last() {
+        if (last.kind == Kind::Kw && matches!(last.val.as_str(), "fn" | "let" | "mut"))
+            || (last.kind == Kind::Op && matches!(last.val.as_str(), "." | "::"))
+        {
+            return false;
+        }
+    }
+    let n = src.len();
+    let mut p = end;
+    while p < n {
+        let c = src[p];
+        if move_ahead_class(c) {
+            return true;
+        }
+        if matches!(c, ' ' | '\t' | '\r' | '\n') {
+            p += 1;
+        } else if c == '/' && p + 1 < n && src[p + 1] == '/' {
+            // a line comment is skipped as a whole (its text never counts as the following token)
+            let mut q = p + 2;
+            while q < n && src[q] != '\n' {
+                q += 1;
+            }
+            p = q;
+        } else {
+            return false;
+        }
+    }
+    false
 }
 
 /// The operator token starting at pos (regex order: 3 characters, 2 characters, 1 character).
@@ -174,6 +215,11 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
                 pos += 1;
             }
             let v: String = src[start..pos].iter().collect();
+            if v == "move" && move_token(src, pos, &toks) {
+                let end = col + (pos - start) as i64;
+                toks.push(Tok { kind: Kind::Move, val: v, line, col, end });
+                continue;
+            }
             let is_kw = KEYWORDS.contains(&v.as_str());
             if !is_kw && (v.starts_with("pruv_") || v.contains("__") || RUST_KEYWORDS.contains(&v.as_str())) {
                 return Err(PruvError::new(

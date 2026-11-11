@@ -1,0 +1,4 @@
+// foreign_signature: a take parameter is not allowed on a user foreign declaration
+trusted rust fn consume(take v: Vec<i64>) -> i64
+  ensures true
+  = "::std::mem::drop";

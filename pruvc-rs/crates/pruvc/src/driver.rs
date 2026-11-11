@@ -184,7 +184,12 @@ fn compile(a: &Args) -> Result<(), Fail> {
     let src = pruv_core::pyio::read_source(Path::new(&a.input)).map_err(Fail::Internal)?;
     // Exceeding the depth limit is reported by the parser as stage "internal" (exit 3, like Python RecursionError).
     let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
-    let tt = pruv_core::check::check(&mut prog).map_err(|e| Fail::Lang(vec![e]))?;
+    let tt = pruv_core::check::check_with_externs(&mut prog, &a.rust_extern).map_err(|e| Fail::Lang(vec![e]))?;
+    // G6 A0 (same place as in Python compile_file): foreign declarations, collections, take and move are checked
+    // but not lowered yet; also with --no-verify, before verification and generation
+    if let Some(e) = pruv_core::foreign::g6_unimplemented_error(&prog, "codegen") {
+        return Err(Fail::Lang(vec![e]));
+    }
     if a.verify {
         let errs = if a.infer {
             let opts = pruv_proof::VerifyOptions { infer: true };

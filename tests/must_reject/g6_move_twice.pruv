@@ -1,0 +1,9 @@
+// foreign_move: the same binding consumed twice in one call (duplicate consumption)
+fn both(take a: Vec<i64>, take b: Vec<i64>) -> i64 {
+  return len(a) + len(b);
+}
+
+fn f() -> i64 ! alloc {
+  let v: Vec<i64> = vec_new::<i64>();
+  return both(move v, move v);
+}

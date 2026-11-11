@@ -1017,3 +1017,15 @@ points the author found unclear.
 
 **G3a is complete** (A0–A5 in RESULTS §45, Q here). Remaining advisory items: boundary tests at the 4096/65536 limits,
 repeated encoding during specialization.
+
+## 47. G6 A0: foreign declarations, collection types and ownership checking — frontend (2026-11-12)
+
+First G6 batch (`docs/G6_SPEC.md` §7.2, decisions in §10). Python reference first, Rust port in the same batch.
+
+- **Syntax:** `trusted rust fn NAME(params) -> T [! effects] contracts = "::path";`, `take` collection parameters, `move x`. `trusted`, `rust`, `take`, `move` are contextual; the existing test function named `take` keeps working. `Vec`/`HashMap`/`String` become the catalog types only when no user type of that name is declared.
+- **Checker:** fixed catalog of 10 executable operations (`vec_new/push/get`, `map_new/get/insert`, `string_new/push_str/byte/to_str`) and 2 contract-only observers (`map_lookup`, `map_updated`); `len` on collections; contract-only `v[i]`/`s[i]`; foreign signature, path, owned-type, contract and export rules; an ownership pass (owned-live/dead/maybe, borrowed parameters, left-to-right arguments with a whole-call overlap scan first, joins, loop backedge restoration). New codes: `parse/foreign_syntax`, `type/foreign_{path,signature,owned_type,move,borrow,loop_move,contract,export}`.
+- **CLI:** `--rust-extern NAME=PATH`, `--rust-search PATH`, `--foreign-checks requires|all|off` (`--no-verify` with `off` is a usage error). No later layer lowers G6 yet: after a successful check every G6 program stops with `codegen/unsupported_type`, also under `--no-verify`.
+- **Tests:** 24 accepted frontend samples (`tests/g6/frontend/`, new run_all group `g6_frontend`, 2 modes = 48 rows) and 40 rejection files (`tests/must_reject/g6_*`, distribution exactly as §6.1). All passed on the first run of the Python implementation; one fixture was rewritten from `Vec<i64> | 0..=5` to `String | 0..=5` because the existing lexer rejects `> |` earlier.
+- **Cross-check:** `tests/diff_parse.py --mode parse` and `--mode check` (new group `g6`) — 5622 inputs, all identical after one Rust fix (the checker's function signature table was built before collection-name normalization; "expected Vec<i64>, found Vec<i64>"). A lexer quirk found during the port (the `move` look-ahead could match characters inside a following `//` comment) was fixed in both compilers.
+- **Regression:** run_all 1280/1280 (both compilers, both backends; rows regenerated: 1192 + 40 + 48), m3_all 12/12 stages, cargo test pass, inference 41/41.
+- **Deviation from §7.2:** cleanup plans are not dumped in A0; they are produced where they are consumed (A2 Rust backend, A3 LLVM drop flags). The Rust `pruv-trace-dump` has no G6 guard yet (no G6 input reaches it in the current trace corpus); A1 replaces the guard with real verification.

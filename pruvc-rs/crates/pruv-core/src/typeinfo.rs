@@ -5,8 +5,9 @@ use crate::ast::*;
 use crate::gtype::{dependencies, format_type, is_g3_key, GType};
 use std::collections::{HashMap, HashSet};
 
-pub const BUILTIN_TYPE_NAMES: [&str; 9] =
-    ["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str"];
+/// G6 A0: also the internal names of the owned collection types (vec / hashmap / string).
+pub const BUILTIN_TYPE_NAMES: [&str; 12] =
+    ["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str", "vec", "hashmap", "string"];
 
 /// A name that is not built in is a user type (whether or not it is declared).
 pub fn is_user_type(ty: &str) -> bool {
@@ -50,6 +51,7 @@ pub fn type_name(ty: &str) -> String {
         "array_bool" => "[bool]".to_string(),
         "option" => "Option<i64>".to_string(),
         "result" => "Result<i64>".to_string(),
+        "string" => "String".to_string(), // G6 A0
         other => other.to_string(),
     }
 }
@@ -128,6 +130,7 @@ fn g2_cand_expr(e: &Expr, lits: bool, best: &mut Option<(i64, i64, String)>) {
             }
         }
         Expr::Var(_) => {}
+        Expr::Move(_) => {} // G6 A0
         Expr::Unary(x) => g2_cand_expr(&x.operand, lits, best),
         Expr::Binary(x) => {
             g2_cand_expr(&x.left, lits, best);
@@ -328,7 +331,7 @@ fn g3_expr(e: &Expr, out: &mut G3Cands) {
         }
     };
     match e {
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
+        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
         Expr::Unary(x) => g3_expr(&x.operand, out),
         Expr::Binary(x) => {
             g3_expr(&x.left, out);
@@ -630,6 +633,7 @@ mod tests {
         assert_eq!(type_name("array_bool"), "[bool]");
         assert!(!is_user_type("array_u8"));
         assert!(!is_user_type("array_bool"));
-        assert_eq!(BUILTIN_TYPE_NAMES.len(), 9);
+        assert_eq!(BUILTIN_TYPE_NAMES.len(), 12);
+        assert_eq!(type_name("string"), "String");
     }
 }

@@ -1,0 +1,23 @@
+// G6 A0 accept: generic helpers over HashMap<K: Element, V> with a take parameter; used at bool and i64 keys
+fn put<K: Element, V>(take m: HashMap<K, V>, k: K, x: V) -> HashMap<K, V> ! alloc
+  requires len(m) < 1099511627776
+  ensures map_updated::<K, V>(result, m, k, x)
+{
+  return map_insert::<K, V>(move m, k, x);
+}
+
+fn lookup_in<K: Element, V>(m: HashMap<K, V>, k: K) -> Option<V>
+  ensures result == map_lookup::<K, V>(m, k)
+{
+  return map_get::<K, V>(m, k);
+}
+
+fn demo() -> i64 ! alloc {
+  let mut m: HashMap<bool, i64> = map_new::<bool, i64>();
+  m = put::<bool, i64>(move m, true, 5);
+  let r: Option<i64> = lookup_in::<bool, i64>(m, true);
+  match r {
+    Some(x) => { return x; }
+    None => { return 0; }
+  }
+}

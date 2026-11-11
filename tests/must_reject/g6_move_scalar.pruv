@@ -1,0 +1,5 @@
+// foreign_move: move of a scalar (non-collection) value
+fn f(x: i64) -> i64 {
+  let y: i64 = move x;
+  return y;
+}

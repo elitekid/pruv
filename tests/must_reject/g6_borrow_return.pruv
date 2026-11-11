@@ -1,0 +1,4 @@
+// foreign_borrow: returning a borrowed collection parameter
+fn f(v: Vec<i64>) -> Vec<i64> {
+  return v;
+}

@@ -485,8 +485,9 @@ mod tests {
     fn func(name: &str, params: Vec<(&str, &str)>, ret: &str) -> Function {
         Function {
             line: 1, col: 1, name: name.into(),
-            params: params.into_iter().map(|(n, t)| Param { name: n.into(), ty: t.into(), refine: None }).collect(),
+            params: params.into_iter().map(|(n, t)| Param { name: n.into(), ty: t.into(), refine: None, take: false }).collect(),
             ret: ret.into(), effects: vec![], requires: vec![], ensures: vec![], body: vec![], ret_refine: None, tparams: vec![],
+            foreign: None,
         }
     }
 

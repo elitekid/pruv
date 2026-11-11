@@ -155,11 +155,31 @@ impl Parser {
                 p.types.push(TypeDecl::Struct(self.struct_decl()?));
             } else if self.at("enum", 0) {
                 p.types.push(TypeDecl::Enum(self.enum_decl()?));
+            } else if self.peek(0).kind == Kind::Id && self.peek(0).val == "trusted" {
+                // G6 A0: `trusted rust fn name(..) -> T ensures .. = "::path";`
+                let t = self.peek(0).clone();
+                if !(self.peek(1).kind == Kind::Id && self.peek(1).val == "rust" && self.at("fn", 2)) {
+                    return Err(self.foreign_syntax(
+                        &t,
+                        "expected `rust fn` after `trusted`",
+                        "write `trusted rust fn name(..) -> T ensures .. = \"::path\";`",
+                    ));
+                }
+                self.bump();
+                self.bump();
+                p.functions.push(self.function(Some(t))?);
+            } else if self.peek(0).kind == Kind::Id && self.peek(0).val == "rust" && self.at("fn", 1) {
+                let t = self.peek(0).clone();
+                return Err(self.foreign_syntax(&t, "missing `trusted`", "write `trusted rust fn ...`"));
             } else {
-                p.functions.push(self.function()?);
+                p.functions.push(self.function(None)?);
             }
         }
         Ok(p)
+    }
+
+    fn foreign_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
+        PruvError::new("parse", tok.line, tok.col, "foreign_syntax", msg, fix)
     }
 
     fn unsupported(&self, what: &str, tok: &Tok) -> PruvError {
@@ -571,17 +591,31 @@ impl Parser {
         Ok((ty, None))
     }
 
-    fn function(&mut self) -> R<Function> {
-        let kw = self.expect_tok("fn")?;
+    /// foreign: the `trusted` token of a `trusted rust fn` declaration (its `rust` was consumed), else None.
+    fn function(&mut self, foreign: Option<Tok>) -> R<Function> {
+        let mut kw = self.expect_tok("fn")?;
+        if let Some(t) = &foreign {
+            kw = t.clone();
+        }
         let name = self.ident()?.val;
         let tparams = if self.at("<", 0) { self.type_params(&fn_owner(&name))? } else { Vec::new() };
         self.expect("(")?;
         let mut params = Vec::new();
         while !self.at(")", 0) {
+            let mut take = false;
+            let t0 = self.peek(0).clone();
+            if t0.kind == Kind::Id && t0.val == "take" && self.peek(1).kind == Kind::Id {
+                if self.peek(2).kind == Kind::Op && self.peek(2).val == ":" {
+                    self.bump();
+                    take = true;
+                } else {
+                    return Err(self.foreign_syntax(&t0, "malformed take parameter", "write `take name: Type`"));
+                }
+            }
             let pn = self.ident()?.val;
             self.expect(":")?;
             let (ty, refine) = self.type_r(true)?;
-            params.push(Param { name: pn, ty, refine });
+            params.push(Param { name: pn, ty, refine, take });
             if !self.at(")", 0) {
                 self.expect(",")?;
             }
@@ -614,9 +648,39 @@ impl Parser {
                 ens.push(e);
             }
         }
-        let body = self.block()?;
+        let mut info: Option<ForeignInfo> = None;
+        let body;
+        if foreign.is_some() {
+            if self.at("{", 0) {
+                let t = self.peek(0).clone();
+                return Err(self.foreign_syntax(&t, "a trusted rust fn has no body", "end it with `= \"::path\";`"));
+            }
+            if !self.at("=", 0) {
+                let t = self.peek(0).clone();
+                return Err(self.foreign_syntax(&t, "missing Rust path", "write `= \"::std::cmp::min\";` after the contracts"));
+            }
+            self.bump();
+            let pt = self.peek(0).clone();
+            if pt.kind != Kind::Str {
+                return Err(self.foreign_syntax(
+                    &pt,
+                    "missing Rust path",
+                    "write the path as a string, e.g. \"::std::cmp::min\"",
+                ));
+            }
+            self.bump();
+            self.expect(";")?;
+            let path = String::from_utf8_lossy(&decode_str_lit(&pt.val)).into_owned();
+            info = Some(ForeignInfo { path, line: pt.line, col: pt.col });
+            body = Vec::new();
+        } else {
+            body = self.block()?;
+        }
         self.scope = HashMap::new();
-        Ok(Function { line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine, tparams })
+        Ok(Function {
+            line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine, tparams,
+            foreign: info,
+        })
     }
 
     fn block(&mut self) -> R<Vec<Stmt>> {
@@ -1022,6 +1086,16 @@ impl Parser {
         if t.kind == Kind::Str {
             self.bump();
             return Ok(Expr::StrLit(StrLit { line, col, value: decode_str_lit(&t.val), ty: None }));
+        }
+        if t.kind == Kind::Move {
+            // G6: `move name`
+            self.bump();
+            let n = self.peek(0).clone();
+            if n.kind != Kind::Id {
+                return Err(self.foreign_syntax(&t, "move takes a binding name", "write `move name`"));
+            }
+            self.bump();
+            return Ok(Expr::Move(Move { line, col, name: n.val, ty: None }));
         }
         if self.at("true", 0) || self.at("false", 0) {
             self.bump();

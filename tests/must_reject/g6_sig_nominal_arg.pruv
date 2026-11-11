@@ -1,0 +1,9 @@
+// foreign_signature: a nominal struct parameter is not allowed on a user foreign declaration
+struct Point {
+  x: i64,
+  y: i64
+}
+
+trusted rust fn norm(p: Point) -> i64
+  ensures true
+  = "::std::cmp::min";

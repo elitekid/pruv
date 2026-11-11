@@ -6,7 +6,7 @@
                              [--fuzz-count 200] [--mutations 6] [--save-dir DIR]
                              [--only GROUP[,GROUP...]]
 
-Groups: must_reject examples runtime bench edge bytes fuzz mutate
+Groups: must_reject examples runtime bench edge g6 bytes fuzz mutate
 --mode parse (default): expected line = diff_py_adapter.dumps(parse_result(FILE)), Rust = pruv-parse-dump,
   edge = tests/parse_edge.
 --mode check: expected line = diff_py_adapter.dumps(check_result(FILE)), Rust = pruv-check-dump,
@@ -51,6 +51,7 @@ GROUP_DIRS = [
     ("runtime", "tests/runtime"),
     ("bench", "bench/solutions/pruv_agg"),
     ("edge", "tests/parse_edge"),
+    ("g6", "tests/g6/frontend"),
 ]
 CHECK_EDGE_DIR = "tests/check_edge"
 PARSE_EDGE_DIR = "tests/parse_edge"

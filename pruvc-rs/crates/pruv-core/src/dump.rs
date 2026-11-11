@@ -133,6 +133,7 @@ fn bx(e: &Expr) -> Json {
 
 pub fn expr(e: &Expr) -> Json {
     match e {
+        Expr::Move(x) => node("Move", Some((x.line, x.col)), vec![("name", js(&x.name)), ("ty", ty(&x.ty))]),
         Expr::IntLit(x) => node("IntLit", Some((x.line, x.col)), vec![("value", js(&x.value)), ("ty", ty(&x.ty))]),
         Expr::BoolLit(x) => node("BoolLit", Some((x.line, x.col)), vec![("value", Json::Bool(x.value)), ("ty", ty(&x.ty))]),
         Expr::StrLit(x) => {
@@ -368,6 +369,9 @@ fn param(p: &Param) -> Json {
     if let Some(r) = &p.refine {
         f.push(("refine", refinement(r)));
     }
+    if p.take {
+        f.push(("take", Json::Bool(true))); // G6 A0, written only when present
+    }
     node("Param", None, f)
 }
 
@@ -385,6 +389,17 @@ fn function(f: &Function) -> Json {
         fields.push(("ret_refine", refinement(r)));
     }
     tparams_extra(&mut fields, &f.tparams);
+    if let Some(fo) = &f.foreign {
+        // G6 A0, written only when present: {"path", "line", "col"} of the path string token (line/col are decimal strings)
+        fields.push((
+            "foreign",
+            Json::Obj(vec![
+                ("path".to_string(), js(&fo.path)),
+                ("line".to_string(), Json::Str(fo.line.to_string())),
+                ("col".to_string(), Json::Str(fo.col.to_string())),
+            ]),
+        ));
+    }
     node("Function", Some((f.line, f.col)), fields)
 }
 
@@ -436,6 +451,11 @@ fn type_table_json(tt: &crate::typeinfo::TypeTable) -> Json {
 
 /// One file's bytes -> one parse+check result line (without the newline). On success, the program with ty filled in and the type_table.
 pub fn check_dump_line(src_bytes: &[u8]) -> String {
+    check_dump_line_with(src_bytes, &[])
+}
+
+/// `check_dump_line` with the crate names of --rust-extern (G6: the adapter's `check --rust-extern NAME=PATH`, only NAME is used).
+pub fn check_dump_line_with(src_bytes: &[u8], externs: &[String]) -> String {
     let src = match std::str::from_utf8(src_bytes) {
         Ok(s) => s,
         Err(_) => return dumps_sorted(&Json::Obj(vec![("adapter_error".to_string(), js("decode"))])),
@@ -448,7 +468,7 @@ pub fn check_dump_line(src_bytes: &[u8]) -> String {
     };
     let top = match parse_source(src) {
         Err(e) => err_top(e),
-        Ok(mut p) => match crate::check::check(&mut p) {
+        Ok(mut p) => match crate::check::check_with_externs(&mut p, externs) {
             Err(e) => err_top(e),
             Ok(tt) => Json::Obj(vec![
                 ("schema".to_string(), js(crate::SCHEMA_AST)),

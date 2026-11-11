@@ -429,6 +429,7 @@ impl<'a> Mono<'a> {
                 Expr::StrLit(StrLit { line: x.line, col: x.col, value: x.value.clone(), ty: self.ty_opt(&x.ty)? })
             }
             Expr::Var(x) => Expr::Var(Var { line: x.line, col: x.col, name: x.name.clone(), ty: self.ty_opt(&x.ty)? }),
+            Expr::Move(x) => Expr::Move(Move { line: x.line, col: x.col, name: x.name.clone(), ty: self.ty_opt(&x.ty)? }),
             Expr::Unary(x) => {
                 let operand = self.bx(&x.operand)?;
                 Expr::Unary(Unary { line: x.line, col: x.col, op: x.op.clone(), operand, ty: self.ty_opt(&x.ty)? })
@@ -668,7 +669,7 @@ impl<'a> Mono<'a> {
         self.pos = (f.line, f.col);
         let mut params = Vec::with_capacity(f.params.len());
         for p in &f.params {
-            params.push(Param { name: p.name.clone(), ty: self.ty_key(&p.ty)?, refine: p.refine.clone() });
+            params.push(Param { name: p.name.clone(), ty: self.ty_key(&p.ty)?, refine: p.refine.clone(), take: p.take });
         }
         let ret = self.ty_key(&f.ret)?;
         let requires = self.cp_es(&f.requires)?;
@@ -685,6 +686,7 @@ impl<'a> Mono<'a> {
             body,
             ret_refine: f.ret_refine.clone(),
             tparams: Vec::new(),
+            foreign: f.foreign.clone(),
         })
     }
 
@@ -834,6 +836,7 @@ fn expr_ty_of(e: &Expr) -> &Option<String> {
         Expr::FieldAccess(x) => &x.ty,
         Expr::IsVariant(x) => &x.ty,
         Expr::VariantField(x) => &x.ty,
+        Expr::Move(x) => &x.ty,
     }
 }
 

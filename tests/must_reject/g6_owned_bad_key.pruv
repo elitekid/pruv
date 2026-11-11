@@ -1,0 +1,4 @@
+// foreign_owned_type: a HashMap key that is not Element (Option<i64>)
+fn f(m: HashMap<Option<i64>, i64>) -> i64 {
+  return 0;
+}

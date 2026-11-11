@@ -1,0 +1,22 @@
+// G6 A0 accept: contract-only map_lookup and map_updated in ensures, including ensures that mention the consumed take parameter
+fn insert_checked(take m: HashMap<i64, i64>, k: i64, x: i64) -> HashMap<i64, i64> ! alloc
+  requires len(m) < 1099511627776
+  ensures map_updated::<i64, i64>(result, m, k, x)
+  ensures len(m) <= len(result)
+{
+  return map_insert::<i64, i64>(move m, k, x);
+}
+
+fn lookup_flag(m: HashMap<i64, bool>, k: i64) -> Option<bool>
+  ensures result == map_lookup::<i64, bool>(m, k)
+{
+  return map_get::<i64, bool>(m, k);
+}
+
+fn extend_text(take s: String, text: str) -> String ! alloc
+  requires len(s) + len(text) <= 1099511627776
+  ensures len(result) == len(s) + len(text)
+  ensures forall j in 0..len(s): result[j] == s[j]
+{
+  return string_push_str(move s, text);
+}

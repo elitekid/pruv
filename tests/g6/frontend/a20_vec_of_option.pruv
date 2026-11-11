@@ -1,0 +1,19 @@
+// G6 A0 accept: Vec<Option<i64>> as a collection of G3 values; push None and Some, read back and match
+fn push_none(take v: Vec<Option<i64>>) -> Vec<Option<i64>> ! alloc
+  requires len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+  ensures !is_some(result[len(v)])
+{
+  return vec_push::<Option<i64>>(move v, None::<i64>);
+}
+
+fn demo() -> i64 ! alloc {
+  let mut v: Vec<Option<i64>> = vec_new::<Option<i64>>();
+  v = vec_push::<Option<i64>>(move v, Some::<i64>(4));
+  v = push_none(move v);
+  let o: Option<i64> = vec_get::<Option<i64>>(v, 0);
+  match o {
+    Some(x) => { return x + len(v); }
+    None => { return 0; }
+  }
+}

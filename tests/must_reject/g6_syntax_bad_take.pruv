@@ -1,0 +1,4 @@
+// foreign_syntax: malformed take parameter (`take v` without `: Type`)
+fn f(take v) -> i64 {
+  return 0;
+}

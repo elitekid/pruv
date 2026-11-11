@@ -1,0 +1,4 @@
+// foreign_owned_type: a refinement written on a collection type
+fn f(v: String | 0..=5) -> i64 {
+  return 0;
+}

@@ -220,6 +220,7 @@ pub fn show(e: &Expr) -> String {
         Expr::BoolLit(x) => (if x.value { "true" } else { "false" }).to_string(),
         Expr::StrLit(_) => "<str>".to_string(),
         Expr::Var(x) => x.name.clone(),
+        Expr::Move(x) => format!("move {}", x.name), // G6 A0: never reaches a generator (guarded in the driver)
         Expr::Unary(x) => format!("{}{}", x.op, show(&x.operand)),
         Expr::Binary(x) => format!("({} {} {})", show(&x.left), x.op, show(&x.right)),
         Expr::Index(x) => format!("{}[{}]", show(&x.array), show(&x.index)),

@@ -1,0 +1,12 @@
+// G6 A0 accept: take param moved into a local; then branch moves it and reinitializes, other branch updates it; both live after the join
+fn split(take v: Vec<i64>, c: bool) -> i64 ! alloc {
+  let mut w: Vec<i64> = move v;
+  let mut sink: Vec<i64> = vec_new::<i64>();
+  if c {
+    sink = move w;
+    w = vec_new::<i64>();
+  } else {
+    w = vec_push::<i64>(move w, 0);
+  }
+  return len(w) + len(sink);
+}

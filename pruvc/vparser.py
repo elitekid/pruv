@@ -95,6 +95,19 @@ def _decode_string(raw):
     return bytes(out)
 
 
+# G6 A0: `move` is a Rust keyword (reserved name) but also contextual syntax: it is a move token only when a
+# name, number, string, `(` or `[` follows it and it does not sit in a declaration position; everywhere else it
+# stays the old reserved_name error.
+_MOVE_AHEAD = re.compile(r"(?:[ \t\r\n]|//[^\n]*(?=\n|\Z))*[A-Za-z_0-9\"(\[]")
+
+
+def _move_token(src, end, toks):
+    if toks and ((toks[-1].kind == "kw" and toks[-1].val in ("fn", "let", "mut"))
+                 or (toks[-1].kind == "op" and toks[-1].val in (".", "::"))):
+        return False
+    return _MOVE_AHEAD.match(src, end) is not None
+
+
 def lex(src):
     toks, pos, line, lstart = [], 0, 1, 0
     while pos < len(src):
@@ -119,6 +132,10 @@ def lex(src):
                 raise PruvError("parse", line, col, "bad_int", "integer literal ends with _", "")
             toks.append(Tok("int", int(v.replace("_", "")), line, col, col + len(v)))
         elif k == "id":
+            if v == "move" and _move_token(src, m.end(), toks):
+                toks.append(Tok("move", v, line, col, col + len(v)))
+                pos = m.end()
+                continue
             if v not in KEYWORDS and (v.startswith("pruv_") or "__" in v or v in RUST_KEYWORDS):
                 raise PruvError("parse", line, col, "reserved_name",
                                "name %r is reserved for the compiler" % v,
@@ -178,9 +195,21 @@ class Parser:
                 p.types.append(s.struct_decl())
             elif s.at("enum"):
                 p.types.append(s.enum_decl())
+            elif s.peek().kind == "id" and s.peek().val == "trusted":
+                t = s.peek()
+                if not (s.peek(1).kind == "id" and s.peek(1).val == "rust" and s.at("fn", 2)):
+                    s.foreign_syntax(t, "expected `rust fn` after `trusted`",
+                                     'write `trusted rust fn name(..) -> T ensures .. = "::path";`')
+                s.next(); s.next()
+                p.functions.append(s.function(t))
+            elif s.peek().kind == "id" and s.peek().val == "rust" and s.at("fn", 1):
+                s.foreign_syntax(s.peek(), "missing `trusted`", "write `trusted rust fn ...`")
             else:
                 p.functions.append(s.function())
         return p
+
+    def foreign_syntax(s, tok, msg, fix=""):
+        raise PruvError("parse", tok.line, tok.col, "foreign_syntax", msg, fix)
 
     def unsupported(s, what, tok):
         raise PruvError("parse", tok.line, tok.col, "unsupported_type",
@@ -440,17 +469,31 @@ class Parser:
             return ty, Refinement(t.line, t.col, "scalar", n.val, lo, hi, None)
         return ty, None
 
-    def function(s):
+    def function(s, foreign=None):
+        """foreign: the `trusted` token of a `trusted rust fn` declaration (its `rust` was consumed), else None"""
         kw = s.expect("fn")
+        if foreign is not None:
+            kw = foreign
         name = s.ident().val
         tparams = s.type_params(fn_owner(name)) if s.at("<") else ()
         s.expect("(")
         params = []
         while not s.at(")"):
+            take = False
+            t0 = s.peek()
+            if t0.kind == "id" and t0.val == "take" and s.peek(1).kind == "id":
+                if s.peek(2).kind == "op" and s.peek(2).val == ":":
+                    s.next()
+                    take = True
+                else:
+                    s.foreign_syntax(t0, "malformed take parameter", "write `take name: Type`")
             pn = s.ident().val
             s.expect(":")
             pt, pr = s.type_r(True)
-            params.append(Param(pn, pt, pr))
+            param = Param(pn, pt, pr)
+            if take:
+                param.take = True
+            params.append(param)
             if not s.at(")"):
                 s.expect(",")
         s.expect(")")
@@ -471,10 +514,27 @@ class Parser:
         while s.at("requires") or s.at("ensures"):
             k = s.next().val
             (req if k == "requires" else ens).append(s.expr())
-        body = s.block()
+        info = None
+        if foreign is not None:
+            if s.at("{"):
+                s.foreign_syntax(s.peek(), "a trusted rust fn has no body", 'end it with `= "::path";`')
+            if not s.at("="):
+                s.foreign_syntax(s.peek(), "missing Rust path", 'write `= "::std::cmp::min";` after the contracts')
+            s.next()
+            pt = s.peek()
+            if pt.kind != "str":
+                s.foreign_syntax(pt, "missing Rust path", 'write the path as a string, e.g. "::std::cmp::min"')
+            s.next()
+            s.expect(";")
+            info = {"path": _decode_string(pt.val).decode("utf-8"), "line": pt.line, "col": pt.col}
+            body = []
+        else:
+            body = s.block()
         s.scope = {}
         f = Function(kw.line, kw.col, name, params, ret, effects, req, ens, body, ret_refine)
         f.tparams = tparams
+        if info is not None:
+            f.foreign = info
         return f
 
     def block(s):
@@ -691,6 +751,13 @@ class Parser:
             s.next(); return IntLit(t.line, t.col, t.val)
         if t.kind == "str":   # G2 B0
             s.next(); return StrLit(t.line, t.col, _decode_string(t.val))
+        if t.kind == "move":   # G6: `move name`
+            s.next()
+            n = s.peek()
+            if n.kind != "id":
+                s.foreign_syntax(t, "move takes a binding name", "write `move name`")
+            s.next()
+            return Move(t.line, t.col, n.val)
         if s.at("true") or s.at("false"):
             s.next(); return BoolLit(t.line, t.col, t.val == "true")
         if s.at("("):

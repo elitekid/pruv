@@ -54,6 +54,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse as pruv_parse  # noqa: E402
 import check as check_mod  # noqa: E402
 from typeinfo import format_type  # noqa: E402
+from foreign import g6_unimplemented_error  # noqa: E402
 
 AST_SCHEMA = "pruv-ast-v1"
 PROCESS_TIMEOUT = 300
@@ -79,6 +80,7 @@ NODE_FIELDS = {
     "FieldAccess": ("base", "field", "ty"),
     "IsVariant": ("value", "enum_name", "variant", "ty"),
     "VariantField": ("value", "enum_name", "variant", "field", "ty"),
+    "Move": ("name", "ty"),      # G6 A0: `move name`
     # declarations and helper nodes
     "FieldDecl": ("name", "type"),
     "VariantDecl": ("name", "fields"),
@@ -169,6 +171,13 @@ def _g3_extras(v, out):
     et = getattr(v, "enum_ty", None)
     if et is not None and et.args:
         out["enum_ty"] = tyname(et)
+    # G6 A0, written only when present: Param.take (true) and Function.foreign
+    # ({"path", "line", "col"} of the path string token; the body is [])
+    if getattr(v, "take", False):
+        out["take"] = True
+    fo = getattr(v, "foreign", None)
+    if fo is not None:
+        out["foreign"] = {"path": fo["path"], "line": str(fo["line"]), "col": str(fo["col"])}
 
 
 def ser(v):
@@ -232,12 +241,13 @@ def type_table_json(tt):
     return {"order": [x["name"] for x in out], "entries": out}
 
 
-def check_result(path):
-    """typed AST: the checker stores each expression's type in the `ty` attribute (Expr.ty)"""
+def check_result(path, externs=()):
+    """typed AST: the checker stores each expression's type in the `ty` attribute (Expr.ty)
+    externs: --rust-extern crate names (G6)"""
     _verify_schema()
     try:
         prog = pruv_parse(read_source(path))
-        c = check_mod.Checker(prog)
+        c = check_mod.Checker(prog, externs)
         c.run()
     except PruvError as e:
         return {"schema": AST_SCHEMA, "error": err_dict(e)}
@@ -247,7 +257,7 @@ def check_result(path):
 # ---------------------------------------------------------------------------
 # trace
 # ---------------------------------------------------------------------------
-def trace_result(path, verify_on=True, infer=False):
+def trace_result(path, verify_on=True, infer=False, externs=()):
     errors = []
     rec = None
     out = {"schema": "pruv-trace-v2", "options": {"infer": bool(infer), "no_verify": not verify_on},
@@ -258,7 +268,10 @@ def trace_result(path, verify_on=True, infer=False):
         out["inference"] = rep
     try:
         prog = pruv_parse(read_source(path))
-        check_mod.check(prog)
+        check_mod.check(prog, externs)
+        g6err = g6_unimplemented_error(prog)    # G6 A0 guard, as in pruvc.compile_file (also --no-verify)
+        if g6err is not None:
+            raise g6err
         if verify_on:
             import verify
             rec = verify.TraceRecorder()
@@ -517,12 +530,18 @@ def cmd_seeds(out_dir, mode, py):
 
 
 # ---------------------------------------------------------------------------
+def _extern_names(a):
+    return tuple(x.partition("=")[0] for x in getattr(a, "rust_extern", []))
+
+
 def main(argv):
     ap = argparse.ArgumentParser(prog="diff_py_adapter.py", allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("parse", "check", "trace", "_all"):
         p = sub.add_parser(n, allow_abbrev=False)
         p.add_argument("file")
+        if n in ("check", "trace", "_all"):
+            p.add_argument("--rust-extern", action="append", default=[])   # G6: NAME=PATH, only NAME is used
         if n in ("trace", "_all"):
             # the only known trace options; trust-callers / contract-budget do not change the proof
             p.add_argument("--no-verify", action="store_true")
@@ -538,17 +557,18 @@ def main(argv):
     if a.cmd in ("parse", "check"):
         if extra:
             ap.error("unexpected arguments: %s" % extra)
-        emit(parse_result(a.file) if a.cmd == "parse" else check_result(a.file))
+        emit(parse_result(a.file) if a.cmd == "parse" else check_result(a.file, _extern_names(a)))
         return 0
     if a.cmd in ("trace", "_all"):
         if extra:
             sys.stderr.write("diff_py_adapter: unknown option(s): %s\n" % " ".join(extra))
             return 2
+        ext = _extern_names(a)
         if a.cmd == "trace":
-            emit(trace_result(a.file, not a.no_verify, a.infer))
+            emit(trace_result(a.file, not a.no_verify, a.infer, ext))
         else:
             emit({"schema": "pruv-snapshot-item-v1", "parse": parse_result(a.file),
-                  "check": check_result(a.file), "trace": trace_result(a.file, not a.no_verify, a.infer)})
+                  "check": check_result(a.file, ext), "trace": trace_result(a.file, not a.no_verify, a.infer, ext)})
         return 0
     if extra:
         ap.error("unexpected arguments: %s" % extra)

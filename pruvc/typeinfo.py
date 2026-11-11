@@ -5,9 +5,25 @@ from typing import Dict, List, Optional
 
 from vast import *
 
-BUILTIN_TYPE_NAMES = frozenset(["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str"])
+BUILTIN_TYPE_NAMES = frozenset(["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str",
+                                "vec", "hashmap", "string"])
 _BUILTIN_PRINT = {"i64": "i64", "bool": "bool", "unit": "()", "array": "[i64]", "option": "Option<i64>",
-                  "result": "Result<i64>", "array_u8": "[u8]", "array_bool": "[bool]", "str": "str"}
+                  "result": "Result<i64>", "array_u8": "[u8]", "array_bool": "[bool]", "str": "str",
+                  "string": "String"}
+
+# G6 A0: the fixed owned collection types (G6_SPEC 10.1): internal name -> number of type arguments / source spelling.
+# They are never G3 values or elements.
+COLLECTION_ARITY = {"vec": 1, "hashmap": 2, "string": 0}
+COLLECTION_SPELLING = {"vec": "Vec", "hashmap": "HashMap", "string": "String"}
+
+
+def is_collection(ty: Type) -> bool:
+    return ty.owner is None and ty.name in COLLECTION_ARITY
+
+
+def contains_collection(ty: Type) -> bool:
+    """ty is a collection type or has one anywhere inside its type arguments."""
+    return is_collection(ty) or any(contains_collection(a) for a in ty.args)
 
 
 # G2 A0: one place for array type queries (internal array types -> element type).
@@ -89,6 +105,8 @@ def format_type(ty: Type) -> str:
         return "Option<%s>" % inner
     if ty.name == "result":
         return "Result<%s>" % inner
+    if ty.name in COLLECTION_SPELLING:
+        return "%s<%s>" % (COLLECTION_SPELLING[ty.name], inner)
     return "%s<%s>" % (ty.name, inner)
 
 
@@ -135,6 +153,9 @@ def check_arity(ty: Type, decls) -> None:
     if ty.owner is None and ty.args:
         if ty.name in ("option", "result", "array") and len(ty.args) != 1:
             raise TypeArityError("%s expects 1 type argument, got %d" % (ty.name, len(ty.args)))
+    if ty.owner is None and ty.name in COLLECTION_ARITY and len(ty.args) != COLLECTION_ARITY[ty.name]:
+        raise TypeArityError("%s expects %d type argument(s), got %d" % (
+            COLLECTION_SPELLING[ty.name], COLLECTION_ARITY[ty.name], len(ty.args)))
     if _is_nominal(ty):
         info = _lookup(decls, ty.name)
         if info is not None and info[0] != len(ty.args):
