@@ -26,6 +26,7 @@ pub mod diagnostic;
 pub mod dump;
 pub mod emit_common;
 pub mod foreign;
+pub mod foreign_codegen;
 pub mod gtype;
 pub mod lexer;
 pub mod llvmgen;

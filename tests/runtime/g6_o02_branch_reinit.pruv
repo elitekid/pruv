@@ -1,0 +1,29 @@
+// G6 A2 runtime: a collection moved on one branch and reinitialized there, updated on the other; both are live after the join
+fn branchy(c: bool, x: i64) -> i64 ! alloc
+  requires 0 <= x && x <= 1000
+  ensures c ==> result == 1
+  ensures (!c) ==> result == 2
+{
+  let mut w: Vec<i64> = vec_push::<i64>(vec_new::<i64>(), x);
+  let mut sink: Vec<i64> = vec_new::<i64>();
+  if c {
+    sink = move w;
+    w = vec_new::<i64>();
+  } else {
+    w = vec_push::<i64>(move w, 0);
+  }
+  return len(w) + len(sink);
+}
+
+fn maybe_moved(c: bool) -> i64 ! alloc
+  ensures c ==> result == 1
+  ensures (!c) ==> result == 0
+{
+  let mut a: Vec<i64> = vec_new::<i64>();
+  let mut b: Vec<i64> = vec_new::<i64>();
+  if c {
+    b = vec_push::<i64>(move a, 1);
+  }
+  a = vec_new::<i64>();
+  return len(a) + len(b);
+}

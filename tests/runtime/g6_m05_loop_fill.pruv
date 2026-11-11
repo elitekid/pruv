@@ -1,0 +1,39 @@
+// G6 A2 runtime: a loop inserts key -> key for 0..n into a HashMap; the loop invariant tracks the lookups and the size bound
+fn fill(n: i64) -> HashMap<i64, i64> ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) <= n
+  ensures forall k in 0..n: map_lookup::<i64, i64>(result, k) == Some::<i64>(k)
+{
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant 0 <= len(m) && len(m) <= i
+    invariant forall k in 0..i: map_lookup::<i64, i64>(m, k) == Some::<i64>(k)
+    decreases n - i
+  {
+    m = map_insert::<i64, i64>(move m, i, i);
+    i = i + 1;
+  }
+  return move m;
+}
+
+fn fill_get(n: i64, q: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 100
+  ensures 0 <= q && q < n ==> result == q
+{
+  let m: HashMap<i64, i64> = fill(n);
+  let found: Option<i64> = map_get::<i64, i64>(m, q);
+  match found {
+    Some(x) => { return x; }
+    None => { return -1; }
+  }
+}
+
+fn fill_size(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 100
+  ensures 0 <= result && result <= n
+{
+  let m: HashMap<i64, i64> = fill(n);
+  return len(m);
+}

@@ -1,0 +1,44 @@
+// G6 A2 runtime: reassignment through move in a loop, plus a loop-local Vec created and dropped on every iteration
+fn loop_total(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 100
+  ensures result == 2 * n
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(v) == i
+    invariant total == i
+    decreases n - i
+  {
+    let t: Vec<i64> = vec_push::<i64>(vec_new::<i64>(), i);
+    total = total + len(t);
+    v = vec_push::<i64>(move v, i);
+    i = i + 1;
+  }
+  return total + len(v);
+}
+
+fn reinit_loop(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 100
+  ensures 0 <= result && result <= 3 * n
+{
+  let mut w: Vec<i64> = vec_new::<i64>();
+  let mut acc: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant 0 <= len(w) && len(w) <= 2
+    invariant 0 <= acc && acc <= 3 * i
+    decreases n - i
+  {
+    w = vec_push::<i64>(move w, i);
+    if len(w) >= 3 {
+      acc = acc + len(w);
+      w = vec_new::<i64>();
+    }
+    i = i + 1;
+  }
+  return acc;
+}

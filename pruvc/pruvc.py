@@ -45,7 +45,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vast import PruvError  # noqa: E402
 from vparser import parse, RUST_KEYWORDS  # noqa: E402
 from check import check  # noqa: E402
-from codegen import gen_rust  # noqa: E402
+from codegen import gen_rust, gen_rust_ex  # noqa: E402
 from typeinfo import g2_unimplemented_error, first_g3_use  # noqa: E402
 from mono import specialize  # noqa: E402
 from foreign import g6_unimplemented_error  # noqa: E402
@@ -60,7 +60,9 @@ def default_bindings_path(out):
 
 
 def compile_file(path, out, verify=True, trust_callers=False, backend="rust", rust_bindings=None,
-                 budget=None, also_llvm=None, infer=False, show_inferred=False, externs=()):
+                 budget=None, also_llvm=None, infer=False, show_inferred=False, externs=(),
+                 foreign_checks="requires", extern_specs=()):
+    """extern_specs: [(name, path)] of --rust-extern (recorded in the manifest); externs: the names only."""
     if budget is None:
         budget = 1 << 30
     assert 1 <= budget <= 2 ** 62
@@ -69,9 +71,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     src = open(path, encoding="utf-8").read()
     prog = parse(src)
     check(prog, externs=externs)
-    # G6: foreign declarations, collections, take and move are checked (and proved) but not lowered yet.
-    # With --no-verify the guard fires right after the check; otherwise after verification (G6_SPEC 11.1).
-    if not verify:
+    # G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm)
+    # still rejects them. With --no-verify the guard fires right after the check; otherwise after verification
+    # (G6_SPEC 11.1).
+    g6_llvm = backend == "llvm" or bool(also_llvm)
+    if not verify and g6_llvm:
         g6err = g6_unimplemented_error(prog)
         if g6err is not None:
             return [g6err]
@@ -86,9 +90,10 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             errs = verify_program(prog)
         if errs:
             return errs
-        g6err = g6_unimplemented_error(prog)
-        if g6err is not None:
-            return [g6err]
+        if g6_llvm:
+            g6err = g6_unimplemented_error(prog)
+            if g6err is not None:
+                return [g6err]
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same
@@ -116,13 +121,18 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     else:
         # generate every text first; write files only after all generators succeeded
         # (gen_rust / gen_llvm do not mutate prog, so they share it)
-        rs_text = gen_rust(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan)
+        specs = list(extern_specs) if extern_specs else [(n, "") for n in externs]
+        rs_text, manifest = gen_rust_ex(prog, verified=verify, trust_callers=trust_callers, budget=budget,
+                                        plan=plan, foreign_checks=foreign_checks, externs=specs)
         llvm_texts = None
         if also_llvm:
             from llvmgen import gen_llvm
             llvm_texts = gen_llvm(prog, verified=verify, trust_callers=trust_callers, budget=budget, plan=plan)
         with open(out, "w") as fh:
             fh.write(rs_text)
+        if manifest is not None:   # G6_SPEC 12.4
+            with open(out + ".foreign.json", "w", encoding="utf-8") as fh:
+                fh.write(manifest)
         if llvm_texts is not None:
             with open(also_llvm[0], "w") as fh:
                 fh.write(llvm_texts[0])
@@ -172,6 +182,7 @@ def main(argv):
     if a.foreign_checks == "off" and a.no_verify:
         ap.error("--foreign-checks off requires verification (not allowed with --no-verify)")
     externs = []
+    extern_specs = []
     for spec in a.rust_extern:
         name, sep, xpath = spec.partition("=")
         if not sep or not xpath or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) \
@@ -180,6 +191,7 @@ def main(argv):
         if name in externs:
             ap.error("duplicate --rust-extern name %s" % name)
         externs.append(name)
+        extern_specs.append((name, xpath))
     if any(not p for p in a.rust_search):
         ap.error("--rust-search needs a non-empty PATH")
     bindings = a.rust_bindings
@@ -191,7 +203,8 @@ def main(argv):
     try:
         errs = compile_file(a.input, a.out, not a.no_verify, a.trust_callers, a.backend, bindings,
                           a.budget, tuple(a.also_llvm) if a.also_llvm else None,
-                          infer=a.infer, show_inferred=a.show_inferred, externs=tuple(externs))
+                          infer=a.infer, show_inferred=a.show_inferred, externs=tuple(externs),
+                          foreign_checks=a.foreign_checks, extern_specs=tuple(extern_specs))
     except PruvError as e:
         errs = [e]
     except Exception as e:  # compiler-internal failure, not a language error

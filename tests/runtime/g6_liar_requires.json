@@ -1,0 +1,1 @@
+{"flags_matrix": [["--no-verify", "--trust-callers"], ["--no-verify", "--trust-callers", "--foreign-checks", "all"]], "rust_externs": {"g6_liar": "tests/runtime/g6_liar.rs"}, "exit": 101, "stdout_lines": ["7"], "stderr_contains": "pruv: foreign requires violated:"}

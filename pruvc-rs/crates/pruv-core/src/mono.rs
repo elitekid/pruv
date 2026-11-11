@@ -25,6 +25,7 @@
 
 use crate::ast::*;
 use crate::diagnostic::PruvError;
+use crate::foreign::is_catalog;
 use crate::gtype::{
     bind_args, decl_owner, encode, fn_owner, format_type, is_g3_key, mk_array, mk_option, mk_result, spec_fn_stem,
     spec_type_stem, substitute, GType, Mapping, ParamId,
@@ -326,6 +327,14 @@ impl<'a> Mono<'a> {
             "array" => Ok(mk_array(self.lower(&c.args[0])?)),
             "option" => Ok(mk_option(self.lower(&c.args[0])?)),
             "result" => Ok(mk_result(self.lower(&c.args[0])?)),
+            // G6: Vec<T> / HashMap<K, V> keep their name, the arguments are lowered
+            "vec" | "hashmap" => {
+                let mut args = Vec::with_capacity(c.args.len());
+                for a in &c.args {
+                    args.push(self.lower(a)?);
+                }
+                Ok(GType::new(&c.name, args))
+            }
             _ => {
                 let stem = self.request_type(&c.name, &c.args)?;
                 Ok(GType::new(&stem, Vec::new()))
@@ -443,11 +452,28 @@ impl<'a> Mono<'a> {
                 let args = self.cp_es(&x.args)?;
                 let ty = self.ty_opt(&x.ty)?;
                 let mut name = x.name.clone();
-                if let Some(inst) = &x.inst {
+                let mut new_inst: Option<Inst> = None;
+                if is_catalog(&x.name) {
+                    // G6: the name stays; `args` = lowered concrete type arguments, `src_args` = concrete but not
+                    // lowered (source-level spelling and the structural encoding of helper names)
+                    if let Some(inst) = &x.inst {
+                        self.pos = (x.line, x.col);
+                        for a in &inst.args {
+                            let m = self.meas(a);
+                            self.check_shape(m, &format!("type argument of function {}", x.name), a)?;
+                        }
+                        let src: Vec<GType> = inst.args.iter().map(|a| substitute(a, &self.map)).collect();
+                        let mut low: Vec<GType> = Vec::with_capacity(inst.args.len());
+                        for a in &inst.args {
+                            low.push(self.ty_g(a)?);
+                        }
+                        new_inst = Some(Inst { decl: inst.decl.clone(), args: low, subst: Vec::new(), src_args: Some(src) });
+                    }
+                } else if let Some(inst) = &x.inst {
                     self.pos = (x.line, x.col);
                     name = self.request_fn_inst(&x.name, &inst.args)?;
                 }
-                Expr::Call(Call { line: x.line, col: x.col, name, args, ty, targs: None, inst: None })
+                Expr::Call(Call { line: x.line, col: x.col, name, args, ty, targs: None, inst: new_inst })
             }
             Expr::Index(x) => {
                 let array = self.bx(&x.array)?;
@@ -673,6 +699,8 @@ impl<'a> Mono<'a> {
         }
         let ret = self.ty_key(&f.ret)?;
         let requires = self.cp_es(&f.requires)?;
+        // G6: the ensures of a trusted rust fn are kept (checked by `--foreign-checks all`)
+        let ensures = if f.foreign.is_some() { self.cp_es(&f.ensures)? } else { Vec::new() };
         let body = self.cp_stmts(&f.body)?;
         Ok(Function {
             line: f.line,
@@ -682,7 +710,7 @@ impl<'a> Mono<'a> {
             ret,
             effects: f.effects.clone(),
             requires,
-            ensures: Vec::new(),
+            ensures,
             body,
             ret_refine: f.ret_refine.clone(),
             tparams: Vec::new(),

@@ -877,7 +877,7 @@ pub fn g6_unimplemented_error(prog: &Program, stage: &str) -> Option<PruvError> 
         line,
         col,
         "unsupported_type",
-        "G6 foreign calls and collections are not implemented by this compiler layer yet",
+        "G6 foreign calls and collections are not implemented by the llvm codegen layer yet",
         "avoid trusted rust fn, Vec, HashMap, String, take and move for now",
     ))
 }

@@ -1,0 +1,30 @@
+// G6 A2 runtime: trusted adapters with Result<i64> and bool results; the Result is matched and also returned unchanged
+trusted rust fn half_exact(x: i64) -> Result<i64>
+  requires 0 <= x
+  ensures is_ok(result) ==> 0 <= ok_val(result) && ok_val(result) <= x
+  = "::g6_adapter::half_exact";
+
+trusted rust fn is_even(x: i64) -> bool
+  ensures true
+  = "::g6_adapter::is_even";
+
+fn half_or(x: i64, d: i64) -> i64
+  requires 0 <= x
+  ensures result == d || (0 <= result && result <= x)
+{
+  let r: Result<i64> = half_exact(x);
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return d; }
+  }
+}
+
+fn half_result(x: i64) -> Result<i64>
+  requires 0 <= x
+{
+  return half_exact(x);
+}
+
+fn even_flag(x: i64) -> bool {
+  return is_even(x);
+}

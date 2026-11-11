@@ -469,7 +469,7 @@ Ownership (only in executable code; checked per function after typing, in statem
 
 ### 10.5 Driver and guard
 
-Both drivers accept `--rust-extern NAME=PATH` (repeatable; NAME a Rust identifier, not `std`, no duplicates; otherwise CLI usage error exit 2), `--rust-search PATH` (repeatable) and `--foreign-checks requires|all|off` (default requires; `--no-verify` with `off` → exit 2). After a successful check, a program that contains a foreign declaration, a collection type, a `take`, or a `Move` is rejected in A0 with `codegen/unsupported_type` "G6 foreign calls and collections are not implemented by this compiler layer yet" at the first such construct (source order: functions in order, signature before body), also under `--no-verify`. The accepted frontend samples (`tests/g6/frontend/*.pruv`) therefore expect exactly that diagnostic; `tests/diff_parse.py --mode check` compares their checked dumps.
+Both drivers accept `--rust-extern NAME=PATH` (repeatable; NAME a Rust identifier, not `std`, no duplicates; otherwise CLI usage error exit 2), `--rust-search PATH` (repeatable) and `--foreign-checks requires|all|off` (default requires; `--no-verify` with `off` → exit 2). After a successful check, a program that contains a foreign declaration, a collection type, a `take`, or a `Move` is rejected in A0 with `codegen/unsupported_type` "G6 foreign calls and collections are not implemented by the llvm codegen layer yet" at the first such construct (source order: functions in order, signature before body), also under `--no-verify`. The accepted frontend samples (`tests/g6/frontend/*.pruv`) therefore expect exactly that diagnostic; `tests/diff_parse.py --mode check` compares their checked dumps.
 
 ## 11. A1 implementation decisions (fixed 2026-11-12, before implementation)
 
@@ -513,3 +513,38 @@ Contract-only: `v[i]` / `s[i]` use the existing contract index-domain rule of ar
 - A `trusted rust fn` is verified like a function without a body: parameters fresh with well-formedness; each `requires` domain-checked under the earlier requires (existing rule); then a fresh result with well-formedness is introduced and each `ensures` is domain-checked under all requires, result well-formedness and the earlier ensures. No `ensures` proof, no body. Unused declarations are checked the same way.
 - A call to a trusted declaration is the existing call rule (prove each requires as `call_requires`, fresh result with wf, assume each ensures) with one difference: a **unit** result still assumes its ensures (ordinary unit functions keep the legacy behaviour so legacy traces do not change).
 - `--infer` never builds candidates mentioning collection-typed variables.
+
+## 12. A2 implementation decisions (fixed 2026-11-12, before implementation)
+
+Rust source backend only; the LLVM backend keeps rejecting G6 with `codegen/unsupported_type` until A3 (runtime fixtures list themselves in `tests/llvm_pending.txt`). Both compilers must emit byte-identical Rust source.
+
+### 12.1 Types, ownership and expressions
+
+- `Vec<T>` → `::std::vec::Vec<R(T)>`, `HashMap<K,V>` → `::std::collections::HashMap<R(K), R(V)>`, `String` → `::std::string::String` (owned: locals, take parameters, results); a borrowed (unmarked) collection parameter has type `&R(C)`. Monomorphized value types stay `Copy`; collections are never `Copy`.
+- `move x` → `x`. A collection argument in a borrow position: an owned binding `x` → `&x`; a borrowed parameter `x` → `x`; a fresh call result → `&(call)`. Consuming positions pass by value. Rust moves/RAII perform the drops (the Pruv ownership checker already accepts only programs whose moves Rust also accepts).
+- `len(c)` → `(c.len() as i64)` (a collection length never exceeds 2^40, so the cast is exact). Contract-only forms are never emitted in code.
+- `string_to_str(s)` → an independent `::std::string::String` clone (the Rust-source `str` representation).
+- Collection-bearing functions are private (no `pub`), never get host bindings and cannot be `main` (A0). They keep the existing entry/body scheme: with `requires`, a private checked entry `f` and a private body `f__pruv_body`; verified callers call the body, safe-mode callers the entry.
+- Runtime `requires` evaluation (i128 mirror) gains collection observers: `len(c)` → `(c.len() as i128)`; `v[i]` → checked index (out of range → `pruv: requires undefined: ...`) then the element's contract conversion; `s[i]` → byte as i128; `map_lookup::<K,V>(m, k)` → `m.get(&k).copied()` converted to the Option mirror; `map_updated` in a requires → a generated scan helper (`pruv_g6_map_updated__K__V`). Contract-only observers never allocate.
+- Generic helpers: after G3 specialization, catalog calls keep their name with substituted type arguments (no specialization of the catalog itself).
+
+### 12.2 Boundary helpers
+
+One private helper per concrete instance, emitted once, in first-use order:
+
+- Catalog: `pruv_g6_<op>__<enc>` where `<enc>` is the G3 structural encoding of each type argument joined by `__` (none for `string_*`). Body: selected requires checks, selected snapshot, the std operation, selected ensures checks, result. Requires per §4.4/§11.3 (`vec_push`: `len < 2^40`; `vec_get`/`string_byte`: `0 <= i < len`; `map_insert`: key present or `len < 2^40`; `string_push_str`: `len(s) + len(t) <= 2^40`). Even with `off`, `vec_get`/`string_byte` use checked indexing (a failure there is `pruv: invalid representation: index`), never `get_unchecked`.
+- User `trusted rust fn NAME`: a private helper `NAME` with the declared signature (`str`/array parameters borrowed as `&str`/`&[T]`) that checks the selected requires (existing i128 mirror and messages with the new prefix), calls `::path(args)` inside `::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| ...))`, turns `Err` into `panic!("pruv: foreign panic: NAME")`, checks the selected ensures with `result` bound, and returns.
+- Messages (all via `panic!`, so exit 101): `pruv: foreign requires violated: NAME: <expr>`, `pruv: foreign ensures violated: NAME: <expr>`, `pruv: foreign contract undefined: NAME: <what>`. Catalog `<expr>` texts are fixed strings written in the helper (e.g. `len(v) < 2^40`).
+
+### 12.3 Check modes (`--foreign-checks`, default `requires`)
+
+- `requires`: requires checks in every helper (also in verified mode). `all`: also ensures checks; catalog updates snapshot consumed inputs with `.clone()` before the operation and compare actual contents afterwards (Vec/String: length and every element/byte of the prefix and the appended part; HashMap: size, every entry of the snapshot except the inserted key unchanged, inserted key present with the value; `string_to_str`: equal bytes; `vec_get`/`string_byte`/`map_get`: the result equals a second checked read). `off`: no contract checks (CLI already rejects `off` with `--no-verify`). `--trust-callers` does not change foreign checks.
+- `all` work counts against the existing contract budget (`--contract-budget`, default 2^30): one unit per visited element/entry, fresh per helper call; exhaustion → `pruv: foreign contract undefined: NAME: budget`.
+
+### 12.4 Manifest
+
+When the program uses any G6 construct, both drivers also write `<out>.foreign.json` (sorted keys, 2-space indent, UTF-8, trailing newline): `{"schema": "pruv-foreign-v1", "backend": "rust", "check_mode": M, "rustc_checked": false, "trusted": [{"name", "path", "line", "col", "effects", "requires": [text], "ensures": [text], "reachable": bool}], "catalog": [{"op", "type_args": [spelling]}], "externs": [{"name", "path"}]}` with lists in source order (catalog: first-use order of the emitted helpers). `reachable` is whether any emitted function calls it. Texts use the existing contract `show` spelling. No timestamps or absolute paths beyond what the user passed.
+
+### 12.5 Tests
+
+`tests/runtime/g6_*.pruv` + `.json` + driver `.rs` (24: 4 scalar/Option/Result adapter, 6 Vec, 6 map, 4 String, 4 ownership/effect/evaluation order), each with a flags matrix over `[]`, `["--foreign-checks","all"]`, `["--foreign-checks","off"]`, `["--no-verify"]`, `["--no-verify","--foreign-checks","all"]` and the same with `--trust-callers` where meaningful. A runtime `.json` may name extern crates: `"rust_externs": {"NAME": "tests/runtime/FILE.rs"}`; the harness builds each as an rlib, passes `--rust-extern NAME=RLIB` to pruvc and `--extern NAME=RLIB` to rustc. Injected-wrong-Rust fixtures use such an adapter crate to exercise false ensures (caught only with `all`), panic, i128/budget failures and single evaluation of arguments.

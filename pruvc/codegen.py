@@ -56,7 +56,8 @@ turbofish (`None::<R(X)>`, `Ok::<R(X), i64>(..)`). Contract mirrors are recursiv
 C(Result<X>) = Result<C(X), i128>. A program without generics is generated directly, byte for byte as before G3.
 """
 from vast import *
-from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str
+from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str, is_collection
+from foreign import CATALOG
 
 ALLOW = ("#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, "
          "dead_code, unreachable_code, unreachable_patterns, "
@@ -236,12 +237,71 @@ SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div"
 CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
 
 
+# ---------------------------------------------------------------------------
+# G6 (docs/G6_SPEC.md section 12): extra attributes and preludes, emitted only for programs that use G6.
+# ---------------------------------------------------------------------------
+ALLOW_G6 = ALLOW[:-2] + ", unused_assignments, unused_comparisons)]"
+
+_UD_OLD = """\
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_ud(what: &str) -> ! { panic!("pruv: requires undefined: {}", what) }
+"""
+
+# pruv_ud with a boundary context: a foreign helper sets the context (RAII guard), so that an undefined contract
+# inside it reports `pruv: foreign contract undefined: NAME: what`; elsewhere the message is unchanged.
+_UD_G6 = """\
+::std::thread_local! { static PRUV_CTX: ::std::cell::Cell<&'static str> = ::std::cell::Cell::new(""); }
+#[allow(dead_code)]
+struct PruvCtx;
+impl ::std::ops::Drop for PruvCtx { fn drop(&mut self) { PRUV_CTX.with(|c| c.set("")); } }
+#[allow(dead_code)]
+fn pruv_ctx(name: &'static str) -> PruvCtx { PRUV_CTX.with(|c| c.set(name)); PruvCtx }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_ud(what: &str) -> ! {
+    let c: &'static str = PRUV_CTX.with(|c| c.get());
+    if c.is_empty() { panic!("pruv: requires undefined: {}", what) } else { panic!("pruv: foreign contract undefined: {}: {}", c, what) }
+}
+"""
+assert _UD_OLD in CONTRACT_PRELUDE
+CONTRACT_PRELUDE_G6 = CONTRACT_PRELUDE.replace(_UD_OLD, _UD_G6)
+
+G6_PRELUDE = """\
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_g6_req(name: &str, what: &str) -> ! { panic!("pruv: foreign requires violated: {}: {}", name, what) }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_g6_ens(name: &str, what: &str) -> ! { panic!("pruv: foreign ensures violated: {}: {}", name, what) }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_g6_repr(what: &str) -> ! { panic!("pruv: invalid representation: {}", what) }
+#[allow(dead_code)]
+#[inline]
+fn pruv_g6_charge(budget: &mut i64, n: usize) { let n: i64 = if n > (i64::MAX as usize) { i64::MAX } else { n as i64 }; *budget = budget.saturating_sub(n); if *budget < 0 { pruv_ud("budget") } }
+"""
+
+
 def rty(t, param=False):
     if t.owner is None and t.args and t.name in ("option", "result"):  # G3: Option<X> / Result<X>, X != i64
         x = rty(t.args[0])
         if t.name == "option":
             return "::std::option::Option<%s>" % x
         return "::std::result::Result<%s, i64>" % x
+    if t.owner is None and t.name in ("vec", "hashmap", "string"):   # G6: owned; a borrowed parameter is a reference
+        if t.name == "vec":
+            r = "::std::vec::Vec<%s>" % rty(t.args[0])
+        elif t.name == "hashmap":
+            r = "::std::collections::HashMap<%s, %s>" % (rty(t.args[0]), rty(t.args[1]))
+        else:
+            r = "::std::string::String"
+        return "&" + r if param else r
     simple = {"i64": "i64", "bool": "bool", "unit": "()", "option": "::std::option::Option<i64>",
               "result": "::std::result::Result<i64, i64>"}
     if t.name in simple:
@@ -409,17 +469,32 @@ def rstr(text):
 
 
 class Gen:
-    def __init__(s, prog, verified=True, trust_callers=False, budget=1 << 30):
+    def __init__(s, prog, verified=True, trust_callers=False, budget=1 << 30, foreign_checks="requires"):
         s.budget = budget
         s.prog = prog
         s.verified = verified
         s.trust = trust_callers
         s.out = []
-        s.has_req = {f.name for f in prog.functions if f.requires}
+        s.has_req = {f.name for f in prog.functions if f.requires and f.foreign is None}
         s.cp = None    # set during requires entry checks: user-type params already converted
         s.bound = []   # quantifier variables in scope (contract evaluation)
         s.tmp = 0
         s.table = TypeTable(prog)
+        s.params = set()
+        s.vt = {}
+        s.borrowed = set()
+        # G6 (section 12): only a program that uses G6 gets any of the following
+        from foreign import first_g6_use
+        s.g6 = first_g6_use(prog) is not None
+        s.fmode = foreign_checks
+        s.allow = ALLOW_G6 if s.g6 else ALLOW
+        s.fmap = {}
+        for f in prog.functions:
+            s.fmap.setdefault(f.name, f)
+        s.fg = None
+        if s.g6:
+            from foreign_codegen import ForeignGen
+            s.fg = ForeignGen(s)
 
     def emit(s, ind, line):
         s.out.append("    " * ind + line)
@@ -441,8 +516,8 @@ class Gen:
                 s.out.append(SAFE_PRELUDE_BOOL)
             if str_used:
                 s.out.append(SAFE_PRELUDE_STR)
-        if s.has_req and not s.trust:
-            s.out.append(CONTRACT_PRELUDE)
+        if (s.has_req and not s.trust) or s.g6:
+            s.out.append(CONTRACT_PRELUDE_G6 if s.g6 else CONTRACT_PRELUDE)
             if u8_used:
                 s.out.append(CONTRACT_PRELUDE_U8)
             if bool_used:
@@ -452,6 +527,8 @@ class Gen:
             ctypes = s.contract_types()
             if ctypes:
                 s.out.append(ctypes)
+            if s.g6:
+                s.out.append(G6_PRELUDE)
 
     def contract_types(s):
         """pruv_contract__Name mirror types and pruv_to_c__Name converters (only for requires evaluation)"""
@@ -484,14 +561,21 @@ class Gen:
                 out.append("fn pruv_to_c__%s(v: %s) -> %s { match v { %s } }" % (d.name, d.name, cn, " ".join(arms)))
         return "\n".join(out) + ("\n" if out else "")
 
+    def private(s, f):
+        """G3 specializations and G6 collection-bearing functions are private Rust items"""
+        return getattr(f, "private", False) or any(is_collection(p.type) for p in f.params) or is_collection(f.ret)
+
     def fn(s, f):
+        if f.foreign is not None:
+            return   # G6: a trusted rust fn has no body; its boundary helper is emitted on first use
         s.params = {p.name for p in f.params}
         s.vt = {p.name: p.type for p in f.params}
-        ps = ", ".join("%s: %s" % (p.name, rty(p.type, True)) for p in f.params)
+        s.borrowed = {p.name for p in f.params if is_collection(p.type) and not p.take}
+        ps = ", ".join("%s: %s" % (p.name, rty(p.type, not p.take)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
         body_name = f.name + "__pruv_body" if f.requires else f.name
-        vis = "" if (f.requires or getattr(f, "private", False)) else "pub "   # G3: specializations are private
-        s.emit(0, ALLOW)
+        vis = "" if (f.requires or s.private(f)) else "pub "   # G3: specializations are private
+        s.emit(0, s.allow)
         s.emit(0, "%sfn %s(%s)%s {" % (vis, body_name, ps, ret))
         s.block(f.body, 1)
         s.emit(0, "}")
@@ -500,9 +584,9 @@ class Gen:
             s.entry(f, ps, ret, body_name)
 
     def entry(s, f, ps, ret, body_name):
-        s.emit(0, ALLOW)
+        s.emit(0, s.allow)
         s.emit(0, "#[inline]")
-        s.emit(0, "%sfn %s(%s)%s {" % ("" if getattr(f, "private", False) else "pub ", f.name, ps, ret))
+        s.emit(0, "%sfn %s(%s)%s {" % ("" if s.private(f) else "pub ", f.name, ps, ret))
         if not s.trust:
             s.cp = {}   # user-type parameter -> its type, converted once below
             checks = []
@@ -562,6 +646,13 @@ class Gen:
                 return "%s(%s, %s)" % (CONTRACT_ARITH[op], s.c(e.left), s.c(e.right))
             return "(%s %s %s)" % (s.c(e.left), op, s.c(e.right))
         if isinstance(e, Index):
+            if e.array.ty is not None and e.array.ty.owner is None and e.array.ty.name == "vec":   # G6: checked read
+                a = s.carr(e.array)
+                return ("({ let pruv_i: i128 = %s; if pruv_i >= 0 && pruv_i < (%s.len() as i128) { "
+                        "let pruv_x: %s = %s[pruv_i as usize]; %s } else { pruv_ud(\"vector index out of range\") } })") % (
+                            s.c(e.index), a, rty(e.ty), a, conv(e.ty, "pruv_x"))
+            if e.array.ty is not None and e.array.ty.owner is None and e.array.ty.name == "string":   # G6
+                return "pruv_cidx_str(&%s, %s)" % (s.carr(e.array), s.c(e.index))
             if is_str(e.array.ty):  # G2 B2
                 return "pruv_cidx_str(%s, %s)" % (s.carr(e.array), s.c(e.index))
             if is_bool_array(e.array.ty):  # G2 A5
@@ -612,6 +703,19 @@ class Gen:
             n, a = e.name, e.args
             if n == "len":
                 return "(%s.len() as i128)" % s.carr(a[0])
+            if n == "map_lookup":   # G6: finite-map lookup, Option mirror of the stored value
+                kt, vt = a[0].ty.args[0], a[0].ty.args[1]
+                key = s.c(a[1])
+                if kt == I64:
+                    look = "i64::try_from(%s).ok().and_then(|pruv_k| %s.get(&pruv_k).copied())" % (key, s.carr(a[0]))
+                else:
+                    look = "%s.get(&%s).copied()" % (s.carr(a[0]), key)
+                return "(%s)" % conv(mk_option(vt), "(%s)" % look)
+            if n == "map_updated":   # G6: generated scan helper; shares the entry's iteration budget
+                kt, vt = a[0].ty.args[0], a[0].ty.args[1]
+                helper = s.fg.map_updated_helper(kt, vt, e.inst["src_args"] if e.inst else (kt, vt))
+                return "%s(&%s, &%s, %s, %s, &mut pruv_budget)" % (helper, s.carr(a[0]), s.carr(a[1]),
+                                                                  s.c(a[2]), s.c(a[3]))
             if n == "is_char_boundary":  # G2 B2
                 return "pruv_cboundary(%s, %s)" % (s.carr(a[0]), s.c(a[1]))
             if n == "is_some":
@@ -742,6 +846,29 @@ class Gen:
             return e.name
         return "&" + s.e(e)
 
+    def cref(s, x):
+        """a collection expression in a borrow position (G6 section 12.1)"""
+        if isinstance(x, Var):
+            return x.name if x.name in s.borrowed else "&" + x.name
+        return "&(%s)" % s.e(x)
+
+    def catalog_call(s, e):
+        """executable catalog operation -> call of its private boundary helper"""
+        from foreign import CATALOG
+        cat = CATALOG[e.name]
+        low = tuple(e.inst["args"]) if e.inst else ()
+        src = tuple(e.inst.get("src_args", low)) if e.inst else ()
+        name = s.fg.catalog_helper(e.name, low, src)
+        args = []
+        for p, x in zip(cat.params, e.args):
+            if is_collection(p.type):
+                args.append(s.e(x) if p.take else s.cref(x))
+            elif p.type == STR:
+                args.append(s.arr_ref(x))
+            else:
+                args.append(s.e(x))
+        return "%s(%s)" % (name, ", ".join(args))
+
     def e(s, e):
         if isinstance(e, IntLit):
             if e.value == -2 ** 63:
@@ -750,6 +877,8 @@ class Gen:
         if isinstance(e, BoolLit):
             return "true" if e.value else "false"
         if isinstance(e, Var):
+            return e.name
+        if isinstance(e, Move):   # G6: Rust moves
             return e.name
         if isinstance(e, Unary):
             if not s.verified and e.op == "-":
@@ -829,21 +958,42 @@ class Gen:
                 return ("{ let pruv_s: &str = %s; let pruv_lo: i64 = %s; let pruv_hi: i64 = %s; "
                         "::std::string::String::from(unsafe { pruv_s.get_unchecked((pruv_lo as usize)..(pruv_hi as usize)) }) }") % (
                             s.arr_ref(a[0]), s.e(a[1]), s.e(a[2]))
-            args = [s.arr_ref(x) if (x.ty is not None and (is_array(x.ty) or is_str(x.ty))) else s.e(x) for x in a]
+            if s.g6 and n in CATALOG:
+                return s.catalog_call(e)
+            callee = s.fmap.get(n) if s.g6 else None
+            if callee is not None and callee.foreign is not None:
+                s.fg.called.add(n)
+                s.fg.trusted_helper(callee)   # emitted on first use; the helper checks the selected requires itself
+            args = []
+            for i, x in enumerate(a):
+                if s.g6 and (isinstance(x, Move) or (x.ty is not None and is_collection(x.ty))):
+                    take = isinstance(x, Move) or (callee is not None and callee.params[i].take)
+                    args.append(s.e(x) if take else s.cref(x))
+                elif x.ty is not None and (is_array(x.ty) or is_str(x.ty)):
+                    args.append(s.arr_ref(x))
+                else:
+                    args.append(s.e(x))
             if s.verified and n in s.has_req:
                 n = n + "__pruv_body"   # caller proved requires
             return "%s(%s)" % (n, ", ".join(args))
         raise Exception("codegen: contract-only expression in code: %r" % e)
 
 
-def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None):
+def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None, foreign_checks="requires",
+             externs=()):
     """plan: a mono.SpecPlan for a generic program (computed here when omitted; PruvError specialization_limit
-    propagates). A program without generics is generated directly from prog, exactly as before G3."""
+    propagates). A program without generics is generated directly from prog, exactly as before G3.
+    foreign_checks: G6 boundary checks requires|all|off (docs/G6_SPEC.md section 12.3)."""
+    return gen_rust_ex(prog, verified, trust_callers, budget, plan, foreign_checks, externs)[0]
+
+
+def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None, foreign_checks="requires",
+                externs=()):
+    """(rust text, manifest text or None). The manifest (G6_SPEC 12.4) exists only for programs that use G6;
+    externs: [(name, path)] as given with --rust-extern."""
     from typeinfo import g2_unimplemented_error, first_g3_use
-    from foreign import g6_unimplemented_error
-    g6err = g6_unimplemented_error(prog)   # G6: no code generator lowers G6 yet (the drivers reject earlier)
-    if g6err is not None:
-        raise g6err
+    if foreign_checks not in ("requires", "all", "off"):
+        raise ValueError("foreign_checks must be requires, all or off")
     if plan is None and first_g3_use(prog) is not None:
         from mono import specialize
         plan = specialize(prog)
@@ -852,8 +1002,14 @@ def gen_rust(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
-    g = Gen(prog, verified, trust_callers, budget)
+    g = Gen(prog, verified, trust_callers, budget, foreign_checks)
     g.prelude()
+    mark = len(g.out)
     for f in prog.functions:
         g.fn(f)
-    return "\n".join(g.out) + "\n"
+    manifest = None
+    if g.g6:
+        # helpers are discovered while the functions are generated; they go in front of them, in first-use order
+        g.out[mark:mark] = g.fg.helper_texts()
+        manifest = g.fg.manifest(externs)
+    return "\n".join(g.out) + "\n", manifest

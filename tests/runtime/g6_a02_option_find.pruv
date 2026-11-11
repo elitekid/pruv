@@ -1,0 +1,14 @@
+// G6 A2 runtime: trusted adapter returning Option<i64> from a [i64] slice; the caller matches it
+trusted rust fn find_index(a: [i64], t: i64) -> Option<i64>
+  ensures is_some(result) ==> 0 <= some_val(result) && some_val(result) < len(a)
+  = "::g6_adapter::find_index";
+
+fn index_or(a: [i64], t: i64, d: i64) -> i64
+  ensures result == d || (0 <= result && result < len(a))
+{
+  let found: Option<i64> = find_index(a, t);
+  match found {
+    Some(x) => { return x; }
+    None => { return d; }
+  }
+}

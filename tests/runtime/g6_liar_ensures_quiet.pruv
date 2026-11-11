@@ -1,0 +1,11 @@
+// G6 A2 runtime (injected wrong Rust): the adapter's result violates the declared ensures; undetected when ensures are not checked (default requires / off)
+trusted rust fn liar_positive(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result > x
+  = "::g6_liar::liar_positive";
+
+fn bump(x: i64) -> i64
+  requires 0 <= x && x <= 100
+{
+  return liar_positive(x);
+}

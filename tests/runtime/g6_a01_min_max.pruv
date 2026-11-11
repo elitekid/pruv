@@ -1,0 +1,25 @@
+// G6 A2 runtime: trusted ::std::cmp::min / ::std::cmp::max at i64 used by clamp and spread (no extern crate)
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+trusted rust fn rust_max(a: i64, b: i64) -> i64
+  ensures result >= a && result >= b
+  ensures result == a || result == b
+  = "::std::cmp::max";
+
+fn clamp(x: i64, lo: i64, hi: i64) -> i64
+  requires lo <= hi
+  ensures lo <= result && result <= hi
+{
+  return rust_min(rust_max(x, lo), hi);
+}
+
+fn spread(a: i64, b: i64) -> i64
+  requires 0 <= a && a <= 1000000
+  requires 0 <= b && b <= 1000000
+  ensures 0 <= result && result <= 1000000
+{
+  return rust_max(a, b) - rust_min(a, b);
+}

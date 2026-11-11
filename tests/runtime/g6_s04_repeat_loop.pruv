@@ -1,0 +1,34 @@
+// G6 A2 runtime: a loop appends the 3-byte literal "añ" n times to a String (reassignment through move); invariant len(s) == 3 * i
+fn repeat_an(n: i64) -> String ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == 3 * n
+{
+  let mut s: String = string_new();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(s) == 3 * i
+    decreases n - i
+  {
+    s = string_push_str(move s, "añ");
+    i = i + 1;
+  }
+  return move s;
+}
+
+fn repeat_len(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+  ensures result == 3 * n
+{
+  let s: String = repeat_an(n);
+  return len(s);
+}
+
+fn repeat_byte(n: i64, i: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+  requires 0 <= i && i < 3 * n
+  ensures 0 <= result && result <= 255
+{
+  let s: String = repeat_an(n);
+  return string_byte(s, i);
+}

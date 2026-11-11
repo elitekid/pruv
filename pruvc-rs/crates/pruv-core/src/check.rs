@@ -201,7 +201,7 @@ fn set_ty(e: &mut Expr, t: &GType) {
 fn inst_of(decl: String, targs: &[GType], m: &Mapping) -> Inst {
     let mut subst: Vec<(String, usize, GType)> = m.iter().map(|((o, i), t)| (o.clone(), *i, t.clone())).collect();
     subst.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
-    Inst { decl, args: targs.to_vec(), subst }
+    Inst { decl, args: targs.to_vec(), subst, src_args: None }
 }
 
 /// Type of an element read from / stored into the array type `at`: T for [T]; bool for [bool]; else i64.

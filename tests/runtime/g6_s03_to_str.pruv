@@ -1,0 +1,20 @@
+// G6 A2 runtime: a str is copied into a String and back out with string_to_str; the independent str result keeps every byte (ASCII and multibyte)
+fn roundtrip(t: str) -> str ! alloc
+  requires len(t) <= 1000
+  ensures len(result) == len(t)
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, t);
+  return string_to_str(s);
+}
+
+fn twice_len(t: str) -> i64 ! alloc
+  requires len(t) <= 1000
+  ensures result == 2 * len(t)
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, t);
+  s = string_push_str(move s, t);
+  let u: str = string_to_str(s);
+  return len(u);
+}

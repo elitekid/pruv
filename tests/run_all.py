@@ -255,8 +255,9 @@ def g3_proof_jobs():
 
 
 def g6_frontend_jobs(group="g6_frontend", sub="frontend", modes=(("no-verify", ["--no-verify"]),)):
-    """G6 A0/A1 (docs/G6_SPEC.md 10.5, 11.1): no code generator lowers G6 yet, so the compiler under test must
-    stop with exactly codegen/unsupported_type (and no earlier diagnostic).
+    """G6 (docs/G6_SPEC.md 11.1, 12): the Rust source backend lowers G6 since A2, so the compiler under test must
+    succeed (exit 0, Rust backend). The samples name Rust paths that need not exist, so the output is not compiled
+    here; the runtime fixtures (tests/runtime/g6_*) compile and run generated code.
     g6_frontend: tests/g6/frontend/*.pruv are well-typed and pass the ownership rules (--no-verify only).
     g6_proof: tests/g6/proof/*.pruv must also verify completely (default mode). Rows have backend null."""
     jobs = []
@@ -265,23 +266,13 @@ def g6_frontend_jobs(group="g6_frontend", sub="frontend", modes=(("no-verify", [
             name = "%s/%s [%s]" % (group, os.path.basename(f), mode)
 
             def fn(f=f, flags=flags, mode=mode):
-                out = os.path.join(WORK, "g6f_%s_%s.rs" % (os.path.splitext(os.path.basename(f))[0], mode))
+                stem = "g6_%s_%s_%s" % (sub, os.path.splitext(os.path.basename(f))[0], mode)
+                out = os.path.join(WORK, stem + ".rs")
                 c = pruvc(f, out, flags)
-                diags = []
-                for line in c.stdout.splitlines():
-                    try:
-                        d = json.loads(line)
-                    except ValueError:
-                        continue
-                    if isinstance(d, dict):
-                        diags.append((d.get("stage"), d.get("code")))
-                ok = c.returncode == 1 and diags == [("codegen", "unsupported_type")]
-                return ok, "exit %d, diagnostics %s (expected exit 1 and only codegen/unsupported_type) %s" % (
-                    c.returncode, diags, (c.stdout + c.stderr)[-400:])
+                return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, (c.stdout + c.stderr)[-400:])
             jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": flags, "mode": mode,
                                          "group": group}))
     return jobs
-
 
 EXAMPLE_MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 ARITH_OR_INDEX = re.compile(r"\b(add|sub|mul|getelementptr)\b")
@@ -371,17 +362,28 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
         d = os.path.dirname(j)
         pruv, drv = os.path.join(d, t + ".pruv"), os.path.join(d, t + ".rs")
         link = []
+        # G6 A2 (G6_SPEC 12.5): "rust_externs": {"NAME": "tests/runtime/FILE.rs"} -> an rlib per job, passed to
+        # pruvc as --rust-extern NAME=RLIB and to the final rustc as --extern NAME=RLIB
+        xflags, xlink = [], []
+        for xname, xsrc in sorted((spec.get("rust_externs") or {}).items()):
+            rlib = os.path.join(work, "lib%s_%s%s%s.rlib" % (xname, t, suffix, "_llvm" if llvm else ""))
+            r = subprocess.run([RUSTC, "-O", "--edition", "2021", "--crate-type", "rlib", "--crate-name", xname,
+                                os.path.join(ROOT, xsrc), "-o", rlib], capture_output=True, text=True, timeout=300)
+            if r.returncode != 0:
+                return False, "rustc (extern %s): %s" % (xname, r.stderr[-400:])
+            xflags += ["--rust-extern", "%s=%s" % (xname, rlib)]
+            xlink += ["--extern", "%s=%s" % (xname, rlib)]
         if llvm:
             key = t + suffix + "_llvm"
             ll = os.path.join(work, key + ".ll")
             gen = os.path.join(work, key + "_gen.rs")
-            c = pruvc_llvm(pruv, ll, gen, flags)
+            c = pruvc_llvm(pruv, ll, gen, list(flags) + xflags)
             if rel_sample(pruv) in llvm_pending():
                 return pending_result(c)
         else:
             key = t + suffix
             gen = os.path.join(work, key + "_gen.rs")
-            c = pruvc(pruv, gen, flags)
+            c = pruvc(pruv, gen, list(flags) + xflags)
         if c.returncode != 0:
             return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
         if llvm:
@@ -393,7 +395,7 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             fh.write('#![allow(dead_code, unused_imports)]\n#[path = "%s"] mod sol;\n' % gen)
             fh.write(open(drv).read())
         exe = os.path.join(work, key + "_bin")
-        r = subprocess.run([RUSTC, "-O", "--edition", "2021", main, "-o", exe] + link,
+        r = subprocess.run([RUSTC, "-O", "--edition", "2021", main, "-o", exe] + link + xlink,
                            capture_output=True, text=True, timeout=300)
         if r.returncode != 0:
             return False, "rustc: " + r.stderr[-400:]

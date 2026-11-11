@@ -50,6 +50,21 @@ pub fn rty_g(g: &GType, param: bool) -> String {
         }
         return format!("::std::result::Result<{}, i64>", x);
     }
+    // G6: owned collections; a borrowed parameter is a reference
+    if g.owner.is_none() {
+        let r = match (g.name.as_str(), g.args.len()) {
+            ("vec", 1) => Some(format!("::std::vec::Vec<{}>", rty_g(&g.args[0], false))),
+            ("hashmap", 2) => Some(format!(
+                "::std::collections::HashMap<{}, {}>",
+                rty_g(&g.args[0], false),
+                rty_g(&g.args[1], false)
+            )),
+            _ => None,
+        };
+        if let Some(r) = r {
+            return if param { format!("&{}", r) } else { r };
+        }
+    }
     rty_name(&g.name, param)
 }
 
@@ -83,6 +98,10 @@ fn rty_name(t: &str, param: bool) -> String {
         // G2 B2: str is &str as a parameter, String as a local or return value
         "str" => {
             if param { "&str".to_string() } else { "::std::string::String".to_string() }
+        }
+        // G6: String is owned; a borrowed parameter is a reference
+        "string" => {
+            if param { "&::std::string::String".to_string() } else { "::std::string::String".to_string() }
         }
         other => other.to_string(),
     }

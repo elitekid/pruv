@@ -1,0 +1,8 @@
+// G6 A2 runtime (injected wrong Rust): the adapter panics; the boundary catches it, reports "foreign panic" and exits 101 in every check mode
+trusted rust fn liar_panic(x: i64) -> i64
+  ensures true
+  = "::g6_liar::liar_panic";
+
+fn call_panic(x: i64) -> i64 {
+  return liar_panic(x);
+}

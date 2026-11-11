@@ -2,3 +2,32 @@
 # G3 A4: the Python compiler lowers generics to LLVM, so the sixteen tests/runtime/g3_r*.pruv samples left this list.
 # (Rust-compiler LLVM lowering is a separate A4 task; until it lands the rs llvm rows of those samples still need
 # the entries back when run against pruvc-rs.)
+# G6 A2: the LLVM backend lowers G6 in A3
+tests/runtime/g6_a01_min_max.pruv
+tests/runtime/g6_a02_option_find.pruv
+tests/runtime/g6_a03_result_half.pruv
+tests/runtime/g6_a04_slice_str.pruv
+tests/runtime/g6_liar_ensures_all.pruv
+tests/runtime/g6_liar_ensures_quiet.pruv
+tests/runtime/g6_liar_panic.pruv
+tests/runtime/g6_liar_requires.pruv
+tests/runtime/g6_m01_i64_basic.pruv
+tests/runtime/g6_m02_replace.pruv
+tests/runtime/g6_m03_bool_keys.pruv
+tests/runtime/g6_m04_missing_extreme.pruv
+tests/runtime/g6_m05_loop_fill.pruv
+tests/runtime/g6_m06_generic_put.pruv
+tests/runtime/g6_o01_loop_reassign.pruv
+tests/runtime/g6_o02_branch_reinit.pruv
+tests/runtime/g6_o03_early_return.pruv
+tests/runtime/g6_o04_eval_order.pruv
+tests/runtime/g6_s01_ascii_build.pruv
+tests/runtime/g6_s02_utf8_literals.pruv
+tests/runtime/g6_s03_to_str.pruv
+tests/runtime/g6_s04_repeat_loop.pruv
+tests/runtime/g6_v01_push_get.pruv
+tests/runtime/g6_v02_iota_sum.pruv
+tests/runtime/g6_v03_bool_flags.pruv
+tests/runtime/g6_v04_generic_append.pruv
+tests/runtime/g6_v05_option_elems.pruv
+tests/runtime/g6_v06_fresh_borrow.pruv

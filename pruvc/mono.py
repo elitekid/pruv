@@ -31,7 +31,8 @@ from collections import deque
 
 from vast import *
 from typeinfo import (bind_args, decl_owner, encode, first_g3_use, format_type, spec_fn_stem, spec_type_stem,
-                      substitute)
+                      substitute, COLLECTION_ARITY)
+from foreign import CATALOG   # G6: catalog calls keep their name (never specialized)
 
 MAX_FN_SPECS = 4096
 MAX_TYPE_APPS = 4096
@@ -224,6 +225,8 @@ class _Mono:
             return mk_option(self.lower(c.args[0]))
         if c.name == "result":
             return mk_result(self.lower(c.args[0]))
+        if c.name in COLLECTION_ARITY:   # G6: Vec<T> / HashMap<K, V> keep their name, arguments are lowered
+            return Type(c.name, tuple(self.lower(a) for a in c.args))
         return Type(self.request_type(c.name, c.args))
 
     def concrete_args(self, inst):
@@ -274,7 +277,17 @@ class _Mono:
             return node
         new = type(node)(**dict((n, self.cp(getattr(node, n))) for n in fields))
         if isinstance(node, Call):
-            if node.inst is not None:
+            if node.name in CATALOG:
+                # G6: the name stays; `args` = lowered concrete type arguments, `src_args` = concrete but not
+                # lowered (source-level spelling and the structural encoding of helper names)
+                if node.inst is not None:
+                    self.pos = (node.line, node.col)
+                    src = self.concrete_args(node.inst)
+                    for a in src:
+                        self.check_shape(a, "type argument of function %s" % node.name)
+                    new.inst = {"decl": node.inst["decl"], "args": tuple(self.ty(a) for a in src),
+                                "src_args": src}
+            elif node.inst is not None:
                 self.pos = (node.line, node.col)
                 new.name = self.request_fn(node.name, self.concrete_args(node.inst))
         elif isinstance(node, StructLit):
@@ -302,11 +315,19 @@ class _Mono:
     def function(self, f, name, mapping, private):
         self.map = mapping
         self.pos = (f.line, f.col)
-        new = Function(line=f.line, col=f.col, name=name,
-                       params=[Param(p.name, self.ty(p.type), self.cp(p.refine)) for p in f.params],
-                       ret=self.ty(f.ret), effects=list(f.effects), requires=self.cp(f.requires), ensures=[],
+        params = []
+        for p in f.params:
+            q = Param(p.name, self.ty(p.type), self.cp(p.refine))
+            if p.take:
+                q.take = True     # G6
+            params.append(q)
+        new = Function(line=f.line, col=f.col, name=name, params=params,
+                       ret=self.ty(f.ret), effects=list(f.effects), requires=self.cp(f.requires),
+                       ensures=self.cp(f.ensures) if f.foreign is not None else [],   # G6: kept for `all` checks
                        body=self.cp(f.body), ret_refine=self.cp(f.ret_refine))
         new.private = private
+        if f.foreign is not None:
+            new.foreign = f.foreign
         return new
 
     def type_decl(self, d, stem, mapping):

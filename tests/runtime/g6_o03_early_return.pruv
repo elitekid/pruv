@@ -1,0 +1,44 @@
+// G6 A2 runtime: early return of a moved take parameter, and early return while other owned locals are still live (dropped once)
+fn grow_unless(take v: Vec<i64>, stop: bool) -> Vec<i64> ! alloc
+  requires len(v) < 1000
+  ensures stop ==> len(result) == len(v)
+  ensures (!stop) ==> len(result) == len(v) + 1
+{
+  if stop {
+    return move v;
+  }
+  let w: Vec<i64> = vec_push::<i64>(move v, 0);
+  return move w;
+}
+
+fn early(stop: bool) -> i64 ! alloc
+  ensures stop ==> result == 1
+  ensures (!stop) ==> result == 2
+{
+  let v: Vec<i64> = vec_push::<i64>(vec_new::<i64>(), 1);
+  let w: Vec<i64> = grow_unless(move v, stop);
+  return len(w);
+}
+
+fn first_or_default(take v: Vec<i64>, d: i64) -> i64 ! alloc
+  ensures len(v) == 0 ==> result == d
+  ensures len(v) > 0 ==> result == v[0]
+{
+  let spare: Vec<i64> = vec_push::<i64>(vec_new::<i64>(), d);
+  if len(v) == 0 {
+    return vec_get::<i64>(spare, 0);
+  }
+  return vec_get::<i64>(v, 0);
+}
+
+fn early_default(n: i64, d: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1
+  ensures n == 0 ==> result == d
+  ensures n == 1 ==> result == 42
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  if n == 1 {
+    v = vec_push::<i64>(move v, 42);
+  }
+  return first_or_default(move v, d);
+}

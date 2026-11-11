@@ -1,0 +1,33 @@
+// G6 A2 runtime: argument and nesting evaluation order observed through element positions (no printing)
+fn mk(x: i64) -> Vec<i64> ! alloc
+  ensures len(result) == 1
+  ensures result[0] == x
+{
+  return vec_push::<i64>(vec_new::<i64>(), x);
+}
+
+fn with_tail(take a: Vec<i64>, b: Vec<i64>) -> Vec<i64> ! alloc
+  requires len(a) < 1000
+  requires len(b) > 0
+  ensures len(result) == len(a) + 1
+  ensures result[len(a)] == b[0]
+  ensures forall i in 0..len(a): result[i] == a[i]
+{
+  return vec_push::<i64>(move a, vec_get::<i64>(b, 0));
+}
+
+fn order_param(a: i64, b: i64) -> i64 ! alloc
+  requires 0 <= a && a <= 100
+  requires 0 <= b && b <= 100
+  ensures result == a * 1000 + b
+{
+  let r: Vec<i64> = with_tail(mk(a), mk(b));
+  return vec_get::<i64>(r, 0) * 1000 + vec_get::<i64>(r, 1);
+}
+
+fn nested_order() -> i64 ! alloc
+  ensures result == 123
+{
+  let t: Vec<i64> = vec_push::<i64>(vec_push::<i64>(vec_push::<i64>(vec_new::<i64>(), 1), 2), 3);
+  return vec_get::<i64>(t, 0) * 100 + vec_get::<i64>(t, 1) * 10 + vec_get::<i64>(t, 2);
+}

@@ -6,10 +6,12 @@
 
 use crate::ast::*;
 use crate::emit_common::{
-    emit_public_types, is_spec_fn, is_user_key, key_name, match_sorted_requires, rstr, rty, rty_g, show, try_conv, try_cty,
-    try_cty_g,
+    emit_public_types, is_spec_fn, is_user_key, key_name, match_sorted_requires, rstr, rty, rty_g, show, try_conv, try_conv_g,
+    try_cty, try_cty_g,
 };
-use crate::gtype::{is_g3_key, GType};
+use crate::foreign::{catalog_fn, is_catalog};
+use crate::foreign_codegen::ForeignGen;
+use crate::gtype::{is_g3_key, key_is_collection, mk_option, GType};
 use crate::pyrepr::repr_str;
 use crate::typeinfo::{array_elem_name, is_array_name, uses_array_type, uses_str, TypeTable};
 use std::collections::{HashMap, HashSet};
@@ -17,6 +19,58 @@ use std::collections::{HashMap, HashSet};
 pub type R<T> = Result<T, String>;
 
 pub const ALLOW: &str = "#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, dead_code, unreachable_code, unreachable_patterns, unconditional_panic, arithmetic_overflow)]";
+
+// ---------------------------------------------------------------------------
+// G6 (docs/G6_SPEC.md section 12): extra attributes and preludes, emitted only for programs that use G6.
+// ---------------------------------------------------------------------------
+
+/// ALLOW without its closing `)]`, plus `unused_assignments, unused_comparisons`
+pub const ALLOW_G6: &str = "#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, dead_code, unreachable_code, unreachable_patterns, unconditional_panic, arithmetic_overflow, unused_assignments, unused_comparisons)]";
+
+const UD_OLD: &str = r##"#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_ud(what: &str) -> ! { panic!("pruv: requires undefined: {}", what) }
+"##;
+
+// pruv_ud with a boundary context: a foreign helper sets the context (RAII guard), so that an undefined contract
+// inside it reports `pruv: foreign contract undefined: NAME: what`; elsewhere the message is unchanged.
+const UD_G6: &str = r##"::std::thread_local! { static PRUV_CTX: ::std::cell::Cell<&'static str> = ::std::cell::Cell::new(""); }
+#[allow(dead_code)]
+struct PruvCtx;
+impl ::std::ops::Drop for PruvCtx { fn drop(&mut self) { PRUV_CTX.with(|c| c.set("")); } }
+#[allow(dead_code)]
+fn pruv_ctx(name: &'static str) -> PruvCtx { PRUV_CTX.with(|c| c.set(name)); PruvCtx }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_ud(what: &str) -> ! {
+    let c: &'static str = PRUV_CTX.with(|c| c.get());
+    if c.is_empty() { panic!("pruv: requires undefined: {}", what) } else { panic!("pruv: foreign contract undefined: {}: {}", c, what) }
+}
+"##;
+
+/// CONTRACT_PRELUDE with `pruv_ud` replaced by the context-aware one (Python CONTRACT_PRELUDE_G6)
+pub fn contract_prelude_g6() -> String {
+    CONTRACT_PRELUDE.replace(UD_OLD, UD_G6)
+}
+
+pub const G6_PRELUDE: &str = r##"#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_g6_req(name: &str, what: &str) -> ! { panic!("pruv: foreign requires violated: {}: {}", name, what) }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_g6_ens(name: &str, what: &str) -> ! { panic!("pruv: foreign ensures violated: {}: {}", name, what) }
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn pruv_g6_repr(what: &str) -> ! { panic!("pruv: invalid representation: {}", what) }
+#[allow(dead_code)]
+#[inline]
+fn pruv_g6_charge(budget: &mut i64, n: usize) { let n: i64 = if n > (i64::MAX as usize) { i64::MAX } else { n as i64 }; *budget = budget.saturating_sub(n); if *budget < 0 { pruv_ud("budget") } }
+"##;
 
 pub const SAFE_PRELUDE: &str = r##"#[allow(dead_code)]
 #[cold]
@@ -237,13 +291,23 @@ fn expr_ty(e: &Expr) -> &Option<String> {
     }
 }
 
+/// G6: (K, V) of a `hashmap<K,V>` typed expression (Python `a.ty.args[0], a.ty.args[1]`)
+fn map_type_args(e: &Expr) -> R<(GType, GType)> {
+    let t = expr_ty(e).as_deref().ok_or_else(|| "'NoneType' object has no attribute 'args'".to_string())?;
+    let g = GType::try_from_key(t)?;
+    if g.args.len() < 2 {
+        return Err("tuple index out of range".to_string());
+    }
+    Ok((g.args[0].clone(), g.args[1].clone()))
+}
+
 /// The IndexError of Python `a[i]`
 fn arg(a: &[Expr], i: usize) -> R<&Expr> {
     a.get(i).ok_or_else(|| "list index out of range".to_string())
 }
 
 /// Python `format(n, "_")`: an underscore every three digits.
-fn fmt_underscore(n: u64) -> String {
+pub(crate) fn fmt_underscore(n: u64) -> String {
     let digits = n.to_string();
     let len = digits.len();
     let mut out = String::new();
@@ -329,24 +393,58 @@ struct Gen<'a> {
     params: HashSet<String>,
     /// Variable type table (parameters and let; copied and restored per block)
     vars: HashMap<String, String>,
+    /// G6: the program uses G6 (a foreign declaration, a collection, take or move)
+    g6: bool,
+    /// the attribute of every emitted function (ALLOW, or ALLOW_G6 for a G6 program)
+    allow: &'static str,
+    /// function name -> declaration (first one wins)
+    fmap: HashMap<String, &'a Function>,
+    /// collection parameters of the current function that are borrowed (not `take`)
+    borrowed: HashSet<String>,
+    /// boundary helpers and manifest data (only for a G6 program)
+    fg: Option<ForeignGen>,
 }
 
 impl<'a> Gen<'a> {
-    fn new(prog: &'a Program, verified: bool, trust_callers: bool, budget: u64) -> Gen<'a> {
+    fn new(prog: &'a Program, verified: bool, trust_callers: bool, budget: u64, foreign_checks: &str) -> Gen<'a> {
+        let g6 = crate::foreign::first_g6_use(prog).is_some();
+        let mut fmap: HashMap<String, &'a Function> = HashMap::new();
+        for f in &prog.functions {
+            fmap.entry(f.name.clone()).or_insert(f);
+        }
         Gen {
             prog,
             budget,
             verified,
             trust: trust_callers,
             out: Vec::new(),
-            has_req: prog.functions.iter().filter(|f| !f.requires.is_empty()).map(|f| f.name.clone()).collect(),
+            has_req: prog
+                .functions
+                .iter()
+                .filter(|f| !f.requires.is_empty() && f.foreign.is_none())
+                .map(|f| f.name.clone())
+                .collect(),
             cp: None,
             bound: Vec::new(),
             tmp: 0,
             table: TypeTable::new(&prog.types),
             params: HashSet::new(),
             vars: HashMap::new(),
+            g6,
+            allow: if g6 { ALLOW_G6 } else { ALLOW },
+            fmap,
+            borrowed: HashSet::new(),
+            fg: if g6 { Some(ForeignGen::new(foreign_checks, budget)) } else { None },
         }
+    }
+
+    fn fg_mut(&mut self) -> R<&mut ForeignGen> {
+        self.fg.as_mut().ok_or_else(|| "codegen: foreign helper requested outside a G6 program".to_string())
+    }
+
+    /// G3 specializations and G6 collection-bearing functions are private Rust items
+    fn private(&self, f: &Function) -> bool {
+        is_spec_fn(&f.name) || f.params.iter().any(|p| key_is_collection(&p.ty)) || key_is_collection(&f.ret)
     }
 
     fn emit(&mut self, ind: usize, line: &str) {
@@ -376,8 +474,12 @@ impl<'a> Gen<'a> {
                 self.out.push(SAFE_PRELUDE_STR.to_string());
             }
         }
-        if !self.has_req.is_empty() && !self.trust {
-            self.out.push(CONTRACT_PRELUDE.to_string());
+        if (!self.has_req.is_empty() && !self.trust) || self.g6 {
+            if self.g6 {
+                self.out.push(contract_prelude_g6());
+            } else {
+                self.out.push(CONTRACT_PRELUDE.to_string());
+            }
             if u8_used {
                 self.out.push(CONTRACT_PRELUDE_U8.to_string());
             }
@@ -390,6 +492,9 @@ impl<'a> Gen<'a> {
             let ctypes = self.contract_types()?;
             if !ctypes.is_empty() {
                 self.out.push(ctypes);
+            }
+            if self.g6 {
+                self.out.push(G6_PRELUDE.to_string());
             }
         }
         Ok(())
@@ -475,15 +580,21 @@ impl<'a> Gen<'a> {
     }
 
     fn func(&mut self, f: &Function) -> R<()> {
+        if f.foreign.is_some() {
+            return Ok(()); // G6: a trusted rust fn has no body; its boundary helper is emitted on first use
+        }
         self.params = f.params.iter().map(|p| p.name.clone()).collect();
         self.vars = f.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect();
-        let ps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, rty(&p.ty, true)));
+        self.borrowed =
+            f.params.iter().filter(|p| key_is_collection(&p.ty) && !p.take).map(|p| p.name.clone()).collect();
+        let ps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, rty(&p.ty, !p.take)));
         let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", rty(&f.ret, false)) };
         let has = !f.requires.is_empty();
         let body_name = if has { format!("{}__pruv_body", f.name) } else { f.name.clone() };
-        // G3: generic specializations are private items
-        let vis = if has || is_spec_fn(&f.name) { "" } else { "pub " };
-        self.emit(0, ALLOW);
+        // G3: generic specializations (and G6 collection-bearing functions) are private items
+        let vis = if has || self.private(f) { "" } else { "pub " };
+        let allow = self.allow;
+        self.emit(0, allow);
         self.emit(0, &format!("{}fn {}({}){} {{", vis, body_name, ps, ret));
         self.block(&f.body, 1)?;
         self.emit(0, "}");
@@ -506,9 +617,11 @@ impl<'a> Gen<'a> {
     }
 
     fn entry(&mut self, f: &Function, ps: &str, ret: &str, body_name: &str) -> R<()> {
-        self.emit(0, ALLOW);
+        let allow = self.allow;
+        self.emit(0, allow);
         self.emit(0, "#[inline]");
-        self.emit(0, &format!("{}fn {}({}){} {{", if is_spec_fn(&f.name) { "" } else { "pub " }, f.name, ps, ret));
+        let vis = if self.private(f) { "" } else { "pub " };
+        self.emit(0, &format!("{}fn {}({}){} {{", vis, f.name, ps, ret));
         if !self.trust {
             self.cp = Some(HashMap::new());
             let res = self.entry_checks(f);
@@ -597,6 +710,23 @@ impl<'a> Gen<'a> {
             Expr::Index(x) => {
                 let a = self.carr(&x.array)?;
                 let i = self.c(&x.index)?;
+                let aty = expr_ty(&x.array).as_deref();
+                if aty.map_or(false, |t| key_name(t) == "vec") {
+                    // G6: checked read of a vector element
+                    let et = x.ty.as_deref().ok_or_else(|| "codegen: vector index without a type".to_string())?;
+                    return Ok(format!(
+                        "({{ let pruv_i: i128 = {}; if pruv_i >= 0 && pruv_i < ({}.len() as i128) {{ let pruv_x: {} = {}[pruv_i as usize]; {} }} else {{ pruv_ud(\"vector index out of range\") }} }})",
+                        i,
+                        a,
+                        rty(et, false),
+                        a,
+                        try_conv(et, "pruv_x")?
+                    ));
+                }
+                if aty == Some("string") {
+                    // G6
+                    return Ok(format!("pruv_cidx_str(&{}, {})", a, i));
+                }
                 if expr_ty(&x.array).as_deref() == Some("str") {
                     // G2 B2: split before reaching elem_of
                     return Ok(format!("pruv_cidx_str({}, {})", a, i));
@@ -698,6 +828,32 @@ impl<'a> Gen<'a> {
                 let a = &x.args;
                 if n == "len" {
                     return Ok(format!("({}.len() as i128)", self.carr(arg(a, 0)?)?));
+                }
+                if n == "map_lookup" {
+                    // G6: finite-map lookup, Option mirror of the stored value
+                    let (kt, vt) = map_type_args(arg(a, 0)?)?;
+                    let key = self.c(arg(a, 1)?)?;
+                    let m0 = self.carr(arg(a, 0)?)?;
+                    let look = if kt == GType::i64() {
+                        format!("i64::try_from({}).ok().and_then(|pruv_k| {}.get(&pruv_k).copied())", key, m0)
+                    } else {
+                        format!("{}.get(&{}).copied()", m0, key)
+                    };
+                    return Ok(format!("({})", try_conv_g(&mk_option(vt), &format!("({})", look))?));
+                }
+                if n == "map_updated" {
+                    // G6: generated scan helper; shares the entry's iteration budget
+                    let (kt, vt) = map_type_args(arg(a, 0)?)?;
+                    let src: Vec<GType> = match x.inst.as_ref().and_then(|i| i.src_args.clone()) {
+                        Some(s) => s,
+                        None => vec![kt.clone(), vt.clone()],
+                    };
+                    let helper = self.fg_mut()?.map_updated_helper(&kt, &vt, &src)?;
+                    let a0 = self.carr(arg(a, 0)?)?;
+                    let a1 = self.carr(arg(a, 1)?)?;
+                    let a2 = self.c(arg(a, 2)?)?;
+                    let a3 = self.c(arg(a, 3)?)?;
+                    return Ok(format!("{}(&{}, &{}, {}, {}, &mut pruv_budget)", helper, a0, a1, a2, a3));
                 }
                 if n == "is_char_boundary" {
                     // G2 B2
@@ -990,7 +1146,7 @@ impl<'a> Gen<'a> {
     }
 
     /// An array expression used as a borrowed slice
-    fn arr_ref(&self, e: &Expr) -> R<String> {
+    fn arr_ref(&mut self, e: &Expr) -> R<String> {
         if let Expr::Var(x) = e {
             if !self.params.contains(&x.name) {
                 return Ok(format!("&{}", x.name));
@@ -1000,8 +1156,108 @@ impl<'a> Gen<'a> {
         Ok(format!("&{}", self.e(e)?))
     }
 
-    fn e(&self, e: &Expr) -> R<String> {
+    /// a collection expression in a borrow position (G6 section 12.1)
+    fn cref(&mut self, x: &Expr) -> R<String> {
+        if let Expr::Var(v) = x {
+            return Ok(if self.borrowed.contains(&v.name) { v.name.clone() } else { format!("&{}", v.name) });
+        }
+        Ok(format!("&({})", self.e(x)?))
+    }
+
+    /// executable catalog operation -> call of its private boundary helper
+    fn catalog_call(&mut self, x: &Call) -> R<String> {
+        let cat = catalog_fn(&x.name).ok_or_else(|| repr_str(&x.name))?;
+        let (low, src): (Vec<GType>, Vec<GType>) = match &x.inst {
+            Some(i) => (i.args.clone(), i.src_args.clone().unwrap_or_else(|| i.args.clone())),
+            None => (Vec::new(), Vec::new()),
+        };
+        let name = self.fg_mut()?.catalog_helper(&x.name, &low, &src)?;
+        let mut args: Vec<String> = Vec::new();
+        for (p, xa) in cat.params.iter().zip(x.args.iter()) {
+            if p.ty.is_collection() {
+                if p.take {
+                    args.push(self.e(xa)?);
+                } else {
+                    args.push(self.cref(xa)?);
+                }
+            } else if p.ty == GType::str() {
+                args.push(self.arr_ref(xa)?);
+            } else {
+                args.push(self.e(xa)?);
+            }
+        }
+        Ok(format!("{}({})", name, args.join(", ")))
+    }
+
+    /// private helper `NAME` of a `trusted rust fn`: selected requires, catch_unwind around the Rust call, selected
+    /// ensures. Emitted once, on first use.
+    fn trusted_helper(&mut self, f: &Function) -> R<()> {
+        if self.fg_mut()?.has_item(&f.name) {
+            return Ok(());
+        }
+        self.fg_mut()?.set_op(&f.name);
+        let mut new_params: HashSet<String> = f.params.iter().map(|p| p.name.clone()).collect();
+        new_params.insert("result".to_string());
+        let new_vars: HashMap<String, String> = f.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect();
+        let saved_params = std::mem::replace(&mut self.params, new_params);
+        let saved_vars = std::mem::replace(&mut self.vars, new_vars);
+        let saved_cp = self.cp.take();
+        let saved_bound = std::mem::take(&mut self.bound);
+        let saved_tmp = std::mem::replace(&mut self.tmp, 0);
+        let saved_borrowed = std::mem::take(&mut self.borrowed);
+        let res = self.trusted_text(f);
+        self.params = saved_params;
+        self.vars = saved_vars;
+        self.cp = saved_cp;
+        self.bound = saved_bound;
+        self.tmp = saved_tmp;
+        self.borrowed = saved_borrowed;
+        let text = res?;
+        self.fg_mut()?.add_item(&f.name, text);
+        Ok(())
+    }
+
+    fn trusted_text(&mut self, f: &Function) -> R<String> {
+        let (req, ens) = {
+            let fg = self.fg_mut()?;
+            (fg.req, fg.ens)
+        };
+        let name = f.name.as_str();
+        let mut body: Vec<String> = Vec::new();
+        if req {
+            for r in &f.requires {
+                let code = self.c(r)?;
+                body.push(format!("if !({}) {{ pruv_g6_req({}, {}); }}", code, rstr(name), rstr(&show(r))));
+            }
+        }
+        let args = join_map(&f.params, ", ", |p| p.name.clone());
+        let rt = rty(&f.ret, false);
+        let path = match &f.foreign {
+            Some(i) => i.path.as_str(),
+            None => return Err("'NoneType' object is not subscriptable".to_string()),
+        };
+        body.push(format!(
+            "let result: {} = match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {}({}))) {{",
+            rt, path, args
+        ));
+        body.push("    Ok(pruv_r) => pruv_r,".to_string());
+        body.push(format!("    Err(_) => panic!({}),", rstr(&format!("pruv: foreign panic: {}", name))));
+        body.push("};".to_string());
+        if ens {
+            for x in &f.ensures {
+                let code = self.c(x)?;
+                body.push(format!("if !({}) {{ pruv_g6_ens({}, {}); }}", code, rstr(name), rstr(&show(x))));
+            }
+        }
+        body.push("result".to_string());
+        let ps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, rty(&p.ty, true)));
+        let ret: Option<&str> = if f.ret == "unit" { None } else { Some(rt.as_str()) };
+        Ok(self.fg_mut()?.fn_trusted(name, &ps, ret, &body))
+    }
+
+    fn e(&mut self, e: &Expr) -> R<String> {
         match e {
+            Expr::Move(x) => Ok(x.name.clone()), // G6: Rust moves
             Expr::IntLit(x) => {
                 if x.value == "-9223372036854775808" {
                     return Ok("i64::MIN".to_string());
@@ -1087,13 +1343,13 @@ impl<'a> Gen<'a> {
             }
             Expr::StructLit(x) => {
                 // Declaration order = left-to-right evaluation; wrap in parentheses so that `if S { .. }.x` parses
-                let fs = k_fields(&self.table, &x.name, None)?;
+                let fs: Vec<FieldDecl> = k_fields(&self.table, &x.name, None)?.to_vec();
                 if fs.is_empty() {
                     return Ok(format!("({} {{}})", x.name));
                 }
                 let vals = init_map(&x.fields);
                 let mut parts: Vec<String> = Vec::new();
-                for f in fs {
+                for f in &fs {
                     let v = init_value(&vals, &f.name)?;
                     parts.push(format!("{}: {}", f.name, self.e(v)?));
                 }
@@ -1177,12 +1433,33 @@ impl<'a> Gen<'a> {
                         s0, lo, hi
                     ));
                 }
+                if self.g6 && is_catalog(n) {
+                    return self.catalog_call(x); // G6: executable catalog operation
+                }
+                let callee: Option<&'a Function> = if self.g6 { self.fmap.get(n).copied() } else { None };
+                if let Some(cf) = callee {
+                    if cf.foreign.is_some() {
+                        if let Some(fg) = self.fg.as_mut() {
+                            fg.called.insert(n.to_string());
+                        }
+                        self.trusted_helper(cf)?; // emitted on first use; the helper checks the selected requires itself
+                    }
+                }
                 let mut args: Vec<String> = Vec::new();
-                for x in a {
-                    if expr_ty(x).as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
-                        args.push(self.arr_ref(x)?);
+                for (i, xa) in a.iter().enumerate() {
+                    let is_move = matches!(xa, Expr::Move(_));
+                    let coll = expr_ty(xa).as_deref().map_or(false, key_is_collection);
+                    if self.g6 && (is_move || coll) {
+                        let take = is_move || callee.map_or(false, |c| c.params.get(i).map_or(false, |p| p.take));
+                        if take {
+                            args.push(self.e(xa)?);
+                        } else {
+                            args.push(self.cref(xa)?);
+                        }
+                    } else if expr_ty(xa).as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
+                        args.push(self.arr_ref(xa)?);
                     } else {
-                        args.push(self.e(x)?);
+                        args.push(self.e(xa)?);
                     }
                 }
                 let mut name = n.to_string();
@@ -1206,18 +1483,31 @@ pub enum GenError {
 /// Pruv -> Rust source for any checked program (Python `gen_rust`): a program that uses generics is specialized first
 /// (shared plan, mono.rs) and generated from the concrete program; any other program is generated directly.
 pub fn gen_rust_any(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, GenError> {
-    // G6: no code generator lowers G6 yet (the drivers reject earlier)
-    if let Some(e) = crate::foreign::g6_unimplemented_error(prog, "codegen") {
-        return Err(GenError::Diag(e));
+    gen_rust_ex(prog, verified, trust_callers, budget, "requires", &[]).map(|(text, _)| text)
+}
+
+/// Python `gen_rust_ex`: (rust text, manifest text or None). The manifest (G6_SPEC 12.4) exists only for a program that
+/// uses G6; externs: (name, path) as given with --rust-extern.
+pub fn gen_rust_ex(
+    prog: &Program,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    foreign_checks: &str,
+    externs: &[(String, String)],
+) -> Result<(String, Option<String>), GenError> {
+    if !matches!(foreign_checks, "requires" | "all" | "off") {
+        return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
     if crate::typeinfo::first_g3_use(prog).is_some() {
         let plan = crate::mono::specialize(prog).map_err(|e| match e {
             crate::mono::MonoError::Limit(p) => GenError::Diag(p),
             crate::mono::MonoError::Internal(m) => GenError::Msg(m),
         })?;
-        return gen_rust_concrete(&plan.program, verified, trust_callers, budget).map_err(GenError::Msg);
+        return gen_rust_concrete_ex(&plan.program, verified, trust_callers, budget, foreign_checks, externs)
+            .map_err(GenError::Msg);
     }
-    gen_rust_concrete(prog, verified, trust_callers, budget).map_err(GenError::Msg)
+    gen_rust_concrete_ex(prog, verified, trust_callers, budget, foreign_checks, externs).map_err(GenError::Msg)
 }
 
 /// Pruv -> Rust source. Err is the str(e) at the place where Python raises an Exception. A generic program is
@@ -1231,17 +1521,44 @@ pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64
 
 /// The generator proper, for a CONCRETE program (no type parameters; a plan.program of mono.rs, or a program without G3).
 pub fn gen_rust_concrete(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
+    gen_rust_concrete_ex(prog, verified, trust_callers, budget, "requires", &[]).map(|(text, _)| text)
+}
+
+/// `gen_rust_concrete` with the G6 boundary check mode and the --rust-extern specs; also returns the manifest text
+/// (only for a program that uses G6).
+pub fn gen_rust_concrete_ex(
+    prog: &Program,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    foreign_checks: &str,
+    externs: &[(String, String)],
+) -> Result<(String, Option<String>), String> {
+    if !matches!(foreign_checks, "requires" | "all" | "off") {
+        return Err("foreign_checks must be requires, all or off".to_string());
+    }
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) { // G2 B2
         return Err(format!("unsupported_type: {}", e.message));
     }
-    let mut g = Gen::new(prog, verified, trust_callers, budget);
+    let mut g = Gen::new(prog, verified, trust_callers, budget, foreign_checks);
     g.prelude()?;
+    let mark = g.out.len();
     for f in &prog.functions {
         g.func(f)?;
     }
+    let mut manifest: Option<String> = None;
+    if g.g6 {
+        // helpers are discovered while the functions are generated; they go in front of them, in first-use order
+        let (texts, m) = match g.fg.as_ref() {
+            Some(fg) => (fg.helper_texts(), fg.manifest(prog, externs)),
+            None => (Vec::new(), String::new()),
+        };
+        drop(g.out.splice(mark..mark, texts));
+        manifest = Some(m);
+    }
     let mut s = g.out.join("\n");
     s.push('\n');
-    Ok(s)
+    Ok((s, manifest))
 }
 
 #[cfg(test)]

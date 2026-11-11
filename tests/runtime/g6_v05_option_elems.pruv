@@ -1,0 +1,33 @@
+// G6 A2 runtime: Vec<Option<i64>> keeps active payloads (Some / None) through push and vec_get
+fn or_zero(o: Option<i64>) -> i64
+  ensures is_some(o) ==> result == some_val(o)
+  ensures (!is_some(o)) ==> result == 0
+{
+  match o {
+    Some(x) => { return x; }
+    None => { return 0; }
+  }
+}
+
+fn opt_sum(x: i64) -> i64 ! alloc
+  requires 0 <= x && x <= 1000
+  ensures result == x + 5
+{
+  let mut v: Vec<Option<i64>> = vec_new::<Option<i64>>();
+  v = vec_push::<Option<i64>>(move v, Some::<i64>(x));
+  v = vec_push::<Option<i64>>(move v, None::<i64>);
+  v = vec_push::<Option<i64>>(move v, Some::<i64>(5));
+  return or_zero(vec_get::<Option<i64>>(v, 0)) + or_zero(vec_get::<Option<i64>>(v, 1)) + or_zero(vec_get::<Option<i64>>(v, 2));
+}
+
+fn none_is_missing() -> bool ! alloc
+  ensures result == true
+{
+  let mut v: Vec<Option<i64>> = vec_new::<Option<i64>>();
+  v = vec_push::<Option<i64>>(move v, None::<i64>);
+  let o: Option<i64> = vec_get::<Option<i64>>(v, 0);
+  match o {
+    Some(x) => { return false; }
+    None => { return true; }
+  }
+}

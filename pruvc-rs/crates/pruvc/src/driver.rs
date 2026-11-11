@@ -185,10 +185,11 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // Exceeding the depth limit is reported by the parser as stage "internal" (exit 3, like Python RecursionError).
     let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
     let tt = pruv_core::check::check_with_externs(&mut prog, &a.rust_extern).map_err(|e| Fail::Lang(vec![e]))?;
-    // G6 (same place as in Python compile_file): foreign declarations, collections, take and move are checked (and proved)
-    // but not lowered yet. With --no-verify the guard fires right after the check; otherwise after verification
-    // (G6_SPEC 11.1: verification errors win over the guard).
-    if !a.verify {
+    // G6 (same place as in Python compile_file): the Rust source backend lowers foreign calls and collections (A2); the
+    // LLVM backend (and --also-llvm) still rejects them. With --no-verify the guard fires right after the check;
+    // otherwise after verification (G6_SPEC 11.1: verification errors win over the guard).
+    let g6_llvm = a.kind != Kind::Rs || a.also_llvm.is_some();
+    if !a.verify && g6_llvm {
         if let Some(e) = pruv_core::foreign::g6_unimplemented_error(&prog, "codegen") {
             return Err(Fail::Lang(vec![e]));
         }
@@ -216,8 +217,10 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
-        if let Some(e) = pruv_core::foreign::g6_unimplemented_error(&prog, "codegen") {
-            return Err(Fail::Lang(vec![e]));
+        if g6_llvm {
+            if let Some(e) = pruv_core::foreign::g6_unimplemented_error(&prog, "codegen") {
+                return Err(Fail::Lang(vec![e]));
+            }
         }
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
@@ -243,13 +246,24 @@ fn compile(a: &Args) -> Result<(), Fail> {
         // Stage 7: the Rust-source backend. Like Python compile_file, all the text (rs, and with --also-llvm also ll and bindings)
         // is produced first and only then are files written (on a generator error no file is written). Write order: OUT, LL, RS.
         Kind::Rs => {
-            let rs_text =
-                pruv_core::codegen::gen_rust_concrete(gprog, a.verify, a.trust_callers, a.budget).map_err(Fail::Internal)?;
+            let (rs_text, manifest) = pruv_core::codegen::gen_rust_concrete_ex(
+                gprog,
+                a.verify,
+                a.trust_callers,
+                a.budget,
+                &a.foreign_checks,
+                &a.rust_extern_specs,
+            )
+            .map_err(Fail::Internal)?;
             let llvm_texts = match &a.also_llvm {
                 Some(_) => Some(generate(a, gprog)?),
                 None => None,
             };
             write_text(&a.out, &rs_text)?;
+            if let Some(m) = &manifest {
+                // G6_SPEC 12.4: <out>.foreign.json, only for a program that uses G6
+                write_text(&format!("{}.foreign.json", a.out), m)?;
+            }
             if let (Some((ll, rs)), Some((ir, bindings))) = (&a.also_llvm, llvm_texts) {
                 write_text(ll, &ir)?;
                 write_text(rs, &bindings)?;

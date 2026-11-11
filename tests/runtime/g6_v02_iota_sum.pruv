@@ -1,0 +1,37 @@
+// G6 A2 runtime: a loop pushes 0..n into a Vec; a second loop sums it with vec_get over a read borrow
+fn iota(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k] == k
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(v) == i
+    invariant forall k in 0..i: v[k] == k
+    decreases n - i
+  {
+    v = vec_push::<i64>(move v, i);
+    i = i + 1;
+  }
+  return move v;
+}
+
+fn sum_iota(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 100
+  ensures 0 <= result && result <= 100 * n
+{
+  let v: Vec<i64> = iota(n);
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(v)
+    invariant 0 <= i && i <= len(v)
+    invariant 0 <= s && s <= 100 * i
+    decreases len(v) - i
+  {
+    s = s + vec_get::<i64>(v, i);
+    i = i + 1;
+  }
+  return s;
+}

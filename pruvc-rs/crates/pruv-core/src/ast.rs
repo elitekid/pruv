@@ -31,6 +31,9 @@ pub struct Inst {
     pub decl: String,
     pub args: Vec<GType>,
     pub subst: Vec<(String, usize, GType)>,
+    /// G6 A2: set only by mono on a catalog call: the concrete, NOT lowered type arguments (`args` are then the lowered
+    /// ones); None as the checker leaves it.
+    pub src_args: Option<Vec<GType>>,
 }
 
 // ---------- expressions ----------

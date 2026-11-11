@@ -1,0 +1,27 @@
+// G6 A2 runtime: trusted adapters taking a [i64] slice (with a forall requires) and str (ASCII and multibyte) parameters
+trusted rust fn sum_bounded(a: [i64]) -> i64
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000
+  ensures 0 <= result && result <= 1000 * len(a)
+  = "::g6_adapter::sum_bounded";
+
+trusted rust fn byte_len(s: str) -> i64
+  ensures result == len(s)
+  = "::g6_adapter::byte_len";
+
+trusted rust fn is_ascii_text(s: str) -> bool
+  ensures true
+  = "::g6_adapter::is_ascii_text";
+
+fn score(a: [i64], s: str) -> i64
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000
+  ensures result >= len(s)
+{
+  let total: i64 = sum_bounded(a);
+  let n: i64 = byte_len(s);
+  if is_ascii_text(s) {
+    return total + n + 1;
+  }
+  return total + n;
+}

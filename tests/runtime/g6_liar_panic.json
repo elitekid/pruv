@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--foreign-checks", "all"], ["--foreign-checks", "off"], ["--no-verify"], ["--no-verify", "--foreign-checks", "all"], ["--trust-callers"]], "rust_externs": {"g6_liar": "tests/runtime/g6_liar.rs"}, "exit": 101, "stdout_lines": ["-4"], "stderr_contains": "pruv: foreign panic:"}

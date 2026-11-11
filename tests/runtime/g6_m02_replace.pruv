@@ -1,0 +1,23 @@
+// G6 A2 runtime: duplicate keys — a second insert at the same key replaces the value and keeps the size; distinct keys grow it
+fn replace_demo(k: i64, a: i64, b: i64) -> i64 ! alloc
+  ensures result == b
+{
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  m = map_insert::<i64, i64>(move m, k, a);
+  m = map_insert::<i64, i64>(move m, k, b);
+  let found: Option<i64> = map_get::<i64, i64>(m, k);
+  match found {
+    Some(x) => { return x; }
+    None => { return a; }
+  }
+}
+
+fn distinct_count(k: i64, j: i64) -> i64 ! alloc
+  ensures k == j ==> result == 1
+  ensures k != j ==> result == 2
+{
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  m = map_insert::<i64, i64>(move m, k, 0);
+  m = map_insert::<i64, i64>(move m, j, 0);
+  return len(m);
+}

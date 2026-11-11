@@ -1,0 +1,11 @@
+// G6 A2 runtime (injected caller violation): a verified public function is entered with bad input under --no-verify --trust-callers, so the foreign requires check fires
+trusted rust fn needs_positive(x: i64) -> i64
+  requires x > 0
+  ensures result == x
+  = "::g6_liar::needs_positive";
+
+fn call_it(x: i64) -> i64
+  requires x > 0
+{
+  return needs_positive(x);
+}

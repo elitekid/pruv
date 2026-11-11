@@ -43,6 +43,8 @@ pub struct Args {
     pub show_inferred: bool,
     /// G6: crate names given with --rust-extern NAME=PATH (A0: only NAME is used, the file is not opened).
     pub rust_extern: Vec<String>,
+    /// G6 A2: the same --rust-extern specs as (NAME, PATH), in order (recorded in the manifest).
+    pub rust_extern_specs: Vec<(String, String)>,
     /// G6: --rust-search PATH values (recorded only in A0).
     pub rust_search: Vec<String>,
     /// G6: --foreign-checks requires|all|off (default requires).
@@ -454,6 +456,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         return Err("--foreign-checks off requires verification (not allowed with --no-verify)".to_string());
     }
     let mut rust_extern: Vec<String> = Vec::new();
+    let mut rust_extern_specs: Vec<(String, String)> = Vec::new();
     for spec in &r.rust_extern {
         let (name, xpath) = match spec.split_once('=') {
             Some((n, x)) => (n, x),
@@ -477,6 +480,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             return Err(format!("duplicate --rust-extern name {name}"));
         }
         rust_extern.push(name.to_string());
+        rust_extern_specs.push((name.to_string(), xpath.to_string()));
     }
     if r.rust_search.iter().any(|p| p.is_empty()) {
         return Err("--rust-search needs a non-empty PATH".to_string());
@@ -546,6 +550,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         infer: r.infer,
         show_inferred: r.show_inferred,
         rust_extern,
+        rust_extern_specs,
         rust_search: r.rust_search,
         foreign_checks: foreign_checks.to_string(),
         budget,

@@ -1,0 +1,35 @@
+// G6 A2 runtime: a generic helper append_two<T> with a take parameter, specialized at i64 and bool, with exact prefix/tail ensures
+fn append_two<T>(take v: Vec<T>, x: T, y: T) -> Vec<T> ! alloc
+  requires len(v) < 1000
+  ensures len(result) == len(v) + 2
+  ensures result[len(v)] == x
+  ensures result[len(v) + 1] == y
+{
+  let w: Vec<T> = vec_push::<T>(move v, x);
+  return vec_push::<T>(move w, y);
+}
+
+fn run_param(x: i64, y: i64) -> i64 ! alloc
+  ensures result == y
+{
+  let v: Vec<i64> = vec_new::<i64>();
+  let w: Vec<i64> = append_two::<i64>(move v, x, y);
+  return vec_get::<i64>(w, 1);
+}
+
+fn run_len() -> i64 ! alloc
+  ensures result == 4
+{
+  let v: Vec<i64> = vec_new::<i64>();
+  let w: Vec<i64> = append_two::<i64>(move v, 4, 5);
+  let u: Vec<i64> = append_two::<i64>(move w, 6, 7);
+  return len(u);
+}
+
+fn run_bool() -> bool ! alloc
+  ensures result == true
+{
+  let v: Vec<bool> = vec_new::<bool>();
+  let w: Vec<bool> = append_two::<bool>(move v, true, false);
+  return vec_get::<bool>(w, 0) == true && vec_get::<bool>(w, 1) == false;
+}

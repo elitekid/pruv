@@ -1,0 +1,39 @@
+// G6 A2 runtime: two read borrows in one call, one of them a fresh call result borrowed as a temporary (dropped at the statement end)
+fn iota(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(v) == i
+    decreases n - i
+  {
+    v = vec_push::<i64>(move v, i);
+    i = i + 1;
+  }
+  return move v;
+}
+
+fn same_len(a: Vec<i64>, b: Vec<i64>) -> bool
+  ensures result == (len(a) == len(b))
+{
+  return len(a) == len(b);
+}
+
+fn lens_match(n: i64, m: i64) -> bool ! alloc
+  requires 0 <= n && n <= 100
+  requires 0 <= m && m <= 100
+  ensures result == (n == m)
+{
+  return same_len(iota(n), iota(m));
+}
+
+fn lens_match_twice(n: i64) -> bool ! alloc
+  requires 0 <= n && n <= 100
+  ensures result == true
+{
+  let a: Vec<i64> = iota(n);
+  return same_len(a, a);
+}

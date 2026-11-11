@@ -1,0 +1,24 @@
+// G6 A2 runtime: multibyte UTF-8 literals ("héllo" = 6 bytes, "日本" = 6 bytes) appended to a String; len counts bytes, string_byte reads raw bytes
+fn build() -> String ! alloc
+  ensures len(result) == 12
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, "héllo");
+  s = string_push_str(move s, "日本");
+  return move s;
+}
+
+fn utf8_len() -> i64 ! alloc
+  ensures result == 12
+{
+  let s: String = build();
+  return len(s);
+}
+
+fn utf8_byte(i: i64) -> i64 ! alloc
+  requires 0 <= i && i < 12
+  ensures 0 <= result && result <= 255
+{
+  let s: String = build();
+  return string_byte(s, i);
+}
