@@ -768,4 +768,5 @@ G2 기능이 아니라 **G2 구현 기반**이다. 새 문법은 없고, 지금 
   - 새 표본 diff_trace `--infer` 켬/끔 성공(결정 11), `tests/inference --regress` 두 판 271/271(새 examples·시험 포함), 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1
 - **감사(Claude Opus):** 필수 2·권고 5, 모두 반영. 필수: 형제 블록 표본이 옛 표에서도 통과해 회귀를 못 잡음 → inference `absent` 시험, 바인딩 `&[bool]` 인자 O(n) 중복 검사 → `__typed` 진입. 권고: 루프를 못 찾을 때 두 판 대체값 통일, 낡은 주석, 반례 확인 글자 조임, infer 시험 보강, 명세 숫자.
 - **확인 감사(Claude Opus):** 필수 0, 1차 지적 7건 해소. 권고 2(남김): `check_generated.py`가 `__typed` 정의 자체의 서명·COFF 기호는 보지 않음(Windows CI 링크에서야 드러남), winci에 `[bool]` 인자 + Option/Result 반환(Windows sret) 조합 표본 없음.
-- 측정 못 한 것: bool 배열 증명 시간·생성 코드 성능, Linux 실행. Windows CI는 푸시 뒤 확인.
+- **Windows CI(푸시 뒤, run 42992603822):** 통과 — 새 bool 표본 `g2a_bool_ret`(`__typed` 진입·`Pruv__ArrayBool` 반환)을 포함한 바인딩을 Windows에서 링크·실행해 맥 기대 출력과 같음.
+- 측정 못 한 것: bool 배열 증명 시간·생성 코드 성능, Linux 실행.
