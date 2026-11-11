@@ -40,6 +40,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from llvmgen import gen_llvm  # noqa: E402
+from typeinfo import g9_unimplemented_error  # noqa: E402
 
 BATCH = 200
 RS_TIMEOUT = 300
@@ -263,6 +264,9 @@ def eval_python(c):
             src = fh.read()
         prog = parse(src)
         check(prog)
+        g9err = g9_unimplemented_error(prog, "codegen", "llvm codegen layer")
+        if g9err is not None:
+            raise g9err
         ir, bindings = gen_llvm(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)
         obj = {"bindings": bindings, "ir": ir}
     except UnicodeDecodeError:

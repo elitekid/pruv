@@ -470,23 +470,34 @@ class Checker:
 
     def inhabitance(s):
         marked = set()
-
-        def field_ok(fd):
-            return not (s.is_plain_nominal(fd.type) and fd.type.name not in marked)
-
-        changed = True
-        while changed:
-            changed = False
-            for d in s.prog.types:
-                if d.name in marked:
-                    continue
-                if isinstance(d, StructDecl):
-                    ok = all(field_ok(fd) for fd in d.fields)
-                else:
-                    ok = any(all(field_ok(fd) for fd in v.fields) for v in d.variants)
-                if ok:
-                    marked.add(d.name)
-                    changed = True
+        # worklist: per struct / per variant count of fields whose type is not yet inhabited
+        types = s.prog.types
+        counts = []
+        rev = {}        # type name -> [(decl index, unit index)], one entry per dependent field
+        queue = []
+        for i, d in enumerate(types):
+            units = [d.fields] if isinstance(d, StructDecl) else [v.fields for v in d.variants]
+            cs = []
+            for u, fields in enumerate(units):
+                c = 0
+                for fd in fields:
+                    if s.is_plain_nominal(fd.type):
+                        c += 1
+                        rev.setdefault(fd.type.name, []).append((i, u))
+                cs.append(c)
+            counts.append(cs)
+            if 0 in cs:
+                queue.append(i)
+        while queue:
+            i = queue.pop()
+            name = types[i].name
+            if name in marked:
+                continue
+            marked.add(name)
+            for j, u in rev.get(name, ()):
+                counts[j][u] -= 1
+                if counts[j][u] == 0 and types[j].name not in marked:
+                    queue.append(j)
         for d in s.prog.types:
             if d.name in marked:
                 continue
@@ -517,17 +528,19 @@ class Checker:
                 direct.add(d.name)
         ext = set(rec) | direct
         buf = set(direct)
-        changed = True
-        while changed:
-            changed = False
-            for d in s.prog.types:
-                mentioned = set(n for _, fd in s.decl_fields(d) for n in dependencies(fd.type))
-                if d.name not in ext and mentioned & ext:
-                    ext.add(d.name)
-                    changed = True
-                if d.name not in buf and mentioned & buf:
-                    buf.add(d.name)
-                    changed = True
+        # reverse dependency edges built once: mentioned name -> declaration names mentioning it
+        rev = {}
+        for d in s.prog.types:
+            for n in set(n for _, fd in s.decl_fields(d) for n in dependencies(fd.type)):
+                rev.setdefault(n, []).append(d.name)
+        for marked in (ext, buf):
+            queue = sorted(marked)
+            while queue:
+                n = queue.pop()
+                for m in rev.get(n, ()):
+                    if m not in marked:
+                        marked.add(m)
+                        queue.append(m)
         s.extended = ext
         s.buffered = buf
 
@@ -576,10 +589,15 @@ class Checker:
             i, j = index[caller.name], index[callee.name]
             if j not in adj[i]:
                 adj[i].append(j)
-        for comp in _sccs(len(names), adj):
-            if not (len(comp) > 1 or comp[0] in adj[comp[0]]):
-                continue
-            members = set(comp)
+        comps = [comp for comp in _sccs(len(names), adj) if len(comp) > 1 or comp[0] in adj[comp[0]]]
+        # bucket the call log once per recursive SCC, keeping the original relative order
+        scc_of = {i: k for k, comp in enumerate(comps) for i in comp}
+        buckets = [[] for _ in comps]
+        for c, call, callee in s.call_log:
+            k = scc_of.get(index[c.name])
+            if k is not None and scc_of.get(index[callee.name]) == k:
+                buckets[k].append((index[c.name], call, callee))
+        for comp, bucket in zip(comps, buckets):
             s.fn_sccs.append([names[i] for i in comp])
             for i in comp:
                 f = s.prog.functions[i]
@@ -587,8 +605,7 @@ class Checker:
                     cyc = [names[k] for k in _cycle_through(i, adj, comp)]
                     terr(f, "recursive_decreases", "recursive function %s needs a decreases clause (cycle: %s)" % (
                         f.name, " -> ".join(cyc)), "add `decreases <expr>` after requires/ensures, e.g. `decreases n`")
-            edges = [(index[c.name], call, callee) for c, call, callee in s.call_log
-                     if index[c.name] in members and index[callee.name] in members]
+            edges = bucket
             edges.sort(key=lambda x: (x[0], x[1].line, x[1].col))
             for ci, call, callee in edges:
                 caller = s.prog.functions[ci]

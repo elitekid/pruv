@@ -30,6 +30,10 @@ fn line_for(bytes: &[u8], o: &Opts) -> String {
     if let Err(e) = pruv_core::check::check(&mut prog) {
         return obj1("error", e.to_json_value());
     }
+    // G9 guard (removed in G9 A3): stop before specialization, like the drivers
+    if let Some(e) = pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer") {
+        return obj1("error", e.to_json_value());
+    }
     // like Python gen_llvm: a generic program is specialized first (a specialization limit is a diagnostic)
     match pruv_core::llvmgen::gen_llvm_any(&prog, o.verified, o.trust_callers, o.budget, o.target) {
         Ok((ir, bindings)) => dumps_sorted(&Json::Obj(vec![

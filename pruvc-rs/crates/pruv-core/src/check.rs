@@ -1174,25 +1174,45 @@ impl Checker {
     }
 
     fn inhabitance(&self, types: &[TypeDecl]) -> Res<()> {
-        fn field_ok(s: &Checker, marked: &HashSet<String>, fd: &FieldDecl) -> bool {
-            let t = GType::from_key(&fd.ty);
-            !(s.is_plain_nominal(&t) && !marked.contains(&t.name))
-        }
         let mut marked: HashSet<String> = HashSet::new();
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for d in types {
-                if marked.contains(d.name()) {
-                    continue;
+        // worklist: per struct / per variant count of fields whose type is not yet inhabited
+        let mut counts: Vec<Vec<usize>> = Vec::with_capacity(types.len());
+        let mut rev: HashMap<String, Vec<(usize, usize)>> = HashMap::new(); // type name -> (decl, unit), one per dependent field
+        let mut queue: Vec<usize> = Vec::new();
+        for (i, d) in types.iter().enumerate() {
+            let units: Vec<&Vec<FieldDecl>> = match d {
+                TypeDecl::Struct(s) => vec![&s.fields],
+                TypeDecl::Enum(e) => e.variants.iter().map(|v| &v.fields).collect(),
+            };
+            let mut cs: Vec<usize> = Vec::with_capacity(units.len());
+            for (u, fields) in units.iter().enumerate() {
+                let mut c = 0usize;
+                for fd in fields.iter() {
+                    let t = GType::from_key(&fd.ty);
+                    if self.is_plain_nominal(&t) {
+                        c += 1;
+                        rev.entry(t.name.clone()).or_default().push((i, u));
+                    }
                 }
-                let ok = match d {
-                    TypeDecl::Struct(s) => s.fields.iter().all(|fd| field_ok(self, &marked, fd)),
-                    TypeDecl::Enum(e) => e.variants.iter().any(|v| v.fields.iter().all(|fd| field_ok(self, &marked, fd))),
-                };
-                if ok {
-                    marked.insert(d.name().to_string());
-                    changed = true;
+                cs.push(c);
+            }
+            if cs.iter().any(|&c| c == 0) {
+                queue.push(i);
+            }
+            counts.push(cs);
+        }
+        while let Some(i) = queue.pop() {
+            let name = types[i].name();
+            if marked.contains(name) {
+                continue;
+            }
+            marked.insert(name.to_string());
+            if let Some(deps) = rev.get(name) {
+                for &(j, u) in deps {
+                    counts[j][u] -= 1;
+                    if counts[j][u] == 0 && !marked.contains(types[j].name()) {
+                        queue.push(j);
+                    }
                 }
             }
         }
@@ -1250,21 +1270,26 @@ impl Checker {
         }
         let mut ext: HashSet<String> = rec.union(&direct).cloned().collect();
         let mut buf: HashSet<String> = direct.clone();
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for d in types {
-                let mut mentioned: HashSet<String> = HashSet::new();
-                for (_, fd) in decl_fields(d) {
-                    mentioned.extend(dependencies(&GType::from_key(&fd.ty)));
-                }
-                if !ext.contains(d.name()) && mentioned.iter().any(|n| ext.contains(n)) {
-                    ext.insert(d.name().to_string());
-                    changed = true;
-                }
-                if !buf.contains(d.name()) && mentioned.iter().any(|n| buf.contains(n)) {
-                    buf.insert(d.name().to_string());
-                    changed = true;
+        // reverse dependency edges built once: mentioned name -> declaration names mentioning it
+        let mut rev: HashMap<String, Vec<String>> = HashMap::new();
+        for d in types {
+            let mut mentioned: HashSet<String> = HashSet::new();
+            for (_, fd) in decl_fields(d) {
+                mentioned.extend(dependencies(&GType::from_key(&fd.ty)));
+            }
+            for n in mentioned {
+                rev.entry(n).or_default().push(d.name().to_string());
+            }
+        }
+        for marked in [&mut ext, &mut buf] {
+            let mut queue: Vec<String> = marked.iter().cloned().collect();
+            while let Some(n) = queue.pop() {
+                if let Some(ms) = rev.get(&n) {
+                    for m in ms {
+                        if marked.insert(m.clone()) {
+                            queue.push(m.clone());
+                        }
+                    }
                 }
             }
         }
@@ -1366,11 +1391,27 @@ impl Checker {
                 }
             }
         }
-        for comp in sccs(names.len(), &adj) {
-            if !(comp.len() > 1 || adj[comp[0]].contains(&comp[0])) {
-                continue;
+        let comps: Vec<Vec<usize>> =
+            sccs(names.len(), &adj).into_iter().filter(|comp| comp.len() > 1 || adj[comp[0]].contains(&comp[0])).collect();
+        // bucket the call log once per recursive SCC, keeping the original relative order
+        let mut scc_of: HashMap<usize, usize> = HashMap::new();
+        for (k, comp) in comps.iter().enumerate() {
+            for &i in comp {
+                scc_of.insert(i, k);
             }
-            let members: HashSet<usize> = comp.iter().cloned().collect();
+        }
+        type Edge<'a> = (usize, i64, i64, &'a Option<Vec<GType>>, usize);
+        let mut buckets: Vec<Vec<Edge>> = vec![Vec::new(); comps.len()];
+        for (caller, line, col, targs, callee) in &self.call_log {
+            if let (Some(&ci), Some(&ce)) = (index.get(caller.as_str()), index.get(callee.as_str())) {
+                if let (Some(&a), Some(&b)) = (scc_of.get(&ci), scc_of.get(&ce)) {
+                    if a == b {
+                        buckets[a].push((ci, *line, *col, targs, ce));
+                    }
+                }
+            }
+        }
+        for (comp, bucket) in comps.into_iter().zip(buckets.into_iter()) {
             found.push(comp.iter().map(|&i| names[i].to_string()).collect());
             for &i in &comp {
                 let f = &functions[i];
@@ -1386,14 +1427,7 @@ impl Checker {
                 }
             }
             // (caller index, call line, call col, call targs, callee index), stable-sorted by (caller, line, col)
-            let mut edges: Vec<(usize, i64, i64, &Option<Vec<GType>>, usize)> = Vec::new();
-            for (caller, line, col, targs, callee) in &self.call_log {
-                if let (Some(&ci), Some(&ce)) = (index.get(caller.as_str()), index.get(callee.as_str())) {
-                    if members.contains(&ci) && members.contains(&ce) {
-                        edges.push((ci, *line, *col, targs, ce));
-                    }
-                }
-            }
+            let mut edges = bucket;
             edges.sort_by(|a, b| (a.0, a.1, a.2).cmp(&(b.0, b.1, b.2)));
             for (ci, line, col, targs, ce) in edges {
                 let caller = &functions[ci];
