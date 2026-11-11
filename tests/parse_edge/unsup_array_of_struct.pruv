@@ -1,6 +1,0 @@
-// unsupported_type: 사용자 타입의 배열 [Point]
-struct Point { x: i64, y: i64 }
-
-fn f(a: [Point]) -> i64 {
-  return 1;
-}

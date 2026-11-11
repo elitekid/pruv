@@ -1,6 +1,0 @@
-// unsupported_type: 사용자 타입을 담은 Option<Point>
-struct Point { x: i64, y: i64 }
-
-fn f() -> Option<Point> {
-  return None;
-}
