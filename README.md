@@ -38,3 +38,8 @@ python3 -m venv .venv && .venv/bin/pip install z3-solver
 ### 새 기능 정책
 새 언어 기능은 Python 판에 먼저 넣고(빠른 시제품·독립 대조), 같은 묶음에서 Rust 판에 이식해
 `tests/m3_all.py` 대조를 통과시킨다. 기본 시험은 Rust 판이다(배포 빌드는 보류).
+
+## 라이선스
+MIT 또는 Apache-2.0 중 하나를 골라 쓸 수 있다([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)).
+특별히 밝히지 않으면 이 저장소에 보낸 기여도 같은 두 라이선스로 낸다.
+Rust 판 실행 파일에는 z3(MIT)와 LLVM(Apache-2.0 WITH LLVM-exception)이 정적으로 들어간다. 실행 파일을 나눠 줄 때는 z3 의 MIT 고지문을 함께 둔다.

@@ -2,6 +2,7 @@
 name = "pruv-core"
 version = "0.0.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
 publish = false
 description = "Pruv 앞단(AST·lexer·parser·check)과 출력 공통부. 0B 시점에는 빈 골격."
 

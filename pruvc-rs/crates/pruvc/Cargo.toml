@@ -2,6 +2,7 @@
 name = "pruvc"
 version = "0.0.1"
 edition = "2021"
+license = "MIT OR Apache-2.0"
 description = "Pruv compiler (Rust port): LLVM object/link layer and dev-only pruvc-ir-tool"
 autobins = false
 build = "build.rs"
