@@ -1,0 +1,30 @@
+// G3 example: projections of a generic pair, used by a concrete function with bounded integer fields
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn fst<A, B>(p: Pair<A, B>) -> A
+  ensures result == p.first
+{
+  return p.first;
+}
+
+fn snd<A, B>(p: Pair<A, B>) -> B
+  ensures result == p.second
+{
+  return p.second;
+}
+
+fn sum_pair(p: Pair<i64, i64>) -> i64
+  requires -1000 <= p.first && p.first <= 1000
+  requires -1000 <= p.second && p.second <= 1000
+  ensures result == p.first + p.second
+{
+  return fst::<i64, i64>(p) + snd::<i64, i64>(p);
+}
+
+fn main() -> () ! io {
+  let p: Pair<i64, i64> = Pair::<i64, i64> { first: 3, second: 4 };
+  print(sum_pair(p));
+}

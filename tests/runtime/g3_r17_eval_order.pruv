@@ -1,0 +1,73 @@
+// G3 A5 runtime: arguments of generic calls are evaluated left to right (nested generic calls, three arguments,
+// a generic struct constructor). The effectful arguments print their number; the output order is the pin.
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn p(x: i64) -> i64 ! io
+  ensures result == x
+{
+  print(x);
+  return x;
+}
+
+fn pb(x: i64, v: bool) -> bool ! io
+  ensures result == v
+{
+  print(x);
+  return v;
+}
+
+fn make<A, B>(a: A, b: B) -> Pair<A, B>
+  ensures result.first == a
+  ensures result.second == b
+{
+  return Pair::<A, B> { first: a, second: b };
+}
+
+fn pick_second<T>(a: T, b: T) -> T
+  ensures result == b
+{
+  return b;
+}
+
+fn mid<T>(a: T, b: T, c: T) -> T
+  ensures result == b
+{
+  return b;
+}
+
+fn t_mixed() -> i64 ! io
+  ensures result == 1
+{
+  let q: Pair<i64, bool> = make::<i64, bool>(p(1), pb(2, true));
+  return q.first;
+}
+
+fn t_nested() -> i64 ! io
+  ensures result == 5
+{
+  return pick_second::<i64>(p(3), pick_second::<i64>(p(4), p(5)));
+}
+
+fn t_triple() -> i64 ! io
+  ensures result == 7
+{
+  return mid::<i64>(p(6), p(7), p(8));
+}
+
+fn t_struct() -> i64 ! io
+  ensures result == 10
+{
+  let q: Pair<i64, i64> = make::<i64, i64>(p(9), p(10));
+  return q.second;
+}
+
+fn run() -> i64 ! io {
+  let a: i64 = t_mixed();
+  let b: i64 = t_nested();
+  let c: i64 = t_triple();
+  let d: i64 = t_struct();
+  return a + b + c + d;
+}

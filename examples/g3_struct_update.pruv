@@ -1,0 +1,21 @@
+// G3 example: update one field of a generic struct; the other field is unchanged
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn set_first<A, B>(p: Pair<A, B>, v: A) -> Pair<A, B>
+  ensures result.first == v
+  ensures result.second == p.second
+{
+  let mut q: Pair<A, B> = p;
+  q.first = v;
+  return q;
+}
+
+fn main() -> () ! io {
+  let p: Pair<i64, bool> = Pair::<i64, bool> { first: 1, second: true };
+  let q: Pair<i64, bool> = set_first::<i64, bool>(p, 9);
+  print(q.first);
+  print(p.first);
+}

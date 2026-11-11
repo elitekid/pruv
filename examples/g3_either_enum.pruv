@@ -1,0 +1,27 @@
+// G3 example: a generic enum with two parameters (Either); flip exchanges the variants
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B)
+}
+
+fn flip<A, B>(c: Choice<A, B>) -> Choice<B, A>
+  ensures is_variant(result, Choice::Right) == is_variant(c, Choice::Left)
+{
+  match c {
+    Choice::Left(x) => { return Choice::<B, A>::Right(x); }
+    Choice::Right(y) => { return Choice::<B, A>::Left(y); }
+  }
+}
+
+fn tag(c: Choice<bool, i64>) -> i64 {
+  match c {
+    Choice::Left(x) => { return 0; }
+    Choice::Right(y) => { return y; }
+  }
+}
+
+fn main() -> () ! io {
+  let c: Choice<i64, bool> = Choice::<i64, bool>::Left(5);
+  let d: Choice<bool, i64> = flip::<i64, bool>(c);
+  print(tag(d));
+}

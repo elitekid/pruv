@@ -1,0 +1,28 @@
+// G3 example: a generic struct with a concrete i64 field next to the generic one; integer proofs on the tag
+struct Tagged<T> {
+  tag: i64,
+  value: T
+}
+
+fn retag<T>(t: Tagged<T>, tag: i64) -> Tagged<T>
+  ensures result.value == t.value
+  ensures result.tag == tag
+{
+  return Tagged::<T> { tag: tag, value: t.value };
+}
+
+fn bump_tag<T>(t: Tagged<T>) -> Tagged<T>
+  requires -1000 < t.tag && t.tag < 1000
+  ensures result.tag == t.tag + 1
+  ensures result.value == t.value
+{
+  return Tagged::<T> { tag: t.tag + 1, value: t.value };
+}
+
+fn main() -> () ! io {
+  let t: Tagged<bool> = Tagged::<bool> { tag: 5, value: true };
+  let u: Tagged<bool> = bump_tag::<bool>(t);
+  print(u.tag);
+  let v: Tagged<bool> = retag::<bool>(u, 40);
+  print(v.tag);
+}

@@ -1,0 +1,33 @@
+// G3 example: Option<Option<T>>; wrapping twice and flattening with two instances of one generic fallback
+fn wrap<T>(x: T) -> Option<T>
+  ensures is_some(result) && some_val(result) == x
+{
+  return Some::<T>(x);
+}
+
+fn wrap_twice<T>(x: T) -> Option<Option<T>>
+  ensures is_some(result) && is_some(some_val(result)) && some_val(some_val(result)) == x
+{
+  let inner: Option<T> = wrap::<T>(x);
+  return Some::<Option<T>>(inner);
+}
+
+fn get_or<T>(o: Option<T>, d: T) -> T
+  ensures is_some(o) ==> result == some_val(o)
+  ensures !is_some(o) ==> result == d
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return d; }
+  }
+}
+
+fn flatten_or<T>(o: Option<Option<T>>, d: T) -> T {
+  let inner: Option<T> = get_or::<Option<T>>(o, None::<T>);
+  return get_or::<T>(inner, d);
+}
+
+fn main() -> () ! io {
+  print(flatten_or::<i64>(wrap_twice::<i64>(4), 0));
+  print(flatten_or::<i64>(None::<Option<i64>>, 9));
+}

@@ -1,0 +1,35 @@
+// G3 example: concrete wrappers exposing the i64 and bool instances of one generic function
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return a[0];
+}
+
+fn head_int(a: [i64]) -> i64
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return first::<i64>(a);
+}
+
+fn head_bool(a: [bool]) -> bool
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return first::<bool>(a);
+}
+
+fn bit(b: bool) -> i64 {
+  if b {
+    return 1;
+  }
+  return 0;
+}
+
+fn main() -> () ! io, alloc {
+  let a: [i64] = alloc(2, 5);
+  let b: [bool] = alloc(2, false);
+  print(head_int(a));
+  print(bit(head_bool(b)));
+}

@@ -1,0 +1,25 @@
+// G3 example: conversion between two generic types (Option<T> to Result<T>); guards chain through && and ==>
+fn to_result<T>(o: Option<T>, code: i64) -> Result<T>
+  ensures is_some(o) ==> is_ok(result) && ok_val(result) == some_val(o)
+  ensures !is_some(o) ==> !is_ok(result) && err_val(result) == code
+{
+  match o {
+    Some(v) => { return Ok::<T>(v); }
+    None => { return Err::<T>(code); }
+  }
+}
+
+fn result_or<T>(r: Result<T>, d: T) -> T
+  ensures is_ok(r) ==> result == ok_val(r)
+  ensures !is_ok(r) ==> result == d
+{
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return d; }
+  }
+}
+
+fn main() -> () ! io {
+  print(result_or::<i64>(to_result::<i64>(Some::<i64>(2), 9), 0));
+  print(result_or::<i64>(to_result::<i64>(None::<i64>, 9), 6));
+}

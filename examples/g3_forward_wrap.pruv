@@ -1,0 +1,29 @@
+// G3 example: generic functions calling generic functions (wrap, id, forward) at the caller's own type parameter
+fn wrap<T>(x: T) -> Option<T>
+  ensures is_some(result) && some_val(result) == x
+{
+  return Some::<T>(x);
+}
+
+fn id<T>(x: T) -> T
+  ensures result == x
+{
+  return x;
+}
+
+fn forward<U>(x: U) -> Option<U>
+  ensures is_some(result) && some_val(result) == x
+{
+  return wrap::<U>(id::<U>(x));
+}
+
+fn unwrap_int(o: Option<i64>) -> i64 {
+  match o {
+    Some(v) => { return v; }
+    None => { return 0; }
+  }
+}
+
+fn main() -> () ! io {
+  print(unwrap_int(forward::<i64>(5)));
+}

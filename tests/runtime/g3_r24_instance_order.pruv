@@ -1,0 +1,46 @@
+// G3 A5 runtime: instances are requested in an order unrelated to their names (z_last first, a_first second), through
+// nested generic calls and at nested type arguments. Repeated compilation determinism cannot be expressed in this
+// runtime format (one compile per matrix row); this case pins the instance discovery order and the nested instances
+// instead, so a nondeterministic order would show as a changed symbol set or a link failure across the matrix rows.
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn make<A, B>(a: A, b: B) -> Pair<A, B>
+  ensures result.first == a
+  ensures result.second == b
+{
+  return Pair::<A, B> { first: a, second: b };
+}
+
+fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>
+  ensures result.first == p.second
+  ensures result.second == p.first
+{
+  return Pair::<B, A> { first: p.second, second: p.first };
+}
+
+fn wrap<T>(x: T) -> Option<T>
+  ensures is_some(result) && some_val(result) == x
+{
+  return Some::<T>(x);
+}
+
+fn z_last(b: bool) -> Option<Pair<bool, bool>>
+  ensures is_some(result)
+{
+  return wrap::<Pair<bool, bool>>(make::<bool, bool>(b, b));
+}
+
+fn a_first(x: i64) -> Option<Pair<i64, i64>>
+  ensures is_some(result)
+{
+  return wrap::<Pair<i64, i64>>(make::<i64, i64>(x, x));
+}
+
+fn m_mixed(x: i64, b: bool) -> Pair<bool, Option<i64>>
+  ensures result.first == b
+{
+  return swap::<Option<i64>, bool>(make::<Option<i64>, bool>(wrap::<i64>(x), b));
+}

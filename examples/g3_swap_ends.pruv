@@ -1,0 +1,22 @@
+// G3 example: exchange the first and last element of a [T] copy; two stores at provably distinct indices
+fn swap_ends<T: Element>(a: [T]) -> [T] ! alloc
+  requires len(a) >= 2
+  ensures len(result) == len(a)
+  ensures result[0] == a[len(a) - 1]
+  ensures result[len(a) - 1] == a[0]
+{
+  let mut out: [T] = copy(a);
+  let n: i64 = len(a);
+  let x: T = a[0];
+  let y: T = a[n - 1];
+  out[0] = y;
+  out[n - 1] = x;
+  return out;
+}
+
+fn main() -> () ! io, alloc {
+  let a: [i64] = alloc(3, 1);
+  let b: [i64] = swap_ends::<i64>(a);
+  print(b[0]);
+  print(b[2]);
+}

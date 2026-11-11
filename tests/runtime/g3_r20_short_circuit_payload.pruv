@@ -1,0 +1,31 @@
+// G3 A5 runtime: short-circuit payload access over Option<bool>. `is_some(o) && some_val(o) == x` must not read the
+// payload of None, in an ensures (is_some_eq, checked on every call) and in the requires of the specialization
+// (unwrap_expected::<bool>, reached by the unverified caller expect_bool, so --no-verify only).
+fn is_some_eq(o: Option<bool>, x: bool) -> bool
+  ensures (is_some(o) && some_val(o) == x) ==> result
+  ensures !(is_some(o) && some_val(o) == x) ==> !result
+{
+  match o {
+    Some(v) => {
+      if v {
+        return x;
+      }
+      return !x;
+    }
+    None => { return false; }
+  }
+}
+
+fn unwrap_expected<T>(o: Option<T>, x: T) -> T
+  requires is_some(o) && some_val(o) == x
+  ensures result == x
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return x; }
+  }
+}
+
+fn expect_bool(o: Option<bool>, x: bool) -> bool {
+  return unwrap_expected::<bool>(o, x);
+}

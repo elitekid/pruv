@@ -1,0 +1,22 @@
+// G3 example: variant_field on a generic enum under an is_variant guard
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B)
+}
+
+fn left_or<A, B>(c: Choice<A, B>, d: A) -> A
+  ensures is_variant(c, Choice::Left) ==> result == variant_field(c, Choice::Left, value)
+  ensures !is_variant(c, Choice::Left) ==> result == d
+{
+  match c {
+    Choice::Left(x) => { return x; }
+    Choice::Right(y) => { return d; }
+  }
+}
+
+fn main() -> () ! io {
+  let a: Choice<i64, bool> = Choice::<i64, bool>::Left(4);
+  let b: Choice<i64, bool> = Choice::<i64, bool>::Right(true);
+  print(left_or::<i64, bool>(a, 0));
+  print(left_or::<i64, bool>(b, 7));
+}

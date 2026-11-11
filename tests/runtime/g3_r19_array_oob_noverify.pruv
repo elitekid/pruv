@@ -1,0 +1,13 @@
+// G3 A5 runtime (--no-verify only: get has no requires, so the proof rejects the index): safe-mode bounds failure
+// inside a generic function over [T]; the specializations use the checked index of the existing [i64] / [bool] code.
+fn get<T: Element>(a: [T], i: i64) -> T {
+  return a[i];
+}
+
+fn get_int(a: [i64], i: i64) -> i64 {
+  return get::<i64>(a, i);
+}
+
+fn get_bool(a: [bool], i: i64) -> bool {
+  return get::<bool>(a, i);
+}

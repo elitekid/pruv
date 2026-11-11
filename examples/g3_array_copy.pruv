@@ -1,0 +1,27 @@
+// G3 example: copy a [T] and change one element; the copy keeps the length
+fn set_first<T: Element>(a: [T], v: T) -> [T] ! alloc
+  requires len(a) > 0
+  ensures len(result) == len(a)
+  ensures result[0] == v
+{
+  let mut out: [T] = copy(a);
+  out[0] = v;
+  return out;
+}
+
+fn copy_all<T: Element>(a: [T]) -> [T] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[k]
+{
+  let out: [T] = copy(a);
+  return out;
+}
+
+fn main() -> () ! io, alloc {
+  let b: [i64] = alloc(2, 1);
+  let c: [i64] = set_first::<i64>(b, 8);
+  print(c[0]);
+  print(c[1]);
+  let d: [i64] = copy_all::<i64>(c);
+  print(d[1]);
+}

@@ -1,0 +1,24 @@
+// G3 example: two type parameters are independent; a mutable local of an abstract type and a branch
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn pick_by<A, B>(flag: bool, a: A, a2: A, b: B) -> Pair<A, B>
+  ensures flag ==> result.first == a
+  ensures !flag ==> result.first == a2
+  ensures result.second == b
+{
+  let mut chosen: A = a2;
+  if flag {
+    chosen = a;
+  }
+  return Pair::<A, B> { first: chosen, second: b };
+}
+
+fn main() -> () ! io {
+  let p: Pair<i64, bool> = pick_by::<i64, bool>(true, 1, 2, false);
+  let q: Pair<i64, bool> = pick_by::<i64, bool>(false, 1, 2, false);
+  print(p.first);
+  print(q.first);
+}

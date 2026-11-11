@@ -1,0 +1,29 @@
+// G3 example: Option<T> with a fallback value; guarded payload access in the contract
+fn get_or<T>(o: Option<T>, d: T) -> T
+  ensures is_some(o) ==> result == some_val(o)
+  ensures !is_some(o) ==> result == d
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return d; }
+  }
+}
+
+fn int_or_zero(o: Option<i64>) -> i64
+  ensures is_some(o) ==> result == some_val(o)
+  ensures !is_some(o) ==> result == 0
+{
+  return get_or::<i64>(o, 0);
+}
+
+fn bool_or_false(o: Option<bool>) -> bool
+  ensures is_some(o) ==> result == some_val(o)
+  ensures !is_some(o) ==> !result
+{
+  return get_or::<bool>(o, false);
+}
+
+fn main() -> () ! io {
+  print(int_or_zero(Some::<i64>(4)));
+  print(int_or_zero(None::<i64>));
+}

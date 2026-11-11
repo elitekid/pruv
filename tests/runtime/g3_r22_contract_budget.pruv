@@ -1,0 +1,26 @@
+// G3 A5 runtime: the contract iteration budget applies to a generic requires mirrored at the public entries.
+// With --contract-budget 1000 a forall over 10 or 400 elements passes; over 1500 elements the entry's own requires
+// exhausts the budget (before the specialization is entered).
+fn first_same<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  requires forall k in 0..len(a): a[k] == a[0]
+  ensures result == a[0]
+{
+  return a[0];
+}
+
+fn first_same_int(a: [i64]) -> i64
+  requires len(a) > 0
+  requires forall k in 0..len(a): a[k] == a[0]
+  ensures result == a[0]
+{
+  return first_same::<i64>(a);
+}
+
+fn first_same_bool(a: [bool]) -> bool
+  requires len(a) > 0
+  requires forall k in 0..len(a): a[k] == a[0]
+  ensures result == a[0]
+{
+  return first_same::<bool>(a);
+}

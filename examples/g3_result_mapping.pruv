@@ -1,0 +1,33 @@
+// G3 example: Result<T> keeps an i64 error code; fallback value and error-code extraction
+fn result_or<T>(r: Result<T>, d: T) -> T
+  ensures is_ok(r) ==> result == ok_val(r)
+  ensures !is_ok(r) ==> result == d
+{
+  match r {
+    Ok(v) => { return v; }
+    Err(c) => { return d; }
+  }
+}
+
+fn code_of<T>(r: Result<T>) -> i64
+  requires !is_ok(r)
+  ensures result == err_val(r)
+{
+  match r {
+    Ok(v) => { return 0; }
+    Err(c) => { return c; }
+  }
+}
+
+fn fail<T>(code: i64) -> Result<T>
+  ensures !is_ok(result) && err_val(result) == code
+{
+  return Err::<T>(code);
+}
+
+fn main() -> () ! io {
+  let bad: Result<i64> = fail::<i64>(7);
+  print(code_of::<i64>(bad));
+  print(result_or::<i64>(bad, 5));
+  print(result_or::<i64>(Ok::<i64>(3), 5));
+}

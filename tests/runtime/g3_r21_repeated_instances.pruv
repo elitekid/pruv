@@ -1,0 +1,39 @@
+// G3 A5 runtime: one generic function used at i64, bool, Option<bool> and Pair<i64, bool> in one program, several
+// times each (every instance is generated once and reused).
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn id<T>(x: T) -> T
+  ensures result == x
+{
+  return x;
+}
+
+fn id_int(x: i64) -> i64
+  ensures result == x
+{
+  return id::<i64>(id::<i64>(x));
+}
+
+fn id_bool(x: bool) -> bool
+  ensures result == x
+{
+  return id::<bool>(x);
+}
+
+fn id_opt(x: Option<bool>) -> Option<bool>
+  ensures is_some(x) ==> (is_some(result) && some_val(result) == some_val(x))
+  ensures !is_some(x) ==> !is_some(result)
+{
+  return id::<Option<bool>>(x);
+}
+
+fn id_pair(a: i64, b: bool) -> Pair<i64, bool>
+  ensures result.first == a
+  ensures result.second == b
+{
+  let p: Pair<i64, bool> = Pair::<i64, bool> { first: a, second: b };
+  return id::<Pair<i64, bool>>(p);
+}

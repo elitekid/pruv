@@ -1,0 +1,22 @@
+// G3 example: a phantom type parameter; Tag<bool> and Tag<i64> are distinct types with the same concrete field
+struct Tag<T> {
+  id: i64
+}
+
+fn retag<A, B>(t: Tag<A>) -> Tag<B>
+  ensures result.id == t.id
+{
+  return Tag::<B> { id: t.id };
+}
+
+fn make<T>(id: i64) -> Tag<T>
+  ensures result.id == id
+{
+  return Tag::<T> { id: id };
+}
+
+fn main() -> () ! io {
+  let t: Tag<bool> = make::<bool>(7);
+  let u: Tag<i64> = retag::<bool, i64>(t);
+  print(u.id);
+}

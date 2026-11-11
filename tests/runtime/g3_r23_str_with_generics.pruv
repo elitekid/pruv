@@ -1,0 +1,41 @@
+// G3 A5 runtime: the concrete str type (len, substr, is_char_boundary, byte contracts) coexists with generic
+// functions and a generic struct in one program; str is not a type argument, only its lengths flow into generics.
+struct Pair<A, B> {
+  first: A,
+  second: B,
+}
+
+fn id<T>(x: T) -> T
+  ensures result == x
+{
+  return x;
+}
+
+fn length(s: str) -> i64
+  ensures result == len(s)
+{
+  return len(s);
+}
+
+fn id_int(x: i64) -> i64
+  ensures result == x
+{
+  return id::<i64>(x);
+}
+
+fn pair_len(s: str) -> Pair<i64, bool>
+  ensures result.first == len(s)
+  ensures result.second
+{
+  let p: Pair<i64, bool> = Pair::<i64, bool> { first: id::<i64>(len(s)), second: id::<bool>(true) };
+  return p;
+}
+
+fn cut_len(s: str, lo: i64, hi: i64) -> i64 ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(s)
+  requires is_char_boundary(s, lo)
+  requires is_char_boundary(s, hi)
+{
+  let t: str = substr(s, lo, hi);
+  return id::<i64>(len(t));
+}

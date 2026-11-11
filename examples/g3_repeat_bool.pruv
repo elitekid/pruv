@@ -1,0 +1,30 @@
+// G3 example: a wrapper that exposes the bool instance of a generic [T] builder with a concrete contract
+fn repeat<T: Element>(n: i64, value: T) -> [T] ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k] == value
+{
+  let out: [T] = alloc(n, value);
+  return out;
+}
+
+fn trues(n: i64) -> [bool] ! alloc
+  requires 0 <= n && n <= 10
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k]
+{
+  let out: [bool] = repeat::<bool>(n, true);
+  return out;
+}
+
+fn bit(b: bool) -> i64 {
+  if b {
+    return 1;
+  }
+  return 0;
+}
+
+fn main() -> () ! io, alloc {
+  let t: [bool] = trues(3);
+  print(bit(t[1]));
+}

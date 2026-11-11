@@ -1,0 +1,31 @@
+// G3 example: a generic length helper next to a concrete counting loop over [bool]
+fn len_of<T: Element>(a: [T]) -> i64
+  ensures result == len(a)
+{
+  return len(a);
+}
+
+fn count_true(a: [bool]) -> i64
+  ensures 0 <= result && result <= len(a)
+{
+  let n: i64 = len_of::<bool>(a);
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant n == len(a)
+    invariant 0 <= c && c <= i
+    decreases n - i
+  {
+    if a[i] {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  return c;
+}
+
+fn main() -> () ! io, alloc {
+  let a: [bool] = alloc(4, true);
+  print(count_true(a));
+}

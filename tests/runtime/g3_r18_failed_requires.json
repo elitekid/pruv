@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": ["6", "true"], "stderr_contains": "pruv: requires violated: at_bool"}
