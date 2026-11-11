@@ -450,29 +450,51 @@ fn conj_terms(e: &Expr) -> Vec<&Expr> {
     }
 }
 
-/// Array internal type name → element type name ("i64"/"u8"/"bool"). None if not an array.
+/// Array internal type name → element kind ("i64"/"u8"/"bool", "abs" for a G3 `[T]` = abstract element). None if not an array.
 fn arr_elem_of(ty: &str) -> Option<&'static str> {
     match ty {
         "array" => Some("i64"),
         "array_u8" => Some("u8"),
         "array_bool" => Some("bool"),
-        _ => None,
+        _ => {
+            if pruv_core::gtype::is_g3_key(ty) {
+                if let Ok(g) = pruv_core::gtype::GType::try_from_key(ty) {
+                    if g.owner.is_none() && g.name == "array" && !g.args.is_empty() {
+                        return Some("abs");
+                    }
+                }
+            }
+            None
+        }
     }
 }
 
-// G2 A5: per-loop-position table. The environment is updated in statement order (a non-array Let erases the name),
-// and the environment on reaching the target loop node (pointer identity) is that loop's table. Inner blocks are entered with a copied environment.
-fn env_set(env: &mut Vec<(String, &'static str)>, name: &str, e: Option<&'static str>) {
+/// Does the type key mention a type parameter anywhere (`T`, `[T]`, `Option<T>`, `Pair<T, i64>`, ...)?
+/// A key contains the byte 1 exactly when a bound parameter occurs in it.
+fn key_has_param(key: &str) -> bool {
+    key.contains('\u{1}')
+}
+
+/// G3 A2: type table {name: type key} of the parameters and locals visible at the head of loop `w` (infer.py `_scope_types`).
+type TyEnv = Vec<(String, String)>;
+
+fn tyenv_set(env: &mut TyEnv, name: &str, ty: Option<&str>) {
     env.retain(|(n, _)| n != name);
-    if let Some(e) = e {
-        env.push((name.to_string(), e));
+    if let Some(t) = ty {
+        env.push((name.to_string(), t.to_string()));
     }
 }
 
-fn find_loop_env(stmts: &[Stmt], env: &mut Vec<(String, &'static str)>, w: &ast::While) -> bool {
+fn tyenv_get<'t>(env: &'t [(String, String)], name: &str) -> Option<&'t str> {
+    env.iter().find(|(n, _)| n == name).map(|(_, t)| t.as_str())
+}
+
+// G2 A5: per-loop-position table. The environment is updated in statement order (a `let` sets the name),
+// and the environment on reaching the target loop node (pointer identity) is that loop's table. Inner blocks are entered with a copied environment.
+fn find_loop_env(stmts: &[Stmt], env: &mut TyEnv, w: &ast::While) -> bool {
     for st in stmts {
         match st {
-            Stmt::Let(x) => env_set(env, &x.name, arr_elem_of(&x.ty)),
+            Stmt::Let(x) => tyenv_set(env, &x.name, Some(&x.ty)),
             Stmt::If(x) => {
                 for blk in [&x.then, &x.els] {
                     let mut e2 = env.clone();
@@ -496,7 +518,7 @@ fn find_loop_env(stmts: &[Stmt], env: &mut Vec<(String, &'static str)>, w: &ast:
                 for a in &m.arms {
                     let mut e2 = env.clone();
                     for bn in &a.binders {
-                        env_set(&mut e2, bn, None);
+                        tyenv_set(&mut e2, bn, None);
                     }
                     if find_loop_env(&a.body, &mut e2, w) {
                         *env = e2;
@@ -510,11 +532,11 @@ fn find_loop_env(stmts: &[Stmt], env: &mut Vec<(String, &'static str)>, w: &ast:
     false
 }
 
-/// Table of array name → element type visible at the head of loop `w` (starting from the parameters).
-fn elem_types(f: &ast::Function, w: &ast::While) -> Vec<(String, &'static str)> {
-    let mut env: Vec<(String, &'static str)> = Vec::new();
+/// infer.py `_scope_types`: types of the parameters and locals visible at the head of loop `w`.
+fn scope_types(f: &ast::Function, w: &ast::While) -> TyEnv {
+    let mut env: TyEnv = Vec::new();
     for p in &f.params {
-        env_set(&mut env, &p.name, arr_elem_of(&p.ty));
+        tyenv_set(&mut env, &p.name, Some(&p.ty));
     }
     let mut e2 = env.clone();
     if find_loop_env(&f.body, &mut e2, w) {
@@ -524,20 +546,79 @@ fn elem_types(f: &ast::Function, w: &ast::While) -> Vec<(String, &'static str)> 
     }
 }
 
+/// Table of array name → element kind visible at the head of loop `w` (starting from the parameters).
+fn elem_types(f: &ast::Function, w: &ast::While) -> Vec<(String, &'static str)> {
+    let mut out: Vec<(String, &'static str)> = Vec::new();
+    for (n, t) in scope_types(f, w) {
+        if let Some(k) = arr_elem_of(&t) {
+            out.push((n, k));
+        }
+    }
+    out
+}
+
 fn elem_type_of<'t>(tab: &'t [(String, &'static str)], name: &str) -> Option<&'t str> {
     tab.iter().find(|(n, _)| n == name).map(|(_, e)| *e)
 }
 
-/// Does e contain an Index of an array whose element type is bool?
+/// Does e contain an Index of an array whose element type is bool (or, G3, abstract)?
 fn reads_bool_elem(e: &Expr, tab: &[(String, &'static str)]) -> bool {
     if let Expr::Index(x) = e {
         if let Expr::Var(a) = &*x.array {
-            if elem_type_of(tab, &a.name) == Some("bool") {
+            if matches!(elem_type_of(tab, &a.name), Some("bool") | Some("abs")) {
                 return true;
             }
         }
     }
     kids(e).into_iter().any(|c| reads_bool_elem(c, tab))
+}
+
+/// The checker type of an expression node (None before checking and on freshly built nodes).
+fn expr_ty(e: &Expr) -> Option<&String> {
+    match e {
+        Expr::IntLit(x) => x.ty.as_ref(),
+        Expr::BoolLit(x) => x.ty.as_ref(),
+        Expr::StrLit(x) => x.ty.as_ref(),
+        Expr::Var(x) => x.ty.as_ref(),
+        Expr::Unary(x) => x.ty.as_ref(),
+        Expr::Binary(x) => x.ty.as_ref(),
+        Expr::Call(x) => x.ty.as_ref(),
+        Expr::Index(x) => x.ty.as_ref(),
+        Expr::Ctor(x) => x.ty.as_ref(),
+        Expr::Quant(x) => x.ty.as_ref(),
+        Expr::StructLit(x) => x.ty.as_ref(),
+        Expr::EnumCtor(x) => x.ty.as_ref(),
+        Expr::FieldAccess(x) => x.ty.as_ref(),
+        Expr::IsVariant(x) => x.ty.as_ref(),
+        Expr::VariantField(x) => x.ty.as_ref(),
+    }
+}
+
+/// G3 A2 (4.8): does the candidate expression read a value whose static type involves a type parameter?
+/// Decided on typed expressions: checker types on cloned nodes, and the position-based type table for names.
+/// `len(x)` only reads the length, so it stays allowed for an abstract array.
+fn abstract_expr(e: &Expr, tenv: &[(String, String)]) -> bool {
+    if let Expr::Call(c) = e {
+        if c.name == "len" {
+            return false;
+        }
+    }
+    if let Expr::Var(v) = e {
+        if tyenv_get(tenv, &v.name).map_or(false, key_has_param) {
+            return true;
+        }
+    }
+    if expr_ty(e).map_or(false, |t| key_has_param(t)) {
+        return true;
+    }
+    if let Expr::Index(x) = e {
+        if let Expr::Var(a) = &*x.array {
+            if tyenv_get(tenv, &a.name).map_or(false, key_has_param) {
+                return true;
+            }
+        }
+    }
+    kids(e).into_iter().any(|c| abstract_expr(c, tenv))
 }
 
 /// `forall K in 0..len(x): A && B` in requires, {array name: (L, U)} (the first one per array). Preserves the requires order.
@@ -1482,7 +1563,10 @@ fn gen(
             push(&mut out, 5, e5);
         }
     }
-    // No candidates (kinds 5-14) that read or write an array whose element type is bool.
+    // G3 A2 (4.8): no template may read an abstract value (decided on typed expressions; all kinds).
+    let tenv = scope_types(f, w);
+    out.retain(|c| !abstract_expr(&c.expr, &tenv));
+    // No candidates (kinds 5-14) that read or write an array whose element type is bool (G3: or abstract).
     out.retain(|c| !(c.kind >= 5 && reads_bool_elem(&c.expr, &etab)));
     out
 }
@@ -1648,7 +1732,7 @@ fn houdini_rounds(
         let run_result: R<()> = {
             let z = Z3::new();
             let pre = Prelude::new(&z);
-            let model = Model::with_seq(&z, &pre, decls, seq)?;
+            let model = Model::for_program(&z, &pre, decls, prog, seq)?;
             let mut fv = FnVerifier::for_function(&z, &pre, &model, &mut *rec, prog, f);
             fv.qcfg = QueryConfig {
                 phase: "inference".to_string(),

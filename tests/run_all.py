@@ -1,7 +1,11 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof] [--backend rust|llvm|both]
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
+
+group g3_proof (G3 A2): tests/g3/proof/*.pruv must verify; they run through tests/g3/verify_only.py (Python verifier,
+no code generation, whatever --compiler says) because the code generators still reject generics. Rows have
+group "g3_proof", mode "verify_only", backend null.
 
 --list-rows [FILE]: build the job list, run nothing, and write one JSON row per line (sort_keys, sorted) to FILE
 (stdout if omitted); exit code 0. A row is {"sample", "backend", "flags", "mode", "group", "compiler"[, "name"][, "dup"]};
@@ -233,6 +237,23 @@ def must_reject_jobs():
     return jobs
 
 
+def g3_proof_jobs():
+    """G3 A2: tests/g3/proof/*.pruv must type-check and verify completely. The code generators still reject
+    generics (unsupported_type), so these run through tests/g3/verify_only.py (Python verifier, no code
+    generation) in their own process; the compiler under test (--compiler) is not involved."""
+    jobs = []
+    script = os.path.join(ROOT, "tests/g3/verify_only.py")
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/g3/proof/*.pruv"))):
+        name = "g3_proof/" + os.path.basename(f)
+
+        def fn(f=f):
+            c = subprocess.run([sys.executable, script, f], capture_output=True, text=True, timeout=300)
+            return c.returncode == 0, "exit %d (expected 0) %s" % (c.returncode, (c.stdout + c.stderr)[-600:])
+        jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": [], "mode": "verify_only",
+                                     "group": "g3_proof"}))
+    return jobs
+
+
 EXAMPLE_MODES = [("default", []), ("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"])]
 ARITH_OR_INDEX = re.compile(r"\b(add|sub|mul|getelementptr)\b")
 
@@ -427,7 +448,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -514,7 +535,7 @@ def main():
     if "--only" in sys.argv:
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
-        if only not in ("must_reject", "examples", "runtime"):
+        if only not in ("must_reject", "examples", "runtime", "g3_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -531,6 +552,8 @@ def main():
         jobs = []
         if only in (None, "must_reject"):
             jobs += must_reject_jobs()
+        if only in (None, "g3_proof"):
+            jobs += g3_proof_jobs()
         for b in backends:
             if only in (None, "examples"):
                 jobs += examples_jobs(b)
@@ -573,9 +596,9 @@ def main():
     if saved_rows is not None:
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
-        for g in ("must_reject", "examples", "runtime"):
+        for g in ("must_reject", "g3_proof", "examples", "runtime"):
             if only in (None, g):
-                for b in ([None] if g == "must_reject" else backends):
+                for b in ([None] if g in ("must_reject", "g3_proof") else backends):
                     scope.add((g, b))
         in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
         outside = len(saved_rows) - len(in_scope)

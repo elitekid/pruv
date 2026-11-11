@@ -1,0 +1,9 @@
+// G3 A2 (6.2 equality): == on a concrete generic aggregate is contract-only; in code it is rejected
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn same(p: Pair<i64, bool>, q: Pair<i64, bool>) -> bool {
+  return p == q;
+}

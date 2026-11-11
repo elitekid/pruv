@@ -1,0 +1,10 @@
+// G3 A2 positive: conversion between two generic datatypes; guards chain through && and ==>
+fn to_result<T>(o: Option<T>, code: i64) -> Result<T>
+  ensures is_some(o) ==> is_ok(result) && ok_val(result) == some_val(o)
+  ensures !is_some(o) ==> !is_ok(result) && err_val(result) == code
+{
+  match o {
+    Some(v) => { return Ok::<T>(v); }
+    None => { return Err::<T>(code); }
+  }
+}

@@ -1,0 +1,15 @@
+// G3 A2 (6.2 inference final pass): len(result) == n is inferred (len(out) == n), so the false ensures n + 1 still fails
+fn fill<T: Element>(n: i64, v: T) -> [T] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n + 1
+{
+  let mut out: [T] = alloc(n, v);
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    out[i] = v;
+    i = i + 1;
+  }
+  return out;
+}

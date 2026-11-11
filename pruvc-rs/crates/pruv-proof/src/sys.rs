@@ -229,6 +229,12 @@ impl Z3 {
         // SAFETY: S1 S2.
         Sort { z: self.clone(), raw: unsafe { nn(z::Z3_mk_bool_sort(self.raw())) } }
     }
+    /// z3py `z3.DeclareSort(name)`: an uninterpreted sort (the same name gives the same sort).
+    pub fn declare_sort(&self, name: &str) -> Sort {
+        let s = self.sym(name);
+        // SAFETY: S1 S2 — the symbol was made in this context.
+        Sort { z: self.clone(), raw: unsafe { nn(z::Z3_mk_uninterpreted_sort(self.raw(), s)) } }
+    }
     pub fn array_sort(&self, dom: &Sort, range: &Sort) -> Sort {
         // SAFETY: S1 S2 — dom/range are sorts of the same context.
         Sort { z: self.clone(), raw: unsafe { nn(z::Z3_mk_array_sort(self.raw(), dom.raw, range.raw)) } }

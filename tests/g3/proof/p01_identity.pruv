@@ -1,0 +1,18 @@
+// G3 A2 positive: identity-style contracts over an opaque sort, proved once for every T
+fn identity<T>(x: T) -> T
+  ensures result == x
+{
+  return x;
+}
+
+fn first_of<T>(a: T, b: T) -> T
+  ensures result == a
+{
+  return a;
+}
+
+fn second_of<T>(a: T, b: T) -> T
+  ensures result == b
+{
+  return b;
+}

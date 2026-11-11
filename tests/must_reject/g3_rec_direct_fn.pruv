@@ -1,0 +1,4 @@
+// G3 A2 (6.2 recursion): direct recursion of a generic function is rejected on the declaration identity
+fn spin<T>(x: T) -> T {
+  return spin::<T>(x);
+}

@@ -1,0 +1,17 @@
+// G3 A2 positive: nested applications; Pair<T, T> reuses one sort for both fields
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn both<T>(x: T, y: T) -> Option<Pair<T, T>>
+  ensures is_some(result) && some_val(result).first == x && some_val(result).second == y
+{
+  return Some::<Pair<T, T>>(Pair::<T, T> { first: x, second: y });
+}
+
+fn dup<T>(x: T) -> Pair<T, T>
+  ensures result.first == result.second
+{
+  return Pair::<T, T> { first: x, second: x };
+}

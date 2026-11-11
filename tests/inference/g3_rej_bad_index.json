@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "index_oob"}, "noinfer": "reject", "kept": ["invariant 0 <= i", "invariant i <= n + 1"], "status": {"walk": "selected"}, "note": "G3 A2: inference never turns an unsafe generic index into an accepted one"}

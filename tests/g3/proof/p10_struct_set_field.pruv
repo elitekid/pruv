@@ -1,0 +1,14 @@
+// G3 A2 positive: assignment to a field whose substituted type is the abstract A; the other field is unchanged
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn set_first<A, B>(p: Pair<A, B>, v: A) -> Pair<A, B>
+  ensures result.first == v
+  ensures result.second == p.second
+{
+  let mut q: Pair<A, B> = p;
+  q.first = v;
+  return q;
+}

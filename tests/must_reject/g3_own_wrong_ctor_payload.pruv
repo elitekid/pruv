@@ -1,0 +1,4 @@
+// G3 A2 (6.2 ownership/type): Some::<bool> given an i64 payload
+fn make() -> Option<bool> {
+  return Some::<bool>(1);
+}

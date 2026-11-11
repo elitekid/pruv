@@ -1,0 +1,26 @@
+// G3 A2 inference (accepted): a generic definition and a scalar sibling in one program. The counter and length
+// candidates (`i <= len(a)`, `i <= n`) are generated for both; verification is per definition.
+fn count_up<T: Element>(a: [T]) -> i64
+  ensures result == len(a)
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    i = i + 1;
+  }
+  return i;
+}
+
+fn count_to(n: i64) -> i64
+  requires 0 <= n
+  ensures result == n
+{
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    i = i + 1;
+  }
+  return i;
+}

@@ -1,0 +1,9 @@
+// G3 A2 (6.2 ownership/type): a field value of the wrong substituted type in a generic struct literal
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn make() -> Pair<i64, bool> {
+  return Pair::<i64, bool> { first: true, second: 1 };
+}

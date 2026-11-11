@@ -1,0 +1,15 @@
+// G3 A2 positive: two element stores on a [T]; select-over-store with provably distinct indices
+fn swap_ends<T: Element>(a: [T]) -> [T] ! alloc
+  requires len(a) >= 2
+  ensures len(result) == len(a)
+  ensures result[0] == a[len(a) - 1]
+  ensures result[len(a) - 1] == a[0]
+{
+  let mut out: [T] = copy(a);
+  let n: i64 = len(a);
+  let x: T = a[0];
+  let y: T = a[n - 1];
+  out[0] = y;
+  out[n - 1] = x;
+  return out;
+}

@@ -34,6 +34,20 @@ Spec: `docs/STAGE1_B_INFER.md`. Next to each `inf_*.pruv` there is a `.json` of 
 - `fallback`: function name → true/false. Whether the records of that function have the key `"fallback": "v1"` (true: all records have it, false: no record has it).
 - `noinfer`: compile again without `--infer` and expect `ok` (exit 0) or `reject` (exit 1).
 
+## G3 A2 samples (`g3_*.pruv`, docs/G3_SPEC.md 4.8)
+
+`run.py` runs the `g3_*` cases like the `inf_*` ones (generic definitions: abstract values are filtered out of the
+scalar templates; verification is per definition). The code generators still reject generics, so an *accepted* case
+cannot exit 0 yet: it expects `{"stage": "codegen", "code": "unsupported_type"}` (the staging guard of pruvc.py that
+runs only AFTER a successful verification) and proves acceptance through `status: verified` of its `--show-inferred`
+records. When A3/A4 lift the guard, these four `expect` values become `"ok"`. A rejected case expects a verify error.
+
+- Accepted: `g3_acc_fill_len` (length candidate, no element-equality candidate over `[T]`), `g3_acc_sibling_counts`
+  (generic and scalar sibling), `g3_acc_scoped_types` (sibling blocks with `a: [i64]` / `a: [T]`, position-based typing),
+  `g3_acc_abstract_local` (a loop-carried local of type T).
+- Rejected: `g3_rej_bad_index`, `g3_rej_false_invariant` (false explicit abstract-equality invariant),
+  `g3_rej_no_equality_template` (no generic equality template is inferred), `g3_rej_scalar_sibling`.
+
 ## B+ samples (kinds 12, 13, 14, spec 3.7)
 
 - `inf_range_gcd`: kind 12. The lower bounds `x >= 0` and `y >= 0` from `x = a; y = b` remain, proving `result >= 0` (noinfer reject).

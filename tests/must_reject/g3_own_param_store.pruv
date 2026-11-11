@@ -1,0 +1,5 @@
+// G3 A2 (6.2 ownership): an element store into a [T] parameter (read-only borrowed view)
+fn overwrite<T: Element>(a: [T], v: T) -> i64 {
+  a[0] = v;
+  return 0;
+}

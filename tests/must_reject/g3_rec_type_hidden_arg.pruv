@@ -1,0 +1,12 @@
+// G3 A2 (6.2 recursion): the cycle is hidden inside a type argument (Loop -> Wrap<Loop> -> Loop)
+struct Wrap<T> {
+  value: T
+}
+
+struct Loop {
+  inner: Wrap<Loop>
+}
+
+fn f(x: i64) -> i64 {
+  return x;
+}

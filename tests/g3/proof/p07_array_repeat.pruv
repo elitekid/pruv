@@ -1,0 +1,9 @@
+// G3 A2 positive: alloc of a [T]: the length obligation, then the constant array K(value)
+fn repeat<T: Element>(n: i64, value: T) -> [T] ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k] == value
+{
+  let out: [T] = alloc(n, value);
+  return out;
+}

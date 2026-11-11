@@ -1,0 +1,11 @@
+// G3 A2 (6.2 parametricity): the only concrete caller passes equal values, where the false ensures happens to hold;
+// the definition is still rejected because it is verified once for an arbitrary T
+fn pick<T>(a: T, b: T) -> T
+  ensures result == a
+{
+  return b;
+}
+
+fn use_it() -> i64 {
+  return pick::<i64>(5, 5);
+}

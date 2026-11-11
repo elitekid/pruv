@@ -8,13 +8,15 @@
 //! In Rust, `ev` takes `env: &Env` (a snapshot cloned on entry) separately from `st: &mut State`. Since `ev` does not modify env,
 //! the semantics are the same. The counterexample (`cex`) reads `st.env`.
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Instant;
 
 use pruv_core::ast::{self as ast, Expr, Stmt};
 use pruv_core::diagnostic::PruvError;
+use pruv_core::gtype::{self, GType, Mapping};
 
-use crate::model::{Elem, Model, Prelude, Ty, TypeKind};
+use crate::model::{Elem, Model, NomKind, Prelude, Ty};
 use crate::obligation::Trace;
 use crate::sys::{Ast, FuncDecl, Sort, Z3};
 
@@ -239,6 +241,33 @@ fn pos(e: &Expr) -> Pos {
     (e.line() as u32, e.col() as u32)
 }
 
+/// verify.py `_enum_ty`: the instantiated enum type of an is_variant / variant_field scrutinee: the type of the value
+/// (already substituted), else the plain enum name.
+fn enum_ty(enum_name: &str, v: &Val) -> Ty {
+    if let Val::Dt(_, t) = v {
+        if t.name() == enum_name {
+            return t.clone();
+        }
+    }
+    Ty::User(enum_name.to_string())
+}
+
+/// The datatype value of an argument of is_some / some_val / ... and its type (None for any other value).
+fn dt_arg(v: &Val) -> R<(&Ast, &Ty)> {
+    match v {
+        Val::Dt(a, t) => Ok((a, t)),
+        _ => Err("expected an Option/Result value".to_string()),
+    }
+}
+
+/// The value read from the payload of an Option/Result of type `ty` (some_val / ok_val): `i64` for the legacy types.
+fn payload_val(ty: &Ty, a: Ast) -> R<Val> {
+    match ty {
+        Ty::Inst(g) if !g.args.is_empty() => Val::from_field(&Ty::from_gtype(&g.args[0]), a),
+        _ => Ok(Val::Int(a)),
+    }
+}
+
 fn stmt_pos(s: &Stmt) -> Pos {
     let (l, c) = match s {
         Stmt::Let(x) => (x.line, x.col),
@@ -293,12 +322,36 @@ pub struct Arr {
     pub n: Ast,
     pub name: String,
     pub elem: Elem,
+    /// G3: the element type of an array of abstract elements (`elem == Elem::Abs`), None otherwise.
+    pub ety: Option<GType>,
 }
 
 impl Arr {
     /// Pure assembly (does not touch the fresh counter).
     pub fn new(a: Ast, n: Ast, name: String, elem: Elem) -> Arr {
-        Arr { a, n, name, elem }
+        Arr { a, n, name, elem, ety: None }
+    }
+    /// An array whose elements have the abstract type `ety` (a type parameter).
+    pub fn abs(a: Ast, n: Ast, name: String, ety: GType) -> Arr {
+        Arr { a, n, name, elem: Elem::Abs, ety: Some(ety) }
+    }
+    /// A new array value of the same element type (mk_arr(.., arr.elem)).
+    pub fn like(&self, a: Ast, n: Ast, name: &str) -> Arr {
+        Arr { a, n, name: name.to_string(), elem: self.elem, ety: self.ety.clone() }
+    }
+    /// The Pruv type of an element read from an abstract array.
+    pub fn elem_ty(&self) -> Ty {
+        match &self.ety {
+            Some(g) => Ty::from_gtype(g),
+            None => Ty::I64,
+        }
+    }
+    /// The array type of this value (to make a fresh one of the same shape).
+    pub fn array_ty(&self) -> Ty {
+        match &self.ety {
+            Some(g) => Ty::GArray(g.clone()),
+            None => Ty::Array(self.elem),
+        }
     }
 }
 
@@ -345,8 +398,8 @@ impl Val {
         match ty {
             Ty::I64 => Ok(Val::Int(a)),
             Ty::Bool => Ok(Val::Bool(a)),
-            Ty::Opt | Ty::Res | Ty::User(_) => Ok(Val::Dt(a, ty.clone())),
-            Ty::Array(_) | Ty::Str | Ty::Unit => Err(format!("'{}'", ty.name())),
+            Ty::Opt | Ty::Res | Ty::User(_) | Ty::Param(_) | Ty::Inst(_) => Ok(Val::Dt(a, ty.clone())),
+            Ty::Array(_) | Ty::GArray(_) | Ty::Str | Ty::Unit => Err(format!("'{}'", ty.name())),
         }
     }
 }
@@ -441,6 +494,10 @@ pub struct FnVerifier<'a> {
     pub(crate) loop_no: HashMap<usize, usize>,
     /// STAGE1 B2 search state. If Some, only candidate obligations are queried and no errors are produced.
     pub probe: Option<&'a mut Probe>,
+    /// G3 A2: callee type-parameter substitution while a callee contract is re-interpreted (verify.py `theta`).
+    pub(crate) theta: Mapping,
+    /// G3 A2 (4.7): per abstract sort, the model values seen so far in this counterexample (their order gives `opaque#N`).
+    pub(crate) opq: RefCell<HashMap<String, Vec<String>>>,
 }
 
 impl<'a> FnVerifier<'a> {
@@ -467,7 +524,18 @@ impl<'a> FnVerifier<'a> {
             extra: HashMap::new(),
             loop_no: HashMap::new(),
             probe: None,
+            theta: Mapping::new(),
+            opq: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// verify.py `T(ty)`: a checked node type (a type key) under the current contract-instantiation substitution.
+    /// None when the node has no type (or an unparsable one).
+    pub(crate) fn t(&self, key: Option<&str>) -> Option<Ty> {
+        let k = key?;
+        let g = GType::try_from_key(k).ok()?;
+        let g = if self.theta.is_empty() { g } else { gtype::substitute(&g, &self.theta) };
+        Some(Ty::from_gtype(&g))
     }
 
     /// verify.py `FnVerifier(.., extra=..)`: fixes the candidates and, if non-empty, builds the loop number table.
@@ -540,6 +608,29 @@ impl<'a> FnVerifier<'a> {
                 Some(s) => Ok(Val::Dt(z.constant(&n, s), ty.clone())),
                 None => Err(format!("fresh: {}", name)),
             },
+            // G3: an abstract value, or an instance Option<X> / Result<X> / D<..>
+            Ty::Param(_) | Ty::Inst(_) => {
+                let s = self.model.try_sort_of(ty)?;
+                Ok(Val::Dt(z.constant(&n, &s), ty.clone()))
+            }
+            // G3: [T] = (Array Int sort(T), length)
+            Ty::GArray(e) => {
+                let int = z.int_sort();
+                let len = z.int_const(&format!("{}.len", n));
+                if e.owner.is_some() {
+                    let esort = self.model.try_sort_of(&Ty::from_gtype(e))?;
+                    let arr_sort = z.array_sort(&int, &esort);
+                    Ok(Val::Arr(Arr::abs(z.constant(&n, &arr_sort), len, base.to_string(), e.clone())))
+                } else {
+                    let (esort, elem) = match Ty::from_gtype(e) {
+                        Ty::Bool => (z.bool_sort(), Elem::Bool),
+                        Ty::User(u) if u == "u8" => (z.int_sort(), Elem::U8),
+                        _ => (z.int_sort(), Elem::I64),
+                    };
+                    let arr_sort = z.array_sort(&int, &esort);
+                    Ok(Val::Arr(Arr::new(z.constant(&n, &arr_sort), len, base.to_string(), elem)))
+                }
+            }
             Ty::Unit => Err("fresh: unit".to_string()),
         }
     }
@@ -559,37 +650,66 @@ impl<'a> FnVerifier<'a> {
     // ---------- value domain (line 219) ----------
     /// `wf(ty, v)`: all active leaves are i64. None if trivial.
     pub fn wf(&self, ty: &Ty, v: &Ast) -> Option<Ast> {
+        self.try_wf(ty, v).ok().flatten()
+    }
+
+    /// `wf` that reports an internal failure (Python raises) instead of hiding it.
+    pub fn try_wf(&self, ty: &Ty, v: &Ast) -> R<Option<Ast>> {
         let z = &self.z;
         let p = self.prelude;
-        match ty {
+        let m = self.model;
+        Ok(match ty {
             Ty::I64 => Some(in_range(z, v)),
             Ty::Opt => Some(p.is_some(v).implies(&in_range(z, &p.sval(v)))),
             Ty::Res => Some(z.and(&[
                 p.is_ok(v).implies(&in_range(z, &p.oval(v))),
                 p.is_err(v).implies(&in_range(z, &p.eval(v))),
             ])),
-            Ty::User(name) => match &self.model.decl_opt(name)?.kind {
-                TypeKind::Struct(fields) => {
-                    let accs = &self.model.struct_fns_opt(name)?.accs;
-                    conj(z, fields.iter().zip(accs).map(|(fd, acc)| self.wf(&fd.ty, &acc.apply1(v))).collect())
+            // G3: an abstract value has no well-formedness predicate
+            Ty::Param(_) => None,
+            // G3: Option<X>, X other than i64
+            Ty::Inst(g) if g.name == "option" => {
+                let o = m.opt(Some(ty))?;
+                let w = self.try_wf(&Ty::from_gtype(&g.args[0]), &o.sval.apply1(v))?;
+                w.map(|w| o.is_some.apply1(v).implies(&w))
+            }
+            Ty::Inst(g) if g.name == "result" => {
+                let o = m.res(Some(ty))?;
+                let w = self.try_wf(&Ty::from_gtype(&g.args[0]), &o.oval.apply1(v))?;
+                let mut parts: Vec<Option<Ast>> = Vec::new();
+                if let Some(w) = w {
+                    parts.push(Some(o.is_ok.apply1(v).implies(&w)));
                 }
-                TypeKind::Enum(variants) => {
+                parts.push(Some(o.is_err.apply1(v).implies(&in_range(z, &o.eval.apply1(v)))));
+                conj(z, parts)
+            }
+            Ty::User(_) | Ty::Inst(_) => match m.nominal_kind(ty) {
+                Some(NomKind::Struct) => {
+                    let accs = m.struct_info(ty)?.accs;
                     let mut parts: Vec<Option<Ast>> = Vec::new();
-                    for vd in variants {
-                        let vf = self.model.variant_opt(name, &vd.name)?;
-                        let w = conj(
-                            z,
-                            vd.fields.iter().zip(&vf.accs).map(|(fd, acc)| self.wf(&fd.ty, &acc.apply1(v))).collect(),
-                        );
-                        if let Some(w) = w {
+                    for ((_, ft), acc) in m.fields_of(ty, None)?.iter().zip(accs.iter()) {
+                        parts.push(self.try_wf(ft, &acc.apply1(v))?);
+                    }
+                    conj(z, parts)
+                }
+                Some(NomKind::Enum) => {
+                    let mut parts: Vec<Option<Ast>> = Vec::new();
+                    for vn in m.variant_names(ty) {
+                        let vf = m.variant_fns(ty, &vn)?;
+                        let mut ws: Vec<Option<Ast>> = Vec::new();
+                        for ((_, ft), acc) in m.fields_of(ty, Some(&vn))?.iter().zip(vf.accs.iter()) {
+                            ws.push(self.try_wf(ft, &acc.apply1(v))?);
+                        }
+                        if let Some(w) = conj(z, ws) {
                             parts.push(Some(vf.rec.apply1(v).implies(&w)));
                         }
                     }
                     conj(z, parts)
                 }
+                None => None,
             },
-            Ty::Bool | Ty::Unit | Ty::Array(_) | Ty::Str => None,
-        }
+            Ty::Bool | Ty::Unit | Ty::Array(_) | Ty::GArray(_) | Ty::Str => None,
+        })
     }
 
     /// `rebuild(ty, cur, path, new)` (line 242): the struct value `cur` with the field path replaced by `new`.
@@ -597,12 +717,12 @@ impl<'a> FnVerifier<'a> {
         if path.is_empty() {
             return Ok(new.clone());
         }
-        let Ty::User(name) = ty else { return Err(format!("'{}'", ty.name())) };
-        let i = self.model.field_index_opt(name, path[0]).ok_or_else(|| format!("'{}'", path[0]))?;
-        let sf = self.model.struct_fns_opt(name).ok_or_else(|| format!("'{}'", name))?;
-        let fields = self.model.struct_fields_opt(name).ok_or_else(|| format!("'{}'", name))?;
+        let m = self.model;
+        let i = m.field_index_of(ty, path[0], None)?;
+        let sf = m.struct_info(ty)?;
         let mut vals: Vec<Ast> = sf.accs.iter().map(|a| a.apply1(cur)).collect();
-        let sub = self.try_rebuild(&fields[i].ty, &vals[i], &path[1..], new)?;
+        let fty = m.fields_of(ty, None)?[i].1.clone();
+        let sub = self.try_rebuild(&fty, &vals[i], &path[1..], new)?;
         vals[i] = sub;
         Ok(sf.ctor.apply(&vals))
     }
@@ -734,7 +854,7 @@ impl<'a> FnVerifier<'a> {
             let Some(old) = h.env.try_get(n).cloned() else { continue };
             match old {
                 Val::Arr(old_arr) => {
-                    let nv = self.try_fresh(n, &Ty::Array(old_arr.elem))?;
+                    let nv = self.try_fresh(n, &old_arr.array_ty())?;
                     let a = nv.try_arr()?.clone();
                     h.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
                     if a.elem == Elem::U8 {
@@ -757,7 +877,7 @@ impl<'a> FnVerifier<'a> {
                     let nv = self.z.constant(&format!("{}!h{}", n, self.k), &old_ast.sort());
                     self.k += 1;
                     h.env.set(n, Val::Dt(nv.clone(), ty.clone()));
-                    if let Some(w) = self.wf(&ty, &nv) {
+                    if let Some(w) = self.try_wf(&ty, &nv)? {
                         h.pc.push(w);
                     }
                 }
@@ -1048,6 +1168,10 @@ impl<'a> FnVerifier<'a> {
                 if arr.elem == Elem::Bool {
                     return Ok(Val::Bool(v));
                 }
+                // G3: an abstract element has no numeric domain: no in_range assumption
+                if arr.elem == Elem::Abs {
+                    return Ok(Val::Dt(v, arr.elem_ty()));
+                }
                 if code {
                     let w = in_range(&self.z, &v);
                     self.assume(st, g, w);
@@ -1055,15 +1179,24 @@ impl<'a> FnVerifier<'a> {
                 Ok(Val::Int(v))
             }
             Expr::Ctor(x) => {
+                // G3: the datatype of the (substituted) type of the constructor application; legacy = Opt / Res
+                let cty = self.t(x.ty.as_deref());
                 if x.name == "None" {
-                    return Ok(Val::Dt(self.prelude.none(), Ty::Opt));
+                    let o = model.opt(cty.as_ref())?;
+                    return Ok(Val::Dt(o.none.clone(), cty.unwrap_or(Ty::Opt)));
                 }
                 let arg = x.arg.as_ref().ok_or_else(|| "None".to_string())?;
                 let v = self.ev_ast(arg, st, g, code, env)?;
                 match x.name.as_str() {
-                    "Some" => Ok(Val::Dt(self.prelude.some(&v), Ty::Opt)),
-                    "Ok" => Ok(Val::Dt(self.prelude.ok(&v), Ty::Res)),
-                    "Err" => Ok(Val::Dt(self.prelude.err(&v), Ty::Res)),
+                    "Some" => {
+                        let o = model.opt(cty.as_ref())?;
+                        Ok(Val::Dt(o.some.apply1(&v), cty.unwrap_or(Ty::Opt)))
+                    }
+                    "Ok" | "Err" => {
+                        let o = model.res(cty.as_ref())?;
+                        let r = if x.name == "Ok" { o.ok.apply1(&v) } else { o.err.apply1(&v) };
+                        Ok(Val::Dt(r, cty.unwrap_or(Ty::Res)))
+                    }
                     other => Err(format!("'{}'", other)),
                 }
             }
@@ -1094,46 +1227,46 @@ impl<'a> FnVerifier<'a> {
                 for fi in &x.fields {
                     vals.push(self.ev_ast(&fi.value, st, g, code, env)?);
                 }
-                let sf = model.struct_fns_opt(&x.name).ok_or_else(|| format!("'{}'", x.name))?;
-                Ok(Val::Dt(sf.ctor.apply(&vals), Ty::User(x.name.clone())))
+                let sty = match self.t(x.ty.as_deref()) {
+                    Some(t) => t,
+                    None => Ty::User(x.name.clone()),
+                };
+                let sf = model.struct_info(&sty)?;
+                Ok(Val::Dt(sf.ctor.apply(&vals), sty))
             }
             Expr::EnumCtor(x) => {
                 let mut vals: Vec<Ast> = Vec::new();
                 for a in &x.args {
                     vals.push(self.ev_ast(a, st, g, code, env)?);
                 }
-                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
-                Ok(Val::Dt(vf.ctor.apply(&vals), Ty::User(x.enum_name.clone())))
+                let ety = match self.t(x.ty.as_deref()) {
+                    Some(t) => t,
+                    None => Ty::User(x.enum_name.clone()),
+                };
+                let vf = model.variant_fns(&ety, &x.variant)?;
+                Ok(Val::Dt(vf.ctor.apply(&vals), ety))
             }
             Expr::FieldAccess(x) => {
                 let v = self.ev(&x.base, st, g, code, env)?;
-                let Val::Dt(va, Ty::User(sname)) = &v else { return Err("field access on a non-struct value".to_string()) };
-                let sf = model.struct_fns_opt(sname).ok_or_else(|| format!("'{}'", sname))?;
-                let idx = model.field_index_opt(sname, &x.field).ok_or_else(|| format!("'{}'", x.field))?;
-                let fty = model
-                    .struct_fields_opt(sname)
-                    .and_then(|fs| fs.get(idx))
-                    .map(|f| f.ty.clone())
-                    .ok_or_else(|| format!("'{}'", x.field))?;
+                let Val::Dt(va, sty) = &v else { return Err("field access on a non-struct value".to_string()) };
+                let sf = model.struct_info(sty)?;
+                let idx = model.field_index_of(sty, &x.field, None)?;
+                let fty = model.fields_of(sty, None)?[idx].1.clone();
                 Val::from_field(&fty, sf.accs[idx].apply1(va))
             }
             Expr::IsVariant(x) => {
-                let v = self.ev_ast(&x.value, st, g, code, env)?;
-                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
-                Ok(Val::Bool(vf.rec.apply1(&v)))
+                let v = self.ev(&x.value, st, g, code, env)?;
+                let ety = enum_ty(&x.enum_name, &v);
+                let vf = model.variant_fns(&ety, &x.variant)?;
+                Ok(Val::Bool(vf.rec.apply1(v.try_ast()?)))
             }
             Expr::VariantField(x) => {
-                let v = self.ev_ast(&x.value, st, g, code, env)?;
-                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
-                let idx = model
-                    .variant_field_index(&x.enum_name, &x.variant, &x.field)
-                    .ok_or_else(|| format!("'{}'", x.field))?;
-                let fty = model
-                    .variant_decl(&x.enum_name, &x.variant)
-                    .and_then(|vd| vd.fields.get(idx))
-                    .map(|f| f.ty.clone())
-                    .ok_or_else(|| format!("'{}'", x.field))?;
-                Val::from_field(&fty, vf.accs[idx].apply1(&v))
+                let v = self.ev(&x.value, st, g, code, env)?;
+                let ety = enum_ty(&x.enum_name, &v);
+                let vf = model.variant_fns(&ety, &x.variant)?;
+                let idx = model.field_index_of(&ety, &x.field, Some(&x.variant))?;
+                let fty = model.fields_of(&ety, Some(&x.variant))?[idx].1.clone();
+                Val::from_field(&fty, vf.accs[idx].apply1(v.try_ast()?))
             }
         }
     }
@@ -1153,11 +1286,30 @@ impl<'a> FnVerifier<'a> {
                 let a1 = arg(1)?.try_ast()?.clone();
                 let ob = self.z.and(&[a0.ge_i(0), a0.le_i(MAX_LEN)]);
                 self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "alloc_negative", "alloc length in 0..2^40", None);
-                let aelem = match x.ty.as_deref() {
+                // the element kind comes from the unsubstituted type name (verify.py `tname`), then a structured [T] overrides it
+                let tname: Option<String> =
+                    x.ty.as_deref().and_then(|k| GType::try_from_key(k).ok()).map(|g| g.name);
+                let mut aelem = match tname.as_deref() {
                     Some("array_u8") => Elem::U8,
                     Some("array_bool") => Elem::Bool, // G2 A5
                     _ => Elem::I64,
                 };
+                let mut aety: Option<GType> = None;
+                if let Some(Ty::GArray(el)) = self.t(x.ty.as_deref()) {
+                    // G3: alloc of a [T]
+                    aelem = if el.owner.is_some() {
+                        Elem::Abs
+                    } else if el == GType::bool() {
+                        Elem::Bool
+                    } else if el == GType::u8() {
+                        Elem::U8
+                    } else {
+                        Elem::I64
+                    };
+                    if el.owner.is_some() {
+                        aety = Some(el);
+                    }
+                }
                 if aelem == Elem::U8 {
                     let ob = self.z.and(&[a1.ge_i(0), a1.le_i(255)]);
                     self.prove_core(
@@ -1172,16 +1324,15 @@ impl<'a> FnVerifier<'a> {
                     );
                 }
                 self.k += 1;
-                return Ok(Val::Arr(Arr::new(
-                    self.z.const_array(&self.z.int_sort(), &a1),
-                    a0,
-                    "alloc".to_string(),
-                    aelem,
-                )));
+                let ka = self.z.const_array(&self.z.int_sort(), &a1);
+                return Ok(Val::Arr(match aety {
+                    Some(ety) => Arr::abs(ka, a0, "alloc".to_string(), ety),
+                    None => Arr::new(ka, a0, "alloc".to_string(), aelem),
+                }));
             }
             "copy" => {
                 let a = arg(0)?.try_arr()?;
-                return Ok(Val::Arr(Arr::new(a.a.clone(), a.n.clone(), "copy".to_string(), a.elem)));
+                return Ok(Val::Arr(a.like(a.a.clone(), a.n.clone(), "copy")));
             }
             "is_char_boundary" => {
                 // G2 B1: no obligations or assumptions.
@@ -1228,11 +1379,25 @@ impl<'a> FnVerifier<'a> {
                 return Ok(Val::Arr(res));
             }
             "print" => return Ok(Val::Unit),
-            "is_some" => return Ok(Val::Bool(self.prelude.is_some(arg(0)?.try_ast()?))),
-            "some_val" => return Ok(Val::Int(self.prelude.sval(arg(0)?.try_ast()?))),
-            "is_ok" => return Ok(Val::Bool(self.prelude.is_ok(arg(0)?.try_ast()?))),
-            "ok_val" => return Ok(Val::Int(self.prelude.oval(arg(0)?.try_ast()?))),
-            "err_val" => return Ok(Val::Int(self.prelude.eval(arg(0)?.try_ast()?))),
+            // G3: the datatype of the argument's own type (the legacy one for Option<i64> / Result<i64>)
+            "is_some" | "some_val" => {
+                let (a, ty) = dt_arg(arg(0)?)?;
+                let o = self.model.opt(Some(ty))?;
+                return if n == "is_some" {
+                    Ok(Val::Bool(o.is_some.apply1(a)))
+                } else {
+                    payload_val(ty, o.sval.apply1(a))
+                };
+            }
+            "is_ok" | "ok_val" | "err_val" => {
+                let (a, ty) = dt_arg(arg(0)?)?;
+                let o = self.model.res(Some(ty))?;
+                return match n {
+                    "is_ok" => Ok(Val::Bool(o.is_ok.apply1(a))),
+                    "ok_val" => payload_val(ty, o.oval.apply1(a)),
+                    _ => Ok(Val::Int(o.eval.apply1(a))),
+                };
+            }
             _ => {}
         }
         let f: &'a ast::Function = match self.funcs.get(n) {
@@ -1243,6 +1408,20 @@ impl<'a> FnVerifier<'a> {
         for (p, a) in f.params.iter().zip(args.iter()) {
             cenv.set(&p.name, a.clone());
         }
+        // G3 A2 (4.4): typed re-interpretation of the callee contract under the checker's recorded substitution
+        let theta: Mapping = match &x.inst {
+            Some(i) => i.subst.iter().map(|(o, idx, t)| ((o.clone(), *idx), t.clone())).collect(),
+            None => Mapping::new(),
+        };
+        let saved = std::mem::replace(&mut self.theta, theta);
+        let r = self.call_contract(e, f, st, g, code, cenv);
+        self.theta = saved;
+        r
+    }
+
+    /// The part of `call` that runs under the callee's substitution (verify.py `try:` body): requires, fresh result, ensures.
+    fn call_contract(&mut self, e: &Expr, f: &'a ast::Function, st: &mut State, g: &[Ast], code: bool, mut cenv: Env) -> R<Val> {
+        let n = f.name.as_str();
         if code {
             // The call site does not prove the callee's requires domain (the callee's own run() already proves it).
             for r in &f.requires {
@@ -1263,7 +1442,12 @@ impl<'a> FnVerifier<'a> {
         if ret == Ty::Unit {
             return Ok(Val::Unit);
         }
-        let res = self.try_fresh(&format!("ret_{}", n), &ret)?;
+        let rty = if self.theta.is_empty() {
+            ret
+        } else {
+            Ty::from_gtype(&gtype::substitute(&ret.to_gtype(), &self.theta))
+        };
+        let res = self.try_fresh(&format!("ret_{}", n), &rty)?;
         if let Val::Arr(ra) = &res {
             let w = self.z.and(&[ra.n.ge_i(0), ra.n.le_i(MAX_LEN)]);
             self.assume(st, g, w);
@@ -1271,7 +1455,7 @@ impl<'a> FnVerifier<'a> {
                 let d = self.u8_dom(ra);
                 self.assume(st, g, d);
             }
-        } else if let Some(w) = self.wf(&ret, res.try_ast()?) {
+        } else if let Some(w) = self.try_wf(&rty, res.try_ast()?)? {
             self.assume(st, g, w);
         }
         cenv.set("result", res.clone());
@@ -1335,12 +1519,16 @@ impl<'a> FnVerifier<'a> {
                 }
                 if wo && is_tag_fn(&x.name) {
                     let a0 = x.args.first().ok_or_else(|| "tuple index out of range".to_string())?;
-                    let v = self.ev_ast(a0, st, g, false, env)?;
-                    parts.push(Some(match x.name.as_str() {
-                        "some_val" => self.prelude.is_some(&v),
-                        "ok_val" => self.prelude.is_ok(&v),
-                        _ => self.prelude.is_ok(&v).not(),
-                    }));
+                    let vv = self.ev(a0, st, g, false, env)?;
+                    // G3: the Option/Result instance of the argument
+                    let (v, vty) = dt_arg(&vv)?;
+                    if x.name == "some_val" {
+                        parts.push(Some(model.opt(Some(vty))?.is_some.apply1(v)));
+                    } else {
+                        let ro = model.res(Some(vty))?;
+                        let ok = ro.is_ok.apply1(v);
+                        parts.push(Some(if x.name == "ok_val" { ok } else { ok.not() }));
+                    }
                 }
                 Ok(conj(&self.z, parts))
             }
@@ -1365,9 +1553,10 @@ impl<'a> FnVerifier<'a> {
                 if !wv {
                     return Ok(inner);
                 }
-                let v = self.ev_ast(&x.value, st, g, false, env)?;
-                let vf = model.variant_opt(&x.enum_name, &x.variant).ok_or_else(|| format!("'{}'", x.variant))?;
-                Ok(conj(&self.z, vec![inner, Some(vf.rec.apply1(&v))]))
+                let vv = self.ev(&x.value, st, g, false, env)?;
+                let ety = enum_ty(&x.enum_name, &vv);
+                let vf = model.variant_fns(&ety, &x.variant)?;
+                Ok(conj(&self.z, vec![inner, Some(vf.rec.apply1(vv.try_ast()?))]))
             }
             Expr::Quant(x) => {
                 let lo = self.ev_ast(&x.lo, st, g, false, env)?;
@@ -1524,7 +1713,7 @@ impl<'a> FnVerifier<'a> {
         let mut st = st.fork(None);
         let v = self.ev0(value, &mut st, &[], true)?;
         let v = match v {
-            Val::Arr(a) => Val::Arr(Arr::new(a.a, a.n, name.to_string(), a.elem)),
+            Val::Arr(a) => Val::Arr(a.like(a.a.clone(), a.n.clone(), name)),
             other => other,
         };
         st.env.set(name, v);
@@ -1577,7 +1766,7 @@ impl<'a> FnVerifier<'a> {
                     let ob = self.z.and(&[v.ge_i(lo), v.le_i(hi)]);
                     self.prove_core(&st.env, &st.pc, &[], &ob, spos, "refinement_assign", what.as_str(), Some(what.as_str()));
                 }
-                st.env.set(&s.name, Val::Arr(Arr::new(arr.a.store(&i, &v), arr.n.clone(), s.name.clone(), arr.elem)));
+                st.env.set(&s.name, Val::Arr(arr.like(arr.a.store(&i, &v), arr.n.clone(), &s.name)));
                 Ok(vec![st])
             }
             Stmt::If(s) => {
@@ -1589,35 +1778,59 @@ impl<'a> FnVerifier<'a> {
             }
             Stmt::Match(s) => {
                 let mut st = st.fork(None);
-                let v = self.ev0_ast(&s.scrutinee, &mut st, &[], true)?;
+                let sv = self.ev0(&s.scrutinee, &mut st, &[], true)?;
+                let v = sv.try_ast()?.clone();
                 let outer: HashSet<String> = st.env.0.iter().map(|(k, _)| k.clone()).collect();
                 let mut out: Vec<State> = Vec::new();
+                // G3: the scrutinee's complete (possibly generic) type
+                let sty: Option<Ty> = match &sv {
+                    Val::Dt(_, t) => Some(t.clone()),
+                    _ => None,
+                };
+                let payload: Ty = match &sty {
+                    Some(Ty::Inst(g)) if !g.args.is_empty() && (g.name == "option" || g.name == "result") => {
+                        Ty::from_gtype(&g.args[0])
+                    }
+                    _ => Ty::I64,
+                };
                 for a in &s.arms {
                     let cond: Ast;
                     let vals: Vec<Ast>;
                     let ftys: Vec<Ty>;
                     if let Some(en) = &a.enum_name {
-                        let vf = model.variant_opt(en, &a.ctor).ok_or_else(|| format!("'{}'", a.ctor))?;
+                        let ety = match &sty {
+                            Some(t) if t.name() == en.as_str() => t.clone(),
+                            _ => Ty::User(en.clone()),
+                        };
+                        let vf = model.variant_fns(&ety, &a.ctor)?;
                         cond = vf.rec.apply1(&v);
                         vals = vf.accs.iter().map(|acc| acc.apply1(&v)).collect();
-                        let vd = model.variant_decl(en, &a.ctor).ok_or_else(|| format!("'{}'", a.ctor))?;
-                        ftys = vd.fields.iter().map(|f| f.ty.clone()).collect();
+                        ftys = model.fields_of(&ety, Some(&a.ctor))?.into_iter().map(|(_, ft)| ft).collect();
                     } else {
-                        let p = self.prelude;
-                        let (c, val) = match a.ctor.as_str() {
-                            "Some" => (p.is_some(&v), Some(p.sval(&v))),
-                            "None" => (p.is_none(&v), None),
-                            "Ok" => (p.is_ok(&v), Some(p.oval(&v))),
-                            _ => (p.is_err(&v), Some(p.eval(&v))),
+                        let (c, val) = if a.ctor == "Some" || a.ctor == "None" {
+                            let o = model.opt(sty.as_ref())?;
+                            if a.ctor == "Some" {
+                                (o.is_some.apply1(&v), Some(o.sval.apply1(&v)))
+                            } else {
+                                (o.is_none.apply1(&v), None)
+                            }
+                        } else {
+                            let o = model.res(sty.as_ref())?;
+                            if a.ctor == "Ok" {
+                                (o.is_ok.apply1(&v), Some(o.oval.apply1(&v)))
+                            } else {
+                                (o.is_err.apply1(&v), Some(o.eval.apply1(&v)))
+                            }
                         };
                         cond = c;
                         vals = val.into_iter().collect();
-                        ftys = vals.iter().map(|_| Ty::I64).collect();
+                        let ft = if a.ctor == "Err" { Ty::I64 } else { payload.clone() };
+                        ftys = vals.iter().map(|_| ft.clone()).collect();
                     }
                     let mut b = st.fork(Some(cond));
                     for ((name, val), fty) in a.binders.iter().zip(vals.iter()).zip(ftys.iter()) {
                         b.env.set(name, Val::from_field(fty, val.clone())?);
-                        if let Some(w) = self.wf(fty, val) {
+                        if let Some(w) = self.try_wf(fty, val)? {
                             b.pc.push(w);
                         }
                     }
@@ -1795,7 +2008,7 @@ impl<'a> FnVerifier<'a> {
                     }
                 }
                 other => {
-                    if let Some(w) = self.wf(&pty, other.try_ast()?) {
+                    if let Some(w) = self.try_wf(&pty, other.try_ast()?)? {
                         pc.push(w);
                     }
                 }

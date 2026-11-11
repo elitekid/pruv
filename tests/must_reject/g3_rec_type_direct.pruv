@@ -1,0 +1,9 @@
+// G3 A2 (6.2 recursion): a generic type that contains itself
+struct Node<T> {
+  value: T,
+  next: Node<T>
+}
+
+fn f(x: i64) -> i64 {
+  return x;
+}

@@ -1,0 +1,1 @@
+{"expect": {"stage": "codegen", "code": "unsupported_type"}, "noinfer": "reject", "kept": ["invariant 0 <= i"], "absent": ["best >= 0", "best <= 0"], "status": {"keep_last": "verified"}, "note": "G3 A2: abstract local in a loop; without --infer the index a[i] is not provable (i is havoced without 0 <= i)."}

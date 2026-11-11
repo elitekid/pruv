@@ -1,0 +1,19 @@
+// G3 A2 positive: a loop over a [T] with explicit invariants (abstract equality is allowed in invariants);
+// the loop havoc creates a fresh correctly typed array
+fn copy_loop<T: Element>(a: [T]) -> [T] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[k]
+{
+  let mut out: [T] = copy(a);
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(out) == len(a)
+    invariant forall j in 0..len(a): out[j] == a[j]
+    decreases len(a) - i
+  {
+    out[i] = a[i];
+    i = i + 1;
+  }
+  return out;
+}

@@ -1,0 +1,21 @@
+// G3 A2 positive: a field whose substituted type is i64 keeps integer proofs (range predicate, overflow)
+// while the T field stays opaque
+struct Tagged<T> {
+  tag: i64,
+  value: T
+}
+
+fn retag<T>(t: Tagged<T>, tag: i64) -> Tagged<T>
+  ensures result.value == t.value
+  ensures result.tag == tag
+{
+  return Tagged::<T> { tag: tag, value: t.value };
+}
+
+fn bump_tag<T>(t: Tagged<T>) -> Tagged<T>
+  requires -1000 < t.tag && t.tag < 1000
+  ensures result.tag == t.tag + 1
+  ensures result.value == t.value
+{
+  return Tagged::<T> { tag: t.tag + 1, value: t.value };
+}

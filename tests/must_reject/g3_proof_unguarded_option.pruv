@@ -1,0 +1,9 @@
+// G3 A2 (6.2 proof): some_val(o) in an ensures without an is_some guard; the None arm returns without the payload
+fn peek<T>(o: Option<T>, d: T) -> T
+  ensures result == some_val(o)
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return d; }
+  }
+}

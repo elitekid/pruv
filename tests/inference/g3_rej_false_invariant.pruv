@@ -1,0 +1,18 @@
+// G3 A2 inference (rejected): a written invariant may use abstract equality, but this one is false: the loop stores
+// w, not v, so `out[k] == v` is not preserved (invariant_preserved), whatever inference adds
+fn fill2<T: Element>(n: i64, v: T, w: T) -> [T] ! alloc
+  requires 0 <= n && n <= 50
+{
+  let mut out: [T] = alloc(n, v);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(out) == n
+    invariant forall k in 0..i: out[k] == v
+    decreases n - i
+  {
+    out[i] = w;
+    i = i + 1;
+  }
+  return out;
+}

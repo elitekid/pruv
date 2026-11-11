@@ -1,0 +1,12 @@
+// G3 A2 positive: a generic definition nobody calls is still verified (once); a plain function calls none
+fn never_called<T>(a: T, b: T) -> Option<T>
+  ensures is_some(result) && some_val(result) == b
+{
+  return Some::<T>(b);
+}
+
+fn plain(x: i64) -> i64
+  ensures result == x
+{
+  return x;
+}

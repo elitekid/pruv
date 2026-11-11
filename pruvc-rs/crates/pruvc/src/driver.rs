@@ -184,11 +184,6 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // Exceeding the depth limit is reported by the parser as stage "internal" (exit 3, like Python RecursionError).
     let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
     let tt = pruv_core::check::check(&mut prog).map_err(|e| Fail::Lang(vec![e]))?;
-    // G3 A1 staging guard (same place as in Python compile_file): the verifier and both code generators do not support
-    // generics yet; reject explicitly (also with --no-verify) instead of crashing. Removed when the later G3 batches land.
-    if let Some(e) = pruv_core::typeinfo::g3_unimplemented_error(&prog, "codegen") {
-        return Err(Fail::Lang(vec![e]));
-    }
     if a.verify {
         let errs = if a.infer {
             let opts = pruv_proof::VerifyOptions { infer: true };
@@ -214,6 +209,12 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
+    }
+    // G3 A2 staging guard (same place as in Python compile_file): the verifier handles generics (proof errors of generic
+    // programs are reported above), but both code generators do not yet; reject explicitly here, before code generation,
+    // also with --no-verify. Removed when the A3/A4 batches land.
+    if let Some(e) = pruv_core::typeinfo::g3_unimplemented_error(&prog, "codegen") {
+        return Err(Fail::Lang(vec![e]));
     }
     // G2: even after verify, reject array types that do not yet have a code-generation layer.
     // A4, A5: [u8] and [bool] are allowed on every path (rust, llvm, ll, obj, exe, also_llvm).

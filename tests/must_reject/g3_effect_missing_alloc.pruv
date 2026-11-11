@@ -1,0 +1,5 @@
+// G3 A2 (6.2 effects): alloc of a [T] without the alloc effect
+fn make<T: Element>(n: i64, v: T) -> [T] {
+  let out: [T] = alloc(n, v);
+  return out;
+}

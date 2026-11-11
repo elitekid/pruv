@@ -1,0 +1,12 @@
+// G3 A2 (6.2 inference final pass): the loop reads a[i] for i == len(a); inference keeps `0 <= i`, `i <= len(a) + 1`
+// and the like, but they do not make the index safe, so the final verification reports index_oob
+fn touch<T: Element>(a: [T]) -> i64 {
+  let mut i: i64 = 0;
+  while i <= len(a)
+    decreases len(a) - i + 1
+  {
+    let x: T = a[i];
+    i = i + 1;
+  }
+  return i;
+}

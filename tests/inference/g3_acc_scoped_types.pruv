@@ -1,0 +1,30 @@
+// G3 A2 inference (accepted): scope-sensitive loop typing. Sibling blocks declare `a` as [i64] and as [T]. The first
+// loop gets the integer candidates (length, element equality, ranges); the second loop must get none that reads an
+// abstract element, or the candidate would not even type-check in the solver (an Int compared with the sort of T).
+fn scoped<T: Element>(t: [T], p: [i64 | 0..=5], c: i64) -> i64 ! alloc
+  requires len(p) == 4 && len(t) == 4
+{
+  let mut n: i64 = 0;
+  if c > 0 {
+    let mut a: [i64] = alloc(4, 1);
+    let mut i: i64 = 0;
+    while i < 4
+      decreases 4 - i
+    {
+      a[i] = p[i];
+      i = i + 1;
+    }
+    n = len(a);
+  } else {
+    let mut a: [T] = copy(t);
+    let mut j: i64 = 0;
+    while j < 4
+      decreases 4 - j
+    {
+      a[j] = t[j];
+      j = j + 1;
+    }
+    n = len(a);
+  }
+  return n;
+}

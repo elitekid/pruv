@@ -1,0 +1,10 @@
+// G3 A2 (6.2 parametricity): an invalid generic body is rejected although nothing ever calls it
+fn never_called<T>(a: T, b: T) -> T
+  ensures result == a
+{
+  return b;
+}
+
+fn plain(x: i64) -> i64 {
+  return x;
+}

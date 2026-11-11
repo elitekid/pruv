@@ -1,0 +1,7 @@
+// G3 A2 (6.2 parametricity): true for bool (two of any three values coincide), false for an arbitrary T;
+// the sort of T has no cardinality axiom, so three distinct values exist in a counterexample
+fn pigeonhole<T>(a: T, b: T, c: T) -> bool
+  ensures a == b || b == c || a == c
+{
+  return true;
+}

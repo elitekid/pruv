@@ -1,0 +1,26 @@
+// G3 A2 inference (rejected): generic and scalar siblings. The generic one is proved with its candidates; the scalar
+// sibling has a false ensures (n + 1) that no candidate can repair, and is reported on its own
+fn ok_gen<T: Element>(a: [T]) -> i64
+  ensures result == len(a)
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    i = i + 1;
+  }
+  return i;
+}
+
+fn bad_scalar(n: i64) -> i64
+  requires 0 <= n
+  ensures result == n + 1
+{
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    i = i + 1;
+  }
+  return i;
+}

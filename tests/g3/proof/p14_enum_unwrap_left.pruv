@@ -1,0 +1,15 @@
+// G3 A2 positive: variant_field on a generic enum under an is_variant guard
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B)
+}
+
+fn left_or<A, B>(c: Choice<A, B>, d: A) -> A
+  ensures is_variant(c, Choice::Left) ==> result == variant_field(c, Choice::Left, value)
+  ensures !is_variant(c, Choice::Left) ==> result == d
+{
+  match c {
+    Choice::Left(x) => { return x; }
+    Choice::Right(y) => { return d; }
+  }
+}

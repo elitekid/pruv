@@ -1,0 +1,4 @@
+// G3 A2 (6.2 refinements): a scalar range on a type parameter
+fn bounded<T>(x: T | 0..=5) -> i64 {
+  return 0;
+}

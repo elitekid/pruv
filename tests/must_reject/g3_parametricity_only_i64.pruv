@@ -1,0 +1,8 @@
+// G3 A2 (6.2 parametricity): a body that is only meaningful for i64 is rejected on the definition (no peeking at callers)
+fn inc<T>(x: T) -> T {
+  return x + 1;
+}
+
+fn use_it(x: i64) -> i64 {
+  return inc::<i64>(x);
+}

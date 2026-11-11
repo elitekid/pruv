@@ -1,0 +1,18 @@
+// G3 A2 positive: copy preserves contents and length; a store uses Store after the index obligation
+fn set_first<T: Element>(a: [T], v: T) -> [T] ! alloc
+  requires len(a) > 0
+  ensures len(result) == len(a)
+  ensures result[0] == v
+{
+  let mut out: [T] = copy(a);
+  out[0] = v;
+  return out;
+}
+
+fn copy_all<T: Element>(a: [T]) -> [T] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[k]
+{
+  let out: [T] = copy(a);
+  return out;
+}

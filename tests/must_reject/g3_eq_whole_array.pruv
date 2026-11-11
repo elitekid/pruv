@@ -1,0 +1,6 @@
+// G3 A2 (6.2 equality): whole-array equality on [T] stays forbidden, also in a contract
+fn same<T: Element>(a: [T], b: [T]) -> bool
+  ensures a == b
+{
+  return true;
+}

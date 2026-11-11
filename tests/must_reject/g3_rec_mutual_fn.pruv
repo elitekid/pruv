@@ -1,0 +1,8 @@
+// G3 A2 (6.2 recursion): mutual recursion between two generic functions
+fn ping<T>(x: T) -> T {
+  return pong::<T>(x);
+}
+
+fn pong<T>(x: T) -> T {
+  return ping::<T>(x);
+}

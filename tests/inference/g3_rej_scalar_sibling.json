@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "kept": ["invariant i <= len(a)", "invariant i <= n"], "status": {"ok_gen": "verified", "bad_scalar": "selected"}, "note": "G3 A2: the error belongs to bad_scalar only; ok_gen keeps status verified"}

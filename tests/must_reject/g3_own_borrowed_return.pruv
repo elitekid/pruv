@@ -1,0 +1,4 @@
+// G3 A2 (6.2 ownership): a borrowed [T] parameter cannot be returned directly; copy() it
+fn give_back<T: Element>(a: [T]) -> [T] {
+  return a;
+}

@@ -197,7 +197,8 @@ def main():
     ns = ap.parse_args()
     drv = CD.from_args(ns)
 
-    cases = sorted(glob.glob(os.path.join(HERE, "inf_*.pruv")))
+    # G3 A2: the g3_* cases (generic definitions) are run the same way as the inf_* ones
+    cases = sorted(glob.glob(os.path.join(HERE, "inf_*.pruv")) + glob.glob(os.path.join(HERE, "g3_*.pruv")))
     if ns.names:
         want = set(ns.names)
         cases = [c for c in cases if os.path.splitext(os.path.basename(c))[0] in want]

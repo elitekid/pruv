@@ -1,0 +1,4 @@
+// G3 A2 (6.2 refinements): a length bound on [T] beyond 2^40
+fn clip<T: Element>(a: [T; <=2000000000000]) -> i64 {
+  return len(a);
+}

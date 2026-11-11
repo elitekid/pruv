@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "ensures"}, "noinfer": "reject", "kept": ["invariant len(out) == n"], "absent": ["forall k in 0..i: out[k] == v"], "status": {"all_v": "selected"}, "note": "G3 A2 (4.8): no generic equality inference templates; the same program with the explicit invariant would verify"}

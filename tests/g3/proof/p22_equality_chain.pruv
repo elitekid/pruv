@@ -1,0 +1,20 @@
+// G3 A2 positive: abstract equality in contracts is plain equality of the opaque sort (transitivity, symmetry)
+fn trans<T>(a: T, b: T, c: T) -> T
+  requires a == b && b == c
+  ensures result == c
+{
+  return a;
+}
+
+fn sym<T>(a: T, b: T) -> T
+  requires a == b
+  ensures result == a && result == b
+{
+  return b;
+}
+
+fn excluded_middle<T>(a: T, b: T) -> bool
+  ensures a == b || a != b
+{
+  return true;
+}

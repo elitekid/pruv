@@ -1,44 +1,77 @@
-//! verify.py lines 10-70: the `Opt`/`Res` Datatypes (module level) and the per-program `Model` (user struct/enum, G1).
+//! verify.py lines 10-300: the `Opt`/`Res` Datatypes (module level) and the per-program `Model` (user struct/enum, G1; G3 A2 generic
+//! instances and abstract sorts).
 //!
 //! Naming rules (must match verify.py character for character):
 //! - `Opt`: `some(sval: Int)`, `none`; `Res`: `ok(oval: Int)`, `err(eval: Int)`. Both are created together with a single `CreateDatatypes`.
-//! - The i-th user type (in TypeTable dependency order) has tag = `m{SEQ}t{i}!`.
+//! - The i-th user type (in TypeTable dependency order, generic declarations included in the count) has tag = `m{SEQ}t{i}!`.
 //!   struct: datatype name = constructor name = `tag+Name`, accessor = `tag+Name+"."+field`.
 //!   enum: datatype = `tag+Name`, variant constructor = `tag+Name+"::"+Variant`, accessor = constructor name + `"."+field`.
+//!   Generic declarations get no datatype of their own.
+//! - G3 A2 instances (Option<X>, Result<X>, D<..>) are built lazily, one datatype per complete structural type, named
+//!   `m{SEQ}g{N}!` + format_type(ty); N counts the instances of the whole program in order of first construction (Python keeps one
+//!   Model for all functions, so the number is kept in a per-SEQ registry that outlives the per-function Rust `Model`).
+//!   Option<X>: `tag+Some(tag+Some.val)`, `tag+None`; Result<X>: `tag+Ok(tag+Ok.val)`, `tag+Err(tag+Err.val: Int)`;
+//!   struct/enum as for non-generic ones, with the tag above.
+//! - A type parameter of a function is the uninterpreted sort `g3!<function declaration index>!T<i>`.
 //! - SEQ (`_MODEL_SEQ`) increases by 1 each time a `Model` is created in the process (here, the thread). Python creates
 //!   one Model per program, so `verify_program` calls `next_seq()` only once and, even though each function has a different context,
 //!   calls `Model::with_seq` with the same number.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use pruv_core::ast as past;
+use pruv_core::gtype::{self, GType};
 
 use crate::sys::{Ast, DtCtor, DtCtorSpec, DtSort, DtSpec, FuncDecl, Sort, Z3};
 
 thread_local! {
     static MODEL_SEQ: Cell<u32> = const { Cell::new(0) };
+    /// seq -> instance types in order of first construction (the position + 1 is the number N in `m{SEQ}g{N}!`).
+    static GREG: RefCell<HashMap<u32, Vec<GType>>> = RefCell::new(HashMap::new());
 }
 
 /// For restarting from 0 per sample, like a fresh Python process (the spike binary calls this before each sample).
 pub fn reset_model_seq() {
     MODEL_SEQ.with(|c| c.set(0));
+    GREG.with(|g| g.borrow_mut().clear());
 }
 
 /// The value after `_MODEL_SEQ[0] += 1`.
 pub fn next_seq() -> u32 {
-    MODEL_SEQ.with(|c| {
+    let n = MODEL_SEQ.with(|c| {
         c.set(c.get() + 1);
         c.get()
+    });
+    GREG.with(|g| {
+        g.borrow_mut().remove(&n);
+    });
+    n
+}
+
+/// The number `N` of an instance type (assigned at its first construction, `s.gcount += 1`).
+fn greg_number(seq: u32, ty: &GType) -> usize {
+    GREG.with(|g| {
+        let mut g = g.borrow_mut();
+        let v = g.entry(seq).or_default();
+        match v.iter().position(|t| t == ty) {
+            Some(i) => i + 1,
+            None => {
+                v.push(ty.clone());
+                v.len()
+            }
+        }
     })
 }
 
-/// Array element storage type (G2). The internal name mapping lives in one place, pruv_core::typeinfo.
+/// Array element storage type (G2; `Abs` = an element of abstract sort, G3 A2). The internal name mapping lives in one place, pruv_core::typeinfo.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Elem {
     I64,
     U8,
     Bool,
+    /// G3: an element whose type is a type parameter (the parameter itself is kept in `Arr.ety`).
+    Abs,
 }
 
 impl Elem {
@@ -48,6 +81,7 @@ impl Elem {
             Elem::I64 => "i64",
             Elem::U8 => "u8",
             Elem::Bool => "bool",
+            Elem::Abs => "abs",
         }
     }
     pub fn from_name(n: &str) -> Option<Elem> {
@@ -60,7 +94,7 @@ impl Elem {
     }
 }
 
-/// Pruv type (vast.Type). A user type is a single name.
+/// Pruv type (vast.Type). A user type is a single name; G3 types keep their structure in a `GType`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     I64,
@@ -71,11 +105,25 @@ pub enum Ty {
     Opt,
     Res,
     User(String),
+    /// A bound type parameter (G3).
+    Param(GType),
+    /// `[T]`: an array of an abstract element type (G3); the payload is the element type.
+    GArray(GType),
+    /// Option<X> / Result<X> with X other than i64, or a generic declaration applied to arguments (G3).
+    Inst(GType),
 }
 
 impl Ty {
-    /// The parser/checker's type name string → `Ty`.
+    /// The parser/checker's type name string (a legacy plain name or a G3 type key) → `Ty`.
     pub fn from_name(n: &str) -> Ty {
+        if gtype::is_g3_key(n) {
+            if let Ok(g) = GType::try_from_key(n) {
+                return Ty::from_gtype(&g);
+            }
+        }
+        Ty::from_plain(n)
+    }
+    fn from_plain(n: &str) -> Ty {
         match n {
             "i64" => Ty::I64,
             "bool" => Ty::Bool,
@@ -92,21 +140,53 @@ impl Ty {
             }
         }
     }
+    /// A structured type → `Ty` (legacy forms come back as the legacy variants).
+    pub fn from_gtype(g: &GType) -> Ty {
+        if g.owner.is_some() {
+            return Ty::Param(g.clone());
+        }
+        if g.args.is_empty() {
+            return Ty::from_plain(&g.name);
+        }
+        if g.name == "array" {
+            return Ty::GArray(g.args[0].clone());
+        }
+        Ty::Inst(g.clone())
+    }
+    /// The structured type of this `Ty`.
+    pub fn to_gtype(&self) -> GType {
+        match self {
+            Ty::I64 => GType::i64(),
+            Ty::Bool => GType::bool(),
+            Ty::Unit => GType::unit(),
+            Ty::Str => GType::str(),
+            Ty::Opt => GType::option(),
+            Ty::Res => GType::result(),
+            Ty::Array(Elem::U8) => GType::array_u8(),
+            Ty::Array(Elem::Bool) => GType::array_bool(),
+            Ty::Array(_) => GType::array(),
+            Ty::User(n) => GType::new(n, Vec::new()),
+            Ty::Param(g) | Ty::Inst(g) => g.clone(),
+            Ty::GArray(e) => GType::new("array", vec![e.clone()]),
+        }
+    }
     /// vast `Type.name`.
     pub fn name(&self) -> &str {
         match self {
             Ty::I64 => "i64",
             Ty::Bool => "bool",
             Ty::Unit => "unit",
-            Ty::Array(e) => pruv_core::typeinfo::array_of_elem_name(e.name()).expect("every Elem name has an array type name"),
+            Ty::Array(e) => pruv_core::typeinfo::array_of_elem_name(e.name()).unwrap_or("array"),
             Ty::Str => "str",
             Ty::Opt => "option",
             Ty::Res => "result",
             Ty::User(n) => n,
+            Ty::Param(g) | Ty::Inst(g) => &g.name,
+            Ty::GArray(_) => "array",
         }
     }
     pub fn is_array(&self) -> bool {
-        matches!(self, Ty::Array(_))
+        matches!(self, Ty::Array(_) | Ty::GArray(_))
     }
     pub fn array_elem(&self) -> Option<Elem> {
         match self {
@@ -116,6 +196,13 @@ impl Ty {
     }
     pub fn array_of(e: Elem) -> Ty {
         Ty::Array(e)
+    }
+    /// The type arguments of a structured type (empty otherwise).
+    pub fn args(&self) -> &[GType] {
+        match self {
+            Ty::Inst(g) => &g.args,
+            _ => &[],
+        }
     }
 }
 
@@ -138,6 +225,8 @@ pub enum TypeKind {
 pub struct TypeDecl {
     pub name: String,
     pub kind: TypeKind,
+    /// Number of type parameters (0 = not generic).
+    pub tparams: usize,
 }
 
 fn fields_of(fs: &[(&str, Ty)]) -> Vec<FieldDecl> {
@@ -153,9 +242,11 @@ pub fn decls_from_ast(types: &[past::TypeDecl]) -> Vec<TypeDecl> {
     types
         .iter()
         .map(|d| match d {
-            past::TypeDecl::Struct(s) => {
-                TypeDecl { name: s.name.clone(), kind: TypeKind::Struct(conv_fields(&s.fields)) }
-            }
+            past::TypeDecl::Struct(s) => TypeDecl {
+                name: s.name.clone(),
+                kind: TypeKind::Struct(conv_fields(&s.fields)),
+                tparams: s.tparams.len(),
+            },
             past::TypeDecl::Enum(e) => TypeDecl {
                 name: e.name.clone(),
                 kind: TypeKind::Enum(
@@ -164,6 +255,7 @@ pub fn decls_from_ast(types: &[past::TypeDecl]) -> Vec<TypeDecl> {
                         .map(|v| VariantDecl { name: v.name.clone(), fields: conv_fields(&v.fields) })
                         .collect(),
                 ),
+                tparams: e.tparams.len(),
             },
         })
         .collect()
@@ -171,7 +263,7 @@ pub fn decls_from_ast(types: &[past::TypeDecl]) -> Vec<TypeDecl> {
 
 impl TypeDecl {
     pub fn new_struct(name: &str, fields: &[(&str, Ty)]) -> TypeDecl {
-        TypeDecl { name: name.to_string(), kind: TypeKind::Struct(fields_of(fields)) }
+        TypeDecl { name: name.to_string(), kind: TypeKind::Struct(fields_of(fields)), tparams: 0 }
     }
     pub fn new_enum(name: &str, variants: &[(&str, &[(&str, Ty)])]) -> TypeDecl {
         TypeDecl {
@@ -182,6 +274,7 @@ impl TypeDecl {
                     .map(|(vn, fs)| VariantDecl { name: (*vn).to_string(), fields: fields_of(fs) })
                     .collect(),
             ),
+            tparams: 0,
         }
     }
     /// typeinfo.py `_all_fields`.
@@ -260,40 +353,120 @@ impl Prelude {
     }
 }
 
+/// verify.py `_OptOps`: the z3 operations of one Option datatype (the legacy `Opt`, or a G3 instance Option<X>).
+#[derive(Clone)]
+pub struct OptOps {
+    pub some: FuncDecl,
+    pub none: Ast,
+    pub is_some: FuncDecl,
+    pub is_none: FuncDecl,
+    pub sval: FuncDecl,
+}
+
+/// verify.py `_ResOps`: the z3 operations of one Result datatype (the legacy `Res`, or a G3 instance Result<X>).
+#[derive(Clone)]
+pub struct ResOps {
+    pub ok: FuncDecl,
+    pub err: FuncDecl,
+    pub is_ok: FuncDecl,
+    pub is_err: FuncDecl,
+    pub oval: FuncDecl,
+    pub eval: FuncDecl,
+}
+
+impl OptOps {
+    fn legacy(p: &Prelude) -> OptOps {
+        OptOps {
+            some: p.opt.ctors[0].ctor.clone(),
+            none: p.none(),
+            is_some: p.opt.ctors[0].rec.clone(),
+            is_none: p.opt.ctors[1].rec.clone(),
+            sval: p.opt.ctors[0].accs[0].clone(),
+        }
+    }
+}
+
+impl ResOps {
+    fn legacy(p: &Prelude) -> ResOps {
+        ResOps {
+            ok: p.res.ctors[0].ctor.clone(),
+            err: p.res.ctors[1].ctor.clone(),
+            is_ok: p.res.ctors[0].rec.clone(),
+            is_err: p.res.ctors[1].rec.clone(),
+            oval: p.res.ctors[0].accs[0].clone(),
+            eval: p.res.ctors[1].accs[0].clone(),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
-// Model (verify.py lines 17-62)
+// Model (verify.py lines 137-298)
 // ---------------------------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct StructFns {
     pub ctor: FuncDecl,
     pub accs: Vec<FuncDecl>,
 }
+#[derive(Clone)]
 pub struct VariantFns {
     pub ctor: FuncDecl,
     pub rec: FuncDecl,
     pub accs: Vec<FuncDecl>,
 }
 
+/// Struct or enum (`TypeTable.is_struct` / `is_enum`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NomKind {
+    Struct,
+    Enum,
+}
+
+/// The lazily built part of the Model (G3 A2): instances and abstract sorts of one z3 context.
+#[derive(Default)]
+struct GState {
+    ginst: HashMap<GType, Sort>,
+    gopt: HashMap<GType, OptOps>,
+    gres: HashMap<GType, ResOps>,
+    gstruct: HashMap<GType, StructFns>,
+    genum: HashMap<GType, Vec<(String, VariantFns)>>,
+    /// (owner, index) -> uninterpreted sort of a function type parameter
+    abstract_: HashMap<(String, usize), Sort>,
+    /// sort name -> type-parameter spelling (counterexample rendering)
+    abs_name: HashMap<String, String>,
+    /// constructor name of a generic Option/Result instance -> source name
+    short: HashMap<String, &'static str>,
+}
+
 pub struct Model {
-    /// TypeTable.order: dependencies first, stable in declaration order.
+    z: Z3,
+    /// TypeTable.order: dependencies first, stable in declaration order (generic declarations included).
     pub order: Vec<TypeDecl>,
     sorts: HashMap<String, Sort>,
     structs: HashMap<String, StructFns>,
     enums: HashMap<String, Vec<(String, VariantFns)>>,
-    /// `by_sort`: z3 sort name → Pruv type (Opt/Res/user).
-    by_sort: HashMap<String, Ty>,
+    /// `by_sort`: z3 sort name → Pruv type (Opt/Res/user/instances).
+    by_sort: RefCell<HashMap<String, Ty>>,
     opt_sort: Sort,
     res_sort: Sort,
     int_sort: Sort,
     bool_sort: Sort,
+    opt_ops: OptOps,
+    res_ops: ResOps,
+    seq: u32,
+    pre_tag: String,
+    /// function name -> declaration index (the later one wins if names repeat)
+    fn_index: HashMap<String, usize>,
+    g: RefCell<GState>,
 }
 
-/// typeinfo.py `_deps`: field dependencies on declared user types (no duplicates, first-appearance order).
+/// typeinfo.py `_deps`: field dependencies on declared user types (no duplicates, first-appearance order),
+/// a nominal reference anywhere inside a field type (nested arguments included) is an edge.
 fn deps(d: &TypeDecl, uniq: &[TypeDecl]) -> Vec<usize> {
     let mut out: Vec<usize> = Vec::new();
     for f in d.all_fields() {
-        if let Ty::User(n) = &f.ty {
-            if let Some(i) = uniq.iter().position(|u| &u.name == n) {
+        for n in gtype::dependencies(&f.ty.to_gtype()) {
+            if let Some(i) = uniq.iter().position(|u| u.name == n) {
                 if !out.contains(&i) {
                     out.push(i);
                 }
@@ -315,6 +488,10 @@ fn visit(i: usize, uniq: &[TypeDecl], seen: &mut [bool], order: &mut Vec<usize>)
     order.push(i);
 }
 
+fn nokey(n: &str) -> String {
+    format!("'{}'", n)
+}
+
 impl Model {
     /// `Model(prog)`: bumps the sequence number anew (for the prototype and samples).
     pub fn new(z: &Z3, pre: &Prelude, decls: &[TypeDecl]) -> Model {
@@ -324,9 +501,20 @@ impl Model {
         }
     }
 
+    /// `Model(prog)` with a caller-chosen sequence number and no function names (no abstract sorts can be named).
+    pub fn with_seq(z: &Z3, pre: &Prelude, decls: &[TypeDecl], seq: u32) -> Result<Model, String> {
+        Model::with_seq_fns(z, pre, decls, &[], seq)
+    }
+
+    /// `Model(prog)` of a checked program: `fns` = the function names in declaration order (abstract sorts are named by index).
+    pub fn for_program(z: &Z3, pre: &Prelude, decls: &[TypeDecl], prog: &past::Program, seq: u32) -> Result<Model, String> {
+        let fns: Vec<String> = prog.functions.iter().map(|f| f.name.clone()).collect();
+        Model::with_seq_fns(z, pre, decls, &fns, seq)
+    }
+
     /// `Model(prog)` with a caller-chosen sequence number. `decls` is the program declaration order (if a name repeats, only the first declaration is used).
     /// If a field type has no sort (Python `KeyError`), `Err("'name'")`.
-    pub fn with_seq(z: &Z3, pre: &Prelude, decls: &[TypeDecl], seq: u32) -> Result<Model, String> {
+    pub fn with_seq_fns(z: &Z3, pre: &Prelude, decls: &[TypeDecl], fns: &[String], seq: u32) -> Result<Model, String> {
         let mut uniq: Vec<TypeDecl> = Vec::new();
         for d in decls {
             if !uniq.iter().any(|u| u.name == d.name) {
@@ -346,18 +534,34 @@ impl Model {
         by_sort.insert(pre.opt.sort.name(), Ty::Opt);
         by_sort.insert(pre.res.sort.name(), Ty::Res);
 
+        let mut fn_index: HashMap<String, usize> = HashMap::new();
+        for (i, n) in fns.iter().enumerate() {
+            fn_index.insert(n.clone(), i);
+        }
+
         let mut m = Model {
-            order: Vec::new(),
+            z: z.clone(),
+            // the declarations are visible from the start: a generic instance built while the first types are created needs them
+            order: order.clone(),
             sorts: HashMap::new(),
             structs: HashMap::new(),
             enums: HashMap::new(),
-            by_sort,
+            by_sort: RefCell::new(by_sort),
             opt_sort: pre.opt.sort.clone(),
             res_sort: pre.res.sort.clone(),
             int_sort: z.int_sort(),
             bool_sort: z.bool_sort(),
+            opt_ops: OptOps::legacy(pre),
+            res_ops: ResOps::legacy(pre),
+            seq,
+            pre_tag: pre_tag.clone(),
+            fn_index,
+            g: RefCell::new(GState::default()),
         };
         for (idx, d) in order.iter().enumerate() {
+            if d.tparams > 0 {
+                continue;
+            }
             let tag = format!("{}t{}!", pre_tag, idx);
             match &d.kind {
                 TypeKind::Struct(fields) => {
@@ -373,7 +577,7 @@ impl Model {
                         return Err("datatype".to_string());
                     }
                     let DtCtor { ctor, accs, .. } = ctors.remove(0);
-                    m.by_sort.insert(sort.name(), Ty::User(d.name.clone()));
+                    m.by_sort.borrow_mut().insert(sort.name(), Ty::User(d.name.clone()));
                     m.structs.insert(d.name.clone(), StructFns { ctor, accs });
                     m.sorts.insert(d.name.clone(), sort);
                 }
@@ -395,25 +599,273 @@ impl Model {
                         .zip(ctors)
                         .map(|(v, c)| (v.name.clone(), VariantFns { ctor: c.ctor, rec: c.rec, accs: c.accs }))
                         .collect();
-                    m.by_sort.insert(sort.name(), Ty::User(d.name.clone()));
+                    m.by_sort.borrow_mut().insert(sort.name(), Ty::User(d.name.clone()));
                     m.enums.insert(d.name.clone(), fns);
                     m.sorts.insert(d.name.clone(), sort);
                 }
             }
         }
-        m.order = order;
         Ok(m)
     }
 
-    /// `Model.sort_of` (Python raises `KeyError(name)` when there is no sort).
+    // ---------- G3 A2: abstract sorts and generic datatype instances ----------
+
+    /// Fresh uninterpreted sort `g3!<function-declaration-index>!T<i>` of a function type parameter.
+    pub fn abstract_sort(&self, g: &GType) -> Sort {
+        let owner = g.owner.clone().unwrap_or_default();
+        let key = (owner.clone(), g.index);
+        if let Some(s) = self.g.borrow().abstract_.get(&key) {
+            return s.clone();
+        }
+        let fname = owner.strip_prefix("fn:").unwrap_or(&owner).to_string();
+        let first = match self.fn_index.get(&fname) {
+            Some(i) => i.to_string(),
+            None => fname.clone(),
+        };
+        let name = format!("g3!{}!T{}", first, g.index);
+        let s = self.z.declare_sort(&name);
+        let mut st = self.g.borrow_mut();
+        st.abstract_.insert(key, s.clone());
+        st.abs_name.insert(name, g.name.clone());
+        s
+    }
+
+    /// The spelling of the type parameter whose abstract sort is called `sort_name`.
+    pub fn abs_name_of(&self, sort_name: &str) -> Option<String> {
+        self.g.borrow().abs_name.get(sort_name).cloned()
+    }
+
+    /// The source name (`Some`, `None`, `Ok`, `Err`) of a constructor of a generic Option/Result instance.
+    pub fn short_of(&self, ctor_name: &str) -> Option<&'static str> {
+        self.g.borrow().short.get(ctor_name).copied()
+    }
+
+    /// `[(FieldDecl, field type)]` with the type arguments of `ty` substituted into the declared field types.
+    pub fn fields_of(&self, ty: &Ty, variant: Option<&str>) -> Result<Vec<(FieldDecl, Ty)>, String> {
+        let name = ty.name();
+        let d = self.decl_opt(name).ok_or_else(|| nokey(name))?;
+        let flds: &[FieldDecl] = match &d.kind {
+            TypeKind::Struct(fs) => fs,
+            TypeKind::Enum(vs) => {
+                let v = variant.ok_or_else(|| format!("enum {} needs a variant", name))?;
+                match vs.iter().find(|x| x.name == v) {
+                    Some(x) => &x.fields,
+                    None => return Err(format!("'{}::{}'", name, v)),
+                }
+            }
+        };
+        if d.tparams == 0 {
+            return Ok(flds.iter().map(|fd| (fd.clone(), fd.ty.clone())).collect());
+        }
+        let m = gtype::bind_args(&gtype::decl_owner(name), d.tparams, ty.args()).map_err(|e| e.to_string())?;
+        Ok(flds.iter().map(|fd| (fd.clone(), Ty::from_gtype(&gtype::substitute(&fd.ty.to_gtype(), &m)))).collect())
+    }
+
+    /// datatype of Option<X> / Result<X> / D<X..>, built once per complete structural type
+    fn instance(&self, g: &GType) -> Result<Sort, String> {
+        if let Some(s) = self.g.borrow().ginst.get(g) {
+            return Ok(s.clone());
+        }
+        let n = greg_number(self.seq, g);
+        let tag = format!("{}g{}!", self.pre_tag, n);
+        let dtname = format!("{}{}", tag, gtype::format_type(g));
+        let ty = Ty::from_gtype(g);
+        let sort: Sort;
+        if g.name == "option" {
+            let ps = self.try_sort_of(&Ty::from_gtype(&g.args[0]))?;
+            let spec = DtSpec {
+                name: dtname,
+                ctors: vec![
+                    DtCtorSpec { name: format!("{}Some", tag), fields: vec![(format!("{}Some.val", tag), ps)] },
+                    DtCtorSpec { name: format!("{}None", tag), fields: Vec::new() },
+                ],
+            };
+            let mut dt = self.z.create_datatypes(&[spec]);
+            let DtSort { sort: s, ctors } = dt.pop().ok_or("datatype")?;
+            sort = s;
+            self.g.borrow_mut().gopt.insert(
+                g.clone(),
+                OptOps {
+                    some: ctors[0].ctor.clone(),
+                    none: ctors[1].ctor.apply(&[]),
+                    is_some: ctors[0].rec.clone(),
+                    is_none: ctors[1].rec.clone(),
+                    sval: ctors[0].accs[0].clone(),
+                },
+            );
+            let mut st = self.g.borrow_mut();
+            st.short.insert(format!("{}Some", tag), "Some");
+            st.short.insert(format!("{}None", tag), "None");
+        } else if g.name == "result" {
+            let ps = self.try_sort_of(&Ty::from_gtype(&g.args[0]))?;
+            let spec = DtSpec {
+                name: dtname,
+                ctors: vec![
+                    DtCtorSpec { name: format!("{}Ok", tag), fields: vec![(format!("{}Ok.val", tag), ps)] },
+                    DtCtorSpec {
+                        name: format!("{}Err", tag),
+                        fields: vec![(format!("{}Err.val", tag), self.int_sort.clone())],
+                    },
+                ],
+            };
+            let mut dt = self.z.create_datatypes(&[spec]);
+            let DtSort { sort: s, ctors } = dt.pop().ok_or("datatype")?;
+            sort = s;
+            self.g.borrow_mut().gres.insert(
+                g.clone(),
+                ResOps {
+                    ok: ctors[0].ctor.clone(),
+                    err: ctors[1].ctor.clone(),
+                    is_ok: ctors[0].rec.clone(),
+                    is_err: ctors[1].rec.clone(),
+                    oval: ctors[0].accs[0].clone(),
+                    eval: ctors[1].accs[0].clone(),
+                },
+            );
+            let mut st = self.g.borrow_mut();
+            st.short.insert(format!("{}Ok", tag), "Ok");
+            st.short.insert(format!("{}Err", tag), "Err");
+        } else {
+            let d = self.decl_opt(&g.name).ok_or_else(|| nokey(&g.name))?;
+            match &d.kind {
+                TypeKind::Struct(_) => {
+                    let mut fl: Vec<(String, Sort)> = Vec::new();
+                    for (fd, ft) in self.fields_of(&ty, None)? {
+                        fl.push((format!("{}{}.{}", tag, d.name, fd.name), self.try_sort_of(&ft)?));
+                    }
+                    let nf = fl.len();
+                    let cn = format!("{}{}", tag, d.name);
+                    let spec = DtSpec { name: dtname, ctors: vec![DtCtorSpec { name: cn, fields: fl }] };
+                    let mut dt = self.z.create_datatypes(&[spec]);
+                    let DtSort { sort: s, mut ctors } = dt.pop().ok_or("datatype")?;
+                    if ctors.is_empty() {
+                        return Err("datatype".to_string());
+                    }
+                    let DtCtor { ctor, accs, .. } = ctors.remove(0);
+                    debug_assert_eq!(accs.len(), nf);
+                    sort = s;
+                    self.g.borrow_mut().gstruct.insert(g.clone(), StructFns { ctor, accs });
+                }
+                TypeKind::Enum(variants) => {
+                    let mut specs: Vec<DtCtorSpec> = Vec::new();
+                    for v in variants {
+                        let cn = format!("{}{}::{}", tag, d.name, v.name);
+                        let mut fs: Vec<(String, Sort)> = Vec::new();
+                        for (fd, ft) in self.fields_of(&ty, Some(&v.name))? {
+                            fs.push((format!("{}.{}", cn, fd.name), self.try_sort_of(&ft)?));
+                        }
+                        specs.push(DtCtorSpec { name: cn, fields: fs });
+                    }
+                    let mut dt = self.z.create_datatypes(&[DtSpec { name: dtname, ctors: specs }]);
+                    let DtSort { sort: s, ctors } = dt.pop().ok_or("datatype")?;
+                    sort = s;
+                    let fns: Vec<(String, VariantFns)> = variants
+                        .iter()
+                        .zip(ctors)
+                        .map(|(v, c)| (v.name.clone(), VariantFns { ctor: c.ctor, rec: c.rec, accs: c.accs }))
+                        .collect();
+                    self.g.borrow_mut().genum.insert(g.clone(), fns);
+                }
+            }
+        }
+        self.g.borrow_mut().ginst.insert(g.clone(), sort.clone());
+        self.by_sort.borrow_mut().insert(sort.name(), ty);
+        Ok(sort)
+    }
+
+    /// Operations of the Option datatype of `ty` (None / `Option<i64>` = the legacy one).
+    pub fn opt(&self, ty: Option<&Ty>) -> Result<OptOps, String> {
+        match ty {
+            None | Some(Ty::Opt) => Ok(self.opt_ops.clone()),
+            Some(Ty::Inst(g)) if g.name == "option" => {
+                self.instance(g)?;
+                self.g.borrow().gopt.get(g).cloned().ok_or_else(|| nokey("option"))
+            }
+            Some(t) => Err(nokey(t.name())),
+        }
+    }
+
+    /// Operations of the Result datatype of `ty` (None / `Result<i64>` = the legacy one).
+    pub fn res(&self, ty: Option<&Ty>) -> Result<ResOps, String> {
+        match ty {
+            None | Some(Ty::Res) => Ok(self.res_ops.clone()),
+            Some(Ty::Inst(g)) if g.name == "result" => {
+                self.instance(g)?;
+                self.g.borrow().gres.get(g).cloned().ok_or_else(|| nokey("result"))
+            }
+            Some(t) => Err(nokey(t.name())),
+        }
+    }
+
+    /// `(constructor, [accessor per field])` of a struct type.
+    pub fn struct_info(&self, ty: &Ty) -> Result<StructFns, String> {
+        match ty {
+            Ty::User(n) => self.structs.get(n).cloned().ok_or_else(|| nokey(n)),
+            Ty::Inst(g) => {
+                self.instance(g)?;
+                self.g.borrow().gstruct.get(g).cloned().ok_or_else(|| nokey(&g.name))
+            }
+            other => Err(nokey(other.name())),
+        }
+    }
+
+    /// `{variant: (constructor, recognizer, [accessor per field])}` of an enum type, in declaration order.
+    pub fn enum_info(&self, ty: &Ty) -> Result<Vec<(String, VariantFns)>, String> {
+        match ty {
+            Ty::User(n) => self.enums.get(n).cloned().ok_or_else(|| nokey(n)),
+            Ty::Inst(g) => {
+                self.instance(g)?;
+                self.g.borrow().genum.get(g).cloned().ok_or_else(|| nokey(&g.name))
+            }
+            other => Err(nokey(other.name())),
+        }
+    }
+
+    /// One variant of an enum type.
+    pub fn variant_fns(&self, ty: &Ty, variant: &str) -> Result<VariantFns, String> {
+        let all = self.enum_info(ty)?;
+        match all.into_iter().find(|(n, _)| n == variant) {
+            Some((_, f)) => Ok(f),
+            None => Err(nokey(variant)),
+        }
+    }
+
+    /// `TypeTable.is_struct` / `is_enum`: struct, enum, or None (no such user declaration).
+    pub fn nominal_kind(&self, ty: &Ty) -> Option<NomKind> {
+        if !matches!(ty, Ty::User(_) | Ty::Inst(_)) {
+            return None;
+        }
+        match &self.decl_opt(ty.name())?.kind {
+            TypeKind::Struct(_) => Some(NomKind::Struct),
+            TypeKind::Enum(_) => Some(NomKind::Enum),
+        }
+    }
+
+    /// The variant names of an enum type, in declaration order (empty for anything else).
+    pub fn variant_names(&self, ty: &Ty) -> Vec<String> {
+        match self.decl_opt(ty.name()).map(|d| &d.kind) {
+            Some(TypeKind::Enum(vs)) => vs.iter().map(|v| v.name.clone()).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// `TypeTable.field_index(ty, name, variant)`.
+    pub fn field_index_of(&self, ty: &Ty, field: &str, variant: Option<&str>) -> Result<usize, String> {
+        let fs = self.fields_of(ty, variant)?;
+        fs.iter().position(|(fd, _)| fd.name == field).ok_or_else(|| nokey(field))
+    }
+
+    /// `Model.try_sort_of` (Python `sort_of` raises `KeyError(name)` when there is no sort).
     pub fn try_sort_of(&self, ty: &Ty) -> Result<Sort, String> {
         match ty {
             Ty::I64 => Ok(self.int_sort.clone()),
             Ty::Bool => Ok(self.bool_sort.clone()),
             Ty::Opt => Ok(self.opt_sort.clone()),
             Ty::Res => Ok(self.res_sort.clone()),
-            Ty::User(n) => self.sorts.get(n).cloned().ok_or_else(|| format!("'{}'", n)),
-            Ty::Unit | Ty::Array(_) | Ty::Str => Err(format!("'{}'", ty.name())),
+            Ty::Param(g) => Ok(self.abstract_sort(g)),
+            Ty::User(n) => self.sorts.get(n).cloned().ok_or_else(|| nokey(n)),
+            Ty::Inst(g) => self.instance(g),
+            Ty::Unit | Ty::Array(_) | Ty::Str | Ty::GArray(_) => Err(nokey(ty.name())),
         }
     }
 
@@ -431,13 +883,13 @@ impl Model {
     pub fn sort_opt(&self, name: &str) -> Option<&Sort> {
         self.sorts.get(name)
     }
-    /// `Model.is_user(ty)`: is this a type that has a user sort?
+    /// `Model.is_user(ty)`: is this a user struct/enum type (generic applications included)?
     pub fn is_user(&self, ty: &Ty) -> bool {
-        matches!(ty, Ty::User(n) if self.sorts.contains_key(n))
+        matches!(ty, Ty::User(_) | Ty::Inst(_)) && self.decl_opt(ty.name()).is_some()
     }
     /// `Model.type_of(v)`: finds the Pruv type from the sort name of a datatype value (None if absent).
     pub fn type_of(&self, v: &Ast) -> Option<Ty> {
-        self.by_sort.get(&v.sort().name()).cloned()
+        self.by_sort.borrow().get(&v.sort().name()).cloned()
     }
 
     pub fn decl(&self, name: &str) -> &TypeDecl {
@@ -479,7 +931,7 @@ impl Model {
     pub fn variant_opt(&self, enum_name: &str, variant: &str) -> Option<&VariantFns> {
         self.enums.get(enum_name)?.iter().find(|(n, _)| n == variant).map(|(_, f)| f)
     }
-    /// The variant functions of an enum (declaration order).
+    /// The variant functions of a non-generic enum (declaration order).
     pub fn enum_variants(&self, enum_name: &str) -> Option<&[(String, VariantFns)]> {
         self.enums.get(enum_name).map(|v| v.as_slice())
     }
@@ -512,5 +964,16 @@ mod tests {
         assert_eq!(Ty::from_name("u8"), Ty::User("u8".to_string()));
         assert_eq!(Ty::from_name("str"), Ty::Str);
         assert_eq!(Ty::Str.name(), "str");
+    }
+
+    #[test]
+    fn structured_types_round_trip() {
+        let g = gtype::mk_option(GType::bool());
+        let t = Ty::from_name(&g.to_key());
+        assert_eq!(t, Ty::Inst(g.clone()));
+        assert_eq!(t.to_gtype(), g);
+        assert_eq!(Ty::from_gtype(&GType::option()), Ty::Opt);
+        let p = gtype::mk_param("fn:f", 0, "T");
+        assert_eq!(Ty::from_name(&gtype::mk_array(p.clone()).to_key()), Ty::GArray(p));
     }
 }

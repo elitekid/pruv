@@ -1,0 +1,23 @@
+// G3 A2 positive: constructor/selector laws of a two-parameter struct with independent sorts
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn project<A, B>(p: Pair<A, B>) -> A
+  ensures result == p.first
+{
+  return p.first;
+}
+
+fn make_pair<A, B>(a: A, b: B) -> Pair<A, B>
+  ensures result.first == a && result.second == b
+{
+  return Pair::<A, B> { first: a, second: b };
+}
+
+fn rebuild<A, B>(p: Pair<A, B>) -> Pair<A, B>
+  ensures result == p
+{
+  return Pair::<A, B> { first: p.first, second: p.second };
+}

@@ -1,0 +1,14 @@
+// G3 A2 (6.2 proof): variant_field of a generic enum without an is_variant guard; the Right arm has no Left payload
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B)
+}
+
+fn left_or<A, B>(c: Choice<A, B>, d: A) -> A
+  ensures result == variant_field(c, Choice::Left, value)
+{
+  match c {
+    Choice::Left(x) => { return x; }
+    Choice::Right(y) => { return d; }
+  }
+}

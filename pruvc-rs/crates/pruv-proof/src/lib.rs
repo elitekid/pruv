@@ -67,7 +67,8 @@ pub fn verify_program_opts(
     opts: &VerifyOptions,
     mut report: Option<&mut Vec<pruv_core::pyjson::Json>>,
 ) -> Result<Vec<PruvError>, String> {
-    if let Some(e) = pruv_core::typeinfo::g3_unimplemented_error(prog, "verify") { return Ok(vec![e]); } // G3 A1: until A2
+    // G3 A2: the verifier handles generics (no guard here); the code generators and the driver still reject them.
+    // The structured `[T]` is never a G2 hit (the plain `[i64]` is not either), so "array" needs no skip entry.
     if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(prog, "verify", None, &["array_u8", "array_bool", "str"], None) { return Ok(vec![e]); } // G2 B1
     let mut local = Trace::off();
     let trace: &mut Trace = match rec {
@@ -80,7 +81,7 @@ pub fn verify_program_opts(
         // Python builds the Model first regardless of the function count: a model construction failure occurs even with no functions.
         let z = Z3::new();
         let pre = Prelude::new(&z);
-        Model::with_seq(&z, &pre, &decls, seq)?;
+        Model::for_program(&z, &pre, &decls, prog, seq)?;
     }
     let mut errors: Vec<PruvError> = Vec::new();
     if opts.infer {
@@ -103,7 +104,7 @@ pub fn verify_program_opts(
             } else {
                 let z = Z3::new();
                 let pre = Prelude::new(&z);
-                let model = Model::with_seq(&z, &pre, &decls, seq)?;
+                let model = Model::for_program(&z, &pre, &decls, prog, seq)?;
                 let mut fv = FnVerifier::for_function(&z, &pre, &model, &mut *trace, prog, f);
                 fv.set_extra(res.extra());
                 fv.run()?;
@@ -121,7 +122,7 @@ pub fn verify_program_opts(
         // and the chosen model differs (switching to one context per program left the counterexample difference unchanged, RESULTS §18).
         let z = Z3::new();
         let pre = Prelude::new(&z);
-        let model = Model::with_seq(&z, &pre, &decls, seq)?;
+        let model = Model::for_program(&z, &pre, &decls, prog, seq)?;
         let mut fv = FnVerifier::for_function(&z, &pre, &model, &mut *trace, prog, f);
         fv.run()?;
         errors.append(&mut fv.errors);

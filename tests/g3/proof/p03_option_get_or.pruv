@@ -1,0 +1,22 @@
+// G3 A2 positive: Option<T> datatype; guarded some_val in contracts; match binds a T payload
+fn get_or<T>(o: Option<T>, d: T) -> T
+  ensures is_some(o) ==> result == some_val(o)
+  ensures !is_some(o) ==> result == d
+{
+  match o {
+    Some(v) => { return v; }
+    None => { return d; }
+  }
+}
+
+fn wrap<T>(x: T) -> Option<T>
+  ensures is_some(result) && some_val(result) == x
+{
+  return Some::<T>(x);
+}
+
+fn nothing<T>() -> Option<T>
+  ensures !is_some(result)
+{
+  return None::<T>;
+}

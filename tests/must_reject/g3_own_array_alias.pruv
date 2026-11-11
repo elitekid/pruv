@@ -1,0 +1,5 @@
+// G3 A2 (6.2 ownership): a local [T] cannot alias another array; it needs alloc, copy or a call
+fn alias<T: Element>(a: [T]) -> i64 {
+  let b: [T] = a;
+  return len(b);
+}

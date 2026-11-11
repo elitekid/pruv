@@ -400,6 +400,8 @@ impl<'a> FnVerifier<'a> {
 
     /// verify.py `cex` (line 292): the model value for each variable of the state. Variables that fail to evaluate are skipped (Python `except: pass`).
     fn cex(&self, m: &ZModel, senv: &Env) -> Vec<(String, Json)> {
+        // G3 A2 (4.7): the opaque ordinals are per counterexample
+        self.opq.borrow_mut().clear();
         let mut out: Vec<(String, Json)> = Vec::new();
         for (name, v) in &senv.0 {
             if let Some(j) = self.cex_one(m, v) {
@@ -417,9 +419,11 @@ impl<'a> FnVerifier<'a> {
                 let mut els: Vec<Json> = Vec::new();
                 for i in 0..cnt {
                     let sel = a.a.select(&self.z.int(i as i64));
-                    // G2 A5: bool elements are JSON true/false
+                    // G2 A5: bool elements are JSON true/false; G3: abstract elements are opaque tokens
                     if a.elem == crate::model::Elem::Bool {
                         els.push(Json::Bool(m.eval(&sel)?.is_true()));
+                    } else if a.elem == crate::model::Elem::Abs {
+                        els.push(self.opaque_json(&m.eval(&sel)?));
                     } else {
                         els.push(Json::Num(m.eval(&sel)?.numeral_string()?));
                     }
@@ -428,53 +432,116 @@ impl<'a> FnVerifier<'a> {
             }
             Val::Int(a) => Some(Json::Num(m.eval(a)?.numeral_string()?)),
             Val::Bool(a) => Some(Json::Bool(m.eval(a)?.is_true())),
-            Val::Dt(a, _) => Some(Json::Str(self.fmt_val(&m.eval(a)?))),
+            // G3: an abstract value is the opaque dict at the top (a string `T:opaque#N` only inside a datatype)
+            Val::Dt(a, _) => Some(self.fmt_val_j(&m.eval(a)?, false)),
             Val::Unit => None,
         }
     }
 
+    /// verify.py `opaque` (4.7): the token of an abstract model value `v`; ordinals are per abstract sort, in first-seen order
+    /// of this counterexample, and equal model values share one. (type parameter spelling, "opaque#N")
+    fn opaque(&self, v: &Ast) -> (String, String) {
+        let sname = v.sort().name();
+        let key = v.sexpr();
+        let mut tab = self.opq.borrow_mut();
+        let list = tab.entry(sname.clone()).or_default();
+        let idx = match list.iter().position(|k| *k == key) {
+            Some(i) => i,
+            None => {
+                list.push(key);
+                list.len() - 1
+            }
+        };
+        (self.model.abs_name_of(&sname).unwrap_or_default(), format!("opaque#{}", idx))
+    }
+
+    fn opaque_json(&self, v: &Ast) -> Json {
+        let (tp, val) = self.opaque(v);
+        Json::Obj(vec![("type_parameter".to_string(), Json::Str(tp)), ("value".to_string(), Json::Str(val))])
+    }
+
     /// verify.py `fmt_val` (line 310): z3 model value → one-line Pruv syntax (user struct/enum); unknown shapes use z3py's `str()`.
-    pub(crate) fn fmt_val(&self, v: &Ast) -> String {
+    /// G3: an abstract value is its opaque token (a dict at the top, `T:opaque#N` inside a datatype).
+    pub(crate) fn fmt_val_j(&self, v: &Ast, nested: bool) -> Json {
+        let model = self.model;
         if v.sort().is_int() && v.is_numeral() {
             if let Some(n) = v.numeral_string() {
-                return n;
+                return Json::Str(n);
             }
         }
         if v.sort().is_bool() {
-            return if v.is_true() { "true" } else { "false" }.to_string();
+            return Json::Str(if v.is_true() { "true" } else { "false" }.to_string());
         }
-        let model = self.model;
-        let tyname = match model.type_of(v) {
-            Some(crate::model::Ty::User(n)) if model.sort_opt(&n).is_some() => n,
-            _ => return py_str(v),
+        if model.abs_name_of(&v.sort().name()).is_some() {
+            if nested {
+                let (tp, val) = self.opaque(v);
+                return Json::Str(format!("{}:{}", tp, val));
+            }
+            return self.opaque_json(v);
+        }
+        let ty = match model.type_of(v) {
+            Some(t) => t,
+            None => return Json::Str(py_str(v)),
         };
-        if !v.is_app() {
-            return py_str(v);
+        let kid_str = |c: &Ast| -> String {
+            match self.fmt_val_j(c, true) {
+                Json::Str(s) => s,
+                _ => py_str(c),
+            }
+        };
+        if let crate::model::Ty::Inst(g) = &ty {
+            if (g.name == "option" || g.name == "result") && v.is_app() {
+                let dn = v.decl_name().unwrap_or_default();
+                let nm = model.short_of(&dn).map(|s| s.to_string()).unwrap_or(dn);
+                let ks: Vec<String> = v.children().iter().map(|c| kid_str(c)).collect();
+                return Json::Str(if ks.is_empty() { nm } else { format!("{}({})", nm, ks.join(", ")) });
+            }
+        }
+        if !model.is_user(&ty) || !v.is_app() {
+            return Json::Str(py_str(v));
         }
         let dn = v.decl_name().unwrap_or_default();
-        let kids: Vec<String> = v.children().iter().map(|c| self.fmt_val(c)).collect();
-        if let Some(sf) = model.struct_fns_opt(&tyname) {
-            if let Some(fields) = model.struct_fields_opt(&tyname) {
-                if sf.ctor.name() == dn && fields.len() == kids.len() {
-                    if kids.is_empty() {
-                        return tyname;
+        let kids: Vec<String> = v.children().iter().map(|c| kid_str(c)).collect();
+        let tyname = ty.name().to_string();
+        match model.nominal_kind(&ty) {
+            Some(crate::model::NomKind::Struct) => {
+                if let (Ok(sf), Some(decl)) = (model.struct_info(&ty), model.decl_opt(&tyname)) {
+                    if let crate::model::TypeKind::Struct(fields) = &decl.kind {
+                        if sf.ctor.name() == dn && fields.len() == kids.len() {
+                            if kids.is_empty() {
+                                return Json::Str(tyname);
+                            }
+                            let parts: Vec<String> =
+                                fields.iter().zip(kids.iter()).map(|(fd, k)| format!("{}: {}", fd.name, k)).collect();
+                            return Json::Str(format!("{} {{ {} }}", tyname, parts.join(", ")));
+                        }
                     }
-                    let parts: Vec<String> =
-                        fields.iter().zip(kids.iter()).map(|(fd, k)| format!("{}: {}", fd.name, k)).collect();
-                    return format!("{} {{ {} }}", tyname, parts.join(", "));
                 }
             }
-        } else if let Some(vars) = model.enum_variants(&tyname) {
-            for (vn, vf) in vars {
-                if vf.ctor.name() == dn {
-                    if kids.is_empty() {
-                        return format!("{}::{}", tyname, vn);
+            Some(crate::model::NomKind::Enum) => {
+                if let Ok(vars) = model.enum_info(&ty) {
+                    for (vn, vf) in vars {
+                        if vf.ctor.name() == dn {
+                            if kids.is_empty() {
+                                return Json::Str(format!("{}::{}", tyname, vn));
+                            }
+                            return Json::Str(format!("{}::{}({})", tyname, vn, kids.join(", ")));
+                        }
                     }
-                    return format!("{}::{}({})", tyname, vn, kids.join(", "));
                 }
             }
+            None => {}
         }
-        py_str(v)
+        Json::Str(py_str(v))
+    }
+
+    /// `fmt_val` of a value that is never an abstract top-level one (kept for callers that need the string form).
+    #[allow(dead_code)]
+    pub(crate) fn fmt_val(&self, v: &Ast) -> String {
+        match self.fmt_val_j(v, true) {
+            Json::Str(s) => s,
+            _ => py_str(v),
+        }
     }
 }
 

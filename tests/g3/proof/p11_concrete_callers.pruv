@@ -1,0 +1,22 @@
+// G3 A2 positive: the call-site instantiation: first::<i64> and first::<bool> prove the substituted requires
+// and assume the substituted ensures in the caller's own sorts
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return a[0];
+}
+
+fn head_int(a: [i64]) -> i64
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return first::<i64>(a);
+}
+
+fn head_bool(a: [bool]) -> bool
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return first::<bool>(a);
+}

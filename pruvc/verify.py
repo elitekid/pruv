@@ -2,7 +2,7 @@
 import time
 import z3
 from vast import *
-from typeinfo import TypeTable, is_array, array_elem, array_of
+from typeinfo import (TypeTable, is_array, array_elem, array_of, bind_args, substitute, decl_owner, format_type)
 
 I64_MIN, I64_MAX = -2 ** 63, 2 ** 63 - 1
 MAX_LEN = 2 ** 40
@@ -11,6 +11,33 @@ TIMEOUT_MS = 8000
 _o = z3.Datatype("Opt"); _o.declare("some", ("sval", z3.IntSort())); _o.declare("none")
 _r = z3.Datatype("Res"); _r.declare("ok", ("oval", z3.IntSort())); _r.declare("err", ("eval", z3.IntSort()))
 Opt, Res = z3.CreateDatatypes(_o, _r)
+
+
+class _OptOps:
+    """the z3 operations of one Option datatype (legacy Opt, or a G3 instance Option<X>)"""
+    __slots__ = ("some", "none", "is_some", "is_none", "sval")
+
+    def __init__(s, some, none, is_some, is_none, sval):
+        s.some, s.none, s.is_some, s.is_none, s.sval = some, none, is_some, is_none, sval
+
+
+class _ResOps:
+    """the z3 operations of one Result datatype (legacy Res, or a G3 instance Result<X>)"""
+    __slots__ = ("ok", "err", "is_ok", "is_err", "oval", "eval")
+
+    def __init__(s, ok, err, is_ok, is_err, oval, eval_):
+        s.ok, s.err, s.is_ok, s.is_err, s.oval, s.eval = ok, err, is_ok, is_err, oval, eval_
+
+
+# the legacy datatypes go through the very same z3 functions as before, so G3-free SMT text is unchanged
+_OPT = _OptOps(Opt.some, Opt.none, Opt.is_some, Opt.is_none, Opt.sval)
+_RES = _ResOps(Res.ok, Res.err, Res.is_ok, Res.is_err, Res.oval, Res.eval)
+
+
+def arr_type(elem):
+    """array Type holding elem (legacy constants for i64/u8/bool, a structured [T] for an abstract element)"""
+    t = array_of(elem)
+    return t if t is not None else mk_array(elem)
 
 _MODEL_SEQ = [0]
 
@@ -121,7 +148,19 @@ class Model:
         s.by_sort = {Opt.name(): OPTION, Res.name(): RESULT}
         _MODEL_SEQ[0] += 1
         pre = "m%d" % _MODEL_SEQ[0]
+        # G3 A2: generic declarations are instantiated lazily, one datatype per complete structural type
+        s.pre = pre
+        s.fn_index = {f.name: i for i, f in enumerate(prog.functions)}
+        s.gcount = 0
+        s.ginst = {}        # Type (Option<X>, Result<X>, D<..>) -> z3 sort
+        s.gopt, s.gres = {}, {}
+        s.gstruct, s.genum = {}, {}
+        s.abstract = {}     # (owner, index) -> uninterpreted sort of a function type parameter
+        s.abs_name = {}     # sort name -> type-parameter spelling (counterexample rendering)
+        s.short = {}        # constructor name of a generic Option/Result instance -> source name
         for idx, d in enumerate(s.tt.order):
+            if d.tparams:
+                continue
             tag = "%st%d!" % (pre, idx)
             dt = z3.Datatype(tag + d.name)
             if isinstance(d, StructDecl):
@@ -141,7 +180,7 @@ class Model:
             s.by_sort[srt.name()] = Type(d.name)
 
     def is_user(s, ty):
-        return ty.name in s.sorts
+        return ty.owner is None and ty.name in s.tt.decls
 
     def sort_of(s, ty):
         if ty == I64:
@@ -152,7 +191,104 @@ class Model:
             return Opt
         if ty == RESULT:
             return Res
-        return s.sorts[ty.name]
+        if ty.owner is not None:
+            return s.abstract_sort(ty)
+        if not ty.args:
+            return s.sorts[ty.name]
+        return s.instance(ty)
+
+    # ---------- G3 A2: abstract sorts and generic datatype instances ----------
+    def abstract_sort(s, ty):
+        """fresh uninterpreted sort g3!<function-declaration-index>!T<i> of a function type parameter"""
+        key = (ty.owner, ty.index)
+        srt = s.abstract.get(key)
+        if srt is None:
+            fname = ty.owner[3:] if ty.owner.startswith("fn:") else ty.owner
+            name = "g3!%s!T%d" % (s.fn_index.get(fname, fname), ty.index)
+            srt = z3.DeclareSort(name)
+            s.abstract[key] = srt
+            s.abs_name[name] = ty.name
+        return srt
+
+    def fields_of(s, ty, variant=None):
+        """[(FieldDecl, field type)] with the type arguments of ty substituted into the declared field types"""
+        d = s.tt.decl(ty)
+        flds = s.tt.fields(ty, variant)
+        if not d.tparams:
+            return [(fd, fd.type) for fd in flds]
+        m = bind_args(decl_owner(ty.name), len(d.tparams), ty.args)
+        return [(fd, substitute(fd.type, m)) for fd in flds]
+
+    def instance(s, ty):
+        """datatype of Option<X> / Result<X> / D<X..>, built once per complete structural type"""
+        srt = s.ginst.get(ty)
+        if srt is not None:
+            return srt
+        s.gcount += 1
+        tag = "%sg%d!" % (s.pre, s.gcount)
+        dt = z3.Datatype(tag + format_type(ty))
+        if ty.name == "option":
+            ps = s.sort_of(ty.args[0])
+            dt.declare(tag + "Some", (tag + "Some.val", ps))
+            dt.declare(tag + "None")
+            srt = dt.create()
+            s.gopt[ty] = _OptOps(srt.constructor(0), srt.constructor(1)(), srt.recognizer(0), srt.recognizer(1),
+                                 srt.accessor(0, 0))
+            s.short[tag + "Some"], s.short[tag + "None"] = "Some", "None"
+        elif ty.name == "result":
+            ps = s.sort_of(ty.args[0])
+            dt.declare(tag + "Ok", (tag + "Ok.val", ps))
+            dt.declare(tag + "Err", (tag + "Err.val", z3.IntSort()))
+            srt = dt.create()
+            s.gres[ty] = _ResOps(srt.constructor(0), srt.constructor(1), srt.recognizer(0), srt.recognizer(1),
+                                 srt.accessor(0, 0), srt.accessor(1, 0))
+            s.short[tag + "Ok"], s.short[tag + "Err"] = "Ok", "Err"
+        else:
+            d = s.tt.decls[ty.name]
+            if isinstance(d, StructDecl):
+                fl = [(tag + d.name + "." + fd.name, s.sort_of(ft)) for fd, ft in s.fields_of(ty)]
+                dt.declare(tag + d.name, *fl)
+                srt = dt.create()
+                s.gstruct[ty] = (srt.constructor(0), [srt.accessor(0, j) for j in range(len(fl))])
+            else:
+                for v in d.variants:
+                    cn = tag + d.name + "::" + v.name
+                    dt.declare(cn, *[(cn + "." + fd.name, s.sort_of(ft)) for fd, ft in s.fields_of(ty, v.name)])
+                srt = dt.create()
+                s.genum[ty] = {}
+                for i, v in enumerate(d.variants):
+                    s.genum[ty][v.name] = (srt.constructor(i), srt.recognizer(i),
+                                           [srt.accessor(i, j) for j in range(len(v.fields))])
+        s.ginst[ty] = srt
+        s.by_sort[srt.name()] = ty
+        return srt
+
+    def opt(s, ty):
+        """operations of the Option datatype of ty (None / Option<i64> = the legacy one)"""
+        if ty is None or ty == OPTION:
+            return _OPT
+        s.instance(ty)
+        return s.gopt[ty]
+
+    def res(s, ty):
+        if ty is None or ty == RESULT:
+            return _RES
+        s.instance(ty)
+        return s.gres[ty]
+
+    def struct_info(s, ty):
+        """(constructor, [accessor per field]) of a struct type"""
+        if not ty.args:
+            return s.struct[ty.name]
+        s.instance(ty)
+        return s.gstruct[ty]
+
+    def enum_info(s, ty):
+        """{variant: (constructor, recognizer, [accessor per field])} of an enum type"""
+        if not ty.args:
+            return s.enum[ty.name]
+        s.instance(ty)
+        return s.genum[ty]
 
     def type_of(s, v):
         """Pruv Type of a z3 datatype value (Opt/Res/user), or None"""
@@ -321,6 +457,14 @@ class FnVerifier:
         s.aggs = {}
         s.lemmas = []
         s.lemma_keys = set()
+        s.theta = {}        # G3 A2: callee type-parameter substitution while a callee contract is re-interpreted
+        s._opq = {}
+
+    def T(s, ty):
+        """type of a checked node under the current contract-instantiation substitution"""
+        if ty is not None and s.theta:
+            return substitute(ty, s.theta)
+        return ty
 
     def fresh(s, base, ty):
         s.k += 1
@@ -337,10 +481,13 @@ class FnVerifier:
             return mk_arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".len"), base, U8)
         if is_array(ty):
             elem = array_elem(ty)
-            esort = z3.BoolSort() if elem == BOOL else z3.IntSort()
+            if elem.owner is not None:      # G3: [T] = (Array Int sort(T), length)
+                esort = s.model.sort_of(elem)
+            else:
+                esort = z3.BoolSort() if elem == BOOL else z3.IntSort()
             return mk_arr(z3.Array(n, z3.IntSort(), esort), z3.Int(n + ".len"), base, elem)
-        if s.model.is_user(ty):
-            return z3.Const(n, s.model.sorts[ty.name])
+        if ty.owner is not None or ty.name in ("option", "result") or s.model.is_user(ty):
+            return z3.Const(n, s.model.sort_of(ty))
         raise Exception("fresh: " + ty.name)
 
     # ---------- value domain ----------
@@ -353,15 +500,27 @@ class FnVerifier:
         if ty == RESULT:
             return z3.And(z3.Implies(Res.is_ok(v), in_range(Res.oval(v))),
                           z3.Implies(Res.is_err(v), in_range(Res.eval(v))))
+        if ty.owner is not None:        # G3: an abstract value has no well-formedness predicate
+            return None
         m = s.model
-        if m.tt.is_struct(ty) and ty.name in m.struct:
-            accs = m.struct[ty.name][1]
-            return _conj([s.wf(fd.type, acc(v)) for fd, acc in zip(m.tt.fields(ty), accs)])
-        if m.tt.is_enum(ty) and ty.name in m.enum:
+        if ty.name == "option":         # G3: Option<X>, X other than i64
+            o = m.opt(ty)
+            w = s.wf(ty.args[0], o.sval(v))
+            return None if w is None else z3.Implies(o.is_some(v), w)
+        if ty.name == "result":
+            o = m.res(ty)
+            w = s.wf(ty.args[0], o.oval(v))
+            parts = [] if w is None else [z3.Implies(o.is_ok(v), w)]
+            parts.append(z3.Implies(o.is_err(v), in_range(o.eval(v))))
+            return _conj(parts)
+        if m.tt.is_struct(ty):
+            accs = m.struct_info(ty)[1]
+            return _conj([s.wf(ft, acc(v)) for (fd, ft), acc in zip(m.fields_of(ty), accs)])
+        if m.tt.is_enum(ty):
             parts = []
             for vd in m.tt.decl(ty).variants:
-                _, rec, accs = m.enum[ty.name][vd.name]
-                w = _conj([s.wf(fd.type, acc(v)) for fd, acc in zip(vd.fields, accs)])
+                _, rec, accs = m.enum_info(ty)[vd.name]
+                w = _conj([s.wf(ft, acc(v)) for (fd, ft), acc in zip(m.fields_of(ty, vd.name), accs)])
                 if w is not None:
                     parts.append(z3.Implies(rec(v), w))
             return _conj(parts)
@@ -373,9 +532,9 @@ class FnVerifier:
             return new
         m = s.model
         i = m.tt.field_index(ty, path[0])
-        ctor, accs = m.struct[ty.name]
+        ctor, accs = m.struct_info(ty)
         vals = [acc(cur) for acc in accs]
-        vals[i] = s.rebuild(m.tt.fields(ty)[i].type, vals[i], path[1:], new)
+        vals[i] = s.rebuild(m.fields_of(ty)[i][1], vals[i], path[1:], new)
         return ctor(*vals)
 
     # ---------- obligations ----------
@@ -478,14 +637,28 @@ class FnVerifier:
                 return
         pr.fail(cand, code, status)
 
+    def opaque(s, val):
+        """G3 A2 (4.7): token of an abstract model value; ordinals are per abstract sort, in first-seen order of
+        this counterexample, and equal model values share one"""
+        sname = val.sort().name()
+        tab = s._opq.setdefault(sname, {})
+        key = val.sexpr()
+        if key not in tab:
+            tab[key] = len(tab)
+        return {"type_parameter": s.model.abs_name[sname], "value": "opaque#%d" % tab[key]}
+
     def cex(s, m, st):
         out = {}
+        s._opq = {}
         for name, v in st.env.items():
             try:
                 if isinstance(v, Arr):
                     n = m.eval(v.n, model_completion=True).as_long()
                     if v.elem == BOOL:   # G2 A5: bool elements print as true/false
                         els = [z3.is_true(m.eval(z3.Select(v.a, i), model_completion=True))
+                               for i in range(min(max(n, 0), 8))]
+                    elif v.elem.owner is not None:   # G3: abstract elements are opaque tokens
+                        els = [s.opaque(m.eval(z3.Select(v.a, i), model_completion=True))
                                for i in range(min(max(n, 0), 8))]
                     else:
                         els = [m.eval(z3.Select(v.a, i), model_completion=True).as_long() for i in range(min(max(n, 0), 8))]
@@ -500,28 +673,36 @@ class FnVerifier:
                 pass
         return out
 
-    def fmt_val(s, v):
-        """z3 model value -> Pruv syntax on one line (user struct/enum); unknown shapes keep z3's str()"""
+    def fmt_val(s, v, nested=False):
+        """z3 model value -> Pruv syntax on one line (user struct/enum); unknown shapes keep z3's str().
+        G3: an abstract value is its opaque token (a dict at the top, `T:opaque#N` inside a datatype)."""
         try:
             if z3.is_int_value(v):
                 return str(v.as_long())
             if z3.is_bool(v):
                 return "true" if z3.is_true(v) else "false"
+            if v.sort().name() in s.model.abs_name:
+                tok = s.opaque(v)
+                return "%s:%s" % (tok["type_parameter"], tok["value"]) if nested else tok
             ty = s.model.type_of(v)
+            if ty is not None and ty.name in ("option", "result") and ty.args and z3.is_app(v):
+                nm = s.model.short.get(v.decl().name(), v.decl().name())
+                ks = [s.fmt_val(c, True) for c in v.children()]
+                return nm if not ks else "%s(%s)" % (nm, ", ".join(ks))
             if ty is None or not s.model.is_user(ty) or not z3.is_app(v):
                 return str(v)
             dn = v.decl().name()
-            kids = [s.fmt_val(c) for c in v.children()]
-            if ty.name in s.model.struct:
-                ctor, _ = s.model.struct[ty.name]
+            kids = [s.fmt_val(c, True) for c in v.children()]
+            if ty.name in s.model.struct or (ty.args and s.model.tt.is_struct(ty)):
+                ctor, _ = s.model.struct_info(ty)
                 decl = next((d for d in s.model.tt.order if d.name == ty.name), None)
                 if ctor.name() == dn and decl is not None and len(decl.fields) == len(kids):
                     if not kids:
                         return ty.name
                     return "%s { %s }" % (ty.name, ", ".join(
                         "%s: %s" % (fd.name, k) for fd, k in zip(decl.fields, kids)))
-            elif ty.name in s.model.enum:
-                for vn, (ctor, _, _) in s.model.enum[ty.name].items():
+            elif ty.name in s.model.enum or (ty.args and s.model.tt.is_enum(ty)):
+                for vn, (ctor, _, _) in s.model.enum_info(ty).items():
                     if ctor.name() == dn:
                         if not kids:
                             return "%s::%s" % (ty.name, vn)
@@ -588,14 +769,19 @@ class FnVerifier:
                 s.prove(st, g, z3.And(i >= 0, i < arr.n), e, "index_oob",
                         "index in bounds for %s[...]" % arr.name)
             v = z3.Select(arr.a, i)
-            if code and arr.elem != BOOL:   # G2 A5: a bool element is a Bool; no in_range assumption
+            # G2 A5: a bool element is a Bool; G3: an abstract element has no numeric domain: no in_range assumption
+            if code and arr.elem != BOOL and arr.elem.owner is None:
                 s.assume(st, g, in_range(v))
             return v
         if isinstance(e, Ctor):
+            cty = s.T(e.ty)
             if e.name == "None":
-                return Opt.none
+                return s.model.opt(cty).none
             v = s.ev(e.arg, st, g, code, env)
-            return {"Some": Opt.some, "Ok": Res.ok, "Err": Res.err}[e.name](v)
+            if e.name == "Some":
+                return s.model.opt(cty).some(v)
+            o = s.model.res(cty)
+            return o.ok(v) if e.name == "Ok" else o.err(v)
         if isinstance(e, Quant):
             lo = s.ev(e.lo, st, g, False, env)
             hi = s.ev(e.hi, st, g, False, env)
@@ -617,22 +803,32 @@ class FnVerifier:
             return s.call(e, st, g, code, env)
         if isinstance(e, StructLit):
             vals = [s.ev(fi.value, st, g, code, env) for fi in e.fields]
-            return s.model.struct[e.name][0](*vals)
+            sty = s.T(e.ty) if e.ty is not None else Type(e.name)
+            return s.model.struct_info(sty)[0](*vals)
         if isinstance(e, EnumCtor):
             vals = [s.ev(a, st, g, code, env) for a in e.args]
-            return s.model.enum[e.enum_name][e.variant][0](*vals)
+            ety = s.T(e.ty) if e.ty is not None else Type(e.enum_name)
+            return s.model.enum_info(ety)[e.variant][0](*vals)
         if isinstance(e, FieldAccess):
             v = s.ev(e.base, st, g, code, env)
             ty = s.model.type_of(v)
-            return s.model.struct[ty.name][1][s.model.tt.field_index(ty, e.field)](v)
+            return s.model.struct_info(ty)[1][s.model.tt.field_index(ty, e.field)](v)
         if isinstance(e, IsVariant):
             v = s.ev(e.value, st, g, code, env)
-            return s.model.enum[e.enum_name][e.variant][1](v)
+            return s.model.enum_info(s._enum_ty(e, v))[e.variant][1](v)
         if isinstance(e, VariantField):
             v = s.ev(e.value, st, g, code, env)
-            ety = Type(e.enum_name)
-            return s.model.enum[e.enum_name][e.variant][2][s.model.tt.field_index(ety, e.field, e.variant)](v)
+            ety = s._enum_ty(e, v)
+            return s.model.enum_info(ety)[e.variant][2][s.model.tt.field_index(ety, e.field, e.variant)](v)
         raise Exception("ev: %r" % e)
+
+    def _enum_ty(s, e, v):
+        """instantiated enum type of an is_variant / variant_field scrutinee: from its z3 sort (already
+        substituted), else from the checker's record, else the plain enum name"""
+        ty = s.model.type_of(v)
+        if ty is not None and ty.name == e.enum_name:
+            return ty
+        return Type(e.enum_name)
 
     # ---------- contract domain of variant_field lookups ----------
     def dom(s, e, st, g, env, kind=None):
@@ -670,8 +866,12 @@ class FnVerifier:
             parts = [s.dom(a, st, g, env, kind) for a in e.args]
             if wo and e.name in _TAG_FNS:
                 v = s.ev(e.args[0], st, g, False, env)
-                parts.append(Opt.is_some(v) if e.name == "some_val" else
-                             Res.is_ok(v) if e.name == "ok_val" else z3.Not(Res.is_ok(v)))
+                vty = s.model.type_of(v)       # G3: the Option/Result instance of the argument
+                if e.name == "some_val":
+                    parts.append(s.model.opt(vty).is_some(v))
+                else:
+                    ro = s.model.res(vty)
+                    parts.append(ro.is_ok(v) if e.name == "ok_val" else z3.Not(ro.is_ok(v)))
             return _conj(parts)
         if isinstance(e, StructLit):
             return _conj([s.dom(fi.value, st, g, env, kind) for fi in e.fields])
@@ -686,7 +886,7 @@ class FnVerifier:
             if not wv:
                 return inner
             v = s.ev(e.value, st, g, False, env)
-            return _conj([inner, s.model.enum[e.enum_name][e.variant][1](v)])
+            return _conj([inner, s.model.enum_info(s._enum_ty(e, v))[e.variant][1](v)])
         if isinstance(e, Quant):
             lo = s.ev(e.lo, st, g, False, env)
             hi = s.ev(e.hi, st, g, False, env)
@@ -812,6 +1012,9 @@ class FnVerifier:
             tname = getattr(e.ty, "name", None)
             # G2 A5: array_bool -> BOOL elements, no elem_range obligation
             aelem = U8 if tname == "array_u8" else BOOL if tname == "array_bool" else I64
+            aty = s.T(e.ty)
+            if aty is not None and aty.name == "array" and aty.args:   # G3: alloc of a [T]
+                aelem = aty.args[0]
             if aelem == U8:
                 s.prove(st, g, z3.And(args[1] >= 0, args[1] <= 255), e, "elem_range",
                         "u8 element range 0..=255 for the alloc fill value")
@@ -835,35 +1038,43 @@ class FnVerifier:
             return res
         if n == "print":
             return None
-        if n == "is_some": return Opt.is_some(args[0])
-        if n == "some_val": return Opt.sval(args[0])
-        if n == "is_ok": return Res.is_ok(args[0])
-        if n == "ok_val": return Res.oval(args[0])
-        if n == "err_val": return Res.eval(args[0])
+        if n in ("is_some", "some_val"):
+            o = s.model.opt(s.model.type_of(args[0]))     # G3: the datatype of the argument's own sort
+            return o.is_some(args[0]) if n == "is_some" else o.sval(args[0])
+        if n in ("is_ok", "ok_val", "err_val"):
+            o = s.model.res(s.model.type_of(args[0]))
+            return o.is_ok(args[0]) if n == "is_ok" else o.oval(args[0]) if n == "ok_val" else o.eval(args[0])
         f = s.funcs[n]
         cenv = {p.name: a for p, a in zip(f.params, args)}
-        if code:
-            # No domain proof of callee requires here: the callee's own run() already proved
-            # D(r) under "param wf + earlier requires (values and variant domains)"; the call site
-            # proves each earlier requires value and the args satisfy wf, so it would be redundant.
-            for r in f.requires:
-                ob = s.ev(r, st, g, False, cenv)
-                s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
-        if f.ret == UNIT:
-            return None
-        res = s.fresh("ret_" + n, f.ret)
-        if isinstance(res, Arr):
-            s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
-            if res.elem == U8:
-                s.assume(st, g, u8_dom(res))
-        else:
-            w = s.wf(f.ret, res)
-            if w is not None:
-                s.assume(st, g, w)
-        cenv["result"] = res
-        for en in f.ensures:
-            s.assume(st, g, s.ev(en, st, g, False, cenv))
-        return res
+        # G3 A2 (4.4): typed re-interpretation of the callee contract under the checker's recorded substitution
+        theta = e.inst["subst"] if getattr(e, "inst", None) else {}
+        saved, s.theta = s.theta, theta
+        try:
+            if code:
+                # No domain proof of callee requires here: the callee's own run() already proved
+                # D(r) under "param wf + earlier requires (values and variant domains)"; the call site
+                # proves each earlier requires value and the args satisfy wf, so it would be redundant.
+                for r in f.requires:
+                    ob = s.ev(r, st, g, False, cenv)
+                    s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
+            if f.ret == UNIT:
+                return None
+            rty = substitute(f.ret, theta) if theta else f.ret
+            res = s.fresh("ret_" + n, rty)
+            if isinstance(res, Arr):
+                s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
+                if res.elem == U8:
+                    s.assume(st, g, u8_dom(res))
+            else:
+                w = s.wf(rty, res)
+                if w is not None:
+                    s.assume(st, g, w)
+            cenv["result"] = res
+            for en in f.ensures:
+                s.assume(st, g, s.ev(en, st, g, False, cenv))
+            return res
+        finally:
+            s.theta = saved
 
     # ---------- statements ----------
     def ensures_ok(s, st, val, node):
@@ -910,7 +1121,7 @@ class FnVerifier:
                 continue
             old = h.env[n]
             if isinstance(old, Arr):
-                nv = s.fresh(n, array_of(old.elem))
+                nv = s.fresh(n, arr_type(old.elem))
                 h.pc.append(z3.And(nv.n >= 0, nv.n <= MAX_LEN))
                 if nv.elem == U8:
                     h.pc.append(u8_dom(nv))
@@ -964,20 +1175,26 @@ class FnVerifier:
             v = s.ev(stmt.scrutinee, st, [], True)
             outer = set(st.env)
             out = []
+            sty = s.model.type_of(v)     # G3: the scrutinee's complete (possibly generic) type
+            payload = sty.args[0] if sty is not None and sty.args and sty.name in ("option", "result") else I64
             for a in stmt.arms:
                 if a.enum_name is not None:
-                    ety = Type(a.enum_name)
-                    _, rec, accs = s.model.enum[a.enum_name][a.ctor]
+                    ety = sty if sty is not None and sty.name == a.enum_name else Type(a.enum_name)
+                    _, rec, accs = s.model.enum_info(ety)[a.ctor]
                     cond = rec(v)
                     vals = [acc(v) for acc in accs]
-                    ftys = [fd.type for fd in s.model.tt.fields(ety, a.ctor)]
+                    ftys = [ft for _, ft in s.model.fields_of(ety, a.ctor)]
                 else:
-                    if a.ctor == "Some": cond, val = Opt.is_some(v), Opt.sval(v)
-                    elif a.ctor == "None": cond, val = Opt.is_none(v), None
-                    elif a.ctor == "Ok": cond, val = Res.is_ok(v), Res.oval(v)
-                    else: cond, val = Res.is_err(v), Res.eval(v)
+                    if a.ctor in ("Some", "None"):
+                        o = s.model.opt(sty)
+                        if a.ctor == "Some": cond, val = o.is_some(v), o.sval(v)
+                        else: cond, val = o.is_none(v), None
+                    else:
+                        o = s.model.res(sty)
+                        if a.ctor == "Ok": cond, val = o.is_ok(v), o.oval(v)
+                        else: cond, val = o.is_err(v), o.eval(v)
                     vals = [] if val is None else [val]
-                    ftys = [I64] * len(vals)
+                    ftys = [I64 if a.ctor == "Err" else payload] * len(vals)
                 b = st.fork(cond)
                 for name, val, fty in zip(a.binders, vals, ftys):
                     b.env[name] = val
@@ -1119,11 +1336,10 @@ def verify_program(prog, rec=None, infer=False, report=None):
     """infer=True (STAGE1 B2, --infer): per function, explore template invariant candidates (infer.py), then
     verify the whole function with the survivors as extra loop invariants. report (a list) receives one record
     per loop (docs/STAGE1_B_INFER.md section 5). infer=False: exactly the old path."""
-    from typeinfo import g2_unimplemented_error, g3_unimplemented_error
-    g3err = g3_unimplemented_error(prog, "verify")  # G3 A1: generics stop here until A2
-    if g3err is not None:
-        return [g3err]
-    g2err = g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool", "str"))  # G2 B1
+    from typeinfo import g2_unimplemented_error
+    # G3 A2: the verifier handles generics (no guard here); the code generators and pruvc.py still reject them.
+    # "array" in skip exempts only the structured [T] (the plain [i64] is never a G2 hit).
+    g2err = g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool", "str", "array"))  # G2 B1
     if g2err is not None:
         return [g2err]
     errors = []

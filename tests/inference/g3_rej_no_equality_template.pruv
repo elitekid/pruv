@@ -1,0 +1,16 @@
+// G3 A2 inference (rejected): the ensures needs `forall k in 0..i: out[k] == v` as a loop invariant. Inference adds
+// no generic equality template (G3a), so the candidate is absent and the ensures is not proved
+fn all_v<T: Element>(n: i64, v: T) -> [T] ! alloc
+  requires 0 <= n && n <= 50
+  ensures forall j in 0..n: result[j] == v
+{
+  let mut out: [T] = alloc(n, v);
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    out[i] = v;
+    i = i + 1;
+  }
+  return out;
+}

@@ -1,0 +1,14 @@
+// G3 A2 (6.2 proof): a false field ensures; Pair<T, T> shares one sort, but first and second may differ
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn swap<T>(p: Pair<T, T>) -> Pair<T, T>
+  ensures result.first == p.first
+{
+  return Pair::<T, T> {
+    first: p.second,
+    second: p.first
+  };
+}

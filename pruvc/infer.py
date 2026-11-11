@@ -253,21 +253,43 @@ def _elem_ranges(f):
 _ELEM_NAME = {"array": "i64", "array_u8": "u8", "array_bool": "bool"}
 
 
-def _elem_types(f, w):
-    """G2 A5: {array name: "i64" | "u8" | "bool"} visible at the head of loop `w` (same node object).
-    Position-based: start from the parameters, walk statements in order; an array `let` sets the name, a
-    non-array `let` (shadowing) removes it; if/while/match bodies get a copy of the environment and their
-    lets do not leak out; match binders are not arrays and are removed. The environment at `w` is returned."""
+def _elem_name(ty):
+    """element kind of an array type: "i64" | "u8" | "bool", "abs" for a G3 [T] (abstract element), else None"""
+    if getattr(ty, "name", None) == "array" and getattr(ty, "args", ()):
+        return "abs"
+    return _ELEM_NAME.get(getattr(ty, "name", None))
+
+
+def _has_param(ty):
+    """does the type mention a type parameter anywhere (T, [T], Option<T>, Pair<T, i64>, ...)"""
+    return isinstance(ty, Type) and (ty.owner is not None or any(_has_param(a) for a in ty.args))
+
+
+def _abstract_expr(e, tenv):
+    """G3 A2 (4.8): does the candidate expression read a value whose static type involves a type parameter?
+    Decided on typed expressions: checker types on cloned nodes, and the position-based type table for names.
+    `len(x)` only reads the length, so it stays allowed for an abstract array."""
+    if isinstance(e, Call) and e.name == "len":
+        return False
+    if isinstance(e, Var) and _has_param(tenv.get(e.name)):
+        return True
+    if _has_param(getattr(e, "ty", None)):
+        return True
+    if isinstance(e, Index) and isinstance(e.array, Var) and _has_param(tenv.get(e.array.name)):
+        return True
+    return any(_abstract_expr(c, tenv) for c in _kids(e))
+
+
+def _scope_types(f, w):
+    """G3 A2: {name: Type} of the parameters and locals visible at the head of loop `w` (same node object).
+    Position-based, same walk rules as _elem_types: a `let` sets the name, if/while/match bodies get a copy of
+    the environment, match binders are removed."""
     def walk(stmts, env):
         for st in stmts:
             if st is w:
                 return dict(env)
             if isinstance(st, Let):
-                t = _ELEM_NAME.get(getattr(st.type, "name", None))
-                if t is not None:
-                    env[st.name] = t
-                else:
-                    env.pop(st.name, None)
+                env[st.name] = st.type
             elif isinstance(st, If):
                 r = walk(st.then, dict(env))
                 if r is None:
@@ -288,18 +310,28 @@ def _elem_types(f, w):
                         return r
         return None
 
-    env0 = {}
-    for p in f.params:
-        t = _ELEM_NAME.get(getattr(p.type, "name", None))
-        if t is not None:
-            env0[p.name] = t
+    env0 = {p.name: p.type for p in f.params}
     r = walk(f.body, dict(env0))
-    return r if r is not None else env0   # same fallback as the Rust port (parameters only)
+    return r if r is not None else env0
+
+
+def _elem_types(f, w):
+    """G2 A5: {array name: "i64" | "u8" | "bool" | "abs"} visible at the head of loop `w` (same node object).
+    Position-based: start from the parameters, walk statements in order; an array `let` sets the name, a
+    non-array `let` (shadowing) removes it; if/while/match bodies get a copy of the environment and their
+    lets do not leak out; match binders are not arrays and are removed. The environment at `w` is returned."""
+    out = {}
+    for n, t in _scope_types(f, w).items():
+        k = _elem_name(t)
+        if k is not None:
+            out[n] = k
+    return out
 
 
 def _reads_bool_array(e, et):
-    """does e contain an Index whose array is a Var naming a [bool] array"""
-    if isinstance(e, Index) and isinstance(e.array, Var) and et.get(e.array.name) == "bool":
+    """does e contain an Index whose array is a Var naming a [bool] array (G3: or a [T] array of abstract
+    elements, "abs"): no element-specific template may read such an element"""
+    if isinstance(e, Index) and isinstance(e.array, Var) and et.get(e.array.name) in ("bool", "abs"):
         return True
     return any(_reads_bool_array(c, et) for c in _kids(e))
 
@@ -401,10 +433,14 @@ def _gen(f, w, block, idx, kname, ranges):
     asg = _assign_stmts(w.body, [])
     out = []
     et = _elem_types(f, w)   # G2 A5: position-based table at loop w
+    tenv = _scope_types(f, w)   # G3 A2: position-based type table at loop w
 
     def add(kind, build):
         try:
             e = build()
+            # G3 A2 (4.8): no template may read an abstract value (decided on typed expressions)
+            if _abstract_expr(e, tenv):
+                return
             # G2 A2: kinds 5..14 never read/write an element of a [bool] array
             if kind >= 5 and _reads_bool_array(e, et):
                 return

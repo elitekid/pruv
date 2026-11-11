@@ -1,0 +1,15 @@
+// G3 A2 inference (accepted): a loop-carried local of the abstract type T. Scalar templates never describe it
+// (no numeric or boolean candidate over `best`); the counter candidate `0 <= i` makes the index safe.
+fn keep_last<T: Element>(a: [T], d: T) -> T
+  requires len(a) > 0
+{
+  let mut best: T = d;
+  let mut i: i64 = 0;
+  while i < len(a)
+    decreases len(a) - i
+  {
+    best = a[i];
+    i = i + 1;
+  }
+  return best;
+}

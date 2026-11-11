@@ -1,0 +1,4 @@
+// G3 A2 (6.2 refinements): an element range on [T]; only the length of a [T] can be bounded
+fn bounded<T: Element>(a: [T | 0..=5]) -> i64 {
+  return 0;
+}

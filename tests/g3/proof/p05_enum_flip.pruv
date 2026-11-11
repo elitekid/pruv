@@ -1,0 +1,20 @@
+// G3 A2 positive: a generic enum with two parameters; flip exchanges the variants; is_variant on instantiated enums
+enum Choice<A, B> {
+  Left(value: A),
+  Right(value: B)
+}
+
+fn flip<A, B>(c: Choice<A, B>) -> Choice<B, A>
+  ensures is_variant(result, Choice::Right) == is_variant(c, Choice::Left)
+{
+  match c {
+    Choice::Left(x) => { return Choice::<B, A>::Right(x); }
+    Choice::Right(y) => { return Choice::<B, A>::Left(y); }
+  }
+}
+
+fn keep<A, B>(c: Choice<A, B>) -> Choice<A, B>
+  ensures result == c
+{
+  return c;
+}

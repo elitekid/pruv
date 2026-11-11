@@ -1,0 +1,14 @@
+// G3 A2 positive: [T] = (Array Int sort(T), length); guarded indexing; requires establish the index obligations
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return a[0];
+}
+
+fn last<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[len(a) - 1]
+{
+  return a[len(a) - 1];
+}

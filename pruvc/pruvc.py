@@ -60,11 +60,6 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     src = open(path, encoding="utf-8").read()
     prog = parse(src)
     check(prog)
-    # G3 A1 staging guard: the verifier and both code generators do not support generics yet; reject explicitly
-    # (also with --no-verify) instead of crashing. Removed when the later G3 batches land.
-    g3err = g3_unimplemented_error(prog, "codegen")
-    if g3err is not None:
-        return [g3err]
     if verify:
         from verify import verify_program
         if infer:
@@ -78,6 +73,12 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
+    # G3 A2 staging guard: the verifier handles generics (proof errors in generic programs are reported above),
+    # but both code generators do not yet; reject explicitly here, before code generation, also with --no-verify.
+    # Removed when the A3/A4 batches land.
+    g3err = g3_unimplemented_error(prog, "codegen")
+    if g3err is not None:
+        return [g3err]
     # G2: runs after verify too; array types that have no code-generation layer yet are rejected.
     # [u8] (A3·A4), [bool] (A5) and str (B2) are implemented by every back end.
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2

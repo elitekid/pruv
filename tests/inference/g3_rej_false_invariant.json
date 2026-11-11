@@ -1,0 +1,1 @@
+{"expect": {"stage": "verify", "code": "invariant_preserved"}, "noinfer": "reject", "status": {"fill2": "selected"}, "note": "G3 A2: a false explicit abstract-equality invariant is reported by the final verification"}

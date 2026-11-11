@@ -1,0 +1,10 @@
+// G3 A2 (6.2 proof): the substituted requires `len(a) > 0` of first::<T> is not established by the generic caller
+fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+{
+  return a[0];
+}
+
+fn caller<T: Element>(a: [T]) -> T {
+  return first::<T>(a);
+}

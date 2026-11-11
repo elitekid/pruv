@@ -1,0 +1,4 @@
+// G3 A2 (6.2 proof): a[0] on a generic array without requires len(a) > 0
+fn first<T: Element>(a: [T]) -> T {
+  return a[0];
+}

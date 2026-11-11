@@ -1,0 +1,1 @@
+{"stage": "verify", "code": "ensures", "cex_contains": ["opaque#0", "type_parameter"]}

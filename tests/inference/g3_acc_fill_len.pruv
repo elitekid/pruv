@@ -1,0 +1,17 @@
+// G3 A2 inference (accepted): a generic definition gets the length candidate `len(out) == n` and the counter
+// candidates; the final verification then proves the index and the ensures. No equality template over the abstract
+// elements is generated (kind 13 would be `forall k in 0..i: out[k] == v`).
+fn fill<T: Element>(n: i64, v: T) -> [T] ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+{
+  let mut out: [T] = alloc(n, v);
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    out[i] = v;
+    i = i + 1;
+  }
+  return out;
+}
