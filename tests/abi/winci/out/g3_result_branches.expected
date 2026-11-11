@@ -1,0 +1,12 @@
+res_bool(Ok(true)) = Ok(true)
+res_bool(Ok(false)) = Ok(false)
+res_bool(Err(3)) = Err(3)
+ok_bool(true) = Ok(true)
+ok_bool(false) = Ok(false)
+err_bool(-9) = Err(-9)
+code_of(Ok(false)) = 0
+code_of(Err(i64::MAX)) = 9223372036854775807
+code_of(Err(i64::MIN)) = -9223372036854775808
+res_point(Ok(sol::Point { x: 1, y: 2 })) = Ok(Point { x: 1, y: 2 })
+res_point(Err(4)) = Err(4)
+repeat res_bool n=20000 sum=6153826426665344879

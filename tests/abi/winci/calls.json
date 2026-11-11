@@ -79,5 +79,70 @@
     "slot_opt(sol::Slot { o: None, n: 1 })",
     {"repeat": "make_slot", "args": "(i % 2001) - 1000", "n": 100000},
     {"repeat": "slot_opt", "args": "sol::Slot { o: if i % 2 == 0 { Some(i) } else { None }, n: i }", "n": 100000}
+  ],
+  "g3_nested.pruv": [
+    "nest_id(sol::pruv_g3_t_4_Pair_2_ob_ri { first: Some(true), second: Ok(3) })",
+    "nest_id(sol::pruv_g3_t_4_Pair_2_ob_ri { first: None, second: Err(-7) })",
+    "nest_id(sol::pruv_g3_t_4_Pair_2_ob_ri { first: Some(false), second: Ok(i64::MIN) })",
+    "nest_pick(sol::pruv_g3_t_4_Pair_2_ob_ri { first: Some(true), second: Ok(1) }, sol::pruv_g3_t_4_Pair_2_b_ob { first: true, second: Some(false) })",
+    "nest_pick(sol::pruv_g3_t_4_Pair_2_ob_ri { first: None, second: Err(2) }, sol::pruv_g3_t_4_Pair_2_b_ob { first: false, second: None })",
+    {"repeat": "nest_id", "args": "sol::pruv_g3_t_4_Pair_2_ob_ri { first: if i % 3 == 0 { None } else { Some(i % 2 == 0) }, second: if i % 2 == 0 { Ok(i) } else { Err(-i) } }", "n": 20000}
+  ],
+  "g3_empty_struct.pruv": [
+    "marker_id(sol::Marker {})", "hold_marker(sol::Marker {})", "some_marker(sol::Marker {})", "no_marker()",
+    {"repeat": "some_marker", "args": "sol::Marker {}", "n": 20000}
+  ],
+  "g3_option_branches.pruv": [
+    "opt_bool(Some(true))", "opt_bool(Some(false))", "opt_bool(None)", "some_bool(true)", "some_bool(false)", "none_bool()",
+    "flag(Some(true))", "flag(Some(false))", "flag(None)",
+    "opt_point(Some(sol::Point { x: 1, y: -2 }))", "opt_point(Some(sol::Point { x: i64::MIN, y: i64::MAX }))", "opt_point(None)",
+    "opt_res(Some(Ok(5)))", "opt_res(Some(Err(i64::MIN)))", "opt_res(None)",
+    {"repeat": "opt_point", "args": "if i % 2 == 0 { Some(sol::Point { x: i, y: -i }) } else { None }", "n": 20000},
+    {"repeat": "opt_bool", "args": "if i % 3 == 0 { None } else { Some(i % 2 == 0) }", "n": 20000}
+  ],
+  "g3_result_branches.pruv": [
+    "res_bool(Ok(true))", "res_bool(Ok(false))", "res_bool(Err(3))", "ok_bool(true)", "ok_bool(false)", "err_bool(-9)",
+    "code_of(Ok(false))", "code_of(Err(i64::MAX))", "code_of(Err(i64::MIN))",
+    "res_point(Ok(sol::Point { x: 1, y: 2 }))", "res_point(Err(4))",
+    {"repeat": "res_bool", "args": "if i % 3 == 0 { Err(-i) } else { Ok(i % 2 == 0) }", "n": 20000}
+  ],
+  "g3_generic_enum.pruv": [
+    "choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Left(true))", "choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Left(false))",
+    "choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Right(7))", "choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Right(i64::MIN))",
+    "choice_flip(sol::pruv_g3_t_6_Choice_2_b_ob::Left(true))", "choice_flip(sol::pruv_g3_t_6_Choice_2_b_ob::Right(Some(false)))",
+    "choice_flip(sol::pruv_g3_t_6_Choice_2_b_ob::Right(None))",
+    {"repeat": "choice_id", "args": "if i % 2 == 0 { sol::pruv_g3_t_6_Choice_2_b_i::Left(i % 4 == 0) } else { sol::pruv_g3_t_6_Choice_2_b_i::Right(-i) }", "n": 20000}
+  ],
+  "g3_bool_array.pruv": [
+    "first_bool(&[true, false])", "first_bool(&[false])", "head_opt(&[])", "head_opt(&[true])", "head_opt(&[false, true])",
+    "fill_bool(0, true)", "fill_bool(3, true)", "fill_bool(5, false)",
+    {"repeat": "fill_bool", "args": "i % 10, i % 2 == 0", "n": 20000},
+    {"repeat": "head_opt", "args": "&[i % 2 == 0, true]", "n": 20000}
+  ],
+  "g3_wrappers.pruv": [
+    "build(1, true)", "build(i64::MIN, false)", "build(i64::MAX, true)",
+    "swap_ib(sol::pruv_g3_t_4_Pair_2_i_b { first: 5, second: true })",
+    "swap_ib(sol::pruv_g3_t_4_Pair_2_i_b { first: i64::MIN, second: false })",
+    {"repeat": "build", "args": "i, i % 2 == 0", "n": 20000}
+  ],
+  "g3_enum_tags.pruv": [
+    "left_bool(sol::pruv_g3_t_6_Choice_2_b_i::Left(true))", "left_bool(sol::pruv_g3_t_6_Choice_2_b_i::Left(false))",
+    "is_left(sol::pruv_g3_t_6_Choice_2_b_i::Left(true))", "is_left(sol::pruv_g3_t_6_Choice_2_b_i::Right(5))",
+    "opt_is_left(None)", "opt_is_left(Some(sol::pruv_g3_t_6_Choice_2_b_i::Left(false)))",
+    "opt_is_left(Some(sol::pruv_g3_t_6_Choice_2_b_i::Right(i64::MIN)))",
+    {"repeat": "is_left", "args": "if i % 2 == 0 { sol::pruv_g3_t_6_Choice_2_b_i::Left(true) } else { sol::pruv_g3_t_6_Choice_2_b_i::Right(i) }", "n": 20000}
+  ],
+  "g3_legacy_compat.pruv": [
+    "get_opt(5)", "get_opt(-3)", "get_opt(0)", "get_opt(1000000)",
+    "get_res(10, 2)", "get_res(7, 0)", "get_res(0, 5)",
+    "mix(Some(1), Some(true))", "mix(Some(1), None)", "mix(None, Some(true))", "mix(None, None)",
+    {"repeat": "get_opt", "args": "(i % 2001) - 1000", "n": 100000},
+    {"repeat": "get_res", "args": "i % 1001, i % 7", "n": 100000},
+    {"repeat": "mix", "args": "if i % 2 == 0 { Some(i) } else { None }, if i % 3 == 0 { None } else { Some(i % 2 == 0) }", "n": 20000}
+  ],
+  "g3_payload_eq.pruv": [
+    "same_opt(Some(true), Some(true))", "same_opt(Some(false), Some(false))", "same_opt(None, None)",
+    "same_res(Ok(true), Ok(true))", "same_res(Err(5), Err(5))", "same_res(Err(i64::MIN), Err(i64::MIN))",
+    {"repeat": "same_res", "args": "Err(i), Err(i)", "n": 20000}
   ]
 }

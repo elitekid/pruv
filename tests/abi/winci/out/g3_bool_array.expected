@@ -1,0 +1,10 @@
+first_bool(&[true, false]) = true
+first_bool(&[false]) = false
+head_opt(&[]) = None
+head_opt(&[true]) = Some(true)
+head_opt(&[false, true]) = Some(false)
+fill_bool(0, true) = []
+fill_bool(3, true) = [true, true, true]
+fill_bool(5, false) = [false, false, false, false, false]
+repeat fill_bool n=20000 sum=2702171983118705760
+repeat head_opt n=20000 sum=65730021906109920

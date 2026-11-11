@@ -75,33 +75,8 @@ pub extern "C" fn pruv_host_free(data: *mut i64, len: i64) {
 
 /// Number of i64 words in the external (pruv_abi_*) form (llvmgen.words).
 fn words(tt: &TypeTable, ty: &str) -> Result<i64, String> {
-    if is_gopt(ty) {
-        // G3: 1 + W(X) (+ 1 for the Result error word)
-        return Ok(1 + words(tt, g_arg(ty))? + if ty.starts_with("result<") { 1 } else { 0 });
-    }
-    match ty {
-        "i64" | "bool" => return Ok(1),
-        "option" | "result" => return Ok(2),
-        _ => {}
-    }
-    match decl(tt, ty)? {
-        TypeDecl::Struct(s) => {
-            let mut sum: i64 = 0;
-            for f in &s.fields {
-                sum += words(tt, &f.ty)?;
-            }
-            Ok(sum.max(1))
-        }
-        TypeDecl::Enum(e) => {
-            let mut sum: i64 = 1;
-            for v in &e.variants {
-                for f in &v.fields {
-                    sum += words(tt, &f.ty)?;
-                }
-            }
-            Ok(sum)
-        }
-    }
+    // the same (memoized) count as the wrapper generator, so both sides agree by construction
+    crate::llvmgen::words(tt, ty).map(|n| n as i64)
 }
 
 /// Python's `tt.decls[name]` KeyError (str(e) == the quoted name).

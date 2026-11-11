@@ -17,6 +17,9 @@ Case groups (every case once per compiler):
   invalid enum ordinals  a generic enum instance (also nested in Option) is rejected before requires/body, with and
                          without --trust-callers; an inactive Option payload is not checked
   nested values          Pair<Option<bool>, Result<i64>> round trip
+  R1 legacy -> generic   a legacy enum holding a generic enum: the inner ordinal is checked only on an active path
+  R2 dirty legacy input  a new-type output (Option/generic instance, nested) writes inactive words as zero
+  safe mode              --no-verify: a specialized callee's requires is enforced through a wrapper without one
   legacy                 Option<i64> keeps the two-register form
   allocation balance     generic [T] copies, reassignment and early return free everything they allocate
 Each case prints `ok <compiler>/<name>` / `FAIL <compiler>/<name>: reason`, then `N/N ok`.
@@ -112,6 +115,51 @@ fn legacy_opt(o: Option<i64>) -> Option<i64>
   return o;
 }
 
+enum Inner<T> {
+  A(value: T),
+  B,
+}
+
+enum Outer {
+  Empty,
+  Full(value: Inner<bool>),
+}
+
+enum Outer2 {
+  Nil,
+  Wrap(value: Outer),
+}
+
+enum E {
+  A,
+  B(value: i64),
+}
+
+fn id_outer(x: Outer) -> Outer
+{
+  return x;
+}
+
+fn id_outer2(x: Outer2) -> Outer2
+{
+  return x;
+}
+
+fn wrap_e(x: E) -> Option<E>
+{
+  return Some::<E>(x);
+}
+
+fn wrap_pair(x: E, y: E) -> Option<Pair<E, E>>
+{
+  return Some::<Pair<E, E>>(Pair::<E, E> { first: x, second: y });
+}
+
+fn echo_e(x: E) -> E
+{
+  return x;
+}
+
 fn dup<T: Element>(a: [T]) -> [T] ! alloc
   requires len(a) <= 100
   ensures len(result) == len(a)
@@ -158,6 +206,45 @@ fn pick_bool(a: [bool], early: bool) -> [bool] ! alloc
 }
 """
 
+# Compiled with --no-verify: the wrapper has no `requires`, so the specialized callee's contract is only enforced
+# by the safe-mode code the compiler emits (no proof discharges it).
+SOURCE_NV = """// G3 A4 safe-mode program (tests/abi/check_g3_abi.py), compiled with --no-verify
+fn same<T>(a: T, b: T) -> T
+  requires a == b
+{
+  return a;
+}
+
+fn same_nov(a: Option<bool>, b: Option<bool>) -> Option<bool>
+{
+  return same::<Option<bool>>(a, b);
+}
+"""
+
+CALLER_NV = """#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+extern void pruv_abi_same_nov(const int64_t *, const int64_t *, int64_t *);
+/* argv: fn  na a-words...  nb b-words...  nout */
+int main(int argc, char **argv) {
+    int64_t a[16], b[16], out[16];
+    int k = 2, na, nb, nout;
+    (void)argc;
+    for (int i = 0; i < 16; i++) { a[i] = 0; b[i] = 0; out[i] = 0x5a5a5a5a; }
+    na = atoi(argv[k++]);
+    for (int i = 0; i < na; i++) a[i] = atoll(argv[k++]);
+    nb = atoi(argv[k++]);
+    for (int i = 0; i < nb; i++) b[i] = atoll(argv[k++]);
+    nout = atoi(argv[k++]);
+    if (strcmp(argv[1], "same_nov") != 0) return 64;
+    pruv_abi_same_nov(a, b, out);
+    for (int i = 0; i < nout; i++) printf(i ? " %lld" : "%lld", (long long)out[i]);
+    printf("\\n");
+    return 0;
+}
+"""
+
 CALLER = """#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -170,6 +257,11 @@ extern void pruv_abi_res_bool(const int64_t *, int64_t *);
 extern void pruv_abi_same_opt(const int64_t *, const int64_t *, int64_t *);
 extern void pruv_abi_same_res(const int64_t *, const int64_t *, int64_t *);
 extern void pruv_abi_nest_id(const int64_t *, int64_t *);
+extern void pruv_abi_id_outer(const int64_t *, int64_t *);
+extern void pruv_abi_id_outer2(const int64_t *, int64_t *);
+extern void pruv_abi_wrap_e(const int64_t *, int64_t *);
+extern void pruv_abi_wrap_pair(const int64_t *, const int64_t *, int64_t *);
+extern void pruv_abi_echo_e(const int64_t *, int64_t *);
 extern int64_t pruv_abi_left_bool(const int64_t *);
 extern int64_t pruv_abi_opt_is_left(const int64_t *);
 extern Tagged pruv_abi_legacy_opt(int64_t, int64_t);
@@ -195,6 +287,11 @@ int main(int argc, char **argv) {
     else if (IS("same_opt")) pruv_abi_same_opt(a, b, out);
     else if (IS("same_res")) pruv_abi_same_res(a, b, out);
     else if (IS("nest_id")) pruv_abi_nest_id(a, out);
+    else if (IS("id_outer")) pruv_abi_id_outer(a, out);
+    else if (IS("id_outer2")) pruv_abi_id_outer2(a, out);
+    else if (IS("wrap_e")) pruv_abi_wrap_e(a, out);
+    else if (IS("wrap_pair")) pruv_abi_wrap_pair(a, b, out);
+    else if (IS("echo_e")) pruv_abi_echo_e(a, out);
     else if (IS("left_bool")) { printf("%lld\\n", (long long)pruv_abi_left_bool(a)); return 0; }
     else if (IS("opt_is_left")) { printf("%lld\\n", (long long)pruv_abi_opt_is_left(a)); return 0; }
     else if (IS("legacy_opt")) {
@@ -233,10 +330,10 @@ int main(int argc, char **argv) {
 
 class Case:
     def __init__(self, name, fn, a=(), b=(), nout=0, exit=0, out=None, err=None, err_absent=None, trust=False,
-                 balance=False):
+                 balance=False, prog="main"):
         self.name, self.fn, self.a, self.b, self.nout = name, fn, list(a), list(b), nout
         self.exit, self.out, self.err, self.err_absent = exit, out, err, err_absent
-        self.trust, self.balance = trust, balance
+        self.trust, self.balance, self.prog = trust, balance, prog
 
     def argv(self):
         return ([self.fn, str(len(self.a))] + [str(x) for x in self.a] + [str(len(self.b))] +
@@ -271,6 +368,28 @@ CASES = [
     # nested values: Pair<Option<bool>, Result<i64>> = 4 words
     Case("nest_round_trip", "nest_id", [1, 1, 0, 5], nout=4, out="1 1 0 5"),
     Case("nest_inactive_payload_zeroed", "nest_id", [0, 1, 1, 7], nout=4, out="0 0 1 7"),
+    # R1: a legacy enum that holds a generic enum: the inner ordinal is only checked when its whole path is active.
+    # Inner<bool> = 2 words (tag, A.value), Outer = 3 words, Outer2 = 4 words.
+    Case("r1_inactive_inner_ordinal_ignored", "id_outer", [0, 9, 0], nout=3, out="0 0 0"),
+    Case("r1_inactive_inner_ordinal_ignored_trust", "id_outer", [0, 9, 0], nout=3, out="0 0 0", trust=True),
+    Case("r1_active_inner_ok", "id_outer", [1, 0, 1], nout=3, out="1 0 1"),
+    Case("r1_active_inner_bad_ordinal", "id_outer", [1, 9, 0], exit=101, err="invalid representation: 9"),
+    Case("r1_active_inner_bad_ordinal_trust", "id_outer", [1, 9, 0], exit=101, err="invalid representation: 9",
+         trust=True),
+    Case("r1_nested_inactive_path_ignored", "id_outer2", [0, 1, 9, 0], nout=4, out="0 1 0 0"),
+    Case("r1_nested_inactive_path_ignored_trust", "id_outer2", [0, 1, 9, 0], nout=4, out="0 1 0 0", trust=True),
+    Case("r1_nested_active_ok", "id_outer2", [1, 1, 0, 1], nout=4, out="1 1 0 1"),
+    Case("r1_nested_active_bad_ordinal", "id_outer2", [1, 1, 9, 0], exit=101, err="invalid representation: 9"),
+    # R2: a new-type output writes inactive words as zero even when the legacy input carried dirty storage;
+    # E = 2 words (tag, B.value), Option<E> = 3, Option<Pair<E, E>> = 5. A purely legacy output is unchanged.
+    Case("r2_inactive_payload_zeroed", "wrap_e", [0, 99], nout=3, out="1 0 0"),
+    Case("r2_active_payload_kept", "wrap_e", [1, 5], nout=3, out="1 1 5"),
+    Case("r2_nested_inactive_payloads_zeroed", "wrap_pair", [0, 99], [0, 88], nout=5, out="1 0 0 0 0"),
+    Case("r2_nested_active_payload_kept", "wrap_pair", [1, 4], [0, 88], nout=5, out="1 1 4 0 0"),
+    Case("r2_legacy_output_unchanged", "echo_e", [0, 99], nout=2, out="0 99"),
+    # safe mode: a specialized callee's `requires` is enforced through a wrapper that has none (--no-verify)
+    Case("nv_callee_requires_violated", "same_nov", [1, 1], [1, 0], exit=101, err="requires violated", prog="nv"),
+    Case("nv_callee_requires_holds", "same_nov", [0, 0], [0, 1], nout=2, out="0 0", prog="nv"),
     # legacy Option<i64>: two argument words, { i64, i64 } by value
     Case("legacy_some", "legacy_opt", [1, 9], out="1 9"),
     Case("legacy_none", "legacy_opt", [0, 3], out="0 3"),
@@ -300,46 +419,59 @@ def py_python():
     return sys.executable
 
 
+# program name -> (Pruv source, C caller, extra pruvc flags)
+PROGS = {
+    "main": (SOURCE, CALLER, []),
+    "nv": (SOURCE_NV, CALLER_NV, ["--no-verify"]),
+}
+
+
 class Ctx:
     def __init__(self, a, work):
         self.a, self.work = a, work
-        self.src = work / "g3_exec.pruv"
-        self.src.write_text(SOURCE)
+        self.srcs = {}
+        for name, (text, _, _) in PROGS.items():
+            self.srcs[name] = work / ("g3_exec_%s.pruv" % name)
+            self.srcs[name].write_text(text)
         self.exes = {}
-        self.rt_obj = self.caller_obj = None
+        self.rt_obj = None
+        self.caller_objs = {}
 
-    def common(self):
+    def common(self, prog):
         if self.rt_obj is None:
             rt = self.work / "rt_count.o"
             rc, _, err = run([self.a.clang, "-O2", CPU_FLAG, "-std=c11", "-DPRUV_COUNT_ALLOCS", "-c", str(RUNTIME),
                               "-o", str(rt)])
             if rc != 0:
                 return None, None, "clang(runtime.c) failed: " + err.strip()[-300:]
-            cs = self.work / "caller.c"
-            cs.write_text(CALLER)
-            co = self.work / "caller.o"
+            self.rt_obj = rt
+        if prog not in self.caller_objs:
+            cs = self.work / ("caller_%s.c" % prog)
+            cs.write_text(PROGS[prog][1])
+            co = self.work / ("caller_%s.o" % prog)
             rc, _, err = run([self.a.clang, "-O2", "-c", str(cs), "-o", str(co)])
             if rc != 0:
                 return None, None, "clang(caller.c) failed: " + err.strip()[-300:]
-            self.rt_obj, self.caller_obj = rt, co
-        return self.rt_obj, self.caller_obj, None
+            self.caller_objs[prog] = co
+        return self.rt_obj, self.caller_objs[prog], None
 
-    def exe(self, comp, trust):
-        k = (comp, trust)
+    def exe(self, comp, trust, prog="main"):
+        k = (comp, trust, prog)
         if k in self.exes:
             return self.exes[k]
-        tag = "%s_%s" % (comp, "trust" if trust else "plain")
+        tag = "%s_%s_%s" % (prog, comp, "trust" if trust else "plain")
         ll = self.work / (tag + ".ll")
-        flags = ["--backend", "llvm", "-o", str(ll)] + (["--trust-callers"] if trust else [])
+        flags = ["--backend", "llvm", "-o", str(ll)] + PROGS[prog][2] + (["--trust-callers"] if trust else [])
+        src = self.srcs[prog]
         if comp == "rs":
-            argv = [self.a.pruvc, str(self.src), "--emit", "ll"] + flags
+            argv = [self.a.pruvc, str(src), "--emit", "ll"] + flags
         else:
-            argv = [py_python(), self.a.py_pruvc, str(self.src)] + flags
+            argv = [py_python(), self.a.py_pruvc, str(src)] + flags
         rc, out, err = run(argv)
         if rc != 0 or not ll.exists():
             self.exes[k] = (None, "pruvc(%s) failed (%d): %s" % (comp, rc, (out + err).strip()[-400:]))
             return self.exes[k]
-        rt, co, e = self.common()
+        rt, co, e = self.common(prog)
         if e:
             self.exes[k] = (None, e)
             return self.exes[k]
@@ -358,7 +490,7 @@ class Ctx:
 
 
 def run_case(ctx, comp, c):
-    exe, err = ctx.exe(comp, c.trust)
+    exe, err = ctx.exe(comp, c.trust, c.prog)
     if err:
         return err
     rc, out, e = run([str(exe)] + c.argv(), timeout=60)

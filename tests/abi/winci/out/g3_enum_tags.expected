@@ -1,0 +1,8 @@
+left_bool(sol::pruv_g3_t_6_Choice_2_b_i::Left(true)) = true
+left_bool(sol::pruv_g3_t_6_Choice_2_b_i::Left(false)) = false
+is_left(sol::pruv_g3_t_6_Choice_2_b_i::Left(true)) = true
+is_left(sol::pruv_g3_t_6_Choice_2_b_i::Right(5)) = false
+opt_is_left(None) = false
+opt_is_left(Some(sol::pruv_g3_t_6_Choice_2_b_i::Left(false))) = true
+opt_is_left(Some(sol::pruv_g3_t_6_Choice_2_b_i::Right(i64::MIN))) = false
+repeat is_left n=20000 sum=2895171792165548704

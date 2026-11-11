@@ -1,0 +1,6 @@
+nest_id(sol::pruv_g3_t_4_Pair_2_ob_ri { first: Some(true), second: Ok(3) }) = pruv_g3_t_4_Pair_2_ob_ri { first: Some(true), second: Ok(3) }
+nest_id(sol::pruv_g3_t_4_Pair_2_ob_ri { first: None, second: Err(-7) }) = pruv_g3_t_4_Pair_2_ob_ri { first: None, second: Err(-7) }
+nest_id(sol::pruv_g3_t_4_Pair_2_ob_ri { first: Some(false), second: Ok(i64::MIN) }) = pruv_g3_t_4_Pair_2_ob_ri { first: Some(false), second: Ok(-9223372036854775808) }
+nest_pick(sol::pruv_g3_t_4_Pair_2_ob_ri { first: Some(true), second: Ok(1) }, sol::pruv_g3_t_4_Pair_2_b_ob { first: true, second: Some(false) }) = pruv_g3_t_4_Pair_2_ob_b { first: Some(false), second: true }
+nest_pick(sol::pruv_g3_t_4_Pair_2_ob_ri { first: None, second: Err(2) }, sol::pruv_g3_t_4_Pair_2_b_ob { first: false, second: None }) = pruv_g3_t_4_Pair_2_ob_b { first: None, second: false }
+repeat nest_id n=20000 sum=-7994238884873944898

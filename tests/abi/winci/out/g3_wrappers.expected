@@ -1,0 +1,6 @@
+build(1, true) = pruv_g3_t_4_Pair_2_i_b { first: 1, second: true }
+build(i64::MIN, false) = pruv_g3_t_4_Pair_2_i_b { first: -9223372036854775808, second: false }
+build(i64::MAX, true) = pruv_g3_t_4_Pair_2_i_b { first: 9223372036854775807, second: true }
+swap_ib(sol::pruv_g3_t_4_Pair_2_i_b { first: 5, second: true }) = pruv_g3_t_4_Pair_2_b_i { first: true, second: 5 }
+swap_ib(sol::pruv_g3_t_4_Pair_2_i_b { first: i64::MIN, second: false }) = pruv_g3_t_4_Pair_2_b_i { first: false, second: -9223372036854775808 }
+repeat build n=20000 sum=8253979723453366820

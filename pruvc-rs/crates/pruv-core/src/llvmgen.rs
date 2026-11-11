@@ -253,35 +253,42 @@ pub fn payload_index(tt: &TypeTable, ty: &str, variant: &str, i: usize) -> R<usi
     Err(format!("'{}'", variant))
 }
 
-/// W(T): number of i64 words in the external (pruv_abi_*) form
+/// W(T): number of i64 words in the external (pruv_abi_*) form.  Memoized per type table (a nested generic value
+/// would otherwise recompute every subtree: quadratic).
 pub fn words(tt: &TypeTable, ty: &str) -> R<usize> {
-    if is_gopt(ty) {
+    if let Some(&n) = tt.words_memo.borrow().get(ty) {
+        return Ok(n);
+    }
+    let r = if is_gopt(ty) {
         // G3: 1 + W(X) (+ 1 for the Result error word)
         let x = words(tt, g_arg(ty))?;
-        return Ok(1 + x + if ty.starts_with("result<") { 1 } else { 0 });
-    }
-    match ty {
-        "i64" | "bool" => Ok(1),
-        "option" | "result" => Ok(2),
-        _ => match t_decl(tt, ty)? {
-            TypeDecl::Struct(s) => {
-                let mut sum = 0usize;
-                for f in &s.fields {
-                    sum += words(tt, &f.ty)?;
-                }
-                Ok(sum.max(1))
-            }
-            TypeDecl::Enum(e) => {
-                let mut sum = 1usize;
-                for v in &e.variants {
-                    for f in &v.fields {
+        1 + x + if ty.starts_with("result<") { 1 } else { 0 }
+    } else {
+        match ty {
+            "i64" | "bool" => 1,
+            "option" | "result" => 2,
+            _ => match t_decl(tt, ty)? {
+                TypeDecl::Struct(s) => {
+                    let mut sum = 0usize;
+                    for f in &s.fields {
                         sum += words(tt, &f.ty)?;
                     }
+                    sum.max(1)
                 }
-                Ok(sum)
-            }
-        },
-    }
+                TypeDecl::Enum(e) => {
+                    let mut sum = 1usize;
+                    for v in &e.variants {
+                        for f in &v.fields {
+                            sum += words(tt, &f.ty)?;
+                        }
+                    }
+                    sum
+                }
+            },
+        }
+    };
+    tt.words_memo.borrow_mut().insert(ty.to_string(), r);
+    Ok(r)
 }
 
 pub fn type_defs(tt: &TypeTable) -> String {

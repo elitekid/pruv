@@ -1,0 +1,14 @@
+get_opt(5) = Some(5)
+get_opt(-3) = None
+get_opt(0) = None
+get_opt(1000000) = Some(1000000)
+get_res(10, 2) = Ok(5)
+get_res(7, 0) = Err(1)
+get_res(0, 5) = Ok(0)
+mix(Some(1), Some(true)) = Some(true)
+mix(Some(1), None) = None
+mix(None, Some(true)) = None
+mix(None, None) = None
+repeat get_opt n=100000 sum=4670373530969986690
+repeat get_res n=100000 sum=3867051922510118707
+repeat mix n=20000 sum=-3967697891730489962

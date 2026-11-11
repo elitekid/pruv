@@ -515,6 +515,8 @@ pub struct TypeTable {
     index: HashMap<String, usize>,
     /// Dependencies first, declaration-stable order: indices into `decls`.
     pub order: Vec<usize>,
+    /// Memo of llvmgen::words (word count of the external form) per type key.
+    pub words_memo: std::cell::RefCell<HashMap<String, usize>>,
 }
 
 impl TypeTable {

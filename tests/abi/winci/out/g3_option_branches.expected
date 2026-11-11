@@ -1,0 +1,17 @@
+opt_bool(Some(true)) = Some(true)
+opt_bool(Some(false)) = Some(false)
+opt_bool(None) = None
+some_bool(true) = Some(true)
+some_bool(false) = Some(false)
+none_bool() = None
+flag(Some(true)) = true
+flag(Some(false)) = false
+flag(None) = false
+opt_point(Some(sol::Point { x: 1, y: -2 })) = Some(Point { x: 1, y: -2 })
+opt_point(Some(sol::Point { x: i64::MIN, y: i64::MAX })) = Some(Point { x: -9223372036854775808, y: 9223372036854775807 })
+opt_point(None) = None
+opt_res(Some(Ok(5))) = Some(Ok(5))
+opt_res(Some(Err(i64::MIN))) = Some(Err(-9223372036854775808))
+opt_res(None) = None
+repeat opt_point n=20000 sum=-6046921243075207593
+repeat opt_bool n=20000 sum=-1187422426856929188

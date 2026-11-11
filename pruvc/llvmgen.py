@@ -189,18 +189,27 @@ def payload_index(tt, ty, variant, i):
 
 
 def words(tt, ty):
-    """W(T): number of i64 words of the external (pruv_abi_*) form"""
+    """W(T): number of i64 words of the external (pruv_abi_*) form.  Memoized per type table (a nested generic
+    value would otherwise recompute every subtree: quadratic)."""
+    memo = tt.__dict__.setdefault("_words_memo", {})
+    r = memo.get(ty)
+    if r is not None:
+        return r
     n = ty.name
     if n in ("i64", "bool"):
-        return 1
-    if gopt(ty):  # G3: 1 + W(X) (+ 1 for the Result error word)
-        return 1 + words(tt, ty.args[0]) + (1 if n == "result" else 0)
-    if n in ("option", "result"):
-        return 2
-    d = tt.decl(ty)
-    if isinstance(d, StructDecl):
-        return max(1, sum(words(tt, f.type) for f in d.fields))
-    return 1 + sum(words(tt, f.type) for v in d.variants for f in v.fields)
+        r = 1
+    elif gopt(ty):  # G3: 1 + W(X) (+ 1 for the Result error word)
+        r = 1 + words(tt, ty.args[0]) + (1 if n == "result" else 0)
+    elif n in ("option", "result"):
+        r = 2
+    else:
+        d = tt.decl(ty)
+        if isinstance(d, StructDecl):
+            r = max(1, sum(words(tt, f.type) for f in d.fields))
+        else:
+            r = 1 + sum(words(tt, f.type) for v in d.variants for f in v.fields)
+    memo[ty] = r
+    return r
 
 
 def type_defs(tt):
@@ -1382,6 +1391,34 @@ class Words:
     def __init__(s, tt):
         s.tt, s.lines, s.n = tt, [], 0
         s.checks = []       # G3: (valid i1, raw tag word, type name) of every enum ordinal that must be rejected if invalid
+        s.stm, s.hn = {}, {}  # caches: storage type text per type, "contains a G3 application" per type
+
+    def S(s, ty):
+        """st(ty) (non-contract form), cached per type"""
+        r = s.stm.get(ty)
+        if r is None:
+            if gopt(ty):
+                x = s.S(ty.args[0])
+                r = "{ i1, %s }" % x if ty.name == "option" else "{ i1, %s, i64 }" % x
+            else:
+                r = st(ty)
+            s.stm[ty] = r
+        return r
+
+    def has_new(s, ty):
+        """whether ty is, or contains by value, a G3 application (its words follow the G3 rules)"""
+        r = s.hn.get(ty)
+        if r is None:
+            if is_new_app(ty):
+                r = True
+            elif not is_user_type(ty):
+                r = False
+            else:
+                d = s.tt.decl(ty)
+                fs = d.fields if isinstance(d, StructDecl) else [f for v in d.variants for f in v.fields]
+                r = any(s.has_new(f.type) for f in fs)
+            s.hn[ty] = r
+        return r
 
     def op(s, text):
         s.n += 1
@@ -1399,13 +1436,15 @@ class Words:
         g = s.gep(ptr, off)
         s.lines.append("store i64 %s, ptr %s" % (v, g))
 
-    def de(s, ty, ptr, off):
+    def de(s, ty, ptr, off, act="true"):
         """read a value of type ty from words at ptr[off..]; returns an SSA name of type st(ty).
         Legacy types keep the G1 reading; a G3 application (new Option/Result, generated generic instance) and
-        everything below it is read by de_new (masked inactive words, enum ordinal checks)."""
+        everything below it is read by de_new (masked inactive words, enum ordinal checks).  act is "true" or an i1
+        telling whether this legacy value is active: it only matters for a G3 application reached through legacy
+        structs/enums, whose ordinal check happens only when its whole path is active (an inactive one reads zero)."""
         n = ty.name
         if is_new_app(ty):
-            return s.de_new(ty, ptr, off, "true")
+            return s.de_new(ty, ptr, off, act)
         if n == "i64":
             return s.rd(ptr, off)
         if n == "bool":
@@ -1421,17 +1460,22 @@ class Words:
         if isinstance(d, StructDecl):
             o = off
             for i, f in enumerate(d.fields):
-                x = s.de(f.type, ptr, o)
-                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, i))
+                x = s.de(f.type, ptr, o, act)
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, s.S(f.type), x, i))
                 o += words(s.tt, f.type)
             return acc
         tag = s.rd(ptr, off)
         acc = s.op("insertvalue %s zeroinitializer, i64 %s, 0" % (T, tag))
         o, idx = off + 1, 1
-        for v in d.variants:
+        for k, v in enumerate(d.variants):
+            ak = act
+            if any(s.has_new(f.type) for f in v.fields):    # only then is the activity of this payload observable
+                ak = s.op("icmp eq i64 %s, %d" % (tag, k))
+                if act != "true":
+                    ak = s.op("and i1 %s, %s" % (act, ak))
             for f in v.fields:
-                x = s.de(f.type, ptr, o)
-                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, idx))
+                x = s.de(f.type, ptr, o, ak)
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, s.S(f.type), x, idx))
                 o += words(s.tt, f.type)
                 idx += 1
         return acc
@@ -1451,13 +1495,13 @@ class Words:
             return s.op("and i1 %s, %s" % (act, c)) if on else c
         if gopt(ty):
             X = ty.args[0]
-            T = st(ty)
+            T = s.S(ty)
             t = s.op("icmp ne i64 %s, 0" % s.rd(ptr, off))
             if on:
                 t = s.op("and i1 %s, %s" % (act, t))
             x = s.de_new(X, ptr, off + 1, t)
             acc = s.op("insertvalue %s zeroinitializer, i1 %s, 0" % (T, t))
-            acc = s.op("insertvalue %s %s, %s %s, 1" % (T, acc, st(X), x))
+            acc = s.op("insertvalue %s %s, %s %s, 1" % (T, acc, s.S(X), x))
             if n == "result":
                 ew = s.rd(ptr, off + 1 + words(s.tt, X))
                 ea = s.op("xor i1 %s, true" % t)
@@ -1483,7 +1527,7 @@ class Words:
             o = off
             for i, f in enumerate(d.fields):
                 x = s.de_new(f.type, ptr, o, act)
-                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, i))
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, s.S(f.type), x, i))
                 o += words(s.tt, f.type)
             return acc
         w = s.rd(ptr, off)
@@ -1502,25 +1546,84 @@ class Words:
                     ak = s.op("and i1 %s, %s" % (act, ak))
             for f in v.fields:
                 x = s.de_new(f.type, ptr, o, ak)
-                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, st(f.type), x, idx))
+                acc = s.op("insertvalue %s %s, %s %s, %d" % (T, acc, s.S(f.type), x, idx))
                 o += words(s.tt, f.type)
                 idx += 1
         return acc
 
-    def ser(s, ty, x, ptr, off):
-        """write the SSA value x (type st(ty)) as words at ptr[off..]"""
+    def ser_new(s, ty, x, ptr, off, act):
+        """G3 writing of the SSA value x (type st(ty)) as words at ptr[off..].  act is "true" or an i1 telling whether
+        this value is semantically active.  Every inactive word is written explicitly as zero (a legacy-ABI value
+        may carry dirty inactive storage), propagating the activity recursively: an Option payload is active when
+        the tag is set, a Result error word when it is not, an enum payload when the tag selects its variant."""
         n = ty.name
+        on = act != "true"
         if n == "i64":
+            s.wr(ptr, off, s.op("select i1 %s, i64 %s, i64 0" % (act, x)) if on else x)
+        elif n == "bool":
+            b = s.op("and i1 %s, %s" % (act, x)) if on else x
+            s.wr(ptr, off, s.op("zext i1 %s to i64" % b))
+        elif gopt(ty):  # tag word, payload words, (Result) error word
+            X = ty.args[0]
+            T = s.S(ty)
+            t = s.op("extractvalue %s %s, 0" % (T, x))
+            if on:
+                t = s.op("and i1 %s, %s" % (act, t))
+            s.wr(ptr, off, s.op("zext i1 %s to i64" % t))
+            s.ser_new(X, s.op("extractvalue %s %s, 1" % (T, x)), ptr, off + 1, t)
+            if n == "result":
+                e = s.op("extractvalue %s %s, 2" % (T, x))
+                ea = s.op("xor i1 %s, true" % t)
+                if on:
+                    ea = s.op("and i1 %s, %s" % (act, ea))
+                e = s.op("select i1 %s, i64 %s, i64 0" % (ea, e))
+                s.wr(ptr, off + 1 + words(s.tt, X), e)
+        elif n in ("option", "result"):      # legacy Option<i64>/Result<i64> nested in a G3 value
+            t = s.op("extractvalue %s %s, 0" % (OPT, x))
+            p = s.op("extractvalue %s %s, 1" % (OPT, x))
+            if on:
+                t = s.op("and i1 %s, %s" % (act, t))
+            pa = t if n == "option" else act
+            if pa != "true":
+                p = s.op("select i1 %s, i64 %s, i64 0" % (pa, p))
+            s.wr(ptr, off, s.op("zext i1 %s to i64" % t))
+            s.wr(ptr, off + 1, p)
+        else:
+            d = s.tt.decl(ty)
+            T = st(ty)
+            if isinstance(d, StructDecl):
+                if not d.fields:
+                    s.wr(ptr, off, "0")
+                o = off
+                for i, f in enumerate(d.fields):
+                    s.ser_new(f.type, s.op("extractvalue %s %s, %d" % (T, x, i)), ptr, o, act)
+                    o += words(s.tt, f.type)
+                return
+            tag = s.op("extractvalue %s %s, 0" % (T, x))
+            s.wr(ptr, off, s.op("select i1 %s, i64 %s, i64 0" % (act, tag)) if on else tag)
+            o, idx = off + 1, 1
+            for k, v in enumerate(d.variants):
+                ak = None
+                if v.fields:
+                    ak = s.op("icmp eq i64 %s, %d" % (tag, k))
+                    if on:
+                        ak = s.op("and i1 %s, %s" % (act, ak))
+                for f in v.fields:
+                    s.ser_new(f.type, s.op("extractvalue %s %s, %d" % (T, x, idx)), ptr, o, ak)
+                    o += words(s.tt, f.type)
+                    idx += 1
+
+    def ser(s, ty, x, ptr, off, act="true"):
+        """write the SSA value x (type st(ty)) as words at ptr[off..].  A purely legacy value is written as is (the
+        legacy ABI output stays byte-identical); a G3 application and everything nested in it goes through ser_new,
+        also when it hangs below a legacy struct/enum (act: whether that legacy value is active)."""
+        n = ty.name
+        if is_new_app(ty):
+            s.ser_new(ty, x, ptr, off, act)
+        elif n == "i64":
             s.wr(ptr, off, x)
         elif n == "bool":
             s.wr(ptr, off, s.op("zext i1 %s to i64" % x))
-        elif gopt(ty):  # G3: tag word, payload words, (Result) error word; inactive words are zero by construction
-            X = ty.args[0]
-            T = st(ty)
-            s.wr(ptr, off, s.op("zext i1 %s to i64" % s.op("extractvalue %s %s, 0" % (T, x))))
-            s.ser(X, s.op("extractvalue %s %s, 1" % (T, x)), ptr, off + 1)
-            if n == "result":
-                s.wr(ptr, off + 1 + words(s.tt, X), s.op("extractvalue %s %s, 2" % (T, x)))
         elif n in ("option", "result"):
             t = s.op("extractvalue %s %s, 0" % (OPT, x))
             p = s.op("extractvalue %s %s, 1" % (OPT, x))
@@ -1536,15 +1639,21 @@ class Words:
                     s.wr(ptr, off, "0")
                 o = off
                 for i, f in enumerate(d.fields):
-                    s.ser(f.type, s.op("extractvalue %s %s, %d" % (T, x, i)), ptr, o)
+                    s.ser(f.type, s.op("extractvalue %s %s, %d" % (T, x, i)), ptr, o, act)
                     o += words(s.tt, f.type)
                 return
-            # inactive payloads are zero by construction (EnumCtor / deserialization start from zeroinitializer)
-            s.wr(ptr, off, s.op("extractvalue %s %s, 0" % (T, x)))
+            # legacy words are written as they are; only a G3 application below has its inactivity made explicit
+            tag = s.op("extractvalue %s %s, 0" % (T, x))
+            s.wr(ptr, off, tag)
             o, idx = off + 1, 1
-            for v in d.variants:
+            for k, v in enumerate(d.variants):
+                ak = act
+                if any(s.has_new(f.type) for f in v.fields):
+                    ak = s.op("icmp eq i64 %s, %d" % (tag, k))
+                    if act != "true":
+                        ak = s.op("and i1 %s, %s" % (act, ak))
                 for f in v.fields:
-                    s.ser(f.type, s.op("extractvalue %s %s, %d" % (T, x, idx)), ptr, o)
+                    s.ser(f.type, s.op("extractvalue %s %s, %d" % (T, x, idx)), ptr, o, ak)
                     o += words(s.tt, f.type)
                     idx += 1
 

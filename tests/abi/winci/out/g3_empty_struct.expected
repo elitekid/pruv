@@ -1,0 +1,5 @@
+marker_id(sol::Marker {}) = Marker
+hold_marker(sol::Marker {}) = pruv_g3_t_6_Holder_1_n6_Marker_0 { value: Marker }
+some_marker(sol::Marker {}) = Some(Marker)
+no_marker() = None
+repeat some_marker n=20000 sum=-4331549406546190752

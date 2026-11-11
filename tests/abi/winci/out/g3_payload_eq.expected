@@ -1,0 +1,7 @@
+same_opt(Some(true), Some(true)) = Some(true)
+same_opt(Some(false), Some(false)) = Some(false)
+same_opt(None, None) = None
+same_res(Ok(true), Ok(true)) = Ok(true)
+same_res(Err(5), Err(5)) = Err(5)
+same_res(Err(i64::MIN), Err(i64::MIN)) = Err(-9223372036854775808)
+repeat same_res n=20000 sum=-6361855328353174246

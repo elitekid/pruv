@@ -3,7 +3,8 @@
 
 use crate::ast::*;
 use crate::llvmgen::{g_arg, is_agg, is_gopt, is_new_app, lty, mangle, st, words, Mod, R, OPT};
-use crate::typeinfo::{is_array_name, TypeTable};
+use crate::typeinfo::{is_array_name, is_user_type, TypeTable};
+use std::collections::HashMap;
 
 pub struct Words<'a> {
     tt: &'a TypeTable,
@@ -11,11 +12,82 @@ pub struct Words<'a> {
     pub n: usize,
     /// G3: (valid i1, raw tag word, type name) of every enum ordinal that must be rejected if invalid
     pub checks: Vec<(String, String, String)>,
+    /// caches: storage type text per type key, "is or contains a G3 application" per type key
+    stm: HashMap<String, String>,
+    hn: HashMap<String, bool>,
 }
 
 impl<'a> Words<'a> {
     pub fn new(tt: &'a TypeTable) -> Words<'a> {
-        Words { tt, lines: Vec::new(), n: 0, checks: Vec::new() }
+        Words { tt, lines: Vec::new(), n: 0, checks: Vec::new(), stm: HashMap::new(), hn: HashMap::new() }
+    }
+
+    /// st(ty, false), cached per type key
+    fn s_of(&mut self, ty: &str) -> String {
+        if let Some(r) = self.stm.get(ty) {
+            return r.clone();
+        }
+        let r = if is_gopt(ty) {
+            let x = self.s_of(g_arg(ty));
+            if ty.starts_with("option<") {
+                format!("{{ i1, {} }}", x)
+            } else {
+                format!("{{ i1, {}, i64 }}", x)
+            }
+        } else {
+            st(ty, false)
+        };
+        self.stm.insert(ty.to_string(), r.clone());
+        r
+    }
+
+    /// Whether ty is, or contains by value, a G3 application (its words follow the G3 rules).
+    fn has_new(&mut self, ty: &str) -> bool {
+        if let Some(&r) = self.hn.get(ty) {
+            return r;
+        }
+        let tt = self.tt;
+        let r = if is_new_app(ty) {
+            true
+        } else if !is_user_type(ty) {
+            false
+        } else {
+            let mut found = false;
+            match tt.decl(ty) {
+                Some(TypeDecl::Struct(sd)) => {
+                    for f in &sd.fields {
+                        if self.has_new(&f.ty) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                Some(TypeDecl::Enum(ed)) => {
+                    'outer: for v in &ed.variants {
+                        for f in &v.fields {
+                            if self.has_new(&f.ty) {
+                                found = true;
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+                None => {}
+            }
+            found
+        };
+        self.hn.insert(ty.to_string(), r);
+        r
+    }
+
+    /// Whether any field of the variant is (or contains) a G3 application.
+    fn variant_has_new(&mut self, v: &VariantDecl) -> bool {
+        for f in &v.fields {
+            if self.has_new(&f.ty) {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn op(&mut self, text: String) -> String {
@@ -39,12 +111,15 @@ impl<'a> Words<'a> {
         self.lines.push(format!("store i64 {}, ptr {}", v, g));
     }
 
-    /// Reads a value of type ty from the words at ptr[off..]; returns the SSA name of type st(ty)
-    pub fn de(&mut self, ty: &str, ptr: &str, off: usize) -> R<String> {
+    /// Reads a value of type ty from the words at ptr[off..]; returns the SSA name of type st(ty).
+    /// `act` is None ("true") or an i1 telling whether this legacy value is active: it only matters for a G3
+    /// application reached through legacy structs/enums, whose ordinal check happens only when its whole path is
+    /// active (an inactive one reads zero).
+    pub fn de(&mut self, ty: &str, ptr: &str, off: usize, act: Option<&str>) -> R<String> {
         let tt = self.tt;
         if is_new_app(ty) {
             // G3 application (new Option/Result, generated generic instance) and everything below it
-            return self.de_new(ty, ptr, off, None);
+            return self.de_new(ty, ptr, off, act);
         }
         match ty {
             "i64" => return Ok(self.rd(ptr, off)),
@@ -68,8 +143,9 @@ impl<'a> Words<'a> {
             TypeDecl::Struct(sd) => {
                 let mut o = off;
                 for (i, f) in sd.fields.iter().enumerate() {
-                    let x = self.de(&f.ty, ptr, o)?;
-                    acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, st(&f.ty, false), x, i));
+                    let x = self.de(&f.ty, ptr, o, act)?;
+                    let fs = self.s_of(&f.ty);
+                    acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, fs, x, i));
                     o += words(tt, &f.ty)?;
                 }
                 Ok(acc)
@@ -79,10 +155,20 @@ impl<'a> Words<'a> {
                 acc = self.op(format!("insertvalue {} zeroinitializer, i64 {}, 0", tstr, tag));
                 let mut o = off + 1;
                 let mut idx = 1usize;
-                for v in &ed.variants {
+                for (k, v) in ed.variants.iter().enumerate() {
+                    let mut ak: Option<String> = act.map(|s| s.to_string());
+                    if self.variant_has_new(v) {
+                        // only then is the activity of this payload observable
+                        let mut a = self.op(format!("icmp eq i64 {}, {}", tag, k));
+                        if let Some(outer) = act {
+                            a = self.op(format!("and i1 {}, {}", outer, a));
+                        }
+                        ak = Some(a);
+                    }
                     for f in &v.fields {
-                        let x = self.de(&f.ty, ptr, o)?;
-                        acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, st(&f.ty, false), x, idx));
+                        let x = self.de(&f.ty, ptr, o, ak.as_deref())?;
+                        let fs = self.s_of(&f.ty);
+                        acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, fs, x, idx));
                         o += words(tt, &f.ty)?;
                         idx += 1;
                     }
@@ -116,7 +202,7 @@ impl<'a> Words<'a> {
         }
         if is_gopt(ty) {
             let x = g_arg(ty).to_string();
-            let tstr = st(ty, false);
+            let tstr = self.s_of(ty);
             let w = self.rd(ptr, off);
             let mut t = self.op(format!("icmp ne i64 {}, 0", w));
             if let Some(a) = act {
@@ -124,7 +210,8 @@ impl<'a> Words<'a> {
             }
             let xv = self.de_new(&x, ptr, off + 1, Some(&t))?;
             let mut acc = self.op(format!("insertvalue {} zeroinitializer, i1 {}, 0", tstr, t));
-            acc = self.op(format!("insertvalue {} {}, {} {}, 1", tstr, acc, st(&x, false), xv));
+            let xs = self.s_of(&x);
+            acc = self.op(format!("insertvalue {} {}, {} {}, 1", tstr, acc, xs, xv));
             if ty.starts_with("result<") {
                 let ew = self.rd(ptr, off + 1 + words(tt, &x)?);
                 let mut ea = self.op(format!("xor i1 {}, true", t));
@@ -159,7 +246,8 @@ impl<'a> Words<'a> {
                 let mut o = off;
                 for (i, f) in sd.fields.iter().enumerate() {
                     let x = self.de_new(&f.ty, ptr, o, act)?;
-                    acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, st(&f.ty, false), x, i));
+                    let fs = self.s_of(&f.ty);
+                    acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, fs, x, i));
                     o += words(tt, &f.ty)?;
                 }
                 Ok(acc)
@@ -190,7 +278,8 @@ impl<'a> Words<'a> {
                     }
                     for f in &v.fields {
                         let x = self.de_new(&f.ty, ptr, o, ak.as_deref())?;
-                        acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, st(&f.ty, false), x, idx));
+                        let fs = self.s_of(&f.ty);
+                        acc = self.op(format!("insertvalue {} {}, {} {}, {}", tstr, acc, fs, x, idx));
                         o += words(tt, &f.ty)?;
                         idx += 1;
                     }
@@ -200,23 +289,120 @@ impl<'a> Words<'a> {
         }
     }
 
-    /// Writes the SSA value x (of type st(ty)) as words to ptr[off..]
-    pub fn ser(&mut self, ty: &str, x: &str, ptr: &str, off: usize) -> R<()> {
+    /// G3 writing of the SSA value x (of type st(ty)) as words to ptr[off..]. `act` is None ("true") or an i1 telling
+    /// whether this value is semantically active. Every inactive word is written explicitly as zero (a legacy-ABI
+    /// value may carry dirty inactive storage), propagating the activity recursively: an Option payload is active when
+    /// the tag is set, a Result error word when it is not, an enum payload when the tag selects its variant.
+    pub fn ser_new(&mut self, ty: &str, x: &str, ptr: &str, off: usize, act: Option<&str>) -> R<()> {
         let tt = self.tt;
+        if ty == "i64" {
+            let v = match act {
+                Some(a) => self.op(format!("select i1 {}, i64 {}, i64 0", a, x)),
+                None => x.to_string(),
+            };
+            self.wr(ptr, off, &v);
+            return Ok(());
+        }
+        if ty == "bool" {
+            let b = match act {
+                Some(a) => self.op(format!("and i1 {}, {}", a, x)),
+                None => x.to_string(),
+            };
+            let z = self.op(format!("zext i1 {} to i64", b));
+            self.wr(ptr, off, &z);
+            return Ok(());
+        }
         if is_gopt(ty) {
-            // G3: tag word, payload words, (Result) error word; inactive words are zero by construction
+            // tag word, payload words, (Result) error word
             let xt = g_arg(ty).to_string();
-            let tstr = st(ty, false);
-            let t = self.op(format!("extractvalue {} {}, 0", tstr, x));
+            let tstr = self.s_of(ty);
+            let mut t = self.op(format!("extractvalue {} {}, 0", tstr, x));
+            if let Some(a) = act {
+                t = self.op(format!("and i1 {}, {}", a, t));
+            }
             let z = self.op(format!("zext i1 {} to i64", t));
             self.wr(ptr, off, &z);
             let p = self.op(format!("extractvalue {} {}, 1", tstr, x));
-            self.ser(&xt, &p, ptr, off + 1)?;
+            self.ser_new(&xt, &p, ptr, off + 1, Some(&t))?;
             if ty.starts_with("result<") {
                 let e = self.op(format!("extractvalue {} {}, 2", tstr, x));
-                self.wr(ptr, off + 1 + words(tt, &xt)?, &e);
+                let mut ea = self.op(format!("xor i1 {}, true", t));
+                if let Some(a) = act {
+                    ea = self.op(format!("and i1 {}, {}", a, ea));
+                }
+                let e2 = self.op(format!("select i1 {}, i64 {}, i64 0", ea, e));
+                self.wr(ptr, off + 1 + words(tt, &xt)?, &e2);
             }
             return Ok(());
+        }
+        if ty == "option" || ty == "result" {
+            // legacy Option<i64>/Result<i64> nested in a G3 value
+            let mut t = self.op(format!("extractvalue {} {}, 0", OPT, x));
+            let mut p = self.op(format!("extractvalue {} {}, 1", OPT, x));
+            if let Some(a) = act {
+                t = self.op(format!("and i1 {}, {}", a, t));
+            }
+            let pa: Option<String> = if ty == "option" { Some(t.clone()) } else { act.map(|s| s.to_string()) };
+            if let Some(pa) = pa {
+                p = self.op(format!("select i1 {}, i64 {}, i64 0", pa, p));
+            }
+            let z = self.op(format!("zext i1 {} to i64", t));
+            self.wr(ptr, off, &z);
+            self.wr(ptr, off + 1, &p);
+            return Ok(());
+        }
+        let d = tt.decl(ty).ok_or_else(|| format!("'{}'", ty))?;
+        let tstr = st(ty, false);
+        match d {
+            TypeDecl::Struct(sd) => {
+                if sd.fields.is_empty() {
+                    self.wr(ptr, off, "0");
+                }
+                let mut o = off;
+                for (i, f) in sd.fields.iter().enumerate() {
+                    let e = self.op(format!("extractvalue {} {}, {}", tstr, x, i));
+                    self.ser_new(&f.ty, &e, ptr, o, act)?;
+                    o += words(tt, &f.ty)?;
+                }
+                Ok(())
+            }
+            TypeDecl::Enum(ed) => {
+                let tag = self.op(format!("extractvalue {} {}, 0", tstr, x));
+                let tw = match act {
+                    Some(a) => self.op(format!("select i1 {}, i64 {}, i64 0", a, tag)),
+                    None => tag.clone(),
+                };
+                self.wr(ptr, off, &tw);
+                let mut o = off + 1;
+                let mut idx = 1usize;
+                for (k, v) in ed.variants.iter().enumerate() {
+                    let mut ak: Option<String> = None;
+                    if !v.fields.is_empty() {
+                        let mut a = self.op(format!("icmp eq i64 {}, {}", tag, k));
+                        if let Some(outer) = act {
+                            a = self.op(format!("and i1 {}, {}", outer, a));
+                        }
+                        ak = Some(a);
+                    }
+                    for f in &v.fields {
+                        let e = self.op(format!("extractvalue {} {}, {}", tstr, x, idx));
+                        self.ser_new(&f.ty, &e, ptr, o, ak.as_deref())?;
+                        o += words(tt, &f.ty)?;
+                        idx += 1;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Writes the SSA value x (of type st(ty)) as words to ptr[off..]. A purely legacy value is written as it is (the
+    /// legacy ABI output stays byte-identical); a G3 application and everything nested in it goes through ser_new,
+    /// also when it hangs below a legacy struct/enum (`act`: whether that legacy value is active).
+    pub fn ser(&mut self, ty: &str, x: &str, ptr: &str, off: usize, act: Option<&str>) -> R<()> {
+        let tt = self.tt;
+        if is_new_app(ty) {
+            return self.ser_new(ty, x, ptr, off, act);
         }
         match ty {
             "i64" => {
@@ -251,21 +437,29 @@ impl<'a> Words<'a> {
                         let mut o = off;
                         for (i, f) in sd.fields.iter().enumerate() {
                             let e = self.op(format!("extractvalue {} {}, {}", tstr, x, i));
-                            self.ser(&f.ty, &e, ptr, o)?;
+                            self.ser(&f.ty, &e, ptr, o, act)?;
                             o += words(tt, &f.ty)?;
                         }
                         Ok(())
                     }
                     TypeDecl::Enum(ed) => {
-                        // An inactive payload is 0 by construction (EnumCtor/deserialization starts from zeroinitializer)
+                        // legacy words are written as they are; only a G3 application below has its inactivity made explicit
                         let tag = self.op(format!("extractvalue {} {}, 0", tstr, x));
                         self.wr(ptr, off, &tag);
                         let mut o = off + 1;
                         let mut idx = 1usize;
-                        for v in &ed.variants {
+                        for (k, v) in ed.variants.iter().enumerate() {
+                            let mut ak: Option<String> = act.map(|s| s.to_string());
+                            if self.variant_has_new(v) {
+                                let mut a = self.op(format!("icmp eq i64 {}, {}", tag, k));
+                                if let Some(outer) = act {
+                                    a = self.op(format!("and i1 {}, {}", outer, a));
+                                }
+                                ak = Some(a);
+                            }
                             for f in &v.fields {
                                 let e = self.op(format!("extractvalue {} {}, {}", tstr, x, idx));
-                                self.ser(&f.ty, &e, ptr, o)?;
+                                self.ser(&f.ty, &e, ptr, o, ak.as_deref())?;
                                 o += words(tt, &f.ty)?;
                                 idx += 1;
                             }
@@ -308,7 +502,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget, m: &mut Mod) -> R
             }
         } else if is_agg(&p.ty) {
             ext.push(format!("ptr %a.{}", q));
-            let x = w.de(&p.ty, &format!("%a.{}", q), 0)?;
+            let x = w.de(&p.ty, &format!("%a.{}", q), 0, None)?;
             args.push(format!("{} {}", lty(&p.ty), x));
             pre.extend(w.lines.drain(..));
         } else if p.ty == "i64" {
@@ -379,7 +573,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget, m: &mut Mod) -> R
     } else if is_agg(rt) {
         ext.push("ptr %out".to_string());
         body.push(format!("  %r = call {} {}({})", lty(rt), entry, argl));
-        w.ser(rt, "%r", "%out", 0)?;
+        w.ser(rt, "%r", "%out", 0, None)?;
         for x in &w.lines {
             body.push(format!("  {}", x));
         }

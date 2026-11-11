@@ -1,0 +1,8 @@
+choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Left(true)) = Left(true)
+choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Left(false)) = Left(false)
+choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Right(7)) = Right(7)
+choice_id(sol::pruv_g3_t_6_Choice_2_b_i::Right(i64::MIN)) = Right(-9223372036854775808)
+choice_flip(sol::pruv_g3_t_6_Choice_2_b_ob::Left(true)) = Right(true)
+choice_flip(sol::pruv_g3_t_6_Choice_2_b_ob::Right(Some(false))) = Left(Some(false))
+choice_flip(sol::pruv_g3_t_6_Choice_2_b_ob::Right(None)) = Left(None)
+repeat choice_id n=20000 sum=-4816295158638195596
