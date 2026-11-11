@@ -1,0 +1,20 @@
+// G6 A1 proof: String append length facts — three pushes add up, literal pushes have exact lengths
+fn join3(a: str, b: str, c: str) -> String ! alloc
+  requires len(a) <= 1000 && len(b) <= 1000 && len(c) <= 1000
+  ensures len(result) == len(a) + len(b) + len(c)
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, a);
+  s = string_push_str(move s, b);
+  s = string_push_str(move s, c);
+  return move s;
+}
+
+fn exclaim() -> String ! alloc
+  ensures len(result) == 3
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, "ab");
+  s = string_push_str(move s, "!");
+  return move s;
+}

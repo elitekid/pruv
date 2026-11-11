@@ -1,0 +1,9 @@
+// G6 A1 missing_effect: calling a trusted `! io` fn requires the caller to declare `! io`
+trusted rust fn log_code(code: i64) -> () ! io
+  ensures true
+  = "::std::io::stderr_write";
+
+fn report(code: i64) -> i64 {
+  log_code(code);
+  return code;
+}

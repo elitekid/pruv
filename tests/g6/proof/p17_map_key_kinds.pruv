@@ -1,0 +1,38 @@
+// G6 A1 proof: HashMap with i64 keys and with bool keys; two inserts and lookups of both
+fn bool_keys() -> i64 ! alloc
+  ensures result == 5
+{
+  let mut m: HashMap<bool, i64> = map_new::<bool, i64>();
+  m = map_insert::<bool, i64>(move m, true, 5);
+  m = map_insert::<bool, i64>(move m, false, 9);
+  let found: Option<i64> = map_get::<bool, i64>(m, true);
+  match found {
+    Some(x) => { return x; }
+    None => { return 0; }
+  }
+}
+
+fn int_keys() -> i64 ! alloc
+  ensures result == 20
+{
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  m = map_insert::<i64, i64>(move m, 1, 10);
+  m = map_insert::<i64, i64>(move m, 2, 20);
+  let found: Option<i64> = map_get::<i64, i64>(m, 2);
+  match found {
+    Some(x) => { return x; }
+    None => { return -1; }
+  }
+}
+
+fn bool_values() -> bool ! alloc
+  ensures result == true
+{
+  let mut m: HashMap<i64, bool> = map_new::<i64, bool>();
+  m = map_insert::<i64, bool>(move m, 7, true);
+  let found: Option<bool> = map_get::<i64, bool>(m, 7);
+  match found {
+    Some(b) => { return b; }
+    None => { return false; }
+  }
+}

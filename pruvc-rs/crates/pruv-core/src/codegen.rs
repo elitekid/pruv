@@ -1206,6 +1206,10 @@ pub enum GenError {
 /// Pruv -> Rust source for any checked program (Python `gen_rust`): a program that uses generics is specialized first
 /// (shared plan, mono.rs) and generated from the concrete program; any other program is generated directly.
 pub fn gen_rust_any(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, GenError> {
+    // G6: no code generator lowers G6 yet (the drivers reject earlier)
+    if let Some(e) = crate::foreign::g6_unimplemented_error(prog, "codegen") {
+        return Err(GenError::Diag(e));
+    }
     if crate::typeinfo::first_g3_use(prog).is_some() {
         let plan = crate::mono::specialize(prog).map_err(|e| match e {
             crate::mono::MonoError::Limit(p) => GenError::Diag(p),

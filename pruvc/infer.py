@@ -12,6 +12,7 @@ import time
 
 from vast import *
 from refine import pick_bound_name, _fn_names, _kids
+from typeinfo import contains_collection
 from verify import (FnVerifier, QueryConfig, Probe, BudgetExhausted, InferenceTimeout, walk_loops)
 
 INFER_CONFIG = {
@@ -280,6 +281,17 @@ def _abstract_expr(e, tenv):
     return any(_abstract_expr(c, tenv) for c in _kids(e))
 
 
+def _mentions_collection(e, tenv):
+    """G6 A1 (G6_SPEC 11.4): does the candidate mention a variable of collection type (Vec/HashMap/String)? Even
+    `len(v)` counts: inference never builds candidates about owned collections."""
+    if isinstance(e, Move):
+        return True
+    if isinstance(e, Var):
+        t = tenv.get(e.name)
+        return t is not None and contains_collection(t)
+    return any(_mentions_collection(c, tenv) for c in _kids(e))
+
+
 def _scope_types(f, w):
     """G3 A2: {name: Type} of the parameters and locals visible at the head of loop `w` (same node object).
     Position-based, same walk rules as _elem_types: a `let` sets the name, if/while/match bodies get a copy of
@@ -440,6 +452,8 @@ def _gen(f, w, block, idx, kname, ranges):
             e = build()
             # G3 A2 (4.8): no template may read an abstract value (decided on typed expressions)
             if _abstract_expr(e, tenv):
+                return
+            if _mentions_collection(e, tenv):    # G6 A1: no candidate about a collection-typed variable
                 return
             # G2 A2: kinds 5..14 never read/write an element of a [bool] array
             if kind >= 5 and _reads_bool_array(e, et):

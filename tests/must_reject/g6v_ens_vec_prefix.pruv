@@ -1,0 +1,8 @@
+// G6 A1 ensures: vec_push keeps the old prefix, so result[0] is v[0], not the pushed x
+fn push_front_claim(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc
+  requires len(v) > 0 && len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+  ensures result[0] == x
+{
+  return vec_push::<i64>(move v, x);
+}

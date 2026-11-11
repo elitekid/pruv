@@ -1,0 +1,6 @@
+// G6 A1 contract_domain: division by len(s) in a requires; the String may be empty
+fn f(s: String) -> i64
+  requires 100 / len(s) > 0
+{
+  return 0;
+}

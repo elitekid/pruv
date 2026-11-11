@@ -1,0 +1,24 @@
+// G6 A1 proof: a map_get Option matched right after map_insert at the same (symbolic) key — only the Some arm is reachable
+fn put_then_get(take m: HashMap<i64, i64>, k: i64, d: i64) -> i64 ! alloc
+  requires len(m) < 1099511627776
+  ensures result == 5
+{
+  let m2: HashMap<i64, i64> = map_insert::<i64, i64>(move m, k, 5);
+  let o: Option<i64> = map_get::<i64, i64>(m2, k);
+  match o {
+    Some(x) => { return x; }
+    None => { return d; }
+  }
+}
+
+fn put_flag_then_get(take m: HashMap<bool, bool>, k: bool) -> bool ! alloc
+  requires len(m) < 1099511627776
+  ensures result == false
+{
+  let m2: HashMap<bool, bool> = map_insert::<bool, bool>(move m, k, false);
+  let o: Option<bool> = map_get::<bool, bool>(m2, k);
+  match o {
+    Some(b) => { return b; }
+    None => { return true; }
+  }
+}

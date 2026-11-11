@@ -1,0 +1,15 @@
+// G6 A1 inference final pass: the loop pushes without an invariant on len(v); --infer builds no collection invariant, so the growth precondition stays unproved
+fn fill(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == n
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < n
+    decreases n - i
+  {
+    v = vec_push::<i64>(move v, i);
+    i = i + 1;
+  }
+  return move v;
+}

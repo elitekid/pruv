@@ -1,0 +1,6 @@
+// G6 A1 call_requires: string_push_str needs len(s) + len(t) <= 2^40; only len(s) is bounded, t may be arbitrarily long
+fn extend(take s: String, t: str) -> String ! alloc
+  requires len(s) <= 1099511627776
+{
+  return string_push_str(move s, t);
+}

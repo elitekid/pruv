@@ -16,6 +16,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use pruv_core::ast::{self as ast, Expr, Stmt};
+use pruv_core::gtype::GType;
 use pruv_core::pyjson::Json;
 use pruv_core::refine::pick_bound_name;
 
@@ -620,6 +621,19 @@ fn abstract_expr(e: &Expr, tenv: &[(String, String)]) -> bool {
         }
     }
     kids(e).into_iter().any(|c| abstract_expr(c, tenv))
+}
+
+/// G6 A1 (G6_SPEC 11.4; infer.py `_mentions_collection`): does the candidate mention a variable of collection type
+/// (Vec/HashMap/String), or a `move`? Even `len(v)` counts.
+fn mentions_collection(e: &Expr, tenv: &[(String, String)]) -> bool {
+    if matches!(e, Expr::Move(_)) {
+        return true;
+    }
+    if let Expr::Var(v) = e {
+        return tyenv_get(tenv, &v.name)
+            .map_or(false, |t| GType::try_from_key(t).map_or(false, |g| g.contains_collection()));
+    }
+    kids(e).into_iter().any(|c| mentions_collection(c, tenv))
 }
 
 /// `forall K in 0..len(x): A && B` in requires, {array name: (L, U)} (the first one per array). Preserves the requires order.
@@ -1569,6 +1583,8 @@ fn gen(
     // G3 A2 (4.8): no template may read an abstract value (decided on typed expressions; all kinds).
     let tenv = scope_types(f, w);
     out.retain(|c| !abstract_expr(&c.expr, &tenv));
+    // G6 A1 (G6_SPEC 11.4): no candidate about a collection-typed variable (infer.py `_mentions_collection`).
+    out.retain(|c| !mentions_collection(&c.expr, &tenv));
     // No candidates (kinds 5-14) that read or write an array whose element type is bool (G3: or abstract).
     out.retain(|c| !(c.kind >= 5 && reads_bool_elem(&c.expr, &etab)));
     out

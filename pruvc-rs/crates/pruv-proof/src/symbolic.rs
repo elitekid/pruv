@@ -16,7 +16,7 @@ use pruv_core::ast::{self as ast, Expr, Stmt};
 use pruv_core::diagnostic::PruvError;
 use pruv_core::gtype::{self, GType, Mapping};
 
-use crate::model::{Elem, Model, NomKind, Prelude, Ty};
+use crate::model::{Coll, Elem, Model, NomKind, Prelude, Ty};
 use crate::obligation::Trace;
 use crate::sys::{Ast, FuncDecl, Sort, Z3};
 
@@ -355,6 +355,30 @@ impl Arr {
     }
 }
 
+/// G6 A1 (verify.py `Map`, G6_SPEC 11.2): a HashMap<K, V> value: membership `d: Array(Sort(K), Bool)`, payload
+/// `a: Array(Sort(K), Sort(V))`, size `n`. `kty`/`vty` are the Pruv key/value types.
+#[derive(Clone)]
+pub struct MapV {
+    pub d: Ast,
+    pub a: Ast,
+    pub n: Ast,
+    pub name: String,
+    pub kty: GType,
+    pub vty: GType,
+}
+
+/// G6 A1: the array value of a `Vec<e>` (verify.py `mk_arr(.., elem)`): i64 / bool elements use the legacy kinds, every other
+/// element type (an abstract parameter, an Option, a struct, ...) is `Elem::Abs` with the element type kept in `ety`.
+fn coll_arr(a: Ast, n: Ast, base: &str, e: &GType) -> Arr {
+    if *e == GType::i64() {
+        Arr::new(a, n, base.to_string(), Elem::I64)
+    } else if *e == GType::bool() {
+        Arr::new(a, n, base.to_string(), Elem::Bool)
+    } else {
+        Arr::abs(a, n, base.to_string(), e.clone())
+    }
+}
+
 /// Environment value. verify.py distinguishes Int/Bool/Datatype by the z3 expression's sort, but here they are carried as tags.
 #[derive(Clone)]
 pub enum Val {
@@ -363,6 +387,8 @@ pub enum Val {
     /// An Opt/Res/user struct/enum value and its Pruv type (= `Model.type_of`).
     Dt(Ast, Ty),
     Arr(Arr),
+    /// G6 A1: a HashMap value.
+    Map(MapV),
     /// Python `None` (print, unit function call).
     Unit,
 }
@@ -371,7 +397,7 @@ impl Val {
     pub fn ast(&self) -> &Ast {
         match self {
             Val::Int(a) | Val::Bool(a) | Val::Dt(a, _) => a,
-            Val::Arr(_) | Val::Unit => panic!("value has no single ast"),
+            Val::Arr(_) | Val::Map(_) | Val::Unit => panic!("value has no single ast"),
         }
     }
     pub fn arr(&self) -> &Arr {
@@ -384,7 +410,14 @@ impl Val {
         match self {
             Val::Int(a) | Val::Bool(a) | Val::Dt(a, _) => Ok(a),
             Val::Arr(_) => Err("expected a z3 value, got an array".to_string()),
+            Val::Map(_) => Err("expected a z3 value, got a map".to_string()),
             Val::Unit => Err("expected a z3 value, got None".to_string()),
+        }
+    }
+    pub fn try_map(&self) -> R<&MapV> {
+        match self {
+            Val::Map(m) => Ok(m),
+            _ => Err("expected a map".to_string()),
         }
     }
     pub fn try_arr(&self) -> R<&Arr> {
@@ -578,6 +611,42 @@ impl<'a> FnVerifier<'a> {
         self.k += 1;
         let n = format!("{}!{}", base, self.k);
         let z = &self.z;
+        // G6 A1: Vec = [T] array, String = u8 array, HashMap = (d, a, n). Python checks this after the legacy array
+        // cases, but a collection type is never one of them, so the order is not observable.
+        if let Some(c) = ty.coll() {
+            let int = z.int_sort();
+            return match c {
+                Coll::Str => {
+                    let arr_sort = z.array_sort(&int, &int);
+                    Ok(Val::Arr(Arr::new(
+                        z.constant(&n, &arr_sort),
+                        z.int_const(&format!("{}.len", n)),
+                        base.to_string(),
+                        Elem::U8,
+                    )))
+                }
+                Coll::Vec(e) => {
+                    let esort = self.model.try_sort_of(&Ty::from_gtype(&e))?;
+                    let arr_sort = z.array_sort(&int, &esort);
+                    Ok(Val::Arr(coll_arr(z.constant(&n, &arr_sort), z.int_const(&format!("{}.len", n)), base, &e)))
+                }
+                Coll::Map(k, v) => {
+                    // ks, vs = sort_of(K), sort_of(V) in this order (instance numbering of generic datatypes)
+                    let ks = self.model.try_sort_of(&Ty::from_gtype(&k))?;
+                    let vs = self.model.try_sort_of(&Ty::from_gtype(&v))?;
+                    let d_sort = z.array_sort(&ks, &z.bool_sort());
+                    let a_sort = z.array_sort(&ks, &vs);
+                    Ok(Val::Map(MapV {
+                        d: z.constant(&format!("{}.d", n), &d_sort),
+                        a: z.constant(&format!("{}.a", n), &a_sort),
+                        n: z.int_const(&format!("{}.len", n)),
+                        name: base.to_string(),
+                        kty: k,
+                        vty: v,
+                    }))
+                }
+            };
+        }
         match ty {
             Ty::I64 => Ok(Val::Int(z.int_const(&n))),
             Ty::Bool => Ok(Val::Bool(z.bool_const(&n))),
@@ -757,6 +826,7 @@ impl<'a> FnVerifier<'a> {
             let v = self.fresh(name, ty);
             match &v {
                 Val::Arr(a) => pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)])),
+                Val::Map(m) => pc.push(self.z.and(&[m.n.ge_i(0), m.n.le_i(MAX_LEN)])),
                 Val::Unit => {}
                 other => {
                     if let Some(w) = self.wf(ty, other.ast()) {
@@ -875,13 +945,24 @@ impl<'a> FnVerifier<'a> {
             let Some(old) = h.env.try_get(n).cloned() else { continue };
             match old {
                 Val::Arr(old_arr) => {
-                    let nv = self.try_fresh(n, &old_arr.array_ty())?;
+                    // G6 A1: an element type without a legacy array type (a Vec<X>, X not a parameter) is re-created as a Vec
+                    let fty = match (&old_arr.elem, &old_arr.ety) {
+                        (Elem::Abs, Some(e)) if e.owner.is_none() => Ty::Inst(GType::new("vec", vec![e.clone()])),
+                        _ => old_arr.array_ty(),
+                    };
+                    let nv = self.try_fresh(n, &fty)?;
                     let a = nv.try_arr()?.clone();
                     h.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
                     if a.elem == Elem::U8 {
                         h.pc.push(self.u8_dom(&a));
                     }
                     h.env.set(n, Val::Arr(a));
+                }
+                Val::Map(old_map) => {
+                    let nv = self.try_fresh(n, &Ty::Inst(GType::new("hashmap", vec![old_map.kty.clone(), old_map.vty.clone()])))?;
+                    let m = nv.try_map()?.clone();
+                    h.pc.push(self.z.and(&[m.n.ge_i(0), m.n.le_i(MAX_LEN)]));
+                    h.env.set(n, Val::Map(m));
                 }
                 Val::Int(_) => {
                     let nv = self.try_fresh(n, &Ty::I64)?;
@@ -1281,8 +1362,8 @@ impl<'a> FnVerifier<'a> {
                 let vf = model.variant_fns(&ety, &x.variant)?;
                 Ok(Val::Bool(vf.rec.apply1(v.try_ast()?)))
             }
-            // G6 A0: never reaches the verifier (the driver's A0 guard stops the program earlier)
-            Expr::Move(_) => Err("G6 move reached the verifier".to_string()),
+            // G6 A1: `move x` evaluates to the current value of the binding
+            Expr::Move(x) => env.try_get(&x.name).cloned().ok_or_else(|| format!("'{}'", x.name)),
             Expr::VariantField(x) => {
                 let v = self.ev(&x.value, st, g, code, env)?;
                 let ety = enum_ty(&x.enum_name, &v);
@@ -1303,7 +1384,13 @@ impl<'a> FnVerifier<'a> {
         }
         let arg = |i: usize| -> R<&Val> { args.get(i).ok_or_else(|| "tuple index out of range".to_string()) };
         match n {
-            "len" => return Ok(Val::Int(arg(0)?.try_arr()?.n.clone())),
+            "len" => {
+                // G6 A1: `len(c)` is `c.n` for an array, a Vec, a String and a HashMap alike
+                return Ok(Val::Int(match arg(0)? {
+                    Val::Map(m) => m.n.clone(),
+                    other => other.try_arr()?.n.clone(),
+                }));
+            }
             "alloc" => {
                 let a0 = arg(0)?.try_ast()?.clone();
                 let a1 = arg(1)?.try_ast()?.clone();
@@ -1401,6 +1488,10 @@ impl<'a> FnVerifier<'a> {
                 self.assume(st, g, fa);
                 return Ok(Val::Arr(res));
             }
+            // G6 A1 (G6_SPEC 11.3): the standard catalog (unless the program declares a function of that name)
+            _ if pruv_core::foreign::is_catalog(n) && !self.funcs.contains_key(n) => {
+                return self.catalog_call(e, x, &args, st, g, code);
+            }
             "print" => return Ok(Val::Unit),
             // G3: the datatype of the argument's own type (the legacy one for Option<i64> / Result<i64>)
             "is_some" | "some_val" => {
@@ -1463,6 +1554,13 @@ impl<'a> FnVerifier<'a> {
         }
         let ret = Ty::from_name(&f.ret);
         if ret == Ty::Unit {
+            if f.foreign.is_some() {
+                // G6 A1 (11.4): a trusted unit result still assumes its ensures (ordinary unit functions keep the legacy behaviour)
+                for en in &f.ensures {
+                    let v = self.ev_ast(en, st, g, false, &cenv)?;
+                    self.assume(st, g, v);
+                }
+            }
             return Ok(Val::Unit);
         }
         let rty = if self.theta.is_empty() {
@@ -1478,6 +1576,10 @@ impl<'a> FnVerifier<'a> {
                 let d = self.u8_dom(ra);
                 self.assume(st, g, d);
             }
+        } else if let Val::Map(rm) = &res {
+            // G6 A1
+            let w = self.z.and(&[rm.n.ge_i(0), rm.n.le_i(MAX_LEN)]);
+            self.assume(st, g, w);
         } else if let Some(w) = self.try_wf(&rty, res.try_ast()?)? {
             self.assume(st, g, w);
         }
@@ -1487,6 +1589,135 @@ impl<'a> FnVerifier<'a> {
             self.assume(st, g, v);
         }
         Ok(res)
+    }
+
+    /// verify.py `catalog_call` (G6_SPEC 11.3): the standard catalog; every requires is a `call_requires` obligation
+    /// (only in code), then an exact term is the result (a fresh symbol only for new_* and string_push_str).
+    fn catalog_call(&mut self, e: &Expr, x: &ast::Call, args: &[Val], st: &mut State, g: &[Ast], code: bool) -> R<Val> {
+        let n = x.name.as_str();
+        let rty = self.t(x.ty.as_deref());
+        let z = self.z.clone();
+        fn av<'v>(args: &'v [Val], i: usize) -> R<&'v Val> {
+            args.get(i).ok_or_else(|| "not enough values to unpack".to_string())
+        }
+        let argv = move |i: usize| av(args, i);
+        // need(ob): `precondition of NAME (catalog)`, in code only
+        let what = format!("precondition of {} (catalog)", n);
+        match n {
+            "vec_new" | "string_new" | "map_new" => {
+                let rt = rty.clone().ok_or_else(|| "fresh: None".to_string())?;
+                let r = self.try_fresh(n, &rt)?;
+                if n == "map_new" {
+                    let r = r.try_map()?.clone();
+                    let ksort = self.model.try_sort_of(&Ty::from_gtype(&r.kty))?;
+                    let kt = z.const_array(&ksort, &z.bool_val(false));
+                    return Ok(Val::Map(MapV { d: kt, a: r.a.clone(), n: z.int(0), name: n.to_string(), kty: r.kty.clone(), vty: r.vty.clone() }));
+                }
+                let r = r.try_arr()?;
+                Ok(Val::Arr(r.like(r.a.clone(), z.int(0), n)))
+            }
+            "vec_push" => {
+                let v = argv(0)?.try_arr()?.clone();
+                let xv = argv(1)?.try_ast()?.clone();
+                if code {
+                    let ob = v.n.lt_i(MAX_LEN);
+                    self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "call_requires", &what, None);
+                }
+                Ok(Val::Arr(v.like(v.a.store(&v.n, &xv), v.n.add_i(1), n)))
+            }
+            "vec_get" | "string_byte" => {
+                let v = argv(0)?.try_arr()?.clone();
+                let i = argv(1)?.try_ast()?.clone();
+                if code {
+                    let ob = z.and(&[i.ge_i(0), i.lt(&v.n)]);
+                    self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "call_requires", &what, None);
+                }
+                let r = v.a.select(&i);
+                match v.elem {
+                    Elem::Bool => Ok(Val::Bool(r)),
+                    Elem::Abs => Ok(Val::Dt(r, v.elem_ty())),
+                    Elem::I64 | Elem::U8 => {
+                        // as an array read: an i64/u8 element is a machine integer
+                        if code {
+                            let w = in_range(&z, &r);
+                            self.assume(st, g, w);
+                        }
+                        Ok(Val::Int(r))
+                    }
+                }
+            }
+            "map_get" | "map_lookup" => {
+                let m = argv(0)?.try_map()?.clone();
+                let k = argv(1)?.try_ast()?.clone();
+                self.map_lookup(&m, &k, rty.as_ref())
+            }
+            "map_insert" => {
+                let m = argv(0)?.try_map()?.clone();
+                let k = argv(1)?.try_ast()?.clone();
+                let xv = argv(2)?.try_ast()?.clone();
+                let has = m.d.select(&k);
+                if code {
+                    let ob = z.or(&[has.clone(), m.n.lt_i(MAX_LEN)]);
+                    self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "call_requires", &what, None);
+                }
+                let nn = m.n.add(&z.ite(&has, &z.int(0), &z.int(1)));
+                Ok(Val::Map(MapV {
+                    d: m.d.store(&k, &z.bool_val(true)),
+                    a: m.a.store(&k, &xv),
+                    n: nn,
+                    name: n.to_string(),
+                    kty: m.kty.clone(),
+                    vty: m.vty.clone(),
+                }))
+            }
+            "map_updated" => {
+                let aft = argv(0)?.try_map()?.clone();
+                let bef = argv(1)?.try_map()?.clone();
+                let k = argv(2)?.try_ast()?.clone();
+                let xv = argv(3)?.try_ast()?.clone();
+                let jsort = self.model.try_sort_of(&Ty::from_gtype(&aft.kty))?;
+                let j = z.constant("map!j", &jsort);
+                let c1 = aft.d.eq(&bef.d.store(&k, &z.bool_val(true)));
+                let c2 = aft.n.eq(&bef.n.add(&z.ite(&bef.d.select(&k), &z.int(0), &z.int(1))));
+                let body = aft.d.select(&j).implies(&aft.a.select(&j).eq(&bef.a.store(&k, &xv).select(&j)));
+                let c3 = z.forall(std::slice::from_ref(&j), &body, &[]);
+                Ok(Val::Bool(z.and(&[c1, c2, c3])))
+            }
+            "string_push_str" => {
+                let sv = argv(0)?.try_arr()?.clone();
+                let t = argv(1)?.try_arr()?.clone();
+                if code {
+                    let ob = sv.n.add(&t.n).le_i(MAX_LEN);
+                    self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "call_requires", &what, None);
+                }
+                let res_v = self.try_fresh(n, &Ty::User("string".to_string()))?;
+                let res = res_v.try_arr()?.clone();
+                let len_fact = res.n.eq(&sv.n.add(&t.n));
+                self.assume(st, g, len_fact);
+                let k = z.int_const("str!k");
+                let rng1 = z.and(&[k.ge_i(0), k.lt(&sv.n)]);
+                let body1 = res.a.select(&k).eq(&sv.a.select(&k));
+                let f1 = z.forall(std::slice::from_ref(&k), &rng1.implies(&body1), &[]);
+                self.assume(st, g, f1);
+                let rng2 = z.and(&[k.ge_i(0), k.lt(&t.n)]);
+                let body2 = res.a.select(&sv.n.add(&k)).eq(&t.a.select(&k));
+                let f2 = z.forall(std::slice::from_ref(&k), &rng2.implies(&body2), &[]);
+                self.assume(st, g, f2);
+                Ok(Val::Arr(res))
+            }
+            "string_to_str" => {
+                let a = argv(0)?.try_arr()?;
+                Ok(Val::Arr(Arr::new(a.a.clone(), a.n.clone(), n.to_string(), Elem::U8)))
+            }
+            other => Err(format!("catalog: {}", other)),
+        }
+    }
+
+    /// verify.py `map_lookup`: `If(m.d[k], Some(m.a[k]), None)` as an Option<V> of the call's own result type.
+    fn map_lookup(&mut self, m: &MapV, k: &Ast, rty: Option<&Ty>) -> R<Val> {
+        let o = self.model.opt(rty)?;
+        let r = self.z.ite(&m.d.select(k), &o.some.apply1(&m.a.select(k)), &o.none);
+        Ok(Val::Dt(r, rty.cloned().unwrap_or(Ty::Opt)))
     }
 
     // =========================================================================================
@@ -2015,6 +2246,42 @@ impl<'a> FnVerifier<'a> {
         Ok(vec![a])
     }
 
+    /// verify.py `run_foreign`: domain-only check of the ensures of a trusted rust fn: fresh result `result!k` with its
+    /// well-formedness, then each ensures is domain-checked under the requires, the result facts and the earlier ensures.
+    fn run_foreign(&mut self, st: &mut State) -> R<()> {
+        let f = self.f.ok_or_else(|| "no function".to_string())?;
+        let mut env = st.env.clone();
+        let rty = Ty::from_name(&f.ret);
+        if rty != Ty::Unit {
+            let res = self.try_fresh("result", &rty)?;
+            match &res {
+                Val::Arr(a) => {
+                    st.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
+                    if a.elem == Elem::U8 {
+                        let d = self.u8_dom(a);
+                        st.pc.push(d);
+                    }
+                }
+                Val::Map(m) => st.pc.push(self.z.and(&[m.n.ge_i(0), m.n.le_i(MAX_LEN)])),
+                other => {
+                    if let Some(w) = self.try_wf(&rty, other.try_ast()?)? {
+                        st.pc.push(w);
+                    }
+                }
+            }
+            env.set("result", res);
+        }
+        let mut prev: Vec<Ast> = Vec::new();
+        for en in &f.ensures {
+            let what = format!("variant_field lookups in postcondition (line {}) are defined", en.line());
+            let ds = self.check_dom_e(st, &prev, en, pos(en), &what, Some(&env))?;
+            prev.extend(ds);
+            let v = self.ev_ast(en, st, &[], false, &env)?;
+            prev.push(v);
+        }
+        Ok(())
+    }
+
     /// verify.py `run` (line 835).
     pub fn run(&mut self) -> R<()> {
         let f = self.f.ok_or_else(|| "no function".to_string())?;
@@ -2030,6 +2297,7 @@ impl<'a> FnVerifier<'a> {
                         pc.push(self.u8_dom(a));
                     }
                 }
+                Val::Map(m) => pc.push(self.z.and(&[m.n.ge_i(0), m.n.le_i(MAX_LEN)])), // G6 A1
                 other => {
                     if let Some(w) = self.try_wf(&pty, other.try_ast()?)? {
                         pc.push(w);
@@ -2051,6 +2319,10 @@ impl<'a> FnVerifier<'a> {
             }
             let v = self.ev0_ast(r, &mut st, &[], false)?;
             st.pc.push(v);
+        }
+        if f.foreign.is_some() {
+            // G6 A1 (11.4): a trusted declaration has no body and no ensures proof
+            return self.run_foreign(&mut st);
         }
         let ret_unit = Ty::from_name(&f.ret) == Ty::Unit;
         let node: Pos = (f.line as u32, f.col as u32);

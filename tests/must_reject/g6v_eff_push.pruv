@@ -1,0 +1,6 @@
+// G6 A1 missing_effect: vec_push is a grow operation and needs `! alloc`
+fn grow(take v: Vec<i64>) -> Vec<i64>
+  requires len(v) < 1099511627776
+{
+  return vec_push::<i64>(move v, 1);
+}

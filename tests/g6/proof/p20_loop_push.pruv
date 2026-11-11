@@ -1,0 +1,38 @@
+// G6 A1 proof: a while loop pushes n elements; invariants len(v) == i and forall element facts give the postcondition
+fn iota(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k] == k
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(v) == i
+    invariant forall k in 0..i: v[k] == k
+    decreases n - i
+  {
+    v = vec_push::<i64>(move v, i);
+    i = i + 1;
+  }
+  return move v;
+}
+
+fn constant_flags(n: i64) -> Vec<bool> ! alloc
+  requires 0 <= n && n <= 1000
+  ensures len(result) == n
+  ensures forall k in 0..n: result[k] == true
+{
+  let mut v: Vec<bool> = vec_new::<bool>();
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(v) == i
+    invariant forall k in 0..i: v[k] == true
+    decreases n - i
+  {
+    v = vec_push::<bool>(move v, true);
+    i = i + 1;
+  }
+  return move v;
+}

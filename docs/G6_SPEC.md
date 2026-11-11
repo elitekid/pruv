@@ -470,3 +470,46 @@ Ownership (only in executable code; checked per function after typing, in statem
 ### 10.5 Driver and guard
 
 Both drivers accept `--rust-extern NAME=PATH` (repeatable; NAME a Rust identifier, not `std`, no duplicates; otherwise CLI usage error exit 2), `--rust-search PATH` (repeatable) and `--foreign-checks requires|all|off` (default requires; `--no-verify` with `off` → exit 2). After a successful check, a program that contains a foreign declaration, a collection type, a `take`, or a `Move` is rejected in A0 with `codegen/unsupported_type` "G6 foreign calls and collections are not implemented by this compiler layer yet" at the first such construct (source order: functions in order, signature before body), also under `--no-verify`. The accepted frontend samples (`tests/g6/frontend/*.pruv`) therefore expect exactly that diagnostic; `tests/diff_parse.py --mode check` compares their checked dumps.
+
+## 11. A1 implementation decisions (fixed 2026-11-12, before implementation)
+
+These make §4 precise for two byte-identical verifier implementations (Python `pruvc/verify.py`, Rust `pruv-proof`). Where this section differs from §4/§7.3, it governs A1.
+
+### 11.1 Pipeline
+
+- Verification now runs on G6 programs. The A0 guard (`codegen/unsupported_type`) moves to **after** verification in both drivers; with `--no-verify` it still fires right after the check. Verification errors therefore win over the guard. The trace adapters (`tests/diff_py_adapter.py trace`, `pruv-trace-dump`) produce real traces for G6 programs (no guard).
+- `tests/g6/frontend/*` keep only their `--no-verify` row (they were written as frontend samples, not proof samples). New `tests/g6/proof/*.pruv` must verify completely: their rows expect exactly `codegen/unsupported_type` in default mode (proof done, no code generator yet).
+- The `.foreign.json` manifest and trusted-dependency reporting (§4.1) are emitted with build outputs in A2, not in A1.
+
+### 11.2 Models (MAX_LEN = 2^40)
+
+- `Vec<T>`: an `Arr` exactly like a G3 `[T]` array (array `Int -> Sort(T)`, length n, elem T). Well-formedness, havoc in loops and fresh results follow the existing `[T]` rules (`0 <= n <= MAX_LEN`, nothing more for non-u8 elements).
+- `String`: an `Arr` with elem `u8` exactly like `str` (`0 <= n <= MAX_LEN`, `u8_dom`).
+- `HashMap<K, V>`: a new map value `(d: Array(Sort(K), Bool), a: Array(Sort(K), Sort(V)), n: Int)`; well-formedness `0 <= n <= MAX_LEN`. Fresh/havoc maps get fresh d, a, n with that fact.
+- `move x` evaluates to the current value of x. Parameters in `ensures` keep denoting entry values (existing `params` snapshot), also when consumed.
+
+### 11.3 Catalog semantics at a call (arguments evaluated once, left to right)
+
+Each catalog precondition is proved (in code only) with obligation code `call_requires` and description `precondition of NAME (catalog)`; `vec_new`/`string_new`/`map_new` take a fresh symbol (one counter step) and replace its length by the literal 0; fresh names follow the existing `base!k` scheme (`.len`, `.d`, `.a`); the `map_updated` quantifier variable is `map!j`; then the result below is used directly (no fresh symbol where an exact term exists):
+
+| Call | Requires | Result |
+|---|---|---|
+| `vec_new` | — | fresh array, n = 0 |
+| `vec_push(v, x)` | `v.n < MAX_LEN` | `(Store(v.a, v.n, x), v.n + 1)` |
+| `vec_get(v, i)` | `0 <= i && i < v.n` | `Select(v.a, i)`; for an i64 element the i64 range is assumed (as an array read) |
+| `map_new` | — | `(K(Sort(K), false), fresh array, 0)` |
+| `map_get(m, k)` | — | `If(m.d[k], Some(m.a[k]), None)` |
+| `map_insert(m, k, x)` | `Or(m.d[k], m.n < MAX_LEN)` | `(Store(m.d, k, true), Store(m.a, k, x), m.n + If(m.d[k], 0, 1))` |
+| `string_new` | — | fresh array, n = 0, u8 |
+| `string_push_str(s, t)` | `s.n + t.n <= MAX_LEN` | fresh u8 array r, `r.n == s.n + t.n`, `forall j in 0..s.n: r[j] == s[j]`, `forall j in 0..t.n: r[s.n + j] == t[j]` (quantified like `substr`) |
+| `string_byte(s, i)` | `0 <= i && i < s.n` | `Select(s.a, i)`, i64 range assumed (as an array read) |
+| `string_to_str(s)` | — | a `str` value with the same array and length |
+| `len(c)` | — | `c.n` |
+
+Contract-only: `v[i]` / `s[i]` use the existing contract index-domain rule of arrays. `map_lookup(m, k)` = `If(m.d[k], Some(m.a[k]), None)`. `map_updated(after, before, k, x)` = `after.d == Store(before.d, k, true) && after.n == before.n + If(before.d[k], 0, 1) && forall j: after.d[j] ==> after.a[j] == Store(before.a, k, x)[j]` (j of Sort(K)).
+
+### 11.4 Trusted declarations
+
+- A `trusted rust fn` is verified like a function without a body: parameters fresh with well-formedness; each `requires` domain-checked under the earlier requires (existing rule); then a fresh result with well-formedness is introduced and each `ensures` is domain-checked under all requires, result well-formedness and the earlier ensures. No `ensures` proof, no body. Unused declarations are checked the same way.
+- A call to a trusted declaration is the existing call rule (prove each requires as `call_requires`, fresh result with wf, assume each ensures) with one difference: a **unit** result still assumes its ensures (ordinary unit functions keep the legacy behaviour so legacy traces do not change).
+- `--infer` never builds candidates mentioning collection-typed variables.

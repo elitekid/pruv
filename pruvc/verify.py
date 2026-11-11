@@ -3,6 +3,7 @@ import time
 import z3
 from vast import *
 from typeinfo import (TypeTable, is_array, array_elem, array_of, bind_args, substitute, decl_owner, format_type)
+from foreign import CATALOG_NAMES   # G6 A1: the twelve reserved catalog names
 
 I64_MIN, I64_MAX = -2 ** 63, 2 ** 63 - 1
 MAX_LEN = 2 ** 40
@@ -314,6 +315,8 @@ class Model:
 
     def type_of(s, v):
         """Pruv Type of a z3 datatype value (Opt/Res/user), or None"""
+        if isinstance(v, Map):      # G6 A1
+            return Type("hashmap", (v.kty, v.vty))
         try:
             return s.by_sort.get(v.sort().name())
         except Exception:
@@ -393,6 +396,19 @@ class Arr:
 def mk_arr(a, n, name, elem):
     """The only place an Arr is built; elem is the element Type (I64 / U8 / BOOL). Pure: touches no counter."""
     return Arr(a, n, name, elem)
+
+
+class Map:
+    """G6 A1 (G6_SPEC 11.2): a HashMap<K, V> value: membership d: Array(Sort(K), Bool), payload a: Array(Sort(K),
+    Sort(V)), size n. kty/vty are the Pruv key/value types."""
+    __slots__ = ("d", "a", "n", "name", "kty", "vty")
+
+    def __init__(s, d, a, n, name, kty, vty):
+        s.d, s.a, s.n, s.name, s.kty, s.vty = d, a, n, name, kty, vty
+
+
+_COLL = ("vec", "hashmap", "string")
+_STRING = Type("string")
 
 
 class State:
@@ -508,6 +524,15 @@ class FnVerifier:
             else:
                 esort = z3.BoolSort() if elem == BOOL else z3.IntSort()
             return mk_arr(z3.Array(n, z3.IntSort(), esort), z3.Int(n + ".len"), base, elem)
+        if ty.owner is None and ty.name in _COLL:   # G6 A1: Vec = [T] array, String = u8 array, HashMap = (d, a, n)
+            if ty.name == "string":
+                return mk_arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".len"), base, U8)
+            if ty.name == "vec":
+                return mk_arr(z3.Array(n, z3.IntSort(), s.model.sort_of(ty.args[0])), z3.Int(n + ".len"), base,
+                              ty.args[0])
+            ks, vs = s.model.sort_of(ty.args[0]), s.model.sort_of(ty.args[1])
+            return Map(z3.Array(n + ".d", ks, z3.BoolSort()), z3.Array(n + ".a", ks, vs), z3.Int(n + ".len"), base,
+                       ty.args[0], ty.args[1])
         if ty.owner is not None or ty.name in ("option", "result") or s.model.is_user(ty):
             return z3.Const(n, s.model.sort_of(ty))
         raise Exception("fresh: " + ty.name)
@@ -517,6 +542,9 @@ class FnVerifier:
         """well_formed(ty, v): every active leaf is an i64. None when trivially true."""
         if ty == I64:
             return in_range(v)
+        if ty.owner is None and ty.name in _COLL:     # G6 A1: 0 <= n <= MAX_LEN (and the u8 domain of a String)
+            ln = z3.And(v.n >= 0, v.n <= MAX_LEN)
+            return z3.And(ln, u8_dom(v)) if ty.name == "string" else ln
         if ty == OPTION:
             return z3.Implies(Opt.is_some(v), in_range(Opt.sval(v)))
         if ty == RESULT:
@@ -762,6 +790,8 @@ class FnVerifier:
                 a = z3.Store(a, z3.IntVal(i), z3.IntVal(b))
             return mk_arr(a, z3.IntVal(len(e.value)), "literal", U8)
         if isinstance(e, Var):
+            return env[e.name]
+        if isinstance(e, Move):     # G6 A1: the current value of the binding
             return env[e.name]
         if isinstance(e, Unary):
             v = s.ev(e.operand, st, g, code, env)
@@ -1069,6 +1099,8 @@ class FnVerifier:
             s.assume(st, g, z3.ForAll([k], z3.Implies(z3.And(k >= 0, k < res.n),
                                                        z3.Select(res.a, k) == z3.Select(sv.a, lo + k))))
             return res
+        if n in CATALOG_NAMES and n not in s.funcs:
+            return s.catalog_call(e, args, st, g, code)
         if n == "print":
             return None
         if n in ("is_some", "some_val"):
@@ -1091,6 +1123,9 @@ class FnVerifier:
                     ob = s.ev(r, st, g, False, cenv)
                     s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
             if f.ret == UNIT:
+                if f.foreign is not None:       # G6 A1 (11.4): a trusted unit result still assumes its ensures
+                    for en in f.ensures:
+                        s.assume(st, g, s.ev(en, st, g, False, cenv))
                 return None
             rty = substitute(f.ret, theta) if theta else f.ret
             res = s.fresh("ret_" + n, rty)
@@ -1098,6 +1133,8 @@ class FnVerifier:
                 s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
                 if res.elem == U8:
                     s.assume(st, g, u8_dom(res))
+            elif isinstance(res, Map):
+                s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
             else:
                 w = s.wf(rty, res)
                 if w is not None:
@@ -1108,6 +1145,69 @@ class FnVerifier:
             return res
         finally:
             s.theta = saved
+
+    def catalog_call(s, e, args, st, g, code):
+        """G6 A1 (G6_SPEC 11.3): the standard catalog; every requires is a `call_requires` obligation
+        (only in code), then an exact term is the result (a fresh symbol only for new_* and string_push_str)."""
+        n = e.name
+        rty = s.T(e.ty)
+
+        def need(ob):
+            if code:
+                s.prove(st, g, ob, e, "call_requires", "precondition of %s (catalog)" % n)
+
+        if n in ("vec_new", "string_new", "map_new"):
+            r = s.fresh(n, rty)
+            if n == "map_new":
+                kt = z3.K(s.model.sort_of(r.kty), z3.BoolVal(False))
+                return Map(kt, r.a, z3.IntVal(0), n, r.kty, r.vty)
+            return mk_arr(r.a, z3.IntVal(0), n, r.elem)
+        if n == "vec_push":
+            v, x = args
+            need(v.n < MAX_LEN)
+            return mk_arr(z3.Store(v.a, v.n, x), v.n + 1, n, v.elem)
+        if n in ("vec_get", "string_byte"):
+            v, i = args
+            need(z3.And(i >= 0, i < v.n))
+            r = z3.Select(v.a, i)
+            if code and v.elem in (I64, U8):   # as an array read: an i64/u8 element is a machine integer
+                s.assume(st, g, in_range(r))
+            return r
+        if n in ("map_get", "map_lookup"):
+            m, k = args
+            return s.map_lookup(m, k, rty)
+        if n == "map_insert":
+            m, k, x = args
+            has = z3.Select(m.d, k)
+            need(z3.Or(has, m.n < MAX_LEN))
+            return Map(z3.Store(m.d, k, z3.BoolVal(True)), z3.Store(m.a, k, x), m.n + z3.If(has, 0, 1), n, m.kty,
+                       m.vty)
+        if n == "map_updated":
+            aft, bef, k, x = args
+            j = z3.Const("map!j", s.model.sort_of(aft.kty))
+            return z3.And(aft.d == z3.Store(bef.d, k, z3.BoolVal(True)),
+                          aft.n == bef.n + z3.If(z3.Select(bef.d, k), 0, 1),
+                          z3.ForAll([j], z3.Implies(z3.Select(aft.d, j),
+                                                    z3.Select(aft.a, j) == z3.Select(z3.Store(bef.a, k, x), j))))
+        if n == "string_push_str":
+            sv, t = args
+            need(sv.n + t.n <= MAX_LEN)
+            res = s.fresh(n, _STRING)
+            s.assume(st, g, res.n == sv.n + t.n)
+            k = z3.Int("str!k")
+            s.assume(st, g, z3.ForAll([k], z3.Implies(z3.And(k >= 0, k < sv.n),
+                                                       z3.Select(res.a, k) == z3.Select(sv.a, k))))
+            s.assume(st, g, z3.ForAll([k], z3.Implies(z3.And(k >= 0, k < t.n),
+                                                       z3.Select(res.a, sv.n + k) == z3.Select(t.a, k))))
+            return res
+        if n == "string_to_str":
+            return mk_arr(args[0].a, args[0].n, n, U8)
+        raise Exception("catalog: " + n)
+
+    def map_lookup(s, m, k, rty):
+        """If(m.d[k], Some(m.a[k]), None) as an Option<V> of the call's own result type"""
+        o = s.model.opt(rty)
+        return z3.If(z3.Select(m.d, k), o.some(z3.Select(m.a, k)), o.none)
 
     # ---------- statements ----------
     def ensures_ok(s, st, val, node):
@@ -1154,10 +1254,16 @@ class FnVerifier:
                 continue
             old = h.env[n]
             if isinstance(old, Arr):
-                nv = s.fresh(n, arr_type(old.elem))
+                # G6 A1: an element type without a legacy array type (a Vec<X>) is re-created as a Vec
+                legacy = old.elem in (I64, U8, BOOL) or old.elem.owner is not None
+                nv = s.fresh(n, arr_type(old.elem) if legacy else Type("vec", (old.elem,)))
                 h.pc.append(z3.And(nv.n >= 0, nv.n <= MAX_LEN))
                 if nv.elem == U8:
                     h.pc.append(u8_dom(nv))
+                h.env[n] = nv
+            elif isinstance(old, Map):
+                nv = s.fresh(n, Type("hashmap", (old.kty, old.vty)))
+                h.pc.append(z3.And(nv.n >= 0, nv.n <= MAX_LEN))
                 h.env[n] = nv
             elif z3.is_int(old):
                 nv = s.fresh(n, I64)
@@ -1335,6 +1441,30 @@ class FnVerifier:
         a.pc.append(z3.Not(c))
         return [a]
 
+    def run_foreign(s, st):
+        """domain-only check of the ensures of a trusted rust fn: fresh result `result!k` with its well-formedness,
+        then each ensures is domain-checked under the requires, the result facts and the earlier ensures"""
+        f = s.f
+        env = dict(st.env)
+        if f.ret != UNIT:
+            res = s.fresh("result", f.ret)
+            if isinstance(res, Arr):
+                st.pc.append(z3.And(res.n >= 0, res.n <= MAX_LEN))
+                if res.elem == U8:
+                    st.pc.append(u8_dom(res))
+            elif isinstance(res, Map):
+                st.pc.append(z3.And(res.n >= 0, res.n <= MAX_LEN))
+            else:
+                w = s.wf(f.ret, res)
+                if w is not None:
+                    st.pc.append(w)
+            env["result"] = res
+        prev = []
+        for en in f.ensures:
+            prev.extend(s.check_dom(st, prev, en, en, "variant_field lookups in postcondition (line %d) are defined"
+                                    % en.line, env))
+            prev.append(s.ev(en, st, [], False, env))
+
     def run(s):
         f = s.f
         env, pc = {}, []
@@ -1344,6 +1474,8 @@ class FnVerifier:
                 pc.append(z3.And(v.n >= 0, v.n <= MAX_LEN))
                 if v.elem == U8:
                     pc.append(u8_dom(v))
+            elif isinstance(v, Map):    # G6 A1
+                pc.append(z3.And(v.n >= 0, v.n <= MAX_LEN))
             else:
                 w = s.wf(p.type, v)
                 if w is not None:
@@ -1360,6 +1492,9 @@ class FnVerifier:
             if d is not None:
                 st.pc.append(d)
             st.pc.append(s.ev(r, st, [], False))
+        if f.foreign is not None:       # G6 A1 (11.4): a trusted declaration has no body and no ensures proof
+            s.run_foreign(st)
+            return
         for end in s.exec_block(f.body, st):
             if f.ret == UNIT:
                 s.ensures_ok(end, None, f)

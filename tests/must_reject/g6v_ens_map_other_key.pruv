@@ -1,0 +1,7 @@
+// G6 A1 ensures: inserting key 1 does not add key 2, so claiming that key 2 is now present is not provable
+fn insert_one(take m: HashMap<i64, i64>) -> HashMap<i64, i64> ! alloc
+  requires len(m) < 1099511627776
+  ensures is_some(map_lookup::<i64, i64>(result, 2))
+{
+  return map_insert::<i64, i64>(move m, 1, 100);
+}

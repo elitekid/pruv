@@ -1,0 +1,13 @@
+// G6 A1 proof: string_new yields an empty String (len == 0)
+fn blank() -> String ! alloc
+  ensures len(result) == 0
+{
+  return string_new();
+}
+
+fn blank_len() -> i64 ! alloc
+  ensures result == 0
+{
+  let s: String = string_new();
+  return len(s);
+}

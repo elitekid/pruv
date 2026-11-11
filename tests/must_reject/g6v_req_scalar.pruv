@@ -1,0 +1,12 @@
+// G6 A1 call_requires: the trusted precondition b > 0 is not established by the caller (b is unconstrained)
+trusted rust fn div_floor(a: i64, b: i64) -> i64
+  requires a >= 0
+  requires b > 0
+  ensures 0 <= result && result <= a
+  = "::std::num::div_floor_nonneg";
+
+fn caller(a: i64, b: i64) -> i64
+  requires a >= 0
+{
+  return div_floor(a, b);
+}

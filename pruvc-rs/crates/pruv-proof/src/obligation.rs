@@ -423,6 +423,11 @@ impl<'a> FnVerifier<'a> {
                     if a.elem == crate::model::Elem::Bool {
                         els.push(Json::Bool(m.eval(&sel)?.is_true()));
                     } else if a.elem == crate::model::Elem::Abs {
+                        // G6 A1: only an element of a type-parameter type is an opaque token; any other datatype element
+                        // (a Vec<Option<i64>>, ...) makes Python's `.as_long()` raise, so the variable is skipped
+                        if a.ety.as_ref().map_or(true, |g| g.owner.is_none()) {
+                            return None;
+                        }
                         els.push(self.opaque_json(&m.eval(&sel)?));
                     } else {
                         els.push(Json::Num(m.eval(&sel)?.numeral_string()?));
@@ -434,6 +439,8 @@ impl<'a> FnVerifier<'a> {
             Val::Bool(a) => Some(Json::Bool(m.eval(a)?.is_true())),
             // G3: an abstract value is the opaque dict at the top (a string `T:opaque#N` only inside a datatype)
             Val::Dt(a, _) => Some(self.fmt_val_j(&m.eval(a)?, false)),
+            // G6 A1: Python evaluates the Map object in the model and the exception skips the variable
+            Val::Map(_) => None,
             Val::Unit => None,
         }
     }

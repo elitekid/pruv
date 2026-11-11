@@ -1,0 +1,16 @@
+// G6 A1 proof: string_to_str keeps the length and every byte of the String
+fn view(s: String) -> str ! alloc
+  ensures len(result) == len(s)
+  ensures forall j in 0..len(s): result[j] == s[j]
+{
+  return string_to_str(s);
+}
+
+fn view_len() -> i64 ! alloc
+  ensures result == 3
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, "abc");
+  let t: str = string_to_str(s);
+  return len(t);
+}

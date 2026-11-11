@@ -1,0 +1,6 @@
+// G6 A1 contract_domain: some_val of a map_lookup result without an is_some guard
+fn f(m: HashMap<i64, i64>, k: i64) -> i64
+  requires some_val(map_lookup::<i64, i64>(m, k)) > 0
+{
+  return 0;
+}

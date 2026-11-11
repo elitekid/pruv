@@ -1,0 +1,12 @@
+// G6 A1 inference final pass: --infer adds no collection templates and the claim len(v) + 1 is false anyway (the loop ends at len(v))
+fn count_up(v: Vec<i64>) -> i64
+  ensures result == len(v) + 1
+{
+  let mut i: i64 = 0;
+  while i < len(v)
+    decreases len(v) - i
+  {
+    i = i + 1;
+  }
+  return i;
+}

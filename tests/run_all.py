@@ -1,5 +1,5 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend] [--backend rust|llvm|both]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof] [--backend rust|llvm|both]
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
 
@@ -254,14 +254,15 @@ def g3_proof_jobs():
     return jobs
 
 
-def g6_frontend_jobs():
-    """G6 A0 (docs/G6_SPEC.md 10.5): tests/g6/frontend/*.pruv are well-typed and pass the ownership rules, but no
-    later layer lowers G6 yet, so the compiler under test must stop with exactly codegen/unsupported_type
-    (and no earlier diagnostic), with and without --no-verify. Rows have group "g6_frontend", backend null."""
+def g6_frontend_jobs(group="g6_frontend", sub="frontend", modes=(("no-verify", ["--no-verify"]),)):
+    """G6 A0/A1 (docs/G6_SPEC.md 10.5, 11.1): no code generator lowers G6 yet, so the compiler under test must
+    stop with exactly codegen/unsupported_type (and no earlier diagnostic).
+    g6_frontend: tests/g6/frontend/*.pruv are well-typed and pass the ownership rules (--no-verify only).
+    g6_proof: tests/g6/proof/*.pruv must also verify completely (default mode). Rows have backend null."""
     jobs = []
-    for f in sorted(glob.glob(os.path.join(ROOT, "tests/g6/frontend/*.pruv"))):
-        for mode, flags in (("default", []), ("no-verify", ["--no-verify"])):
-            name = "g6_frontend/%s [%s]" % (os.path.basename(f), mode)
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/g6", sub, "*.pruv"))):
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, os.path.basename(f), mode)
 
             def fn(f=f, flags=flags, mode=mode):
                 out = os.path.join(WORK, "g6f_%s_%s.rs" % (os.path.splitext(os.path.basename(f))[0], mode))
@@ -278,7 +279,7 @@ def g6_frontend_jobs():
                 return ok, "exit %d, diagnostics %s (expected exit 1 and only codegen/unsupported_type) %s" % (
                     c.returncode, diags, (c.stdout + c.stderr)[-400:])
             jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": flags, "mode": mode,
-                                         "group": "g6_frontend"}))
+                                         "group": group}))
     return jobs
 
 
@@ -476,7 +477,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -563,7 +564,7 @@ def main():
     if "--only" in sys.argv:
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
-        if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend"):
+        if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -584,6 +585,8 @@ def main():
             jobs += g3_proof_jobs()
         if only in (None, "g6_frontend"):
             jobs += g6_frontend_jobs()
+        if only in (None, "g6_proof"):
+            jobs += g6_frontend_jobs("g6_proof", "proof", (("default", []),))
         for b in backends:
             if only in (None, "examples"):
                 jobs += examples_jobs(b)
@@ -626,9 +629,9 @@ def main():
     if saved_rows is not None:
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
-        for g in ("must_reject", "g3_proof", "g6_frontend", "examples", "runtime"):
+        for g in ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "examples", "runtime"):
             if only in (None, g):
-                for b in ([None] if g in ("must_reject", "g3_proof", "g6_frontend") else backends):
+                for b in ([None] if g in ("must_reject", "g3_proof", "g6_frontend", "g6_proof") else backends):
                     scope.add((g, b))
         in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
         outside = len(saved_rows) - len(in_scope)

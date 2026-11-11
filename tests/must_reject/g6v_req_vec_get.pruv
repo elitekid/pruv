@@ -1,0 +1,4 @@
+// G6 A1 call_requires: vec_get(v, 0) needs 0 <= 0 < len(v), but the borrowed Vec may be empty
+fn first(v: Vec<i64>) -> i64 {
+  return vec_get::<i64>(v, 0);
+}

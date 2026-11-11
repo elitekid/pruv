@@ -204,6 +204,27 @@ impl Ty {
             _ => &[],
         }
     }
+    /// G6 A1: the owned collection kind of this type (verify.py `ty.owner is None and ty.name in _COLL`).
+    /// `Vec<T>` / `HashMap<K, V>` are `Ty::Inst` (they always carry arguments); `String` has no arguments and
+    /// comes out of `from_plain` as `Ty::User("string")`.
+    pub fn coll(&self) -> Option<Coll> {
+        match self {
+            Ty::Inst(g) if g.owner.is_none() && g.name == "vec" && g.args.len() == 1 => Some(Coll::Vec(g.args[0].clone())),
+            Ty::Inst(g) if g.owner.is_none() && g.name == "hashmap" && g.args.len() == 2 => {
+                Some(Coll::Map(g.args[0].clone(), g.args[1].clone()))
+            }
+            Ty::User(n) if n == "string" => Some(Coll::Str),
+            _ => None,
+        }
+    }
+}
+
+/// G6 A1: Vec<T> (element type), HashMap<K, V>, String.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Coll {
+    Vec(GType),
+    Map(GType, GType),
+    Str,
 }
 
 #[derive(Clone, Debug)]

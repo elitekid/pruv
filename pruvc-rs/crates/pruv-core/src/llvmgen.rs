@@ -2263,6 +2263,10 @@ pub fn gen_llvm_any(
     target: AbiTarget,
 ) -> Result<(String, String), crate::codegen::GenError> {
     use crate::codegen::GenError;
+    // G6: no code generator lowers G6 yet (the drivers reject earlier)
+    if let Some(e) = crate::foreign::g6_unimplemented_error(prog, "codegen") {
+        return Err(GenError::Diag(e));
+    }
     if crate::typeinfo::first_g3_use(prog).is_some() {
         let plan = crate::mono::specialize(prog).map_err(|e| match e {
             crate::mono::MonoError::Limit(p) => GenError::Diag(p),

@@ -1,0 +1,27 @@
+// G6 A1 proof: an abstract Vec<T> helper whose ensures states the length, the prefix and the last element; concrete callers reuse that ensures
+fn append_one<T>(take v: Vec<T>, x: T) -> Vec<T> ! alloc
+  requires len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+  ensures result[len(v)] == x
+  ensures forall i in 0..len(v): result[i] == v[i]
+{
+  return vec_push::<T>(move v, x);
+}
+
+fn push_five(take v: Vec<i64>) -> Vec<i64> ! alloc
+  requires len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+  ensures result[len(v)] == 5
+  ensures forall i in 0..len(v): result[i] == v[i]
+{
+  return append_one::<i64>(move v, 5);
+}
+
+fn pair_of_flags() -> i64 ! alloc
+  ensures result == 2
+{
+  let mut v: Vec<bool> = vec_new::<bool>();
+  v = append_one::<bool>(move v, true);
+  v = append_one::<bool>(move v, false);
+  return len(v);
+}

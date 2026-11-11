@@ -1,0 +1,20 @@
+// G6 A1 proof: vec_new yields an empty Vec (len == 0) for i64 and bool element types
+fn empty_ints() -> Vec<i64> ! alloc
+  ensures len(result) == 0
+{
+  return vec_new::<i64>();
+}
+
+fn empty_flags() -> Vec<bool> ! alloc
+  ensures len(result) == 0
+{
+  let v: Vec<bool> = vec_new::<bool>();
+  return move v;
+}
+
+fn count_fresh() -> i64 ! alloc
+  ensures result == 0
+{
+  let v: Vec<i64> = vec_new::<i64>();
+  return len(v);
+}

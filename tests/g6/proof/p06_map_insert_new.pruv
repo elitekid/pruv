@@ -1,0 +1,18 @@
+// G6 A1 proof: map_insert on a new key grows the size by one and makes the key present with the inserted value
+fn one_entry() -> HashMap<i64, i64> ! alloc
+  ensures len(result) == 1
+  ensures is_some(map_lookup::<i64, i64>(result, 3)) && some_val(map_lookup::<i64, i64>(result, 3)) == 7
+{
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  m = map_insert::<i64, i64>(move m, 3, 7);
+  return move m;
+}
+
+fn two_entries() -> i64 ! alloc
+  ensures result == 2
+{
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  m = map_insert::<i64, i64>(move m, 1, 10);
+  m = map_insert::<i64, i64>(move m, 2, 20);
+  return len(m);
+}

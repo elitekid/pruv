@@ -1,0 +1,17 @@
+// G6 A1 proof: a loop reads a borrowed Vec with vec_get (index guarded by the loop condition) and returns early
+fn all_nonneg(v: Vec<i64>) -> bool
+  ensures result ==> (forall k in 0..len(v): v[k] >= 0)
+{
+  let mut i: i64 = 0;
+  while i < len(v)
+    invariant 0 <= i && i <= len(v)
+    invariant forall k in 0..i: v[k] >= 0
+    decreases len(v) - i
+  {
+    if vec_get::<i64>(v, i) < 0 {
+      return false;
+    }
+    i = i + 1;
+  }
+  return true;
+}

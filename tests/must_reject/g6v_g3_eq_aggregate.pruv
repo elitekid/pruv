@@ -1,0 +1,13 @@
+// G6 A1 eq_type: runtime == on a struct aggregate stays contract-only, also in a program that uses collections
+struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+fn count(v: Vec<i64>) -> i64 {
+  return len(v);
+}
+
+fn same(p: Pair<i64, bool>, q: Pair<i64, bool>) -> bool {
+  return p == q;
+}

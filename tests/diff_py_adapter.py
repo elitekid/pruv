@@ -269,9 +269,7 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
     try:
         prog = pruv_parse(read_source(path))
         check_mod.check(prog, externs)
-        g6err = g6_unimplemented_error(prog)    # G6 A0 guard, as in pruvc.compile_file (also --no-verify)
-        if g6err is not None:
-            raise g6err
+        # G6 A1: no guard here; G6 programs get real traces (G6_SPEC 11.1)
         if verify_on:
             import verify
             rec = verify.TraceRecorder()

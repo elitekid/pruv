@@ -66,6 +66,7 @@ GROUP_DIRS = [
     ("check_edge", "tests/check_edge", "ok_*.pruv"),
     ("inference", "tests/inference", "inf_*.pruv"),
     ("bench_noinv", "bench/inference/agg_noinv", "*.pruv"),
+    ("g6", "tests/g6", "*/*.pruv"),
 ]
 ALL_GROUPS = [g for g, _, _ in GROUP_DIRS] + ["fuzz", "input"]
 COLS = ("inputs", "same", "same_unknown", "cex_only", "flaky_unknown", "py_recursion", "diff", "option_mismatch",

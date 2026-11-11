@@ -1,0 +1,4 @@
+// G6 A1 foreign_owned_type: a HashMap key type parameter without the Element bound
+fn size_of<K>(m: HashMap<K, i64>) -> i64 {
+  return len(m);
+}

@@ -1,0 +1,19 @@
+// G6 A1 proof: a trusted scalar fn (std::cmp::min with ensures); the caller's ensures follows from the trusted ensures alone
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+fn clamp_hi(x: i64, hi: i64) -> i64
+  ensures result <= hi && result <= x
+  ensures result == x || result == hi
+{
+  return rust_min(x, hi);
+}
+
+fn smaller_positive(a: i64, b: i64) -> i64
+  requires a > 0 && b > 0
+  ensures result > 0
+{
+  return rust_min(a, b);
+}

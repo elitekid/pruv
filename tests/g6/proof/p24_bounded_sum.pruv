@@ -1,0 +1,18 @@
+// G6 A1 proof: a loop sums a bounded Vec<i64> with vec_get; the linear accumulator invariant 0 <= s <= 100 * i bounds the result
+fn bounded_sum(v: Vec<i64>) -> i64
+  requires len(v) <= 1000
+  requires forall k in 0..len(v): 0 <= v[k] && v[k] <= 100
+  ensures 0 <= result && result <= 100 * len(v)
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(v)
+    invariant 0 <= i && i <= len(v)
+    invariant 0 <= s && s <= 100 * i
+    decreases len(v) - i
+  {
+    s = s + vec_get::<i64>(v, i);
+    i = i + 1;
+  }
+  return s;
+}

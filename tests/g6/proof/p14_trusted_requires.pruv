@@ -1,0 +1,21 @@
+// G6 A1 proof: a trusted fn with requires; each caller establishes the precondition from its own requires or a constant
+trusted rust fn div_floor(a: i64, b: i64) -> i64
+  requires a >= 0
+  requires b > 0
+  ensures 0 <= result && result <= a
+  = "::std::num::div_floor_nonneg";
+
+fn half(a: i64) -> i64
+  requires a >= 10
+  ensures 0 <= result && result <= a
+{
+  return div_floor(a, 2);
+}
+
+fn bucket(a: i64, width: i64) -> i64
+  requires 0 <= a && a <= 1000
+  requires 1 <= width && width <= 10
+  ensures result <= 1000
+{
+  return div_floor(a, width);
+}

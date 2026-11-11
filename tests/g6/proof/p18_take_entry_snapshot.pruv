@@ -1,0 +1,30 @@
+// G6 A1 proof: ensures that mention a consumed `take` parameter denote its entry value (Vec, String and HashMap), and callers use them
+fn bump(take v: Vec<i64>) -> Vec<i64> ! alloc
+  requires len(v) < 1099511627776
+  ensures len(result) == len(v) + 1
+{
+  return vec_push::<i64>(move v, 0);
+}
+
+fn add_entry(take m: HashMap<i64, i64>, k: i64) -> HashMap<i64, i64> ! alloc
+  requires len(m) < 1099511627776
+  ensures map_updated::<i64, i64>(result, m, k, 1)
+  ensures len(m) <= len(result)
+{
+  return map_insert::<i64, i64>(move m, k, 1);
+}
+
+fn extend(take s: String, t: str) -> String ! alloc
+  requires len(s) + len(t) <= 1099511627776
+  ensures len(result) >= len(s)
+{
+  return string_push_str(move s, t);
+}
+
+fn one_after_bump() -> i64 ! alloc
+  ensures result == 1
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  v = bump(move v);
+  return len(v);
+}

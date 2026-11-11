@@ -1,0 +1,11 @@
+// G6 A1 ensures: after a trusted min the result may be b, so `result == a` does not follow from the trusted ensures
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+fn pick(a: i64, b: i64) -> i64
+  ensures result == a
+{
+  return rust_min(a, b);
+}

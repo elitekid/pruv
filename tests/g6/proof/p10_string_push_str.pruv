@@ -1,0 +1,18 @@
+// G6 A1 proof: string_push_str gives length len(s)+len(text), keeps the prefix and places text after it (helper ensures + concrete caller)
+fn append(take s: String, t: str) -> String ! alloc
+  requires len(s) + len(t) <= 1099511627776
+  ensures len(result) == len(s) + len(t)
+  ensures forall j in 0..len(s): result[j] == s[j]
+  ensures forall j in 0..len(t): result[len(s) + j] == t[j]
+{
+  return string_push_str(move s, t);
+}
+
+fn hello_world() -> i64 ! alloc
+  ensures result == 11
+{
+  let mut s: String = string_new();
+  s = append(move s, "hello");
+  s = append(move s, " world");
+  return len(s);
+}

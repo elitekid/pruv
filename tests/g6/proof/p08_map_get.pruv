@@ -1,0 +1,21 @@
+// G6 A1 proof: map_get equals the contract-only map_lookup; the Option result is matched in both arms
+fn get_or_zero(m: HashMap<i64, i64>, k: i64) -> i64
+  ensures is_some(map_lookup::<i64, i64>(m, k)) ==> result == some_val(map_lookup::<i64, i64>(m, k))
+  ensures !is_some(map_lookup::<i64, i64>(m, k)) ==> result == 0
+{
+  let o: Option<i64> = map_get::<i64, i64>(m, k);
+  match o {
+    Some(x) => { return x; }
+    None => { return 0; }
+  }
+}
+
+fn has_key(m: HashMap<i64, bool>, k: i64) -> bool
+  ensures result == is_some(map_lookup::<i64, bool>(m, k))
+{
+  let o: Option<bool> = map_get::<i64, bool>(m, k);
+  match o {
+    Some(b) => { return true; }
+    None => { return false; }
+  }
+}

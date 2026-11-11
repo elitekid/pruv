@@ -1,0 +1,23 @@
+// G6 A1 proof: untouched-state frame — inserting at key 1 leaves the lookup at key 2 unchanged (via map_lookup and via map_updated)
+fn frame(take m: HashMap<i64, i64>) -> HashMap<i64, i64> ! alloc
+  requires len(m) < 1099511627776
+  ensures map_lookup::<i64, i64>(result, 2) == map_lookup::<i64, i64>(m, 2)
+{
+  return map_insert::<i64, i64>(move m, 1, 100);
+}
+
+fn frame_updated(take m: HashMap<i64, i64>) -> HashMap<i64, i64> ! alloc
+  requires len(m) < 1099511627776
+  ensures map_updated::<i64, i64>(result, m, 1, 100)
+  ensures map_lookup::<i64, i64>(result, 2) == map_lookup::<i64, i64>(m, 2)
+{
+  return map_insert::<i64, i64>(move m, 1, 100);
+}
+
+fn frame_get(take m: HashMap<i64, i64>) -> Option<i64> ! alloc
+  requires len(m) < 1099511627776
+  ensures result == map_lookup::<i64, i64>(m, 2)
+{
+  let m2: HashMap<i64, i64> = map_insert::<i64, i64>(move m, 1, 100);
+  return map_get::<i64, i64>(m2, 2);
+}

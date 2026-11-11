@@ -1,0 +1,6 @@
+// G6 A1 contract_domain: max over 0..len(v) is undefined when the range is empty (len(v) == 0)
+fn f(v: Vec<i64>) -> i64
+  requires max(k in 0..len(v): v[k]) >= 0
+{
+  return 0;
+}

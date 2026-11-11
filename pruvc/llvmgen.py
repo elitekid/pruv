@@ -2106,6 +2106,10 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     """plan: a mono.SpecPlan for a generic program (computed here when omitted; PruvError specialization_limit
     propagates).  The generator works on the concrete plan.program only: no type parameter reaches LLVM."""
     from typeinfo import g2_unimplemented_error, first_g3_use
+    from foreign import g6_unimplemented_error
+    g6err = g6_unimplemented_error(prog)   # G6: no code generator lowers G6 yet (the drivers reject earlier)
+    if g6err is not None:
+        raise g6err
     if plan is None and first_g3_use(prog) is not None:
         from mono import specialize
         plan = specialize(prog)

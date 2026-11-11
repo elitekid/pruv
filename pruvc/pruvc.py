@@ -69,10 +69,12 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     src = open(path, encoding="utf-8").read()
     prog = parse(src)
     check(prog, externs=externs)
-    # G6 A0: foreign declarations, collections, take and move are checked but not lowered yet (also --no-verify)
-    g6err = g6_unimplemented_error(prog)
-    if g6err is not None:
-        return [g6err]
+    # G6: foreign declarations, collections, take and move are checked (and proved) but not lowered yet.
+    # With --no-verify the guard fires right after the check; otherwise after verification (G6_SPEC 11.1).
+    if not verify:
+        g6err = g6_unimplemented_error(prog)
+        if g6err is not None:
+            return [g6err]
     if verify:
         from verify import verify_program
         if infer:
@@ -84,6 +86,9 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             errs = verify_program(prog)
         if errs:
             return errs
+        g6err = g6_unimplemented_error(prog)
+        if g6err is not None:
+            return [g6err]
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same

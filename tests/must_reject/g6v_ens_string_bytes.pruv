@@ -1,0 +1,8 @@
+// G6 A1 ensures: the appended bytes start at index len(s), not at 0, so result[j] == t[j] is false when s is non-empty
+fn extend(take s: String, t: str) -> String ! alloc
+  requires len(s) + len(t) <= 1099511627776
+  ensures len(result) == len(s) + len(t)
+  ensures forall j in 0..len(t): result[j] == t[j]
+{
+  return string_push_str(move s, t);
+}

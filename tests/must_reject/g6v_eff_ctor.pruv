@@ -1,0 +1,4 @@
+// G6 A1 missing_effect: vec_new allocates, so the function needs `! alloc`
+fn make() -> Vec<i64> {
+  return vec_new::<i64>();
+}

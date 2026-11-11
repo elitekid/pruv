@@ -1,0 +1,20 @@
+// G6 A1 proof: a unit-result trusted fn with `! io`; its ensures (a fact about the argument on normal return) is assumed after the call statement
+trusted rust fn require_nonneg(code: i64) -> () ! io
+  ensures code >= 0
+  = "::std::process::exit_unless_nonneg";
+
+fn checked(code: i64) -> i64 ! io
+  ensures result >= 0
+  ensures result == code
+{
+  require_nonneg(code);
+  return code;
+}
+
+fn twice(a: i64) -> i64 ! io
+  requires a <= 1000
+  ensures result >= 0
+{
+  require_nonneg(a);
+  return a;
+}

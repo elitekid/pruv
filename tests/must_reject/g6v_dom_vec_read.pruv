@@ -1,0 +1,6 @@
+// G6 A1 contract_domain: v[i] in a requires with no guard 0 <= i < len(v)
+fn f(v: Vec<i64>, i: i64) -> i64
+  requires v[i] > 0
+{
+  return 0;
+}

@@ -1,0 +1,25 @@
+// G6 A1 proof: len(v) is the exact logical length, before and after a consuming push
+fn count_exact(v: Vec<i64>) -> i64
+  requires len(v) == 3
+  ensures result == 3
+{
+  return len(v);
+}
+
+fn grown_len(take v: Vec<i64>) -> i64 ! alloc
+  requires len(v) < 1099511627776
+  ensures result == len(v) + 1
+{
+  let w: Vec<i64> = vec_push::<i64>(move v, 0);
+  return len(w);
+}
+
+fn three_pushes() -> i64 ! alloc
+  ensures result == 3
+{
+  let mut v: Vec<bool> = vec_new::<bool>();
+  v = vec_push::<bool>(move v, true);
+  v = vec_push::<bool>(move v, false);
+  v = vec_push::<bool>(move v, true);
+  return len(v);
+}

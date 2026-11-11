@@ -1,0 +1,6 @@
+// G6 A1 call_requires: vec_push needs len(v) < 2^40, but the requires only gives len(v) <= 2^40 (a full Vec could be pushed)
+fn grow(take v: Vec<i64>) -> Vec<i64> ! alloc
+  requires len(v) <= 1099511627776
+{
+  return vec_push::<i64>(move v, 1);
+}

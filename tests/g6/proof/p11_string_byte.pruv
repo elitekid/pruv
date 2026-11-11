@@ -1,0 +1,18 @@
+// G6 A1 proof: string_byte under 0 <= i < len returns the byte s[i] (range 0..=255); also the byte just after an append
+fn byte_at(s: String, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures result == s[i]
+  ensures 0 <= result && result <= 255
+{
+  return string_byte(s, i);
+}
+
+fn first_appended_byte(take s: String, t: str) -> i64 ! alloc
+  requires len(t) > 0
+  requires len(s) + len(t) <= 1099511627776
+  ensures result == t[0]
+{
+  let n: i64 = len(s);
+  let r: String = string_push_str(move s, t);
+  return string_byte(r, n);
+}
