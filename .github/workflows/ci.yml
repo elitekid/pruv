@@ -17,11 +17,19 @@
 
 name: ci
 
+# When it runs (keeps the development loop fast; macOS is checked locally on every change)
+# - push to main: Linux only.
+# - nightly schedule, manual dispatch, ci/** branches and pull requests: all three OSes.
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
+  # Documentation-only changes do not rebuild the compiler (a full run takes about 18 minutes per OS).
   push:
     branches: [main, "ci/**"]
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -40,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-24.04, windows-latest]
+        os: ${{ fromJSON((github.event_name == 'push' && github.ref == 'refs/heads/main') && '["ubuntu-24.04"]' || '["macos-latest", "ubuntu-24.04", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     defaults:
