@@ -1,0 +1,11 @@
+// utf8_boundary(verify, --infer): 루프 뒤 0 <= i <= len(s) 는 성립하지만 i 가 2 에서 멈출 수 있어 경계를 모르는 substr(s, 0, i) 는 --infer 에서도 거부된다
+fn f(s: str) -> str ! alloc {
+  let mut i: i64 = 0;
+  while i < 2 && i < len(s)
+    invariant 0 <= i && i <= len(s)
+    decreases 2 - i
+  {
+    i = i + 1;
+  }
+  return substr(s, 0, i);
+}

@@ -1,0 +1,5 @@
+// string_slice_range(verify): substr("abc", 2, 1) 은 lo > hi 라 범위 의무가 먼저 실패한다 (두 경계 자체는 성립)
+fn f() -> i64 ! alloc {
+  let t: str = substr("abc", 2, 1);
+  return len(t);
+}

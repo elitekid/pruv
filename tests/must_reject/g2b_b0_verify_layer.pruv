@@ -1,4 +1,4 @@
-// unsupported_type(verify): 앞단은 통과하는 정상 str 프로그램(리터럴·len·색인·copy·substr·is_char_boundary·str 반환)이 증명 층에서 거부된다
+// unsupported_type(codegen): B1부터 증명은 통과하고 생성 층이 거부한다 (정상 str 프로그램: 리터럴·len·색인·copy·substr·is_char_boundary·str 반환)
 fn pick(s: str, i: i64) -> str ! alloc
   requires 0 <= i && i <= len(s)
   requires is_char_boundary(s, i)

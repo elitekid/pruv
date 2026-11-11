@@ -275,6 +275,12 @@ def u8_dom(arr):
                                      z3.And(z3.Select(A, k) >= 0, z3.Select(A, k) <= 255)))
 
 
+def str_boundary(arr, i):
+    """G2 B1 (G2_SPEC 4.4): i is a UTF-8 character boundary of byte array arr (total, no domain)."""
+    b = z3.Select(arr.a, i)
+    return z3.Or(i == 0, i == arr.n, z3.And(i > 0, i < arr.n, z3.Or(b < 128, b >= 192)))
+
+
 FIX = {
     "index_oob": "add a requires/invariant/if that bounds the index, e.g. `invariant 0 <= i && i <= len(a)`",
     "overflow": "bound the operands with requires (element ranges, len(a) <= N) and loop invariants on accumulators",
@@ -292,6 +298,8 @@ FIX = {
     "variant_domain": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
     "contract_domain": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
     "elem_range": "store or fill only values in 0..=255 into a [u8] array: bound the value with requires, an if, or a loop invariant",
+    "string_slice_range": "keep 0 <= lo <= hi <= len(s) for substr(s, lo, hi): bound lo and hi with requires, an if, or a loop invariant (a counterexample str may not be valid UTF-8)",
+    "utf8_boundary": "cut a str only at character boundaries: require or check is_char_boundary(s, lo) and is_char_boundary(s, hi) (a counterexample str may not be valid UTF-8)",
 }
 
 
@@ -325,6 +333,8 @@ class FnVerifier:
             return z3.Const(n, Opt)
         if ty == RESULT:
             return z3.Const(n, Res)
+        if ty == STR:   # G2 B1: str = U8 byte array
+            return mk_arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".len"), base, U8)
         if is_array(ty):
             elem = array_elem(ty)
             esort = z3.BoolSort() if elem == BOOL else z3.IntSort()
@@ -532,6 +542,11 @@ class FnVerifier:
             return z3.IntVal(e.value)
         if isinstance(e, BoolLit):
             return z3.BoolVal(e.value)
+        if isinstance(e, StrLit):   # G2 B1: constant byte array, no counter, no assumption
+            a = z3.K(z3.IntSort(), z3.IntVal(0))
+            for i, b in enumerate(e.value):
+                a = z3.Store(a, z3.IntVal(i), z3.IntVal(b))
+            return mk_arr(a, z3.IntVal(len(e.value)), "literal", U8)
         if isinstance(e, Var):
             return env[e.name]
         if isinstance(e, Unary):
@@ -804,6 +819,20 @@ class FnVerifier:
             return mk_arr(z3.K(z3.IntSort(), args[1]), args[0], "alloc", aelem)
         if n == "copy":
             return mk_arr(args[0].a, args[0].n, "copy", args[0].elem)
+        if n == "is_char_boundary":
+            return str_boundary(args[0], args[1])
+        if n == "substr":   # G2 B1 (G2_SPEC 4.4): range -> boundary -> fresh result
+            sv, lo, hi = args
+            s.prove(st, g, z3.And(lo >= 0, lo <= hi, hi <= sv.n), e, "string_slice_range",
+                    "substr range 0 <= lo <= hi <= len(%s)" % sv.name)
+            s.prove(st, g, z3.And(str_boundary(sv, lo), str_boundary(sv, hi)), e, "utf8_boundary",
+                    "substr cuts of %s at UTF-8 character boundaries" % sv.name)
+            res = s.fresh("substr", STR)
+            s.assume(st, g, res.n == hi - lo)
+            k = z3.Int("str!k")
+            s.assume(st, g, z3.ForAll([k], z3.Implies(z3.And(k >= 0, k < res.n),
+                                                       z3.Select(res.a, k) == z3.Select(sv.a, lo + k))))
+            return res
         if n == "print":
             return None
         if n == "is_some": return Opt.is_some(args[0])
@@ -1091,7 +1120,7 @@ def verify_program(prog, rec=None, infer=False, report=None):
     verify the whole function with the survivors as extra loop invariants. report (a list) receives one record
     per loop (docs/STAGE1_B_INFER.md section 5). infer=False: exactly the old path."""
     from typeinfo import g2_unimplemented_error
-    g2err = g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool"))  # G2 B0
+    g2err = g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool", "str"))  # G2 B1
     if g2err is not None:
         return [g2err]
     errors = []

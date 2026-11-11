@@ -1,0 +1,6 @@
+// assert(verify): "é" 의 둘째 바이트는 169 인데 168 을 단언한다 (인덱스 1 은 범위 안이라 index_oob 는 성립)
+fn f() -> i64 ! alloc {
+  let e: str = "é";
+  assert e[1] == 168;
+  return 0;
+}

@@ -1,0 +1,5 @@
+// assert(verify): "안" 은 UTF-8 3바이트인데 len == 2 를 단언하므로 거짓이다 (증명이 공허하지 않음)
+fn f() -> i64 ! alloc {
+  assert len("안") == 2;
+  return 0;
+}

@@ -788,3 +788,26 @@ G2b(문자열)의 첫 묶음으로 `str` 타입과 문자열 리터럴을 렉서
 - **확인 감사(Claude Opus):** 필수 0, 1차 반영 4건 확인. 권고 3 반영: 리터럴이 Let보다 앞인 위치 표본(`g2b_b0_guard_lit_first`), 명세 9.1 표에 새 표본·문구 고정 추가, `.gitattributes` 주석 정정.
 - **Windows CI:** 이번 변경은 CI 경로(`tests/abi/winci/**`·`pruvc/runtime.c`·워크플로)를 건드리지 않아 푸시 뒤 실행되지 않았다. 대신 `winci/prepare.py --check`로 52파일이 생성 결과와 같음을 확인했다(마지막 Windows 통과는 run 42992603822).
 - 측정 못 한 것: Windows에서 Python 판 실행(로캘 인코딩 변화 영향), Linux 실행.
+
+
+## 40. G2 B1: `str` 증명 (2026-11-11)
+
+B0에서 앞단까지 연 `str`을 증명 층에서 다루게 했다. 실행·ABI(B2)가 아직 없으므로 `str`이나 리터럴을 쓰는 프로그램은 증명을 통과한 뒤 생성 층에서 `codegen/unsupported_type`으로 거부된다(결정 16). SMT 글자·의무 순서·문구는 `docs/G2_B1_IMPL.md`에 먼저 고정했고 두 판이 첫 비교에서 같았다.
+
+- **표현:** 기호 `str`은 새 형태 없이 원소 U8 인 기호 배열(`Array(Int, Int)` + 길이)이다. 그래서 바이트 0..255 가정(`u8_dom`)은 결정 2의 세 곳(함수 진입·호출 결과·루프 havoc)에 기존 코드 그대로 붙고, 길이·코드 읽기(index_oob, 읽기 범위 가정은 i64 그대로)·계약 읽기(contract_domain)·`copy`·반례 `{"len","first"}`는 배열 길을 탄다. Rs는 `Ty::Str` 변형을 새로 두고 fresh만 U8 배열로 만든다.
+- **리터럴:** `K(Int, 0)`에 바이트를 차례로 `Store`한 상수 배열, 길이는 바이트 수. 카운터·의무·가정 없음(코드·계약 같은 항).
+- **경계:** `is_char_boundary(s, i)` = `Or(i == 0, i == n, And(i > 0, i < n, Or(s[i] < 128, s[i] >= 192)))`(G2_SPEC 4.4). 음수·끝 초과는 거짓, 정의역 의무 없음.
+- **substr:** 인자 평가 → `string_slice_range`(`0 <= lo <= hi <= len(s)`) → `utf8_boundary`(양 끝을 한 의무로, `lo == hi`도) → 새 결과(`len = hi - lo`, `forall k: result[k] == s[lo + k]`, 묶인 변수 `str!k`). 두 의무 모두 cand 없이 증명해 `--infer` 탐색에서는 빠지고 최종 검증에서만 판정(결정 4). 리터럴·substr 결과에는 범위 가정을 따로 넣지 않는다(상수이거나 원래 바이트와 같아 이미 성립).
+- **UTF-8 과대 근사(결정 13):** SMT의 `str`은 아무 바이트열일 수 있다. 두 FIX 문구에 "a counterexample str may not be valid UTF-8"을 적었다.
+- **가드:** 증명 층 진입 가드 skip에 `str`을 더함(이제 모든 G2 타입을 건너뛰지만 A6 i32를 위해 남김). 생성 층 가드 6곳은 그대로.
+- **표본:** G2_SPEC 6.3 verify 5개(`g2b_slice_range`·`_slice_start`·`_slice_end`·`_index`·`_contract_index`), B1 양성 증명 8개(`g2b_b1_ok_*`: 바이트 길이 ASCII·2/3/4바이트·빈 문자열·NUL, 경계 0·끝·내부·continuation·음수·끝 초과·선행 바이트 194/195/236·ASCII 126, 리터럴→copy→substr→반환→호출자, 매개변수·호출 결과 바이트 범위, havoc, 계약, `--infer`), B1 거부 12개(공허하지 않음 assert 4, 경계·범위 의무 6, `--infer`에서도 거부 1, ensures 1). B0 층 가드 표본 5개는 기대 stage를 `verify`→`codegen`으로 옮김(`g2b_b0_guard_lit_first`는 증명이 돌며 overflow가 먼저 나서 `+ n`을 뺌, 위치 4:20 그대로). 행 목록 694 → 719.
+- **회귀(마지막 실행):**
+  - run_all `--backend both` 두 판 719/719(행 목록 719, 빠진 행·실패 0)
+  - `--infer` 없는 SMT 231파일: 기준과 바이트 동일
+  - 새·바뀐 g2b 표본 trace 대조: 플래그 없음·`--infer` 모두 same(51표본×2 = 102건, 감사 뒤 더한 5표본×2도 same)
+  - diff_compilers `--only must_reject --backend both` 414건 same, diff_parse parse 3537(same 3535, Py 재귀 한도 2건 제외)·check 4142(same 4140, 같은 2건 제외) "모두 same" 판정
+  - m3_all 11단계 ok, cli_also_llvm 두 판 355/355, `tests/inference --regress` 두 판 322/322(Py는 다른 시험과 동시에 돌린 첫 실행에서 `inf_budget`이 시간 초과로 1건 실패, 단독 재실행 통과), 퍼저 seed 41×200 실패 0, cargo test pruv-core 42·model::tests 1
+- **감사(Claude Opus):** 필수 0·권고 5. 거짓 증명·두 판 SMT 차이 없음, 기준 SMT 231 same(HEAD 기준선 별도 재현). 반영: 낡은 주석, B0 표본 본문 변경 사유를 명세에, 빠진 경계 표본 5쌍(continuation 191·선행 194/195/236·`lo == hi` 가운데·음수 lo·hi 초과·3/4바이트 자르기), 리터럴 루프 조건에서 `--infer` 후보가 없는 완전성 한계와 str 반례 값이 두 판에서 다를 수 있음(cex_only)을 명세 5.6에.
+- **확인 감사(Claude Opus):** 필수 0, 1차 반영 5건 확인. 권고 2 반영: run_all이 진단 "포함"만 보므로 "첫 진단" 표현을 주석·명세에서 고침(의무 순서는 직접 실행으로 확인), 128 문턱을 내리는 변이용 `"a~"`(126) assert 추가(127은 리터럴에 쓸 수 없어 남음).
+- **Windows CI:** CI 경로를 건드리지 않아 실행되지 않음. `winci/prepare.py --check`로 52파일 동일 확인.
+- 측정 못 한 것: str 증명 시간(감사의 diff_trace 0.2~0.3초 외), Windows·Linux 실행, diff_parse 건수가 B0 기록(3981)과 다르게 세어지는 이유, 실행 경계 판정과 SMT boundary 일치(B2에서).

@@ -1,0 +1,32 @@
+// unsupported_type(codegen): 루프 안 str 재대입(havoc) 뒤 바이트 범위 assert 와 바이트를 세는 정상 루프가 증명되고 생성 층에서 거부된다 (B1 양성 증명)
+fn f(s: str) -> i64 ! alloc
+  requires len(s) > 0
+{
+  let mut t: str = copy(s);
+  let mut i: i64 = 0;
+  while i < 3
+    invariant 0 <= i && i <= 3
+    invariant len(t) == len(s)
+    decreases 3 - i
+  {
+    t = copy(s);
+    i = i + 1;
+  }
+  assert len(t) > 0;
+  let b: i64 = t[0];
+  assert b >= 0 && b <= 255;
+  let mut z: i64 = 0;
+  let mut j: i64 = 0;
+  while j < len(s)
+    invariant 0 <= j && j <= len(s)
+    invariant 0 <= z && z <= j
+    decreases len(s) - j
+  {
+    if s[j] == 0 {
+      z = z + 1;
+    }
+    j = j + 1;
+  }
+  assert z <= len(s);
+  return z;
+}

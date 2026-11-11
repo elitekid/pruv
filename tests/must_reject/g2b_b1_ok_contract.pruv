@@ -1,0 +1,13 @@
+// unsupported_type(codegen): 계약 안 is_char_boundary·len·s[i]·리터럴이 정의역 검사를 통과해 증명되고 생성 층에서 거부된다 (B1 양성 증명)
+fn g(s: str, i: i64) -> bool
+  ensures result == is_char_boundary(s, i)
+{
+  return is_char_boundary(s, i);
+}
+
+fn h(s: str) -> i64
+  requires len(s) >= len("ab")
+  requires len(s) > 0 ==> (s[0] >= 0)
+{
+  return 0;
+}

@@ -1,0 +1,6 @@
+// string_slice_range(verify): requires 가 0 <= i 만 주므로 i > len(s) 가 가능해 substr(s, i, len(s)) 의 범위 의무가 실패한다 (run_all 은 진단 포함만 검사)
+fn f(s: str, i: i64) -> str ! alloc
+  requires 0 <= i
+{
+  return substr(s, i, len(s));
+}

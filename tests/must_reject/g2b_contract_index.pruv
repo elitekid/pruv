@@ -1,0 +1,6 @@
+// contract_domain(verify): 계약 안 s[len(s)] 읽기는 정의역(범위) 밖이다
+fn f(s: str) -> i64
+  requires s[len(s)] >= 0
+{
+  return 0;
+}

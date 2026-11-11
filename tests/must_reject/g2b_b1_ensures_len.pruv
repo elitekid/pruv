@@ -1,0 +1,7 @@
+// ensures(verify): substr(s, 0, 1) 의 길이는 1 인데 ensures 는 2 를 요구한다 (범위·경계 의무는 requires 로 성립)
+fn h(s: str) -> str ! alloc
+  requires len(s) >= 2 && is_char_boundary(s, 1)
+  ensures len(result) == 2
+{
+  return substr(s, 0, 1);
+}

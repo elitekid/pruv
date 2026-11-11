@@ -1,0 +1,5 @@
+// assert(verify): "¿"(194, 191)의 1번은 continuation 191 이라 경계가 아닌데 참이라고 단언한다 (문턱 191/192 변이를 잡음)
+fn f() -> i64 ! alloc {
+  assert is_char_boundary("¿", 1);
+  return 0;
+}

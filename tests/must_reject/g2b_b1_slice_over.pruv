@@ -1,0 +1,5 @@
+// string_slice_range(verify): substr("ab", 0, 3) 은 hi 가 len 을 넘어 범위 의무가 실패한다 (뒤에 utf8_boundary 도 남음; run_all 은 진단 포함만 검사)
+fn f() -> i64 ! alloc {
+  let t: str = substr("ab", 0, 3);
+  return len(t);
+}

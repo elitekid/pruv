@@ -67,6 +67,7 @@ pub enum Ty {
     Bool,
     Unit,
     Array(Elem),
+    Str,
     Opt,
     Res,
     User(String),
@@ -79,6 +80,7 @@ impl Ty {
             "i64" => Ty::I64,
             "bool" => Ty::Bool,
             "unit" => Ty::Unit,
+            "str" => Ty::Str,
             "option" => Ty::Opt,
             "result" => Ty::Res,
             other => {
@@ -97,6 +99,7 @@ impl Ty {
             Ty::Bool => "bool",
             Ty::Unit => "unit",
             Ty::Array(e) => pruv_core::typeinfo::array_of_elem_name(e.name()).expect("every Elem name has an array type name"),
+            Ty::Str => "str",
             Ty::Opt => "option",
             Ty::Res => "result",
             Ty::User(n) => n,
@@ -410,7 +413,7 @@ impl Model {
             Ty::Opt => Ok(self.opt_sort.clone()),
             Ty::Res => Ok(self.res_sort.clone()),
             Ty::User(n) => self.sorts.get(n).cloned().ok_or_else(|| format!("'{}'", n)),
-            Ty::Unit | Ty::Array(_) => Err(format!("'{}'", ty.name())),
+            Ty::Unit | Ty::Array(_) | Ty::Str => Err(format!("'{}'", ty.name())),
         }
     }
 
@@ -507,5 +510,7 @@ mod tests {
             assert!(t.is_array());
         }
         assert_eq!(Ty::from_name("u8"), Ty::User("u8".to_string()));
+        assert_eq!(Ty::from_name("str"), Ty::Str);
+        assert_eq!(Ty::Str.name(), "str");
     }
 }

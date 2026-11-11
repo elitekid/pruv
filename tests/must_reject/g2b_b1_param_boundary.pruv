@@ -1,0 +1,6 @@
+// utf8_boundary(verify): 범위는 requires 로 성립하지만 i 가 글자 경계라는 보장이 없어 substr(s, 0, i) 가 거부된다 (반례는 배열 모양 "first")
+fn f(s: str, i: i64) -> str ! alloc
+  requires 0 <= i && i <= len(s)
+{
+  return substr(s, 0, i);
+}

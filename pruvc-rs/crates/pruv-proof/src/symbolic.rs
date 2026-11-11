@@ -346,7 +346,7 @@ impl Val {
             Ty::I64 => Ok(Val::Int(a)),
             Ty::Bool => Ok(Val::Bool(a)),
             Ty::Opt | Ty::Res | Ty::User(_) => Ok(Val::Dt(a, ty.clone())),
-            Ty::Array(_) | Ty::Unit => Err(format!("'{}'", ty.name())),
+            Ty::Array(_) | Ty::Str | Ty::Unit => Err(format!("'{}'", ty.name())),
         }
     }
 }
@@ -526,6 +526,16 @@ impl<'a> FnVerifier<'a> {
                     *e,
                 )))
             }
+            Ty::Str => {
+                let int = z.int_sort();
+                let arr_sort = z.array_sort(&int, &int);
+                Ok(Val::Arr(Arr::new(
+                    z.constant(&n, &arr_sort),
+                    z.int_const(&format!("{}.len", n)),
+                    base.to_string(),
+                    Elem::U8,
+                )))
+            }
             Ty::User(name) => match self.model.sort_opt(name) {
                 Some(s) => Ok(Val::Dt(z.constant(&n, s), ty.clone())),
                 None => Err(format!("fresh: {}", name)),
@@ -578,7 +588,7 @@ impl<'a> FnVerifier<'a> {
                     conj(z, parts)
                 }
             },
-            Ty::Bool | Ty::Unit | Ty::Array(_) => None,
+            Ty::Bool | Ty::Unit | Ty::Array(_) | Ty::Str => None,
         }
     }
 
@@ -795,6 +805,18 @@ impl<'a> FnVerifier<'a> {
         self.z.forall(std::slice::from_ref(&k), &rng.implies(&body), &[])
     }
 
+    /// G2 B1: `i` 가 바이트 배열 `arr` 의 UTF-8 문자 경계인가(전체 함수, 정의역 없음).
+    /// `Or(i == 0, i == n, And(i > 0, i < n, Or(b < 128, b >= 192)))`, `b = Select(arr.a, i)`.
+    pub fn str_boundary(&self, arr: &Arr, i: &Ast) -> Ast {
+        let z = &self.z;
+        let b = arr.a.select(i);
+        z.or(&[
+            i.raw_eq(&z.int(0)),
+            i.eq(&arr.n),
+            z.and(&[i.gt_i(0), i.lt(&arr.n), z.or(&[b.lt_i(128), b.ge_i(192)])]),
+        ])
+    }
+
     // ---------- 집계 + 보조정리 (545~602행) ----------
     /// sum/count/max/min over lo<=k<hi 를 미해석 함수 `F(lo, hi, *outer)` 와 펼침 보조정리로 옮긴다.
     /// 호출 시점에 `qstack` 에는 이 집계의 자기 변수 `k` 가 이미 빠져 있어야 한다(`quant_exit` 뒤).
@@ -939,7 +961,14 @@ impl<'a> FnVerifier<'a> {
         match e {
             Expr::IntLit(x) => Ok(Val::Int(self.z.int_str(&norm_int(&x.value)))),
             Expr::BoolLit(x) => Ok(Val::Bool(self.z.bool_val(x.value))),
-            Expr::StrLit(_) => Err("ev: string literal is not supported yet".to_string()),
+            Expr::StrLit(x) => {
+                // G2 B1: 상수 바이트 배열. 카운터·의무·가정 없음.
+                let mut a = self.z.const_array(&self.z.int_sort(), &self.z.int(0));
+                for (i, b) in x.value.iter().enumerate() {
+                    a = a.store(&self.z.int(i as i64), &self.z.int(*b as i64));
+                }
+                Ok(Val::Arr(Arr::new(a, self.z.int(x.value.len() as i64), "literal".to_string(), Elem::U8)))
+            }
             Expr::Var(x) => env.try_get(&x.name).cloned().ok_or_else(|| format!("'{}'", x.name)),
             Expr::Unary(x) => {
                 let v = self.ev_ast(&x.operand, st, g, code, env)?;
@@ -1153,6 +1182,50 @@ impl<'a> FnVerifier<'a> {
             "copy" => {
                 let a = arg(0)?.try_arr()?;
                 return Ok(Val::Arr(Arr::new(a.a.clone(), a.n.clone(), "copy".to_string(), a.elem)));
+            }
+            "is_char_boundary" => {
+                // G2 B1: 의무·가정 없음.
+                let sv = arg(0)?.try_arr()?;
+                let i = arg(1)?.try_ast()?;
+                return Ok(Val::Bool(self.str_boundary(sv, i)));
+            }
+            "substr" => {
+                // G2 B1: 범위 → 경계 → 새 결과 → 길이 가정 → 바이트 관계 가정.
+                let sv = arg(0)?.try_arr()?.clone();
+                let lo = arg(1)?.try_ast()?.clone();
+                let hi = arg(2)?.try_ast()?.clone();
+                let ob = self.z.and(&[lo.ge_i(0), lo.le(&hi), hi.le(&sv.n)]);
+                self.prove_core(
+                    &st.env,
+                    &st.pc,
+                    g,
+                    &ob,
+                    pos(e),
+                    "string_slice_range",
+                    &format!("substr range 0 <= lo <= hi <= len({})", sv.name),
+                    None,
+                );
+                let ob = self.z.and(&[self.str_boundary(&sv, &lo), self.str_boundary(&sv, &hi)]);
+                self.prove_core(
+                    &st.env,
+                    &st.pc,
+                    g,
+                    &ob,
+                    pos(e),
+                    "utf8_boundary",
+                    &format!("substr cuts of {} at UTF-8 character boundaries", sv.name),
+                    None,
+                );
+                let res_v = self.try_fresh("substr", &Ty::Str)?;
+                let res = res_v.try_arr()?.clone();
+                let len_fact = res.n.eq(&hi.sub(&lo));
+                self.assume(st, g, len_fact);
+                let k = self.z.int_const("str!k");
+                let rng = self.z.and(&[k.ge_i(0), k.lt(&res.n)]);
+                let body = res.a.select(&k).eq(&sv.a.select(&lo.add(&k)));
+                let fa = self.z.forall(std::slice::from_ref(&k), &rng.implies(&body), &[]);
+                self.assume(st, g, fa);
+                return Ok(Val::Arr(res));
             }
             "print" => return Ok(Val::Unit),
             "is_some" => return Ok(Val::Bool(self.prelude.is_some(arg(0)?.try_ast()?))),

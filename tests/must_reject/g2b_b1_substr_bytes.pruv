@@ -1,0 +1,6 @@
+// assert(verify): substr("héllo", 1, 3) 는 é(195, 169)인데 첫 바이트가 104('h')라고 단언한다 (범위·경계·색인은 성립)
+fn f() -> i64 ! alloc {
+  let t: str = substr("héllo", 1, 3);
+  assert t[0] == 104;
+  return 0;
+}

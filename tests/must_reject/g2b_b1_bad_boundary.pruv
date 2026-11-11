@@ -1,0 +1,5 @@
+// assert(verify): "é" 의 1번은 글자 가운데라 is_char_boundary 가 거짓인데 참을 단언한다
+fn f() -> i64 ! alloc {
+  assert is_char_boundary("é", 1);
+  return 0;
+}

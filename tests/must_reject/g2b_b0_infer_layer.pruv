@@ -1,4 +1,4 @@
-// unsupported_type(verify, --infer): while 루프가 있는 정상 str 프로그램은 --infer 도 증명 층 가드에서 끝난다 (불변식 추론에 닿지 않음)
+// unsupported_type(codegen, --infer): B1부터 증명은 통과하고 생성 층이 거부한다 (while 루프가 있는 정상 str 프로그램, --infer)
 fn zeros(s: str) -> i64
   requires len(s) >= 0
 {

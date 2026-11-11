@@ -1,0 +1,5 @@
+// index_oob(verify): 리터럴 "ab"(길이 2)의 s[len(s)] 읽기는 범위를 벗어난다
+fn f() -> i64 ! alloc {
+  let s: str = "ab";
+  return s[len(s)];
+}

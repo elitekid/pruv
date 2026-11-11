@@ -1,0 +1,5 @@
+// utf8_boundary(verify): substr("é", 0, 1) 은 범위는 맞지만 끝 1 이 é(2바이트)의 가운데라 경계 의무가 실패한다
+fn f() -> i64 ! alloc {
+  let t: str = substr("é", 0, 1);
+  return len(t);
+}
