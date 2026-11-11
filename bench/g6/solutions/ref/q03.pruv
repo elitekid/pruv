@@ -1,0 +1,27 @@
+// G6 q03 reference: UTF-8 String assembly (pieces joined with a separator)
+fn join_pair(a: str, b: str, sep: str) -> str ! alloc
+  requires len(a) <= 1000 && len(b) <= 1000 && len(sep) <= 1000
+  ensures len(result) == len(a) + len(sep) + len(b)
+  ensures forall k in 0..len(a): result[k] == a[k]
+  ensures forall k in 0..len(sep): result[len(a) + k] == sep[k]
+  ensures forall k in 0..len(b): result[len(a) + len(sep) + k] == b[k]
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, a);
+  s = string_push_str(move s, sep);
+  s = string_push_str(move s, b);
+  return string_to_str(s);
+}
+
+fn joined_len3(a: str, b: str, c: str, sep: str) -> i64 ! alloc
+  requires len(a) <= 1000 && len(b) <= 1000 && len(c) <= 1000 && len(sep) <= 1000
+  ensures result == len(a) + len(b) + len(c) + 2 * len(sep)
+{
+  let mut s: String = string_new();
+  s = string_push_str(move s, a);
+  s = string_push_str(move s, sep);
+  s = string_push_str(move s, b);
+  s = string_push_str(move s, sep);
+  s = string_push_str(move s, c);
+  return len(s);
+}

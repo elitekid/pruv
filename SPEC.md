@@ -251,11 +251,11 @@ fn push_two(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc
 ```
 - **Trust.** A `trusted rust fn` has no body; it names a Rust function by absolute path (`::std::...` or a crate given
   with `--rust-extern NAME=PATH`). The prover checks that callers satisfy its `requires` and then **assumes** its
-  `ensures`; the Rust code itself is not proved. A wrong contract can make wrong code "verify", so contracts are listed in
-  `<out>.foreign.json`. Signatures use `i64`, `bool`, `Option`/`Result` of those, read-only `[i64]`/`[u8]`/`[bool]`/`str`
+  `ensures`; the Rust code itself is not proved. A wrong contract can make wrong code "verify", so the Rust backend lists the contracts in
+  `<out>.foreign.json` (the LLVM backend does not write this file yet). Signatures use `i64`, `bool`, `Option`/`Result` of those, read-only `[i64]`/`[u8]`/`[bool]`/`str`
   parameters, and `i64`/`bool`/`()`/`Option`/`Result` results; at least one `ensures` (`ensures true` is allowed).
 - **Collections.** `Vec<T>`, `HashMap<K, V>` (`K` is `i64` or `bool`) and `String` hold values (no nested collections,
-  no collections inside structs/Options/arrays). Operations, always with explicit type arguments: `vec_new`, `vec_push`,
+  no collections inside structs/Options/arrays). Operations (`vec_*` and `map_*` take explicit type arguments, `string_*` and `len` take none): `vec_new`, `vec_push`,
   `vec_get`, `map_new`, `map_insert`, `map_get` (returns `Option<V>`), `string_new`, `string_push_str`, `string_byte`,
   `string_to_str` (copies into a `str`), and `len`. Allocating operations need `! alloc`. In contracts only: `v[i]`, `s[i]`,
   `map_lookup::<K, V>(m, k)` and `map_updated::<K, V>(after, before, k, v)` (the whole new map: k set, size, others kept).
@@ -265,13 +265,14 @@ fn push_two(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc
   moved on only some paths cannot be used after the join; a loop must leave every outer owner alive at the end of each
   iteration. Collections are freed automatically. `ensures` may mention a consumed parameter: it means the value at entry.
 - **Run-time boundary checks** (`--foreign-checks`): `requires` (default) checks foreign and catalog preconditions at
-  run time; `all` also checks their postconditions (snapshots; slower, repeated appends become quadratic); `off` skips
+  run time; `all` also checks their postconditions (snapshots; slower, repeated appends become quadratic; on the LLVM backend
+  the bytes copied by `string_to_str` are not re-compared); `off` skips
   both (only with verification). Failures exit 101 with `pruv: foreign requires violated:`, `pruv: foreign ensures
   violated:`, `pruv: foreign contract undefined:` or `pruv: foreign panic:`.
 - **Build.** The Rust backend supports all of the above. The LLVM backend supports collections of `i64`/`bool` and trusted
   functions over `i64`/`bool`/arrays/`str` returning `i64`/`bool`/`()`, built by compiling the generated bindings
-  (which then contain the Rust shim) with rustc together with the object; `--emit exe|obj` is not available for such
-  programs (`codegen/foreign_target`), and a `--no-verify` LLVM build cannot check a `requires` that uses `v[i]`, `s[i]`,
+  (which then contain the Rust shim) with rustc together with the object; the Rust compiler's `--emit exe|obj` rejects such
+  programs with `codegen/foreign_target`, and a `--no-verify` LLVM build cannot check a `requires` that uses `v[i]`, `s[i]`,
   `map_lookup` or `map_updated` (`codegen/unsupported_type`). Collection-bearing functions are internal: expose them through functions with
   ordinary parameter and result types.
 - **New error codes:** `foreign_syntax`, `foreign_path`, `foreign_signature`, `foreign_owned_type`, `foreign_move`,

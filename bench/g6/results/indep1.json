@@ -1,0 +1,219 @@
+{
+ "solutions": "/Users/spica4345/Projects/pruv/bench/g6/solutions/indep1",
+ "flags": [],
+ "adapter": "/Users/spica4345/Projects/pruv/bench/g6/adapter/g6q_adapter.rs",
+ "results": {
+  "py-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "pruv_error",
+    "pruv_errors": [
+     {
+      "stage": "verify",
+      "line": 36,
+      "col": 3,
+      "code": "ensures",
+      "message": "cannot prove postcondition (line 3) in count_value",
+      "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+      "counterexample": {
+       "a": {
+        "len": 8366,
+        "first": [
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0
+        ]
+       },
+       "q": -9223372036854766953,
+       "i": 8366,
+       "r": 8365,
+       "found": "some(8365)",
+       "_note": "counterexample ignores aggregate (sum/count/max/min) definitions; retry with them: timeout"
+      }
+     }
+    ]
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  },
+  "py-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "pruv_error",
+    "pruv_errors": [
+     {
+      "stage": "verify",
+      "line": 36,
+      "col": 3,
+      "code": "ensures",
+      "message": "cannot prove postcondition (line 3) in count_value",
+      "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+      "counterexample": {
+       "a": {
+        "len": 8366,
+        "first": [
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0
+        ]
+       },
+       "q": -9223372036854766953,
+       "i": 8366,
+       "r": 8365,
+       "found": "some(8365)",
+       "_note": "counterexample ignores aggregate (sum/count/max/min) definitions; retry with them: timeout"
+      }
+     }
+    ]
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  },
+  "rs-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "pruv_error",
+    "pruv_errors": [
+     {
+      "stage": "verify",
+      "line": 36,
+      "col": 3,
+      "code": "ensures",
+      "message": "cannot prove postcondition (line 3) in count_value",
+      "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+      "counterexample": {
+       "a": {
+        "len": 8366,
+        "first": [
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0
+        ]
+       },
+       "q": -9223372036854766953,
+       "i": 8366,
+       "r": 8365,
+       "found": "some(8365)",
+       "_note": "counterexample ignores aggregate (sum/count/max/min) definitions; retry with them: timeout"
+      }
+     }
+    ]
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  },
+  "rs-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "pruv_error",
+    "pruv_errors": [
+     {
+      "stage": "verify",
+      "line": 36,
+      "col": 3,
+      "code": "ensures",
+      "message": "cannot prove postcondition (line 3) in count_value",
+      "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+      "counterexample": {
+       "a": {
+        "len": 8366,
+        "first": [
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0
+        ]
+       },
+       "q": -9223372036854766953,
+       "i": 8366,
+       "r": 8365,
+       "found": "some(8365)",
+       "_note": "counterexample ignores aggregate (sum/count/max/min) definitions; retry with them: timeout"
+      }
+     }
+    ]
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  }
+ }
+}

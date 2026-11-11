@@ -1,0 +1,46 @@
+fn count_value(a: [i64], q: i64) -> i64 ! alloc
+  requires len(a) <= 1000000
+  ensures result == count(k in 0..len(a): a[k] == q)
+{
+  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(m) <= i
+    invariant count(k in 0..i: a[k] == q) <= i
+    invariant count(k in 0..i: a[k] == q) > 0 ==> is_some(map_lookup::<i64, i64>(m, q)) && some_val(map_lookup::<i64, i64>(m, q)) == count(k in 0..i: a[k] == q)
+    invariant count(k in 0..i: a[k] == q) == 0 ==> !is_some(map_lookup::<i64, i64>(m, q))
+    decreases len(a) - i
+  {
+    let c: Option<i64> = map_get::<i64, i64>(m, a[i]);
+    match c {
+      Some(v) => {
+        m = map_insert::<i64, i64>(move m, a[i], v + 1);
+      }
+      None => {
+        m = map_insert::<i64, i64>(move m, a[i], 1);
+      }
+    }
+    i = i + 1;
+  }
+  let mut r: i64 = 0;
+  let found: Option<i64> = map_get::<i64, i64>(m, q);
+  match found {
+    Some(v) => {
+      r = v;
+    }
+    None => {
+      r = 0;
+    }
+  }
+  return r;
+}
+
+fn seen(a: [i64], q: i64) -> bool ! alloc
+  requires len(a) <= 1000000
+  ensures result ==> count(k in 0..len(a): a[k] == q) > 0
+  ensures !result ==> count(k in 0..len(a): a[k] == q) == 0
+{
+  let c: i64 = count_value(a, q);
+  return c > 0;
+}

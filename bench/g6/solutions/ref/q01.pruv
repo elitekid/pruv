@@ -1,0 +1,55 @@
+// G6 q01 reference: Vec filter (count of the elements inside [lo, hi]) and Vec accumulate (running totals)
+fn push_if_in(take v: Vec<i64>, x: i64, lo: i64, hi: i64) -> Vec<i64> ! alloc
+  requires len(v) < 1099511627776
+  ensures lo <= x && x <= hi ==> len(result) == len(v) + 1
+  ensures !(lo <= x && x <= hi) ==> len(result) == len(v)
+{
+  if lo <= x && x <= hi {
+    return vec_push::<i64>(move v, x);
+  }
+  return move v;
+}
+
+fn count_in_range(a: [i64], lo: i64, hi: i64) -> i64 ! alloc
+  requires len(a) <= 1000000
+  ensures result == count(k in 0..len(a): lo <= a[k] && a[k] <= hi)
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(v) <= i
+    invariant len(v) == count(k in 0..i: lo <= a[k] && a[k] <= hi)
+    decreases len(a) - i
+  {
+    v = push_if_in(move v, a[i], lo, hi);
+    i = i + 1;
+  }
+  return len(v);
+}
+
+fn running_total(a: [i64]) -> i64 ! alloc
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000
+  ensures result == sum(k in 0..len(a): a[k])
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(v) == i
+    invariant 0 <= s && s <= 1000 * i
+    invariant s == sum(k in 0..i: a[k])
+    invariant i > 0 ==> v[i - 1] == s
+    decreases len(a) - i
+  {
+    s = s + a[i];
+    v = vec_push::<i64>(move v, s);
+    i = i + 1;
+  }
+  if len(v) == 0 {
+    return 0;
+  }
+  return vec_get::<i64>(v, len(v) - 1);
+}

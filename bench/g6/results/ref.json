@@ -1,0 +1,111 @@
+{
+ "solutions": "/Users/spica4345/Projects/pruv/bench/g6/solutions/ref",
+ "flags": [],
+ "adapter": "/Users/spica4345/Projects/pruv/bench/g6/adapter/g6q_adapter.rs",
+ "results": {
+  "py-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 288,
+    "tests_total": 288,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  },
+  "py-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 288,
+    "tests_total": 288,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  },
+  "rs-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 288,
+    "tests_total": 288,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  },
+  "rs-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 201,
+    "tests_total": 201,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 288,
+    "tests_total": 288,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 285,
+    "tests_total": 285,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   }
+  }
+ }
+}

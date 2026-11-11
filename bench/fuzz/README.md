@@ -189,6 +189,77 @@ structural (an enum compares only its active payload). It evaluates code in i64 
 | Seed | Compiler | Generated | Verified | Safe-only | Executions compared | Failures | Digest |
 |---|---|---|---|---|---|---|---|
 
+## G6 mode (`--g6`)
+
+A separate mode for trusted Rust calls and standard collections (`SPEC.md` §6d, `docs/G6_SPEC.md` §10–§13): `trusted rust fn` declarations
+(`::std::cmp::min` / `::std::cmp::max`), `Vec<T>`, `HashMap<K, V>`, `String` with the catalog (`vec_new/vec_push/vec_get`, `map_new/map_insert/map_get`,
+`string_new/string_push_str/string_byte/string_to_str`, `len`), explicit type arguments, `take` parameters, `move x`, the contract-only `v[i]`, `s[i]`,
+`map_lookup`, `map_updated`. Without `--g6` nothing changes (`generate_case(seed, index, g2=False, g3=False, g6=False)`; same seeds, same programs).
+
+```
+python bench/fuzz/run.py --g6 --seed 41 --programs 100 --compiler rs      # then again with --compiler py
+python bench/fuzz/run.py --g6 --seeds 41,56 --programs 100 --max-candidates 400 --compiler py
+python bench/fuzz/generate.py --g6 --seed 41 --count 20 --out /tmp/pruvgen_g6
+python bench/fuzz/oracle.py                                               # oracle self-test, includes the G6 cases
+python bench/fuzz/run.py --replay bench/fuzz/out/g6_41_rs/failures/<kind>_<case>
+```
+
+Output folder: `out/g6_<seed>` (`--compiler py`) and `out/g6_<seed>_rs` (default compiler). Options as for `--g3` (`--programs`, `--inputs` raised to 8, `--max-candidates`,
+`--jobs`, `--batch`, `--keep-work`, `--seeds`, `--out`), plus `--g6-safe-only N` (default 20: deliberately unproved programs that must be built and run in the safe modes).
+The default `--max-candidates 400` is enough for about 100 verified programs only if most candidates verify; raise it (`--max-candidates 600`) when `g6_shortfall` appears.
+
+**Generator** (`generate.py`, `generate_g6_case`, rng `"g6:<seed>:<index>"`, input rng `"g6:<seed>:<name>:inputs"`). One public entry `fn f(..)` with parameters
+`i64`, `bool`, `[i64]`, `str` and result `i64`, `bool` or `str`, plus 0–3 private helpers/trusted declarations (`G6_FRAGS`: `rust_min`, `rust_max`, `keep`, `grow`, `grow_twice`, `fill`,
+`bump`, `count_of`, `put`). Collection-bearing functions are private (G6_SPEC §3.2), so no collection crosses the `f` boundary. Everything stays inside the LLVM subset
+(§13.1): `Vec<i64|bool>`, `HashMap<i64|bool, i64|bool>`, `String`; private helpers use only `len(..)` in `requires` (LLVM run-time requires cannot evaluate `v[i]`/`map_lookup`). Eight scenario families
+(`G6_SCENARIOS`):
+
+- `vecfill`: `vec_push` in a loop with invariants (`len(v) == i`, `v[k] == a[k] + C`, element bounds; also `Vec<bool>` with `v[k] == (a[k] > T)`), then read back with `vec_get` (length, running sum, last element, guarded parameter index, count of `true`);
+- `vecguard`: `Vec` of `i * M` built up to a parameter `n`, read at a parameter index `k` behind a guard (`0 <= k && k < len(v)`);
+- `histogram`: counting with the taken map of `bump(take m, k)` and the borrowed `count_of(m, k)` (duplicate keys likely), `len(m)` bounds;
+- `mapladder`: 2–4 `map_insert`/`put` calls with `i64` or `bool` keys and `i64`/`bool` values (parameters or literals as keys, so duplicate keys replace values), then `map_get` + `match`
+  with the *exact* contract of the result (one implication per insert, later inserts win, plus the missing-key case), or `len(m)` bounds; `put(take m, ..)` carries `map_updated`;
+- `strbuild`: `String` assembled from `str` parameters and ASCII/multibyte literals (`é`, `→`, `日本語`, `😀`), optional `if flag {..} else {..}` branch, read as `len`, `string_to_str` (also returned as `str`), guarded `string_byte`
+  (with `result == a[q]` content claim when the parameter is pushed first), or a `bool` comparison of the length; ensures state exact byte lengths;
+- `strloop`: a literal (and optionally a `str` parameter) pushed `n` times, linear length invariants, `len` / `string_to_str` / `string_byte(s, 0)` behind `len(s) > 0`;
+- `take`: `take` helpers that return `move` values (`keep`, `grow`, `grow_twice`, `fill` with an inner loop), a branch that moves a binding into a local and reinitializes it (`let t = move v; v = grow(move t, y)`), early `return` inside a loop while an owner is live;
+- `minmax`: `trusted rust fn rust_min/rust_max` under their exact contracts: `clamp`, min/max of three, and clipping the elements pushed into a `Vec` before a max scan.
+
+Programs are well-typed and satisfy the ownership rules (§10.4) by construction: consuming arguments are always `move x` or fresh call results, every `move` is followed by an immediate reassignment (or the path returns), every branch and loop body leaves
+the same bindings live, no unused call statement, every effect is declared. **About 30% are deliberately unproved but well-typed** (`g6_bad`, `g6_mutation`, also the first source line): a dropped `requires`, a false `ensures`, a dropped `invariant`, or a body mutation
+(`unguarded_get`/`unguarded_byte`: the guard before `vec_get`/`string_byte` is weakened, `oob_get`: index `j + 1` / `len(v)`, `payload_plus_one`, `dropped_insert`, `dropped_bump`). They are expected to be rejected and are then built/run in the two safe modes, where they reach
+the run-time failures `pruv: foreign requires violated:` (index outside `0..len` at `vec_get`/`string_byte`), `requires violated`, overflow. A mutant that the verifier proves anyway is treated like any verified program.
+Inputs (`g6_candidate_inputs`): small integers (so map keys collide), values just outside the requires ranges, arrays up to 20 elements (a few longer than the `len(a) <= 20` bound), strings from a pool with multibyte text (a few longer than the `len(s) <= 100` bound), 3/4 satisfying `requires` as in the other modes. A case with only `bool` parameters gets an unused `pad: i64`.
+
+**Oracle** (`oracle.py`). Switched on by the catalog names, `trusted`, `Vec`, `HashMap`, `String` (they imply the G3 parsing mode: explicit type arguments, `Option<bool>`). `Vec` = Python list, `String`/`str` = `bytes`, `HashMap` = `_GMap` (a wrapper around a dict, so it is never mistaken for an
+Option/struct dict); every catalog operation builds a new object, so `move`d or copied values are never aliased (liveness itself is the compiler's job; the oracle does not model use-after-move). `take` is parsed and has no run-time meaning. `vec_get` / `string_byte` with an index outside `0..len` fault with kind
+`foreign_requires` (stderr prefix `pruv: foreign requires violated:`) **in both modes**: foreign requires are checked at run time in verified builds too (G6_SPEC §5.1, §12.2); inside contracts `len`, `v[i]`, `s[i]`, `map_lookup`, `map_updated` are evaluated exactly (map update = same dict with `k` set;
+size, domain and payload compared). `trusted rust fn` calls evaluate their `requires` (violation → `foreign_requires`) and compute `::std::cmp::min`/`max` natively; the trusted `ensures` are never evaluated. Any other path raises `OracleUnsupported`. `python bench/fuzz/oracle.py` runs `_selftest_g6` (the four `examples/g6_*.pruv` programs, vec_get/string_byte faults in both modes, `map_updated` with a false ensures, bool-keyed maps with take/move branches).
+
+**Harness** (`run.py --g6`). Same pipeline and gate as `--g3`: verified programs run in 4 modes (`rust-proof`, `rust-safe`, `llvm-proof`, `llvm-safe`), unproved ones in the 2 safe modes, each mode compared with its own oracle result, `rust-X == llvm-X` required, both compilers must give the same `g6_digest`
+(the generator and the inputs do not depend on the compiler). Counting, shortfall and report keys mirror G3 with the prefix `g6_` (`g6_generated`, `g6_verified`, `g6_safe_only`, `g6_executions_compared`, `g6_failures`, `g6_kinds_verified`, `g6_features_verified`, `g6_inputs_per_program_min`,
+`g6_unproved_by_design_verified_anyway`, `g6_unexpected_rejects`, `g6_digest`, `g6_digest_exit_stdout`) plus `g6_foreign_requires_inputs` (how many inputs the oracle expects to end in a foreign-requires failure, safe and proof oracle). Extra failure kinds: `g6_shortfall`, `g6_generator_invalid`, `g6_oracle_gap`.
+G6-specific harness details:
+
+- The LLVM bindings of a G6 program contain `mod pruv_g6_shim` with `#[no_mangle]` adapters `pruv_g6_v1_<helper>` and `pruv_g6_bridge_v1`, which the `.ll` calls. Because several modules (proof and safe of one program, other programs of the batch) are linked into one executable, `prep_llvm` renames these symbols per module
+  (`pruv_g6_v1_<tag>_..`, `pruv_g6_bridge_v1_<tag>`, in the `.ll` and the bindings; same idea as `pruv_abi_`), and the "keep `#[no_mangle]` only on the first module" rule is applied to the `pruv_host_*` functions only (`NO_MANGLE_HOST_RE`), not to the shim adapters.
+- Source files are written/read as UTF-8 (multibyte literals); `--replay` detects a G6 source by `vec_new`/`map_new`/`string_new`/`trusted rust fn`.
+- The callee name in `pruv: requires violated: <fn>:` is compared exactly (no generics in G6).
+
+**Known gaps (G6).**
+
+- Not run by this tool (nothing here was executed when it was written; run `python bench/fuzz/oracle.py` and a small `--g6 --programs 5` first): the generator's well-typedness rests on SPEC/G6_SPEC §10.4 as read, not on a type-checker run, so `g6_generator_invalid` shows any misreading immediately;
+  likewise which programs the verifier accepts is a guess (quantifier-heavy ones such as the `result == a[q]` string content claim or the `forall` invariants over `Vec<bool>` may be rejected; they then appear in `g6_unexpected_rejects`, run in the safe modes, and may reduce `g6_verified`).
+- Only `i64`/`bool` elements, keys and values (the LLVM subset); no `Vec<Option<..>>`, no struct payloads, no generic helpers (`grow<T>`), no `--foreign-checks all|off`, no user trusted functions other than `std::cmp::min/max` (no extern crates, no trusted `requires`/panic/`ensures`-violation cases), no `--trust-callers`.
+- Contract-only observers are generated only in `ensures`/`invariant`, never in `requires` (they are outside the LLVM run-time subset), and `map_lookup` is exercised only through the oracle selftest, not by the generator.
+- Programs are template-based (8 scenarios with random constants/shapes), at most about 4 helper calls and 20 loop iterations; the 2^40 length limit, the contract budget and allocation failure are not reachable. Drop-balance (`PRUV_G6_COUNT=1`) is not checked.
+- Ownership *errors* (use after move, borrow/move overlap, loop moves) are not generated here: those are must_reject territory (`tests/g6/`).
+
+### G6 run log (filled in by the main)
+
+| Seed | Compiler | Generated | Verified | Safe-only | Executions compared | Failures | Digest |
+|---|---|---|---|---|---|---|---|
+
 ## Failure kinds
 
 | kind | Meaning |
@@ -206,6 +277,9 @@ structural (an enum compares only its active payload). It evaluates code in i64 
 | `g3_shortfall` | (`--g3` only) Fewer counted verified programs than `--programs`, or fewer counted unproved safe-only programs than `--g3-safe-only`. The value is the sum of the shortfalls |
 | `g3_generator_invalid` | (`--g3` only) A generated program did not pass parse/type/effect checking (the generator must only produce well-typed programs) |
 | `g3_oracle_gap` | (`--g3` only) The oracle could not parse or evaluate a generated program (`oracle_unsupported` / `oracle_parse_error`) |
+| `g6_shortfall` | (`--g6` only) Fewer counted verified programs than `--programs` or fewer counted unproved safe-only programs than `--g6-safe-only`. The value is the sum of the shortfalls |
+| `g6_generator_invalid` | (`--g6` only) A generated program did not pass parse/type/effect checking (ownership errors count here too) |
+| `g6_oracle_gap` | (`--g6` only) The oracle could not parse or evaluate a generated program |
 
 ## Oracle independence
 

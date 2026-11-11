@@ -1,0 +1,27 @@
+fn join_pair(a: str, b: str, sep: str) -> str ! alloc
+  requires len(a) <= 1000 && len(b) <= 1000 && len(sep) <= 1000
+  ensures len(result) == len(a) + len(sep) + len(b)
+  ensures forall k in 0..len(a): result[k] == a[k]
+  ensures forall k in 0..len(sep): result[len(a) + k] == sep[k]
+  ensures forall k in 0..len(b): result[len(a) + len(sep) + k] == b[k]
+{
+  let s0: String = string_new();
+  let s1: String = string_push_str(move s0, a);
+  let s2: String = string_push_str(move s1, sep);
+  let s3: String = string_push_str(move s2, b);
+  let r: str = string_to_str(s3);
+  return r;
+}
+
+fn joined_len3(a: str, b: str, c: str, sep: str) -> i64 ! alloc
+  requires len(a) <= 1000 && len(b) <= 1000 && len(c) <= 1000 && len(sep) <= 1000
+  ensures result == len(a) + len(b) + len(c) + 2 * len(sep)
+{
+  let s0: String = string_new();
+  let s1: String = string_push_str(move s0, a);
+  let s2: String = string_push_str(move s1, sep);
+  let s3: String = string_push_str(move s2, b);
+  let s4: String = string_push_str(move s3, sep);
+  let s5: String = string_push_str(move s4, c);
+  return len(s5);
+}

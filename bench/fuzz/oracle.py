@@ -25,6 +25,17 @@ G3 (docs/G3_SPEC.md, SPEC.md 6c; switched on only when the source has generic sy
   `f::<..>(..)`, `Some::<T>(x)`, `None::<T>`, `Ok::<T>(x)`, `Err::<T>(c)`, `S::<A, B> { .. }`, `E::<A, B>::V(..)`. Values are untyped at run
   time, so type arguments are parsed and dropped; abstract equality in contracts is structural equality of the values.
 
+G6 (docs/G6_SPEC.md 10-13, SPEC.md 6d; switched on like G3 by catalog names, `trusted` or the type names Vec/HashMap/String):
+  types Vec<T> (Python list), HashMap<K, V> (`_GMap`, a wrapper around a dict so it is not mistaken for an Option dict), String
+  (bytes); `take` parameters (parsed, no run-time meaning: values are never aliased because every catalog operation builds a new
+  object); `move x` (evaluates to the variable's value; liveness is the compiler's business, the generator only produces
+  programs that pass the ownership rules); the catalog vec_new/vec_push/vec_get, map_new/map_get/map_insert,
+  string_new/string_push_str/string_byte/string_to_str, `len` on collections; contract-only v[i], s[i], map_lookup, map_updated;
+  `trusted rust fn NAME(..) -> T ensures .. = "::std::cmp::min" | "::std::cmp::max";` (ensures are trusted, never evaluated).
+  vec_get / string_byte with an index outside 0..len fault with kind "foreign_requires" (stderr prefix
+  `pruv: foreign requires violated:`) in BOTH modes: foreign requires are checked at run time in verified builds too
+  (G6_SPEC 5.1, 12.2).  The requires of a trusted fn are checked the same way.
+
 VALUES: i64 int, bool bool, array list, unit None.  Option/Result are JSON-friendly dicts
   {"tag": "Some", "v": 3} / {"tag": "None"} / {"tag": "Ok", "v": 3} / {"tag": "Err", "v": -2}; this is also the
   format run()/check_requires() take for arguments and run() gives back for the return value.
@@ -102,6 +113,22 @@ _TOK = re.compile(r"""
   | (?P<op>==>|==|=>|!=|<=|>=|&&|\|\||->|\.\.|::|[-+*/%<>=!(){}\[\],:;.|])
 """, re.X)
 _CONTRACT_FNS = ("is_some", "some_val", "is_ok", "ok_val", "err_val")
+# G6: executable catalog (name -> arity); contract-only map_lookup/map_updated are handled in cev
+_CATALOG = {"vec_new": 0, "vec_push": 2, "vec_get": 2, "map_new": 0, "map_get": 2, "map_insert": 3,
+            "string_new": 0, "string_push_str": 2, "string_byte": 2, "string_to_str": 1}
+_G6_NAMES = frozenset(list(_CATALOG) + ["map_lookup", "map_updated", "trusted", "Vec", "HashMap", "String"])
+_FOREIGN_NATIVE = {"::std::cmp::min": lambda a, b: min(a, b), "::std::cmp::max": lambda a, b: max(a, b)}
+
+
+class _GMap(object):
+    """G6 HashMap value: a wrapper around a dict (keys i64 or bool, one kind per map). It is a separate class so that
+    isinstance(v, dict) (Option/Result/struct/enum values) stays false for it."""
+
+    def __init__(self, d=None):
+        self.d = dict(d) if d else {}
+
+    def __len__(self):
+        return len(self.d)
 _ESCAPES = {'"': '"', "\\": "\\", "n": "\n", "r": "\r", "t": "\t", "0": "\0"}
 
 
@@ -147,6 +174,8 @@ def _lex(src):
 
 # ---------------------------------------------------------------- parser
 class _Fn(object):
+    foreign = None      # G6: the Rust path string of a `trusted rust fn` (body is empty), else None
+
     def __init__(self, name, params, ret, requires, ensures, body, line):
         self.name, self.params, self.ret = name, params, ret
         self.requires, self.ensures, self.body, self.line = requires, ensures, body, line
@@ -171,6 +200,8 @@ class _Parser(object):
         self.tparams = set()    # type parameter names of the declaration being parsed
         for i in range(len(self.t) - 1):
             a, b = self.t[i], self.t[i + 1]
+            if a[0] == "id" and a[1] in _G6_NAMES:
+                self.g3 = True      # G6 sources use explicit type arguments and Option<bool>: same parsing as G3
             if a[0] == "id" and b[0] == "id":
                 if a[1] == "struct":
                     self.struct_names.add(b[1])
@@ -250,6 +281,16 @@ class _Parser(object):
                 self.next()
             self.eat(">")
             return t[1]
+        if t[0] == "id" and t[1] in ("Vec", "HashMap", "String") \
+                and t[1] not in self.struct_names and t[1] not in self.enum_names:
+            # G6 catalog collections (a user type of the same name keeps its own meaning)
+            self.next()
+            if t[1] == "String":
+                return "string"
+            targs = self.type_args()
+            if len(targs) != (1 if t[1] == "Vec" else 2):
+                self.err("wrong number of type arguments for %s" % t[1])
+            return "vec" if t[1] == "Vec" else "hashmap"
         if t[0] == "id" and (t[1] in self.struct_names or t[1] in self.enum_names):
             self.next()
             if self.g3 and self.is_("<"):
@@ -323,6 +364,11 @@ class _Parser(object):
                 if not variants:
                     self.err("enum needs a variant")
                 enums[name] = variants
+            elif self.is_("trusted") and self.is_("rust", 1):
+                f = self.foreign_fn()
+                if f.name in fns:
+                    self.err("duplicate fn %s" % f.name)
+                fns[f.name] = f
             elif self.peek()[0] == "id":
                 raise OracleUnsupported("unsupported top-level item %s" % self.peek()[1])
             else:
@@ -354,6 +400,8 @@ class _Parser(object):
         params = []
         while not self.is_(")"):
             pn = self.ident()
+            if pn == "take" and self.peek()[0] == "id" and self.is_(":", 1):
+                pn = self.ident()       # G6: `take v: Vec<T>` (consuming parameter; no run-time meaning here)
             self.eat(":")
             params.append((pn, self.type_()))
             if not self.is_(")"):
@@ -376,6 +424,44 @@ class _Parser(object):
         self.scopes = [dict(params)]
         self.cur_ret = ret
         return _Fn(name, params, ret, req, ens, self.block(), line)
+
+    def foreign_fn(self):
+        """G6: `trusted rust fn NAME(params) -> T [! effects] (requires|ensures)* = "::path";` -> _Fn with .foreign = path."""
+        line = self.eat("trusted")[2]
+        self.eat("rust")
+        self.eat("fn")
+        name = self.ident()
+        self.tparams = self.tparam_list()
+        self.eat("(")
+        params = []
+        while not self.is_(")"):
+            pn = self.ident()
+            self.eat(":")
+            params.append((pn, self.type_()))
+            if not self.is_(")"):
+                self.eat(",")
+        self.eat(")")
+        self.eat("->")
+        ret = self.type_()
+        if self.is_("!"):
+            self.next()
+            self.ident()
+            while self.is_(","):
+                self.next()
+                self.ident()
+        req, ens = [], []
+        while self.is_("requires") or self.is_("ensures"):
+            kw = self.next()
+            (req if kw[1] == "requires" else ens).append((self.imp(), kw[2]))
+        self.eat("=")
+        t = self.peek()
+        if t[0] != "str":
+            self.err("missing Rust path")
+        self.next()
+        self.eat(";")
+        f = _Fn(name, params, ret, req, ens, [], line)
+        f.foreign = t[1].decode("utf-8")
+        return f
 
     def lookup_ty(self, name):
         for sc in reversed(self.scopes):
@@ -679,6 +765,9 @@ class _Parser(object):
         if t[0] != "id":
             self.err("expected expression")
         name = t[1]
+        if name == "move" and self.peek(1)[0] == "id":
+            self.next()                     # G6: `move x`
+            return ("move", self.next()[1])
         if self.g3 and self.is_("::", 1) and self.is_("<", 2):
             return self.generic_primary(name, t[2])
         if name == "None":
@@ -807,6 +896,8 @@ def _cp(v):
     """Value copy: arrays (list) shallowly (elements are only integers), dicts (Option/Result/struct/enum) deeply."""
     if isinstance(v, list):
         return list(v)
+    if isinstance(v, _GMap):
+        return _GMap(v.d)
     if isinstance(v, dict):
         return dict((k, _cp(x)) for k, x in v.items())
     return v
@@ -968,6 +1059,24 @@ class _Interp(object):
                 s = self.cev(e[2][0], env, lim)
                 i = self.cev(e[2][1], env, lim)
                 return _boundary(s, i)
+            if e[1] == "map_lookup" and len(e[2]) == 2:       # G6: total, Some(value) if the key is present
+                gm = self.cev(e[2][0], env, lim)
+                gk = self.cev(e[2][1], env, lim)
+                if not isinstance(gm, _GMap):
+                    raise OracleUnsupported("map_lookup on a non-map")
+                if gk in gm.d:
+                    return {"tag": "Some", "v": gm.d[gk]}
+                return {"tag": "None"}
+            if e[1] == "map_updated" and len(e[2]) == 4:      # G6: after == before with key k set to v (domain + payload + size)
+                after = self.cev(e[2][0], env, lim)
+                before = self.cev(e[2][1], env, lim)
+                gk = self.cev(e[2][2], env, lim)
+                gv = self.cev(e[2][3], env, lim)
+                if not (isinstance(after, _GMap) and isinstance(before, _GMap)):
+                    raise OracleUnsupported("map_updated on a non-map")
+                want = dict(before.d)
+                want[gk] = gv
+                return after.d == want
             raise OracleUnsupported("call to %s in contract" % e[1])
         if k in ("forall", "exists"):
             _, name, lo_e, hi_e, body, _ln = e
@@ -1034,7 +1143,7 @@ class _Interp(object):
             return e[1]
         if k == "str":
             return e[1]
-        if k == "var":
+        if k == "var" or k == "move":
             if e[1] not in env:
                 raise OracleUnsupported("unbound variable %s" % e[1])
             return env[e[1]]
@@ -1110,8 +1219,72 @@ class _Interp(object):
                 if n > ALLOC_SIM_MAX:
                     raise OracleUnsupported("alloc too large to simulate")
                 return [v] * n
+            if name in _CATALOG and name not in self.prog.fns:
+                return self.catalog(name, [self.ev(a, env) for a in args])
             return self.call(name, [self.ev(a, env) for a in args], top=False)
         raise OracleUnsupported("contract-only expression %s in code" % (k,))
+
+    # ---- G6 catalog (arguments already evaluated, left to right). Every operation builds a NEW object, so a value that was
+    # `move`d (or copied by let/argument passing) can never be observed through another name.
+    def catalog(self, name, a):
+        if len(a) != _CATALOG[name]:
+            raise OracleUnsupported("arity of %s" % name)
+
+        def need(x, typ, what):
+            if not isinstance(x, typ):
+                raise OracleUnsupported("%s: argument is not a %s" % (name, what))
+            return x
+
+        def in_range(i, n):
+            if not (isinstance(i, int) and not isinstance(i, bool)):
+                raise OracleUnsupported("%s: index is not an integer" % name)
+            if not 0 <= i < n:
+                # catalog requires `0 <= i < len` is checked at run time in every mode (G6_SPEC 5.1, 12.2)
+                raise _Fault("foreign_requires", "%s index %d len %d" % (name, i, n))
+
+        if name == "vec_new":
+            return []
+        if name == "vec_push":
+            return list(need(a[0], list, "Vec")) + [a[1]]
+        if name == "vec_get":
+            v = need(a[0], list, "Vec")
+            in_range(a[1], len(v))
+            return v[a[1]]
+        if name == "map_new":
+            return _GMap()
+        if name == "map_get":
+            m = need(a[0], _GMap, "HashMap")
+            if a[1] in m.d:
+                return {"tag": "Some", "v": m.d[a[1]]}
+            return {"tag": "None"}
+        if name == "map_insert":
+            m = _GMap(need(a[0], _GMap, "HashMap").d)
+            m.d[a[1]] = a[2]
+            return m
+        if name == "string_new":
+            return b""
+        if name == "string_push_str":
+            return need(a[0], bytes, "String") + need(a[1], bytes, "str")
+        if name == "string_byte":
+            s = need(a[0], bytes, "String")
+            in_range(a[1], len(s))
+            return s[a[1]]
+        if name == "string_to_str":
+            return need(a[0], bytes, "String")
+        raise OracleUnsupported("catalog function %s" % name)
+
+    def foreign_call(self, fn, penv):
+        """G6: a call of a `trusted rust fn`. Requires are checked at run time in every mode; ensures are trusted."""
+        for idx, (ce, _ln) in enumerate(fn.requires, 1):
+            st, v = self.cbool(ce, penv, True)
+            if st == "undef":
+                raise _Fault("foreign_undefined", "%s clause %d: %s" % (fn.name, idx, v))
+            if not v:
+                raise _Fault("foreign_requires", "%s clause %d" % (fn.name, idx))
+        native = _FOREIGN_NATIVE.get(fn.foreign)
+        if native is None:
+            raise OracleUnsupported("trusted rust fn %s: no native model for %s" % (fn.name, fn.foreign))
+        return native(*[penv[pn] for pn, _t in fn.params])
 
     # ---- calls
     def check_req(self, fn, penv):
@@ -1133,6 +1306,8 @@ class _Interp(object):
         penv = {}
         for (pn, _pt), a in zip(fn.params, args):
             penv[pn] = _cp(a)
+        if fn.foreign is not None:
+            return self.foreign_call(fn, penv)
         if top or self.mode != "proof":
             st, idx, why = self.check_req(fn, penv)
             if st == "undefined":
@@ -1402,6 +1577,10 @@ def expected_stderr_prefix(result):
         return "pruv: arithmetic error: alloc length" if d == "alloc" else "pruv: arithmetic error: overflow in " + d
     if k == "div_domain":
         return "pruv: arithmetic error: division outside domain"
+    if k == "foreign_requires":
+        return "pruv: foreign requires violated:"
+    if k == "foreign_undefined":
+        return "pruv: foreign contract undefined:"
     if k == "elem_range":
         return "pruv: element out of range: %s (u8 0..=255)" % d
     if k in ("slice_range", "slice_cut"):
@@ -1999,6 +2178,107 @@ def _selftest_g3():
         pass
 
 
+def _selftest_g6():
+    """G6 (docs/G6_SPEC.md 10-13): collections, take/move, catalog, contract observers, trusted min/max."""
+    def go(src, fn, args, **kw):
+        return run(parse_program(src), fn, args, **kw)
+
+    # examples/g6_histogram.pruv: HashMap<i64, i64>, borrowed and taken maps, map_get + match
+    src = ("fn bump(take m: HashMap<i64, i64>, k: i64) -> HashMap<i64, i64> ! alloc\n"
+           "  requires len(m) < 1000000\n  ensures len(result) <= len(m) + 1\n{\n"
+           "  let c: Option<i64> = map_get::<i64, i64>(m, k);\n  match c {\n"
+           "    Some(n) => {\n      if n < 1000000 {\n        return map_insert::<i64, i64>(move m, k, n + 1);\n      }\n"
+           "      return move m;\n    }\n    None => { return map_insert::<i64, i64>(move m, k, 1); }\n  }\n}\n"
+           "fn count_of(m: HashMap<i64, i64>, k: i64) -> i64 {\n"
+           "  let c: Option<i64> = map_get::<i64, i64>(m, k);\n  match c {\n"
+           "    Some(n) => { return n; }\n    None => { return 0; }\n  }\n}\n"
+           "fn most_of_three(a: i64, b: i64, c: i64) -> i64 ! alloc {\n"
+           "  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();\n  m = bump(move m, a);\n  m = bump(move m, b);\n"
+           "  m = bump(move m, c);\n  return count_of(m, a);\n}\n")
+    r = go(src, "most_of_three", [1, 1, 2])
+    assert r["kind"] == "ok" and r["value"] == 2 and not r["contract_failures"], r
+    assert go(src, "most_of_three", [5, 6, 7])["value"] == 1
+    # examples/g6_string_build.pruv: String from str parameters/literals (multibyte), string_to_str
+    src = ("fn greet(name: str) -> str ! alloc\n  requires len(name) <= 1000\n  ensures len(result) == 7 + len(name)\n{\n"
+           "  let mut s: String = string_new();\n  s = string_push_str(move s, \"hello, \");\n"
+           "  s = string_push_str(move s, name);\n  return string_to_str(s);\n}\n")
+    r = go(src, "greet", ["wörld"])
+    assert r["kind"] == "ok" and r["value"] == "hello, wörld".encode("utf-8") and not r["contract_failures"], r
+    assert format_value(go(src, "greet", ["a"])["value"]) == "[104, 101, 108, 108, 111, 44, 32, 97]"
+    # examples/g6_vec_running_sum.pruv + vec_get faults (foreign requires, both modes)
+    src = ("fn prefix_sums(a: [i64]) -> i64 ! alloc\n  requires len(a) <= 1000\n"
+           "  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000\n  ensures 0 <= result && result <= 1000000\n{\n"
+           "  let mut v: Vec<i64> = vec_new::<i64>();\n  let mut s: i64 = 0;\n  let mut i: i64 = 0;\n  while i < len(a)\n"
+           "    invariant 0 <= i && i <= len(a)\n    invariant len(v) == i\n    invariant 0 <= s && s <= 1000 * i\n"
+           "    invariant forall k in 0..i: 0 <= v[k] && v[k] <= 1000 * i\n    decreases len(a) - i\n  {\n"
+           "    s = s + a[i];\n    v = vec_push::<i64>(move v, s);\n    i = i + 1;\n  }\n"
+           "  if len(v) == 0 {\n    return 0;\n  }\n  return vec_get::<i64>(v, len(v) - 1);\n}\n")
+    for mode in ("safe", "proof"):
+        r = go(src, "prefix_sums", [[1, 2, 3]], mode=mode)
+        assert r["kind"] == "ok" and r["value"] == 6 and not r["contract_failures"], r
+        assert go(src, "prefix_sums", [[2000]], mode=mode)["kind"] == "requires_violated"
+    src = ("fn f(i: i64) -> i64 ! alloc {\n  let mut v: Vec<i64> = vec_new::<i64>();\n"
+           "  v = vec_push::<i64>(move v, 5);\n  return vec_get::<i64>(v, i);\n}\n")
+    for mode in ("safe", "proof"):
+        assert go(src, "f", [0], mode=mode)["value"] == 5
+        for bad in (1, -1):
+            r = go(src, "f", [bad], mode=mode)
+            assert r["kind"] == "foreign_requires", r
+            assert expected_stderr_prefix(r) == "pruv: foreign requires violated:"
+    src = ("fn f(i: i64) -> i64 ! alloc {\n  let mut s: String = string_new();\n"
+           "  s = string_push_str(move s, \"hé\");\n  return string_byte(s, i);\n}\n")
+    assert [go(src, "f", [i])["value"] for i in range(3)] == [104, 0xC3, 0xA9]
+    assert go(src, "f", [3])["kind"] == "foreign_requires"
+    # examples/g6_min_clamp.pruv: trusted rust fn with the std::cmp::min / max contracts
+    src = ("trusted rust fn rust_min(a: i64, b: i64) -> i64\n  ensures result <= a && result <= b\n"
+           "  ensures result == a || result == b\n  = \"::std::cmp::min\";\n\n"
+           "trusted rust fn rust_max(a: i64, b: i64) -> i64\n  ensures result >= a && result >= b\n"
+           "  ensures result == a || result == b\n  = \"::std::cmp::max\";\n\n"
+           "fn clamp(x: i64, lo: i64, hi: i64) -> i64\n  requires lo <= hi\n  ensures lo <= result && result <= hi\n{\n"
+           "  return rust_min(rust_max(x, lo), hi);\n}\n")
+    assert [go(src, "clamp", [x, 0, 10])["value"] for x in (-5, 4, 15)] == [0, 4, 10]
+    assert go(src, "clamp", [1, 5, 4])["kind"] == "requires_violated"
+    # take helper + map_updated / map_lookup observers; a false ensures is recorded, not a fault
+    src = ("fn put(take m: HashMap<i64, i64>, k: i64, x: i64) -> HashMap<i64, i64> ! alloc\n"
+           "  requires len(m) < 1000000\n  ensures map_updated::<i64, i64>(result, m, k, x)\n"
+           "  ensures map_lookup::<i64, i64>(result, k) == Some::<i64>(x)\n{\n"
+           "  return map_insert::<i64, i64>(move m, k, x);\n}\n"
+           "fn f(k: i64, x: i64, y: i64, q: i64) -> i64 ! alloc {\n"
+           "  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();\n  m = put(move m, k, x);\n  m = put(move m, k, y);\n"
+           "  let r: Option<i64> = map_get::<i64, i64>(m, q);\n  match r {\n    Some(v) => { return v; }\n"
+           "    None => { return -1; }\n  }\n}\n")
+    r = go(src, "f", [3, 10, 20, 3])
+    assert r["value"] == 20 and not r["contract_failures"], r
+    assert go(src, "f", [3, 10, 20, 4])["value"] == -1
+    bad = src.replace("map_updated::<i64, i64>(result, m, k, x)", "map_updated::<i64, i64>(result, m, k, x + 1)")
+    assert go(bad, "f", [3, 10, 20, 3])["contract_failures"] == ["ensures put clause 1", "ensures put clause 2"] or \
+        go(bad, "f", [3, 10, 20, 3])["contract_failures"] == ["ensures put clause 1"], go(bad, "f", [3, 10, 20, 3])
+    # bool keys and values, Vec<bool>, take helper that returns `move`, branch move with reinitialization
+    src = ("fn grow(take v: Vec<bool>, x: bool) -> Vec<bool> ! alloc\n  requires len(v) < 1000\n"
+           "  ensures len(result) == len(v) + 1\n  ensures result[len(v)] == x\n"
+           "  ensures forall i in 0..len(v): result[i] == v[i]\n{\n"
+           "  let mut w: Vec<bool> = move v;\n  w = vec_push::<bool>(move w, x);\n  return move w;\n}\n"
+           "fn f(flag: bool, n: i64) -> bool ! alloc {\n"
+           "  let mut m: HashMap<bool, bool> = map_new::<bool, bool>();\n"
+           "  m = map_insert::<bool, bool>(move m, flag, true);\n  m = map_insert::<bool, bool>(move m, true, false);\n"
+           "  let mut v: Vec<bool> = vec_new::<bool>();\n  v = grow(move v, flag);\n  if n > 0 {\n"
+           "    let t: Vec<bool> = move v;\n    v = grow(move t, true);\n  } else {\n    v = grow(move v, false);\n  }\n"
+           "  if len(v) > 5 {\n    return false;\n  }\n"
+           "  let r: Option<bool> = map_get::<bool, bool>(m, flag);\n  match r {\n    Some(b) => { return b && vec_get::<bool>(v, 0) == flag; }\n"
+           "    None => { return false; }\n  }\n}\n")
+    r = go(src, "f", [True, 1])
+    assert r["kind"] == "ok" and r["value"] is False and not r["contract_failures"], r     # map[true] was replaced by false
+    r = go(src, "f", [False, 0])
+    assert r["kind"] == "ok" and r["value"] is True and not r["contract_failures"], r
+    # a user type named like a catalog type keeps its meaning (no collection parse)
+    try:
+        go("struct String { x: i64 }\nfn f(s: String) -> i64 { return s.x; }", "f",
+           [{"struct": "String", "fields": {"x": 4}}])
+    except OracleUnsupported:
+        pass
+
+
 if __name__ == "__main__":
     _selftest()
     _selftest_g3()
+    _selftest_g6()

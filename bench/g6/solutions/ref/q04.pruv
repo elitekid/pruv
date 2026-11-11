@@ -1,0 +1,39 @@
+// G6 q04 reference: a trusted external Rust parser adapter (crate g6q_adapter) used under its contract
+trusted rust fn parse_digit(s: str) -> i64
+  ensures result >= -1 && result <= 9
+  ensures (len(s) == 1 && 48 <= s[0] && s[0] <= 57) ==> result == s[0] - 48
+  ensures !(len(s) == 1 && 48 <= s[0] && s[0] <= 57) ==> result == -1
+  = "::g6q_adapter::parse_digit";
+
+fn digit_or(s: str, d: i64) -> i64
+  ensures (len(s) == 1 && 48 <= s[0] && s[0] <= 57) ==> result == s[0] - 48
+  ensures !(len(s) == 1 && 48 <= s[0] && s[0] <= 57) ==> result == d
+{
+  let v: i64 = parse_digit(s);
+  if v >= 0 {
+    return v;
+  }
+  return d;
+}
+
+fn is_digit(s: str) -> bool
+  ensures result ==> len(s) == 1 && 48 <= s[0] && s[0] <= 57
+  ensures !result ==> !(len(s) == 1 && 48 <= s[0] && s[0] <= 57)
+{
+  let v: i64 = parse_digit(s);
+  return v >= 0;
+}
+
+fn add_digits(a: str, b: str) -> i64
+  ensures (len(a) == 1 && 48 <= a[0] && a[0] <= 57 && len(b) == 1 && 48 <= b[0] && b[0] <= 57) ==> result == a[0] + b[0] - 96
+  ensures !(len(a) == 1 && 48 <= a[0] && a[0] <= 57 && len(b) == 1 && 48 <= b[0] && b[0] <= 57) ==> result == -1
+{
+  let x: i64 = parse_digit(a);
+  let y: i64 = parse_digit(b);
+  if x >= 0 {
+    if y >= 0 {
+      return x + y;
+    }
+  }
+  return -1;
+}

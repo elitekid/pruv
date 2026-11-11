@@ -5,6 +5,7 @@
                              [--rejected-sample 30] [--jobs N] [--batch 25] [--out DIR] [--keep-work]
     python bench/fuzz/run.py --g2 [--seed 41] [--programs 200] [--rejected-sample 30]   (G2 mode, see README)
     python bench/fuzz/run.py --g3 [--seed 41] [--programs 100] [--g3-safe-only 20] [--inputs 8]   (G3 mode, see README)
+    python bench/fuzz/run.py --g6 [--seed 41] [--programs 100] [--g6-safe-only 20] [--inputs 8]   (G6 mode, see README)
     python bench/fuzz/run.py --replay DIR_OR_PRUVFILE
     (every form accepts [--compiler py|rs] [--compiler-path PATH], see tests/compiler_driver.py; default rs)
 
@@ -54,7 +55,8 @@ RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 I64_MIN = -(1 << 63)
 TIMEOUT_RC = -999
 FAULT_KINDS = {"oob", "overflow", "div_domain", "requires_violated", "requires_undefined",
-               "elem_range", "slice_range", "slice_cut"}   # the last three are G2 (only the oracle emits them; existing paths unchanged)
+               "elem_range", "slice_range", "slice_cut",   # the last three are G2 (only the oracle emits them; existing paths unchanged)
+               "foreign_requires", "foreign_undefined"}    # G6: `pruv: foreign requires violated:` / `pruv: foreign contract undefined:`
 MODES = [("rust-proof", "rust", False), ("rust-safe", "rust", True),
          ("llvm-proof", "llvm", False), ("llvm-safe", "llvm", True)]
 SAFE_MODES = [m for m in MODES if m[2]]
@@ -92,7 +94,7 @@ def driver():
 
 
 def write(path, text):
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:      # G6 sources contain multibyte string literals
         fh.write(text)
 
 
@@ -360,7 +362,8 @@ def choose_inputs(rec, args, fixed=None):
     if fixed is not None:
         inputs = fixed
     else:
-        prefix = "g3:" if getattr(args, "g3", False) else ("g2:" if getattr(args, "g2", False) else "")
+        prefix = ("g6:" if getattr(args, "g6", False) else "g3:" if getattr(args, "g3", False)
+                  else ("g2:" if getattr(args, "g2", False) else ""))
         rng = random.Random(prefix + "%s:%s:inputs" % (args.seed, rec["name"]))
         cands = generate.candidate_inputs(rec["case"], rng, 300)
         ok_l, bad_l, seen = [], [], set()
@@ -415,6 +418,18 @@ def oracle_run(prog, a, mode):
 
 
 NO_MANGLE_RE = re.compile(r"^[ \t]*#\[no_mangle\][ \t]*\n", re.M)
+# G6 bindings also carry the shim's own #[no_mangle] adapters, which every module needs: strip only the pruv_host_* ones
+NO_MANGLE_HOST_RE = re.compile(r'^[ \t]*#\[no_mangle\][ \t]*\n(?=[ \t]*pub extern "C" fn pruv_host_)', re.M)
+
+
+def g6_rename(ll_text, rs_text, tag):
+    """G6: the generated bindings contain `mod pruv_g6_shim` with #[no_mangle] adapters `pruv_g6_v1_<helper>` and the bridge marker
+    `pruv_g6_bridge_v1`; the .ll declares/calls them. Several modules end up in one executable (proof+safe of a program, other
+    programs), so every module gets its own copy of these symbols, the same way `pruv_abi_` is made unique.
+    -> (new .ll text, new bindings text, number of renamed occurrences in the .ll)"""
+    def sub(t):
+        return t.replace("pruv_g6_v1_", "pruv_g6_v1_%s_" % tag).replace("pruv_g6_bridge_v1", "pruv_g6_bridge_v1_%s" % tag)
+    return sub(ll_text), sub(rs_text), ll_text.count("pruv_g6_v1_") + ll_text.count("pruv_g6_bridge_v1")
 
 
 def prep_llvm(rec, mode, rt_o):
@@ -447,10 +462,15 @@ def prep_llvm(rec, mode, rt_o):
         return None, "harness_error", ("%s: nothing to rewrite (.ll @pruv_abi_ count %d, bindings pruv_abi_ count %d)"
                                        % (name, n_ll, n_rs))
     rw_ll = os.path.join(d, name + "_rw.ll")
-    write(rw_ll, ll_text.replace("@pruv_abi_", "@pruv_abi_%s_" % tag))
+    ll_new = ll_text.replace("@pruv_abi_", "@pruv_abi_%s_" % tag)
     rs_new = rs_text.replace("pruv_abi_", "pruv_abi_%s_" % tag)
     if rs_new.count("pruv_abi_%s_" % tag) != n_rs:
         return None, "harness_error", "%s: bindings rewrite count mismatch" % name
+    if (rec.get("case") or {}).get("g6"):
+        ll_new, rs_new, n_g6 = g6_rename(ll_new, rs_new, tag)
+        if n_g6 and rs_new.count("pruv_g6_v1_%s_" % tag) + rs_new.count("pruv_g6_bridge_v1_%s" % tag) < 1:
+            return None, "harness_error", "%s: G6 shim symbols not found in the bindings (.ll references %d)" % (name, n_g6)
+    write(rw_ll, ll_new)
     gen_o = os.path.join(d, name + "_gen.o")
     rc, so, se = run_cmd([CLANG, "-O2", CPU_FLAG, "-Wno-override-module", "-c", rw_ll, "-o", gen_o], 300)
     if rc != 0:
@@ -498,7 +518,8 @@ def build_binary(recs, backend, label, work, rt_o, only_mode=None):
                 modname = "p%d_l%s" % (rec["idx"], "safe" if safe else "proof")
                 gen = os.path.join(rec["dir"], "%s_%s_bind.rs" % (name, label))
                 # the #[no_mangle] of pruv_host_* stays only on the first LLVM module of the binary
-                write(gen, art["rs"] if not entries else NO_MANGLE_RE.sub("", art["rs"]))
+                strip = NO_MANGLE_HOST_RE if (rec.get("case") or {}).get("g6") else NO_MANGLE_RE
+                write(gen, art["rs"] if not entries else strip.sub("", art["rs"]))
                 links.append(art["o"])
             entries.append((rec, name, modname, os.path.abspath(gen)))
     if not entries:
@@ -774,6 +795,11 @@ def save_failure(out_dir, rec, kind, items):
         res["g3_features"] = rec["case"].get("g3_features", [])
         res["g3_unproved_by_design"] = bool(rec["case"].get("g3_bad"))
         res["g3_mutation"] = rec["case"].get("g3_mutation")
+    if (rec.get("case") or {}).get("g6"):   # g6 cases only
+        res["g6"] = True
+        res["g6_features"] = rec["case"].get("g6_features", [])
+        res["g6_unproved_by_design"] = bool(rec["case"].get("g6_bad"))
+        res["g6_mutation"] = rec["case"].get("g6_mutation")
     write(os.path.join(d, "results.json"), json.dumps(res, indent=1, default=str))
     write(os.path.join(d, "pruvc_output.txt"),
           "".join("== %s ==\n%s\n" % (k, v) for k, v in rec["logs"].items()))
@@ -834,13 +860,17 @@ def replay(path, args):
     if inp is None:
         print("could not find inputs.json: " + base)
         return 2
-    src = open(pruv).read()
-    inputs = json.load(open(inp))
+    with open(pruv, encoding="utf-8") as fh:
+        src = fh.read()
+    with open(inp, encoding="utf-8") as fh:
+        inputs = json.load(fh)
     params, ret = signature_from_src(src)
     case = {"name": "replay_" + os.path.splitext(os.path.basename(pruv))[0], "src": src, "entry": "f",
             "params": params, "ret": ret, "input_hints": {}}
     if "::<" in src:
         case["g3"] = True   # generic program: the run-time callee name of a generic instance is not compared strictly
+    if re.search(r"\b(vec_new|map_new|string_new)\b|\btrusted\s+rust\s+fn\b", src):
+        case["g6"] = True   # G6 program: collections / trusted Rust calls (shim symbols are renamed per module, see prep_llvm)
     if any(t in ("array_u8", "array_bool", "str") for t in [p[1] for p in params] + [ret]):
         case["g2"] = True   # G2 types (the driver only looks at the params/ret strings); g2_features is left empty if the saved copy has none
         case["g2_features"] = []
@@ -879,18 +909,23 @@ def g3_unproved(r):
     return bool((r.get("case") or {}).get("g3_bad"))
 
 
+def g6_unproved(r):
+    """A rejected program that the G6 generator built to be unproved (dropped requires, false ensures, body mutation, ...)."""
+    return bool((r.get("case") or {}).get("g6_bad"))
+
+
 def g3_ran(r, names):
     runs = r.get("runs") or {}
     return all(n in runs and runs[n] and all(x is not None and x["exit"] not in (TIMEOUT_RC, -998) for x in runs[n])
                for n in names)
 
 
-def g3_counted(r, verified_prog, min_inputs):
+def g3_counted(r, verified_prog, min_inputs, key="g3"):
     """Counting condition of the G3 gate (same shape as the G2 one): a g3 case, at least `min_inputs` inputs, every run result
     present (no timeout, no harness exception), and for a verified program at least one input that satisfies requires and
     that the proof-mode oracle compared to the end (not `limit`, not an oracle error). Crashes, timeouts, unknowns and
-    unsupported oracle cases are therefore never counted as success."""
-    if not (r.get("case") or {}).get("g3") or len(r.get("inputs", [])) < min_inputs:
+    unsupported oracle cases are therefore never counted as success. (`key="g6"`: the same condition for G6 cases.)"""
+    if not (r.get("case") or {}).get(key) or len(r.get("inputs", [])) < min_inputs:
         return False
     if not g3_ran(r, [m[0] for m in SAFE_MODES]):
         return False
@@ -983,6 +1018,11 @@ def main():
                          "output folder ends in _g3, gate (g3_shortfall) applies; --rejected-sample is not used")
     ap.add_argument("--g3-safe-only", type=int, default=20,
                     help="G3 mode: number of deliberately unproved programs that must be built and run in safe mode only")
+    ap.add_argument("--g6", action="store_true",
+                    help="G6 mode: trusted Rust calls (std::cmp::min/max) and Vec/HashMap/String programs (take/move, catalog "
+                         "operations); output folder out/g6_<seed>[_rs], gate (g6_shortfall) applies; --rejected-sample is not used")
+    ap.add_argument("--g6-safe-only", type=int, default=20,
+                    help="G6 mode: number of deliberately unproved programs that must be built and run in safe mode only")
     ap.add_argument("--seeds", default=None,
                     help="comma-separated seeds (e.g. 41,56,57): one run per seed with the other options unchanged; "
                          "with --out each seed gets the subfolder OUT/<seed>")
@@ -995,12 +1035,16 @@ def main():
     generate.AVOID.update(x.strip() for x in args.avoid_known.split(",") if x.strip())
     if args.g3 and args.g2:
         ap.error("--g2 and --g3 are separate modes")
-    if args.g3:
+    if args.g6 and (args.g2 or args.g3):
+        ap.error("--g6 is a separate mode (not combinable with --g2/--g3)")
+    if args.g3 or args.g6:
         args.inputs = max(args.inputs, 8)    # exit criterion: at least eight concrete inputs per accepted program
     if args.replay:
         return replay(args.replay, args)
-    # per-compiler result/work folders: the py default path (out/<seed>) is unchanged, rs uses out/<seed>_rs
-    out_dir = args.out or os.path.join(HERE, "out", str(args.seed) + ("" if DRIVER.name == "py" else "_" + DRIVER.name)
+    # per-compiler result/work folders: the py default path (out/<seed>) is unchanged, rs uses out/<seed>_rs;
+    # G6: out/g6_<seed> (py), out/g6_<seed>_rs (rs)
+    out_dir = args.out or os.path.join(HERE, "out", ("g6_" if args.g6 else "") + str(args.seed)
+                                       + ("" if DRIVER.name == "py" else "_" + DRIVER.name)
                                        + ("_g2" if args.g2 else "") + ("_g3" if args.g3 else ""))
     os.makedirs(out_dir, exist_ok=True)
     work = tempfile.mkdtemp(prefix="pruvfuzz_%s_" % DRIVER.name)
@@ -1020,7 +1064,9 @@ def main():
             """Generate candidate i and run it through phase_a. Exceptions are recorded as harness failures."""
             case = None
             try:
-                if args.g3:
+                if args.g6:
+                    case = generate.generate_case(args.seed, i, g6=True)
+                elif args.g3:
                     case = generate.generate_case(args.seed, i, g3=True)
                 else:
                     case = generate.generate_case(args.seed, i, g2=True) if args.g2 else generate.generate_case(args.seed, i)
@@ -1039,7 +1085,7 @@ def main():
             st = rec["status"]
             if st in ("oracle_unsupported", "oracle_parse_error", "generator_invalid"):
                 counts[st] += 1
-                if args.g3 and st != "generator_invalid" and oracle_gap_saved[0] < 10:
+                if (args.g3 or args.g6) and st != "generator_invalid" and oracle_gap_saved[0] < 10:
                     # an oracle that cannot evaluate a generated program is a gap in the oracle, never a success
                     oracle_gap_saved[0] += 1
                     gd = os.path.join(out_dir, "oracle_gap")
@@ -1074,14 +1120,18 @@ def main():
         # Once enough are collected or --max-candidates is reached, stop submitting but collect the results of every candidate already submitted.
         # G2 mode collects an extra 10% (+5 for rejected) to cover programs dropped by the counting condition (existing path unchanged)
         # G3 mode does the same and additionally keeps generating until enough deliberately unproved programs were rejected
-        want_programs = args.programs + (args.programs // 10 if (args.g2 or args.g3) else 0)
+        want_programs = args.programs + (args.programs // 10 if (args.g2 or args.g3 or args.g6) else 0)
         want_rejected = args.rejected_sample + (5 if args.g2 else 0)
         if args.g3:
             want_rejected = args.g3_safe_only + 5
+        if args.g6:
+            want_rejected = args.g6_safe_only + 5
 
         def need_more():
             if len(verified) < want_programs:
                 return True
+            if args.g6:
+                return sum(1 for r in rejected_all if g6_unproved(r)) < want_rejected
             return args.g3 and sum(1 for r in rejected_all if g3_unproved(r)) < want_rejected
 
         nxt, cap = 0, max(args.jobs * 2, 2)
@@ -1110,6 +1160,11 @@ def main():
             # deliberately unproved programs first; a few rejected programs that were meant to verify ride along (safe modes only)
             unproved = [r for r in rejected_all if g3_unproved(r)]
             unexpected = [r for r in rejected_all if not g3_unproved(r)]
+            sample = unproved[:want_rejected] + unexpected[:10]
+        elif args.g6:
+            # same as G3: deliberately unproved programs first, a few rejected "meant to verify" ones ride along (safe modes only)
+            unproved = [r for r in rejected_all if g6_unproved(r)]
+            unexpected = [r for r in rejected_all if not g6_unproved(r)]
             sample = unproved[:want_rejected] + unexpected[:10]
         else:
             sample = rejected_all[:want_rejected]
@@ -1268,6 +1323,64 @@ def main():
                 fail_kinds["g3_shortfall"] = miss_v + miss_s
                 summary["g3_shortfall"] = {"verified_missing": miss_v, "safe_only_missing": miss_s}
             summary["g3_failures"] = sum(fail_kinds.values())
+        if args.g6:
+            # Keys are added only in G6 mode (same shape as the G3 ones, prefix g6_).
+            failed_set = set(failed_cases)
+            g6_ver = [r for r in verified if r["name"] not in failed_set and g3_counted(r, True, args.inputs, "g6")]
+            g6_safe = [r for r in sample if g6_unproved(r) and r["name"] not in failed_set
+                       and g3_counted(r, False, args.inputs, "g6")]
+            unexpected_rej = [r for r in rejected_all if not g6_unproved(r)]
+            feat = {}
+            for r in g6_ver:
+                for t in (r["case"].get("g6_features") or []):
+                    feat[t] = feat.get(t, 0) + 1
+            kinds = {}
+            for r in g6_ver:
+                kinds[r["case"].get("kind")] = kinds.get(r["case"].get("kind"), 0) + 1
+            cmp_done, cmp_skipped = g3_comparisons(progs)
+            dig_full, dig_quiet = g3_digests(progs)
+            ipp = [len(r.get("inputs", [])) for r in progs]
+            # run-time `pruv: foreign requires violated:` paths that the oracle expects (vec_get / string_byte out of range),
+            # counted per (program, input) in the safe oracle and in the proof oracle of verified programs
+            fr_safe = sum(1 for r in progs for o in (r.get("oracle_safe") or []) if o.get("kind") == "foreign_requires")
+            fr_proof = sum(1 for r in progs for o in (r.get("oracle_proof") or []) if o.get("kind") == "foreign_requires")
+            summary["g6"] = True
+            summary["compiler"] = DRIVER.name
+            summary["g6_generated"] = counts["candidates"]
+            summary["g6_verified"] = len(g6_ver)
+            summary["g6_safe_only"] = len(g6_safe)
+            summary["g6_executions_compared"] = cmp_done
+            summary["g6_executions_not_compared"] = cmp_skipped
+            summary["g6_failures"] = sum(fail_kinds.values())
+            summary["g6_kinds_verified"] = dict(sorted(kinds.items()))
+            summary["g6_features_verified"] = dict(sorted(feat.items()))
+            summary["g6_inputs_per_program_min"] = min(ipp) if ipp else 0
+            summary["g6_foreign_requires_inputs"] = {"safe_oracle": fr_safe, "proof_oracle": fr_proof}
+            summary["g6_unproved_by_design_verified_anyway"] = sum(1 for r in verified if g6_unproved(r))
+            summary["g6_unproved_by_design_verified_names"] = [
+                (r.get("name"), (r.get("case") or {}).get("g6_mutation") or (r.get("case") or {}).get("kind"))
+                for r in verified if g6_unproved(r)]
+            summary["g6_unexpected_rejects"] = {
+                "count": len(unexpected_rej), "names": [r["name"] for r in unexpected_rej[:20]],
+                "codes": sorted(set(c for r in unexpected_rej for c in r.get("codes", [])))}
+            summary["g6_digest"] = dig_full
+            summary["g6_digest_exit_stdout"] = dig_quiet
+            ud = os.path.join(out_dir, "unexpected_rejects")
+            for r in unexpected_rej[:10]:
+                os.makedirs(ud, exist_ok=True)
+                write(os.path.join(ud, r["name"] + ".pruv"), r["src"])
+                write(os.path.join(ud, r["name"] + ".txt"), r["logs"].get("verify", ""))
+            # the generator must produce well-typed programs and the oracle must be able to run them
+            if counts["generator_invalid"]:
+                fail_kinds["g6_generator_invalid"] = counts["generator_invalid"]
+            if counts["oracle_unsupported"] + counts["oracle_parse_error"]:
+                fail_kinds["g6_oracle_gap"] = counts["oracle_unsupported"] + counts["oracle_parse_error"]
+            if summary["g6_verified"] < args.programs or summary["g6_safe_only"] < args.g6_safe_only:
+                miss_v = max(0, args.programs - summary["g6_verified"])
+                miss_s = max(0, args.g6_safe_only - summary["g6_safe_only"])
+                fail_kinds["g6_shortfall"] = miss_v + miss_s
+                summary["g6_shortfall"] = {"verified_missing": miss_v, "safe_only_missing": miss_s}
+            summary["g6_failures"] = sum(fail_kinds.values())
         write(os.path.join(out_dir, "summary.json"), json.dumps(summary, indent=2))
         print("---- summary ----")
         print("candidates %d (generator errors %d, oracle unsupported %d) -> pass %d / reject %d %s"
@@ -1302,6 +1415,20 @@ def main():
                   % (summary["g3_unexpected_rejects"]["count"], json.dumps(summary["g3_unexpected_rejects"]["codes"]),
                      summary["g3_unproved_by_design_verified_anyway"]))
             print("G3 digest %s (exit+stdout only %s)" % (summary["g3_digest"][:16], summary["g3_digest_exit_stdout"][:16]))
+        if args.g6:
+            print("G6 seed %d (%s): generated %d, verified %d (requested %d), safe-only %d (requested %d), "
+                  "executions compared %d (not compared %d), failures %d, min inputs per program %d"
+                  % (args.seed, summary["compiler"], summary["g6_generated"], summary["g6_verified"], args.programs,
+                     summary["g6_safe_only"], args.g6_safe_only, summary["g6_executions_compared"],
+                     summary["g6_executions_not_compared"], summary["g6_failures"], summary["g6_inputs_per_program_min"]))
+            print("G6 kinds %s" % json.dumps(summary["g6_kinds_verified"]))
+            print("G6 features %s" % json.dumps(summary["g6_features_verified"]))
+            print("G6 foreign-requires runtime failures expected by the oracle: %s"
+                  % json.dumps(summary["g6_foreign_requires_inputs"]))
+            print("G6 programs meant to verify but rejected: %d %s; meant to be unproved but verified: %d"
+                  % (summary["g6_unexpected_rejects"]["count"], json.dumps(summary["g6_unexpected_rejects"]["codes"]),
+                     summary["g6_unproved_by_design_verified_anyway"]))
+            print("G6 digest %s (exit+stdout only %s)" % (summary["g6_digest"][:16], summary["g6_digest_exit_stdout"][:16]))
         print("failures: %s" % (json.dumps(fail_kinds) if fail_kinds else "none"))
         print("results: " + out_dir)
         return 1 if fail_kinds else 0

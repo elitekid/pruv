@@ -1,0 +1,2370 @@
+{
+ "summary": {
+  "mutants": 75,
+  "by_kind": {
+   "pruv": {
+    "mutants": 41,
+    "rejected_by_prover": 40,
+    "equivalent": 1
+   },
+   "foreign": {
+    "mutants": 21,
+    "equivalent": 2,
+    "rejected_by_prover": 7,
+    "caught_at_runtime_all": 10,
+    "undetectable_trust": 2
+   },
+   "ownership": {
+    "mutants": 13,
+    "rejected_by_checker": 13
+   }
+  },
+  "by_class": {
+   "rejected_by_prover": 47,
+   "equivalent": 3,
+   "caught_at_runtime_all": 10,
+   "undetectable_trust": 2,
+   "rejected_by_checker": 13
+  },
+  "unexpected": [
+   {
+    "id": "m18",
+    "kind": "pruv",
+    "desc": "count lookup uses the queried value instead of the element",
+    "expect": "rejected_by_prover",
+    "got": "equivalent",
+    "detail": "tests pass"
+   }
+  ],
+  "py_rs_diff": [],
+  "crash": [],
+  "wrong_but_verified": [],
+  "trust_limitations": [
+   {
+    "id": "m61",
+    "desc": "hidden global call counter, correct results",
+    "detail": "no test and no runtime check sees the lie"
+   },
+   {
+    "id": "m62",
+    "desc": "writes to stderr, correct results",
+    "detail": "no test and no runtime check sees the lie"
+   }
+  ],
+  "versions": {
+   "git_head": "f87531785e885c6c678070c6c34014b87d8ede39",
+   "z3_python": "5.3.3",
+   "z3_src_crate": "503.3.0",
+   "compiler_sources_dirty": false,
+   "rs_binary_sha256": "dd08384747386ba860e5238c2baa4998c116f9179857fb5cf97094db3f859032",
+   "rs_binary_mtime": "2026-11-12T06:59:43"
+  },
+  "findings": 0,
+  "line": "G6 mutants: 75 total (foreign 21, ownership 13, pruv 41); classes: rejected_by_prover 47, rejected_by_checker 13, caught_at_runtime_all 10, wrong_but_verified 0, undetectable_trust 2, equivalent 3; unexpected vs. expectation: 1; wrong_but_verified findings (pruv/ownership): 0; crashes: 0; py/rs diffs: 0"
+ },
+ "items": [
+  {
+   "id": "m01",
+   "kind": "pruv",
+   "family": "off_by_one",
+   "pid": "q01",
+   "desc": "lower bound exclusive",
+   "edit": {
+    "from": "if lo <= x && x <= hi {",
+    "to": "if lo < x && x <= hi {"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m02",
+   "kind": "pruv",
+   "family": "off_by_one",
+   "pid": "q01",
+   "desc": "upper bound exclusive",
+   "edit": {
+    "from": "if lo <= x && x <= hi {",
+    "to": "if lo <= x && x < hi {"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m03",
+   "kind": "pruv",
+   "family": "wrong_operator",
+   "pid": "q01",
+   "desc": "&& became ||",
+   "edit": {
+    "from": "if lo <= x && x <= hi {",
+    "to": "if lo <= x || x <= hi {"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m04",
+   "kind": "pruv",
+   "family": "dropped_push",
+   "pid": "q01",
+   "desc": "kept element is not pushed",
+   "edit": {
+    "from": "return vec_push::<i64>(move v, x);",
+    "to": "return move v;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m05",
+   "kind": "pruv",
+   "family": "wrong_branch",
+   "pid": "q01",
+   "desc": "rejected element is pushed too",
+   "edit": {
+    "from": "  return move v;\n}",
+    "to": "  return vec_push::<i64>(move v, x);\n}"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m06",
+   "kind": "pruv",
+   "family": "wrong_return",
+   "pid": "q01",
+   "desc": "count is one too large",
+   "edit": {
+    "from": "return len(v);",
+    "to": "return len(v) + 1;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m07",
+   "kind": "pruv",
+   "family": "wrong_return",
+   "pid": "q01",
+   "desc": "returns the scan position, not the count",
+   "edit": {
+    "from": "return len(v);",
+    "to": "return i;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m08",
+   "kind": "pruv",
+   "family": "swapped_args",
+   "pid": "q01",
+   "desc": "lo and hi exchanged",
+   "edit": {
+    "from": "v = push_if_in(move v, a[i], lo, hi);",
+    "to": "v = push_if_in(move v, a[i], hi, lo);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m09",
+   "kind": "pruv",
+   "family": "off_by_one",
+   "pid": "q01",
+   "desc": "range shrinks by one (and hi - 1 may overflow)",
+   "edit": {
+    "from": "v = push_if_in(move v, a[i], lo, hi);",
+    "to": "v = push_if_in(move v, a[i], lo, hi - 1);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "overflow",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "overflow",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/overflow"
+  },
+  {
+   "id": "m10",
+   "kind": "pruv",
+   "family": "wrong_step",
+   "pid": "q01",
+   "desc": "count_in_range skips every other element",
+   "edit": {
+    "from": "i = i + 1;",
+    "to": "i = i + 2;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m11",
+   "kind": "pruv",
+   "family": "wrong_operator",
+   "pid": "q01",
+   "desc": "running sum adds an extra 1",
+   "edit": {
+    "from": "s = s + a[i];",
+    "to": "s = s + a[i] + 1;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m12",
+   "kind": "pruv",
+   "family": "wrong_value",
+   "pid": "q01",
+   "desc": "pushes the element instead of the prefix sum",
+   "edit": {
+    "from": "v = vec_push::<i64>(move v, s);",
+    "to": "v = vec_push::<i64>(move v, a[i]);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m13",
+   "kind": "pruv",
+   "family": "wrong_index",
+   "pid": "q01",
+   "desc": "returns the first prefix sum",
+   "edit": {
+    "from": "return vec_get::<i64>(v, len(v) - 1);",
+    "to": "return vec_get::<i64>(v, 0);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m14",
+   "kind": "pruv",
+   "family": "off_by_one",
+   "pid": "q01",
+   "desc": "reads the second to last prefix sum",
+   "edit": {
+    "from": "return vec_get::<i64>(v, len(v) - 1);",
+    "to": "return vec_get::<i64>(v, len(v) - 2);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "call_requires",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "call_requires",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/call_requires"
+  },
+  {
+   "id": "m15",
+   "kind": "pruv",
+   "family": "wrong_constant",
+   "pid": "q01",
+   "desc": "empty input gives 1",
+   "edit": {
+    "from": "return 0;",
+    "to": "return 1;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m16",
+   "kind": "pruv",
+   "family": "dropped_update",
+   "pid": "q02",
+   "desc": "existing key is not incremented",
+   "edit": {
+    "from": "map_insert::<i64, i64>(move m, x, n + 1);",
+    "to": "map_insert::<i64, i64>(move m, x, n);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m17",
+   "kind": "pruv",
+   "family": "wrong_constant",
+   "pid": "q02",
+   "desc": "new key starts at 0",
+   "edit": {
+    "from": "map_insert::<i64, i64>(move m, x, 1);",
+    "to": "map_insert::<i64, i64>(move m, x, 0);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m18",
+   "kind": "pruv",
+   "family": "wrong_key",
+   "pid": "q02",
+   "desc": "count lookup uses the queried value instead of the element",
+   "edit": {
+    "from": "let cur: Option<i64> = map_get::<i64, i64>(m, x);",
+    "to": "let cur: Option<i64> = map_get::<i64, i64>(m, q);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "equivalent",
+   "detail": "tests pass",
+   "detected_in": null,
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 288,
+    "tests_total": 288,
+    "panics": 0
+   },
+   "run_all": null,
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m19",
+   "kind": "pruv",
+   "family": "wrong_key",
+   "pid": "q02",
+   "desc": "final lookup of key 0",
+   "edit": {
+    "from": "let r: Option<i64> = map_get::<i64, i64>(m, q);",
+    "to": "let r: Option<i64> = map_get::<i64, i64>(m, 0);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m20",
+   "kind": "pruv",
+   "family": "wrong_operator",
+   "pid": "q02",
+   "desc": "ghost counter counts the other elements",
+   "edit": {
+    "from": "if x == q {",
+    "to": "if x != q {"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m21",
+   "kind": "pruv",
+   "family": "wrong_step",
+   "pid": "q02",
+   "desc": "ghost counter steps by two",
+   "edit": {
+    "from": "c = c + 1;",
+    "to": "c = c + 2;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m22",
+   "kind": "pruv",
+   "family": "wrong_return",
+   "pid": "q02",
+   "desc": "absent value gives 1",
+   "edit": {
+    "from": "None => { return 0; }",
+    "to": "None => { return 1; }"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m23",
+   "kind": "pruv",
+   "family": "wrong_key",
+   "pid": "q02",
+   "desc": "increment is stored under the queried key",
+   "edit": {
+    "from": "map_insert::<i64, i64>(move m, x, n + 1);",
+    "to": "map_insert::<i64, i64>(move m, q, n + 1);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m24",
+   "kind": "pruv",
+   "family": "wrong_constant",
+   "pid": "q02",
+   "desc": "saturation threshold 1: counts stop at 1",
+   "edit": {
+    "from": "if n < 1000000 {",
+    "to": "if n < 1 {"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_preserved",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_preserved"
+  },
+  {
+   "id": "m25",
+   "kind": "pruv",
+   "family": "wrong_operator",
+   "pid": "q02",
+   "desc": "seen needs two occurrences",
+   "edit": {
+    "from": "return n > 0;",
+    "to": "return n > 1;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m26",
+   "kind": "pruv",
+   "family": "wrong_return",
+   "pid": "q02",
+   "desc": "count is one too large",
+   "edit": {
+    "from": "Some(n) => { return n; }",
+    "to": "Some(n) => { return n + 1; }"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m27",
+   "kind": "pruv",
+   "family": "wrong_constant",
+   "pid": "q02",
+   "desc": "ghost counter starts at 1",
+   "edit": {
+    "from": "let mut c: i64 = 0;",
+    "to": "let mut c: i64 = 1;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "invariant_entry",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "invariant_entry",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/invariant_entry"
+  },
+  {
+   "id": "m28",
+   "kind": "pruv",
+   "family": "swapped_args",
+   "pid": "q03",
+   "desc": "first piece is b",
+   "edit": {
+    "from": "s = string_push_str(move s, a);",
+    "to": "s = string_push_str(move s, b);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m29",
+   "kind": "pruv",
+   "family": "dropped_push",
+   "pid": "q03",
+   "desc": "join_pair without separator",
+   "edit": {
+    "from": "  s = string_push_str(move s, sep);",
+    "to": "  // separator push dropped"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m30",
+   "kind": "pruv",
+   "family": "swapped_args",
+   "pid": "q03",
+   "desc": "second piece is a",
+   "edit": {
+    "from": "s = string_push_str(move s, b);",
+    "to": "s = string_push_str(move s, a);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m31",
+   "kind": "pruv",
+   "family": "wrong_order",
+   "pid": "q03",
+   "desc": "b before the separator",
+   "edit": {
+    "from": "  s = string_push_str(move s, sep);\n  s = string_push_str(move s, b);\n  return string_to_str(s);",
+    "to": "  s = string_push_str(move s, b);\n  s = string_push_str(move s, sep);\n  return string_to_str(s);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m32",
+   "kind": "pruv",
+   "family": "wrong_return",
+   "pid": "q03",
+   "desc": "length one too large",
+   "edit": {
+    "from": "return len(s);",
+    "to": "return len(s) + 1;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m33",
+   "kind": "pruv",
+   "family": "dropped_push",
+   "pid": "q03",
+   "desc": "second separator dropped",
+   "edit": {
+    "from": "  s = string_push_str(move s, sep);\n  s = string_push_str(move s, c);",
+    "to": "  s = string_push_str(move s, c);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m34",
+   "kind": "pruv",
+   "family": "wrong_value",
+   "pid": "q03",
+   "desc": "c replaced by b in joined_len3",
+   "edit": {
+    "from": "s = string_push_str(move s, c);",
+    "to": "s = string_push_str(move s, b);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m35",
+   "kind": "pruv",
+   "family": "wrong_result",
+   "pid": "q03",
+   "desc": "returns the empty string",
+   "edit": {
+    "from": "return string_to_str(s);",
+    "to": "let e: String = string_new();\n  return string_to_str(e);"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m36",
+   "kind": "pruv",
+   "family": "off_by_one",
+   "pid": "q04",
+   "desc": "the digit 0 is treated as a failure",
+   "edit": {
+    "from": "if v >= 0 {",
+    "to": "if v > 0 {"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m37",
+   "kind": "pruv",
+   "family": "wrong_operator",
+   "pid": "q04",
+   "desc": "add_digits subtracts",
+   "edit": {
+    "from": "return x + y;",
+    "to": "return x - y;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m38",
+   "kind": "pruv",
+   "family": "wrong_operator",
+   "pid": "q04",
+   "desc": "is_digit false for 0",
+   "edit": {
+    "from": "return v >= 0;",
+    "to": "return v > 0;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m39",
+   "kind": "pruv",
+   "family": "wrong_return",
+   "pid": "q04",
+   "desc": "digit_or returns the failure code instead of d",
+   "edit": {
+    "from": "return d;",
+    "to": "return v;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m40",
+   "kind": "pruv",
+   "family": "wrong_operator",
+   "pid": "q04",
+   "desc": "add_digits accepts a single digit",
+   "edit": {
+    "from": "if x >= 0 {",
+    "to": "if x >= 0 || y >= 0 {"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m41",
+   "kind": "pruv",
+   "family": "wrong_constant",
+   "pid": "q04",
+   "desc": "add_digits failure value 0",
+   "edit": {
+    "from": "return -1;",
+    "to": "return 0;"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m42",
+   "kind": "foreign",
+   "family": "drop_clause",
+   "pid": "q04",
+   "desc": "range clause is implied by the other two: redundant",
+   "edit": {
+    "from": "  ensures result >= -1 && result <= 9",
+    "to": "  // range clause dropped"
+   },
+   "liar": null,
+   "expect": "equivalent",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "equivalent",
+   "detail": "tests pass in default and all mode",
+   "detected_in": null,
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "run_all": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m43",
+   "kind": "foreign",
+   "family": "drop_clause",
+   "pid": "q04",
+   "desc": "the digit value is no longer known",
+   "edit": {
+    "from": "  ensures (len(s) == 1 && 48 <= s[0] && s[0] <= 57) ==> result == s[0] - 48",
+    "to": "  // value clause dropped"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m44",
+   "kind": "foreign",
+   "family": "drop_clause",
+   "pid": "q04",
+   "desc": "failure is no longer known to be -1",
+   "edit": {
+    "from": "  ensures !(len(s) == 1 && 48 <= s[0] && s[0] <= 57) ==> result == -1",
+    "to": "  // failure clause dropped"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m45",
+   "kind": "foreign",
+   "family": "weaken",
+   "pid": "q04",
+   "desc": "weaker range: still true, harmless control",
+   "edit": {
+    "from": "result <= 9",
+    "to": "result <= 10"
+   },
+   "liar": null,
+   "expect": "equivalent",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "equivalent",
+   "detail": "tests pass in default and all mode",
+   "detected_in": null,
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "run_all": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m46",
+   "kind": "foreign",
+   "family": "wrong_value",
+   "pid": "q04",
+   "desc": "off-by-one value clause",
+   "edit": {
+    "from": "result == s[0] - 48",
+    "to": "result == s[0] - 47"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m47",
+   "kind": "foreign",
+   "family": "impossible",
+   "pid": "q04",
+   "desc": "failure value -2 contradicts the range clause: failure paths become vacuous for the prover",
+   "edit": {
+    "from": "==> result == -1",
+    "to": "==> result == -2"
+   },
+   "liar": null,
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 33,
+    "tests_total": 145,
+    "panics": 112,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -2))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m48",
+   "kind": "foreign",
+   "family": "wrong_bound",
+   "pid": "q04",
+   "desc": "'0' is declared a non-digit",
+   "edit": {
+    "from": "48 <= s[0]",
+    "to": "49 <= s[0]"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m49",
+   "kind": "foreign",
+   "family": "wrong_length",
+   "pid": "q04",
+   "desc": "multi-character prefixes declared digits",
+   "edit": {
+    "from": "len(s) == 1",
+    "to": "len(s) >= 1"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "ensures",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/ensures"
+  },
+  {
+   "id": "m50",
+   "kind": "foreign",
+   "family": "extra_requires",
+   "pid": "q04",
+   "desc": "a precondition the wrappers cannot establish",
+   "edit": {
+    "from": "  ensures result >= -1 && result <= 9",
+    "to": "  requires len(s) >= 1\n  ensures result >= -1 && result <= 9"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "call_requires",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "call_requires",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/call_requires"
+  },
+  {
+   "id": "m51",
+   "kind": "foreign",
+   "family": "impossible",
+   "pid": "q04",
+   "desc": "range 0..=9 contradicts the failure clause: failure paths become vacuous",
+   "edit": {
+    "from": "result >= -1 && result <= 9",
+    "to": "result >= 0 && result <= 9"
+   },
+   "liar": null,
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 33,
+    "tests_total": 145,
+    "panics": 112,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= 0) && (result <= 9))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m52",
+   "kind": "foreign",
+   "family": "domain",
+   "pid": "q04",
+   "desc": "s[0] read without the length guard: contract_domain",
+   "edit": {
+    "from": "  ensures !(len(s) == 1 && 48 <= s[0] && s[0] <= 57) ==> result == -1",
+    "to": "  ensures !(48 <= s[0] && s[0] <= 57) ==> result == -1"
+   },
+   "liar": null,
+   "expect": "rejected_by_prover",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "contract_domain",
+     "stage": "verify"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "contract_domain",
+     "stage": "verify"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_prover",
+   "detail": "verify/contract_domain"
+  },
+  {
+   "id": "m53",
+   "kind": "foreign",
+   "family": "liar_value",
+   "pid": "q04",
+   "desc": "every digit reported one too large",
+   "edit": null,
+   "liar": "g6q_liar_off_by_one",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "wrong",
+    "tests_passed": 116,
+    "tests_total": 145,
+    "panics": 0,
+    "first_failure": "digit_or want 0 got 1"
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 88,
+    "tests_total": 145,
+    "panics": 57,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 48)))",
+    "first_failure": "is_digit want true got PANIC pruv: foreign ensures violated: parse_digit: ((((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == (s[0] - 4"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m54",
+   "kind": "foreign",
+   "family": "liar_value",
+   "pid": "q04",
+   "desc": "'12' parses as 1",
+   "edit": null,
+   "liar": "g6q_liar_two_chars",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "wrong",
+    "tests_passed": 121,
+    "tests_total": 145,
+    "panics": 0,
+    "first_failure": "is_digit want false got true"
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 114,
+    "tests_total": 145,
+    "panics": 31,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m55",
+   "kind": "foreign",
+   "family": "liar_range",
+   "pid": "q04",
+   "desc": "hex digits give 10..15",
+   "edit": null,
+   "liar": "g6q_liar_hex",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "wrong",
+    "tests_passed": 132,
+    "tests_total": 145,
+    "panics": 0,
+    "first_failure": "is_digit want false got true"
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 126,
+    "tests_total": 145,
+    "panics": 19,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m56",
+   "kind": "foreign",
+   "family": "liar_range",
+   "pid": "q04",
+   "desc": "failure code -2",
+   "edit": null,
+   "liar": "g6q_liar_neg2",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "tests pass by default; all mode: pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 33,
+    "tests_total": 145,
+    "panics": 112,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: ((result >= -1) && (result <= 9))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m57",
+   "kind": "foreign",
+   "family": "liar_value",
+   "pid": "q04",
+   "desc": "non-ASCII numeric characters give 0",
+   "edit": null,
+   "liar": "g6q_liar_unicode",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "wrong",
+    "tests_passed": 128,
+    "tests_total": 145,
+    "panics": 0,
+    "first_failure": "is_digit want false got true"
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 120,
+    "tests_total": 145,
+    "panics": 25,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m58",
+   "kind": "foreign",
+   "family": "liar_value",
+   "pid": "q04",
+   "desc": "surrounding whitespace is ignored",
+   "edit": null,
+   "liar": "g6q_liar_trim",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "wrong",
+    "tests_passed": 133,
+    "tests_total": 145,
+    "panics": 0,
+    "first_failure": "is_digit want false got true"
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 133,
+    "tests_total": 145,
+    "panics": 12,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m59",
+   "kind": "foreign",
+   "family": "liar_value",
+   "pid": "q04",
+   "desc": "empty text gives 0",
+   "edit": null,
+   "liar": "g6q_liar_empty_zero",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "wrong results by default; all mode: pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+   "detected_in": "all",
+   "run_default": {
+    "status": "wrong",
+    "tests_passed": 133,
+    "tests_total": 145,
+    "panics": 0,
+    "first_failure": "is_digit want false got true"
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 126,
+    "tests_total": 145,
+    "panics": 19,
+    "first_panic": "pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))",
+    "first_failure": "is_digit want false got PANIC pruv: foreign ensures violated: parse_digit: (!(((len(s) == 1) && (48 <= s[0])) && (s[0] <= 57)) ==> (result == -1))"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m60",
+   "kind": "foreign",
+   "family": "liar_panic",
+   "pid": "q04",
+   "desc": "panics on empty text",
+   "edit": null,
+   "liar": "g6q_liar_panic",
+   "expect": "caught_at_runtime_all",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "caught_at_runtime_all",
+   "detail": "foreign failure already in default mode: pruv: foreign panic: parse_digit",
+   "detected_in": "requires",
+   "run_default": {
+    "status": "wrong",
+    "tests_passed": 126,
+    "tests_total": 145,
+    "panics": 19,
+    "first_panic": "pruv: foreign panic: parse_digit",
+    "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
+   },
+   "run_all": {
+    "status": "wrong",
+    "tests_passed": 126,
+    "tests_total": 145,
+    "panics": 19,
+    "first_panic": "pruv: foreign panic: parse_digit",
+    "first_failure": "is_digit want false got PANIC pruv: foreign panic: parse_digit"
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m61",
+   "kind": "foreign",
+   "family": "liar_effect",
+   "pid": "q04",
+   "desc": "hidden global call counter, correct results",
+   "edit": null,
+   "liar": "g6q_liar_impure",
+   "expect": "undetectable_trust",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "undetectable_trust",
+   "detail": "no test and no runtime check sees the lie",
+   "detected_in": null,
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "run_all": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m62",
+   "kind": "foreign",
+   "family": "liar_effect",
+   "pid": "q04",
+   "desc": "writes to stderr, correct results",
+   "edit": null,
+   "liar": "g6q_liar_prints",
+   "expect": "undetectable_trust",
+   "verdicts": {
+    "py": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    },
+    "rs": {
+     "verdict": "accepted",
+     "code": null,
+     "stage": null
+    }
+   },
+   "py_rs_diff": false,
+   "class": "undetectable_trust",
+   "detail": "no test and no runtime check sees the lie",
+   "detected_in": null,
+   "run_default": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "run_all": {
+    "status": "ok",
+    "tests_passed": 145,
+    "tests_total": 145,
+    "panics": 0
+   },
+   "execution_compiler": "rs"
+  },
+  {
+   "id": "m63",
+   "kind": "ownership",
+   "family": "missing_move",
+   "pid": "q01",
+   "desc": "owned Vec passed to a take parameter without move",
+   "edit": {
+    "from": "v = push_if_in(move v, a[i], lo, hi);",
+    "to": "v = push_if_in(v, a[i], lo, hi);"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_move"
+  },
+  {
+   "id": "m64",
+   "kind": "ownership",
+   "family": "use_after_move",
+   "pid": "q01",
+   "desc": "len of a moved Vec",
+   "edit": {
+    "from": "return len(v);",
+    "to": "let w: Vec<i64> = move v;\n  return len(v);"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_move"
+  },
+  {
+   "id": "m65",
+   "kind": "ownership",
+   "family": "take_removed",
+   "pid": "q01",
+   "desc": "moving a borrowed parameter",
+   "edit": {
+    "from": "fn push_if_in(take v: Vec<i64>,",
+    "to": "fn push_if_in(v: Vec<i64>,"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_move"
+  },
+  {
+   "id": "m66",
+   "kind": "ownership",
+   "family": "return_without_move",
+   "pid": "q01",
+   "desc": "returning an owned binding without move",
+   "edit": {
+    "from": "return move v;",
+    "to": "return v;"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_move"
+  },
+  {
+   "id": "m67",
+   "kind": "ownership",
+   "family": "immutable_owner",
+   "pid": "q02",
+   "desc": "reassigning an immutable HashMap local",
+   "edit": {
+    "from": "let mut m: HashMap<i64, i64> = map_new::<i64, i64>();",
+    "to": "let m: HashMap<i64, i64> = map_new::<i64, i64>();"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "immutable",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "immutable",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/immutable"
+  },
+  {
+   "id": "m68",
+   "kind": "ownership",
+   "family": "take_on_array",
+   "pid": "q02",
+   "desc": "take on a non-collection parameter",
+   "edit": {
+    "from": "fn count_value(a: [i64], q: i64) -> i64 ! alloc",
+    "to": "fn count_value(take a: [i64], q: i64) -> i64 ! alloc"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_move"
+  },
+  {
+   "id": "m69",
+   "kind": "ownership",
+   "family": "borrow_after_move",
+   "pid": "q02",
+   "desc": "the moved map is borrowed again in the same call",
+   "edit": {
+    "from": "map_insert::<i64, i64>(move m, x, 1);",
+    "to": "map_insert::<i64, i64>(move m, x, len(m));"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_borrow",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_borrow",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_borrow"
+  },
+  {
+   "id": "m70",
+   "kind": "ownership",
+   "family": "loop_not_restored",
+   "pid": "q02",
+   "desc": "one match arm leaves the loop-carried map dead",
+   "edit": {
+    "from": "m = map_insert::<i64, i64>(move m, x, 1);",
+    "to": "let t: HashMap<i64, i64> = map_insert::<i64, i64>(move m, x, 1);"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_loop_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_loop_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_loop_move"
+  },
+  {
+   "id": "m71",
+   "kind": "ownership",
+   "family": "missing_move",
+   "pid": "q03",
+   "desc": "owned String passed to a take parameter without move",
+   "edit": {
+    "from": "s = string_push_str(move s, a);",
+    "to": "s = string_push_str(s, a);"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_move"
+  },
+  {
+   "id": "m72",
+   "kind": "ownership",
+   "family": "alias_without_move",
+   "pid": "q03",
+   "desc": "String aliased by plain let",
+   "edit": {
+    "from": "return string_to_str(s);",
+    "to": "let t: String = s;\n  return string_to_str(t);"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_move",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_move"
+  },
+  {
+   "id": "m73",
+   "kind": "ownership",
+   "family": "owned_result_type",
+   "pid": "q03",
+   "desc": "String where the wrapper must give a str",
+   "edit": {
+    "from": "fn join_pair(a: str, b: str, sep: str) -> str ! alloc",
+    "to": "fn join_pair(a: str, b: str, sep: str) -> String ! alloc"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "type_mismatch",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "type_mismatch",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/type_mismatch"
+  },
+  {
+   "id": "m74",
+   "kind": "ownership",
+   "family": "foreign_take",
+   "pid": "q04",
+   "desc": "take parameter on a trusted declaration",
+   "edit": {
+    "from": "trusted rust fn parse_digit(s: str) -> i64",
+    "to": "trusted rust fn parse_digit(take s: str) -> i64"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_signature",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_signature",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_signature"
+  },
+  {
+   "id": "m75",
+   "kind": "ownership",
+   "family": "foreign_collection",
+   "pid": "q04",
+   "desc": "collection argument on a trusted declaration",
+   "edit": {
+    "from": "trusted rust fn parse_digit(s: str) -> i64",
+    "to": "trusted rust fn parse_digit(s: Vec<i64>) -> i64"
+   },
+   "liar": null,
+   "expect": "rejected_by_checker",
+   "verdicts": {
+    "py": {
+     "verdict": "rejected",
+     "code": "foreign_signature",
+     "stage": "type"
+    },
+    "rs": {
+     "verdict": "rejected",
+     "code": "foreign_signature",
+     "stage": "type"
+    }
+   },
+   "py_rs_diff": false,
+   "class": "rejected_by_checker",
+   "detail": "type/foreign_signature"
+  }
+ ]
+}

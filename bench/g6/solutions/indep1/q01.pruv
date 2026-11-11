@@ -1,0 +1,46 @@
+fn count_in_range(a: [i64], lo: i64, hi: i64) -> i64 ! alloc
+  requires len(a) <= 1000000
+  ensures result == count(k in 0..len(a): lo <= a[k] && a[k] <= hi)
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(v) <= i
+    invariant len(v) == count(k in 0..i: lo <= a[k] && a[k] <= hi)
+    decreases len(a) - i
+  {
+    if lo <= a[i] && a[i] <= hi {
+      v = vec_push::<i64>(move v, a[i]);
+    }
+    i = i + 1;
+  }
+  return len(v);
+}
+
+fn running_total(a: [i64]) -> i64 ! alloc
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000
+  ensures result == sum(k in 0..len(a): a[k])
+{
+  let mut v: Vec<i64> = vec_new::<i64>();
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(v) == i
+    invariant s == sum(k in 0..i: a[k])
+    invariant 0 <= s && s <= 1000 * i
+    invariant i > 0 ==> v[i - 1] == s
+    decreases len(a) - i
+  {
+    s = s + a[i];
+    v = vec_push::<i64>(move v, s);
+    i = i + 1;
+  }
+  if len(v) == 0 {
+    return 0;
+  }
+  let last: i64 = vec_get::<i64>(v, len(v) - 1);
+  return last;
+}

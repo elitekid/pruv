@@ -16,7 +16,8 @@ and top-level struct/enum (about 70% in the parameters/return of f, the rest in 
 The struct template also puts struct literals, enums, and Option/Result ==/!= into requires, and occasionally uses an empty struct (`Unit {}`),
 Result fields, and enum fields. There is also a variant that observes evaluation order, single evaluation, and two-field overflow order via `tap(v) ! io`.
 
-G2 mode (generate_case(.., g2=True)) and G3 mode (generate_case(.., g3=True), generics, see the G3 block and bench/fuzz/README.md) use their own
+G2 mode (generate_case(.., g2=True)), G3 mode (generate_case(.., g3=True), generics, see the G3 block and bench/fuzz/README.md) and
+G6 mode (generate_case(.., g6=True), trusted Rust calls and Vec/HashMap/String, see the G6 block) use their own
 rng streams and templates; without them the output for a given seed is unchanged.
 """
 import argparse
@@ -3829,6 +3830,788 @@ def g3_candidate_inputs(case, rng, n):
     return [[g3_value(rng, tag, name, h) for name, tag in case["params"]] for _ in range(n)]
 
 
+# ---------------------------------------------------------------- G6 mode (--g6)
+# Trusted Rust calls and standard collections (docs/G6_SPEC.md 10-13, SPEC.md 6d). Only generate_case(seed, index, g6=True) uses
+# this block; it creates its own rng ("g6:<seed>:<index>"), so the streams of every other mode are untouched.
+#
+# A G6 case is a few fixed *fragments* (G6_FRAGS: `trusted rust fn rust_min/rust_max`, private collection helpers such as
+# `grow`, `fill`, `bump`, `put` with `take` parameters and exact Vec/HashMap contracts) plus one public entry `fn f(..)`
+# whose parameters are i64 / bool / [i64] / str and whose result is i64 / bool / str. Collection-bearing functions are private
+# (G6_SPEC 3.2), so everything that crosses the f boundary is an existing public type. The collections are restricted to
+# what the LLVM backend supports (G6_SPEC 13.1): Vec<i64|bool>, HashMap<i64|bool, i64|bool>, String; private helpers only
+# use `len(..)` in `requires` (no v[i]/map_lookup there: LLVM run-time requires cannot evaluate them, 13.1).
+#
+# Ownership (10.4) holds by construction: every consuming argument is `move x` or a fresh call result, a binding is never used
+# after a move, every branch/loop leaves the same bindings live (moves are reassigned right away, or the path returns), no
+# unused call statement. About G6_BAD_SHARE of the cases are deliberately unproved but well-typed (dropped requires, false
+# ensures, dropped invariant, or a body mutation such as an unguarded vec_get); they run in the two safe modes only and show
+# the `pruv: foreign requires violated:` path at run time.
+
+G6_BAD_SHARE = 0.30
+
+# string pieces: ASCII and multibyte UTF-8 (written with \u escapes so this file stays ASCII); no quote/backslash/control chars
+G6_LITS = ["ab", "hello, ", "-", "Z", "x y", "é", "ññ", "→", "a→b", "日本",
+           "日本語", "\U0001F600", "x\U0001F600y", "héllo", "ünï→", "ß∑"]
+G6_STR_POOL = ["", "", "a", "ab", "hello", "x y", "é", "nï→", "日本語", "\U0001F600", "z\U0001F600z",
+               "0123456789", "Pruv"]
+
+G6_FRAGS = {
+    "rust_min": ("trusted rust fn rust_min(a: i64, b: i64) -> i64\n  ensures result <= a && result <= b\n"
+                 "  ensures result == a || result == b\n  = \"::std::cmp::min\";"),
+    "rust_max": ("trusted rust fn rust_max(a: i64, b: i64) -> i64\n  ensures result >= a && result >= b\n"
+                 "  ensures result == a || result == b\n  = \"::std::cmp::max\";"),
+    "keep": ("fn keep(take v: Vec<i64>) -> Vec<i64>\n  ensures len(result) == len(v)\n"
+             "  ensures forall i in 0..len(v): result[i] == v[i]\n{\n  return move v;\n}"),
+    "grow": ("fn grow(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc\n  requires len(v) < 1000\n"
+             "  ensures len(result) == len(v) + 1\n  ensures result[len(v)] == x\n"
+             "  ensures forall i in 0..len(v): result[i] == v[i]\n{\n  return vec_push::<i64>(move v, x);\n}"),
+    "grow_twice": ("fn grow_twice(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc\n  requires len(v) < 900\n"
+                   "  requires -1000 <= x && x <= 1000\n  ensures len(result) == len(v) + 2\n{\n"
+                   "  let w: Vec<i64> = grow(move v, x);\n  return grow(move w, x + 1);\n}"),
+    "fill": ("fn fill(take v: Vec<i64>, n: i64, x: i64) -> Vec<i64> ! alloc\n  requires 0 <= n && n <= 20\n"
+             "  requires len(v) <= 100\n  ensures len(result) == len(v) + n\n{\n"
+             "  let n0: i64 = len(v);\n  let mut w: Vec<i64> = move v;\n  let mut i: i64 = 0;\n  while i < n\n"
+             "    invariant 0 <= i && i <= n\n    invariant len(w) == n0 + i\n    decreases n - i\n  {\n"
+             "    w = vec_push::<i64>(move w, x);\n    i = i + 1;\n  }\n  return move w;\n}"),
+    "bump": ("fn bump(take m: HashMap<i64, i64>, k: i64) -> HashMap<i64, i64> ! alloc\n  requires len(m) < 1000000\n"
+             "  ensures len(result) <= len(m) + 1\n{\n"
+             "  let c: Option<i64> = map_get::<i64, i64>(m, k);\n  match c {\n    Some(n) => {\n      if n < 1000000 {\n"
+             "        return map_insert::<i64, i64>(move m, k, n + 1);\n      }\n      return move m;\n    }\n"
+             "    None => { return map_insert::<i64, i64>(move m, k, 1); }\n  }\n}"),
+    "count_of": ("fn count_of(m: HashMap<i64, i64>, k: i64) -> i64 {\n  let c: Option<i64> = map_get::<i64, i64>(m, k);\n"
+                 "  match c {\n    Some(n) => { return n; }\n    None => { return 0; }\n  }\n}"),
+    "put": ("fn put(take m: HashMap<i64, i64>, k: i64, x: i64) -> HashMap<i64, i64> ! alloc\n  requires len(m) < 1000000\n"
+            "  ensures map_updated::<i64, i64>(result, m, k, x)\n{\n  return map_insert::<i64, i64>(move m, k, x);\n}"),
+}
+G6_DEPS = {"grow_twice": ["grow"]}
+
+
+def g6_blen(s):
+    """byte length of a string literal's UTF-8 encoding"""
+    return len(s.encode("utf-8"))
+
+
+class G6P(object):
+    """Parts of one G6 case under construction."""
+
+    def __init__(self, rng):
+        self.rng = rng
+        self.frags = []        # fragment names used (dependencies are added when rendering)
+        self.params = []       # [[name, tag]]: "i64" "bool" "array" "str"
+        self.ret = "i64"       # "i64" "bool" "str"
+        self.effects = []
+        self.requires = []
+        self.ensures = []
+        self.false_ens = []    # contract clauses that are false (offered to the defect step)
+        self.body = []         # body lines (every line unique enough for exact-match mutations)
+        self.muts = []         # [(old line, new line or None (delete), label)] well-typed body mutations
+        self.hints = {"ranges": {}, "maxlen": {}, "elem": {}, "maxstr": {}}
+        self.feats = set()
+        self.mutation = None
+
+    def use(self, *names):
+        for n in names:
+            if n not in self.frags:
+                self.frags.append(n)
+
+
+def g6_sum_expr(const, names):
+    """'7 + len(a) + len(b)' (the constant is left out when 0)"""
+    terms = ([str(const)] if const else []) + ["len(%s)" % n for n in names]
+    return " + ".join(terms)
+
+
+def g6_ladder(q, keys, vals, default, paren):
+    """Exact contract of `map_get(m, q)` after inserting (keys[i], vals[i]) in order (later inserts win): one implication
+    per insert, then the missing-key case. `paren` wraps values that are comparisons."""
+    out = []
+    n = len(keys)
+    for i in range(n - 1, -1, -1):
+        conds = ["%s != %s" % (q, keys[j]) for j in range(i + 1, n)] + ["%s == %s" % (q, keys[i])]
+        out.append("%s ==> result == %s" % (" && ".join(conds), "(%s)" % vals[i] if paren else vals[i]))
+    out.append("%s ==> result == %s" % (" && ".join("%s != %s" % (q, k) for k in keys), default))
+    return out
+
+
+# -- scenarios: each fills in params/ret/effects/requires/ensures/false_ens/body/muts/hints/feats of a G6P
+
+def g6_sc_vecfill(P):
+    """Vec built in a loop with invariants (len(v) == i, element facts), read back with vec_get."""
+    rng = P.rng
+    P.effects = ["alloc"]
+    P.params = [["a", "array"]]
+    P.hints["maxlen"]["a"] = 20
+    P.feats.update(["vec", "loop_push", "vec_get", "move_reassign"])
+    if rng.random() < 0.25:
+        P.feats.add("vec_bool")
+        T = lit(rng.randint(-3, 5))
+        P.requires = ["len(a) <= 20"]
+        P.body = [
+            "  let mut v: Vec<bool> = vec_new::<bool>();",
+            "  let mut i: i64 = 0;",
+            "  while i < len(a)",
+            "    invariant 0 <= i && i <= len(a)",
+            "    invariant len(v) == i",
+            "    invariant forall k in 0..i: v[k] == (a[k] > %s)" % T,
+            "    decreases len(a) - i",
+            "  {",
+            "    v = vec_push::<bool>(move v, a[i] > %s);" % T,
+            "    i = i + 1;",
+            "  }",
+        ]
+        if rng.random() < 0.5:
+            P.feats.add("count_loop")
+            P.body += [
+                "  let mut c: i64 = 0;",
+                "  let mut j: i64 = 0;",
+                "  while j < len(v)",
+                "    invariant 0 <= j && j <= len(v)",
+                "    invariant 0 <= c && c <= j",
+                "    decreases len(v) - j",
+                "  {",
+                "    if vec_get::<bool>(v, j) {",
+                "      c = c + 1;",
+                "    }",
+                "    j = j + 1;",
+                "  }",
+                "  return c;",
+            ]
+            P.ensures = ["0 <= result && result <= len(a)"]
+            P.false_ens = ["result >= 1"]
+            P.muts = [("    if vec_get::<bool>(v, j) {", "    if vec_get::<bool>(v, j + 1) {", "oob_get")]
+        else:
+            P.ret = "bool"
+            P.body += [
+                "  if len(v) == 0 {",
+                "    return false;",
+                "  }",
+                "  return vec_get::<bool>(v, 0);",
+            ]
+            P.ensures = ["len(a) > 0 ==> result == (a[0] > %s)" % T]
+            P.false_ens = ["result"]
+            P.muts = [("  return vec_get::<bool>(v, 0);", "  return vec_get::<bool>(v, 1);", "oob_get")]
+        return
+    C = rng.randint(1, 9)
+    B = 1000 + C
+    P.requires = ["len(a) <= 20", "forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000"]
+    P.hints["elem"]["a"] = (0, 1000)
+    P.body = [
+        "  let mut v: Vec<i64> = vec_new::<i64>();",
+        "  let mut i: i64 = 0;",
+        "  while i < len(a)",
+        "    invariant 0 <= i && i <= len(a)",
+        "    invariant len(v) == i",
+        "    invariant forall k in 0..i: v[k] == a[k] + %d" % C,
+        "    invariant forall k in 0..i: 0 <= v[k] && v[k] <= %d" % B,
+        "    decreases len(a) - i",
+        "  {",
+        "    v = vec_push::<i64>(move v, a[i] + %d);" % C,
+        "    i = i + 1;",
+        "  }",
+    ]
+    read = rng.choice(["len", "sum", "last", "idx"])
+    if read == "len":
+        P.body.append("  return len(v);")
+        P.ensures = ["result == len(a)"]
+        P.false_ens = ["result == len(a) + 1"]
+    elif read == "sum":
+        P.feats.add("sum_loop")
+        P.body += [
+            "  let mut s: i64 = 0;",
+            "  let mut j: i64 = 0;",
+            "  while j < len(v)",
+            "    invariant 0 <= j && j <= len(v)",
+            "    invariant 0 <= s && s <= %d * j" % B,
+            "    decreases len(v) - j",
+            "  {",
+            "    s = s + vec_get::<i64>(v, j);",
+            "    j = j + 1;",
+            "  }",
+            "  return s;",
+        ]
+        P.ensures = ["0 <= result && result <= %d * len(a)" % B]
+        P.false_ens = ["result >= 1"]
+        P.muts = [("    s = s + vec_get::<i64>(v, j);", "    s = s + vec_get::<i64>(v, j + 1);", "oob_get")]
+    elif read == "last":
+        P.body += [
+            "  if len(v) == 0 {",
+            "    return 0;",
+            "  }",
+            "  return vec_get::<i64>(v, len(v) - 1);",
+        ]
+        P.ensures = ["0 <= result && result <= %d" % B, "len(a) > 0 ==> result == a[len(a) - 1] + %d" % C]
+        P.false_ens = ["result == 0"]
+        P.muts = [("  return vec_get::<i64>(v, len(v) - 1);", "  return vec_get::<i64>(v, len(v));", "oob_get")]
+    else:
+        P.feats.add("guarded_index")
+        P.params.append(["q", "i64"])
+        P.hints["ranges"]["q"] = (-2, 24)
+        P.body += [
+            "  if 0 <= q && q < len(v) {",
+            "    return vec_get::<i64>(v, q);",
+            "  }",
+            "  return -1;",
+        ]
+        P.ensures = ["0 <= q && q < len(a) ==> result == a[q] + %d" % C,
+                     "!(0 <= q && q < len(a)) ==> result == -1"]
+        P.false_ens = ["result >= 0"]
+        P.muts = [("  if 0 <= q && q < len(v) {", "  if 0 <= q {", "unguarded_get")]
+
+
+def g6_sc_vecguard(P):
+    """Vec of i * M built up to a parameter n, read at a parameter index behind a bounds guard."""
+    rng = P.rng
+    M = rng.randint(1, 9)
+    P.effects = ["alloc"]
+    P.params = [["n", "i64"], ["k", "i64"]]
+    P.hints["ranges"]["n"] = (0, 30)
+    P.hints["ranges"]["k"] = (-3, 33)
+    P.feats.update(["vec", "loop_push", "vec_get", "guarded_index", "move_reassign"])
+    P.requires = ["0 <= n && n <= 30"]
+    P.ensures = ["0 <= k && k < n ==> result == k * %d" % M, "!(0 <= k && k < n) ==> result == -1"]
+    P.false_ens = ["result >= 0"]
+    P.body = [
+        "  let mut v: Vec<i64> = vec_new::<i64>();",
+        "  let mut i: i64 = 0;",
+        "  while i < n",
+        "    invariant 0 <= i && i <= n",
+        "    invariant len(v) == i",
+        "    invariant forall j in 0..i: v[j] == j * %d" % M,
+        "    decreases n - i",
+        "  {",
+        "    v = vec_push::<i64>(move v, i * %d);" % M,
+        "    i = i + 1;",
+        "  }",
+        "  if 0 <= k && k < len(v) {",
+        "    return vec_get::<i64>(v, k);",
+        "  }",
+        "  return -1;",
+    ]
+    P.muts = [("  if 0 <= k && k < len(v) {", "  if 0 <= k {", "unguarded_get")]
+
+
+def g6_sc_histogram(P):
+    """Counting with a taken HashMap<i64, i64> (bump), borrowed map (count_of); duplicate keys are likely."""
+    rng = P.rng
+    n = rng.randint(2, 4)
+    pn = ["a", "b", "c", "d"][:n]
+    P.use("bump", "count_of")
+    P.effects = ["alloc"]
+    P.params = [[x, "i64"] for x in pn] + [["q", "i64"]]
+    P.feats.update(["hashmap", "take", "move_reassign", "map_get_match"])
+    P.body = ["  let mut m: HashMap<i64, i64> = map_new::<i64, i64>();"]
+    for x in pn:
+        P.body.append("  m = bump(move m, %s);" % x)
+    if rng.random() < 0.5:
+        P.body.append("  return len(m);")
+        P.ensures = ["1 <= result && result <= %d" % n]
+        P.false_ens = ["result == %d" % n]
+    else:
+        P.body.append("  return count_of(m, q);")
+        P.false_ens = ["result == 1"]
+    P.muts = [("  m = bump(move m, a);", None, "dropped_bump")]
+
+
+def g6_sc_mapladder(P):
+    """Direct inserts (duplicate keys replace) and a lookup, with the exact contract of the lookup result."""
+    rng = P.rng
+    K, V = rng.choice([("i64", "i64"), ("i64", "i64"), ("i64", "bool"), ("bool", "i64"), ("bool", "bool")])
+    via_put = K == "i64" and V == "i64" and rng.random() < 0.4
+    n = rng.randint(2, 4)
+    params = []
+
+    def addp(name, ty):
+        if all(p[0] != name for p in params):
+            params.append([name, ty])
+
+    keys, vals = [], []
+    for i in range(n):
+        if K == "i64":
+            if rng.random() < 0.7:
+                addp("abcd"[i], "i64")
+                keys.append("abcd"[i])
+            else:
+                keys.append(str(rng.choice([0, 1, 2, 7])))
+        else:
+            if rng.random() < 0.5:
+                addp("flag", "bool")
+                keys.append("flag")
+            else:
+                keys.append(rng.choice(["true", "false"]))
+        if V == "i64":
+            if rng.random() < 0.3:
+                addp("x", "i64")
+                vals.append("x")
+            else:
+                vals.append(str(rng.randint(0, 99)))
+        else:
+            ip = [p[0] for p in params if p[1] == "i64"]
+            c = rng.random()
+            if ip and c < 0.4:
+                vals.append("%s > %s" % (rng.choice(ip), lit(rng.randint(-2, 5))))
+            elif any(p[0] == "flag" for p in params) and c < 0.6:
+                vals.append("flag")
+            else:
+                vals.append(rng.choice(["true", "false"]))
+    params.append(["q", K])
+    P.params = params
+    P.effects = ["alloc"]
+    P.feats.update(["hashmap", "map_get_match", "key_" + K, "val_" + V, "move_reassign"])
+    if via_put:
+        P.use("put")
+        P.feats.update(["take", "map_updated"])
+    P.body = ["  let mut m: HashMap<%s, %s> = map_new::<%s, %s>();" % (K, V, K, V)]
+    for k_, v_ in zip(keys, vals):
+        if via_put:
+            P.body.append("  m = put(move m, %s, %s);" % (k_, v_))
+        else:
+            P.body.append("  m = map_insert::<%s, %s>(move m, %s, %s);" % (K, V, k_, v_))
+    if len(set(keys)) < len(keys):
+        P.feats.add("duplicate_keys")
+    first_insert = P.body[1]
+    default = "-1" if V == "i64" else "false"
+    if rng.random() < 0.75:
+        P.feats.add("missing_key")
+        some_line = "    Some(got) => { return got; }"
+        P.ret = V
+        P.body += [
+            "  let r: Option<%s> = map_get::<%s, %s>(m, q);" % (V, K, V),
+            "  match r {",
+            some_line,
+            "    None => { return %s; }" % default,
+            "  }",
+        ]
+        P.ensures = g6_ladder("q", keys, vals, default, V == "bool")
+        P.false_ens = ["result >= 0"] if V == "i64" else ["result"]
+        if V == "i64":
+            P.muts.append((some_line, "    Some(got) => { return got + 1; }", "payload_plus_one"))
+    else:
+        P.body.append("  return len(m);")
+        P.ensures = ["1 <= result && result <= %d" % n]
+        P.false_ens = ["result == %d" % n]
+    P.muts.append((first_insert, None, "dropped_insert"))
+
+
+def g6_sc_strbuild(P):
+    """String assembled from str parameters and (multibyte) literals; len, string_byte, string_to_str."""
+    rng = P.rng
+    P.effects = ["alloc"]
+    P.feats.update(["string", "string_push_str", "move_reassign"])
+    names = ["a", "b"] if rng.random() < 0.5 else ["a"]
+    P.params = [[n, "str"] for n in names]
+    P.requires = ["len(%s) <= 100" % n for n in names]
+    for n in names:
+        P.hints["maxstr"][n] = 100
+    items = [("par", n) for n in names] + [("lit", rng.choice(G6_LITS)) for _ in range(rng.randint(1, 2))]
+    rng.shuffle(items)
+    flag = rng.random() < 0.3
+    const = 0
+    P.body = ["  let mut s: String = string_new();"]
+    for kind_, val in items:
+        if kind_ == "lit":
+            P.body.append('  s = string_push_str(move s, "%s");' % val)
+            const += g6_blen(val)
+            if g6_blen(val) > len(val):
+                P.feats.add("multibyte_literal")
+        else:
+            P.body.append("  s = string_push_str(move s, %s);" % val)
+    cases = [(None, const)]        # [(guard or None, constant part of the final length)]
+    if flag:
+        P.feats.add("branch_reinit")
+        l1, l2 = rng.sample(G6_LITS, 2)
+        P.params.append(["flag", "bool"])
+        P.body += ["  if flag {", '    s = string_push_str(move s, "%s");' % l1, "  } else {",
+                   '    s = string_push_str(move s, "%s");' % l2, "  }"]
+        cases = [("flag", const + g6_blen(l1)), ("!flag", const + g6_blen(l2))]
+        if any(g6_blen(x) > len(x) for x in (l1, l2)):
+            P.feats.add("multibyte_literal")
+
+    def len_ensures(prefix):
+        if len(cases) == 1:
+            return ["%s == %s" % (prefix, g6_sum_expr(cases[0][1], names))]
+        return ["%s ==> %s == %s" % (g, prefix, g6_sum_expr(c, names)) for g, c in cases]
+
+    kinds = ["len", "to_str", "to_str_len", "byte"] + ([] if flag else ["bool"])
+    read = rng.choice(kinds)
+    if read == "len":
+        P.body.append("  return len(s);")
+        P.ensures = len_ensures("result")
+        P.false_ens = ["result == %s + 1" % g6_sum_expr(const, names)]
+    elif read == "to_str":
+        P.feats.add("string_to_str")
+        P.ret = "str"
+        P.body.append("  return string_to_str(s);")
+        P.ensures = len_ensures("len(result)")
+        P.false_ens = ["len(result) == %s + 1" % g6_sum_expr(const, names)]
+    elif read == "to_str_len":
+        P.feats.add("string_to_str")
+        P.body += ["  let t: str = string_to_str(s);", "  return len(t);"]
+        P.ensures = len_ensures("result")
+        P.false_ens = ["result == %s + 1" % g6_sum_expr(const, names)]
+    elif read == "byte":
+        P.feats.add("string_byte")
+        P.feats.add("guarded_index")
+        P.params.append(["q", "i64"])
+        P.hints["ranges"]["q"] = (-2, 40)
+        P.body += [
+            "  if 0 <= q && q < len(s) {",
+            "    return string_byte(s, q);",
+            "  }",
+            "  return -1;",
+        ]
+        P.ensures = ["-1 <= result && result <= 255"]
+        if not flag and items[0][0] == "par":
+            P.feats.add("string_content")
+            P.ensures.append("0 <= q && q < len(%s) ==> result == %s[q]" % (items[0][1], items[0][1]))
+        P.false_ens = ["result >= 0"]
+        P.muts = [("  if 0 <= q && q < len(s) {", "  if 0 <= q {", "unguarded_byte")]
+    else:
+        K = rng.randint(0, 12)
+        P.ret = "bool"
+        P.body.append("  return len(s) > %d;" % K)
+        P.ensures = ["result == (%s > %d)" % (g6_sum_expr(const, names), K)]
+        P.false_ens = ["result"]
+
+
+def g6_sc_strloop(P):
+    """Push a literal (and optionally a str parameter) n times; the length invariant is linear in i."""
+    rng = P.rng
+    word = rng.choice(G6_LITS)
+    L = g6_blen(word)
+    withp = rng.random() < 0.4
+    P.effects = ["alloc"]
+    P.params = [["n", "i64"]]
+    P.hints["ranges"]["n"] = (0, 20)
+    P.requires = ["0 <= n && n <= 20"]
+    P.feats.update(["string", "string_push_str", "loop_push", "move_reassign"])
+    if L > len(word):
+        P.feats.add("multibyte_literal")
+    push = ['    s = string_push_str(move s, "%s");' % word]
+    if withp:
+        P.params.append(["a", "str"])
+        P.requires.append("len(a) <= 10")
+        P.hints["maxstr"]["a"] = 10
+        push.append("    s = string_push_str(move s, a);")
+        inv = ["    invariant %d * i <= len(s)" % L, "    invariant len(s) <= %d * i" % (L + 10)]
+        exact = ["%d * n <= %%s && %%s <= %d * n" % (L, L + 10)]
+    else:
+        inv = ["    invariant len(s) == %d * i" % L]
+        exact = ["%%s == %d * n" % L]
+    P.body = ["  let mut s: String = string_new();", "  let mut i: i64 = 0;", "  while i < n",
+              "    invariant 0 <= i && i <= n"] + inv + ["    decreases n - i", "  {"] + push + ["    i = i + 1;", "  }"]
+    read = rng.choice(["len", "to_str", "first"])
+    if read == "len":
+        P.body.append("  return len(s);")
+        P.ensures = [e.replace("%s", "result") for e in exact]
+        P.false_ens = ["result == %d * n + 1" % L] if not withp else ["result == %d * n" % L]
+    elif read == "to_str":
+        P.feats.add("string_to_str")
+        P.ret = "str"
+        P.body.append("  return string_to_str(s);")
+        P.ensures = [e.replace("%s", "len(result)") for e in exact]
+        P.false_ens = ["len(result) == %d * n + 1" % L] if not withp else ["len(result) == %d * n" % L]
+    else:
+        P.feats.update(["string_byte", "guarded_index"])
+        P.body += [
+            "  if len(s) > 0 {",
+            "    return string_byte(s, 0);",
+            "  }",
+            "  return -1;",
+        ]
+        P.ensures = ["-1 <= result && result <= 255"]
+        P.false_ens = ["result >= 0"]
+        P.muts = [("  if len(s) > 0 {", "  if len(s) >= 0 {", "unguarded_byte")]
+
+
+def g6_sc_take(P):
+    """take helpers returning `move` values, a branch that moves and reinitializes, early returns inside a loop."""
+    rng = P.rng
+    P.effects = ["alloc"]
+    P.feats.update(["vec", "take", "move_reassign"])
+    which = rng.choice(["branch", "branch", "early", "fill"])
+    if which == "branch":
+        P.feats.add("branch_reinit")
+        P.params = [["x", "i64"], ["y", "i64"], ["flag", "bool"]]
+        P.requires = ["-1000 <= x && x <= 1000", "-1000 <= y && y <= 1000"]
+        P.hints["ranges"]["x"] = (-1000, 1000)
+        P.hints["ranges"]["y"] = (-1000, 1000)
+        read = rng.choice(["len", "elem", "last"])
+        P.use("grow")
+        P.body = ["  let mut v: Vec<i64> = vec_new::<i64>();", "  v = grow(move v, x);"]
+        if rng.random() < 0.5:
+            P.use("keep")
+            P.feats.add("take_returns_move")
+            P.body.append("  v = keep(move v);")
+        P.body += ["  if flag {", "    let t: Vec<i64> = move v;", "    v = grow(move t, y);", "  } else {"]
+        else_len = 2
+        if read == "len" and rng.random() < 0.6:
+            P.use("grow_twice")
+            P.body.append("    v = grow_twice(move v, y);")
+            else_len = 3
+        else:
+            P.body.append("    v = grow(move v, x + y);")
+        P.body.append("  }")
+        if read == "len":
+            P.body.append("  return len(v);")
+            P.ensures = ["result == 2"] if else_len == 2 else ["flag ==> result == 2", "!flag ==> result == 3"]
+            P.false_ens = ["result == 4"]
+        elif read == "elem":
+            P.feats.add("vec_get")
+            P.body.append("  return vec_get::<i64>(v, 0);")
+            P.ensures = ["result == x"]
+            P.false_ens = ["result == y"]
+        else:
+            P.feats.add("vec_get")
+            P.body.append("  return vec_get::<i64>(v, len(v) - 1);")
+            P.ensures = ["flag ==> result == y", "!flag ==> result == x + y"]
+            P.false_ens = ["result == x"]
+            P.muts = [("  return vec_get::<i64>(v, len(v) - 1);", "  return vec_get::<i64>(v, len(v));", "oob_get")]
+    elif which == "early":
+        P.feats.add("early_return")
+        P.use("grow")
+        P.params = [["a", "array"], ["limit", "i64"]]
+        P.requires = ["len(a) <= 20"]
+        P.hints["maxlen"]["a"] = 20
+        allbelow = rng.random() < 0.5
+        P.body = ["  let mut v: Vec<i64> = vec_new::<i64>();", "  let mut i: i64 = 0;", "  while i < len(a)",
+                  "    invariant 0 <= i && i <= len(a)", "    invariant len(v) == i"]
+        if allbelow:
+            P.ret = "bool"
+            P.body.append("    invariant forall k in 0..i: a[k] <= limit")
+        P.body += ["    decreases len(a) - i", "  {", "    if a[i] > limit {",
+                   "      return %s;" % ("false" if allbelow else "len(v)"), "    }",
+                   "    v = grow(move v, a[i]);", "    i = i + 1;", "  }",
+                   "  return %s;" % ("len(v) == len(a)" if allbelow else "len(v)")]
+        if allbelow:
+            P.ensures = ["result ==> (len(a) == 0 || a[0] <= limit)"]
+            P.false_ens = ["result"]
+        else:
+            P.ensures = ["0 <= result && result <= len(a)"]
+            P.false_ens = ["result == len(a)"]
+    else:
+        P.use("fill")
+        P.params = [["n", "i64"], ["x", "i64"]]
+        P.requires = ["0 <= n && n <= 20", "-1000 <= x && x <= 1000"]
+        P.hints["ranges"]["n"] = (0, 20)
+        P.hints["ranges"]["x"] = (-1000, 1000)
+        P.body = ["  let mut v: Vec<i64> = vec_new::<i64>();", "  v = fill(move v, n, x);",
+                  "  v = fill(move v, n, x + 1);", "  return len(v);"]
+        P.ensures = ["result == 2 * n"]
+        P.false_ens = ["result == n"]
+
+
+def g6_sc_minmax(P):
+    """Trusted ::std::cmp::min / max under their exact contracts (also inside a collection loop)."""
+    rng = P.rng
+    which = rng.choice(["clamp", "clamp", "extreme3", "vecclip"])
+    P.feats.add("trusted_call")
+    if which == "clamp":
+        P.use("rust_min", "rust_max")
+        P.params = [["x", "i64"], ["lo", "i64"], ["hi", "i64"]]
+        for n in ("x", "lo", "hi"):
+            P.hints["ranges"][n] = (-12, 12)
+        P.requires = ["lo <= hi"]
+        P.ensures = ["lo <= result && result <= hi", "lo <= x && x <= hi ==> result == x"]
+        P.false_ens = ["result == x"]
+        if rng.random() < 0.5:
+            P.body = ["  return rust_min(rust_max(x, lo), hi);"]
+        else:
+            P.body = ["  return rust_max(rust_min(x, hi), lo);"]
+    elif which == "extreme3":
+        fn = rng.choice(["rust_min", "rust_max"])
+        P.use(fn)
+        P.params = [["a", "i64"], ["b", "i64"], ["c", "i64"]]
+        for n in ("a", "b", "c"):
+            P.hints["ranges"][n] = (-5, 5)
+        cmp_ = "<=" if fn == "rust_min" else ">="
+        P.ensures = ["result %s a && result %s b && result %s c" % (cmp_, cmp_, cmp_),
+                     "result == a || result == b || result == c"]
+        P.false_ens = ["result == a"]
+        P.body = ["  return %s(a, %s(b, c));" % (fn, fn)]
+    else:
+        P.use("rust_min", "rust_max")
+        P.feats.update(["vec", "loop_push", "vec_get", "move_reassign"])
+        P.effects = ["alloc"]
+        P.params = [["a", "array"], ["cap", "i64"]]
+        P.hints["maxlen"]["a"] = 20
+        P.hints["elem"]["a"] = (0, 1000)
+        P.hints["ranges"]["cap"] = (0, 1000)
+        P.requires = ["len(a) <= 20", "forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000", "0 <= cap && cap <= 1000"]
+        P.ensures = ["0 <= result && result <= cap"]
+        P.false_ens = ["result >= 1"]
+        P.body = [
+            "  let mut v: Vec<i64> = vec_new::<i64>();",
+            "  let mut i: i64 = 0;",
+            "  while i < len(a)",
+            "    invariant 0 <= i && i <= len(a)",
+            "    invariant len(v) == i",
+            "    invariant forall k in 0..i: 0 <= v[k] && v[k] <= cap",
+            "    decreases len(a) - i",
+            "  {",
+            "    v = vec_push::<i64>(move v, rust_min(a[i], cap));",
+            "    i = i + 1;",
+            "  }",
+            "  let mut m: i64 = 0;",
+            "  let mut j: i64 = 0;",
+            "  while j < len(v)",
+            "    invariant 0 <= j && j <= len(v)",
+            "    invariant 0 <= m && m <= cap",
+            "    decreases len(v) - j",
+            "  {",
+            "    m = rust_max(m, vec_get::<i64>(v, j));",
+            "    j = j + 1;",
+            "  }",
+            "  return m;",
+        ]
+        P.muts = [("    m = rust_max(m, vec_get::<i64>(v, j));", "    m = rust_max(m, vec_get::<i64>(v, j + 1));", "oob_get")]
+
+
+G6_SCENARIOS = [("vecfill", g6_sc_vecfill, 3.0), ("vecguard", g6_sc_vecguard, 1.5), ("histogram", g6_sc_histogram, 1.5),
+                ("mapladder", g6_sc_mapladder, 3.0), ("strbuild", g6_sc_strbuild, 3.0), ("strloop", g6_sc_strloop, 1.5),
+                ("take", g6_sc_take, 3.0), ("minmax", g6_sc_minmax, 2.0)]
+
+
+def g6_pad(P):
+    """Make sure the input space has at least 8 distinct points: a parameter list made only of bools gets an unused i64."""
+    if not [t for _n, t in P.params if t in ("i64", "array", "str")]:
+        P.params.append(["pad", "i64"])
+
+
+def g6_defect(P):
+    """Turn the case into a deliberately unproved (but well-typed) one. Returns False if nothing could be broken."""
+    rng = P.rng
+    kinds = []
+    if P.requires:
+        kinds.append("drop_requires")
+    if P.false_ens:
+        kinds.append("false_ensures")
+    if P.muts:
+        kinds.append("body_mut")
+    if any(l.strip().startswith("invariant ") for l in P.body):
+        kinds.append("drop_invariant")
+    if not kinds:
+        return False
+    k = rng.choice(kinds)
+    if k == "drop_requires":
+        P.requires.pop(rng.randrange(len(P.requires)))
+    elif k == "false_ensures":
+        P.ensures.append(rng.choice(P.false_ens))
+    elif k == "body_mut":
+        old, new, label = rng.choice(P.muts)
+        idx = P.body.index(old)
+        if new is None:
+            del P.body[idx]
+        else:
+            P.body[idx] = new
+        k += ":" + label
+    else:
+        idx = [i for i, l in enumerate(P.body) if l.strip().startswith("invariant ")]
+        del P.body[rng.choice(idx)]
+    P.mutation = k
+    return True
+
+
+def g6_render(P, kind):
+    names = []
+
+    def add(n):
+        for d in G6_DEPS.get(n, []):
+            add(d)
+        if n not in names:
+            names.append(n)
+
+    for n in P.frags:
+        add(n)
+    names.sort(key=lambda n: 0 if n.startswith("rust_") else 1)      # trusted declarations first (stable otherwise)
+    parts = ["// g6 fuzz case: %s%s" % (kind, " (defect: %s)" % P.mutation if P.mutation else "")]
+    parts += [G6_FRAGS[n] for n in names]
+    head = "fn f(%s) -> %s" % (", ".join("%s: %s" % (n, {"array": "[i64]"}.get(t, t)) for n, t in P.params), P.ret)
+    if P.effects:
+        head += " ! " + ", ".join(P.effects)
+    out = [head] + ["  requires " + r for r in P.requires] + ["  ensures " + e for e in P.ensures] + ["{"] + P.body + ["}"]
+    parts.append("\n".join(out))
+    return "\n\n".join(parts) + "\n"
+
+
+def generate_g6_case(seed, index):
+    rng = random.Random("g6:%s:%s" % (seed, index))
+    want_bad = rng.random() < G6_BAD_SHARE
+    P = G6P(rng)
+    kind, fn, _w = rng.choices(G6_SCENARIOS, weights=[w for _k, _f, w in G6_SCENARIOS])[0]
+    fn(P)
+    g6_pad(P)
+    if want_bad and g6_defect(P):
+        P.hints["violate"] = 0.3      # unproved cases: reach the unguarded paths and the requires failures more often
+    src = g6_render(P, kind)
+    ret = {"array": "[i64]"}.get(P.ret, P.ret)
+    return {"name": "c%s_%s" % (seed, index), "src": src, "entry": "f", "params": P.params, "ret": ret,
+            "kind": "g6_" + kind, "input_hints": P.hints, "g6": True, "g6_bad": P.mutation is not None,
+            "g6_mutation": P.mutation, "g6_features": sorted(P.feats)}
+
+
+def g6_int_value(rng, rg):
+    r = rng.random()
+    if rg is not None:
+        lo, hi = rg
+        if r < 0.10:
+            return rng.choice([lo, hi])
+        if r < 0.15:
+            return rng.choice([lo - 1, hi + 1])          # just outside the requires range
+        if r < 0.60:
+            a, b = max(lo, -4), min(hi, 9)
+            if a <= b:
+                return rng.randint(a, b)
+        return rng.randint(lo, hi)
+    if r < 0.04:
+        return rng.choice(EXTREMES)
+    if r < 0.80:
+        return rng.randint(-4, 9)                         # small: map keys collide often
+    return rng.choice([0, 1, -1, 2, 3, 7, 10, 20, 25, 100, 1000, -1000, 123456])
+
+
+def g6_array(rng, name, h):
+    mx = h["maxlen"].get(name, 8)
+    if rng.random() < h.get("violate", 0.05):
+        n = mx + rng.randint(1, 3)                        # longer than `len(a) <= mx`
+    else:
+        n = rng.choice([x for x in (0, 1, 1, 2, 3, 3, 4, 5, 6, 8, 12, 20) if x <= mx] or [0])
+    rg = h["elem"].get(name)
+    if rg is None:
+        return [g6_int_value(rng, None) for _ in range(n)]
+    lo, hi = rg
+    if rng.random() < h.get("violate", 0.05):             # some element outside the element-range requires
+        return [g6_int_value(rng, rg) for _ in range(n)]
+    return [rng.choice([lo, hi, rng.randint(lo, hi), rng.randint(max(lo, -4), min(hi, 9))]) for _ in range(n)]
+
+
+def g6_str_value(rng, name, h):
+    s = "".join(rng.choice(G6_STR_POOL) for _ in range(rng.choice([0, 1, 1, 2, 2, 3])))
+    mx = h["maxstr"].get(name)
+    if mx is not None:
+        if rng.random() < h.get("violate", 0.05):
+            return "q" * (mx + rng.randint(1, 5))        # longer than the `len(s) <= mx` requires
+        while g6_blen(s) > mx:
+            s = s[:-1]                                    # drops whole characters, so the result stays valid
+    return s
+
+
+def g6_value(rng, tag, name, h):
+    if tag == "i64":
+        return g6_int_value(rng, h["ranges"].get(name))
+    if tag == "bool":
+        return rng.random() < 0.5
+    if tag == "array":
+        return g6_array(rng, name, h)
+    if tag == "str":
+        return g6_str_value(rng, name, h)
+    raise ValueError("unknown G6 parameter type %r" % (tag,))
+
+
+def g6_candidate_inputs(case, rng, n):
+    h = case["input_hints"]
+    return [[g6_value(rng, tag, name, h) for name, tag in case["params"]] for _ in range(n)]
+
+
 # ---------------------------------------------------------------- case assembly
 
 def render(ctx, body):
@@ -3852,7 +4635,9 @@ def render(ctx, body):
     return fsrc + "\n"
 
 
-def generate_case(seed, index, g2=False, g3=False):
+def generate_case(seed, index, g2=False, g3=False, g6=False):
+    if g6:
+        return generate_g6_case(seed, index)
     if g3:
         return generate_g3_case(seed, index)
     if g2:
@@ -4071,6 +4856,8 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g6"):
+        return g6_candidate_inputs(case, rng, n)
     if case.get("g3"):
         return g3_candidate_inputs(case, rng, n)
     if case.get("g2"):
@@ -4123,10 +4910,12 @@ def main(argv=None):
     ap.add_argument("--out", default="bench/fuzz/out/generated")
     ap.add_argument("--g2", action="store_true", help="G2 mode: generate [u8], [bool], and str programs")
     ap.add_argument("--g3", action="store_true", help="G3 mode: generate generic programs (some deliberately unproved)")
+    ap.add_argument("--g6", action="store_true",
+                    help="G6 mode: trusted Rust calls and Vec/HashMap/String programs (some deliberately unproved)")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3)
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6)
         with open(os.path.join(a.out, case["name"] + ".pruv"), "w", encoding="utf-8") as fh:
             fh.write(case["src"])
     print("wrote %d files to %s" % (a.count, a.out))
