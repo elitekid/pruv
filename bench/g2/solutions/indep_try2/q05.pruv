@@ -1,0 +1,18 @@
+fn count_chars(s: str) -> i64
+  requires len(s) <= 1_000_000
+  ensures result == count(t in 0..len(s): s[t] < 128 || s[t] > 191)
+{
+  let mut i: i64 = 0;
+  let mut c: i64 = 0;
+  while i < len(s)
+    invariant 0 <= i && i <= len(s)
+    invariant c == count(t in 0..i: s[t] < 128 || s[t] > 191)
+    decreases len(s) - i
+  {
+    if s[i] < 128 || s[i] > 191 {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  return c;
+}

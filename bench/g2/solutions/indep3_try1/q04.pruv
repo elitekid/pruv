@@ -1,0 +1,33 @@
+fn longest_true_run(a: [bool]) -> i64
+  requires len(a) <= 1_000_000
+  ensures 0 <= result && result <= len(a)
+  ensures exists s in 0..len(a) - result + 1: forall k in s..s + result: a[k]
+  ensures forall s in 0..len(a) - result: exists k in s..s + result + 1: !a[k]
+{
+  let mut i: i64 = 0;
+  let mut cur: i64 = 0;
+  let mut best: i64 = 0;
+  let mut bs: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant 0 <= cur && cur <= best && best <= i
+    invariant forall k in i - cur..i: a[k]
+    invariant cur == i || !a[i - cur - 1]
+    invariant 0 <= bs && bs + best <= i
+    invariant forall k in bs..bs + best: a[k]
+    invariant forall s in 0..i - best: exists k in s..s + best + 1: !a[k]
+    decreases len(a) - i
+  {
+    if a[i] {
+      cur = cur + 1;
+      if cur > best {
+        best = cur;
+        bs = i + 1 - cur;
+      }
+    } else {
+      cur = 0;
+    }
+    i = i + 1;
+  }
+  return best;
+}

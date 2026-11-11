@@ -1,0 +1,40 @@
+{
+ "q01": {
+  "status": "ok",
+  "tests_passed": 310,
+  "tests_total": 310
+ },
+ "q02": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "q03": {
+  "status": "ok",
+  "tests_passed": 312,
+  "tests_total": 312
+ },
+ "q04": {
+  "status": "pruv_error",
+  "pruv_errors": [
+   {
+    "stage": "verify",
+    "line": 19,
+    "col": 15,
+    "code": "verify_unknown",
+    "message": "solver gave up proving loop invariant preserved in longest_true_run (timeout)",
+    "fix": "the invariant must hold again after one body iteration; add facts it depends on as more invariants"
+   }
+  ]
+ },
+ "q05": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "q06": {
+  "status": "ok",
+  "tests_passed": 314,
+  "tests_total": 314
+ }
+}

@@ -1,0 +1,55 @@
+// perf: 문자열 처리 비용 측정용 함수들 (O(1) requires 만).
+fn scan_str(s: str) -> i64 {
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(s)
+    invariant 0 <= i && i <= len(s)
+    invariant 0 <= c && c <= i
+    decreases len(s) - i
+  {
+    let b: i64 = s[i];
+    if b >= 128 {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  return c;
+}
+
+fn scan_u8(a: [u8]) -> i64 {
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant 0 <= c && c <= i
+    decreases len(a) - i
+  {
+    let b: i64 = a[i];
+    if b >= 128 {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  return c;
+}
+
+// mid/dup return the new str so the copy cannot be optimized away (the driver keeps the String).
+fn mid(s: str, lo: i64, hi: i64) -> str ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(s)
+  requires is_char_boundary(s, lo)
+  requires is_char_boundary(s, hi)
+{
+  return substr(s, lo, hi);
+}
+
+fn dup(s: str) -> str ! alloc {
+  return copy(s);
+}
+
+fn blen(s: str) -> i64 {
+  return len(s);
+}
+
+fn blen_u8(a: [u8]) -> i64 {
+  return len(a);
+}

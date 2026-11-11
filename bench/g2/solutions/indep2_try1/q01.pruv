@@ -1,0 +1,25 @@
+fn clamp_bytes(a: [i64]) -> [u8] ! alloc
+  requires len(a) <= 1_000_000
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): (a[k] <= 0 ==> result[k] == 0) && (a[k] >= 255 ==> result[k] == 255) && ((0 < a[k] && a[k] < 255) ==> result[k] == a[k])
+{
+  let mut b: [u8] = alloc(len(a), 0);
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(b) == len(a)
+    invariant forall k in 0..i: (a[k] <= 0 ==> b[k] == 0) && (a[k] >= 255 ==> b[k] == 255) && ((0 < a[k] && a[k] < 255) ==> b[k] == a[k])
+    decreases len(a) - i
+  {
+    let v: i64 = a[i];
+    if v <= 0 {
+      b[i] = 0;
+    } else if v >= 255 {
+      b[i] = 255;
+    } else {
+      b[i] = v;
+    }
+    i = i + 1;
+  }
+  return b;
+}

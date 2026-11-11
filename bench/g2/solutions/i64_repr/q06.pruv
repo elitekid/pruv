@@ -1,0 +1,47 @@
+// q06 i64 representation (pre-G2 types) of bench/g2 problem q06, for contract-size comparison
+fn prefix_chars(s: [i64], k: i64) -> [i64] ! alloc
+  requires 0 <= k && k <= 1_000_000
+  requires len(s) <= 1_000_000
+  requires forall m in 0..len(s): 0 <= s[m] && s[m] <= 255
+  ensures len(result) <= len(s)
+  ensures forall m in 0..len(result): 0 <= result[m] && result[m] <= 255
+  ensures (len(result) == 0 || len(result) == len(s) || (0 < len(result) && len(result) < len(s) && (s[len(result)] < 128 || s[len(result)] >= 192)))
+  ensures forall t in 0..len(result): result[t] == s[t]
+  ensures count(t in 0..len(result): (t == 0 || t == len(s) || (0 < t && t < len(s) && (s[t] < 128 || s[t] >= 192)))) <= k
+  ensures len(result) == len(s) || count(t in 0..len(result): (t == 0 || t == len(s) || (0 < t && t < len(s) && (s[t] < 128 || s[t] >= 192)))) == k
+{
+  let mut i: i64 = 0;
+  let mut c: i64 = 0;
+  while i < len(s) && c < k
+    invariant 0 <= i && i <= len(s)
+    invariant 0 <= c && c <= k
+    invariant (i == 0 || i == len(s) || (0 < i && i < len(s) && (s[i] < 128 || s[i] >= 192)))
+    invariant c == count(t in 0..i: (t == 0 || t == len(s) || (0 < t && t < len(s) && (s[t] < 128 || s[t] >= 192))))
+    decreases len(s) - i
+  {
+    let mut j: i64 = i + 1;
+    while j < len(s) && !(j == 0 || j == len(s) || (0 < j && j < len(s) && (s[j] < 128 || s[j] >= 192)))
+      invariant i < j && j <= len(s)
+      invariant count(t in 0..j: (t == 0 || t == len(s) || (0 < t && t < len(s) && (s[t] < 128 || s[t] >= 192)))) == c + 1
+      decreases len(s) - j
+    {
+      j = j + 1;
+    }
+    i = j;
+    c = c + 1;
+  }
+  let mut out: [i64] = alloc(i, 0);
+  let mut j: i64 = 0;
+  while j < i
+    invariant 0 <= j && j <= i
+    invariant len(out) == i
+    invariant i <= len(s)
+    invariant forall m in 0..len(out): 0 <= out[m] && out[m] <= 255
+    invariant forall t in 0..j: out[t] == s[t]
+    decreases i - j
+  {
+    out[j] = s[j];
+    j = j + 1;
+  }
+  return out;
+}

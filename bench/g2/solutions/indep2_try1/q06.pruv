@@ -1,0 +1,23 @@
+fn prefix_chars(s: str, k: i64) -> str ! alloc
+  requires 0 <= k && k <= 1_000_000
+  requires len(s) <= 1_000_000
+  ensures len(result) <= len(s) && (forall t in 0..len(result): result[t] == s[t]) && count(t in 0..len(result): s[t] < 128 || s[t] >= 192) <= k
+  ensures len(result) == len(s) || (len(result) < len(s) && count(t in 0..len(result): s[t] < 128 || s[t] >= 192) == k && (s[len(result)] < 128 || s[len(result)] >= 192))
+{
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(s) && (c < k || (s[i] >= 128 && s[i] < 192))
+    invariant 0 <= i && i <= len(s)
+    invariant 0 <= c && c <= k
+    invariant c == count(t in 0..i: s[t] < 128 || s[t] >= 192)
+    decreases len(s) - i
+  {
+    let b: i64 = s[i];
+    if b < 128 || b >= 192 {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  let r: str = substr(s, 0, i);
+  return r;
+}

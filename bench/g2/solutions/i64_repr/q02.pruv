@@ -1,0 +1,29 @@
+// q02 i64 representation (pre-G2 types) of bench/g2 problem q02, for contract-size comparison
+fn ascii_mask(a: [i64]) -> [i64] ! alloc
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 255
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(result): 0 <= result[k] && result[k] <= 255
+  ensures forall k in 0..len(a): a[k] < 128 ==> result[k] == a[k]
+  ensures forall k in 0..len(a): a[k] >= 128 ==> result[k] == 63
+{
+  let mut out: [i64] = alloc(len(a), 0);
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(out) == len(a)
+    invariant forall k in 0..len(out): 0 <= out[k] && out[k] <= 255
+    invariant forall k in 0..i: a[k] < 128 ==> out[k] == a[k]
+    invariant forall k in 0..i: a[k] >= 128 ==> out[k] == 63
+    decreases len(a) - i
+  {
+    let v: i64 = a[i];
+    if v < 128 {
+      out[i] = v;
+    } else {
+      out[i] = 63;
+    }
+    i = i + 1;
+  }
+  return out;
+}

@@ -1,0 +1,229 @@
+{
+ "meta": {
+  "reps": 7,
+  "sizes": [
+   1000000,
+   8000000
+  ],
+  "compiler": "rs",
+  "platform": "darwin",
+  "work": "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvperf_d907h5_r"
+ },
+ "backends": {
+  "rust": {
+   "1000000": {
+    "fn": {
+     "scan_str": {
+      "median_ns": 132417,
+      "result": 500000,
+      "ns_per_byte": 0.132417,
+      "check": "ok"
+     },
+     "scan_u8": {
+      "median_ns": 137500,
+      "result": 500000,
+      "ns_per_byte": 0.1375,
+      "check": "ok"
+     },
+     "mid": {
+      "median_ns": 47084,
+      "result": 500000,
+      "ns_per_byte": 0.047084,
+      "check": "ok"
+     },
+     "dup": {
+      "median_ns": 83958,
+      "result": 1000000,
+      "ns_per_byte": 0.083958,
+      "check": "ok"
+     },
+     "blen": {
+      "median_ns": 42,
+      "result": 1000000,
+      "ns_per_byte": 4.2e-05,
+      "check": "ok"
+     },
+     "blen_u8": {
+      "median_ns": 41,
+      "result": 1000000,
+      "ns_per_byte": 4.1e-05,
+      "check": "ok"
+     }
+    },
+    "info": [
+     250000,
+     750000
+    ],
+    "derived": {
+     "scan_str_vs_u8": 0.9630327272727273,
+     "substr_ns_per_copied_byte": 0.094168,
+     "copy_ns_per_byte": 0.083958
+    }
+   },
+   "8000000": {
+    "fn": {
+     "scan_str": {
+      "median_ns": 906958,
+      "result": 4000000,
+      "ns_per_byte": 0.11336975,
+      "check": "ok"
+     },
+     "scan_u8": {
+      "median_ns": 618833,
+      "result": 4000000,
+      "ns_per_byte": 0.077354125,
+      "check": "ok"
+     },
+     "mid": {
+      "median_ns": 98041,
+      "result": 4000000,
+      "ns_per_byte": 0.012255125,
+      "check": "ok"
+     },
+     "dup": {
+      "median_ns": 196916,
+      "result": 8000000,
+      "ns_per_byte": 0.0246145,
+      "check": "ok"
+     },
+     "blen": {
+      "median_ns": 41,
+      "result": 8000000,
+      "ns_per_byte": 5.125e-06,
+      "check": "ok"
+     },
+     "blen_u8": {
+      "median_ns": 41,
+      "result": 8000000,
+      "ns_per_byte": 5.125e-06,
+      "check": "ok"
+     }
+    },
+    "info": [
+     2000000,
+     6000000
+    ],
+    "derived": {
+     "scan_str_vs_u8": 1.465594110204207,
+     "substr_ns_per_copied_byte": 0.02451025,
+     "copy_ns_per_byte": 0.0246145
+    }
+   }
+  },
+  "llvm": {
+   "1000000": {
+    "fn": {
+     "scan_str": {
+      "median_ns": 111250,
+      "result": 500000,
+      "ns_per_byte": 0.11125,
+      "check": "ok"
+     },
+     "scan_u8": {
+      "median_ns": 111708,
+      "result": 500000,
+      "ns_per_byte": 0.111708,
+      "check": "ok"
+     },
+     "mid": {
+      "median_ns": 365458,
+      "result": 500000,
+      "ns_per_byte": 0.365458,
+      "check": "ok"
+     },
+     "dup": {
+      "median_ns": 331417,
+      "result": 1000000,
+      "ns_per_byte": 0.331417,
+      "check": "ok"
+     },
+     "blen": {
+      "median_ns": 42,
+      "result": 1000000,
+      "ns_per_byte": 4.2e-05,
+      "check": "ok"
+     },
+     "blen_u8": {
+      "median_ns": 42,
+      "result": 1000000,
+      "ns_per_byte": 4.2e-05,
+      "check": "ok"
+     },
+     "blen_raw": {
+      "median_ns": 318750,
+      "result": 1000000,
+      "ns_per_byte": 0.31875,
+      "check": "ok"
+     }
+    },
+    "info": [
+     250000,
+     750000
+    ],
+    "derived": {
+     "utf8_check_ns_per_byte": 0.318708,
+     "scan_str_vs_u8": 0.9959000250653489,
+     "substr_ns_per_copied_byte": 0.730916,
+     "copy_ns_per_byte": 0.331417
+    }
+   },
+   "8000000": {
+    "fn": {
+     "scan_str": {
+      "median_ns": 401083,
+      "result": 4000000,
+      "ns_per_byte": 0.050135375,
+      "check": "ok"
+     },
+     "scan_u8": {
+      "median_ns": 397958,
+      "result": 4000000,
+      "ns_per_byte": 0.04974475,
+      "check": "ok"
+     },
+     "mid": {
+      "median_ns": 1451750,
+      "result": 4000000,
+      "ns_per_byte": 0.18146875,
+      "check": "ok"
+     },
+     "dup": {
+      "median_ns": 2966500,
+      "result": 8000000,
+      "ns_per_byte": 0.3708125,
+      "check": "ok"
+     },
+     "blen": {
+      "median_ns": 0,
+      "result": 8000000,
+      "ns_per_byte": 0.0,
+      "check": "ok"
+     },
+     "blen_u8": {
+      "median_ns": 0,
+      "result": 8000000,
+      "ns_per_byte": 0.0,
+      "check": "ok"
+     },
+     "blen_raw": {
+      "median_ns": 2815917,
+      "result": 8000000,
+      "ns_per_byte": 0.351989625,
+      "check": "ok"
+     }
+    },
+    "info": [
+     2000000,
+     6000000
+    ],
+    "derived": {
+     "utf8_check_ns_per_byte": 0.351989625,
+     "scan_str_vs_u8": 1.007852587458978,
+     "substr_ns_per_copied_byte": 0.3629375,
+     "copy_ns_per_byte": 0.3708125
+    }
+   }
+  }
+ },
+ "failures": []
+}

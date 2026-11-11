@@ -1,0 +1,34 @@
+// q03 i64 representation (pre-G2 types) of bench/g2 problem q03, for contract-size comparison
+fn add_sat(a: [i64], d: i64) -> [i64] ! alloc
+  requires -255 <= d && d <= 255
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 255
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(result): 0 <= result[k] && result[k] <= 255
+  ensures forall k in 0..len(a): a[k] + d < 0 ==> result[k] == 0
+  ensures forall k in 0..len(a): a[k] + d > 255 ==> result[k] == 255
+  ensures forall k in 0..len(a): (a[k] + d >= 0 && a[k] + d <= 255) ==> result[k] == a[k] + d
+{
+  let mut out: [i64] = alloc(len(a), 0);
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(out) == len(a)
+    invariant forall k in 0..len(out): 0 <= out[k] && out[k] <= 255
+    invariant forall k in 0..i: a[k] + d < 0 ==> out[k] == 0
+    invariant forall k in 0..i: a[k] + d > 255 ==> out[k] == 255
+    invariant forall k in 0..i: (a[k] + d >= 0 && a[k] + d <= 255) ==> out[k] == a[k] + d
+    decreases len(a) - i
+  {
+    let v: i64 = a[i] + d;
+    if v < 0 {
+      out[i] = 0;
+    } else if v > 255 {
+      out[i] = 255;
+    } else {
+      out[i] = v;
+    }
+    i = i + 1;
+  }
+  return out;
+}

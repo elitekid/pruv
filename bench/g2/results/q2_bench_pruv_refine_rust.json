@@ -1,0 +1,72 @@
+{
+ "p01": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 207333,
+  "ref_ns": 201667
+ },
+ "p02": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 252250,
+  "ref_ns": 257125
+ },
+ "p03": {
+  "status": "ok",
+  "tests_passed": 305,
+  "tests_total": 305,
+  "sol_ns": 531166,
+  "ref_ns": 362459
+ },
+ "p04": {
+  "status": "ok",
+  "tests_passed": 307,
+  "tests_total": 307,
+  "sol_ns": 33601916,
+  "ref_ns": 23825667
+ },
+ "p05": {
+  "status": "ok",
+  "tests_passed": 302,
+  "tests_total": 302,
+  "sol_ns": 315709,
+  "ref_ns": 1222959
+ },
+ "p06": {
+  "status": "ok",
+  "tests_passed": 305,
+  "tests_total": 305,
+  "sol_ns": 1161917,
+  "ref_ns": 1162417
+ },
+ "p07": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 195250,
+  "ref_ns": 195875
+ },
+ "p08": {
+  "status": "ok",
+  "tests_passed": 302,
+  "tests_total": 302,
+  "sol_ns": 248125,
+  "ref_ns": 180916
+ },
+ "p09": {
+  "status": "ok",
+  "tests_passed": 303,
+  "tests_total": 303,
+  "sol_ns": 429084,
+  "ref_ns": 429458
+ },
+ "p10": {
+  "status": "ok",
+  "tests_passed": 305,
+  "tests_total": 305,
+  "sol_ns": 82463709,
+  "ref_ns": 83142375
+ }
+}

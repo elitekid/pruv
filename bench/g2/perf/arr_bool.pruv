@@ -1,0 +1,27 @@
+// perf: [bool] 2천만 칸을 alloc 하고 i % 2 == 0 으로 채운 뒤 참인 칸을 센다(기대 출력 10000000).
+fn main() -> () ! io, alloc {
+  let mut a: [bool] = alloc(20_000_000, false);
+  let mut i: i64 = 0;
+  while i < 20_000_000
+    invariant 0 <= i && i <= 20_000_000
+    invariant len(a) == 20_000_000
+    decreases 20_000_000 - i
+  {
+    a[i] = i % 2 == 0;
+    i = i + 1;
+  }
+  let mut c: i64 = 0;
+  let mut j: i64 = 0;
+  while j < 20_000_000
+    invariant 0 <= j && j <= 20_000_000
+    invariant len(a) == 20_000_000
+    invariant 0 <= c && c <= j
+    decreases 20_000_000 - j
+  {
+    if a[j] {
+      c = c + 1;
+    }
+    j = j + 1;
+  }
+  print(c);
+}

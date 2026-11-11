@@ -22,6 +22,8 @@ signature; no null, no exceptions, no implicit conversions, no globals, no overl
 | `bool` | boolean | `bool` |
 | `()` | unit | `()` |
 | `[i64]` | array of i64 | param: `&[i64]`, local/return: `Vec<i64>` |
+| `[u8]`, `[bool]` | array of bytes 0..=255 / of bools (section 6b) | `&[u8]`/`Vec<u8>`, `&[bool]`/`Vec<bool>` |
+| `str` | read-only UTF-8 text, indexed by byte (section 6b) | param: `&str`, local/return: `String` |
 | `Option<i64>` | `Some(v)` or `None` | `Option<i64>` |
 | `Result<i64>` | `Ok(v)` or `Err(code)`, code is i64 | `Result<i64, i64>` |
 | `Point`, `Event` | user struct / enum (section 6a) | `pub struct` / `pub enum` (Copy) |
@@ -140,6 +142,48 @@ match e {                                  // statement; every variant exactly o
 - A loop that assigns any field of `p` forgets all of `p`; keep the other fields with invariants (`invariant p.y == 7`).
 - Contract arithmetic inside struct literals is mathematical, like all contract arithmetic.
 
+## 6b. Byte arrays, bool arrays and strings (G2)
+Full contract: `docs/G2_SPEC.md`. There are no scalar `u8` types, no casts and no narrow arithmetic: reading `[u8]` or
+`str` gives an `i64`, reading `[bool]` gives a `bool`, and all arithmetic stays i64.
+
+**Arrays `[u8]` and `[bool]`.** Same positions and rules as `[i64]` (parameters read-only, `let mut` locals mutable,
+return a parameter with `copy`). Refinements: `[u8 | L..=U; <=N]` with `0 <= L <= U <= 255`; `[bool; <=N]` (length only).
+- Storing into `[u8]` (`b[i] = v`, and the fill value of `alloc(n, v)`, even when `n == 0`) must prove
+  `0 <= v <= 255` (`verify` error `elem_range`; the check order of a store is index, then value range, then refinement).
+  `b[i] + 1` is fine as an i64; storing a 256 is not.
+- `alloc(n, v)` gets the narrow type **only** when it is directly the right side of a typed `let`
+  (`let mut b: [u8] = alloc(n, 0);`), of a reassignment of such a variable, or directly after `return` in a function
+  returning `[u8]`/`[bool]`. Anywhere else (a call argument, inside `copy(...)` or `len(...)`) it is `[i64]`; bind it to a
+  typed local first. `copy(a)` keeps the type of `a`.
+- `[bool]` stores and the fill value of `alloc` for `[bool]` must be `bool` (no 0/1 integers).
+- Array types must match exactly: no passing `[u8]` where `[i64]` is expected, no `[u8]`↔`str` conversion.
+- Elements of `[u8]` parameters, call results and loop-changed arrays are known to be in `0..=255`. Count true elements
+  with `count(k in 0..len(b): b[k])`; `sum` needs an i64 body (`sum(k in ..: b[k])` on `[bool]` is a type error).
+
+**Strings `str`.** A `str` is always valid UTF-8 and its bytes never change (`let mut s: str` may only be reassigned).
+- Literals `"..."` hold any Unicode text; escapes are only `\" \\ \n \r \t \0` (a real newline or other control
+  character inside is an error). In code a literal creates a new string and needs `alloc`; in contracts it is free.
+- `len(s)` is the number of **bytes**; `s[i]` is byte `i` as an i64 in `0..=255` (index must be proven in range).
+- `copy(s)` (needs `alloc`) returns an independent copy. A `str` follows the array ownership rules: a `let` or
+  assignment from another `str` variable, and returning a parameter, need `copy(s)`.
+- `is_char_boundary(s, i)` (code and contracts) is exactly: `i == 0 || i == len(s) || (0 < i && i < len(s) && (s[i] < 128
+  || s[i] >= 192))`; it is false outside `0..=len(s)` and never needs a domain proof for `i`.
+- `substr(s, lo, hi)` (needs `alloc`, code only) copies bytes `lo..hi`. The verifier proves `0 <= lo <= hi <= len(s)`
+  (`string_slice_range`) and then `is_char_boundary(s, lo) && is_char_boundary(s, hi)` (`utf8_boundary`; also when
+  `lo == hi`). It knows `len(result) == hi - lo` and `result[k] == s[lo + k]`.
+- Not available: `==`/`!=` on whole strings (compare `len` and bytes with `forall`), `print` of a string, `str` in
+  `Option`/`Result`/struct fields, char/code-point indexing. Character counts are written with boundaries, e.g.
+  `count(t in 0..len(s): is_char_boundary(s, t))` counts the characters of `s`.
+- The verifier models a `str` as bytes `0..=255`; it does **not** know UTF-8 rules (e.g. that byte 0 is not a
+  continuation byte unless you check it), and a counterexample string may be invalid UTF-8.
+
+**Run time.** Proof mode removes the element-range and substring checks. `--no-verify` (safe mode) checks them and panics with exit 101:
+`pruv: element out of range: v (u8 0..=255)`, `pruv: string slice out of bounds: lo..hi (len n)`,
+`pruv: UTF-8 boundary error: lo..hi (len n)` (range is checked before boundaries). Raw `--rust-bindings` entries check
+`str` UTF-8 and `[bool]` 0/1 bytes before the body (`pruv: invalid representation`) in both modes, also with
+`--trust-callers`. Raw `[i64]`/`[u8]`/`[bool]` entries do not check for a negative length or a null pointer (the caller's
+duty); raw `str` entries do.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.
@@ -231,6 +275,18 @@ Do not read an annotation as a run-time guarantee of local variables or results 
 ## 8. Errors
 Compiler prints JSON lines: `{"stage": "parse|type|effect|verify|rustc", "line": n, "col": n,
 "code": "...", "message": "...", "fix": "...", "counterexample": {...}}`. Exit code 1 on any error.
+
+`verify_unknown` is not a counterexample: the solver gave up on that one obligation (the message usually ends in
+`(timeout)`). Each attempt gets 8 seconds of wall time (a second attempt with aggregate lemmas when aggregates are
+used), so a loaded machine can also cause it. The program may be correct; make the proof easier. What helps, in order:
+- Keep each loop invariant to one simple fact, and state a fact about one position without a quantifier when you can:
+  "`last` is the last negative index before `i`" is `-1 <= last && last < i`, `last == -1 || a[last] < 0` and
+  `forall k in last + 1..i: a[k] >= 0`, not `forall s in 0..i: (exists k in s..i: a[k] < 0) ==> s <= last`.
+- A quantifier on the left of `==>` (or under `!`) inside another quantifier is the most expensive shape; write such a
+  fact once (in `ensures` and the one invariant that carries it) and support it with the simple facts above.
+- Add the small facts the step needs as extra invariants (simple bounds between your variables), rather than `assert`s.
+- Which shapes time out can differ slightly between the Python and Rust compilers; a proof meant to be kept should
+  pass both.
 
 ## 9. Example
 ```

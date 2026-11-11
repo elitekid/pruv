@@ -1,0 +1,468 @@
+{
+  "bench/g2/solutions/ref_pruv": {
+    "q01.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "ensures": {
+          "clauses": 4,
+          "lines": 4,
+          "tokens": 94
+        },
+        "invariant": {
+          "clauses": 5,
+          "lines": 5,
+          "tokens": 96
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 11,
+      "contract_lines": 11,
+      "contract_tokens": 204,
+      "code_lines": 17
+    },
+    "q02.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "ensures": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 61
+        },
+        "invariant": {
+          "clauses": 4,
+          "lines": 4,
+          "tokens": 66
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 9,
+      "contract_lines": 9,
+      "contract_tokens": 141,
+      "code_lines": 15
+    },
+    "q03.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 2,
+          "lines": 2,
+          "tokens": 16
+        },
+        "ensures": {
+          "clauses": 4,
+          "lines": 4,
+          "tokens": 104
+        },
+        "invariant": {
+          "clauses": 5,
+          "lines": 5,
+          "tokens": 106
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 12,
+      "contract_lines": 12,
+      "contract_tokens": 233,
+      "code_lines": 17
+    },
+    "q04.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "ensures": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 92
+        },
+        "invariant": {
+          "clauses": 9,
+          "lines": 9,
+          "tokens": 121
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 14,
+      "contract_lines": 14,
+      "contract_tokens": 227,
+      "code_lines": 20
+    },
+    "q05.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "ensures": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 28
+        },
+        "invariant": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 44
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 6,
+      "contract_lines": 6,
+      "contract_tokens": 86,
+      "code_lines": 15
+    },
+    "q06.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 2,
+          "lines": 2,
+          "tokens": 15
+        },
+        "ensures": {
+          "clauses": 5,
+          "lines": 5,
+          "tokens": 92
+        },
+        "invariant": {
+          "clauses": 6,
+          "lines": 6,
+          "tokens": 75
+        },
+        "decreases": {
+          "clauses": 2,
+          "lines": 2,
+          "tokens": 14
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 15,
+      "contract_lines": 15,
+      "contract_tokens": 196,
+      "code_lines": 15
+    },
+    "total": {
+      "by_kind": {
+        "requires": {
+          "clauses": 8,
+          "lines": 8,
+          "tokens": 59
+        },
+        "ensures": {
+          "clauses": 20,
+          "lines": 20,
+          "tokens": 471
+        },
+        "invariant": {
+          "clauses": 32,
+          "lines": 32,
+          "tokens": 508
+        },
+        "decreases": {
+          "clauses": 7,
+          "lines": 7,
+          "tokens": 49
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 67,
+      "contract_lines": 67,
+      "contract_tokens": 1087,
+      "code_lines": 99
+    }
+  },
+  "bench/g2/solutions/i64_repr": {
+    "q01.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "ensures": {
+          "clauses": 5,
+          "lines": 5,
+          "tokens": 118
+        },
+        "invariant": {
+          "clauses": 6,
+          "lines": 6,
+          "tokens": 120
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 13,
+      "contract_lines": 13,
+      "contract_tokens": 252,
+      "code_lines": 17
+    },
+    "q02.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 2,
+          "lines": 2,
+          "tokens": 31
+        },
+        "ensures": {
+          "clauses": 4,
+          "lines": 4,
+          "tokens": 85
+        },
+        "invariant": {
+          "clauses": 5,
+          "lines": 5,
+          "tokens": 90
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 12,
+      "contract_lines": 12,
+      "contract_tokens": 213,
+      "code_lines": 15
+    },
+    "q03.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 40
+        },
+        "ensures": {
+          "clauses": 5,
+          "lines": 5,
+          "tokens": 128
+        },
+        "invariant": {
+          "clauses": 6,
+          "lines": 6,
+          "tokens": 130
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 15,
+      "contract_lines": 15,
+      "contract_tokens": 305,
+      "code_lines": 17
+    },
+    "q04.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 2,
+          "lines": 2,
+          "tokens": 31
+        },
+        "ensures": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 96
+        },
+        "invariant": {
+          "clauses": 9,
+          "lines": 9,
+          "tokens": 128
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 15,
+      "contract_lines": 15,
+      "contract_tokens": 262,
+      "code_lines": 20
+    },
+    "q05.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 2,
+          "lines": 2,
+          "tokens": 31
+        },
+        "ensures": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 28
+        },
+        "invariant": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 44
+        },
+        "decreases": {
+          "clauses": 1,
+          "lines": 1,
+          "tokens": 7
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 7,
+      "contract_lines": 7,
+      "contract_tokens": 110,
+      "code_lines": 15
+    },
+    "q06.pruv": {
+      "by_kind": {
+        "requires": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 39
+        },
+        "ensures": {
+          "clauses": 6,
+          "lines": 6,
+          "tokens": 236
+        },
+        "invariant": {
+          "clauses": 11,
+          "lines": 11,
+          "tokens": 243
+        },
+        "decreases": {
+          "clauses": 3,
+          "lines": 3,
+          "tokens": 18
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 23,
+      "contract_lines": 23,
+      "contract_tokens": 536,
+      "code_lines": 22
+    },
+    "total": {
+      "by_kind": {
+        "requires": {
+          "clauses": 13,
+          "lines": 13,
+          "tokens": 179
+        },
+        "ensures": {
+          "clauses": 24,
+          "lines": 24,
+          "tokens": 691
+        },
+        "invariant": {
+          "clauses": 40,
+          "lines": 40,
+          "tokens": 755
+        },
+        "decreases": {
+          "clauses": 8,
+          "lines": 8,
+          "tokens": 53
+        },
+        "assert": {
+          "clauses": 0,
+          "lines": 0,
+          "tokens": 0
+        }
+      },
+      "clauses": 85,
+      "contract_lines": 85,
+      "contract_tokens": 1678,
+      "code_lines": 106
+    }
+  }
+}

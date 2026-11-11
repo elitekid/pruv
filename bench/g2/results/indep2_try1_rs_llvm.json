@@ -1,0 +1,32 @@
+{
+ "q01": {
+  "status": "ok",
+  "tests_passed": 310,
+  "tests_total": 310
+ },
+ "q02": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "q03": {
+  "status": "ok",
+  "tests_passed": 312,
+  "tests_total": 312
+ },
+ "q04": {
+  "status": "ok",
+  "tests_passed": 309,
+  "tests_total": 309
+ },
+ "q05": {
+  "status": "ok",
+  "tests_passed": 308,
+  "tests_total": 308
+ },
+ "q06": {
+  "status": "ok",
+  "tests_passed": 314,
+  "tests_total": 314
+ }
+}

@@ -1,0 +1,26 @@
+fn add_sat(a: [u8], d: i64) -> [u8] ! alloc
+  requires -255 <= d && d <= 255
+  requires len(a) <= 1_000_000
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): (a[k] + d <= 0 ==> result[k] == 0) && (a[k] + d >= 255 ==> result[k] == 255) && ((0 < a[k] + d && a[k] + d < 255) ==> result[k] == a[k] + d)
+{
+  let mut out: [u8] = alloc(len(a), 0);
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant len(out) == len(a)
+    invariant forall k in 0..i: (a[k] + d <= 0 ==> out[k] == 0) && (a[k] + d >= 255 ==> out[k] == 255) && ((0 < a[k] + d && a[k] + d < 255) ==> out[k] == a[k] + d)
+    decreases len(a) - i
+  {
+    let v: i64 = a[i] + d;
+    if v <= 0 {
+      out[i] = 0;
+    } else if v >= 255 {
+      out[i] = 255;
+    } else {
+      out[i] = v;
+    }
+    i = i + 1;
+  }
+  return out;
+}

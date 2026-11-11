@@ -1,0 +1,131 @@
+{
+ "meta": {
+  "infer": false,
+  "python": ".venv/bin/python",
+  "files": 6
+ },
+ "files": [
+  {
+   "file": "bench/g2/solutions/indep3_try1/q01.pruv",
+   "obligations": 34,
+   "skipped": 0,
+   "attempts": 34,
+   "results": {
+    "unsat": 34
+   },
+   "final_results": {
+    "unsat": 34
+   },
+   "forall": 71,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.18344549999999998,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep3_try1/q02.pruv",
+   "obligations": 26,
+   "skipped": 0,
+   "attempts": 26,
+   "results": {
+    "unsat": 26
+   },
+   "final_results": {
+    "unsat": 26
+   },
+   "forall": 78,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.09741608300000001,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep3_try1/q03.pruv",
+   "obligations": 35,
+   "skipped": 0,
+   "attempts": 35,
+   "results": {
+    "unsat": 35
+   },
+   "final_results": {
+    "unsat": 35
+   },
+   "forall": 108,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.12255095799999999,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep3_try1/q04.pruv",
+   "obligations": 57,
+   "skipped": 0,
+   "attempts": 57,
+   "results": {
+    "unsat": 57
+   },
+   "final_results": {
+    "unsat": 57
+   },
+   "forall": 238,
+   "exists": 60,
+   "errors": [],
+   "wall": 0.17541741699999996,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep3_try1/q05.pruv",
+   "obligations": 21,
+   "skipped": 0,
+   "attempts": 24,
+   "results": {
+    "unsat": 21,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 21
+   },
+   "forall": 30,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.10597154200000003,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep3_try1/q06.pruv",
+   "obligations": 33,
+   "skipped": 0,
+   "attempts": 36,
+   "results": {
+    "unsat": 33,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 33
+   },
+   "forall": 61,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.13124008399999998,
+   "rc": 0
+  }
+ ],
+ "total": {
+  "file": "TOTAL",
+  "obligations": 206,
+  "skipped": 0,
+  "attempts": 212,
+  "results": {
+   "unsat": 206,
+   "sat": 6
+  },
+  "final_results": {
+   "unsat": 206
+  },
+  "forall": 586,
+  "exists": 60,
+  "errors": [],
+  "wall": 0.8160415839999999,
+  "crashes": 0
+ }
+}

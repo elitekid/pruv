@@ -1,0 +1,661 @@
+{
+ "meta": {
+  "infer": false,
+  "python": ".venv/bin/python",
+  "files": 37
+ },
+ "files": [
+  {
+   "file": "bench/g2/solutions/ref_pruv/q01.pruv",
+   "obligations": 52,
+   "skipped": 0,
+   "attempts": 52,
+   "results": {
+    "unsat": 52
+   },
+   "final_results": {
+    "unsat": 52
+   },
+   "forall": 255,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.160287083,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/ref_pruv/q02.pruv",
+   "obligations": 33,
+   "skipped": 0,
+   "attempts": 33,
+   "results": {
+    "unsat": 33
+   },
+   "final_results": {
+    "unsat": 33
+   },
+   "forall": 143,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.11398529200000002,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/ref_pruv/q03.pruv",
+   "obligations": 53,
+   "skipped": 0,
+   "attempts": 53,
+   "results": {
+    "unsat": 53
+   },
+   "final_results": {
+    "unsat": 53
+   },
+   "forall": 312,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.175063333,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/ref_pruv/q04.pruv",
+   "obligations": 66,
+   "skipped": 0,
+   "attempts": 66,
+   "results": {
+    "unsat": 66
+   },
+   "final_results": {
+    "unsat": 66
+   },
+   "forall": 441,
+   "exists": 1,
+   "errors": [],
+   "wall": 0.213036583,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/ref_pruv/q05.pruv",
+   "obligations": 27,
+   "skipped": 0,
+   "attempts": 31,
+   "results": {
+    "unsat": 27,
+    "sat": 4
+   },
+   "final_results": {
+    "unsat": 27
+   },
+   "forall": 39,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.11896899999999999,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/ref_pruv/q06.pruv",
+   "obligations": 27,
+   "skipped": 0,
+   "attempts": 30,
+   "results": {
+    "unsat": 27,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 27
+   },
+   "forall": 42,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.13359504100000008,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/i64_repr/q01.pruv",
+   "obligations": 58,
+   "skipped": 0,
+   "attempts": 58,
+   "results": {
+    "unsat": 58
+   },
+   "final_results": {
+    "unsat": 58
+   },
+   "forall": 326,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.1834821660000001,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/i64_repr/q02.pruv",
+   "obligations": 39,
+   "skipped": 0,
+   "attempts": 39,
+   "results": {
+    "unsat": 39
+   },
+   "final_results": {
+    "unsat": 39
+   },
+   "forall": 192,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.135021791,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/i64_repr/q03.pruv",
+   "obligations": 60,
+   "skipped": 0,
+   "attempts": 60,
+   "results": {
+    "unsat": 60
+   },
+   "final_results": {
+    "unsat": 60
+   },
+   "forall": 391,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.20271658299999995,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/i64_repr/q04.pruv",
+   "obligations": 67,
+   "skipped": 0,
+   "attempts": 67,
+   "results": {
+    "unsat": 67
+   },
+   "final_results": {
+    "unsat": 67
+   },
+   "forall": 509,
+   "exists": 1,
+   "errors": [],
+   "wall": 0.2459954999999998,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/i64_repr/q05.pruv",
+   "obligations": 28,
+   "skipped": 0,
+   "attempts": 32,
+   "results": {
+    "unsat": 28,
+    "sat": 4
+   },
+   "final_results": {
+    "unsat": 28
+   },
+   "forall": 41,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.11979350000000011,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/i64_repr/q06.pruv",
+   "obligations": 58,
+   "skipped": 0,
+   "attempts": 61,
+   "results": {
+    "unsat": 58,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 58
+   },
+   "forall": 154,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.2014563749999998,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_bool_bounded.pruv",
+   "obligations": 2,
+   "skipped": 0,
+   "attempts": 2,
+   "results": {
+    "unsat": 2
+   },
+   "final_results": {
+    "unsat": 2
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.0630601249999998,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_bool_build.pruv",
+   "obligations": 7,
+   "skipped": 0,
+   "attempts": 7,
+   "results": {
+    "unsat": 7
+   },
+   "final_results": {
+    "unsat": 7
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06807137500000016,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_bool_count.pruv",
+   "obligations": 21,
+   "skipped": 0,
+   "attempts": 24,
+   "results": {
+    "unsat": 21,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 21
+   },
+   "forall": 6,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.0952206659999999,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_bool_param_copy.pruv",
+   "obligations": 12,
+   "skipped": 0,
+   "attempts": 12,
+   "results": {
+    "unsat": 12
+   },
+   "final_results": {
+    "unsat": 12
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.0698409579999999,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_bool_sibling.pruv",
+   "obligations": 18,
+   "skipped": 0,
+   "attempts": 18,
+   "results": {
+    "unsat": 18
+   },
+   "final_results": {
+    "unsat": 18
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.07689595799999971,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_alloc_return.pruv",
+   "obligations": 2,
+   "skipped": 0,
+   "attempts": 2,
+   "results": {
+    "unsat": 2
+   },
+   "final_results": {
+    "unsat": 2
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06245983299999969,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_alloc_typed.pruv",
+   "obligations": 7,
+   "skipped": 0,
+   "attempts": 7,
+   "results": {
+    "unsat": 7
+   },
+   "final_results": {
+    "unsat": 7
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06865029099999997,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_ascii_refine.pruv",
+   "obligations": 19,
+   "skipped": 0,
+   "attempts": 19,
+   "results": {
+    "unsat": 19
+   },
+   "final_results": {
+    "unsat": 19
+   },
+   "forall": 55,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.08568562499999999,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_branch.pruv",
+   "obligations": 8,
+   "skipped": 0,
+   "attempts": 8,
+   "results": {
+    "unsat": 8
+   },
+   "final_results": {
+    "unsat": 8
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.0643682499999998,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_call_result.pruv",
+   "obligations": 5,
+   "skipped": 0,
+   "attempts": 5,
+   "results": {
+    "unsat": 5
+   },
+   "final_results": {
+    "unsat": 5
+   },
+   "forall": 2,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06441829200000004,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_copy_store.pruv",
+   "obligations": 6,
+   "skipped": 0,
+   "attempts": 6,
+   "results": {
+    "unsat": 6
+   },
+   "final_results": {
+    "unsat": 6
+   },
+   "forall": 6,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06604608300000026,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_frontend_mix.pruv",
+   "obligations": 14,
+   "skipped": 0,
+   "attempts": 14,
+   "results": {
+    "unsat": 14
+   },
+   "final_results": {
+    "unsat": 14
+   },
+   "forall": 23,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.07226500000000025,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_loop_havoc.pruv",
+   "obligations": 14,
+   "skipped": 0,
+   "attempts": 14,
+   "results": {
+    "unsat": 14
+   },
+   "final_results": {
+    "unsat": 14
+   },
+   "forall": 10,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.07298141699999983,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_loop_update.pruv",
+   "obligations": 19,
+   "skipped": 0,
+   "attempts": 19,
+   "results": {
+    "unsat": 19
+   },
+   "final_results": {
+    "unsat": 19
+   },
+   "forall": 36,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.08083833299999998,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_nested_let.pruv",
+   "obligations": 2,
+   "skipped": 0,
+   "attempts": 2,
+   "results": {
+    "unsat": 2
+   },
+   "final_results": {
+    "unsat": 2
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06083104199999978,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2a_u8_param.pruv",
+   "obligations": 4,
+   "skipped": 0,
+   "attempts": 4,
+   "results": {
+    "unsat": 4
+   },
+   "final_results": {
+    "unsat": 4
+   },
+   "forall": 4,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06641566699999979,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_ascii_substr.pruv",
+   "obligations": 11,
+   "skipped": 0,
+   "attempts": 11,
+   "results": {
+    "unsat": 11
+   },
+   "final_results": {
+    "unsat": 11
+   },
+   "forall": 11,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.07262233299999998,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_boundary.pruv",
+   "obligations": 12,
+   "skipped": 0,
+   "attempts": 12,
+   "results": {
+    "unsat": 12
+   },
+   "final_results": {
+    "unsat": 12
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.07701875000000014,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_boundary2.pruv",
+   "obligations": 17,
+   "skipped": 0,
+   "attempts": 17,
+   "results": {
+    "unsat": 17
+   },
+   "final_results": {
+    "unsat": 17
+   },
+   "forall": 17,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.08488116700000026,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_boundary_branch.pruv",
+   "obligations": 2,
+   "skipped": 0,
+   "attempts": 2,
+   "results": {
+    "unsat": 2
+   },
+   "final_results": {
+    "unsat": 2
+   },
+   "forall": 2,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.062425833000000264,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_contract.pruv",
+   "obligations": 1,
+   "skipped": 0,
+   "attempts": 1,
+   "results": {
+    "unsat": 1
+   },
+   "final_results": {
+    "unsat": 1
+   },
+   "forall": 1,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06239862500000015,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_flow.pruv",
+   "obligations": 17,
+   "skipped": 0,
+   "attempts": 17,
+   "results": {
+    "unsat": 17
+   },
+   "final_results": {
+    "unsat": 17
+   },
+   "forall": 36,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.08003095800000004,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_lit_len.pruv",
+   "obligations": 12,
+   "skipped": 0,
+   "attempts": 12,
+   "results": {
+    "unsat": 12
+   },
+   "final_results": {
+    "unsat": 12
+   },
+   "forall": 0,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06680308299999993,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_loop.pruv",
+   "obligations": 24,
+   "skipped": 0,
+   "attempts": 24,
+   "results": {
+    "unsat": 24
+   },
+   "final_results": {
+    "unsat": 24
+   },
+   "forall": 46,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.09358645799999987,
+   "rc": 0
+  },
+  {
+   "file": "examples/g2b_param.pruv",
+   "obligations": 5,
+   "skipped": 0,
+   "attempts": 5,
+   "results": {
+    "unsat": 5
+   },
+   "final_results": {
+    "unsat": 5
+   },
+   "forall": 7,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.06768558299999983,
+   "rc": 0
+  }
+ ],
+ "total": {
+  "file": "TOTAL",
+  "obligations": 829,
+  "skipped": 0,
+  "attempts": 846,
+  "results": {
+   "unsat": 829,
+   "sat": 17
+  },
+  "final_results": {
+   "unsat": 829
+  },
+  "forall": 3107,
+  "exists": 2,
+  "errors": [],
+  "wall": 3.808903951999999,
+  "crashes": 0
+ }
+}

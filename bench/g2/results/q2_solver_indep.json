@@ -1,0 +1,354 @@
+{
+ "meta": {
+  "infer": false,
+  "python": ".venv/bin/python",
+  "files": 18
+ },
+ "files": [
+  {
+   "file": "bench/g2/solutions/indep_try1/q01.pruv",
+   "obligations": 34,
+   "skipped": 0,
+   "attempts": 34,
+   "results": {
+    "unsat": 34
+   },
+   "final_results": {
+    "unsat": 34
+   },
+   "forall": 71,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.18281270900000002,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try1/q02.pruv",
+   "obligations": 26,
+   "skipped": 0,
+   "attempts": 26,
+   "results": {
+    "unsat": 26
+   },
+   "final_results": {
+    "unsat": 26
+   },
+   "forall": 78,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.09810150000000001,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try1/q03.pruv",
+   "obligations": 35,
+   "skipped": 0,
+   "attempts": 35,
+   "results": {
+    "unsat": 35
+   },
+   "final_results": {
+    "unsat": 35
+   },
+   "forall": 108,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.12799587500000004,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try1/q04.pruv",
+   "obligations": 62,
+   "skipped": 1,
+   "attempts": 61,
+   "results": {
+    "unsat": 60,
+    "unknown": 1
+   },
+   "final_results": {
+    "unsat": 60,
+    "unknown": 1
+   },
+   "forall": 396,
+   "exists": 2,
+   "errors": [
+    "verify_unknown"
+   ],
+   "wall": 8.545573458,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try1/q05.pruv",
+   "obligations": 18,
+   "skipped": 0,
+   "attempts": 22,
+   "results": {
+    "unsat": 18,
+    "sat": 4
+   },
+   "final_results": {
+    "unsat": 18
+   },
+   "forall": 29,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.10632491700000024,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try1/q06.pruv",
+   "obligations": 35,
+   "skipped": 0,
+   "attempts": 38,
+   "results": {
+    "unsat": 35,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 35
+   },
+   "forall": 63,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.13583029199999963,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try3/q01.pruv",
+   "obligations": 34,
+   "skipped": 0,
+   "attempts": 34,
+   "results": {
+    "unsat": 34
+   },
+   "final_results": {
+    "unsat": 34
+   },
+   "forall": 71,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.11613716699999976,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try3/q02.pruv",
+   "obligations": 26,
+   "skipped": 0,
+   "attempts": 26,
+   "results": {
+    "unsat": 26
+   },
+   "final_results": {
+    "unsat": 26
+   },
+   "forall": 78,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.0990297499999997,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try3/q03.pruv",
+   "obligations": 35,
+   "skipped": 0,
+   "attempts": 35,
+   "results": {
+    "unsat": 35
+   },
+   "final_results": {
+    "unsat": 35
+   },
+   "forall": 108,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.12650354200000002,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try3/q04.pruv",
+   "obligations": 69,
+   "skipped": 4,
+   "attempts": 65,
+   "results": {
+    "unsat": 63,
+    "unknown": 2
+   },
+   "final_results": {
+    "unsat": 63,
+    "unknown": 2
+   },
+   "forall": 669,
+   "exists": 2,
+   "errors": [
+    "verify_unknown",
+    "verify_unknown"
+   ],
+   "wall": 16.535600625,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try3/q05.pruv",
+   "obligations": 18,
+   "skipped": 0,
+   "attempts": 22,
+   "results": {
+    "unsat": 18,
+    "sat": 4
+   },
+   "final_results": {
+    "unsat": 18
+   },
+   "forall": 29,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.10498587500000056,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep_try3/q06.pruv",
+   "obligations": 35,
+   "skipped": 0,
+   "attempts": 38,
+   "results": {
+    "unsat": 35,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 35
+   },
+   "forall": 63,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.14067679200000072,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep2_try1/q01.pruv",
+   "obligations": 34,
+   "skipped": 0,
+   "attempts": 34,
+   "results": {
+    "unsat": 34
+   },
+   "final_results": {
+    "unsat": 34
+   },
+   "forall": 71,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.12386145800000037,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep2_try1/q02.pruv",
+   "obligations": 26,
+   "skipped": 0,
+   "attempts": 26,
+   "results": {
+    "unsat": 26
+   },
+   "final_results": {
+    "unsat": 26
+   },
+   "forall": 78,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.10268124999999984,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep2_try1/q03.pruv",
+   "obligations": 35,
+   "skipped": 0,
+   "attempts": 35,
+   "results": {
+    "unsat": 35
+   },
+   "final_results": {
+    "unsat": 35
+   },
+   "forall": 108,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.13410570799999988,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep2_try1/q04.pruv",
+   "obligations": 52,
+   "skipped": 0,
+   "attempts": 52,
+   "results": {
+    "unsat": 52
+   },
+   "final_results": {
+    "unsat": 52
+   },
+   "forall": 249,
+   "exists": 106,
+   "errors": [],
+   "wall": 0.20821879200000026,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep2_try1/q05.pruv",
+   "obligations": 17,
+   "skipped": 0,
+   "attempts": 21,
+   "results": {
+    "unsat": 17,
+    "sat": 4
+   },
+   "final_results": {
+    "unsat": 17
+   },
+   "forall": 28,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.10827791699999878,
+   "rc": 0
+  },
+  {
+   "file": "bench/g2/solutions/indep2_try1/q06.pruv",
+   "obligations": 28,
+   "skipped": 0,
+   "attempts": 31,
+   "results": {
+    "unsat": 28,
+    "sat": 3
+   },
+   "final_results": {
+    "unsat": 28
+   },
+   "forall": 51,
+   "exists": 0,
+   "errors": [],
+   "wall": 0.13378383300000252,
+   "rc": 0
+  }
+ ],
+ "total": {
+  "file": "TOTAL",
+  "obligations": 619,
+  "skipped": 5,
+  "attempts": 635,
+  "results": {
+   "unsat": 611,
+   "unknown": 3,
+   "sat": 21
+  },
+  "final_results": {
+   "unsat": 611,
+   "unknown": 3
+  },
+  "forall": 2348,
+  "exists": 110,
+  "errors": [
+   "verify_unknown",
+   "verify_unknown",
+   "verify_unknown"
+  ],
+  "wall": 27.130501460000005,
+  "crashes": 0
+ }
+}
