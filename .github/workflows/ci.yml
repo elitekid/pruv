@@ -1,0 +1,148 @@
+# 3개 OS(macOS·Linux·Windows)에서 Rust 판 컴파일러(pruvc-rs)를 빌드하고 시험한다.
+#
+# OS 마다 다른 점
+# - LLVM 22: llvm-sys(=221.1.2, force-static)가 llvm-config 와 정적 LLVM 라이브러리를 요구한다.
+#     macOS   = Homebrew llvm@22 (README 빌드법과 같은 위치)
+#     Linux   = apt.llvm.org 의 llvm-22-dev·clang-22
+#     Windows = LLVM 공식 릴리스 묶음 clang+llvm-*-x86_64-pc-windows-msvc (llvm-config·정적 .lib 포함, 캐시)
+# - z3 는 vendored(z3-src)라 OS 마다 소스에서 빌드된다. 오래 걸려서 cargo 캐시(rust-cache)를 쓴다.
+# - Python 대조판(pruvc/pruvc.py)은 z3-solver 를 .venv 에 깔아 쓴다(tests/compiler_driver.py 가 .venv 를 찾는다).
+#
+# Windows 에서 뺀 시험과 이유
+# - run_all 의 examples·runtime 묶음, m3_all 의 compilers·standalone·abi·abi_v2·abi_bool·abi_utf8 단계:
+#   생성한 코드를 실행 파일로 링크해 돌려 봐야 하는데, Windows 대상 exe 링크는 아직 지원하지 않는다(README).
+#   Windows ABI 실행은 별도 워크플로 windows-abi.yml 이 맡는다.
+# - Windows 에서는 링크가 필요 없는 시험만 돈다: cargo test, run_all must_reject(거부해야 할 프로그램),
+#   m3_all parse·check·trace·trace_infer·llvm·rust(두 판 결과 대조).
+
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+  CARGO_TERM_COLOR: always
+  LLVM_VERSION: "22.1.8"
+  Z3_SOLVER_VERSION: "5.3.3.0"
+
+jobs:
+  build-test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.9"
+
+      # ---------- LLVM 22 ----------
+      - name: LLVM 22 설치 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@22 zstd
+          echo "LLVM_SYS_221_PREFIX=$(brew --prefix llvm@22)" >> "$GITHUB_ENV"
+
+      - name: LLVM 22 설치 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
+          sudo apt-get update -q
+          sudo apt-get install -y -q llvm-22-dev libpolly-22-dev clang-22 lld-22 libzstd-dev zlib1g-dev libxml2-dev
+          echo "LLVM_SYS_221_PREFIX=/usr/lib/llvm-22" >> "$GITHUB_ENV"
+          # 시험이 PATH 의 clang·opt·llvm-nm 을 찾는다(LLVM 22 IR 을 읽어야 한다).
+          echo "/usr/lib/llvm-22/bin" >> "$GITHUB_PATH"
+
+      - name: LLVM 22 캐시 (Windows)
+        if: runner.os == 'Windows'
+        id: llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\llvm
+          key: llvm-${{ env.LLVM_VERSION }}-x86_64-pc-windows-msvc
+
+      - name: LLVM 22 내려받기 (Windows)
+        if: runner.os == 'Windows' && steps.llvm-cache.outputs.cache-hit != 'true'
+        run: |
+          name="clang+llvm-${LLVM_VERSION}-x86_64-pc-windows-msvc"
+          curl -sSfL -o llvm.tar.xz "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${name}.tar.xz"
+          mkdir -p /c/llvm
+          tar -xf llvm.tar.xz -C /c/llvm --strip-components=1
+          rm llvm.tar.xz
+
+      - name: LLVM 22 경로 (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "LLVM_SYS_221_PREFIX=C:\\llvm" >> "$GITHUB_ENV"
+          echo "C:\\llvm\\bin" >> "$GITHUB_PATH"
+
+      # ---------- Python 대조판 ----------
+      - name: Python 대조판 환경 (.venv + z3-solver)
+        run: |
+          python -m venv .venv
+          if [ "$RUNNER_OS" = Windows ]; then py=.venv/Scripts/python.exe; else py=.venv/bin/python; fi
+          "$py" -m pip install -q "z3-solver==${Z3_SOLVER_VERSION}"
+          "$py" -c "import z3; print('z3', z3.get_version_string())"
+
+      # ---------- 빌드 ----------
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pruvc-rs
+
+      - name: 도구 버전
+        run: |
+          rustc -vV
+          "$LLVM_SYS_221_PREFIX/bin/llvm-config" --version
+          python --version
+
+      - name: 빌드 (cargo build --release --locked)
+        working-directory: pruvc-rs
+        run: cargo build --release --locked
+
+      - name: cargo test
+        working-directory: pruvc-rs
+        run: cargo test --release --locked --workspace
+
+      # ---------- 시험: macOS·Linux (전체) ----------
+      - name: run_all 두 백엔드 (행 목록 대조)
+        if: runner.os != 'Windows'
+        run: python tests/run_all.py --backend both --compare-rows tests/run_all_rows.txt
+
+      - name: m3_all 두 판 대조 (--quick)
+        if: runner.os != 'Windows'
+        run: python tests/m3_all.py --quick --log-dir m3-logs
+
+      # ---------- 시험: Windows (링크 없는 것만, 위 머리 주석 참고) ----------
+      - name: run_all must_reject (Windows)
+        if: runner.os == 'Windows'
+        run: python tests/run_all.py --only must_reject
+
+      - name: m3_all 링크 없는 단계 (Windows, --quick)
+        if: runner.os == 'Windows'
+        run: python tests/m3_all.py --quick --only parse,check,trace,trace_infer,llvm,rust --log-dir m3-logs
+
+      - name: m3_all 기록 올리기
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-logs-${{ matrix.os }}
+          path: m3-logs
+          if-no-files-found: ignore
