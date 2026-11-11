@@ -458,6 +458,8 @@ pub struct Model {
     /// function name -> declaration index (the later one wins if names repeat)
     fn_index: HashMap<String, usize>,
     g: RefCell<GState>,
+    /// G3: `wf_trivial` cache per instance type.
+    wf_triv: RefCell<HashMap<GType, bool>>,
 }
 
 /// typeinfo.py `_deps`: field dependencies on declared user types (no duplicates, first-appearance order),
@@ -557,6 +559,7 @@ impl Model {
             pre_tag: pre_tag.clone(),
             fn_index,
             g: RefCell::new(GState::default()),
+            wf_triv: RefCell::new(HashMap::new()),
         };
         for (idx, d) in order.iter().enumerate() {
             if d.tparams > 0 {
@@ -839,6 +842,56 @@ impl Model {
             TypeKind::Struct(_) => Some(NomKind::Struct),
             TypeKind::Enum(_) => Some(NomKind::Enum),
         }
+    }
+
+    /// G3 (verify.py `Model.wf_trivial`): true when `wf(ty, v)` is None for every v (no i64 leaf and no Result
+    /// error code inside). Cached per instance type, so the check is linear in the size of the type.
+    pub fn wf_trivial(&self, ty: &Ty) -> Result<bool, String> {
+        let key = match ty {
+            Ty::Inst(g) => Some(g.clone()),
+            _ => None,
+        };
+        if let Some(k) = &key {
+            if let Some(r) = self.wf_triv.borrow().get(k) {
+                return Ok(*r);
+            }
+        }
+        let r = match ty {
+            Ty::I64 | Ty::Opt | Ty::Res => false,
+            Ty::Param(_) => true,
+            Ty::Inst(g) if g.name == "result" => false,
+            Ty::Inst(g) if g.name == "option" => self.wf_trivial(&Ty::from_gtype(&g.args[0]))?,
+            Ty::User(_) | Ty::Inst(_) => match self.nominal_kind(ty) {
+                Some(NomKind::Struct) => {
+                    let mut all = true;
+                    for (_, ft) in self.fields_of(ty, None)? {
+                        if !self.wf_trivial(&ft)? {
+                            all = false;
+                            break;
+                        }
+                    }
+                    all
+                }
+                Some(NomKind::Enum) => {
+                    let mut all = true;
+                    'outer: for vn in self.variant_names(ty) {
+                        for (_, ft) in self.fields_of(ty, Some(&vn))? {
+                            if !self.wf_trivial(&ft)? {
+                                all = false;
+                                break 'outer;
+                            }
+                        }
+                    }
+                    all
+                }
+                None => true,
+            },
+            _ => true,
+        };
+        if let Some(k) = key {
+            self.wf_triv.borrow_mut().insert(k, r);
+        }
+        Ok(r)
     }
 
     /// The variant names of an enum type, in declaration order (empty for anything else).

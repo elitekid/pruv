@@ -210,6 +210,28 @@ class Model:
             s.abs_name[name] = ty.name
         return srt
 
+    def wf_trivial(s, ty):
+        """G3: True when well_formed(ty, v) is None for every v (no i64 leaf and no Result error code inside).
+        Cached per type, so the check is linear in the size of the type."""
+        cache = s.__dict__.setdefault("_wf_triv", {})
+        r = cache.get(ty)
+        if r is not None:
+            return r
+        if ty == I64 or ty == OPTION or ty == RESULT or ty.name == "result":
+            r = False
+        elif ty.owner is not None:
+            r = True
+        elif ty.name == "option":
+            r = s.wf_trivial(ty.args[0])
+        elif s.tt.is_struct(ty):
+            r = all(s.wf_trivial(ft) for fd, ft in s.fields_of(ty))
+        elif s.tt.is_enum(ty):
+            r = all(s.wf_trivial(ft) for vd in s.tt.decl(ty).variants for fd, ft in s.fields_of(ty, vd.name))
+        else:
+            r = True
+        cache[ty] = r
+        return r
+
     def fields_of(s, ty, variant=None):
         """[(FieldDecl, field type)] with the type arguments of ty substituted into the declared field types"""
         d = s.tt.decl(ty)
@@ -503,6 +525,17 @@ class FnVerifier:
         if ty.owner is not None:        # G3: an abstract value has no well-formedness predicate
             return None
         m = s.model
+        if ty.args and m.wf_trivial(ty):
+            # G3: no constrained leaf anywhere inside (e.g. Dup<Dup<T>>); create the datatype as the full walk would,
+            # but skip the field recursion, which is exponential in the nesting depth
+            if ty.name == "option":
+                m.opt(ty)
+            elif m.tt.is_struct(ty):
+                m.struct_info(ty)
+            elif m.tt.is_enum(ty):
+                for vd in m.tt.decl(ty).variants:
+                    m.enum_info(ty)[vd.name]
+            return None
         if ty.name == "option":         # G3: Option<X>, X other than i64
             o = m.opt(ty)
             w = s.wf(ty.args[0], o.sval(v))

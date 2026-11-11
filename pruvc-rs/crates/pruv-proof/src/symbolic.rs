@@ -658,6 +658,27 @@ impl<'a> FnVerifier<'a> {
         let z = &self.z;
         let p = self.prelude;
         let m = self.model;
+        if matches!(ty, Ty::Inst(_)) && m.wf_trivial(ty)? {
+            // G3: no constrained leaf anywhere inside (e.g. Dup<Dup<T>>); create the datatype as the full walk
+            // would, but skip the field recursion, which is exponential in the nesting depth (verify.py `wf`)
+            match ty {
+                Ty::Inst(g) if g.name == "option" => {
+                    m.opt(Some(ty))?;
+                }
+                _ => match m.nominal_kind(ty) {
+                    Some(NomKind::Struct) => {
+                        m.struct_info(ty)?;
+                    }
+                    Some(NomKind::Enum) => {
+                        for vn in m.variant_names(ty) {
+                            m.variant_fns(ty, &vn)?;
+                        }
+                    }
+                    None => {}
+                },
+            }
+            return Ok(None);
+        }
         Ok(match ty {
             Ty::I64 => Some(in_range(z, v)),
             Ty::Opt => Some(p.is_some(v).implies(&in_range(z, &p.sval(v)))),
