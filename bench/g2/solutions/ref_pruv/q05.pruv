@@ -1,0 +1,23 @@
+// q05: number of UTF-8 characters = bytes that are not continuation bytes (128..=191)
+fn count_chars(s: str) -> i64
+  requires len(s) <= 1_000_000
+  ensures result == count(k in 0..len(s): s[k] < 128 || s[k] > 191)
+{
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(s)
+    invariant 0 <= i && i <= len(s)
+    invariant c == count(k in 0..i: s[k] < 128 || s[k] > 191)
+    invariant 0 <= c && c <= i
+    decreases len(s) - i
+  {
+    let b: i64 = s[i];
+    if b < 128 {
+      c = c + 1;
+    } else if b > 191 {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  return c;
+}

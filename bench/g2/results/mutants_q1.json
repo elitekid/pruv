@@ -1,0 +1,5153 @@
+{
+ "summary": {
+  "command": "bench/g2/results/mutants_q1.json --jobs 6 --retry",
+  "versions": {
+   "git_head": "bb05f23d032c68a147a68c4b99568ba00cb2627c",
+   "z3_python": "5.3.3",
+   "z3_src_crate": "503.3.0",
+   "compiler_sources_dirty": false,
+   "rs_binary_sha256": "ad98ac1cf3aee3da149ed410be13bb971d6113c2aa9291842d19b3c506b0ff0b",
+   "rs_binary_mtime": "2026-11-11T20:32:50"
+  },
+  "retried_undecided": 4,
+  "mutants": 129,
+  "truth_counts": {
+   "false_mutant": 113,
+   "true_mutant": 16
+  },
+  "by_op": {
+   "len_pm1": {
+    "false_mutant": {
+     "n": 19,
+     "py_plain": {
+      "rejected": 19
+     },
+     "py_infer": {
+      "rejected": 19
+     },
+     "rs_plain": {
+      "rejected": 19
+     },
+     "rs_infer": {
+      "rejected": 19
+     }
+    },
+    "true_mutant": {
+     "n": 1,
+     "py_plain": {
+      "accepted": 1
+     },
+     "py_infer": {
+      "accepted": 1
+     },
+     "rs_plain": {
+      "accepted": 1
+     },
+     "rs_infer": {
+      "accepted": 1
+     }
+    }
+   },
+   "base": {
+    "false_mutant": {
+     "n": 57,
+     "py_plain": {
+      "rejected": 57
+     },
+     "py_infer": {
+      "rejected": 57
+     },
+     "rs_plain": {
+      "rejected": 57
+     },
+     "rs_infer": {
+      "rejected": 57
+     }
+    },
+    "true_mutant": {
+     "n": 11,
+     "py_plain": {
+      "accepted": 6,
+      "rejected": 5
+     },
+     "py_infer": {
+      "accepted": 5,
+      "rejected": 5,
+      "undecided": 1
+     },
+     "rs_plain": {
+      "accepted": 6,
+      "rejected": 5
+     },
+     "rs_infer": {
+      "accepted": 6,
+      "rejected": 5
+     }
+    }
+   },
+   "guard_true": {
+    "false_mutant": {
+     "n": 9,
+     "py_plain": {
+      "rejected": 8,
+      "undecided": 1
+     },
+     "py_infer": {
+      "rejected": 8,
+      "undecided": 1
+     },
+     "rs_plain": {
+      "rejected": 8,
+      "undecided": 1
+     },
+     "rs_infer": {
+      "rejected": 9
+     }
+    }
+   },
+   "guard_false": {
+    "false_mutant": {
+     "n": 9,
+     "py_plain": {
+      "rejected": 9
+     },
+     "py_infer": {
+      "rejected": 9
+     },
+     "rs_plain": {
+      "rejected": 9
+     },
+     "rs_infer": {
+      "rejected": 9
+     }
+    }
+   },
+   "byte_const_pm1": {
+    "false_mutant": {
+     "n": 11,
+     "py_plain": {
+      "rejected": 11
+     },
+     "py_infer": {
+      "rejected": 11
+     },
+     "rs_plain": {
+      "rejected": 11
+     },
+     "rs_infer": {
+      "rejected": 11
+     }
+    },
+    "true_mutant": {
+     "n": 3,
+     "py_plain": {
+      "accepted": 2,
+      "rejected": 1
+     },
+     "py_infer": {
+      "accepted": 2,
+      "rejected": 1
+     },
+     "rs_plain": {
+      "accepted": 2,
+      "rejected": 1
+     },
+     "rs_infer": {
+      "accepted": 2,
+      "rejected": 1
+     }
+    }
+   },
+   "conj_drop": {
+    "false_mutant": {
+     "n": 3,
+     "py_plain": {
+      "rejected": 3
+     },
+     "py_infer": {
+      "rejected": 3
+     },
+     "rs_plain": {
+      "rejected": 3
+     },
+     "rs_infer": {
+      "rejected": 3
+     }
+    },
+    "true_mutant": {
+     "n": 1,
+     "py_plain": {
+      "accepted": 1
+     },
+     "py_infer": {
+      "accepted": 1
+     },
+     "rs_plain": {
+      "accepted": 1
+     },
+     "rs_infer": {
+      "accepted": 1
+     }
+    }
+   },
+   "boundary_drop": {
+    "false_mutant": {
+     "n": 1,
+     "py_plain": {
+      "rejected": 1
+     },
+     "py_infer": {
+      "rejected": 1
+     },
+     "rs_plain": {
+      "rejected": 1
+     },
+     "rs_infer": {
+      "rejected": 1
+     }
+    }
+   },
+   "substr_pm1": {
+    "false_mutant": {
+     "n": 4,
+     "py_plain": {
+      "rejected": 4
+     },
+     "py_infer": {
+      "rejected": 4
+     },
+     "rs_plain": {
+      "rejected": 4
+     },
+     "rs_infer": {
+      "rejected": 4
+     }
+    }
+   }
+  },
+  "by_problem": {
+   "q01": {
+    "false_mutant": {
+     "n": 17,
+     "py_plain": {
+      "rejected": 17
+     },
+     "py_infer": {
+      "rejected": 17
+     },
+     "rs_plain": {
+      "rejected": 17
+     },
+     "rs_infer": {
+      "rejected": 17
+     }
+    },
+    "true_mutant": {
+     "n": 3,
+     "py_plain": {
+      "accepted": 3
+     },
+     "py_infer": {
+      "accepted": 3
+     },
+     "rs_plain": {
+      "accepted": 3
+     },
+     "rs_infer": {
+      "accepted": 3
+     }
+    }
+   },
+   "q02": {
+    "false_mutant": {
+     "n": 14,
+     "py_plain": {
+      "rejected": 14
+     },
+     "py_infer": {
+      "rejected": 14
+     },
+     "rs_plain": {
+      "rejected": 14
+     },
+     "rs_infer": {
+      "rejected": 14
+     }
+    }
+   },
+   "q03": {
+    "false_mutant": {
+     "n": 18,
+     "py_plain": {
+      "rejected": 18
+     },
+     "py_infer": {
+      "rejected": 18
+     },
+     "rs_plain": {
+      "rejected": 18
+     },
+     "rs_infer": {
+      "rejected": 18
+     }
+    },
+    "true_mutant": {
+     "n": 3,
+     "py_plain": {
+      "accepted": 3
+     },
+     "py_infer": {
+      "accepted": 3
+     },
+     "rs_plain": {
+      "accepted": 3
+     },
+     "rs_infer": {
+      "accepted": 3
+     }
+    }
+   },
+   "q04": {
+    "false_mutant": {
+     "n": 17,
+     "py_plain": {
+      "rejected": 16,
+      "undecided": 1
+     },
+     "py_infer": {
+      "rejected": 16,
+      "undecided": 1
+     },
+     "rs_plain": {
+      "rejected": 16,
+      "undecided": 1
+     },
+     "rs_infer": {
+      "rejected": 17
+     }
+    },
+    "true_mutant": {
+     "n": 6,
+     "py_plain": {
+      "rejected": 5,
+      "accepted": 1
+     },
+     "py_infer": {
+      "rejected": 5,
+      "undecided": 1
+     },
+     "rs_plain": {
+      "rejected": 5,
+      "accepted": 1
+     },
+     "rs_infer": {
+      "rejected": 5,
+      "accepted": 1
+     }
+    }
+   },
+   "q05": {
+    "false_mutant": {
+     "n": 23,
+     "py_plain": {
+      "rejected": 23
+     },
+     "py_infer": {
+      "rejected": 23
+     },
+     "rs_plain": {
+      "rejected": 23
+     },
+     "rs_infer": {
+      "rejected": 23
+     }
+    },
+    "true_mutant": {
+     "n": 1,
+     "py_plain": {
+      "rejected": 1
+     },
+     "py_infer": {
+      "rejected": 1
+     },
+     "rs_plain": {
+      "rejected": 1
+     },
+     "rs_infer": {
+      "rejected": 1
+     }
+    }
+   },
+   "q06": {
+    "false_mutant": {
+     "n": 24,
+     "py_plain": {
+      "rejected": 24
+     },
+     "py_infer": {
+      "rejected": 24
+     },
+     "rs_plain": {
+      "rejected": 24
+     },
+     "rs_infer": {
+      "rejected": 24
+     }
+    },
+    "true_mutant": {
+     "n": 3,
+     "py_plain": {
+      "accepted": 3
+     },
+     "py_infer": {
+      "accepted": 3
+     },
+     "rs_plain": {
+      "accepted": 3
+     },
+     "rs_infer": {
+      "accepted": 3
+     }
+    }
+   }
+  },
+  "false_accepted": [],
+  "true_accepted": 10,
+  "crash": [],
+  "py_rs_verdict_diff": [
+   {
+    "pid": "q04",
+    "line": 26,
+    "from": "if cur > best {",
+    "to": "if cur >= best {",
+    "ops": [
+     "base"
+    ],
+    "mode": "infer",
+    "py": "undecided",
+    "rs": "accepted"
+   },
+   {
+    "pid": "q04",
+    "line": 26,
+    "from": "if cur > best {",
+    "to": "if true {",
+    "ops": [
+     "guard_true"
+    ],
+    "mode": "infer",
+    "py": "undecided",
+    "rs": "rejected"
+   }
+  ],
+  "undecided": [
+   {
+    "pid": "q04",
+    "line": 26,
+    "from": "if cur > best {",
+    "to": "if cur >= best {",
+    "ops": [
+     "base"
+    ],
+    "run": "py_infer"
+   },
+   {
+    "pid": "q04",
+    "line": 26,
+    "from": "if cur > best {",
+    "to": "if true {",
+    "ops": [
+     "guard_true"
+    ],
+    "run": "py_plain"
+   },
+   {
+    "pid": "q04",
+    "line": 26,
+    "from": "if cur > best {",
+    "to": "if true {",
+    "ops": [
+     "guard_true"
+    ],
+    "run": "py_infer"
+   },
+   {
+    "pid": "q04",
+    "line": 26,
+    "from": "if cur > best {",
+    "to": "if true {",
+    "ops": [
+     "guard_true"
+    ],
+    "run": "rs_plain"
+   }
+  ],
+  "truth_rustc_compile_error": []
+ },
+ "items": [
+  {
+   "pid": "q01",
+   "line": 9,
+   "from": "let mut out: [u8] = alloc(len(a), 0);",
+   "to": "let mut out: [u8] = alloc((len(a) + 1), 0);",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.21
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.22
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.1
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 310,
+    "first_failure": "input ([],) want [] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 9,
+   "from": "let mut out: [u8] = alloc(len(a), 0);",
+   "to": "let mut out: [u8] = alloc((len(a) - 1), 0);",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.23
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.12
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 310,
+    "first_failure": "input ([],) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 10,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.19
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.31
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 123,
+    "tests_total": 310,
+    "first_failure": "input ([9223372036854775807],) want [255] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 11,
+   "from": "while i < len(a)",
+   "to": "while i <= len(a)",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.15
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.3
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 310,
+    "first_failure": "input ([],) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 11,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) + 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.19
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.26
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 310,
+    "first_failure": "input ([],) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 11,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) - 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.42
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.11
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 121,
+    "tests_total": 310,
+    "first_failure": "input ([9223372036854775807],) want [255] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 20,
+   "from": "if x < 0 {",
+   "to": "if x <= 0 {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.28
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.17
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 310,
+    "tests_total": 310,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 20,
+   "from": "if x < 0 {",
+   "to": "if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.23
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 14,
+    "tests_total": 310,
+    "first_failure": "input ([9223372036854775807],) want [255] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 20,
+   "from": "if x < 0 {",
+   "to": "if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.15
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.25
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 21,
+    "tests_total": 310,
+    "first_failure": "input ([-9223372036854775808],) want [0] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 21,
+   "from": "out[i] = 0;",
+   "to": "out[i] = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.23
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.42
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 21,
+    "tests_total": 310,
+    "first_failure": "input ([-9223372036854775808],) want [0] got [1]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 22,
+   "from": "} else if x > 255 {",
+   "to": "} else if x >= 255 {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.26
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 310,
+    "tests_total": 310,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 22,
+   "from": "} else if x > 255 {",
+   "to": "} else if x > 256 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.26
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 303,
+    "tests_total": 310,
+    "first_failure": "input ([-9223372036854775808, -1, 0, 1, 254, 255, 256, 9223372036854775807],) want [0, 0, 0, 1, 254, 255, 255, 255] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 22,
+   "from": "} else if x > 255 {",
+   "to": "} else if x > 254 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.27
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 310,
+    "tests_total": 310,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 22,
+   "from": "} else if x > 255 {",
+   "to": "} else if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.26
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 28,
+    "tests_total": 310,
+    "first_failure": "input ([0],) want [0] got [255]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 22,
+   "from": "} else if x > 255 {",
+   "to": "} else if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.15
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.27
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 25,
+    "tests_total": 310,
+    "first_failure": "input ([9223372036854775807],) want [255] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 23,
+   "from": "out[i] = 255;",
+   "to": "out[i] = 256;",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.29
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 25,
+    "tests_total": 310,
+    "first_failure": "input ([9223372036854775807],) want [255] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 23,
+   "from": "out[i] = 255;",
+   "to": "out[i] = 254;",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.26
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 25,
+    "tests_total": 310,
+    "first_failure": "input ([9223372036854775807],) want [255] got [254]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 27,
+   "from": "i = i + 1;",
+   "to": "i = i + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.25
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.13
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 29,
+    "tests_total": 310,
+    "first_failure": "input ([-9223372036854775808, -1, 0, 1, 254, 255, 256, 9223372036854775807],) want [0, 0, 0, 1, 254, 255, 255, 255] got [0, 0, 0, 0, 254, 0, 255, 0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 27,
+   "from": "i = i + 1;",
+   "to": "i = i ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.21
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.1
+   },
+   "truth": {
+    "status": "timeout",
+    "tests_passed": null,
+    "tests_total": null,
+    "first_failure": null,
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q01",
+   "line": 27,
+   "from": "i = i + 1;",
+   "to": "i = i - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.25
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.12
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 5,
+    "tests_total": 310,
+    "first_failure": "input ([0],) want [0] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 8,
+   "from": "let mut out: [u8] = alloc(len(a), 0);",
+   "to": "let mut out: [u8] = alloc((len(a) + 1), 0);",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.12
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.19
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.07
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 308,
+    "first_failure": "input ([],) want [] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 8,
+   "from": "let mut out: [u8] = alloc(len(a), 0);",
+   "to": "let mut out: [u8] = alloc((len(a) - 1), 0);",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.13
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.17
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.07
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 308,
+    "first_failure": "input ([],) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 9,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.13
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.17
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.11
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 14,
+    "tests_total": 308,
+    "first_failure": "input ([127],) want [127] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 10,
+   "from": "while i < len(a)",
+   "to": "while i <= len(a)",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.11
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.19
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.08
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 308,
+    "first_failure": "input ([],) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 10,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) + 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.13
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.18
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.1
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 308,
+    "first_failure": "input ([],) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 10,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) - 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.12
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.18
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.11
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 11,
+    "tests_total": 308,
+    "first_failure": "input ([127],) want [127] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 18,
+   "from": "if v < 128 {",
+   "to": "if v <= 128 {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.12
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 281,
+    "tests_total": 308,
+    "first_failure": "input ([128],) want [63] got [128]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 18,
+   "from": "if v < 128 {",
+   "to": "if v < 129 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.11
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.3
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.11
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 281,
+    "tests_total": 308,
+    "first_failure": "input ([128],) want [63] got [128]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 18,
+   "from": "if v < 128 {",
+   "to": "if v < 127 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.21
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.05
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 274,
+    "tests_total": 308,
+    "first_failure": "input ([127],) want [127] got [63]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 18,
+   "from": "if v < 128 {",
+   "to": "if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.12
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.05
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 18,
+    "tests_total": 308,
+    "first_failure": "input ([128],) want [63] got [128]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 18,
+   "from": "if v < 128 {",
+   "to": "if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.12
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.19
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.05
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 19,
+    "tests_total": 308,
+    "first_failure": "input ([0],) want [0] got [63]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 23,
+   "from": "i = i + 1;",
+   "to": "i = i + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.05
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 18,
+    "tests_total": 308,
+    "first_failure": "input ([0, 127, 128, 255],) want [0, 127, 63, 63] got [0, 0, 63, 0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 23,
+   "from": "i = i + 1;",
+   "to": "i = i ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.12
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.18
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.08
+   },
+   "truth": {
+    "status": "timeout",
+    "tests_passed": null,
+    "tests_total": null,
+    "first_failure": null,
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q02",
+   "line": 23,
+   "from": "i = i + 1;",
+   "to": "i = i - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.13
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.11
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 10,
+    "tests_total": 308,
+    "first_failure": "input ([0],) want [0] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 10,
+   "from": "let mut out: [u8] = alloc(len(a), 0);",
+   "to": "let mut out: [u8] = alloc((len(a) + 1), 0);",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.19
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.22
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.12
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 312,
+    "first_failure": "input ([], 0) want [] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 10,
+   "from": "let mut out: [u8] = alloc(len(a), 0);",
+   "to": "let mut out: [u8] = alloc((len(a) - 1), 0);",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.2
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.25
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.12
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "alloc_negative",
+    "sec": 0.1
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 312,
+    "first_failure": "input ([], 0) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 11,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.19
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.49
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.19
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 91,
+    "tests_total": 312,
+    "first_failure": "input ([0], 255) want [255] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 12,
+   "from": "while i < len(a)",
+   "to": "while i <= len(a)",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.3
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.33
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 312,
+    "first_failure": "input ([], 0) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 12,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) + 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.25
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.33
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.11
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 312,
+    "first_failure": "input ([], 0) want [] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 12,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) - 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.2
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.35
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.17
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 79,
+    "tests_total": 312,
+    "first_failure": "input ([0], 255) want [255] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 20,
+   "from": "let v: i64 = a[i] + d;",
+   "to": "let v: i64 = a[i] - d;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.33
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 8,
+    "tests_total": 312,
+    "first_failure": "input ([0], 255) want [255] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 21,
+   "from": "if v < 0 {",
+   "to": "if v <= 0 {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.21
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.37
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.17
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 312,
+    "tests_total": 312,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 21,
+   "from": "if v < 0 {",
+   "to": "if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.23
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.11
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 21,
+    "tests_total": 312,
+    "first_failure": "input ([0], 255) want [255] got [0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 21,
+   "from": "if v < 0 {",
+   "to": "if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.3
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.11
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 184,
+    "tests_total": 312,
+    "first_failure": "input ([0], -255) want [0] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 22,
+   "from": "out[i] = 0;",
+   "to": "out[i] = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.19
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.28
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 184,
+    "tests_total": 312,
+    "first_failure": "input ([0], -255) want [0] got [1]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 23,
+   "from": "} else if v > 255 {",
+   "to": "} else if v >= 255 {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.27
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 312,
+    "tests_total": 312,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 23,
+   "from": "} else if v > 255 {",
+   "to": "} else if v > 256 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.32
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.28
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 291,
+    "tests_total": 312,
+    "first_failure": "input ([0, 1, 127, 128, 254, 255], 1) want [1, 2, 128, 129, 255, 255] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 23,
+   "from": "} else if v > 255 {",
+   "to": "} else if v > 254 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.21
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.32
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 312,
+    "tests_total": 312,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 23,
+   "from": "} else if v > 255 {",
+   "to": "} else if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.31
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 29,
+    "tests_total": 312,
+    "first_failure": "input ([0], 0) want [0] got [255]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 23,
+   "from": "} else if v > 255 {",
+   "to": "} else if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.28
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 159,
+    "tests_total": 312,
+    "first_failure": "input ([255], 255) want [255] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 24,
+   "from": "out[i] = 255;",
+   "to": "out[i] = 256;",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.28
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.11
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "elem_range",
+    "sec": 0.2
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 159,
+    "tests_total": 312,
+    "first_failure": "input ([255], 255) want [255] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 24,
+   "from": "out[i] = 255;",
+   "to": "out[i] = 254;",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.28
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 159,
+    "tests_total": 312,
+    "first_failure": "input ([255], 255) want [255] got [254]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 28,
+   "from": "i = i + 1;",
+   "to": "i = i + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.37
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.13
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 39,
+    "tests_total": 312,
+    "first_failure": "input ([0, 1, 127, 128, 254, 255], 1) want [1, 2, 128, 129, 255, 255] got [1, 0, 128, 0, 255, 0]",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 28,
+   "from": "i = i + 1;",
+   "to": "i = i ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.22
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.1
+   },
+   "truth": {
+    "status": "timeout",
+    "tests_passed": null,
+    "tests_total": null,
+    "first_failure": null,
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q03",
+   "line": 28,
+   "from": "i = i + 1;",
+   "to": "i = i - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.31
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.24
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 6,
+    "tests_total": 312,
+    "first_failure": "input ([0], 0) want [0] got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 8,
+   "from": "let mut best: i64 = 0;",
+   "to": "let mut best: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 10.11
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 8.59
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 8.26
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 17.01
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 290,
+    "tests_total": 309,
+    "first_failure": "input ([],) want 0 got 1",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 9,
+   "from": "let mut start: i64 = 0;",
+   "to": "let mut start: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.46
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 8.47
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 2.55
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.33
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 309,
+    "tests_total": 309,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 10,
+   "from": "let mut cur: i64 = 0;",
+   "to": "let mut cur: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 16.22
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.29
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.18
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 267,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 11,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.26
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 16.4
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.14
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.24
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 282,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 12,
+   "from": "while i < len(a)",
+   "to": "while i <= len(a)",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 1.01
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 8.46
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.14
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.32
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 309,
+    "first_failure": "input ([],) want 0 got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 12,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) + 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.24
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 8.51
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.15
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.58
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 309,
+    "first_failure": "input ([],) want 0 got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 12,
+   "from": "while i < len(a)",
+   "to": "while i < (len(a) - 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.42
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.51
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.4
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "verify_unknown",
+    "sec": 8.34
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 276,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 24,
+   "from": "if a[i] {",
+   "to": "if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.53
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 8.58
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.24
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 1.3
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 15,
+    "tests_total": 309,
+    "first_failure": "input ([false],) want 0 got 1",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 24,
+   "from": "if a[i] {",
+   "to": "if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.29
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.35
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 19,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 25,
+   "from": "cur = cur + 1;",
+   "to": "cur = cur + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.35
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 18.45
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.3
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 19,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 25,
+   "from": "cur = cur + 1;",
+   "to": "cur = cur ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.35
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.22
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 19,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 25,
+   "from": "cur = cur + 1;",
+   "to": "cur = cur - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.34
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 3.12
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.21
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.68
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 19,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 26,
+   "from": "if cur > best {",
+   "to": "if cur >= best {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.22
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "verify_unknown",
+    "sec": 16.57,
+    "first": {
+     "verdict": "undecided",
+     "code": "verify_unknown",
+     "sec": 16.57
+    }
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.17
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.3
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 309,
+    "tests_total": 309,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 26,
+   "from": "if cur > best {",
+   "to": "if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "undecided",
+    "code": "verify_unknown",
+    "sec": 8.38,
+    "first": {
+     "verdict": "undecided",
+     "code": "verify_unknown",
+     "sec": 8.24
+    }
+   },
+   "py_infer": {
+    "verdict": "undecided",
+    "code": "verify_unknown",
+    "sec": 16.36,
+    "first": {
+     "verdict": "undecided",
+     "code": "verify_unknown",
+     "sec": 9.29
+    }
+   },
+   "rs_plain": {
+    "verdict": "undecided",
+    "code": "verify_unknown",
+    "sec": 8.17,
+    "first": {
+     "verdict": "undecided",
+     "code": "verify_unknown",
+     "sec": 8.16
+    }
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 1.44
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 111,
+    "tests_total": 309,
+    "first_failure": "input ([true, true, true, false, true],) want 3 got 1",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 26,
+   "from": "if cur > best {",
+   "to": "if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.27
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.48
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 2.36
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 19,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 28,
+   "from": "start = i + 1 - cur;",
+   "to": "start = i + 2 - cur;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 1.09
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.61
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.21
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.42
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 309,
+    "tests_total": 309,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 28,
+   "from": "start = i + 1 - cur;",
+   "to": "start = i  - cur;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 3.26
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "verify_unknown",
+    "sec": 24.64
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.33
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.39
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 309,
+    "tests_total": 309,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 28,
+   "from": "start = i + 1 - cur;",
+   "to": "start = i - 1 - cur;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.37
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "verify_unknown",
+    "sec": 8.54
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.19
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.34
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 309,
+    "tests_total": 309,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 28,
+   "from": "start = i + 1 - cur;",
+   "to": "start = i + 1 + cur;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "verify_unknown",
+    "sec": 8.36
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "verify_unknown",
+    "sec": 13.84
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.22
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 8.44
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 309,
+    "tests_total": 309,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 31,
+   "from": "cur = 0;",
+   "to": "cur = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.6
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "verify_unknown",
+    "sec": 9.82
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 4.36
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 8.49
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 46,
+    "tests_total": 309,
+    "first_failure": "input ([true, false, true, true],) want 2 got 3",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 33,
+   "from": "i = i + 1;",
+   "to": "i = i + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.96
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 23.97
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.27
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 8.5
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 91,
+    "tests_total": 309,
+    "first_failure": "input ([true, true, true, true, true, true, true, true, true, true],) want 10 got 5",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 33,
+   "from": "i = i + 1;",
+   "to": "i = i ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.41
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.41
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.24
+   },
+   "truth": {
+    "status": "timeout",
+    "tests_passed": null,
+    "tests_total": null,
+    "first_failure": null,
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q04",
+   "line": 33,
+   "from": "i = i + 1;",
+   "to": "i = i - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.41
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.36
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.37
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 10,
+    "tests_total": 309,
+    "first_failure": "input ([true],) want 1 got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 6,
+   "from": "let mut c: i64 = 0;",
+   "to": "let mut c: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.2
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.36
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.12
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.25
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 308,
+    "first_failure": "input (\"\",) want 0 got 1",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 7,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.22
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.33
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 7,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 8,
+   "from": "while i < len(s)",
+   "to": "while i <= len(s)",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.2
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.32
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 308,
+    "first_failure": "input (\"\",) want 0 got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 8,
+   "from": "while i < len(s)",
+   "to": "while i < (len(s) + 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.2
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.32
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "index_oob",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 308,
+    "first_failure": "input (\"\",) want 0 got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 8,
+   "from": "while i < len(s)",
+   "to": "while i < (len(s) - 1)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.24
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.31
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.17
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 151,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 15,
+   "from": "if b < 128 {",
+   "to": "if b <= 128 {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.34
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 210,
+    "tests_total": 308,
+    "first_failure": "input (\"😀\",) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 15,
+   "from": "if b < 128 {",
+   "to": "if b < 129 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.34
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 210,
+    "tests_total": 308,
+    "first_failure": "input (\"😀\",) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 15,
+   "from": "if b < 128 {",
+   "to": "if b < 127 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.33
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 276,
+    "tests_total": 308,
+    "first_failure": "input (\"\\u{7f}\\u{80}߿ࠀ\\u{ffff}𐀀\\u{10ffff}\",) want 7 got 6",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 15,
+   "from": "if b < 128 {",
+   "to": "if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.24
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.06
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.11
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 15,
+    "tests_total": 308,
+    "first_failure": "input (\"é\",) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 15,
+   "from": "if b < 128 {",
+   "to": "if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.27
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 14,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 16,
+   "from": "c = c + 1;",
+   "to": "c = c + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.31
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 14,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 16,
+   "from": "c = c + 1;",
+   "to": "c = c ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.32
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 14,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 16,
+   "from": "c = c + 1;",
+   "to": "c = c - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.34
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 14,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got -1",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 17,
+   "from": "} else if b > 191 {",
+   "to": "} else if b >= 191 {",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.21
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.35
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.22
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 211,
+    "tests_total": 308,
+    "first_failure": "input (\"\\u{7f}\\u{80}߿ࠀ\\u{ffff}𐀀\\u{10ffff}\",) want 7 got 12",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 17,
+   "from": "} else if b > 191 {",
+   "to": "} else if b > 192 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.19
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.31
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 308,
+    "tests_total": 308,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 17,
+   "from": "} else if b > 191 {",
+   "to": "} else if b > 190 {",
+   "ops": [
+    "byte_const_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.29
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 211,
+    "tests_total": 308,
+    "first_failure": "input (\"\\u{7f}\\u{80}߿ࠀ\\u{ffff}𐀀\\u{10ffff}\",) want 7 got 12",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 17,
+   "from": "} else if b > 191 {",
+   "to": "} else if true {",
+   "ops": [
+    "guard_true"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.26
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.13
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 15,
+    "tests_total": 308,
+    "first_failure": "input (\"é\",) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 17,
+   "from": "} else if b > 191 {",
+   "to": "} else if false {",
+   "ops": [
+    "guard_false"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.32
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 15,
+    "tests_total": 308,
+    "first_failure": "input (\"é\",) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 18,
+   "from": "c = c + 1;",
+   "to": "c = c + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.28
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 15,
+    "tests_total": 308,
+    "first_failure": "input (\"é\",) want 1 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 18,
+   "from": "c = c + 1;",
+   "to": "c = c ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.29
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 15,
+    "tests_total": 308,
+    "first_failure": "input (\"é\",) want 1 got 0",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 18,
+   "from": "c = c + 1;",
+   "to": "c = c - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.28
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.14
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 15,
+    "tests_total": 308,
+    "first_failure": "input (\"é\",) want 1 got -1",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 20,
+   "from": "i = i + 1;",
+   "to": "i = i + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.26
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.13
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 16,
+    "tests_total": 308,
+    "first_failure": "input (\"a\\0b\",) want 3 got 2",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 20,
+   "from": "i = i + 1;",
+   "to": "i = i ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.16
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.25
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.08
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.12
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 7,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q05",
+   "line": 20,
+   "from": "i = i + 1;",
+   "to": "i = i - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.18
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.29
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.07
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.15
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 7,
+    "tests_total": 308,
+    "first_failure": "input (\"a\",) want 1 got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 11,
+   "from": "let mut i: i64 = 0;",
+   "to": "let mut i: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.19
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.39
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.1
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.19
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 163,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 0) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 12,
+   "from": "let mut c: i64 = 0;",
+   "to": "let mut c: i64 = 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.22
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.56
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.11
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.54
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 87,
+    "tests_total": 314,
+    "first_failure": "input (\"a\", 1) want \"a\" got \"\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 13,
+   "from": "while i < len(s) && c < k",
+   "to": "while i <= len(s) && c < k",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.61
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 1.29
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.45
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.65
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 253,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 5) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 13,
+   "from": "while i < len(s) && c < k",
+   "to": "while i < len(s) && c <= k",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.66
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.96
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.29
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.61
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 79,
+    "tests_total": 314,
+    "first_failure": "input (\"a\", 0) want \"\" got \"a\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 13,
+   "from": "while i < len(s) && c < k",
+   "to": "while i < (len(s) + 1) && c < k",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.5
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.95
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.29
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.67
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 253,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 5) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 13,
+   "from": "while i < len(s) && c < k",
+   "to": "while i < (len(s) - 1) && c < k",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.59
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 1.3
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.39
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "ensures",
+    "sec": 0.83
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 276,
+    "tests_total": 314,
+    "first_failure": "input (\"a\", 1) want \"a\" got \"\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 13,
+   "from": "while i < len(s) && c < k",
+   "to": "while i < len(s)",
+   "ops": [
+    "conj_drop"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.88
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 1.16
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.28
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.76
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 79,
+    "tests_total": 314,
+    "first_failure": "input (\"a\", 0) want \"\" got \"a\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 13,
+   "from": "while i < len(s) && c < k",
+   "to": "while c < k",
+   "ops": [
+    "conj_drop"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.72
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 1.05
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.25
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.6
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 253,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 5) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 20,
+   "from": "let mut j: i64 = i + 1;",
+   "to": "let mut j: i64 = i + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.85
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 1.16
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.28
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.64
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 88,
+    "tests_total": 314,
+    "first_failure": "input (\"a\", 1) want \"a\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 20,
+   "from": "let mut j: i64 = i + 1;",
+   "to": "let mut j: i64 = i ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.6
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.62
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.22
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.2
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 33,
+    "tests_total": 314,
+    "first_failure": "input (\"a\", 1) want \"a\" got \"\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 20,
+   "from": "let mut j: i64 = i + 1;",
+   "to": "let mut j: i64 = i - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.58
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 1.04
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.37
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_entry",
+    "sec": 0.54
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 33,
+    "tests_total": 314,
+    "first_failure": "input (\"a\", 1) want \"a\" got \"\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 21,
+   "from": "while j < len(s) && !is_char_boundary(s, j)",
+   "to": "while j <= len(s) && !is_char_boundary(s, j)",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.49
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.79
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.33
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.5
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 314,
+    "tests_total": 314,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 21,
+   "from": "while j < len(s) && !is_char_boundary(s, j)",
+   "to": "while j < (len(s) + 1) && !is_char_boundary(s, j)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.52
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.81
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.3
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.6
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 314,
+    "tests_total": 314,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 21,
+   "from": "while j < len(s) && !is_char_boundary(s, j)",
+   "to": "while j < (len(s) - 1) && !is_char_boundary(s, j)",
+   "ops": [
+    "len_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.58
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 1.12
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.19
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.65
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 308,
+    "tests_total": 314,
+    "first_failure": "input (\"한글\", 2) want \"한글\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 21,
+   "from": "while j < len(s) && !is_char_boundary(s, j)",
+   "to": "while j < len(s) && false",
+   "ops": [
+    "boundary_drop"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.57
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.86
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.31
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.46
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 64,
+    "tests_total": 314,
+    "first_failure": "input (\"aéb\", 2) want \"aé\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 21,
+   "from": "while j < len(s) && !is_char_boundary(s, j)",
+   "to": "while j < len(s)",
+   "ops": [
+    "conj_drop"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.39
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.51
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.17
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.24
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 99,
+    "tests_total": 314,
+    "first_failure": "input (\"aéb\", 2) want \"aé\" got \"aéb\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 21,
+   "from": "while j < len(s) && !is_char_boundary(s, j)",
+   "to": "while !is_char_boundary(s, j)",
+   "ops": [
+    "conj_drop"
+   ],
+   "py_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.24
+   },
+   "py_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.46
+   },
+   "rs_plain": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.09
+   },
+   "rs_infer": {
+    "verdict": "accepted",
+    "code": null,
+    "sec": 0.21
+   },
+   "truth": {
+    "status": "ok",
+    "tests_passed": 314,
+    "tests_total": 314,
+    "first_failure": null,
+    "truth": "true_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 26,
+   "from": "j = j + 1;",
+   "to": "j = j + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.32
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.6
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.13
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.44
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 108,
+    "tests_total": 314,
+    "first_failure": "input (\"aéb\", 2) want \"aé\" got \"aéb\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 26,
+   "from": "j = j + 1;",
+   "to": "j = j ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.4
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.74
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.25
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "decreases_decrease",
+    "sec": 0.33
+   },
+   "truth": {
+    "status": "timeout",
+    "tests_passed": null,
+    "tests_total": null,
+    "first_failure": null,
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 26,
+   "from": "j = j + 1;",
+   "to": "j = j - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.39
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 1.0
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.22
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.51
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 62,
+    "tests_total": 314,
+    "first_failure": "input (\"aéb\", 2) want \"aé\" got \"a\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 29,
+   "from": "c = c + 1;",
+   "to": "c = c + 2;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.57
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.98
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.2
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.53
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 64,
+    "tests_total": 314,
+    "first_failure": "input (\"aéb\", 2) want \"aé\" got \"a\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 29,
+   "from": "c = c + 1;",
+   "to": "c = c ;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.45
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.78
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.22
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.34
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 99,
+    "tests_total": 314,
+    "first_failure": "input (\"aéb\", 2) want \"aé\" got \"aéb\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 29,
+   "from": "c = c + 1;",
+   "to": "c = c - 1;",
+   "ops": [
+    "base"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.48
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.76
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.19
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "invariant_preserved",
+    "sec": 0.43
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 99,
+    "tests_total": 314,
+    "first_failure": "input (\"aéb\", 2) want \"aé\" got \"aéb\"",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 31,
+   "from": "return substr(s, 0, i);",
+   "to": "return substr(s, (0 + 1), i);",
+   "ops": [
+    "substr_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.31
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.75
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.23
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.54
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 0) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 31,
+   "from": "return substr(s, 0, i);",
+   "to": "return substr(s, (0 - 1), i);",
+   "ops": [
+    "substr_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.43
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.83
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.3
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.52
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 0) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 31,
+   "from": "return substr(s, 0, i);",
+   "to": "return substr(s, 0, (i + 1));",
+   "ops": [
+    "substr_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.38
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.59
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.31
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.29
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 0) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  },
+  {
+   "pid": "q06",
+   "line": 31,
+   "from": "return substr(s, 0, i);",
+   "to": "return substr(s, 0, (i - 1));",
+   "ops": [
+    "substr_pm1"
+   ],
+   "py_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.25
+   },
+   "py_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.34
+   },
+   "rs_plain": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.13
+   },
+   "rs_infer": {
+    "verdict": "rejected",
+    "code": "string_slice_range",
+    "sec": 0.17
+   },
+   "truth": {
+    "status": "wrong",
+    "tests_passed": 0,
+    "tests_total": 314,
+    "first_failure": "input (\"\", 0) want \"\" got PANIC",
+    "truth": "false_mutant"
+   }
+  }
+ ]
+}

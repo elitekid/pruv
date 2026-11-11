@@ -1,0 +1,73 @@
+{
+  "seed": 57,
+  "programs_requested": 200,
+  "inputs_per_program": 8,
+  "candidates": 314,
+  "generator_invalid": 0,
+  "oracle_unsupported": 0,
+  "oracle_parse_error": 0,
+  "failed_in_phase_a": 0,
+  "verified": 237,
+  "verified_used": 220,
+  "programs_short": false,
+  "incomplete": 0,
+  "input_errors": 0,
+  "no_sat_inputs": {
+    "count": 0,
+    "names": []
+  },
+  "rejected": 77,
+  "rejected_by_code": {
+    "verify:utf8_boundary": 8,
+    "verify:elem_range": 33,
+    "verify:index_oob": 21,
+    "verify:ensures": 22,
+    "verify:string_slice_range": 3,
+    "verify:invariant_preserved": 5,
+    "verify:overflow": 2
+  },
+  "rejected_built_safe_modes": 35,
+  "inputs_run": 2037,
+  "oracle_outcomes": {
+    "rejected/req_ok/elem_range": 41,
+    "rejected/req_ok/ok": 147,
+    "rejected/req_ok/oob": 68,
+    "rejected/req_ok/slice_cut": 2,
+    "rejected/req_ok/slice_range": 4,
+    "rejected/req_violated/requires_violated": 18,
+    "verified/req_ok/ok": 1562,
+    "verified/req_violated/requires_violated": 195
+  },
+  "binaries_built": 22,
+  "batch": 25,
+  "executions": 7588,
+  "failures_by_kind": {},
+  "failed_cases": [],
+  "timings_s": {
+    "generate_verify": 1.88,
+    "build": 5.68,
+    "run": 16.05,
+    "check_save": 0.85,
+    "total": 24.46,
+    "wall": 24.46
+  },
+  "g2": true,
+  "g2_verified": 219,
+  "g2_rejected_built_safe_modes": 35,
+  "g2_features_verified": {
+    "alloc_bool": 18,
+    "alloc_u8": 48,
+    "bool_arr": 43,
+    "boundary": 61,
+    "lit": 22,
+    "ret_bool": 18,
+    "ret_str": 61,
+    "ret_u8": 62,
+    "store_u8": 54,
+    "str": 108,
+    "substr": 61,
+    "u8": 90
+  },
+  "g2_inputs_per_program_min": 5,
+  "g2_short_inputs": 1
+}

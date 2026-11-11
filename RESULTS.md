@@ -833,3 +833,37 @@ B1까지 증명만 되던 `str`을 Rust 소스 뒷단·LLVM 뒷단·raw ABI·`--
 - **Windows CI:** runtime.c·winci 를 바꿔 실행됨. 푸시 뒤 run 43012869415(커밋 0600c22) success — windows-latest clang 이 `memory(argmem: read)` 선언과 str 생성물(`g2b_str_ret`·`g2a_bool_opt` 포함)을 받아 실행함.
 - 남긴 것: `[i64]`·`[u8]`·`[bool]` raw 진입의 음수 길이·NULL 거부(B2 전부터 있던 공백, str 만 고침).
 - 측정 못 한 것: str 증명·실행 시간, Linux 실행.
+
+## 42. G2 Q1: G2 퍼징·G2 변이·G2 문제 6개 (2026-11-11)
+
+G2_SPEC 8.3절(퍼저·변이) 관문을 닫는다. 컴파일러(`pruvc/`·`pruvc-rs/`)는 바꾸지 않았고, 시험 도구와 측정만 더했다. 계약은 `docs/G2_Q1_IMPL.md`.
+
+- **G2 문제 6개와 채점기(`bench/g2/`):** 바이트 범위 변환(`clamp_bytes`), ASCII 필터(`ascii_mask`), u8 배열 포화 갱신(`add_sat`, 결정 15로 i32 갱신 대신), bool 최장 연속(`longest_true_run`), UTF-8 문자 수(`count_chars`), 앞 k 문자(`prefix_chars`). `PROBLEMS.md`·`reference.rs`(신뢰 Rust 구현)·`run.py`(g1 채점기 꼴 + `--compiler py|rs`, 무작위 UTF-8 입력 1/2 ASCII·2/3/4바이트 각 1/6, 문제마다 EDGE + 300 입력)·참조 Pruv 풀이 `solutions/ref_pruv/`. 참조 풀이는 두 컴파일러 × rust·llvm 뒷단 네 조합 모두 검증 통과·308~314 입력 전부 맞음. Q2 독립 작성자 풀이와 측정은 이 위에 한다.
+- **참조 풀이의 계약을 뜻 전체로:** 첫 판(ensures 가 길이뿐)으로 G2 변이를 재니 거짓 변이 124개 중 39개가 검증을 통과했다. 컴파일러 결함이 아니라 계약이 뜻을 담지 않아 "틀린 값"이 약속 위반이 아니었기 때문이다. ensures 를 원소별 값·`count`·경계 수로 바꿨다. q04 는 "길이가 결과인 true run 이 있다"(exists) 불변식이 시간 초과라, 그 run 의 시작 위치 `start` 를 코드 변수로 두어 증인으로 썼다.
+- **G2 변이(`bench/g2/mutate_ops.py`, 결정 17):** 기존 `bench/mutate.py` OPS 는 그대로 두고(소스에서 ast 로 읽어 `base` 로 함께 돌림), G2 전용 연산 7개 — 저장 상한·바이트 상수 ±1(`byte_const_pm1`), 범위 가드 삭제(`guard_true`/`guard_false`), 색인 끝값(`len_pm1`), 부분 문자열 경계 ±1(`substr_pm1`), 경계 조건 삭제(`boundary_drop`·`conj_drop`). 변이마다 검증 4번(py·rs × `--infer` 없음·켬)과, rs `--no-verify` 빌드 + 채점기로 참/거짓을 자동 판정. i32 부호 확장 변이는 A6 으로(결정 15).
+
+| 결과(`bench/g2/results/mutants_q1.json`) | 값 |
+|---|---|
+| 변이(같은 텍스트 합침) | 129 |
+| 거짓 변이 / 참 변이 | 113 / 16 |
+| **거짓 변이가 4번 중 한 번이라도 통과** | **0** |
+| 참 변이 통과 | 10 |
+| 컴파일러 crash | 0 |
+| 미결(`verify_unknown`, 통과로 안 셈) | 4칸(q04 26줄 변이 2개) |
+
+  미결 4칸은 퍼징과 동시에 돈 첫 실행에서 나왔고, q04 만 단독으로 다시 돌려도 같은 4칸이 미결이었다(`mutants_q1_q04_alone.json`) — 부하가 아니라 그 두 변이(`if cur > best` → `>=`, → `true`)의 증명이 기본 시간 안에 안 끝나는 것이다. 이 때문에 두 판 판정 차이 2건(한쪽 미결·다른 쪽 판정)이 있다. 둘 다 통과가 아니고, `>=` 쪽은 참 변이다.
+- **퍼저 G2 모드(`bench/fuzz/*.py --g2`):** 오라클은 컴파일러를 import 하지 않고 G2 의미를 독립 해석한다(문자열 리터럴·이스케이프, `[u8]`/`[bool]`/`str` 값, alloc 좁은 타입 세 자리, alloc 길이→값·저장 색인→값 순서, `is_char_boundary` = G2_SPEC 4.4 식, `substr` 범위→경계, 안전 모드 문구 `element out of range`·`string slice out of bounds`·`UTF-8 boundary error`). 생성기는 G2 템플릿 11개(자르기 저장, u8 스캔, copy 갱신, alloc u8, bool 집계·생성, str 스캔, 경계 부분 문자열, 리터럴, str→u8, requires 경계 호출)를 별도 rng 로 쓰고, 약 0.3 비율로 G2 특유 오류 판을 만든다. `--g2` 없는 경로는 그대로(`generate.py --seed 41 --count 300` 출력이 고치기 전과 바이트 동일, 기존 퍼저 seed 41×200 실패 0).
+  - 센 프로그램(입력 8개 이상·모든 모드 실행 결과 있음·검증 통과분은 requires 만족이면서 끝까지 비교된 입력이 하나 이상)만 관문에 셈. 모자라면 `g2_shortfall` 로 종료 1(결정 11).
+
+| seed | 컴파일러 | 센 검증 통과(목표 200) | 센 거절 안전 실행(목표 30) | 실행 입력 | 실패 | 오라클 limit |
+|---|---|---|---|---|---|---|
+| 41 | rs / py | 217 / 217 | 35 / 35 | 2036 | 0 / 0 | 12 |
+| 56 | rs / py | 220 / 220 | 34 / 34 | 2039 | 0 / 0 | 8 |
+| 57 | rs / py | 219 / 219 | 35 / 35 | 2037 | 0 / 0 | 0 |
+
+  모드 4개(rust·llvm × 증명·안전)를 오라클과 비교했고, 거절 프로그램의 안전 모드에서 `elem_range` 32~41·`slice_cut` 2~10·`slice_range` 0~6 입력이 실제 실행 문구까지 맞았다. 요약은 `bench/g2/results/fuzz_{rs,py}_{41,56,57}.json`. 입력이 8개에 못 미친 프로그램(짧은 리터럴 하나만 받는 꼴)은 seed 마다 1~3개로 관문 수에서 뺐다.
+- **기존 변이 corpus 저하 없음:** 31.1과 같은 `mutate_infer.py` 298개 — 두 판 없음 20/278·켬 21/277·미결 0·crash 0·새 통과 1(32절과 같은 참 변이), 32절과 같음.
+- **감사(Claude Opus):** 필수 2·권고 5. 필수: (1) 퍼저 `FAULT_KINDS` 에 G2 실패 세 종류가 없어 G2 안전 모드 실패와 증명 모드 건전성이 비교되지 않았다 — 첫 퍼징의 "실패 0"은 그 비교가 빠진 숫자여서 버리고 고친 뒤 다시 돌린 위 표만 기록한다. (2) 거절 안전 실행 수가 늘 참인 조건으로 세어졌다 → "센 프로그램" 규칙. 권고 반영: 오라클이 괄호 친 `(alloc(..))` 도 컴파일러처럼 좁힘(Rust 판에서 `elem_range` 거부로 확인), 변이 진실 판정의 rustc 실패를 crash 로, 생성기 빈 치환 삭제. 유지: 변이 `base` 의 줄 치환 재구현(지금 `mutate.py` 와 동작 같음).
+- **확인 감사(Claude Opus):** 필수 0, 앞 지적 7건 해결 확인(`--g2` 없는 경로를 HEAD 의 generate·oracle 과 직접 대조: case·입력 300개, 오라클 1440회 실행 차이 0). 권고 3 반영: 변이 도구 주석, README 의 센 조건·110% 수집 설명, 센 조건에서 시간 초과·하네스 예외 실행 제외(고친 뒤 seed 57 rs 다시 실행: 219·35·실패 0, 같음).
+- **Windows CI:** CI 경로(winci·runtime.c·워크플로)를 건드리지 않아 실행되지 않음. `winci/prepare.py --check` 60파일 동일.
+- 남긴 것: q04 26줄 두 변이의 증명 미결(통과 아님), `[i64]`·`[u8]`·`[bool]` raw 진입의 음수 길이·NULL 거부(B2 전부터 있던 공백). 측정 못 한 것: G2 증명·실행 시간·메모리(Q2 측정), Linux 실행.

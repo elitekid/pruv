@@ -2629,10 +2629,496 @@ FAMILY = [("arrfill", tmpl_arrfill, 17), ("copy", tmpl_copy, 8), ("effects", tmp
           ("optparam", tmpl_optparam, 20), ("struct", tmpl_struct, 60)]
 
 
+# ---------------------------------------------------------------- G2 모드 (--g2)
+# 원소 타입 배열 [u8]·[bool] 과 UTF-8 문자열 str 을 쓰는 프로그램. 기존 FAMILY·재료와 완전히 따로다
+# (generate_case(seed, index, g2=True) 만 이 블록을 쓰고 rng 도 따로 만든다).
+
+G2_BAD_RATE = 0.3
+G2_LIM = 1000000
+G2_SPECIAL_BYTES = [0, 1, 127, 128, 191, 192, 254, 255]
+G2_ESC = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t", "\0": "\\0"}
+G2_TYMAP = {"i64": "i64", "array": "[i64]", "array_u8": "[u8]", "array_bool": "[bool]", "str": "str", "bool": "bool"}
+
+
+def g2_esc(s):
+    """Pruv 문자열 리터럴 이스케이프(\\\" \\\\ \\n \\r \\t \\0 만). 그 밖의 문자는 그대로."""
+    return "".join(G2_ESC.get(c, c) for c in s)
+
+
+def g2_char(rng):
+    """ASCII 1/2(인쇄 문자 + \\0 \\n \\t \\r \" \\), 2·3·4바이트 각 1/6 (서로게이트 제외)."""
+    r = rng.random()
+    if r < 0.5:
+        if rng.random() < 0.7:
+            return chr(rng.randint(0x20, 0x7E))
+        return rng.choice(["\0", "\n", "\t", "\r", '"', "\\", '"', "\\"])
+    if r < 0.5 + 1 / 6.0:
+        return chr(rng.randint(0x80, 0x7FF))
+    if r < 0.5 + 2 / 6.0:
+        c = rng.randint(0x800, 0xFFFF)
+        if 0xD800 <= c <= 0xDFFF:
+            c = 0xE000 + (c - 0xD800)
+        return chr(c)
+    return chr(rng.randint(0x10000, 0x10FFFF))
+
+
+def g2_multibyte_char(rng):
+    return rng.choice([chr(rng.randint(0x80, 0x7FF)), chr(rng.randint(0x800, 0xD7FF)),
+                       chr(rng.randint(0xE000, 0xFFFF)), chr(rng.randint(0x10000, 0x10FFFF))])
+
+
+def g2_lit_text(rng, need_multi=False):
+    n = rng.randint(1, 6)
+    cs = [g2_char(rng) for _ in range(n)]
+    if need_multi and not any(ord(c) >= 0x80 for c in cs):
+        cs[rng.randrange(n)] = g2_multibyte_char(rng)
+    return "".join(cs)
+
+
+def g2_offsets(text):
+    """각 문자 시작의 바이트 오프셋 목록 (마지막에 전체 길이)."""
+    out, o = [], 0
+    for c in text:
+        out.append(o)
+        o += len(c.encode("utf-8"))
+    out.append(o)
+    return out
+
+
+def g2_hints():
+    h = {"ints": {}, "arrays": {}, "consts": [3, 5, 10, 100], "rel": [], "pick": [], "idx": [], "div": [],
+         "neg": [], "wide": [], "exact": {}, "empty": False}
+    h["g2rel"] = {}       # {정수 매개변수: 길이를 따라갈 매개변수 이름 또는 상수 길이}
+    h["g2small"] = {}     # {정수 매개변수: 자주 고를 작은 상한}
+    h["g2order"] = []     # [(x, y)] 가끔 x <= y 로 맞춘다
+    return h
+
+
+def g2_int_hint(h, name, lo=None, hi=None):
+    h["ints"][name] = {"lo": lo, "hi": hi, "cap": None}
+
+
+def g2_fn(params, ret, effects, requires, ensures, body):
+    sig = ", ".join("%s: %s" % (n, G2_TYMAP[t]) for n, t in params)
+    head = "fn f(%s) -> %s" % (sig, G2_TYMAP[ret])
+    if effects:
+        head += " ! " + ", ".join(effects)
+    out = [head] + ["  requires " + r for r in requires] + ["  ensures " + e for e in ensures] + ["{"] + body + ["}"]
+    return "\n".join(out)
+
+
+def g2_loop(bound, invs, body, bad=False, ivar="i"):
+    """`let mut i: i64 = 0;` + while i < bound.  bad 면 끝값 +1 (색인 범위 밖 읽기)."""
+    hi = ("%s + 1" % bound) if bad else bound
+    out = ["  let mut %s: i64 = 0;" % ivar, "  while %s < %s" % (ivar, hi),
+           "    invariant 0 <= %s && %s <= %s" % (ivar, ivar, hi)]
+    out += ["    invariant " + x for x in invs]
+    out += ["    decreases %s - %s" % (hi, ivar), "  {"]
+    out += ["    " + l for l in body]
+    out += ["    %s = %s + 1;" % (ivar, ivar), "  }"]
+    return out
+
+
+def g2_case_parts(src, params, ret, hints, feats):
+    return {"src": src + "\n", "params": params, "ret": ret, "hints": hints, "feats": feats}
+
+
+# 1) [i64] -> [u8] 자르기 루프 저장 (q01 꼴)
+def g2_clamp(rng):
+    lo = rng.choice([0, 0, 0, 5, 16])
+    hi = rng.choice([255, 255, 200, 100, 127])
+    bad = rng.random() < G2_BAD_RATE
+    body = ["  let mut out: [u8] = alloc(len(a), %d);" % rng.choice([0, 0, lo])]
+    inner = ["let x: i64 = a[i];"]
+    if bad:
+        inner += ["if x < %d {" % lo, "  out[i] = %d;" % lo, "} else {", "  out[i] = x;", "}"]
+    else:
+        inner += ["if x < %d {" % lo, "  out[i] = %d;" % lo, "} else if x > %d {" % hi, "  out[i] = %d;" % hi,
+                  "} else {", "  out[i] = x;", "}"]
+    body += g2_loop("len(a)", ["len(out) == len(a)"], inner)
+    body.append("  return out;")
+    src = g2_fn([["a", "array"]], "array_u8", ["alloc"], ["len(a) <= %d" % G2_LIM], ["len(result) == len(a)"], body)
+    h = g2_hints()
+    return g2_case_parts(src, [["a", "array"]], "array_u8", h, ["alloc_u8", "ret_u8", "store_u8", "u8"])
+
+
+# 2) [u8] 매개변수 스캔 (합·최대·개수)
+def g2_u8_scan(rng):
+    mode = rng.choice(["sum", "max", "count"])
+    bad = rng.random() < G2_BAD_RATE
+    reqs = ["len(a) <= %d" % G2_LIM]
+    if mode == "sum":
+        pre = ["  let mut t: i64 = 0;"]
+        invs = ["0 <= t && t <= %d * i" % (254 if bad else 255)]
+        inner = ["t = t + a[i];"]
+        ens, ret = ["0 <= result && result <= 255 * len(a)"], "t"
+    elif mode == "max":
+        pre = ["  let mut m: i64 = 0;"]
+        invs = ["0 <= m && m <= 255"]
+        inner = ["let v: i64 = a[i];", "if v > m {", "  m = v;", "}"]
+        ens, ret = ["0 <= result && result <= %d" % (254 if bad else 255)], "m"
+    else:
+        T = rng.choice([1, 128, 200, 255, 0])
+        pre = ["  let mut c: i64 = 0;"]
+        invs = ["0 <= c && c <= i"]
+        inner = ["if a[i] %s %d {" % (rng.choice([">=", "==", "<"]), T), "  c = c + 1;", "}"]
+        ens, ret = ["0 <= result && result %s len(a)" % ("<" if bad else "<=")], "c"
+    body = pre + g2_loop("len(a)", invs, inner) + ["  return %s;" % ret]
+    src = g2_fn([["a", "array_u8"]], "i64", [], reqs, ens, body)
+    return g2_case_parts(src, [["a", "array_u8"]], "i64", g2_hints(), ["u8"])
+
+
+# 3) [u8] copy 뒤 원소 갱신(+d 포화) 반환
+def g2_copy_update(rng):
+    use_d = rng.random() < 0.6
+    D = rng.choice([1, 7, 100, 255, 300, -1, -50, -255, 0])
+    bad = rng.random() < G2_BAD_RATE
+    reqs, params = [], [["a", "array_u8"]]
+    h = g2_hints()
+    if use_d:
+        params.append(["d", "i64"])
+        reqs.append("-255 <= d && d <= 255")
+        g2_int_hint(h, "d", -255, 255)
+        E = "d"
+    else:
+        E = lit(D)
+    reqs.append("len(a) <= %d" % G2_LIM)
+    drop = None
+    if bad:
+        drop = rng.choice(["lo", "hi"]) if use_d else ("hi" if D >= 0 else "lo")
+        if not use_d and D == 0:
+            drop = "hi"
+        if not use_d and D >= 0:
+            drop = "hi"
+    inner = ["let v: i64 = a[i] + %s;" % E]
+    if drop == "hi":
+        inner += ["if v < 0 {", "  out[i] = 0;", "} else {", "  out[i] = v;", "}"]
+    elif drop == "lo":
+        inner += ["if v > 255 {", "  out[i] = 255;", "} else {", "  out[i] = v;", "}"]
+    else:
+        inner += ["if v < 0 {", "  out[i] = 0;", "} else if v > 255 {", "  out[i] = 255;", "} else {",
+                  "  out[i] = v;", "}"]
+    body = ["  let mut out: [u8] = copy(a);"] + g2_loop("len(a)", ["len(out) == len(a)"], inner) + ["  return out;"]
+    src = g2_fn(params, "array_u8", ["alloc"], reqs, ["len(result) == len(a)"], body)
+    return g2_case_parts(src, params, "array_u8", h, ["ret_u8", "store_u8", "u8"])
+
+
+# 4) alloc 으로 [u8] 를 만들어 반환
+def g2_alloc_u8(rng):
+    mode = rng.choice(["direct", "fill", "calc"])
+    bad = rng.random() < G2_BAD_RATE
+    V = rng.choice([0, 1, 63, 127, 128, 255])
+    reqs = ["0 <= n && n <= %d" % G2_LIM]
+    h = g2_hints()
+    g2_int_hint(h, "n", 0, G2_LIM)
+    h["g2small"]["n"] = 8
+    feats = ["alloc_u8", "ret_u8", "u8"]
+    init = 256 if (bad and mode != "fill") else V
+    if mode == "direct":
+        body = ["  return alloc(n, %d);" % init]
+    else:
+        W = 256 if (bad and mode == "fill") else rng.choice([0, 9, 128, 255])
+        body = ["  let mut out: [u8] = alloc(n, %d);" % init]
+        if mode == "fill":
+            inner = ["out[i] = %d;" % W]
+        else:
+            C = rng.choice([0, 1, 3, 100])
+            inner = ["let x: i64 = i + %d;" % C, "if x > 255 {", "  out[i] = 255;", "} else {", "  out[i] = x;", "}"]
+        body += g2_loop("n", ["len(out) == n"], inner) + ["  return out;"]
+        feats.append("store_u8")
+    src = g2_fn([["n", "i64"]], "array_u8", ["alloc"], reqs, ["len(result) == n"], body)
+    return g2_case_parts(src, [["n", "i64"]], "array_u8", h, feats)
+
+
+# 5) [bool] 매개변수 집계 (개수·최장 run)
+def g2_bool_agg(rng):
+    mode = rng.choice(["count", "count", "run"])
+    bad = rng.random() < 0.25
+    reqs = ["len(a) <= %d" % G2_LIM]
+    if mode == "count":
+        cond = rng.choice(["a[i]", "!a[i]", "a[i] == true"])
+        pre = ["  let mut c: i64 = 0;"]
+        invs = [] if bad else ["0 <= c && c <= i"]
+        inner = ["if %s {" % cond, "  c = c + 1;", "}"]
+        ens, ret = ["0 <= result && result <= len(a)"], "c"
+        if bad:
+            invs = ["0 <= c"]
+    else:
+        pre = ["  let mut best: i64 = 0;", "  let mut cur: i64 = 0;"]
+        invs = ["0 <= cur && cur <= i", "0 <= best && best <= i"]
+        if bad:
+            invs = ["0 <= cur", "0 <= best && best <= i"]
+        inner = ["if a[i] {", "  cur = cur + 1;", "  if cur > best {", "    best = cur;", "  }", "} else {",
+                 "  cur = 0;", "}"]
+        ens, ret = ["0 <= result && result <= len(a)"], "best"
+    body = pre + g2_loop("len(a)", invs, inner) + ["  return %s;" % ret]
+    src = g2_fn([["a", "array_bool"]], "i64", [], reqs, ens, body)
+    return g2_case_parts(src, [["a", "array_bool"]], "i64", g2_hints(), ["bool_arr"])
+
+
+# 6) [bool] 만들어 반환
+def g2_bool_build(rng):
+    ty = rng.choice(["array", "array_u8"])
+    T = rng.choice([0, 1, 100, 128, 255]) if ty == "array_u8" else rng.choice([0, 5, -3, 100])
+    bad = rng.random() < G2_BAD_RATE
+    idx = "i + 1" if bad else "i"
+    init = rng.choice(["false", "true"])
+    inner = ["if a[i] > %s {" % lit(T), "  out[%s] = %s;" % (idx, "true" if init == "false" else "false"), "}"]
+    body = ["  let mut out: [bool] = alloc(len(a), %s);" % init]
+    body += g2_loop("len(a)", ["len(out) == len(a)"], inner) + ["  return out;"]
+    src = g2_fn([["a", ty]], "array_bool", ["alloc"], ["len(a) <= %d" % G2_LIM], ["len(result) == len(a)"], body)
+    feats = ["alloc_bool", "bool_arr", "ret_bool"] + (["u8"] if ty == "array_u8" else [])
+    return g2_case_parts(src, [["a", ty]], "array_bool", g2_hints(), feats)
+
+
+# 7) str 매개변수 바이트 스캔 (특정 바이트 개수·문자 수·첫 위치)
+def g2_str_scan(rng):
+    mode = rng.choice(["count_ge", "count_eq", "chars", "find"])
+    bad = rng.random() < G2_BAD_RATE
+    reqs = ["len(s) <= %d" % G2_LIM]
+    if mode == "find":
+        X = rng.choice([0, 10, 34, 92, 97, 128, 195, 240])
+        inner = ["if s[i] == %d {" % X, "  return i;", "}"]
+        body = g2_loop("len(s)", [], inner, bad=bad)
+        body = body + ["  return (-1);"]
+        ens = ["-1 <= result && result < len(s)"]
+    else:
+        pre = ["  let mut c: i64 = 0;"]
+        if mode == "count_ge":
+            inner = ["let b: i64 = s[i];", "if b >= %d {" % rng.choice([128, 192, 65]), "  c = c + 1;", "}"]
+        elif mode == "count_eq":
+            inner = ["let b: i64 = s[i];", "if b == %d {" % rng.choice([0, 10, 34, 92, 195, 97]), "  c = c + 1;", "}"]
+        else:
+            inner = ["let b: i64 = s[i];", "if b < 128 {", "  c = c + 1;", "} else if b > 191 {", "  c = c + 1;", "}"]
+        body = pre + g2_loop("len(s)", ["0 <= c && c <= i"], inner, bad=bad) + ["  return c;"]
+        ens = ["0 <= result && result <= len(s)"]
+    src = g2_fn([["s", "str"]], "i64", [], reqs, ens, body)
+    return g2_case_parts(src, [["s", "str"]], "i64", g2_hints(), ["str"])
+
+
+# 8) str 경계 부분 문자열 (가드 뒤 substr, 또는 다음 경계까지 전진 루프)
+def g2_str_substr(rng):
+    mode = rng.choice(["guard", "guard_tail", "two", "prefix", "skip"])
+    bad = rng.random() < G2_BAD_RATE
+    h = g2_hints()
+    feats = ["boundary", "ret_str", "str", "substr"]
+    if mode in ("guard", "guard_tail"):
+        reqs = ["0 <= i && i <= len(s)"]
+        g2_int_hint(h, "i", 0, None)
+        h["g2rel"]["i"] = "s"
+        if mode == "guard":
+            sub = "substr(s, 0, i)"
+            badsub = "substr(s, 0, i + 1)"
+        else:
+            sub = "substr(s, i, len(s))"
+            badsub = "substr(s, i, len(s) + 1)"
+        if bad and rng.random() < 0.5:
+            body = ["  return %s;" % sub]
+        else:
+            use = badsub if bad else sub
+            body = ["  if is_char_boundary(s, i) {", "    return %s;" % use, "  } else {", "    return copy(s);", "  }"]
+        params = [["s", "str"], ["i", "i64"]]
+        ens = []
+    elif mode == "two":
+        reqs = ["0 <= lo && lo <= hi && hi <= len(s)"]
+        for x in ("lo", "hi"):
+            g2_int_hint(h, x, 0, None)
+            h["g2rel"][x] = "s"
+        h["g2order"].append(("lo", "hi"))
+        if bad and rng.random() < 0.5:
+            body = ["  return substr(s, lo, hi);"]
+        else:
+            body = ["  if is_char_boundary(s, lo) && is_char_boundary(s, hi) {",
+                    "    return substr(s, lo, %s);" % ("hi + 1" if bad else "hi"),
+                    "  } else {", "    return copy(s);", "  }"]
+        params = [["s", "str"], ["lo", "i64"], ["hi", "i64"]]
+        ens = []
+    else:
+        reqs = ["0 <= k && k <= %d" % G2_LIM, "len(s) <= %d" % G2_LIM]
+        g2_int_hint(h, "k", 0, G2_LIM)
+        h["g2small"]["k"] = 6
+        outer_inv = ["0 <= c && c <= k"]
+        if not bad:
+            outer_inv.append("is_char_boundary(s, i)")
+        body = ["  let mut i: i64 = 0;", "  let mut c: i64 = 0;", "  while i < len(s) && c < k",
+                "    invariant 0 <= i && i <= len(s)"] + ["    invariant " + x for x in outer_inv]
+        body += ["    decreases len(s) - i", "  {", "    let mut j: i64 = i + 1;",
+                 "    while j < len(s) && !is_char_boundary(s, j)",
+                 "      invariant i < j && j <= len(s)", "      decreases len(s) - j", "    {",
+                 "      j = j + 1;", "    }", "    i = j;", "    c = c + 1;", "  }"]
+        body.append("  return substr(s, 0, i);" if mode == "prefix" else "  return substr(s, i, len(s));")
+        params = [["s", "str"], ["k", "i64"]]
+        ens = ["len(result) <= len(s)"]
+    src = g2_fn(params, "str", ["alloc"], reqs, ens, body)
+    return g2_case_parts(src, params, "str", h, feats)
+
+
+# 9) 코드 안 문자열 리터럴
+def g2_literal(rng):
+    mode = rng.choice(["byte", "len_add", "cut", "cut"])
+    h = g2_hints()
+    if mode == "cut":
+        text = g2_lit_text(rng, need_multi=True)
+        offs = g2_offsets(text)
+        starts = [offs[j] for j, c in enumerate(text) if len(c.encode("utf-8")) >= 2]
+        B = rng.choice(starts)
+        bad = rng.random() < G2_BAD_RATE
+        L = g2_esc(text)
+        N = offs[-1]
+        body = ['  let s: str = "%s";' % L, "  if is_char_boundary(s, k) {", "    return substr(s, 0, k);",
+                "  } else {", "    return substr(s, 0, %d);" % (B + 1 if bad else B), "  }"]
+        src = g2_fn([["k", "i64"]], "str", ["alloc"], ['0 <= k && k <= len("%s")' % L], [], body)
+        g2_int_hint(h, "k", 0, N)
+        h["g2rel"]["k"] = N
+        return g2_case_parts(src, [["k", "i64"]], "str", h, ["boundary", "lit", "ret_str", "str", "substr"])
+    text = g2_lit_text(rng)
+    L = g2_esc(text)
+    N = len(text.encode("utf-8"))
+    if mode == "byte":
+        body = ['  let s: str = "%s";' % L, "  assert len(s) == %d;" % N, "  return s[k];"]
+        src = g2_fn([["k", "i64"]], "i64", ["alloc"], ['0 <= k && k < len("%s")' % L], [], body)
+        g2_int_hint(h, "k", 0, N - 1)
+        h["g2rel"]["k"] = N
+    else:
+        body = ['  let s: str = "%s";' % L, "  assert len(s) == %d;" % N, "  return len(s) + k;"]
+        src = g2_fn([["k", "i64"]], "i64", ["alloc"], ["0 <= k && k <= 1000"], ['result == len("%s") + k' % L], body)
+        g2_int_hint(h, "k", 0, 1000)
+        h["g2small"]["k"] = 6
+    return g2_case_parts(src, [["k", "i64"]], "i64", h, ["lit", "str"])
+
+
+# 10) str -> [u8] 바이트 복사
+def g2_str_to_u8(rng):
+    mode = rng.choice(["copy", "upper", "mask"])
+    bad = rng.random() < G2_BAD_RATE
+    if mode == "copy":
+        inner = ["out[i] = %s;" % ("s[i] + 1" if bad else "s[i]")]
+    elif mode == "upper":
+        inner = ["let v: i64 = s[i];", "if v >= 97 && v <= 122 {", "  out[i] = %s;" % ("v + 200" if bad else "v - 32"),
+                 "} else {", "  out[i] = v;", "}"]
+    else:
+        inner = ["let v: i64 = s[i];", "if v < 128 {", "  out[i] = v;", "} else {", "  out[i] = %s;" % ("v" if not bad else "v + 1"),
+                 "}"]
+        if not bad:
+            inner[4] = "  out[i] = 63;"
+    body = ["  let mut out: [u8] = alloc(len(s), 0);"] + g2_loop("len(s)", ["len(out) == len(s)"], inner) + ["  return out;"]
+    src = g2_fn([["s", "str"]], "array_u8", ["alloc"], ["len(s) <= %d" % G2_LIM], ["len(result) == len(s)"], body)
+    return g2_case_parts(src, [["s", "str"]], "array_u8", g2_hints(),
+                         ["alloc_u8", "ret_u8", "store_u8", "str", "u8"])
+
+
+# 11) requires is_char_boundary(s, i) 를 둔 함수와 그 호출
+def g2_requires_boundary(rng):
+    h = g2_hints()
+    g2_int_hint(h, "i", 0, None)
+    h["g2rel"]["i"] = "s"
+    sub = rng.choice(["substr(s, 0, i)", "substr(s, i, len(s))"])
+    helper = g2_fn([["s", "str"], ["i", "i64"]], "str", ["alloc"],
+                   ["0 <= i && i <= len(s) && is_char_boundary(s, i)"], [], ["  return %s;" % sub]).replace("fn f(", "fn cut(", 1)
+    body = ["  if is_char_boundary(s, i) {", "    return cut(s, i);", "  } else {", "    return copy(s);", "  }"]
+    main_ = g2_fn([["s", "str"], ["i", "i64"]], "str", ["alloc"], ["0 <= i && i <= len(s)"], [], body)
+    src = helper + "\n\n" + main_
+    return g2_case_parts(src, [["s", "str"], ["i", "i64"]], "str", h, ["boundary", "ret_str", "str", "substr"])
+
+
+G2_TEMPLATES = [("clamp", g2_clamp), ("u8scan", g2_u8_scan), ("copyupd", g2_copy_update),
+                ("allocu8", g2_alloc_u8), ("boolagg", g2_bool_agg), ("boolbuild", g2_bool_build),
+                ("strscan", g2_str_scan), ("substr", g2_str_substr), ("literal", g2_literal),
+                ("str2u8", g2_str_to_u8), ("reqbound", g2_requires_boundary)]
+
+
+def generate_g2_case(seed, index):
+    rng = random.Random("g2:%s:%s" % (seed, index))
+    kind, fn = rng.choice(G2_TEMPLATES)
+    p = fn(rng)
+    return {"name": "c%s_%s" % (seed, index), "src": p["src"], "entry": "f", "params": p["params"],
+            "ret": p["ret"], "kind": "g2_" + kind, "input_hints": p["hints"],
+            "g2": True, "g2_features": sorted(set(p["feats"]))}
+
+
+def g2_str_value(rng, maxn=8):
+    return "".join(g2_char(rng) for _ in range(rng.randint(0, maxn)))
+
+
+def g2_u8_value(rng):
+    return [rng.choice(G2_SPECIAL_BYTES) if rng.random() < 0.5 else rng.randint(0, 255)
+            for _ in range(rng.randint(0, 8))]
+
+
+def g2_bool_value(rng):
+    mode = rng.random()
+    n = rng.randint(0, 8)
+    if mode < 0.15:
+        return [True] * n
+    if mode < 0.3:
+        return [False] * n
+    return [rng.random() < 0.5 for _ in range(n)]
+
+
+def g2_seq_len(v):
+    return len(v.encode("utf-8")) if isinstance(v, str) else len(v)
+
+
+def g2_int_value(rng, h, name, vals):
+    hh = h["ints"].get(name, {})
+    lo, hi = hh.get("lo"), hh.get("hi")
+    rel = h["g2rel"].get(name)
+    small = h["g2small"].get(name)
+    if rel is not None:
+        L = rel if isinstance(rel, int) else g2_seq_len(vals[rel])
+        r = rng.random()
+        if r < 0.8:
+            v = rng.choice([0, L, rng.randint(0, L), rng.randint(0, L), max(0, L - 1)])
+        elif r < 0.9:
+            v = L + rng.choice([1, 1, 2, 5])
+        else:
+            v = rng.choice([-1, -1, -2, -7])
+        if (lo is not None or hi is not None) and rng.random() < 0.85:
+            if lo is not None:
+                v = max(v, lo)
+            if hi is not None:
+                v = min(v, hi)
+        return v
+    if small is not None:
+        a = 0 if lo is None else max(lo, 0)
+        b = small if hi is None else min(hi, small)
+        if rng.random() < 0.85 and a <= b:
+            return rng.randint(a, b)
+        return pick_int(rng, hh, h["consts"])
+    if lo is not None and hi is not None and rng.random() < 0.85:
+        return pick_in_range(rng, lo, hi)
+    return pick_int(rng, hh, h["consts"])
+
+
+def g2_candidate_inputs(case, rng, n):
+    h = case["input_hints"]
+    out = []
+    for _ in range(n):
+        vals = {}
+        for name, ty in case["params"]:
+            if ty == "array":
+                vals[name] = gen_array(rng, h["arrays"].get(name, {}), h["consts"])
+            elif ty == "array_u8":
+                vals[name] = g2_u8_value(rng)
+            elif ty == "array_bool":
+                vals[name] = g2_bool_value(rng)
+            elif ty == "str":
+                vals[name] = g2_str_value(rng)
+        for name, ty in case["params"]:
+            if ty == "i64":
+                vals[name] = g2_int_value(rng, h, name, vals)
+        for x, y in h.get("g2order", []):
+            if x in vals and y in vals and vals[x] > vals[y] and rng.random() < 0.7:
+                vals[x], vals[y] = vals[y], vals[x]
+        out.append([vals[name] for name, _ in case["params"]])
+    return out
+
+
 # ---------------------------------------------------------------- 케이스 조립
 
 def render(ctx, body):
-    tymap = {"array": "[i64]", "bool": "bool", "Option<i64>": "Option<i64>", "Result<i64>": "Result<i64>"}
+    tymap = {"array": "[i64]", "bool": "bool", "Option<i64>": "Option<i64>", "Result<i64>": "Result<i64>",
+             "array_u8": "[u8]", "array_bool": "[bool]", "str": "str"}
     sig = ", ".join("%s: %s" % (n, tymap.get(t, "i64" if t == "i64" else t)) for n, t in ctx.params)   # 구조체·열거형은 타입 이름 그대로
     head = "fn f(%s) -> %s" % (sig, ctx.ret)
     if ctx.effects:
@@ -2651,7 +3137,9 @@ def render(ctx, body):
     return fsrc + "\n"
 
 
-def generate_case(seed, index):
+def generate_case(seed, index, g2=False):
+    if g2:
+        return generate_g2_case(seed, index)
     rng = random.Random("%s:%s" % (seed, index))
     ctx = Ctx(rng)
     r = rng.random()
@@ -2866,6 +3354,8 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g2"):
+        return g2_candidate_inputs(case, rng, n)
     h = case["input_hints"]
     consts = h.get("consts", [])
     out = []
@@ -2912,11 +3402,12 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--count", type=int, default=20)
     ap.add_argument("--out", default="bench/fuzz/out/generated")
+    ap.add_argument("--g2", action="store_true", help="G2 모드: [u8]·[bool]·str 프로그램 생성")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i)
-        with open(os.path.join(a.out, case["name"] + ".pruv"), "w") as fh:
+        case = generate_case(a.seed, i, g2=True) if a.g2 else generate_case(a.seed, i)
+        with open(os.path.join(a.out, case["name"] + ".pruv"), "w", encoding="utf-8") as fh:
             fh.write(case["src"])
     print("wrote %d files to %s" % (a.count, a.out))
     return 0

@@ -82,6 +82,42 @@ OUT/failures/<kind>_<case>/       실패한 사례마다
 OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 10개
 ```
 
+## G2 모드 (`--g2`)
+
+G2 타입(`[u8]`, `[bool]`, `str`, 코드 안 문자열 리터럴, `substr`, `is_char_boundary`)을 만드는 별도 모드다. 명세는 `docs/G2_Q1_IMPL.md` 5절.
+`--g2` 없이 돌리면 동작·출력 폴더·`summary.json` 키가 이전과 같다(G2 템플릿은 기존 재료 목록에 넣지 않는다).
+
+```
+python bench/fuzz/run.py --g2 --seed 41 --programs 200 --rejected-sample 30 [--compiler py|rs]
+python bench/fuzz/generate.py --g2 --seed 41 --count 20 --out /tmp/pruvgen_g2
+python bench/fuzz/run.py --replay bench/fuzz/out/41_rs_g2/failures/<kind>_<case>   # G2 사례도 그대로
+```
+
+- 생성: `generate_case(seed, index, g2=True)`. rng 는 `"g2:<seed>:<index>"`, `G2_TEMPLATES` 에서만 고른다. 입력 rng 이름도 `"g2:"` 접두.
+  기본 출력 폴더는 끝에 `_g2`(Rust 판 `out/<seed>_rs_g2`, Python 판 `out/<seed>_g2`).
+- 타입 문자열: `array_u8`, `array_bool`, `str`. 입력 JSON: `array_u8` = 0..255 정수 list, `array_bool` = bool list,
+  `str` = JSON 문자열(서로게이트 없음).
+- 드라이버: `array_u8` → `let aJ: Vec<u8> = vec![..];` + `&aJ`, `array_bool` → `Vec<bool>`, `str` → `let aJ: &str = "..";` + `aJ`
+  (0x20..=0x7E 중 `"`·`\` 가 아니면 그대로, 나머지는 `\u{소문자hex}`). 반환 타입이 `str` 이면 `println!("{:?}", f(..).as_bytes())`
+  (바이트 정수 list), `[u8]` 은 정수 list, `[bool]` 은 `[true, false]`(오라클 `format_value` 가 같은 모양).
+- 안전 모드 실패 문구(종료 101, `pruv: ` 줄 접두어): `elem_range` → `pruv: element out of range: v (u8 0..=255)`,
+  `slice_range` → `pruv: string slice out of bounds: lo..hi (len n)`, `slice_cut` → `pruv: UTF-8 boundary error: lo..hi (len n)`,
+  `oob`(str 색인 포함) → `pruv: index out of bounds:`.
+- LLVM 뒷단: 바인딩이 `Pruv__Str`·`pruv_check_utf8`·`pruv_check_bool`·`pruv_abi_<f>__typed` 를 쓴다. 하네스가 바꾸는 것은 `pruv_abi_` 접두뿐이라
+  `__typed` 도 같이 바뀌고, 검사·복사·경계 기호는 공유 `runtime.o` 가 정의한다.
+- `summary.json` 에 g2 모드에서만 더하는 키: `g2`, `g2_verified`(센 검증 통과: g2 case, 입력 `--inputs` 개 이상, 모든 모드 실행 결과가 있고 시간 초과·하네스 예외 없음, requires 만족이면서 오라클 limit 아닌 입력 1개 이상; 거절도 같은 조건을 안전 모드로), `g2_rejected_built_safe_modes`,
+  `g2_features_verified`(태그별 검증 통과 수), `g2_inputs_per_program_min`, `g2_short_inputs`(입력이 `--inputs` 에 못 미친 프로그램 수).
+- 관문: `g2_verified < --programs` 또는 `g2_rejected_built_safe_modes < --rejected-sample` 이면
+  `failures_by_kind["g2_shortfall"]`(모자란 프로그램 수 합, 세부는 `summary["g2_shortfall"]`)을 남기고 종료 1.
+  오라클 unsupported·parse error·incomplete·timeout 은 통과 수에 넣지 않고 지금처럼 따로 센다.
+  센 조건에서 빠지는 몫으로 g2 모드에서만 검증 통과를 `--programs` 의 110%, 거절 표본을 `--rejected-sample + 5` 까지 모으므로 `verified_used`·`rejected_built` 가 요청 수보다 클 수 있다.
+- `results.json` 에는 g2 case 일 때만 `g2`, `g2_features` 가 들어간다. `--replay` 는 소스 서명에서 G2 타입을 알아본다.
+
+### G2 실행 기록 (메인이 채움)
+
+| 시드 | 컴파일러 | 검증 통과 | 거절 안전 빌드 | 프로그램당 입력 최소 | 입력 부족 | 태그별 통과 | 실패 |
+|---|---|---|---|---|---|---|---|
+
 ## 실패 종류
 
 | kind | 뜻 |
@@ -95,6 +131,7 @@ OUT/generator_invalid/            타입 검사를 못 넘은 생성물 처음 1
 | `run_timeout` | 바이너리가 10초 안에 끝나지 않음 (오라클이 `limit`이면 `incomplete`로 셈) |
 | `oracle_error` | 오라클이 예외를 던짐 (오라클 버그 의심) |
 | `harness_error` | 이 도구 자체의 예외 |
+| `g2_shortfall` | (`--g2` 만) 검증 통과 g2 프로그램이 `--programs` 보다, 거절 안전 모드 빌드가 `--rejected-sample` 보다 적음. 값은 모자란 수의 합 |
 
 ## 오라클 독립성
 

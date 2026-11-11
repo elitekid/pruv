@@ -1,0 +1,32 @@
+// q06: the first k characters of s (whole copy if s has fewer than k characters)
+fn prefix_chars(s: str, k: i64) -> str ! alloc
+  requires 0 <= k && k <= 1_000_000
+  requires len(s) <= 1_000_000
+  ensures len(result) <= len(s)
+  ensures is_char_boundary(s, len(result))
+  ensures forall t in 0..len(result): result[t] == s[t]
+  ensures count(t in 0..len(result): is_char_boundary(s, t)) <= k
+  ensures len(result) == len(s) || count(t in 0..len(result): is_char_boundary(s, t)) == k
+{
+  let mut i: i64 = 0;
+  let mut c: i64 = 0;
+  while i < len(s) && c < k
+    invariant 0 <= i && i <= len(s)
+    invariant 0 <= c && c <= k
+    invariant is_char_boundary(s, i)
+    invariant c == count(t in 0..i: is_char_boundary(s, t))
+    decreases len(s) - i
+  {
+    let mut j: i64 = i + 1;
+    while j < len(s) && !is_char_boundary(s, j)
+      invariant i < j && j <= len(s)
+      invariant count(t in 0..j: is_char_boundary(s, t)) == c + 1
+      decreases len(s) - j
+    {
+      j = j + 1;
+    }
+    i = j;
+    c = c + 1;
+  }
+  return substr(s, 0, i);
+}

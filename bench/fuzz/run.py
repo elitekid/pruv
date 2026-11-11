@@ -3,6 +3,7 @@
 
     python bench/fuzz/run.py [--seed 1] [--programs 100] [--inputs 8] [--max-candidates 400]
                              [--rejected-sample 30] [--jobs N] [--batch 25] [--out DIR] [--keep-work]
+    python bench/fuzz/run.py --g2 [--seed 41] [--programs 200] [--rejected-sample 30]   (G2 모드, README 참조)
     python bench/fuzz/run.py --replay DIR_OR_PRUVFILE
     (모든 형태에 [--compiler py|rs] [--compiler-path PATH] 사용 가능, tests/compiler_driver.py; 기본 rs)
 
@@ -49,7 +50,8 @@ RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 
 I64_MIN = -(1 << 63)
 TIMEOUT_RC = -999
-FAULT_KINDS = {"oob", "overflow", "div_domain", "requires_violated", "requires_undefined"}
+FAULT_KINDS = {"oob", "overflow", "div_domain", "requires_violated", "requires_undefined",
+               "elem_range", "slice_range", "slice_cut"}   # 뒤 셋은 G2(oracle 만 냄, 기존 경로 불변)
 MODES = [("rust-proof", "rust", False), ("rust-safe", "rust", True),
          ("llvm-proof", "llvm", False), ("llvm-safe", "llvm", True)]
 SAFE_MODES = [m for m in MODES if m[2]]
@@ -161,23 +163,49 @@ def rust_value(mod, v):
     raise ValueError("값 형식을 모름: %r" % (v,))
 
 
+def rust_str_lit(s):
+    """G2: Python str -> Rust 문자열 리터럴. 0x20..=0x7E 중 `"`·`\\` 가 아니면 그대로, 나머지는 \\u{소문자hex}."""
+    out = []
+    for ch in s:
+        o = ord(ch)
+        if 0x20 <= o <= 0x7E and ch not in '"\\':
+            out.append(ch)
+        else:
+            out.append("\\u{%x}" % o)
+    return '"%s"' % "".join(out)
+
+
 def batch_driver_source(specs):
-    """specs: [(모듈 이름, 생성된 .rs 절대 경로, params, inputs, 시작 id)] -> main.rs 문자열.
+    """specs: [(모듈 이름, 생성된 .rs 절대 경로, params, inputs, 시작 id[, 반환 타입])] -> main.rs 문자열.
     argv[1] = 평탄한 실행 id. 각 (프로그램, 모드, 입력)에 id가 하나씩 배정된다.
-    params 타입 문자열: "i64", "bool", "array", "Option<i64>", "Result<i64>", 그 밖은 사용자 타입 이름
-    (구조체/열거형 값 dict 를 `<모듈>::Point { .. }` 식으로 만든다). 출력은 모두 `{:?}`."""
+    params 타입 문자열: "i64", "bool", "array", "array_u8", "array_bool", "str", "Option<i64>", "Result<i64>",
+    그 밖은 사용자 타입 이름 (구조체/열거형 값 dict 를 `<모듈>::Point { .. }` 식으로 만든다).
+    출력은 `{:?}`; 반환 타입이 "str" 이면 `{:?}` 로 `.as_bytes()` (바이트 정수 list, G2_Q1_IMPL 5.0)."""
     L = ['#![allow(dead_code, unused_imports)]']
-    for modname, gen_rs, params, inputs, start in specs:
+    for spec in specs:
+        modname, gen_rs = spec[0], spec[1]
         L.append('#[path = "%s"] mod %s;' % (gen_rs, modname))
     L += ['fn main() {',
           '    let k: usize = std::env::args().nth(1).unwrap().parse().unwrap();', '    match k {']
-    for modname, gen_rs, params, inputs, start in specs:
+    for spec in specs:
+        modname, gen_rs, params, inputs, start = spec[:5]
+        ret = spec[5] if len(spec) > 5 else None
         for idx, args in enumerate(inputs):
             decl, parts = [], []
             for j, ((name, ty), v) in enumerate(zip(params, args)):
                 if ty == "array":
                     decl.append("let a%d: Vec<i64> = vec![%s];" % (j, ", ".join(rust_int(e) for e in v)))
                     parts.append("&a%d" % j)
+                elif ty == "array_u8":
+                    decl.append("let a%d: Vec<u8> = vec![%s];" % (j, ", ".join("%d" % e for e in v)))
+                    parts.append("&a%d" % j)
+                elif ty == "array_bool":
+                    decl.append("let a%d: Vec<bool> = vec![%s];"
+                                % (j, ", ".join("true" if e else "false" for e in v)))
+                    parts.append("&a%d" % j)
+                elif ty == "str":
+                    decl.append("let a%d: &str = %s;" % (j, rust_str_lit(v)))
+                    parts.append("a%d" % j)
                 elif ty == "bool":
                     parts.append("std::hint::black_box(%s)" % ("true" if v else "false"))
                 elif ty in ("Option<i64>", "Result<i64>"):
@@ -188,23 +216,39 @@ def batch_driver_source(specs):
                     parts.append("std::hint::black_box(%s)" % rust_value(modname, v))
                 else:
                     raise ValueError("지원하지 않는 매개변수 타입: %r" % (ty,))
-            L.append('        %d => { %s println!("{:?}", %s::f(%s)); }'
-                     % (start + idx, " ".join(decl), modname, ", ".join(parts)))
+            if ret == "str":
+                L.append('        %d => { %s println!("{:?}", %s::f(%s).as_bytes()); }'
+                         % (start + idx, " ".join(decl), modname, ", ".join(parts)))
+            else:
+                L.append('        %d => { %s println!("{:?}", %s::f(%s)); }'
+                         % (start + idx, " ".join(decl), modname, ", ".join(parts)))
     L += ["        _ => {}", "    }", "}"]
     return "\n".join(L) + "\n"
 
 
+def _sig_type(ty):
+    """소스 타입 문자열(공백 제거됨) -> 퍼저 타입 문자열. [i64] 는 기존대로 매개변수 "array"."""
+    if ty == "[u8]":
+        return "array_u8"
+    if ty == "[bool]":
+        return "array_bool"
+    return "array" if ty.startswith("[") else ty
+
+
 def signature_from_src(src):
-    # 반환형: i64 / bool / [i64] / () / Option<i64> / Result<i64> / 사용자 타입 (꺾쇠·대괄호 허용)
-    m = re.search(r"fn\s+f\s*\(([^)]*)\)\s*->\s*(\[\s*i64\s*\]|\(\s*\)|\w+(?:\s*<[^<>]*>)?)", src)
+    # 반환형: i64 / bool / [i64] / [u8] / [bool] / str / () / Option<i64> / Result<i64> / 사용자 타입 (꺾쇠·대괄호 허용)
+    m = re.search(r"fn\s+f\s*\(([^)]*)\)\s*->\s*(\[\s*(?:i64|u8|bool)\s*\]|\(\s*\)|\w+(?:\s*<[^<>]*>)?)", src)
     if not m:
         raise ValueError("fn f(...) -> T 시그니처를 찾지 못함")
     params = []
     for p in [s.strip() for s in m.group(1).split(",") if s.strip()]:
         name, ty = [t.strip() for t in p.split(":", 1)]
         ty = re.sub(r"\s+", "", ty)
-        params.append([name, "array" if ty.startswith("[") else ty])
-    return params, re.sub(r"\s+", "", m.group(2))
+        params.append([name, _sig_type(ty)])
+    ret = re.sub(r"\s+", "", m.group(2))
+    if ret in ("[u8]", "[bool]"):
+        ret = _sig_type(ret)    # 기존 "[i64]" 표기는 그대로 둔다
+    return params, ret
 
 
 # ---------------------------------------------------------------- 1~2단계: 생성 + 검증
@@ -303,7 +347,7 @@ def choose_inputs(rec, args, fixed=None):
     if fixed is not None:
         inputs = fixed
     else:
-        rng = random.Random("%s:%s:inputs" % (args.seed, rec["name"]))
+        rng = random.Random(("g2:" if getattr(args, "g2", False) else "") + "%s:%s:inputs" % (args.seed, rec["name"]))
         cands = generate.candidate_inputs(rec["case"], rng, 300)
         ok_l, bad_l, seen = [], [], set()
         n_err, n_cand = 0, 0
@@ -362,6 +406,10 @@ NO_MANGLE_RE = re.compile(r"^[ \t]*#\[no_mangle\][ \t]*\n", re.M)
 def prep_llvm(rec, mode, rt_o):
     """phase_a 가 pruvc --also-llvm 로 만든 .ll/bindings(rec['llvm_files'][name])를 읽어
     심볼을 고유하게 바꾼 .ll 사본 -> clang .o. pruvc 는 여기서 부르지 않는다.
+    G2 기호: 바꾸는 것은 `pruv_abi_` 접두 하나뿐이다. `pruv_abi_<f>__typed`(str/[bool] 매개변수)도 같은 접두라
+    .ll 정의·bindings extern·호출이 함께 바뀐다. `pruv_check_utf8`/`pruv_check_bool`/`pruv_copy_v2`/
+    `pruv_str_boundary`/`pruv_runtime_rust_allocator_v2` 는 공유 runtime.o(-DPRUV_RUST_ALLOCATOR)가 정의하므로
+    바꾸지 않는다. `Pruv__Str` 등 repr(C) 구조체는 모듈별 `mod` 안에 있어 겹치지 않는다.
     -> (art 또는 None, 실패 종류 또는 None, 오류 문장 또는 None). 원본 .ll/.rs는 rec['dir']에 그대로 둔다.
     건전성: proof 모드 산출물은 rec['status'] == 'verified' 일 때만 쓴다."""
     name, backend, safe = mode
@@ -443,7 +491,7 @@ def build_binary(recs, backend, label, work, rt_o, only_mode=None):
     specs, ids, nid = [], [], 0
     for rec, name, modname, gen in entries:
         n = len(rec["inputs"])
-        specs.append((modname, gen, rec["params"], rec["inputs"], nid))
+        specs.append((modname, gen, rec["params"], rec["inputs"], nid, rec.get("ret")))
         ids.append(list(range(nid, nid + n)))
         nid += n
     main = os.path.join(work, "%s_main.rs" % label)
@@ -689,10 +737,12 @@ def save_failure(out_dir, rec, kind, items):
     os.makedirs(d, exist_ok=True)
     write(os.path.join(d, "case.pruv"), rec["src"])
     write(os.path.join(d, "inputs.json"), json.dumps(rec.get("inputs", []), indent=1))
-    write(os.path.join(d, "results.json"), json.dumps(
-        {"name": rec["name"], "status": rec["status"], "params": rec["params"], "ret": rec["ret"],
-         "failures": items, "build_errors": rec.get("build_errors", {}), "inputs": rec_results(rec)},
-        indent=1, default=str))
+    res = {"name": rec["name"], "status": rec["status"], "params": rec["params"], "ret": rec["ret"],
+           "failures": items, "build_errors": rec.get("build_errors", {}), "inputs": rec_results(rec)}
+    if (rec.get("case") or {}).get("g2"):   # g2 case 만 (기존 case 의 results.json 은 그대로)
+        res["g2"] = True
+        res["g2_features"] = rec["case"].get("g2_features", [])
+    write(os.path.join(d, "results.json"), json.dumps(res, indent=1, default=str))
     write(os.path.join(d, "pruvc_output.txt"),
           "".join("== %s ==\n%s\n" % (k, v) for k, v in rec["logs"].items()))
     # 이 프로그램 자신의 (재작성하지 않은) 생성 파일
@@ -757,6 +807,9 @@ def replay(path, args):
     params, ret = signature_from_src(src)
     case = {"name": "replay_" + os.path.splitext(os.path.basename(pruv))[0], "src": src, "entry": "f",
             "params": params, "ret": ret, "input_hints": {}}
+    if any(t in ("array_u8", "array_bool", "str") for t in [p[1] for p in params] + [ret]):
+        case["g2"] = True   # G2 타입(드라이버는 params/ret 문자열만 본다); g2_features 는 저장본에 없으면 비움
+        case["g2_features"] = []
     work = tempfile.mkdtemp(prefix="pruvfuzz_replay_%s_" % driver().name)
     try:
         rt_o = build_runtime(work)
@@ -801,6 +854,8 @@ def main():
                     help="쉼표로 구분한 이미 보고한 결함 id (예: fz01). 생성기가 그 형태를 만들지 않는다")
     ap.add_argument("--keep-work", action="store_true")
     ap.add_argument("--replay", default=None)
+    ap.add_argument("--g2", action="store_true",
+                    help="G2 모드: u8/bool 배열·str 템플릿만 생성, 출력 폴더 끝 _g2, 관문(g2_shortfall) 적용")
     CD.add_args(ap)
     args = ap.parse_args()
     global DRIVER
@@ -809,7 +864,8 @@ def main():
     if args.replay:
         return replay(args.replay, args)
     # 컴파일러별 결과·작업 폴더: py 의 기본 경로(out/<seed>)는 그대로, rs 는 out/<seed>_rs
-    out_dir = args.out or os.path.join(HERE, "out", str(args.seed) + ("" if DRIVER.name == "py" else "_" + DRIVER.name))
+    out_dir = args.out or os.path.join(HERE, "out", str(args.seed) + ("" if DRIVER.name == "py" else "_" + DRIVER.name)
+                                       + ("_g2" if args.g2 else ""))
     os.makedirs(out_dir, exist_ok=True)
     work = tempfile.mkdtemp(prefix="pruvfuzz_%s_" % DRIVER.name)
     t0 = time.time()
@@ -827,7 +883,7 @@ def main():
             """후보 i 하나를 생성하고 phase_a까지 돌린다. 예외는 하네스 실패로 기록."""
             case = None
             try:
-                case = generate.generate_case(args.seed, i)
+                case = generate.generate_case(args.seed, i, g2=True) if args.g2 else generate.generate_case(args.seed, i)
                 rec = phase_a(case, work)
             except Exception:
                 rec = {"name": (case or {}).get("name", "cand_%d" % i), "src": (case or {}).get("src", ""),
@@ -869,11 +925,14 @@ def main():
 
         # 스트리밍: 최대 jobs*2개를 진행 중으로 두고, 하나 끝날 때마다 다음 후보를 낸다.
         # 충분히 모이거나 --max-candidates에 닿으면 제출만 멈추고, 낸 후보의 결과는 모두 거둔다.
+        # G2 모드는 셀 조건에서 빠지는 프로그램 몫으로 10%(거절은 +5)를 더 모은다(기존 경로는 그대로)
+        want_programs = args.programs + (args.programs // 10 if args.g2 else 0)
+        want_rejected = args.rejected_sample + (5 if args.g2 else 0)
         nxt, cap = 0, max(args.jobs * 2, 2)
         pending = set()
         with cf.ThreadPoolExecutor(args.jobs) as ex:
             while True:
-                while len(pending) < cap and nxt < args.max_candidates and len(verified) < args.programs:
+                while len(pending) < cap and nxt < args.max_candidates and len(verified) < want_programs:
                     pending.add(ex.submit(candidate, nxt))
                     nxt += 1
                 if not pending:
@@ -885,13 +944,13 @@ def main():
         # 완료 순서와 무관하게 재현되도록 후보 번호순으로 정렬; 초과 통과분은 빌드하지 않는다
         verified.sort(key=lambda r: r["cand_idx"])
         rejected_all.sort(key=lambda r: r["cand_idx"])
-        verified = verified[:args.programs]
+        verified = verified[:want_programs]
         programs_short = len(verified) < args.programs
         if programs_short:
             print("경고: 검증 통과 프로그램이 %d개뿐입니다 (요청 %d개, 후보 %d개)"
                   % (len(verified), args.programs, counts["candidates"]), flush=True)
         t1 = time.time()
-        sample = rejected_all[:args.rejected_sample]
+        sample = rejected_all[:want_rejected]
         counts["rejected_built"] = len(sample)
         progs = verified + sample
         # --- 3~4단계 (입력 선택 + clang 준비, 이어서 배치 빌드; pruvc 는 phase_a 에서 이미 끝남)
@@ -953,6 +1012,44 @@ def main():
                           "run": round(t3 - t2, 2), "check_save": round(t4 - t3, 2),
                           "total": round(t4 - t0, 2), "wall": round(time.time() - t0, 2)},
         }
+        if args.g2:
+            # G2 모드에서만 키를 더한다. 통과 수에는 검증 통과(verified_used)와 안전 모드로 빌드·실행한 거절만 센다.
+            # 셀 조건(결정 11·G2_SPEC 8.3): g2 case, 입력이 --inputs 개 이상, 안전 모드 실행 결과가 모두 있음,
+            # 검증 통과분은 requires 를 만족하면서 오라클이 끝까지 비교한(limit 아님) 입력이 하나 이상.
+            def _ran(r, names):
+                runs = r.get("runs") or {}
+                return all(n in runs and runs[n] and all(x is not None and x["exit"] not in (TIMEOUT_RC, -998) for x in runs[n]) for n in names)
+
+            def _counted(r, verified_prog):
+                if not (r.get("case") or {}).get("g2") or len(r.get("inputs", [])) < args.inputs:
+                    return False
+                if not _ran(r, [m[0] for m in SAFE_MODES]):
+                    return False
+                if verified_prog:
+                    if not _ran(r, [m[0] for m in MODES]):
+                        return False
+                    ops = r.get("oracle_proof") or []
+                    return any(q == "ok" and o.get("kind") != "limit" for q, o in zip(r.get("req", []), ops))
+                return True
+
+            g2_ver = [r for r in verified if _counted(r, True)]
+            feat = {}
+            for r in g2_ver:
+                for t in (r["case"].get("g2_features") or []):
+                    feat[t] = feat.get(t, 0) + 1
+            g2_rej_built = sum(1 for r in sample if _counted(r, False))
+            ipp = [len(r.get("inputs", [])) for r in progs]
+            summary["g2"] = True
+            summary["g2_verified"] = len(g2_ver)
+            summary["g2_rejected_built_safe_modes"] = g2_rej_built
+            summary["g2_features_verified"] = dict(sorted(feat.items()))
+            summary["g2_inputs_per_program_min"] = min(ipp) if ipp else 0
+            summary["g2_short_inputs"] = sum(1 for n in ipp if n < args.inputs)
+            if summary["g2_verified"] < args.programs or g2_rej_built < args.rejected_sample:
+                miss_v = max(0, args.programs - summary["g2_verified"])
+                miss_r = max(0, args.rejected_sample - g2_rej_built)
+                fail_kinds["g2_shortfall"] = miss_v + miss_r   # 모자란 프로그램 수 합
+                summary["g2_shortfall"] = {"verified_missing": miss_v, "rejected_built_missing": miss_r}
         write(os.path.join(out_dir, "summary.json"), json.dumps(summary, indent=2))
         print("---- 요약 ----")
         print("후보 %d (생성기 오류 %d, 오라클 미지원 %d) -> 통과 %d / 거절 %d %s"
@@ -970,6 +1067,11 @@ def main():
         if programs_short:
             print("경고: 검증 통과 프로그램 %d개 < 요청 %d개 (programs_short)"
                   % (summary["verified_used"], args.programs))
+        if args.g2:
+            print("G2: 검증 통과 %d (요청 %d), 거절 안전 모드 빌드 %d (요청 %d), 프로그램당 입력 최소 %d, 입력 부족 프로그램 %d, 태그 %s"
+                  % (summary["g2_verified"], args.programs, summary["g2_rejected_built_safe_modes"],
+                     args.rejected_sample, summary["g2_inputs_per_program_min"], summary["g2_short_inputs"],
+                     json.dumps(summary["g2_features_verified"])))
         print("실패: %s" % (json.dumps(fail_kinds) if fail_kinds else "없음"))
         print("결과: " + out_dir)
         return 1 if fail_kinds else 0

@@ -14,6 +14,12 @@ Supported subset (anything else -> OracleUnsupported):
     is_variant/variant_field, == != on Option/Result/struct/enum.
     A quantifier/aggregate body extends as far right as possible (full `==>` level expression).
 
+G2 (docs/G2_Q1_IMPL.md 5.1): types [u8] ("array_u8"), [bool] ("array_bool"), str ("str"; value = immutable
+  `bytes`, run()/check_requires() also take a Python str / UTF-8 bytes for str parameters); string literals
+  (escapes \\" \\\\ \\n \\r \\t \\0); is_char_boundary / substr; alloc narrow type only right of a typed `let`, right of
+  a reassignment of that variable, right after `return`; faults elem_range / slice_range / slice_cut.
+  `[u8 | ..]` refinements and `==`/`!=` on str -> OracleUnsupported.
+
 VALUES: i64 int, bool bool, array list, unit None.  Option/Result are JSON-friendly dicts
   {"tag": "Some", "v": 3} / {"tag": "None"} / {"tag": "Ok", "v": 3} / {"tag": "Err", "v": -2}; this is also the
   format run()/check_requires() take for arguments and run() gives back for the return value.
@@ -86,10 +92,33 @@ class _Return(Exception):
 _TOK = re.compile(r"""
     (?P<ws>\s+|//[^\n]*)
   | (?P<int>\d[\d_]*)
+  | (?P<str>"(?:[^"\\\n]|\\[^\n])*")
   | (?P<id>[A-Za-z_][A-Za-z0-9_]*)
-  | (?P<op>==>|==|=>|!=|<=|>=|&&|\|\||->|\.\.|::|[-+*/%<>=!(){}\[\],:;.])
+  | (?P<op>==>|==|=>|!=|<=|>=|&&|\|\||->|\.\.|::|[-+*/%<>=!(){}\[\],:;.|])
 """, re.X)
 _CONTRACT_FNS = ("is_some", "some_val", "is_ok", "ok_val", "err_val")
+_ESCAPES = {'"': '"', "\\": "\\", "n": "\n", "r": "\r", "t": "\t", "0": "\0"}
+
+
+def _decode_str(text, line):
+    """따옴표 안 소스 문자 -> UTF-8 bytes. 이스케이프는 \\\" \\\\ \\n \\r \\t \\0 만."""
+    body, out, i = text[1:-1], [], 0
+    while i < len(body):
+        c = body[i]
+        if c == "\\":
+            if i + 1 >= len(body) or body[i + 1] not in _ESCAPES:
+                raise OracleParseError("line %d: bad string escape" % line)
+            out.append(_ESCAPES[body[i + 1]])
+            i += 2
+            continue
+        if ord(c) < 0x20:
+            raise OracleParseError("line %d: control character in string literal" % line)
+        out.append(c)
+        i += 1
+    try:
+        return "".join(out).encode("utf-8")
+    except UnicodeEncodeError:
+        raise OracleParseError("line %d: string literal is not UTF-8" % line)
 
 
 def _lex(src):
@@ -101,6 +130,8 @@ def _lex(src):
         k, text = m.lastgroup, m.group()
         if k == "int":
             toks.append(("int", int(text.replace("_", "")), line))
+        elif k == "str":
+            toks.append(("str", _decode_str(text, line), line))
         elif k != "ws":
             toks.append((k, text, line))
         line += text.count("\n")
@@ -171,10 +202,22 @@ class _Parser(object):
             return "unit"
         if self.is_("["):
             self.next()
+            el = self.peek()
+            if el[0] == "id" and el[1] in ("u8", "bool"):
+                self.next()
+                if self.is_("|"):
+                    raise OracleUnsupported("refined array type")
+                self.eat("]")
+                return "array_u8" if el[1] == "u8" else "array_bool"
             self.eat("i64")
+            if self.is_("|"):
+                raise OracleUnsupported("refined array type")
             self.eat("]")
             return "arr"
         t = self.peek()
+        if t[0] == "id" and t[1] == "str":
+            self.next()
+            return "str"
         if t[0] == "id" and t[1] in ("i64", "bool"):
             self.next()
             return t[1]
@@ -275,13 +318,32 @@ class _Parser(object):
         while self.is_("requires") or self.is_("ensures"):
             kw = self.next()
             (req if kw[1] == "requires" else ens).append((self.imp(), kw[2]))
+        self.scopes = [dict(params)]
+        self.cur_ret = ret
         return _Fn(name, params, ret, req, ens, self.block(), line)
+
+    def lookup_ty(self, name):
+        for sc in reversed(self.scopes):
+            if name in sc:
+                return sc[name]
+        return None
+
+    @staticmethod
+    def narrow(e, ty, first):
+        """`alloc(n, v)` 가 타입 자리(let 오른쪽·재대입 오른쪽·return 뒤) 바로 오른쪽에 통째로 오면
+        그 배열 타입을 붙인다(5번째 칸). 그 밖은 [i64]."""
+        # 파서가 괄호를 노드로 남기지 않으므로 `(alloc(..))` 도 좁힌다(컴파일러 check.py alloc_hint_for 와 같음)
+        if ty in ("array_u8", "array_bool") and e[0] == "call" and e[1] == "alloc" and len(e[2]) == 2:
+            return e + (ty,)
+        return e
 
     def block(self):
         self.eat("{")
         out = []
+        self.scopes.append({})
         while not self.is_("}"):
             out.append(self.stmt())
+        self.scopes.pop()
         self.eat("}")
         return out
 
@@ -296,11 +358,13 @@ class _Parser(object):
                 self.next()
             name = self.ident()
             self.eat(":")
-            self.type_()
+            ty = self.type_()
             self.eat("=")
-            e = self.imp()
+            first = self.peek()
+            e = self.narrow(self.imp(), ty, first)
             self.eat(";")
-            return ("let", line, name, e)
+            self.scopes[-1][name] = ty
+            return ("let", line, name, e, ty)
         if self.is_("if"):
             return self.if_stmt()
         if self.is_("while"):
@@ -320,7 +384,8 @@ class _Parser(object):
             self.next()
             e = None
             if not self.is_(";"):
-                e = self.imp()
+                first = self.peek()
+                e = self.narrow(self.imp(), self.cur_ret, first)
             self.eat(";")
             return ("return", line, e)
         if self.is_("assert"):
@@ -339,7 +404,8 @@ class _Parser(object):
             if self.is_("=", 1):
                 name = self.ident()
                 self.next()
-                e = self.imp()
+                first = self.peek()
+                e = self.narrow(self.imp(), self.lookup_ty(name), first)
                 self.eat(";")
                 return ("assign", line, name, e)
             if self.is_(".", 1):
@@ -360,7 +426,7 @@ class _Parser(object):
                 self.eat("=")
                 e = self.imp()
                 self.eat(";")
-                return ("aassign", line, name, i, e)
+                return ("aassign", line, name, i, e, self.lookup_ty(name))
             if self.is_("(", 1):
                 e = self.imp()
                 self.eat(";")
@@ -500,6 +566,9 @@ class _Parser(object):
         if t[0] == "int":
             self.next()
             return ("int", t[1])
+        if t[0] == "str":
+            self.next()
+            return ("str", t[1])
         if self.is_("("):
             self.next()
             e = self.imp()
@@ -618,6 +687,18 @@ def _emod(x, y):
     return x % abs(y)
 
 
+def _boundary(s, i):
+    """G2_SPEC 4.4: UTF-8 문자 경계. 음수·n 초과는 false, 0 과 n 은 true, 그 사이는 연속 바이트(128..=191)가 아닐 때."""
+    if not isinstance(s, bytes):
+        raise OracleUnsupported("is_char_boundary on a non-str")
+    n = len(s)
+    if i < 0 or i > n:
+        return False
+    if i == 0 or i == n:
+        return True
+    return s[i] < 128 or s[i] >= 192
+
+
 def _cp(v):
     """값 복사: 배열(list)은 얕게(원소가 정수뿐), dict(Option/Result/구조체/열거형)는 깊게."""
     if isinstance(v, list):
@@ -695,6 +776,8 @@ class _Interp(object):
             return chk(e[1])
         if k == "bool":
             return e[1]
+        if k == "str":
+            return e[1]
         if k == "var":
             if e[1] not in env:
                 raise OracleUnsupported("unbound variable %s" % e[1])
@@ -723,6 +806,8 @@ class _Interp(object):
                 return bool(self.cev(e[3], env, lim)) if self.cev(e[2], env, lim) else True
             x = self.cev(e[2], env, lim)
             y = self.cev(e[3], env, lim)
+            if isinstance(x, bytes) or isinstance(y, bytes):
+                raise OracleUnsupported("operator %s on str in contract" % op)
             if op == "+":
                 return chk(x + y)
             if op == "-":
@@ -775,6 +860,10 @@ class _Interp(object):
         if k == "call":
             if e[1] == "len" and len(e[2]) == 1:
                 return chk(len(self.cev(e[2][0], env, lim)))
+            if e[1] == "is_char_boundary" and len(e[2]) == 2:
+                s = self.cev(e[2][0], env, lim)
+                i = self.cev(e[2][1], env, lim)
+                return _boundary(s, i)
             raise OracleUnsupported("call to %s in contract" % e[1])
         if k in ("forall", "exists"):
             _, name, lo_e, hi_e, body, _ln = e
@@ -839,6 +928,8 @@ class _Interp(object):
             return e[1]
         if k == "bool":
             return e[1]
+        if k == "str":
+            return e[1]
         if k == "var":
             if e[1] not in env:
                 raise OracleUnsupported("unbound variable %s" % e[1])
@@ -866,7 +957,7 @@ class _Interp(object):
                 raise OracleUnsupported("==> in code")
             x = self.ev(e[2], env)
             y = self.ev(e[3], env)
-            if isinstance(x, (dict, list)) or isinstance(y, (dict, list)):
+            if isinstance(x, (dict, list, bytes)) or isinstance(y, (dict, list, bytes)):
                 raise OracleUnsupported("operator %s on a non-scalar in code" % op)
             if op in ("+", "-", "*"):
                 v = x + y if op == "+" else x - y if op == "-" else x * y
@@ -887,12 +978,31 @@ class _Interp(object):
             if name == "len" and len(args) == 1:
                 return len(self.ev(args[0], env))
             if name == "copy" and len(args) == 1:
-                return list(self.ev(args[0], env))
+                src = self.ev(args[0], env)
+                return src if isinstance(src, bytes) else list(src)
+            if name == "is_char_boundary" and len(args) == 2:
+                s = self.ev(args[0], env)
+                i = self.ev(args[1], env)
+                return _boundary(s, i)
+            if name == "substr" and len(args) == 3:
+                s = self.ev(args[0], env)
+                lo = self.ev(args[1], env)
+                hi = self.ev(args[2], env)
+                if not isinstance(s, bytes):
+                    raise OracleUnsupported("substr on a non-str")
+                detail = "%d %d %d" % (lo, hi, len(s))
+                if not 0 <= lo <= hi <= len(s):
+                    raise _Fault("slice_range", detail)
+                if not (_boundary(s, lo) and _boundary(s, hi)):
+                    raise _Fault("slice_cut", detail)
+                return s[lo:hi]
             if name == "alloc" and len(args) == 2:
                 n = self.ev(args[0], env)
                 v = self.ev(args[1], env)
                 if n < 0 or n > 2 ** 40:
                     raise _Fault("overflow", "alloc")
+                if len(e) > 4 and e[4] == "array_u8" and not 0 <= v <= 255:
+                    raise _Fault("elem_range", str(v))
                 if n > ALLOC_SIM_MAX:
                     raise OracleUnsupported("alloc too large to simulate")
                 return [v] * n
@@ -980,6 +1090,8 @@ class _Interp(object):
             v = self.ev(s[4], env)
             if not 0 <= i < len(a):
                 raise _Fault("oob", "index")
+            if s[5] == "array_u8" and not 0 <= v <= 255:
+                raise _Fault("elem_range", str(v))
             a[i] = v
         elif k == "fassign":
             # q.a.b = e: 값만 계산(평가할 다른 피연산자 없음), 지역 구조체를 제자리에서 바꾼다
@@ -1045,7 +1157,7 @@ class _Interp(object):
                 self.fail("assert %s line %d" % (fn.name, line))
         elif k == "print":
             v = self.ev(s[2], env)
-            if isinstance(v, list):
+            if isinstance(v, (list, bytes)):
                 raise OracleUnsupported("print of array")
             self.output.append(format_value(v))
         elif k == "expr":
@@ -1064,6 +1176,8 @@ def format_value(v):
         return "()"
     if isinstance(v, bool):
         return "true" if v else "false"
+    if isinstance(v, bytes):        # str: 바이트 정수 list (Rust 드라이버의 {:?} of as_bytes())
+        return "[" + ", ".join(str(x) for x in v) + "]"
     if isinstance(v, list):
         return "[" + ", ".join(format_value(x) for x in v) + "]"
     if isinstance(v, dict):
@@ -1082,9 +1196,42 @@ def format_value(v):
     return str(v)
 
 
+def _str_arg(v):
+    """str 인자(Python str 또는 UTF-8 bytes) -> bytes. 서로게이트·잘못된 UTF-8 은 OracleUnsupported."""
+    if isinstance(v, str):
+        try:
+            return v.encode("utf-8")
+        except UnicodeEncodeError:
+            raise OracleUnsupported("str argument is not encodable as UTF-8")
+    if isinstance(v, bytes):
+        try:
+            v.decode("utf-8")
+        except UnicodeDecodeError:
+            raise OracleUnsupported("str argument is not valid UTF-8")
+        return v
+    raise OracleUnsupported("argument is not a str")
+
+
+def _prep_args(fn, args):
+    """str 매개변수의 Python str 입력을 UTF-8 bytes 로 바꾼 새 인자 list."""
+    return [_str_arg(a) if pt == "str" else a for (_pn, pt), a in zip(fn.params, args)]
+
+
 def _check_arg(prog, ty, v):
     """사용자 타입 인자 값이 프로그램 선언(이름·필드 순서·변이)과 맞는지 가볍게 확인. 안 맞으면 OracleUnsupported.
-    i64/bool/배열/Option/Result 는 확인하지 않는다(기존 동작 유지)."""
+    i64/bool/[i64]/Option/Result 는 확인하지 않는다(기존 동작 유지). array_u8·array_bool·str 은 값 형식을 확인한다."""
+    if ty == "array_u8":
+        if not (isinstance(v, list) and all(isinstance(x, int) and not isinstance(x, bool) and 0 <= x <= 255
+                                            for x in v)):
+            raise OracleUnsupported("argument is not a [u8] of 0..=255 ints")
+        return
+    if ty == "array_bool":
+        if not (isinstance(v, list) and all(isinstance(x, bool) for x in v)):
+            raise OracleUnsupported("argument is not a [bool] of bools")
+        return
+    if ty == "str":
+        _str_arg(v)
+        return
     if ty in prog.structs:
         if not (isinstance(v, dict) and v.get("struct") == ty):
             raise OracleUnsupported("argument is not struct %s" % ty)
@@ -1113,6 +1260,7 @@ def run(prog, fn_name, args, max_steps=2_000_000, mode="safe"):
     fn0 = prog.fns.get(fn_name)
     if fn0 is not None and len(args) == len(fn0.params):
         _check_args(prog, fn0, args)
+        args = _prep_args(fn0, args)
     it = _Interp(prog, max_steps, mode)
     kind, value, detail = "ok", None, ""
     try:
@@ -1128,6 +1276,7 @@ def check_requires(prog, fn_name, args):
     if fn is None or len(args) != len(fn.params):
         raise OracleUnsupported("bad function/arity")
     _check_args(prog, fn, args)
+    args = _prep_args(fn, args)
     it = _Interp(prog, 2_000_000)
     penv = dict((pn, _cp(a)) for (pn, _t), a in zip(fn.params, args))
     try:
@@ -1149,6 +1298,12 @@ def expected_stderr_prefix(result):
         return "pruv: arithmetic error: alloc length" if d == "alloc" else "pruv: arithmetic error: overflow in " + d
     if k == "div_domain":
         return "pruv: arithmetic error: division outside domain"
+    if k == "elem_range":
+        return "pruv: element out of range: %s (u8 0..=255)" % d
+    if k in ("slice_range", "slice_cut"):
+        lo, hi, n = d.split()
+        head = "string slice out of bounds" if k == "slice_range" else "UTF-8 boundary error"
+        return "pruv: %s: %s..%s (len %s)" % (head, lo, hi, n)
     return None
 
 
@@ -1510,6 +1665,147 @@ def _selftest_values(go):
             assert False, badargs
         except OracleUnsupported:
             pass
+
+    # 13) G2: [u8]·[bool]·str
+    def fails(src, fn, args, kind, prefix=None, detail=None, **kw):
+        r = go(src, fn, args, **kw)
+        assert r["kind"] == kind, r
+        if detail is not None:
+            assert r["detail"] == detail, r
+        if prefix is not None:
+            assert expected_stderr_prefix(r) == prefix, (r, expected_stderr_prefix(r))
+        return r
+
+    # 13a) 타입 문자열
+    pg = parse_program("fn f(a: [u8], b: [bool], s: str, c: [i64]) -> str ! alloc { return s; }")
+    assert pg.fns["f"].params == [("a", "array_u8"), ("b", "array_bool"), ("s", "str"), ("c", "arr")]
+    assert pg.fns["f"].ret == "str"
+    for bad in ["fn f(a: [u8 | 0..=9; <=4]) -> i64 { return 0; }", "fn f(o: Option<str>) -> i64 { return 0; }"]:
+        try:
+            parse_program(bad)
+            assert False, bad
+        except OracleUnsupported:
+            pass
+
+    # 13b) is_char_boundary 식(코드·계약), "aé" = 97 195 169, "a😀" = 97 240 159 152 128
+    bsrc = "fn b(s: str, i: i64) -> bool { return is_char_boundary(s, i); }"
+    for s, exp in [("aé", {-1: False, 0: True, 1: True, 2: False, 3: True, 4: False}),
+                   ("a\U0001F600", {1: True, 2: False, 3: False, 4: False, 5: True, 6: False}),
+                   ("", {-1: False, 0: True, 1: False})]:
+        for i, want in exp.items():
+            r = go(bsrc, "b", [s, i])
+            assert r["kind"] == "ok" and r["value"] is want, (s, i, r)
+    csrc = "fn c(s: str, i: i64) -> () requires is_char_boundary(s, i) { }"
+    pc = parse_program(csrc)
+    assert check_requires(pc, "c", ["aé", 1]) == "ok" and check_requires(pc, "c", ["aé", 2]) == "violated"
+    assert check_requires(pc, "c", ["aé", 3]) == "ok" and check_requires(pc, "c", ["aé", -1]) == "violated"
+    assert check_requires(pc, "c", ["aé", 2 ** 100]) == "violated"
+    assert go(csrc, "c", ["aé", 2])["kind"] == "requires_violated"
+    esrc = "fn e(s: str) -> i64 ensures forall k in 0..len(s): is_char_boundary(s, k) ==> s[k] != 169 { return 0; }"
+    assert go(esrc, "e", ["aé"])["contract_failures"] == []
+
+    # 13c) substr: slice_range 가 slice_cut 보다 먼저
+    ssrc = "fn sub(s: str, lo: i64, hi: i64) -> str ! alloc { return substr(s, lo, hi); }"
+    for mode in ("safe", "proof"):
+        r = go(ssrc, "sub", ["é", 0, 2], mode=mode)
+        assert r["kind"] == "ok" and r["value"] == b"\xc3\xa9" and format_value(r["value"]) == "[195, 169]", r
+        r = go(ssrc, "sub", ["é", 1, 1], mode=mode)
+        assert r["kind"] == "slice_cut" and r["detail"] == "1 1 2", r
+        assert expected_stderr_prefix(r) == "pruv: UTF-8 boundary error: 1..1 (len 2)"
+        r = go(ssrc, "sub", ["é", 1, 3], mode=mode)         # 끝이 범위 밖 + 시작이 경계 아님 -> range
+        assert r["kind"] == "slice_range" and r["detail"] == "1 3 2", r
+        assert expected_stderr_prefix(r) == "pruv: string slice out of bounds: 1..3 (len 2)"
+        assert go(ssrc, "sub", ["é", 2, 1], mode=mode)["kind"] == "slice_range"
+        assert go(ssrc, "sub", ["é", -1, 1], mode=mode)["kind"] == "slice_range"
+    assert go(ssrc, "sub", ["", 0, 0])["value"] == b""
+    assert format_value(b"") == "[]" and format_value(b"hi") == "[104, 105]"
+
+    # 13d) alloc: 길이 → 값 범위, 길이 0 이어도 값 검사, 좁은 타입 자리
+    asrc = "fn a(n: i64, v: i64) -> [u8] ! alloc { let x: [u8] = alloc(n, v); return x; }"
+    fails(asrc, "a", [-1, 300], "overflow", "pruv: arithmetic error: alloc length", "alloc")
+    fails(asrc, "a", [0, 300], "elem_range", "pruv: element out of range: 300 (u8 0..=255)", "300")
+    fails(asrc, "a", [2, -1], "elem_range", "pruv: element out of range: -1 (u8 0..=255)")
+    assert go(asrc, "a", [2, 255])["value"] == [255, 255]
+    assert go(asrc, "a", [0, 0])["value"] == []
+    fails("fn a(v: i64) -> [u8] ! alloc { return alloc(1, v); }", "a", [300], "elem_range")
+    fails("fn a(v: i64) -> [u8] ! alloc { let mut x: [u8] = alloc(1, 0); x = alloc(1, v); return x; }",
+          "a", [256], "elem_range")
+    # 좁은 자리가 아니면 [i64]
+    r = go("fn a(v: i64) -> i64 { let x: [u8] = copy(alloc(2, v)); return len(x) + x[0]; }", "a", [300])
+    assert r["kind"] == "ok" and r["value"] == 302, r
+    r = go("fn a(v: i64) -> i64 { let x: [i64] = alloc(2, v); return x[1]; }", "a", [300])
+    assert r["kind"] == "ok" and r["value"] == 300, r
+    bsrc2 = "fn ab(n: i64) -> [bool] ! alloc { let x: [bool] = alloc(n, true); x[0] = false; return x; }"
+    r = go(bsrc2, "ab", [2])
+    assert r["value"] == [False, True] and format_value(r["value"]) == "[false, true]", r
+    fails(bsrc2, "ab", [0], "oob", "pruv: index out of bounds:")
+
+    # 13e) [u8] 저장: 색인 → 값 범위
+    st = ("fn st(a: [u8], i: i64, v: i64) -> [u8] ! alloc { let mut b: [u8] = copy(a); b[i] = v; return b; }")
+    fails(st, "st", [[1, 2], 5, 300], "oob", "pruv: index out of bounds:")
+    fails(st, "st", [[1, 2], -1, 300], "oob")
+    fails(st, "st", [[1, 2], 1, 300], "elem_range", "pruv: element out of range: 300 (u8 0..=255)")
+    fails(st, "st", [[1, 2], 0, -1], "elem_range")
+    r = go(st, "st", [[1, 2], 1, 255])
+    assert r["value"] == [1, 255] and format_value(r["value"]) == "[1, 255]", r
+    r = go("fn st(a: [i64], i: i64, v: i64) -> [i64] ! alloc { let mut b: [i64] = copy(a); b[i] = v; return b; }",
+           "st", [[1, 2], 1, 300])
+    assert r["value"] == [1, 300], r
+
+    # 13f) 문자열 리터럴: 이스케이프·다중 바이트, str 연산
+    lit = r'fn lit() -> str ! alloc { return "\" \\ \n \r \t \0 ' + "é" + r'"; }'
+    r = go(lit, "lit", [])
+    assert r["value"] == b'" \\ \n \r \t \x00 \xc3\xa9', r
+    assert go('fn f() -> i64 { return len("é"); }', "f", [])["value"] == 2
+    assert go('fn f() -> str ! alloc { return "é"; }', "f", [])["value"] == b"\xc3\xa9"
+    assert format_value(go('fn f() -> str ! alloc { return "é"; }', "f", [])["value"]) == "[195, 169]"
+    assert go('fn f() -> i64 { return "é"[1]; }', "f", [])["value"] == 169
+    r = go('fn f() -> str ! alloc { let s: str = "a\U0001F600"; return substr(s, 1, 5); }', "f", [])
+    assert r["value"] == "\U0001F600".encode("utf-8"), r
+    fails('fn f() -> str ! alloc { let s: str = "a\U0001F600"; return substr(s, 1, 3); }', "f", [],
+          "slice_cut", "pruv: UTF-8 boundary error: 1..3 (len 5)")
+    for badlit in [r'fn f() -> str { return "\x"; }', 'fn f() -> str { return "abc; }',
+                   'fn f() -> str { return "a\nb"; }'.replace("\\n", "\n")]:
+        try:
+            parse_program(badlit)
+            assert False, badlit
+        except OracleParseError:
+            pass
+    try:
+        go('fn f(s: str) -> bool { return s == "a"; }', "f", ["a"])
+        assert False
+    except OracleUnsupported:
+        pass
+
+    # 13g) str 색인·len·copy, 입력 검사
+    ssrc2 = "fn g(s: str, i: i64) -> i64 { let t: str = copy(s); return len(t) * 1000 + t[i]; }"
+    assert go(ssrc2, "g", ["aé", 2])["value"] == 3169
+    fails(ssrc2, "g", ["aé", 3], "oob", "pruv: index out of bounds:")
+    fails(ssrc2, "g", ["aé", -1], "oob")
+    cnt = ("fn cnt(s: str) -> i64 { let mut n: i64 = 0; let mut i: i64 = 0; "
+           "while i < len(s) invariant 0 <= i && i <= len(s) decreases len(s) - i "
+           "{ if s[i] < 128 || s[i] >= 192 { n = n + 1; } i = i + 1; } return n; }")
+    r = go(cnt, "cnt", ["aé\U0001F600"])
+    assert r["kind"] == "ok" and r["value"] == 3 and not r["contract_failures"], r
+    assert go(cnt, "cnt", [b"a\xc3\xa9"])["value"] == 2
+    for badarg in ([[256]], [[True]], ["x"], [None]):
+        try:
+            go("fn f(a: [u8]) -> i64 { return len(a); }", "f", badarg)
+            assert False, badarg
+        except OracleUnsupported:
+            pass
+    for badarg in ([[1]], ["\ud800"], [b"\xff"], [3]):
+        try:
+            go("fn f(a: str) -> i64 { return len(a); }", "f", badarg)
+            assert False, badarg
+        except OracleUnsupported:
+            pass
+    try:
+        go("fn f(a: [bool]) -> i64 { return len(a); }", "f", [[1]])
+        assert False
+    except OracleUnsupported:
+        pass
+    assert go("fn f(a: [bool]) -> [bool] ! alloc { return copy(a); }", "f", [[True, False]])["value"] == [True, False]
 
     # 12) _cp 는 dict 도 깊게 복사하고, 지원하지 않는 구성은 OracleUnsupported, pruvc 는 import 하지 않는다
     d = {"struct": "P", "fields": {"x": 1}}

@@ -1,0 +1,36 @@
+// q04: length of the longest run of consecutive true elements
+fn longest_true_run(a: [bool]) -> i64
+  requires len(a) <= 1_000_000
+  ensures 0 <= result && result <= len(a)
+  ensures forall p in 0..len(a) + 1: forall q in p..len(a) + 1: (forall k in p..q: a[k]) ==> q - p <= result
+  ensures exists p in 0..len(a) + 1: p + result <= len(a) && (forall k in p..p + result: a[k])
+{
+  let mut best: i64 = 0;
+  let mut start: i64 = 0;
+  let mut cur: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant 0 <= cur && cur <= i
+    invariant 0 <= best && best <= i
+    invariant cur <= best
+    invariant forall k in i - cur..i: a[k]
+    invariant cur == i || !a[i - cur - 1]
+    invariant forall p in 0..i + 1: forall q in p..i + 1: (forall k in p..q: a[k]) ==> q - p <= best
+    invariant 0 <= start && start + best <= i
+    invariant forall k in start..start + best: a[k]
+    decreases len(a) - i
+  {
+    if a[i] {
+      cur = cur + 1;
+      if cur > best {
+        best = cur;
+        start = i + 1 - cur;
+      }
+    } else {
+      cur = 0;
+    }
+    i = i + 1;
+  }
+  return best;
+}
