@@ -291,6 +291,14 @@ def classify(case, expected):
     return "diff"
 
 
+def solver_wall_timeout(case):
+    """Did a solver attempt on either side end "unknown" because of the per-query wall-clock timeout (z3
+    reason_unknown "timeout")? Unlike an rlimit stop, that depends on the speed of the machine."""
+    return any(isinstance(a, dict) and a.get("result") == "unknown" and "timeout" in str(a.get("reason_unknown") or "")
+               for o in (case.py_obj, case.rs_obj) if o
+               for ob in o.get("obligations", []) for a in ob.get("attempts", []))
+
+
 def inference_wall_timeout(case):
     """Did either side stop a function's invariant inference at the wall-clock limit (status "timeout")?"""
     return any(isinstance(e, dict) and e.get("status") == "timeout"
@@ -504,6 +512,10 @@ def main(argv):
                 # Still differs, but a function's inference stopped at the 5 s wall clock: the result only says
                 # how fast this machine is (slow CI runner), not that the compilers disagree. Not a failure.
                 c.note = (c.note + " " if c.note else "") + "(inference wall-clock timeout: not comparable here)"
+            elif c.status == "flaky_unknown" and solver_wall_timeout(c):
+                # Same for a solver query that hit its wall-clock timeout on one side (busy CI runner; seen on
+                # bench p06 in CI run of 77fc943): sat/unsat on one side and "unknown (timeout)" on the other.
+                c.note = (c.note + " " if c.note else "") + "(solver wall-clock timeout: not comparable here)"
             elif c.status == "flaky_unknown":
                 c.status = "diff"              # still differs
             c.note = (c.note + " " if c.note else "") + "(after retry)"
