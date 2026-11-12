@@ -244,7 +244,8 @@ pub fn pick_bound_name(names: &HashSet<String>) -> String {
     format!("k_{}", i)
 }
 
-/// refine.py `_inout_operands` (G5 A1): names of the whole-array operands of the inout call arguments inside e.
+/// refine.py `_inout_operands` (G5 A1): names of the whole-array operands of the inout arguments of e itself (G5_SPEC 2.1:
+/// an inout call is always the complete expression of a statement, so nothing below it is visited).
 fn inout_operands(e: &Expr, out: &mut HashSet<String>) {
     if let Expr::Call(c) = e {
         for a in &c.args {
@@ -255,9 +256,6 @@ fn inout_operands(e: &Expr, out: &mut HashSet<String>) {
             }
         }
     }
-    for c in kids(e) {
-        inout_operands(c, out);
-    }
 }
 
 /// refine.py `_stmt_inout` (G5 A1): inout operands of the calls in the own expressions of one statement.
@@ -265,11 +263,6 @@ fn stmt_inout(st: &Stmt, out: &mut HashSet<String>) {
     match st {
         Stmt::Let(x) => inout_operands(&x.value, out),
         Stmt::Assign(x) => inout_operands(&x.value, out),
-        Stmt::FieldAssign(x) => inout_operands(&x.value, out),
-        Stmt::IndexAssign(x) => {
-            inout_operands(&x.index, out);
-            inout_operands(&x.value, out);
-        }
         Stmt::Return(x) => {
             if let Some(v) = &x.value {
                 inout_operands(v, out);

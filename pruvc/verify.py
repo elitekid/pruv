@@ -1748,22 +1748,18 @@ class FnVerifier:
 
     # ---------- G5 A1: inout writes in the changed-variable analysis ----------
     def _inout_ops(s, e, out):
-        """whole-array operands of the inout call arguments inside expression e"""
+        """whole-array operands of the inout arguments of e itself (an inout call is always the complete expression
+        of a statement, G5_SPEC 2.1, so nothing below it is visited)"""
         if isinstance(e, Call):
             for a in e.args:
                 if isinstance(a, InoutArg) and isinstance(a.expr, Var):
                     out.add(a.expr.name)
-        for c in _kids(e):
-            s._inout_ops(c, out)
 
     def call_writes(s, stmts, out):
         """names passed inout to calls in let initializers, assignments, returns and expression statements,
         recursively through statement blocks (empty for a program without inout)"""
         for st in stmts:
-            if isinstance(st, (Let, Assign, FieldAssign)):
-                s._inout_ops(st.value, out)
-            elif isinstance(st, IndexAssign):
-                s._inout_ops(st.index, out)
+            if isinstance(st, (Let, Assign)):
                 s._inout_ops(st.value, out)
             elif isinstance(st, Return):
                 if st.value is not None:

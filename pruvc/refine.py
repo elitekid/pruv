@@ -151,21 +151,17 @@ def pick_bound_name(names):
 
 
 def _inout_operands(e, out):
-    """G5 A1: names of the whole-array operands of the inout call arguments inside expression e"""
+    """G5 A1: names of the whole-array operands of the inout arguments of e itself (an inout call is always the
+    complete expression of a statement, G5_SPEC 2.1, so nothing below it is visited)"""
     if isinstance(e, Call):
         for a in e.args:
             if isinstance(a, InoutArg) and isinstance(a.expr, Var):
                 out.add(a.expr.name)
-    for c in _kids(e):
-        _inout_operands(c, out)
 
 
 def _stmt_inout(st, out):
     """G5 A1: inout operands of the calls in the own expressions of one statement (statement-boundary calls)"""
-    if isinstance(st, (Let, Assign, FieldAssign)):
-        _inout_operands(st.value, out)
-    elif isinstance(st, IndexAssign):
-        _inout_operands(st.index, out)
+    if isinstance(st, (Let, Assign)):
         _inout_operands(st.value, out)
     elif isinstance(st, Return):
         if st.value is not None:

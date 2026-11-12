@@ -341,7 +341,8 @@ fn assign_stmts<'s>(stmts: &'s [Stmt], out: &mut Vec<Asg<'s>>) {
     }
 }
 
-/// infer.py `_expr_inout` (G5 A1): whole-array operands of the inout call arguments inside expression e.
+/// infer.py `_expr_inout` (G5 A1): whole-array operands of the inout arguments of e itself (G5_SPEC 2.1: an inout call is
+/// always the complete expression of a statement, so nothing below it is visited).
 fn expr_inout(e: &Expr, out: &mut BTreeSet<String>) {
     if let Expr::Call(c) = e {
         for a in &c.args {
@@ -352,9 +353,6 @@ fn expr_inout(e: &Expr, out: &mut BTreeSet<String>) {
             }
         }
     }
-    for c in kids(e) {
-        expr_inout(c, out);
-    }
 }
 
 /// infer.py `_stmt_inout` (G5 A1): names written by inout calls in the own expressions of one statement.
@@ -363,11 +361,6 @@ fn stmt_inout(st: &Stmt) -> BTreeSet<String> {
     match st {
         Stmt::Let(x) => expr_inout(&x.value, &mut out),
         Stmt::Assign(x) => expr_inout(&x.value, &mut out),
-        Stmt::FieldAssign(x) => expr_inout(&x.value, &mut out),
-        Stmt::IndexAssign(x) => {
-            expr_inout(&x.index, &mut out);
-            expr_inout(&x.value, &mut out);
-        }
         Stmt::Return(x) => {
             if let Some(v) = &x.value {
                 expr_inout(v, &mut out);

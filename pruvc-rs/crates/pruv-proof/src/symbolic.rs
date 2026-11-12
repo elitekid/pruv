@@ -324,7 +324,8 @@ pub fn assigned(stmts: &[Stmt], out: &mut BTreeSet<String>) {
     }
 }
 
-/// verify.py `_inout_ops` (G5 A1): whole-array operands of the inout call arguments inside expression e.
+/// verify.py `_inout_ops` (G5 A1): whole-array operands of the inout arguments of e itself (G5_SPEC 2.1: an inout call is
+/// always the complete expression of a statement, so nothing below it is visited).
 fn inout_ops(e: &Expr, out: &mut BTreeSet<String>) {
     if let Expr::Call(c) = e {
         for a in &c.args {
@@ -335,9 +336,6 @@ fn inout_ops(e: &Expr, out: &mut BTreeSet<String>) {
             }
         }
     }
-    for c in kids(e) {
-        inout_ops(c, out);
-    }
 }
 
 /// verify.py `call_writes` (G5 A1): names passed inout to calls in let initializers, assignments, returns and expression
@@ -347,11 +345,6 @@ fn call_writes(stmts: &[Stmt], out: &mut BTreeSet<String>) {
         match st {
             Stmt::Let(x) => inout_ops(&x.value, out),
             Stmt::Assign(x) => inout_ops(&x.value, out),
-            Stmt::FieldAssign(x) => inout_ops(&x.value, out),
-            Stmt::IndexAssign(x) => {
-                inout_ops(&x.index, out);
-                inout_ops(&x.value, out);
-            }
             Stmt::Return(x) => {
                 if let Some(v) = &x.value {
                     inout_ops(v, out);
@@ -368,7 +361,7 @@ fn call_writes(stmts: &[Stmt], out: &mut BTreeSet<String>) {
                     call_writes(&a.body, out);
                 }
             }
-            Stmt::Assert(_) => {}
+            Stmt::Assert(_) | Stmt::FieldAssign(_) | Stmt::IndexAssign(_) => {}
         }
     }
 }

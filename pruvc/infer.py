@@ -139,22 +139,18 @@ def _assign_stmts(stmts, out):
 
 
 def _expr_inout(e, out):
-    """G5 A1: whole-array operands of the inout call arguments inside expression e"""
+    """G5 A1: whole-array operands of the inout arguments of e itself. The checker admits an inout call only as the
+    complete expression of a statement (G5_SPEC 2.1), so nothing below the top-level call is visited."""
     if isinstance(e, Call):
         for a in e.args:
             if isinstance(a, InoutArg) and isinstance(a.expr, Var):
                 out.add(a.expr.name)
-    for c in _kids(e):
-        _expr_inout(c, out)
 
 
 def _stmt_inout(st):
     """G5 A1: names written by inout calls in the own expressions of one statement (statement-boundary calls)"""
     out = set()
-    if isinstance(st, (Let, Assign, FieldAssign)):
-        _expr_inout(st.value, out)
-    elif isinstance(st, IndexAssign):
-        _expr_inout(st.index, out)
+    if isinstance(st, (Let, Assign)):
         _expr_inout(st.value, out)
     elif isinstance(st, Return):
         if st.value is not None:
