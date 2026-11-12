@@ -1,7 +1,4 @@
 {
-  "backends": [
-    "rust"
-  ],
   "flags_matrix": [
     [],
     [
@@ -13,5 +10,9 @@
     ]
   ],
   "exit": 0,
-  "trust_driver": "trust.rs"
+  "trust_driver": "trust.rs",
+  "llvm_exports": [
+    "pruv_abi_run"
+  ],
+  "trust_driver_llvm": "trust_llvm.rs"
 }

@@ -1,12 +1,12 @@
 {
-  "backends": [
-    "rust"
-  ],
   "flags_matrix": [
     [],
     [
       "--no-verify"
     ]
   ],
-  "exit": 0
+  "exit": 0,
+  "llvm_exports": [
+    "pruv_abi_run"
+  ]
 }

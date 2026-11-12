@@ -630,14 +630,3 @@ class TypeTable:
             if v.name == variant:
                 return i
         raise KeyError("%s::%s" % (ty.name, variant))
-
-
-def g8_unimplemented_error(prog):
-    """A1: stop emission after ordinary verification (unless verification is disabled)."""
-    for md in getattr(prog, "mods", ()):
-        if md.name == "std":
-            return PruvError("codegen", md.line, md.col, "unsupported_type",
-                             "G8 std code generation is not implemented yet",
-                             "remove the std import until G8 code generation is available",
-                             file=getattr(md, "file", None))
-    return None

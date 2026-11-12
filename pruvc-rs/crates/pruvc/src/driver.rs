@@ -268,16 +268,6 @@ fn compile(a: &Args) -> Result<(), Fail> {
             eprintln!("{{\"status\": \"skipped_no_verify\"}}");
         }
     }
-    // G8 A1/A2: LLVM paths (llvm, obj, exe, --also-llvm) stop at the emission guard after verification
-    // (or its explicit skip), like Python compile_file; the Rust source backend emits std (A2).
-    let g8_llvm = !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some();
-    if let Some(md) = g4.as_ref().filter(|_| g8_llvm).and_then(|g| g.modules[0].mods.iter().find(|md| md.name == "std")) {
-        return Err(Fail::Lang(vec![PruvError::new(
-            "codegen", md.line, md.col, "unsupported_type",
-            "G8 std code generation is not implemented yet",
-            "remove the std import until G8 code generation is available",
-        )]));
-    }
     // G7 A3: native targets cannot link the scoped-thread bridge.
     if g6_native {
         if let Some(e) = pruv_core::foreign::g7_target_error(&prog) { return Err(Fail::Lang(vec![e])); }

@@ -600,6 +600,68 @@ return with `spent > C` or a negative `C`, a call whose evaluated callee bound
 is negative, or counter overflow panics `pruv: cost exceeded` (exit 101). `--trust-callers` does not disable these
 checks; `assert` stays erased.
 
+## 6k. The standard module: std (G8)
+
+Full contract: `docs/G8_SPEC.md`. Examples: `examples/g8_std_clamp.pruv`, `examples/g8_std_index.pruv`,
+`examples/g8_std_modules/`.
+
+The compiler ships one module of twelve verified functions written in ordinary Pruv. It is source, not a
+precompiled library: the bundled file is parsed, checked and proved together with your program.
+
+```pruv
+mod std;
+
+pub fn bounded(x: i64) -> i64
+  ensures 0 <= result && result <= 100
+{
+  return crate::std::clamp_i64(x, 0, 100);
+}
+```
+
+- **One import, at the root.** `mod std;` in the root file loads the bundled module. It is the only way in: no `use`,
+  no bare `std::`, no implicit import. `mod std;` in a child is `parse/std_import_location`. Like any `mod`, it
+  switches the program to explicit visibility (section 6f), so a root `main` must be `pub`.
+- **Qualified calls.** Every module, root or child, calls `crate::std::<name>(...)`. A function of your own named
+  `min_i64` stays your own; plain names never fall back to std. Std functions may not appear in contracts: write the
+  property itself (`forall k in 1..len(a): a[k - 1] <= a[k]`), not `crate::std::is_sorted_i64(a)`.
+- **Contracts.** The twelve functions and their exact contracts are listed in `docs/G8_SPEC.md` section 4:
+  `min_i64`, `max_i64`, `clamp_i64` (requires `lo <= hi`), `abs_i64` (requires `x > i64::MIN`), `checked_add_i64`
+  and `checked_sub_i64` (return `None` exactly when the mathematical result leaves i64), `sum_i64`, `contains_i64`,
+  `index_of_i64` (the first matching index, `None` when absent), `is_sorted_i64` (nondecreasing, empty and singleton
+  arrays are sorted), `array_max_i64` (requires `len(a) > 0`) and `reverse_i64 ! alloc` (a fresh array; the input is
+  unchanged). A call proves the callee's `requires` on your arguments and then knows only its `ensures`, exactly as
+  for your own functions.
+- **Sum bounds.** `sum_i64` requires `len(a) <= 1_000_000` and every element in `-1_000_000_000..=1_000_000_000`.
+  This keeps every prefix of the left-to-right sum within 10^15. It rejects some inputs whose sum would fit; bounding
+  only the final sum would not be sound. For other inputs, write your own loop or use `checked_add_i64`.
+- **Proof on every compile.** A verified compilation that imports std proves all twelve bundled functions, used or
+  not, before generating anything. There is no cache, certificate or trusted copy. A std proof that fails or returns
+  unknown fails the whole compilation with its ordinary code (`verify/ensures`, `verify/overflow`, ...) and the file
+  label `@std/std.pruv`. Without `mod std;`, nothing is loaded and output is byte-identical to before.
+- **Errors.** Your calls report ordinary diagnostics: `verify/call_requires` for an unproved precondition (with a
+  counterexample), unknown-function resolution for a misspelled name, unknown-module resolution when `mod std;` is
+  missing. `parse/std_source` means the compiler's own bundled resource is missing or unreadable: reinstall the
+  compiler; do not create a `std.pruv` of your own.
+- **Safe mode.** `--no-verify` proves nothing (neither your code nor std) but keeps parsing and checking, checks
+  index and overflow at run time, and checks every std `requires` on every call (`pruv: requires violated:
+  crate::std::<name>`). `--trust-callers` only skips the root entry's `requires`; the checks inside std calls stay.
+- **Host wrappers.** Std functions are Pruv-only APIs. They are never exported as `pruv_abi_*` symbols or Rust
+  bindings, and both backends give them internal linkage. To call one from Rust or C, write a root `pub` wrapper
+  with a plain-value signature:
+  ```pruv
+  mod std;
+  pub fn safe_add(a: i64, b: i64) -> Option<i64> { return crate::std::checked_add_i64(a, b); }
+  ```
+  A wrapper may return the `reverse_i64` result; ownership passes to the host as for any owned array result.
+- **Migrating a module named std.** `std` is now reserved for the bundled module. If your project has a `std.pruv`
+  next to the root and declares `mod std;`, compilation fails with `parse/std_module_conflict` (even if the file is
+  identical to the bundle, and also for a directory or dangling link of that name). Rename the file and the
+  `crate::std::...` paths that used it, e.g. to `mystd.pruv` and `crate::mystd::...`. Other module names and local
+  identifiers named `std` are unchanged.
+- **Packaging.** The Python compiler reads `stdlib/std.pruv` next to its `pruvc/` package directory, never from the
+  working directory or an environment path, so copy or install both directories together. The Rust compiler embeds
+  the same file at build time; its binary needs no file next to it.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.

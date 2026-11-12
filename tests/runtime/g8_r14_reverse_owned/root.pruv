@@ -1,0 +1,2 @@
+mod std;
+pub fn run(a: [i64]) -> [i64] ! alloc { return crate::std::reverse_i64(a); }

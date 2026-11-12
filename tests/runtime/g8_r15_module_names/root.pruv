@@ -1,0 +1,8 @@
+mod std;
+mod left;
+mod right;
+
+pub fn run(x: i64) -> i64 {
+    let bounded: i64 = crate::std::clamp_i64(x, -100, 100);
+    return crate::left::min_i64(bounded) - crate::right::min_i64(bounded);
+}

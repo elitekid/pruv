@@ -648,7 +648,7 @@ def s5_erase(source):
 
 
 def g8_proof_jobs():
-    """Std proofs precede Rust emission or the LLVM staging guard."""
+    """Std proofs precede emission on both backends."""
     inventory = json.load(open(os.path.join(ROOT, "tests/g8/fixtures.json")))
     jobs = []
     for entry in inventory["proof"]:
@@ -660,13 +660,7 @@ def g8_proof_jobs():
                     root = _g4().copy_project(os.path.join(ROOT, entry["root"]), os.path.join(WORK, stem))
                     out = os.path.join(WORK, stem + ".out")
                     c = pruvc(root, out, flags, backend)
-                    ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
-                    ok = (c.returncode == 1 and len(ds) == 1 and
-                          ds[0].get("stage") == "codegen" and ds[0].get("code") == "unsupported_type" and
-                          ds[0].get("message") == "G8 std code generation is not implemented yet" and
-                          not os.path.exists(out))
-                    if backend == "rust":
-                        ok = c.returncode == 0 and os.path.exists(out)
+                    ok = c.returncode == 0 and os.path.exists(out)
                     return ok, c.stdout + c.stderr
                 jobs.append(safe("g8_proof/%s [%s/%s]" % (entry["name"], mode, backend), fn,
                                  {"sample": entry["root"], "backend": backend, "flags": flags,
@@ -695,30 +689,31 @@ def g8_frontend_jobs():
         for mode, flags in (("default", []), ("no-verify", ["--no-verify"]),
                             ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"]),
                             ("exe", ["--emit", "exe"]), ("obj", ["--emit", "obj"])):
+            if mode in ("exe", "obj") and _driver().kind == "py":
+                continue  # Native output is a Rust-compiler CLI feature.
             def fn(f=f, mode=mode, flags=flags, name=entry["name"]):
                 root = _g4().copy_project(f, os.path.join(WORK, "g8_" + name + "_" + mode))
                 out = os.path.join(WORK, "g8_" + name + "_" + mode)
+                if mode == "exe" and "pub fn main(" not in open(root).read():
+                    with open(root, "a") as fh:
+                        fh.write("\npub fn main() -> () {}\n")
                 # Native emits exist only for the LLVM backend.
                 for backend in (("llvm",) if mode in ("exe", "obj") else ("rust", "llvm")):
                     c = (pruvc(root, out + ".rs", flags) if backend == "rust" else
                          pruvc(root, out + ".bin", flags, "llvm") if mode in ("exe", "obj") else
                          pruvc_llvm(root, out + ".ll", out + "_llvm.rs", flags))
-                    ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
-                    if backend == "rust":
-                        if c.returncode != 0 or not os.path.exists(out + ".rs"):
+                    if mode in ("exe", "obj") and name == "catalog":
+                        ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
+                        if c.returncode != 1 or not any(d.get("code") == "foreign_target" for d in ds):
                             return False, c.stdout + c.stderr
-                        os.unlink(out + ".rs")
-                        continue
-                    if c.returncode != 1 or not any(d.get("stage") == "codegen" and
-                            d.get("code") == "unsupported_type" and
-                            d.get("message") == "G8 std code generation is not implemented yet" for d in ds):
+                        continue  # Existing G6 native-target restriction, unrelated to std.
+                    if c.returncode != 0:
                         return False, backend + ": " + c.stdout + c.stderr
-                    if any(os.path.exists(out + suffix) for suffix in (".rs", ".ll", "_llvm.rs", ".bin")):
-                        return False, "guard wrote an output artifact"
                 return True, ""
-            jobs.append(safe("g8_frontend/%s [%s]" % (entry["name"], mode), fn,
-                             {"sample": entry["root"], "backend": None, "flags": flags,
-                              "mode": mode, "group": "g8_frontend"}))
+            meta = {"sample": entry["root"], "backend": None, "flags": flags, "mode": mode, "group": "g8_frontend"}
+            if mode in ("exe", "obj"):
+                meta["only_compiler"] = "rs"  # rows file comparisons skip these on the Python compiler
+            jobs.append(safe("g8_frontend/%s [%s]" % (entry["name"], mode), fn, meta))
     def resources():
         c = subprocess.run([CD.pinned_python(), os.path.join(ROOT, "tests/g8/check_bundle.py"), WORK],
                            capture_output=True, text=True, timeout=120)
@@ -727,12 +722,21 @@ def g8_frontend_jobs():
                      {"sample": "tests/g8/check_bundle.py", "backend": None, "flags": [],
                       "mode": "resources", "group": "g8_frontend"}))
     def codegen_checks():
-        c = subprocess.run([CD.pinned_python(), os.path.join(ROOT, "tests/g8/check_codegen.py"), WORK],
+        c = subprocess.run([CD.pinned_python(), os.path.join(ROOT, "tests/g8/check_codegen.py"), WORK] +
+                           (["--rs", _driver().path] if _driver().kind == "rs" else []),
                            capture_output=True, text=True, timeout=120)
         return c.returncode == 0, c.stdout + c.stderr
     jobs.append(safe("g8_frontend/codegen", codegen_checks,
                      {"sample": "tests/g8/check_codegen.py", "backend": None, "flags": [],
                       "mode": "codegen", "group": "g8_frontend"}))
+    def llvm_checks():
+        c = subprocess.run([CD.pinned_python(), os.path.join(ROOT, "tests/g8/check_llvm.py"), WORK] +
+                           (["--rs", _driver().path] if _driver().kind == "rs" else []),
+                           capture_output=True, text=True, timeout=600)
+        return c.returncode == 0, c.stdout + c.stderr
+    jobs.append(safe("g8_frontend/llvm", llvm_checks,
+                     {"sample": "tests/g8/check_llvm.py", "backend": None, "flags": [],
+                      "mode": "inspection", "group": "g8_frontend"}))
     return jobs
 
 
@@ -955,8 +959,6 @@ def examples_jobs(backend):
     jobs = []
     for f in sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv"))):   # top level only: project companions are not examples
         base = os.path.basename(f)
-        if llvm and base in ("g8_std_clamp.pruv", "g8_std_index.pruv"):
-            continue
         if base == "bad_index.pruv":
             jobs.append(example_job(f, "bad", [], llvm, "examples/" + base + tag))
             continue
@@ -964,7 +966,7 @@ def examples_jobs(backend):
             jobs.append(example_job(f, mode, flags, llvm, "examples/%s [%s]%s" % (base, mode, tag)))
     # G4 A2: project examples; the root is the only input, the companion modules are loaded by the compiler
     # G5 A3: examples/g5_*/root.pruv project examples follow the same convention
-    for f in sorted(glob.glob(os.path.join(ROOT, "examples/g[45]_*/root.pruv"))):
+    for f in sorted(glob.glob(os.path.join(ROOT, "examples/g[458]_*/root.pruv"))):
         proj = os.path.basename(os.path.dirname(f))
         for mode, flags in EXAMPLE_MODES:
             jobs.append(example_job(f, mode, flags, llvm, "examples/%s/root.pruv [%s]%s" % (proj, mode, tag)))
@@ -985,8 +987,8 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
         proj = os.path.basename(j) == "spec.json"      # G4 A2 project: root.pruv + modules + main.rs + spec.json
         pruv, drv = (os.path.join(d, "root.pruv"), os.path.join(d, "main.rs")) if proj else \
             (os.path.join(d, t + ".pruv"), os.path.join(d, t + ".rs"))
-        if not llvm and "--no-verify" in flags and "--trust-callers" in flags and spec.get("trust_driver"):
-            drv = os.path.join(d, spec["trust_driver"])
+        if "--no-verify" in flags and "--trust-callers" in flags and spec.get("trust_driver"):
+            drv = os.path.join(d, spec.get("trust_driver_llvm", spec["trust_driver"]) if llvm else spec["trust_driver"])
         if llvm and proj and os.path.exists(os.path.join(d, "main_llvm.rs")):
             # G4 A3: a project may need a llvm-only host driver (raw `pruv_abi_*` calls with invalid representations)
             drv = os.path.join(d, "main_llvm.rs")
@@ -1371,7 +1373,8 @@ def main():
                 # g8_proof mixes per-backend proof rows with one backend-free bundle row.
                 for b in ([None] if g in null_backend else list(backends) + ([None] if g == "g8_proof" else [])):
                     scope.add((g, b))
-        in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
+        in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope
+                    and r.get("only_compiler") in (None, DRIVER.name)]
         outside = len(saved_rows) - len(in_scope)
         saved_compilers = set(r.get("compiler") for r in in_scope)
         with_c = saved_compilers == {DRIVER.name}

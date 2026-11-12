@@ -225,13 +225,19 @@
     "tests/runtime/g8_r09_index_of_i64/root.pruv",
     "tests/runtime/g8_r10_is_sorted_i64/root.pruv",
     "tests/runtime/g8_r11_array_max_i64/root.pruv",
-    "tests/runtime/g8_r12_reverse_i64/root.pruv"
+    "tests/runtime/g8_r12_reverse_i64/root.pruv",
+    "tests/runtime/g8_r13_option_abi/root.pruv",
+    "tests/runtime/g8_r14_reverse_owned/root.pruv",
+    "tests/runtime/g8_r15_module_names/root.pruv",
+    "tests/runtime/g8_r16_trust_internal/root.pruv"
   ],
   "examples": [
     "examples/g8_std_clamp.pruv",
-    "examples/g8_std_index.pruv"
+    "examples/g8_std_index.pruv",
+    "examples/g8_std_modules/root.pruv"
   ],
   "codegen_checks": [
-    "tests/g8/check_codegen.py"
+    "tests/g8/check_codegen.py",
+    "tests/g8/check_llvm.py"
   ]
 }

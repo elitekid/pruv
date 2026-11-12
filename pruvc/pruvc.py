@@ -47,7 +47,7 @@ from vparser import parse, RUST_KEYWORDS  # noqa: E402
 from modules import load_program  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust, gen_rust_ex  # noqa: E402
-from typeinfo import g2_unimplemented_error, first_g3_use, g8_unimplemented_error  # noqa: E402
+from typeinfo import g2_unimplemented_error, first_g3_use  # noqa: E402
 from mono import specialize  # noqa: E402
 from foreign import g6_unimplemented_error, g7_target_error  # noqa: E402
 
@@ -88,9 +88,6 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    g8err = g8_unimplemented_error(prog) if backend == "llvm" or also_llvm else None
-    if g8err is not None:
-        return [g8err]
     g7err = g7_target_error(prog) if emit in ("exe", "obj") else None
     if g7err is not None:
         return [g7err]

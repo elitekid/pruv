@@ -71,7 +71,9 @@ def main(work):
     c = compile_with(package / "pruvc/pruvc.py")
     assert c.returncode == 0 and (work / "out").exists(), c.stdout + c.stderr
     (work / "out").unlink()
-    expect("codegen", "unsupported_type", "root.pruv", "G8 std code generation is not implemented yet")
+    c = compile_with(package / "pruvc/pruvc.py", backend="llvm")
+    assert c.returncode == 0 and (work / "out").exists(), c.stdout + c.stderr
+    (work / "out").unlink()
     root.write_text("mod child;\nmod std;\nmod after;\n")
     (app / "child.pruv").write_text("pub fn f() -> () {}")
     (app / "after.pruv").write_text("pub fn f() -> () {}")

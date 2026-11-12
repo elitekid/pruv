@@ -1,0 +1,12 @@
+{
+  "flags_matrix": [
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "exit": 0,
+  "llvm_exports": [
+    "pruv_abi_run"
+  ]
+}

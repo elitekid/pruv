@@ -5,7 +5,6 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-GUARD = "G8 std code generation is not implemented yet"
 # A bound present in both sum bodies' invariants but absent from the public contract.
 CLIENT = """mod std;
 pub fn f(a: [i64]) -> ()
@@ -48,13 +47,8 @@ def main(work):
             out.unlink()
         return errors
 
-    def guard(errors, backend="rust"):
-        if backend == "rust":
-            assert not errors, [vars(e) for e in errors]
-            return
-        assert len(errors) == 1, errors
-        e = errors[0]
-        assert (e.stage, e.code, e.message) == ("codegen", "unsupported_type", GUARD), vars(e)
+    def success(errors, backend="rust"):
+        assert not errors, [vars(e) for e in errors]
 
     # Time only ordinary verification of the import-only program in one compile.
     ordinary_verify = verify.verify_program
@@ -69,14 +63,14 @@ def main(work):
 
     verify.verify_program = timed
     try:
-        guard(compile())
+        success(compile())
     finally:
         verify.verify_program = ordinary_verify
     assert len(durations) == 1
     print("bundle: 12 bodies, inference disabled, %.6f seconds" % durations[0])
     for text in alias_roots(app, bundle):
         root.write_text(text)
-        guard(compile())
+        success(compile())
     root.write_text("mod std;\n")
 
     # The unused last function must be re-proved even after a prior successful compile,
@@ -96,7 +90,7 @@ def main(work):
     verify.verify_program = forbidden
     try:
         for backend in ("rust", "llvm"):
-            guard(compile(backend, verified=False), backend)
+            success(compile(backend, verified=False), backend)
     finally:
         verify.verify_program = ordinary_verify
 
@@ -126,7 +120,7 @@ def main(work):
         bundle.write_text(implementation)
         root.write_text("mod std;\n")
         for backend in ("rust", "llvm"):
-            guard(compile(backend), backend)
+            success(compile(backend), backend)
         root.write_text(CLIENT)
         program = load_program(str(root))
         check(program)
@@ -204,20 +198,16 @@ def rs_main(work, binary):
         assert ds, (c.stdout, c.stderr)
         return ds
 
-    def guard(ds, backend="llvm"):
-        if backend == "rust":
-            assert ds is None, ds
-            return
-        assert ds and len(ds) == 1, ds
-        assert (ds[0]["stage"], ds[0]["code"], ds[0]["message"]) == ("codegen", "unsupported_type", GUARD), ds
+    def success(ds, backend="llvm"):
+        assert ds is None, ds
 
     root.write_text("mod std;\n")
     for backend in ("rust", "llvm"):
-        guard(compile(exe, backend), backend)
+        success(compile(exe, backend), backend)
     aliases = 0
     for text in alias_roots(app, ROOT / "stdlib/std.pruv"):
         root.write_text(text)
-        guard(compile(exe), "rust")
+        success(compile(exe), "rust")
         aliases += 1
 
     broken = variant("pruvc_broken", source.replace(b"ensures len(result) == len(a)",
@@ -230,7 +220,7 @@ def rs_main(work, binary):
             assert any(d["code"] == "ensures" and d["file"] == "@std/std.pruv" for d in ds), ds
     root.write_text("mod std;\npub fn f() -> () { assert false; }\n")
     for backend in ("rust", "llvm"):
-        guard(compile(broken, backend, verified=False), backend)
+        success(compile(broken, backend, verified=False), backend)
 
     # Same distinct sum body as the Python check, with the indentation trimmed to keep the length.
     alternative = variant("pruvc_alternative", source.replace(b"s = s + a[i];\n    i = i + 1;",
@@ -239,7 +229,7 @@ def rs_main(work, binary):
     for implementation in (exe, alternative):
         root.write_text("mod std;\n")
         for backend in ("rust", "llvm"):
-            guard(compile(implementation, backend), backend)
+            success(compile(implementation, backend), backend)
         root.write_text(CLIENT)
         ds = compile(implementation)
         assert all(d["file"] == "root.pruv" and d["code"] == "assert" for d in ds), ds
