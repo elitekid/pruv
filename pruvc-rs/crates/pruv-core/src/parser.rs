@@ -378,12 +378,49 @@ impl Parser {
         Ok(Tok { kind: Kind::Id, val: format!("crate::{}", segs.join("::")), line: t.line, col: t.col, end: 0 })
     }
 
+    fn inout_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
+        PruvError::new("parse", tok.line, tok.col, "inout_syntax", msg, fix)
+    }
+
+    /// G5: at an `inout` that marks a call argument: the token after it starts an operand (a name, number, string, or a
+    /// keyword/path that can start an expression). `inout` followed by an operator, `(`, `[`, `.`, `,` or `)` stays an
+    /// ordinary identifier.
+    fn is_inout_marker(&self) -> bool {
+        let t = self.peek(0);
+        if !(t.kind == Kind::Id && t.val == "inout") {
+            return false;
+        }
+        let n = self.peek(1);
+        if n.kind == Kind::Id || n.kind == Kind::Int || n.kind == Kind::Str {
+            return true;
+        }
+        n.kind == Kind::Kw && matches!(n.val.as_str(), "true" | "false" | "None" | "Some" | "Ok" | "Err" | "crate")
+    }
+
+    /// G5: one call argument: an expression, or the marker `inout <operand>` (one postfix expression, kept as written so
+    /// the checker can reject fields, elements and calls as places).
+    fn arg_expr(&mut self) -> R<Expr> {
+        if self.is_inout_marker() {
+            let t = self.next();
+            let e = self.postfix()?;
+            if !(self.at(",", 0) || self.at(")", 0)) {
+                return Err(self.inout_syntax(
+                    &t,
+                    "malformed inout argument: the marker takes a single operand",
+                    "write `inout name`; compute other values into a local first",
+                ));
+            }
+            return Ok(Expr::InoutArg(InoutArg { line: t.line, col: t.col, expr: Box::new(e), ty: None }));
+        }
+        self.expr()
+    }
+
     /// At `(`: the argument list of a call or constructor.
     fn call_args(&mut self) -> R<Vec<Expr>> {
         self.bump();
         let mut args = Vec::new();
         while !self.at(")", 0) {
-            args.push(self.expr()?);
+            args.push(self.arg_expr()?);
             if !self.at(")", 0) {
                 self.expect(",")?;
             }
@@ -451,11 +488,11 @@ impl Parser {
                 return Ok(Expr::StructLit(StructLit { line, col, name: path, fields, ty: None, targs: Some(targs), inst: None }));
             }
             let args = self.call_args()?;
-            return Ok(Expr::Call(Call { line, col, name: path, args, ty: None, targs: Some(targs), inst: None }));
+            return Ok(Expr::Call(Call { line, col, name: path, args, ty: None, targs: Some(targs), inst: None, old: None }));
         }
         if self.at("(", 0) {
             let args = self.call_args()?;
-            return Ok(Expr::Call(Call { line, col, name: path, args, ty: None, targs: None, inst: None }));
+            return Ok(Expr::Call(Call { line, col, name: path, args, ty: None, targs: None, inst: None, old: None }));
         }
         if self.at("{", 0) && last_upper {
             let fields = self.struct_inits()?;
@@ -905,19 +942,42 @@ impl Parser {
         let mut params = Vec::new();
         while !self.at(")", 0) {
             let mut take = false;
+            let mut mode_tok: Option<Tok> = None;
             let t0 = self.peek(0).clone();
             if t0.kind == Kind::Id && t0.val == "take" && self.peek(1).kind == Kind::Id {
                 if self.peek(2).kind == Kind::Op && self.peek(2).val == ":" {
                     self.bump();
                     take = true;
+                } else if self.peek(1).val == "inout" && self.peek(2).kind == Kind::Id {
+                    // G5: `take inout name`
+                    return Err(self.inout_syntax(
+                        &t0,
+                        "a parameter cannot be both take and inout",
+                        "keep one mode: `take name: Type` or `inout name: [i64]`",
+                    ));
                 } else {
                     return Err(self.foreign_syntax(&t0, "malformed take parameter", "write `take name: Type`"));
                 }
+            } else if t0.kind == Kind::Id && t0.val == "inout" && !(self.peek(1).kind == Kind::Op && self.peek(1).val == ":") {
+                // G5: contextual `inout` before a parameter name (`inout: T` is an ordinary parameter named inout)
+                let mt = self.next();
+                let n1 = self.peek(0).clone();
+                if n1.kind != Kind::Id {
+                    return Err(self.inout_syntax(&mt, "inout needs a parameter name", "write `inout name: [i64]`"));
+                }
+                if (n1.val == "take" || n1.val == "inout") && self.peek(1).kind == Kind::Id {
+                    return Err(self.inout_syntax(
+                        &n1,
+                        "a parameter has at most one mode",
+                        "keep one mode: `take name: Type` or `inout name: [i64]`",
+                    ));
+                }
+                mode_tok = Some(mt);
             }
             let pn = self.ident()?.val;
             self.expect(":")?;
             let (ty, refine) = self.type_r(true)?;
-            params.push(Param { name: pn, ty, refine, take });
+            params.push(Param { name: pn, ty, refine, take, mode_pos: mode_tok.map(|t| (t.line, t.col)) });
             if !self.at(")", 0) {
                 self.expect(",")?;
             }
@@ -1666,13 +1726,13 @@ impl Parser {
                 self.bump();
                 let mut args = Vec::new();
                 while !self.at(")", 0) {
-                    args.push(self.expr()?);
+                    args.push(self.arg_expr()?); // G5: `inout name` marker
                     if !self.at(")", 0) {
                         self.expect(",")?;
                     }
                 }
                 self.expect(")")?;
-                return Ok(Expr::Call(Call { line, col, name: t.val.clone(), args, ty: None, targs, inst: None }));
+                return Ok(Expr::Call(Call { line, col, name: t.val.clone(), args, ty: None, targs, inst: None, old: None }));
             }
             return Ok(Expr::Var(Var { line, col, name: t.val, ty: None }));
         }

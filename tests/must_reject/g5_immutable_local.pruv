@@ -1,0 +1,9 @@
+// G5: an immutable local cannot be passed inout
+fn set_at(inout a: [i64], i: i64, v: i64) -> () {
+  a[i] = v;
+}
+
+fn demo() -> () ! alloc {
+  let data: [i64] = alloc(2, 0);
+  set_at(inout data, 0, 7);
+}

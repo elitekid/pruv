@@ -1,0 +1,5 @@
+// G5: old takes exactly one argument
+fn f(inout a: [i64]) -> ()
+  ensures len(old(a, a)) == len(a)
+{
+}

@@ -908,6 +908,7 @@ impl<'a> Rs<'a> {
                 self.rexpr(&mut x.body)?;
             }
             Expr::FieldAccess(x) => self.rexpr(&mut x.base)?,
+            Expr::InoutArg(x) => self.rexpr(&mut x.expr)?, // G5 A0
             Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
         }
         Ok(())

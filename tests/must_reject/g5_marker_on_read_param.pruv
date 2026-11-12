@@ -1,0 +1,12 @@
+// G5: the `inout` marker on an argument of a read-only parameter
+fn first(a: [i64]) -> i64
+  requires len(a) >= 1
+{
+  return a[0];
+}
+
+fn demo() -> i64 ! alloc {
+  let mut data: [i64] = alloc(2, 0);
+  let x: i64 = first(inout data);
+  return x;
+}

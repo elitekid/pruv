@@ -54,7 +54,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse as pruv_parse  # noqa: E402
 from modules import load_program  # noqa: E402  (G4: the file-taking entry point; a legacy root is plain parse(src))
 import check as check_mod  # noqa: E402
-from typeinfo import format_type, g9_unimplemented_error  # noqa: E402
+from typeinfo import format_type, g9_unimplemented_error, g5_unimplemented_error  # noqa: E402
 from foreign import g6_unimplemented_error  # noqa: E402
 
 AST_SCHEMA = "pruv-ast-v1"
@@ -82,6 +82,7 @@ NODE_FIELDS = {
     "IsVariant": ("value", "enum_name", "variant", "ty"),
     "VariantField": ("value", "enum_name", "variant", "field", "ty"),
     "Move": ("name", "ty"),      # G6 A0: `move name`
+    "InoutArg": ("expr", "ty"),  # G5 A0: call-argument marker `inout name`
     # declarations and helper nodes
     "FieldDecl": ("name", "type"),
     "VariantDecl": ("name", "fields"),
@@ -179,6 +180,13 @@ def _g3_extras(v, out):
     fo = getattr(v, "foreign", None)
     if fo is not None:
         out["foreign"] = {"path": fo["path"], "line": str(fo["line"]), "col": str(fo["col"])}
+    # G5 A0, written only when present: Param.mode ("inout") and, in the check dump, Call.old
+    # ({"param": name, "index": "i"}: the resolved old(a) operand and its parameter position)
+    if getattr(v, "mode", None) is not None:
+        out["mode"] = v.mode
+    od = getattr(v, "old", None)
+    if od is not None:
+        out["old"] = {"param": od["param"], "index": str(od["index"])}
     # G9 A0, written only when present: Function.decreases (While.decreases is a dataclass field, not this)
     if type(v).__name__ == "Function" and getattr(v, "decreases", None) is not None:
         out["decreases"] = ser(v.decreases)
@@ -306,6 +314,10 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
     try:
         prog = load_program(path)
         check_mod.check(prog, externs)
+        # G5 A0: the staging guard of pruvc.compile_file (inout programs stop before verification and emission)
+        g5err = g5_unimplemented_error(prog)
+        if g5err is not None:
+            raise g5err
         # G9 A2: the rust backend (the default code generator here) lowers G9 programs; no guard
         # G6 A1: no guard here; G6 programs get real traces (G6_SPEC 11.1)
         if verify_on:
@@ -423,6 +435,10 @@ def discover(mode):
     import_g4 = _g4_projects()
     for r in import_g4.all_roots():
         items.append((r, []))
+    # G5 A0: tests/g5 frontend roots and the rejection project (the flat tests/must_reject/g5_*.pruv are listed above)
+    for r in import_g4.g5_roots():
+        if not (r.startswith("tests/must_reject/") and r.endswith(".pruv") and r.count("/") == 2):
+            items.append((r, []))
     if mode == "all":
         have = set(r for r, _ in items)
         for top in ("tests", "bench"):

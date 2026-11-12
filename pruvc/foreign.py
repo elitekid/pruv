@@ -98,6 +98,10 @@ def check_foreign_decl(f, externs):
         _err(f, "foreign_signature", "result type %s is not allowed on a trusted rust fn" % type_name(f.ret),
              "return i64, bool, (), Option<i64|bool> or Result<i64|bool>; convert other results in a Rust adapter")
     for p in f.params:
+        if p.mode is not None:     # G5 A0: rejected whether or not the declaration is ever called
+            _err(_Pos(p.mode_pos[0], p.mode_pos[1], getattr(p, "file", None) or getattr(f, "file", None)),
+                 "foreign_signature", "inout parameter %s is not allowed on a trusted rust fn" % p.name,
+                 "remove `inout`; a foreign function only reads its arguments")
         if p.take:
             _err(f, "foreign_signature", "take parameter %s is not allowed on a trusted rust fn" % p.name,
                  "remove `take`; a foreign function only reads its arguments")

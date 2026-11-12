@@ -1,0 +1,27 @@
+// G5 A0 frontend: marked calls inside loop bodies and branches
+fn set_at(inout a: [i64], i: i64, value: i64) -> ()
+  requires 0 <= i && i < len(a)
+  ensures a[i] == value
+{
+  a[i] = value;
+}
+
+fn fill(inout a: [i64], v: i64) -> () {
+  let n: i64 = len(a);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    decreases n - i
+  {
+    set_at(inout a, i, v);
+    i = i + 1;
+  }
+}
+
+fn fill_twice(inout a: [i64], flip: bool) -> () {
+  if flip {
+    fill(inout a, 1);
+  } else {
+    fill(inout a, 2);
+  }
+}

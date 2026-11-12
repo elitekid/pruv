@@ -1,0 +1,4 @@
+// G5: the borrowed array cannot be stored in a local without copy(a)
+fn keep(inout a: [i64]) -> () {
+  let b: [i64] = a;
+}

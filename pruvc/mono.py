@@ -408,6 +408,9 @@ class _Mono:
             q = Param(p.name, self.ty(p.type), self.cp(p.refine))
             if p.take:
                 q.take = True     # G6
+            if p.mode is not None:     # G5 A0: the mode survives specialization
+                q.mode = p.mode
+                q.mode_pos = p.mode_pos
             params.append(q)
         new = Function(line=f.line, col=f.col, name=name, params=params,
                        ret=self.ty(f.ret), effects=list(f.effects), requires=self.cp(f.requires),

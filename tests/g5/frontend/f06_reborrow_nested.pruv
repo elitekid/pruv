@@ -1,0 +1,24 @@
+// G5 A0 frontend: an inout parameter reborrowed by nested inout callees; the length is read before the call
+fn set_at(inout a: [i64], i: i64, value: i64) -> ()
+  requires 0 <= i && i < len(a)
+  ensures a[i] == value
+{
+  a[i] = value;
+}
+
+fn set_ends(inout a: [i64], x: i64, y: i64) -> ()
+  requires len(a) >= 2
+  ensures a[0] == x
+  ensures a[len(a) - 1] == y
+{
+  let n: i64 = len(a);
+  set_at(inout a, 0, x);
+  set_at(inout a, n - 1, y);
+}
+
+fn set_ends_twice(inout a: [i64], x: i64, y: i64) -> ()
+  requires len(a) >= 2
+{
+  set_ends(inout a, x, y);
+  set_ends(inout a, y, x);
+}

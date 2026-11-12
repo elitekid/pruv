@@ -224,6 +224,11 @@ fn compile(a: &Args) -> Result<(), Fail> {
         None => pruv_core::check::check_with_externs(&mut prog, &a.rust_extern),
     };
     let tt = checked.map_err(|e| Fail::Lang(vec![e]))?;
+    // G5 A0 staging guard (Python compile_file): inout parameters are frontend-only until the verify (A1) and codegen (A2, A3)
+    // batches; a checked program that uses them stops here, with and without verification, before any output is written.
+    if let Some(e) = pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen") {
+        return Err(Fail::Lang(vec![e]));
+    }
     // G4 A1: the staging guard of explicit visibility mode now comes after the proof (below), like Python compile_file.
     // G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.
     // G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm) lowers

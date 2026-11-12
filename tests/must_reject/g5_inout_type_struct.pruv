@@ -1,0 +1,5 @@
+// G5: a struct cannot be an inout parameter
+struct Point { x: i64 }
+
+fn shift(inout p: Point) -> () {
+}

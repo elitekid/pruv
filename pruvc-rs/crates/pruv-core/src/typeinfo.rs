@@ -131,6 +131,7 @@ fn g2_cand_expr(e: &Expr, lits: bool, best: &mut Option<(i64, i64, String)>) {
         }
         Expr::Var(_) => {}
         Expr::Move(_) => {} // G6 A0
+        Expr::InoutArg(x) => g2_cand_expr(&x.expr, lits, best), // G5 A0
         Expr::Unary(x) => g2_cand_expr(&x.operand, lits, best),
         Expr::Binary(x) => {
             g2_cand_expr(&x.left, lits, best);
@@ -332,6 +333,7 @@ fn g3_expr(e: &Expr, out: &mut G3Cands) {
     };
     match e {
         Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+        Expr::InoutArg(x) => g3_expr(&x.expr, out), // G5 A0
         Expr::Unary(x) => g3_expr(&x.operand, out),
         Expr::Binary(x) => {
             g3_expr(&x.left, out);
@@ -484,6 +486,7 @@ pub fn g3_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diag
 fn g9_size_expr(e: &Expr, out: &mut Vec<(i64, i64)>) {
     match e {
         Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+        Expr::InoutArg(x) => g9_size_expr(&x.expr, out), // G5 A0
         Expr::Unary(x) => g9_size_expr(&x.operand, out),
         Expr::Binary(x) => {
             g9_size_expr(&x.left, out);
@@ -638,6 +641,137 @@ pub fn g9_unimplemented_error(prog: &Program, stage: &str, layer: &str) -> Optio
         "unsupported_type",
         format!("G9 recursive values and aggregate buffer fields are not implemented by the {} yet", layer),
         "avoid recursion, decreases, size, recursive types and array/str fields for now",
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// G5 A0: inout parameters. `program_uses_inout` (parse level) drives the contextual `old` builtin; the staging guard
+// stops every checked program that uses inout before verification and emission (G5_SPEC 9, batches A0-A3).
+// ---------------------------------------------------------------------------
+
+/// Calls `f` on every expression node under `e` (pre-order), operands included (Python generic dataclass walk).
+fn g5_walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
+    f(e);
+    for k in crate::refine::kids(e) {
+        g5_walk_expr(k, f);
+    }
+}
+
+/// Calls `f` on every expression node of the statements (Python generic dataclass walk).
+fn g5_walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
+    for s in stmts {
+        match s {
+            Stmt::Let(l) => g5_walk_expr(&l.value, f),
+            Stmt::Assign(a) => g5_walk_expr(&a.value, f),
+            Stmt::IndexAssign(a) => {
+                g5_walk_expr(&a.index, f);
+                g5_walk_expr(&a.value, f);
+            }
+            Stmt::If(i) => {
+                g5_walk_expr(&i.cond, f);
+                g5_walk_stmts(&i.then, f);
+                g5_walk_stmts(&i.els, f);
+            }
+            Stmt::While(w) => {
+                g5_walk_expr(&w.cond, f);
+                for inv in &w.invariants {
+                    g5_walk_expr(inv, f);
+                }
+                g5_walk_expr(&w.decreases, f);
+                g5_walk_stmts(&w.body, f);
+            }
+            Stmt::Return(r) => {
+                if let Some(v) = &r.value {
+                    g5_walk_expr(v, f);
+                }
+            }
+            Stmt::Assert(a) => g5_walk_expr(&a.cond, f),
+            Stmt::ExprStmt(e) => g5_walk_expr(&e.expr, f),
+            Stmt::FieldAssign(x) => g5_walk_expr(&x.value, f),
+            Stmt::Match(m) => {
+                g5_walk_expr(&m.scrutinee, f);
+                for arm in &m.arms {
+                    g5_walk_stmts(&arm.body, f);
+                }
+            }
+        }
+    }
+}
+
+/// Calls `f` on every expression node of a function: requires, ensures, body, decreases (Python order).
+fn g5_walk_fn(fun: &Function, f: &mut dyn FnMut(&Expr)) {
+    for e in &fun.requires {
+        g5_walk_expr(e, f);
+    }
+    for e in &fun.ensures {
+        g5_walk_expr(e, f);
+    }
+    g5_walk_stmts(&fun.body, f);
+    if let Some(d) = &fun.decreases {
+        g5_walk_expr(d, f);
+    }
+}
+
+/// True if some parameter has the inout mode or some call argument carries the inout marker.
+pub fn program_uses_inout(prog: &Program) -> bool {
+    for fun in &prog.functions {
+        if fun.params.iter().any(|p| p.mode_pos.is_some()) {
+            return true;
+        }
+        let mut found = false;
+        g5_walk_fn(fun, &mut |e| {
+            if matches!(e, Expr::InoutArg(_)) {
+                found = true;
+            }
+        });
+        if found {
+            return true;
+        }
+    }
+    false
+}
+
+/// First G5 construct of a checked program -> (line, col) or None: an inout parameter, an inout call argument or a
+/// resolved old(..) expression (smallest line/col; the first one seen on a tie, like Python `min`).
+pub fn first_g5_use(prog: &Program) -> Option<(i64, i64)> {
+    let mut cands: Vec<(i64, i64)> = Vec::new();
+    for fun in &prog.functions {
+        for p in &fun.params {
+            if let Some(pos) = p.mode_pos {
+                cands.push(pos);
+            }
+        }
+        g5_walk_fn(fun, &mut |e| match e {
+            Expr::InoutArg(x) => cands.push((x.line, x.col)),
+            Expr::Call(c) if c.old.is_some() => cands.push((c.line, c.col)),
+            _ => {}
+        });
+    }
+    let mut best: Option<(i64, i64)> = None;
+    for c in cands {
+        let better = match best {
+            None => true,
+            // the file tag in the line number is not part of the ordering (Python compares file-local lines)
+            Some(b) => (crate::diagnostic::plain_line(c.0), c.1) < (crate::diagnostic::plain_line(b.0), b.1),
+        };
+        if better {
+            best = Some(c);
+        }
+    }
+    best
+}
+
+/// PruvError (unsupported_type) for the first G5 construct, or None. Run right after type checking.
+pub fn g5_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diagnostic::PruvError> {
+    let (line, col) = first_g5_use(prog)?;
+    // Python builds this error without a file (file-local line), so drop the module file tag here
+    Some(crate::diagnostic::PruvError::new(
+        stage,
+        crate::diagnostic::plain_line(line),
+        col,
+        "unsupported_type",
+        "G5 inout parameters are not implemented by the verify and codegen layers yet",
+        "pass and return arrays by value for now",
     ))
 }
 

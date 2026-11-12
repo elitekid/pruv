@@ -1,0 +1,5 @@
+// G5: old(a) is contract-only, never executable code
+fn f(inout a: [i64]) -> i64 {
+  let n: i64 = len(old(a));
+  return n;
+}

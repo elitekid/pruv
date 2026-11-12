@@ -88,6 +88,8 @@ def _kids(e):
         return [e.base]
     if isinstance(e, (IsVariant, VariantField)):
         return [e.value]
+    if isinstance(e, InoutArg):     # G5 A0
+        return [e.expr]
     return []
 
 

@@ -1,0 +1,17 @@
+// G5 A0 frontend: two inout parameters (disjoint by the caller's obligation) and two distinct local owners
+fn swap_first(inout a: [i64], inout b: [i64]) -> ()
+  requires len(a) >= 1 && len(b) >= 1
+  ensures a[0] == old(b)[0]
+  ensures b[0] == old(a)[0]
+{
+  let x: i64 = a[0];
+  a[0] = b[0];
+  b[0] = x;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut p: [i64] = alloc(2, 1);
+  let mut q: [i64] = alloc(2, 2);
+  swap_first(inout p, inout q);
+  return p[0] * 10 + q[0];
+}

@@ -1,0 +1,14 @@
+// G5: k(inout a, read_first(a)): a nested ordinary call that reads the marked binding is rejected
+fn read_first(a: [i64]) -> i64
+  requires len(a) >= 1
+{
+  return a[0];
+}
+
+fn with_n(inout x: [i64], n: i64) -> () {
+}
+
+fn demo() -> () ! alloc {
+  let mut a: [i64] = alloc(2, 0);
+  with_n(inout a, read_first(a));
+}

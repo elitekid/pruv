@@ -1,0 +1,14 @@
+// G5 A0 frontend: an inout [bool] parameter
+fn set_flag(inout flags: [bool], i: i64, v: bool) -> ()
+  requires 0 <= i && i < len(flags)
+  ensures flags[i] == v
+  ensures len(flags) == len(old(flags))
+{
+  flags[i] = v;
+}
+
+fn demo() -> bool ! alloc {
+  let mut marks: [bool] = alloc(2, false);
+  set_flag(inout marks, 0, true);
+  return marks[0];
+}

@@ -1,0 +1,5 @@
+// G5: old(a) is not allowed in requires
+fn f(inout a: [i64]) -> ()
+  requires len(old(a)) >= 0
+{
+}

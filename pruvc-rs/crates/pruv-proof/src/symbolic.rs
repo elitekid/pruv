@@ -1656,6 +1656,8 @@ impl<'a> FnVerifier<'a> {
             }
             // G6 A1: `move x` evaluates to the current value of the binding
             Expr::Move(x) => env.try_get(&x.name).cloned().ok_or_else(|| format!("'{}'", x.name)),
+            // G5 A0: never reaches the proof layer (the driver's A0 guard stops the program earlier)
+            Expr::InoutArg(x) => self.ev(&x.expr, st, g, code, env),
             Expr::VariantField(x) => {
                 let v = self.ev(&x.value, st, g, code, env)?;
                 let ety = enum_ty(&x.enum_name, &v);

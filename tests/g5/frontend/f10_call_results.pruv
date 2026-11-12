@@ -1,0 +1,16 @@
+// G5 A0 frontend: an inout call whose result is used by a let, an assignment, a parenthesized let and a return
+fn bump(inout a: [i64]) -> i64
+  requires len(a) >= 1
+{
+  a[0] = a[0] + 1;
+  return a[0];
+}
+
+fn use_results() -> i64 ! alloc {
+  let mut data: [i64] = alloc(2, 0);
+  let r1: i64 = bump(inout data);
+  let mut r2: i64 = 0;
+  r2 = bump(inout data);
+  let r3: i64 = (bump(inout data));
+  return bump(inout data);
+}

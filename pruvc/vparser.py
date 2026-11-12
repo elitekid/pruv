@@ -339,6 +339,9 @@ class Parser:
     def foreign_syntax(s, tok, msg, fix=""):
         raise PruvError("parse", tok.line, tok.col, "foreign_syntax", msg, fix)
 
+    def inout_syntax(s, tok, msg, fix=""):
+        raise PruvError("parse", tok.line, tok.col, "inout_syntax", msg, fix)
+
     def unsupported(s, what, tok):
         raise PruvError("parse", tok.line, tok.col, "unsupported_type",
                        "%s is not supported" % what,
@@ -608,19 +611,35 @@ class Parser:
         params = []
         while not s.at(")"):
             take = False
+            mode_tok = None
             t0 = s.peek()
             if t0.kind == "id" and t0.val == "take" and s.peek(1).kind == "id":
                 if s.peek(2).kind == "op" and s.peek(2).val == ":":
                     s.next()
                     take = True
+                elif s.peek(1).val == "inout" and s.peek(2).kind == "id":   # G5: `take inout name`
+                    s.inout_syntax(t0, "a parameter cannot be both take and inout",
+                                   "keep one mode: `take name: Type` or `inout name: [i64]`")
                 else:
                     s.foreign_syntax(t0, "malformed take parameter", "write `take name: Type`")
+            elif t0.kind == "id" and t0.val == "inout" and not (s.peek(1).kind == "op" and s.peek(1).val == ":"):
+                # G5: contextual `inout` before a parameter name (`inout: T` is an ordinary parameter named inout)
+                mode_tok = s.next()
+                n1 = s.peek()
+                if n1.kind != "id":
+                    s.inout_syntax(mode_tok, "inout needs a parameter name", "write `inout name: [i64]`")
+                if n1.val in ("take", "inout") and s.peek(1).kind == "id":
+                    s.inout_syntax(n1, "a parameter has at most one mode",
+                                   "keep one mode: `take name: Type` or `inout name: [i64]`")
             pn = s.ident().val
             s.expect(":")
             pt, pr = s.type_r(True)
             param = Param(pn, pt, pr)
             if take:
                 param.take = True
+            if mode_tok is not None:
+                param.mode = "inout"
+                param.mode_pos = (mode_tok.line, mode_tok.col)
             params.append(param)
             if not s.at(")"):
                 s.expect(",")
@@ -950,12 +969,36 @@ class Parser:
         s.expect("::")
         return en, s.ident()
 
+    def is_inout_marker(s):
+        """G5: at an `inout` that marks a call argument: the token after it starts an operand (a name, number, string,
+        or a keyword/path that can start an expression). `inout` followed by an operator, `(`, `[`, `.`, `,` or `)` stays
+        an ordinary identifier."""
+        t = s.peek()
+        if not (t.kind == "id" and t.val == "inout"):
+            return False
+        n = s.peek(1)
+        if n.kind in ("id", "int", "str"):
+            return True
+        return n.kind == "kw" and n.val in ("true", "false", "None", "Some", "Ok", "Err", "crate")
+
+    def arg_expr(s):
+        """one call argument: an expression, or the G5 marker `inout <operand>` (one postfix expression, kept as
+        written so the checker can reject fields, elements and calls as places)"""
+        if s.is_inout_marker():
+            t = s.next()
+            e = s.postfix()
+            if not (s.at(",") or s.at(")")):
+                s.inout_syntax(t, "malformed inout argument: the marker takes a single operand",
+                               "write `inout name`; compute other values into a local first")
+            return InoutArg(t.line, t.col, e)
+        return s.expr()
+
     def call_args(s):
         """at `(`: the argument list of a call or constructor"""
         s.next()
         args = []
         while not s.at(")"):
-            args.append(s.expr())
+            args.append(s.arg_expr())
             if not s.at(")"):
                 s.expect(",")
         s.expect(")")
@@ -1126,7 +1169,7 @@ class Parser:
                 s.next()
                 args = []
                 while not s.at(")"):
-                    args.append(s.expr())
+                    args.append(s.arg_expr())
                     if not s.at(")"):
                         s.expect(",")
                 s.expect(")")

@@ -1,0 +1,10 @@
+// G5 A0 frontend: an inout call across a module boundary; the child `pub` function may be inout
+mod buffers;
+
+pub fn demo(n: i64) -> i64 ! alloc
+  requires 1 <= n && n <= 100
+{
+  let mut w: [i64] = alloc(n, 0);
+  crate::buffers::set_at(inout w, 0, 7);
+  return w[0];
+}

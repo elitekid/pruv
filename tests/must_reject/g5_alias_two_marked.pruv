@@ -1,0 +1,8 @@
+// G5: f(inout a, inout a): one binding cannot be marked twice in a call
+fn two(inout x: [i64], inout y: [i64]) -> () {
+}
+
+fn demo() -> () ! alloc {
+  let mut a: [i64] = alloc(2, 0);
+  two(inout a, inout a);
+}

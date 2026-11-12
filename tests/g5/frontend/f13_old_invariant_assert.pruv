@@ -1,0 +1,18 @@
+// G5 A0 frontend: old(a) in a loop invariant and an assert (function-entry meaning, never loop entry)
+fn zero_all(inout a: [i64]) -> ()
+  ensures len(a) == len(old(a))
+  ensures forall k in 0..len(a): a[k] == 0
+{
+  let n: i64 = len(a);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant n == len(old(a))
+    invariant forall k in 0..i: a[k] == 0
+    decreases n - i
+  {
+    a[i] = 0;
+    i = i + 1;
+  }
+  assert len(a) == len(old(a));
+}

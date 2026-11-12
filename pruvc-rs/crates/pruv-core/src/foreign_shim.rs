@@ -147,6 +147,7 @@ fn walk_expr(e: &Expr, f: &mut dyn FnMut(Node<'_>)) {
     f(Node::Expr(e));
     match e {
         Expr::Move(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
+        Expr::InoutArg(x) => walk_expr(&x.expr, f), // G5 A0
         Expr::Unary(x) => walk_expr(&x.operand, f),
         Expr::Binary(x) => {
             walk_expr(&x.left, f);

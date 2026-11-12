@@ -1,0 +1,31 @@
+// G5 A0 compatibility: `inout` and `old` are ordinary identifiers (functions, parameters, expressions) in a program
+// without inout parameters or markers. This program is not a G5 program: it compiles normally.
+fn old(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x + 1
+{
+  return x + 1;
+}
+
+fn inout(inout: i64) -> i64
+  requires 0 <= inout && inout <= 1000
+  ensures result == inout + 2
+{
+  let t: i64 = old(inout);
+  return t + 1;
+}
+
+fn sum_names(old: i64, inout: i64) -> i64
+  requires 0 <= old && old <= 1000 && 0 <= inout && inout <= 1000
+  ensures result == old + inout
+{
+  return old + inout;
+}
+
+fn combine(a: i64) -> i64
+  requires 0 <= a && a <= 500
+  ensures result == a + 3
+{
+  let b: i64 = old(a);
+  return inout(b);
+}

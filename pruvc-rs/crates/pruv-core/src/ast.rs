@@ -54,6 +54,8 @@ pub struct Binary { pub line: i64, pub col: i64, pub op: String, pub left: Box<E
 pub struct Call {
     pub line: i64, pub col: i64, pub name: String, pub args: Vec<Expr>, pub ty: Ty,
     pub targs: Option<Vec<GType>>, pub inst: Option<Inst>,
+    /// G5 A0: set by the checker on a resolved builtin `old(a)`: (parameter name, parameter position).
+    pub old: Option<(String, usize)>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct Index { pub line: i64, pub col: i64, pub array: Box<Expr>, pub index: Box<Expr>, pub ty: Ty }
@@ -94,8 +96,14 @@ pub struct VariantField {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Move { pub line: i64, pub col: i64, pub name: String, pub ty: Ty }
 
+/// G5 A0: the call-argument marker `inout <operand>`; line/col = the `inout` token. The operand is kept as written (the
+/// checker requires a plain Var naming a mutable local array or an inout parameter of the caller). Counterpart of vast.InoutArg.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InoutArg { pub line: i64, pub col: i64, pub expr: Box<Expr>, pub ty: Ty }
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    InoutArg(InoutArg),
     Move(Move),
     IntLit(IntLit),
     BoolLit(BoolLit),
@@ -117,6 +125,7 @@ pub enum Expr {
 impl Expr {
     pub fn line(&self) -> i64 {
         match self {
+            Expr::InoutArg(x) => x.line,
             Expr::Move(x) => x.line,
             Expr::IntLit(x) => x.line,
             Expr::BoolLit(x) => x.line,
@@ -137,6 +146,7 @@ impl Expr {
     }
     pub fn col(&self) -> i64 {
         match self {
+            Expr::InoutArg(x) => x.col,
             Expr::Move(x) => x.col,
             Expr::IntLit(x) => x.col,
             Expr::BoolLit(x) => x.col,
@@ -181,8 +191,12 @@ pub struct Refinement {
     pub lo: Option<String>, pub hi: Option<String>, pub maxlen: Option<String>,
 }
 /// No line/col. `take`: G6 A0 `take name: Type` (consuming collection parameter).
+/// `mode_pos`: G5 A0 `inout name: [..]` -> Some((line, col)) of the `inout` token (Python `Param.mode == "inout"` + `mode_pos`).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Param { pub name: String, pub ty: Type, pub refine: Option<Refinement>, pub take: bool }
+pub struct Param {
+    pub name: String, pub ty: Type, pub refine: Option<Refinement>, pub take: bool,
+    pub mode_pos: Option<(i64, i64)>,
+}
 
 /// G6 A0: the declaration data of a `trusted rust fn` (Python `Function.foreign`): the Rust path and the
 /// line/col of the path string token. The body of such a function is empty.

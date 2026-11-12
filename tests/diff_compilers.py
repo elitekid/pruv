@@ -3,7 +3,7 @@
 
     python tests/diff_compilers.py [--b-path P] (default pruvc-rs/target/release/pruvc, .exe on Windows) [--backend rust|llvm|both]
         [--a py|rs] [--a-path P] [--b py|rs] [--b-path P] [--input FILE ...] [--flag F ...]
-        [--only must_reject|examples|runtime|bench|g4] [--jobs N] [--timeout 300] [--save-dir DIR]
+        [--only must_reject|examples|runtime|bench|g4|g5] [--jobs N] [--timeout 300] [--save-dir DIR]
     python tests/diff_compilers.py --replay CASE_DIR
 
 Runs both compilers on the same input, flags and backend, each in a new process per input (a, then b, in order within one worker ->
@@ -14,6 +14,9 @@ and --input FILE (repeatable; set flags with --flag).
 G4 (group g4; A3: on both backends, rust and llvm): the project roots of tests/g4/fixtures.json (frontend, reject, proof and
 runtime with the flags/budget/externs of each spec.json) plus examples/g4_*/root.pruv in the three example modes. Only the root
 is the input; the compilers read the declared module files themselves.
+
+G5 (group g5; A0): the frontend roots of tests/g5/fixtures.json (default and --no-verify) plus the g5_host_entry rejection project.
+The flat tests/must_reject/g5_*.pruv rejections are part of group must_reject.
 
 Comparison: exit code / stdout JSON lines (count and order; stage, line, col and code must match exactly, and message and fix are compared too,
 normalizing only the work directory, input path and compiler executable name) / bytes of the generated files (.rs, .ll, bindings).
@@ -128,6 +131,15 @@ def build_cases(args):
             for mode, flags in EXAMPLE_MODES:
                 cases.append({"name": "g4/%s [%s]" % (root.split("/")[1], mode), "src": os.path.join(ROOT, *root.split("/")),
                               "flags": list(flags), "project": True})
+    if want("g5"):
+        # G5 A0: frontend roots and the rejection project of tests/g5/fixtures.json (flat tests/must_reject/g5_*.pruv are
+        # in the must_reject group); until the Rust port, the Rust compiler is expected to differ on these inputs
+        import importlib
+        P = importlib.import_module("g4.projects")
+        for e in P.g5_entries("frontend") + [x for x in P.g5_entries("reject") if x.get("project")]:
+            for mode, flags in (("default", []), ("no-verify", ["--no-verify"])):
+                cases.append({"name": "g5/%s [%s]" % (e["name"], mode), "src": os.path.join(ROOT, *e["root"].split("/")),
+                              "flags": list(flags), "project": bool(e.get("project"))})
     for f in args.input or []:
         if not os.path.isfile(f):
             errors.append("--input: no such file: %s" % f)
@@ -409,7 +421,7 @@ def main():
     ap.add_argument("--backend", choices=["rust", "llvm", "both"], default="both")
     ap.add_argument("--input", action="append", default=[], metavar="FILE", help="additional input (repeatable)")
     ap.add_argument("--flag", action="append", default=[], help="compiler flag to give the --input files (repeatable)")
-    ap.add_argument("--only", choices=["must_reject", "examples", "runtime", "bench", "g4"], default=None)
+    ap.add_argument("--only", choices=["must_reject", "examples", "runtime", "bench", "g4", "g5"], default=None)
     ap.add_argument("--no-default-inputs", action="store_true", help="only --input, no default inputs")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--timeout", type=int, default=300, help="seconds per compiler process (default 300)")

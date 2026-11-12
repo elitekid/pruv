@@ -1,0 +1,8 @@
+// G5: a root `pub` nongeneric function (an explicit host entry) cannot have an inout parameter
+mod util;
+
+pub fn set_at(inout a: [i64], i: i64, v: i64) -> ()
+  requires 0 <= i && i < len(a)
+{
+  a[i] = v;
+}

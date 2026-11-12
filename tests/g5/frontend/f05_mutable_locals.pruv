@@ -1,0 +1,16 @@
+// G5 A0 frontend: several marked calls on one mutable local array, and a local replaced as a whole afterwards
+fn set_at(inout a: [i64], i: i64, value: i64) -> ()
+  requires 0 <= i && i < len(a)
+  ensures a[i] == value
+{
+  a[i] = value;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut data: [i64] = alloc(4, 0);
+  set_at(inout data, 0, 7);
+  set_at(inout data, 3, 9);
+  data = alloc(2, 5);
+  set_at(inout data, 1, 1);
+  return data[0] + data[1];
+}

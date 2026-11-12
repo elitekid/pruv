@@ -1,0 +1,3 @@
+// G5: a G6 collection cannot be an inout parameter
+fn grow(inout v: Vec<i64>) -> () {
+}

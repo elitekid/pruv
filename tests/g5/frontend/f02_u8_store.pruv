@@ -1,0 +1,14 @@
+// G5 A0 frontend: an inout [u8] parameter
+fn put_byte(inout buf: [u8], i: i64, b: i64) -> ()
+  requires 0 <= i && i < len(buf) && 0 <= b && b <= 255
+  ensures buf[i] == b
+  ensures len(buf) == len(old(buf))
+{
+  buf[i] = b;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut bytes: [u8] = alloc(3, 0);
+  put_byte(inout bytes, 1, 200);
+  return bytes[1];
+}

@@ -1,0 +1,9 @@
+// G5: the marked array must have exactly the parameter's element type ([i64] is not [u8])
+fn put(inout b: [u8], i: i64) -> () {
+  b[i] = 1;
+}
+
+fn demo() -> () ! alloc {
+  let mut data: [i64] = alloc(2, 0);
+  put(inout data, 0);
+}

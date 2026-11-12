@@ -1,0 +1,10 @@
+// G5: a call with an inout parameter cannot be an if condition
+fn changed(inout a: [i64]) -> bool {
+  return true;
+}
+
+fn demo() -> () ! alloc {
+  let mut d: [i64] = alloc(2, 0);
+  if changed(inout d) {
+  }
+}

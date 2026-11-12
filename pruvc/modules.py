@@ -470,6 +470,8 @@ class _Resolver:
             e.body = s.rexpr(e.body)
         elif isinstance(e, FieldAccess):
             e.base = s.rexpr(e.base)
+        elif isinstance(e, InoutArg):     # G5 A0
+            e.expr = s.rexpr(e.expr)
         return e
 
     # ---- public interfaces ----

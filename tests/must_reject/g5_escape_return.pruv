@@ -1,0 +1,4 @@
+// G5: the borrowed array cannot be returned without copy(a)
+fn pass(inout a: [i64]) -> [i64] {
+  return a;
+}

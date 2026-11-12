@@ -553,6 +553,10 @@ impl<'a> Mono<'a> {
             }
             Expr::Var(x) => Expr::Var(Var { line: x.line, col: x.col, name: x.name.clone(), ty: self.ty_opt(&x.ty)? }),
             Expr::Move(x) => Expr::Move(Move { line: x.line, col: x.col, name: x.name.clone(), ty: self.ty_opt(&x.ty)? }),
+            Expr::InoutArg(x) => {
+                let expr = self.bx(&x.expr)?;
+                Expr::InoutArg(InoutArg { line: x.line, col: x.col, expr, ty: self.ty_opt(&x.ty)? })
+            }
             Expr::Unary(x) => {
                 let operand = self.bx(&x.operand)?;
                 Expr::Unary(Unary { line: x.line, col: x.col, op: x.op.clone(), operand, ty: self.ty_opt(&x.ty)? })
@@ -589,7 +593,7 @@ impl<'a> Mono<'a> {
                 } else if let Some(r) = self.rfns.get(&x.name) {
                     name = r.clone(); // G4 A2: a nongeneric user function -> its Rust stem
                 }
-                Expr::Call(Call { line: x.line, col: x.col, name, args, ty, targs: None, inst: new_inst })
+                Expr::Call(Call { line: x.line, col: x.col, name, args, ty, targs: None, inst: new_inst, old: None })
             }
             Expr::Index(x) => {
                 let array = self.bx(&x.array)?;
@@ -827,7 +831,8 @@ impl<'a> Mono<'a> {
         self.pos = (f.line, f.col);
         let mut params = Vec::with_capacity(f.params.len());
         for p in &f.params {
-            params.push(Param { name: p.name.clone(), ty: self.ty_key(&p.ty)?, refine: p.refine.clone(), take: p.take });
+            // G5 A0: the mode survives specialization
+            params.push(Param { name: p.name.clone(), ty: self.ty_key(&p.ty)?, refine: p.refine.clone(), take: p.take, mode_pos: p.mode_pos });
         }
         let ret = self.ty_key(&f.ret)?;
         let requires = self.cp_es(&f.requires)?;
@@ -1036,6 +1041,7 @@ fn expr_ty_of(e: &Expr) -> &Option<String> {
         Expr::IsVariant(x) => &x.ty,
         Expr::VariantField(x) => &x.ty,
         Expr::Move(x) => &x.ty,
+        Expr::InoutArg(x) => &x.ty,
     }
 }
 

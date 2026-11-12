@@ -1,0 +1,3 @@
+// G5: take and inout cannot be combined on one parameter
+fn f(take inout a: [i64]) -> () {
+}

@@ -14,7 +14,7 @@ use crate::gtype::{
     bind_args, check_arity, collection_arity, decl_owner, dependencies, fn_owner, format_type, is_element, is_value,
     key_is_collection, mk_array, mk_nominal, mk_option, mk_result, substitute, GType, Mapping, ParamId,
 };
-use crate::typeinfo::{TypeTable, BUILTIN_TYPE_NAMES};
+use crate::typeinfo::{program_uses_inout, TypeTable, BUILTIN_TYPE_NAMES};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
@@ -170,6 +170,7 @@ fn field_label(d: &str, vname: Option<&str>, field: &str) -> String {
 /// The checked type key of an expression (None before the checker has seen it).
 fn expr_ty(e: &Expr) -> &Ty {
     match e {
+        Expr::InoutArg(x) => &x.ty,
         Expr::Move(x) => &x.ty,
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
@@ -250,7 +251,7 @@ fn int_in_range(v: &str) -> bool {
 struct Entry {
     ty: GType,
     mutable: bool,
-    kind: &'static str, // "param" | "result" | "local" | "bound"
+    kind: &'static str, // "param" | "inout" (G5) | "result" | "local" | "bound"
 }
 type Scope = HashMap<String, Entry>;
 
@@ -259,6 +260,10 @@ struct FuncInfo {
     line: i64,
     col: i64,
     params: Vec<GType>,
+    /// G5 A0: parameter names (position of `old(a)`, messages)
+    pnames: Vec<String>,
+    /// G5 A0: parameter is `inout`
+    inout: Vec<bool>,
     ret: GType,
     effects: Vec<String>,
     tparams: Vec<TParam>,
@@ -306,6 +311,14 @@ struct Checker {
     explicit: bool,
     /// G4 A0: per function (same index as Program.functions): a host entry
     host_entry: Vec<bool>,
+    /// G5 A0: enables the contextual builtin `old`
+    uses_inout: bool,
+    /// G5: kind of the expression being checked: requires/ensures/decreases/invariant/assert/code
+    ckind: &'static str,
+    /// G5: identity of the call allowed at the statement boundary of the statement being checked
+    boundary: Option<usize>,
+    /// G5 A0: parameter names of the function being checked
+    cur_params: Vec<String>,
 }
 
 /// G4 A0: `check_with_externs` for an explicit-mode program: resolves the names of the whole program to identities first
@@ -316,7 +329,8 @@ pub fn check_explicit(
     externs: &[String],
 ) -> Result<TypeTable, PruvError> {
     crate::modules::resolve(prog, g4)?;
-    let mut c = Checker::new(prog, externs)?;
+    let src_names: Vec<String> = g4.fn_meta.iter().map(|m| m.src_name.clone()).collect();
+    let mut c = Checker::new(prog, externs, &src_names)?;
     c.explicit = true;
     c.host_entry = g4.fn_meta.iter().map(|m| m.host_entry).collect();
     c.run(prog)?;
@@ -330,7 +344,7 @@ pub fn check(prog: &mut Program) -> Result<TypeTable, PruvError> {
 
 /// `check` with the crate names given with --rust-extern (G6: crates a trusted rust fn path may start with besides std).
 pub fn check_with_externs(prog: &mut Program, externs: &[String]) -> Result<TypeTable, PruvError> {
-    let mut c = Checker::new(prog, externs)?;
+    let mut c = Checker::new(prog, externs, &[])?;
     c.run(prog)?;
     Ok(c.tt)
 }
@@ -364,6 +378,25 @@ fn set_ty(e: &mut Expr, t: &GType) {
         Expr::IsVariant(x) => x.ty = v,
         Expr::VariantField(x) => x.ty = v,
         Expr::Move(x) => x.ty = v,
+        Expr::InoutArg(x) => x.ty = v,
+    }
+}
+
+/// G5: does the full syntax of e (every operand, reachable or not) mention the binding `name`?
+fn mentions(e: &Expr, name: &str) -> bool {
+    match e {
+        Expr::Var(x) if x.name == name => return true,
+        Expr::Move(x) if x.name == name => return true,
+        _ => {}
+    }
+    crate::refine::kids(e).into_iter().any(|k| mentions(k, name))
+}
+
+/// G5: the identity of a call node, for "the call allowed at the statement boundary" (Python `e is s.boundary`).
+fn boundary_of(e: &Expr) -> Option<usize> {
+    match e {
+        Expr::Call(c) => Some(c as *const Call as usize),
+        _ => None,
     }
 }
 
@@ -387,10 +420,12 @@ fn elem_type(at: &GType) -> GType {
 }
 
 impl Checker {
-    fn new(prog: &Program, externs: &[String]) -> Res<Checker> {
+    /// src_names: explicit mode only, the name of each function as written (Python `Function.src_name`); empty otherwise.
+    fn new(prog: &Program, externs: &[String], src_names: &[String]) -> Res<Checker> {
         let mut funcs: HashMap<String, Rc<FuncInfo>> = HashMap::new();
         let mut takes: Takes = HashMap::new();
-        for f in &prog.functions {
+        let uses_inout = program_uses_inout(prog); // G5 A0: enables the contextual builtin `old`
+        for (fi, f) in prog.functions.iter().enumerate() {
             let name = f.name.clone();
             if funcs.contains_key(&name) {
                 return Err(terr(f.line, f.col, "dup_fn", format!("function {} defined twice", name), ""));
@@ -401,6 +436,16 @@ impl Checker {
             {
                 return Err(terr(f.line, f.col, "reserved", format!("{} is a builtin name", name), "rename the function"));
             }
+            let written = src_names.get(fi).map(|s| s.as_str()).unwrap_or(name.as_str());
+            if uses_inout && written == "old" {
+                return Err(terr(
+                    f.line,
+                    f.col,
+                    "reserved",
+                    "old is a builtin name in a program that uses inout",
+                    "rename the function",
+                ));
+            }
             takes.insert(name.clone(), f.params.iter().map(|p| p.take).collect());
             funcs.insert(
                 name.clone(),
@@ -408,6 +453,8 @@ impl Checker {
                     line: f.line,
                     col: f.col,
                     params: f.params.iter().map(|p| GType::from_key(&p.ty)).collect(),
+                    pnames: f.params.iter().map(|p| p.name.clone()).collect(),
+                    inout: f.params.iter().map(|p| p.mode_pos.is_some()).collect(),
                     ret: GType::from_key(&f.ret),
                     effects: f.effects.clone(),
                     tparams: f.tparams.clone(),
@@ -439,6 +486,10 @@ impl Checker {
             active_roots: Vec::new(),
             explicit: false,
             host_entry: Vec::new(),
+            uses_inout,
+            ckind: "code",
+            boundary: None,
+            cur_params: Vec::new(),
         })
     }
 
@@ -475,6 +526,7 @@ impl Checker {
         self.inhabitance(&prog.types)?; // G9 A0: every declaration needs a finite value
         self.compute_extended(&prog.types);
         self.check_extended_uses(prog)?;
+        self.check_modes(prog)?; // G5 A0: parameter modes, before host entries and bodies
         if self.explicit {
             self.check_entries(prog)?; // G4 A0: host-entry signatures
         }
@@ -723,6 +775,7 @@ impl Checker {
             Expr::FieldAccess(x) => self.norm_expr(&mut x.base),
             Expr::IsVariant(x) => self.norm_expr(&mut x.value),
             Expr::VariantField(x) => self.norm_expr(&mut x.value),
+            Expr::InoutArg(x) => self.norm_expr(&mut x.expr), // G5 A0
             Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
         }
     }
@@ -1401,12 +1454,52 @@ impl Checker {
         Ok(())
     }
 
+    /// G5 A0: an inout parameter must be a primitive or Element-generic array ([i64], [u8], [bool], [T: Element]).
+    fn check_modes(&self, prog: &Program) -> Res<()> {
+        for f in &prog.functions {
+            for p in &f.params {
+                if let Some((ml, mc)) = p.mode_pos {
+                    let pt = GType::from_key(&p.ty);
+                    if !pt.is_array() {
+                        return Err(terr(
+                            ml,
+                            mc,
+                            "inout_type",
+                            format!(
+                                "inout parameter {} cannot have the type {}: only [i64], [u8], [bool] and [T] with T: Element can be inout",
+                                p.name,
+                                tn(&pt)
+                            ),
+                            format!("declare {} without inout, or give it one of those array types", p.name),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// G4 A0 (explicit mode): a host entry (root `pub`, nongeneric, ordinary function) may not have a collection or an extended
     /// (G9) type in its signature; child `pub` functions and generic functions are not host entries.
+    /// G5 A0: it may not have an inout parameter either.
     fn check_entries(&self, prog: &Program) -> Res<()> {
         for (i, f) in prog.functions.iter().enumerate() {
             if !self.host_entry.get(i).copied().unwrap_or(false) {
                 continue;
+            }
+            for p in &f.params {
+                if let Some((ml, mc)) = p.mode_pos {
+                    return Err(terr(
+                        ml,
+                        mc,
+                        "entry_signature",
+                        format!("host entry {} cannot have the inout parameter {}", f.name, p.name),
+                        format!(
+                            "make {} private or child `pub` and expose a root wrapper that copies the input into a `let mut` local",
+                            f.name
+                        ),
+                    ));
+                }
             }
             let mut sig: Vec<(String, &str)> = f.params.iter().map(|p| (format!("parameter {}", p.name), p.ty.as_str())).collect();
             sig.push(("the result".to_string(), f.ret.as_str()));
@@ -1540,6 +1633,7 @@ impl Checker {
         self.enter(&fn_owner(&fname), &f.tparams);
         self.cur_name = fname.clone();
         self.cur_ret = ret.clone();
+        self.cur_params = f.params.iter().map(|p| p.name.clone()).collect();
         if f.foreign.is_some() {
             check_foreign_decl(f, &self.externs)?; // G6: signature, then path of a trusted rust fn
             if let Some(d) = &f.decreases {
@@ -1579,9 +1673,12 @@ impl Checker {
                     format!("remove `take` from {}; scalars, arrays and str are passed by value or borrowed", p.name),
                 ));
             }
-            scope.insert(p.name.clone(), Entry { ty: pt, mutable: false, kind: "param" });
+            // G5 A0: an inout parameter allows element stores but, like every parameter, never whole reassignment
+            let kind = if p.mode_pos.is_some() { "inout" } else { "param" };
+            scope.insert(p.name.clone(), Entry { ty: pt, mutable: false, kind });
         }
         self.used_effects = BTreeSet::new();
+        self.ckind = "requires";
         for r in f.requires.iter_mut() {
             self.expect(r, &boolt(), &scope, true, None)?;
         }
@@ -1589,13 +1686,16 @@ impl Checker {
         if ret != unitt() {
             escope.insert("result".to_string(), Entry { ty: ret.clone(), mutable: false, kind: "result" });
         }
+        self.ckind = "ensures";
         for e in f.ensures.iter_mut() {
             self.expect(e, &boolt(), &escope, true, None)?;
         }
+        self.ckind = "decreases";
         if let Some(d) = f.decreases.as_mut() {
             // G9 A0: scalar measure over the parameters only (no result)
             self.expect(d, &i64t(), &scope, true, None)?;
         }
+        self.ckind = "code";
         if f.foreign.is_some() {
             return Ok(()); // a trusted rust fn has no body to check
         }
@@ -1662,6 +1762,8 @@ impl Checker {
     }
 
     fn stmt(&mut self, st: &mut Stmt, scope: &mut Scope) -> Res<()> {
+        self.ckind = "code";
+        self.boundary = None; // G5: only the statements below that allow a mutating call set it
         match st {
             Stmt::Let(s) => {
                 if scope.contains_key(&s.name) {
@@ -1679,6 +1781,7 @@ impl Checker {
                 }
                 self.check_type(s.line, s.col, &sty)?;
                 self.ext_misuse(s.line, s.col, &sty, None)?; // G9 A0
+                self.boundary = boundary_of(&s.value);
                 self.want_alloc(&s.value, &sty);
                 self.expect(&mut s.value, &sty, scope, false, None)?;
                 if sty.is_array() || sty == strt() {
@@ -1691,8 +1794,19 @@ impl Checker {
                 let v = self.lookup(s.line, s.col, &s.name, scope)?;
                 self.check_borrow(s.line, s.col, &s.name, &[])?; // G9 A0
                 if !v.mutable {
+                    if v.kind == "inout" {
+                        // G5 A0: element stores are allowed, replacing the binding is not
+                        return Err(terr(
+                            s.line,
+                            s.col,
+                            "immutable",
+                            format!("inout parameter {} cannot be reassigned as a whole", s.name),
+                            format!("store elements with {}[i] = v, or copy into a `let mut` local", s.name),
+                        ));
+                    }
                     return Err(terr(s.line, s.col, "immutable", format!("{} is not mutable", s.name), Self::immutable_fix(v.kind)));
                 }
+                self.boundary = boundary_of(&s.value);
                 self.want_alloc(&s.value, &v.ty);
                 self.expect(&mut s.value, &v.ty, scope, false, None)?;
                 if v.ty.is_array() || v.ty == strt() {
@@ -1714,7 +1828,8 @@ impl Checker {
                 if !v.ty.is_array() {
                     return Err(terr(s.line, s.col, "not_array", format!("{} is not an array", s.name), ""));
                 }
-                if !v.mutable {
+                if !v.mutable && v.kind != "inout" {
+                    // G5 A0: an inout parameter permits element stores
                     return Err(terr(
                         s.line,
                         s.col,
@@ -1772,10 +1887,13 @@ impl Checker {
             }
             Stmt::While(s) => {
                 self.expect(&mut s.cond, &boolt(), scope, false, Some("a condition"))?;
+                self.ckind = "invariant";
                 for i in s.invariants.iter_mut() {
                     self.expect(i, &boolt(), scope, true, None)?;
                 }
+                self.ckind = "decreases";
                 self.expect(&mut s.decreases, &i64t(), scope, true, None)?;
+                self.ckind = "code";
                 let mut sc = scope.clone();
                 self.block(&mut s.body, &mut sc)?;
             }
@@ -1797,6 +1915,7 @@ impl Checker {
                         if ret == unitt() {
                             return Err(terr(s.line, s.col, "return_type", "function returns (); use `return;`", ""));
                         }
+                        self.boundary = boundary_of(v);
                         self.want_alloc(v, &ret);
                         self.expect(v, &ret, scope, false, None)?;
                         if ret.is_array() || ret == strt() {
@@ -1807,7 +1926,9 @@ impl Checker {
                 }
             }
             Stmt::Assert(s) => {
+                self.ckind = "assert";
                 self.expect(&mut s.cond, &boolt(), scope, true, None)?;
+                self.ckind = "code";
             }
             Stmt::ExprStmt(s) => {
                 if !matches!(s.expr, Expr::Call(_)) {
@@ -1819,6 +1940,7 @@ impl Checker {
                         "bind it with let or remove it",
                     ));
                 }
+                self.boundary = boundary_of(&s.expr);
                 let t = self.expr(&mut s.expr, scope, false)?;
                 if t != unitt() {
                     return Err(terr(
@@ -2005,6 +2127,18 @@ impl Checker {
     fn array_source(&self, line: i64, col: i64, value: &Expr, scope: &Scope, allow_local_var: bool, ty: &GType) -> Res<()> {
         if matches!(value, Expr::Call(_) | Expr::StrLit(_)) {
             return Ok(());
+        }
+        if let Expr::Var(v) = value {
+            if scope.get(&v.name).map(|x| x.kind == "inout").unwrap_or(false) {
+                // G5 A0
+                return Err(terr(
+                    line,
+                    col,
+                    "array_alias",
+                    format!("inout parameter {} is a borrowed array: it cannot be stored or returned", v.name),
+                    format!("write copy({}) to make an independent array (needs `! alloc`)", v.name),
+                ));
+            }
         }
         if allow_local_var {
             if let Expr::Var(v) = value {
@@ -2345,6 +2479,16 @@ impl Checker {
                     "",
                 ))
             }
+            Expr::InoutArg(x) => {
+                // G5 A0: valid only as a direct argument of a call (see inout_args)
+                Err(terr(
+                    x.line,
+                    x.col,
+                    "inout_argument",
+                    "the `inout` marker is only valid on an argument of a function whose parameter is inout",
+                    "remove `inout`",
+                ))
+            }
             Expr::Call(x) => self.call(x, scope, c),
         }
     }
@@ -2568,6 +2712,185 @@ impl Checker {
         Ok(())
     }
 
+    // ---- G5 A0: inout call arguments and old(..) ----
+    /// Arguments of a resolved call to a user function whose signature has an inout parameter (or that carries a marker):
+    /// per argument marker/place validity and the instantiated type, then exclusive use of every marked binding across the
+    /// whole argument list, then the statement-boundary position of the call.
+    fn inout_args(&mut self, e: &mut Call, f: &FuncInfo, m: &Mapping, scope: &Scope, c: bool) -> Res<()> {
+        let n = e.name.clone();
+        let mut marked: Vec<(usize, String)> = Vec::new();
+        for i in 0..e.args.len().min(f.params.len()) {
+            let want = substitute(&f.params[i], m);
+            let pname = f.pnames[i].clone();
+            if !f.inout[i] {
+                if let Expr::InoutArg(a) = &e.args[i] {
+                    return Err(terr(
+                        a.line,
+                        a.col,
+                        "inout_argument",
+                        format!("parameter {} of {} is not inout: the `inout` marker is not allowed here", pname, n),
+                        format!("remove `inout`, or declare the parameter `inout {}: ...`", pname),
+                    ));
+                }
+                self.expect(&mut e.args[i], &want, scope, c, None)?;
+                continue;
+            }
+            let (aline, acol) = (e.args[i].line(), e.args[i].col());
+            let arg: &mut InoutArg = match &mut e.args[i] {
+                Expr::InoutArg(a) => a,
+                _ => {
+                    return Err(terr(
+                        aline,
+                        acol,
+                        "inout_argument",
+                        format!("parameter {} of {} is inout: the argument needs the `inout` marker", pname, n),
+                        "write `inout name` with a `let mut` local array or an inout parameter",
+                    ))
+                }
+            };
+            let what: Option<&str> = match &*arg.expr {
+                Expr::Var(_) => None,
+                Expr::FieldAccess(_) => Some("a field"),
+                Expr::Index(_) => Some("an element"),
+                Expr::Call(_) => Some("a call"),
+                _ => Some("an expression"),
+            };
+            if let Some(what) = what {
+                return Err(terr(
+                    aline,
+                    acol,
+                    "inout_argument",
+                    format!("an inout argument must be the whole name of a local array or an inout parameter, not {}", what),
+                    "name a `let mut` local array or an inout parameter of this function",
+                ));
+            }
+            let op: &mut Var = match &mut *arg.expr {
+                Expr::Var(v) => v,
+                _ => return Err(terr(aline, acol, "internal", "unknown expression", "")),
+            };
+            let v = self.lookup(op.line, op.col, &op.name, scope)?;
+            if v.kind == "local" && !v.mutable {
+                return Err(terr(
+                    aline,
+                    acol,
+                    "inout_argument",
+                    format!("{} is not mutable: it cannot be passed inout", op.name),
+                    "declare it with `let mut`",
+                ));
+            }
+            if v.kind != "inout" && v.kind != "local" {
+                return Err(terr(
+                    aline,
+                    acol,
+                    "inout_argument",
+                    format!(
+                        "{} is a read-only {}: it cannot be passed inout",
+                        op.name,
+                        if v.kind == "param" { "parameter" } else { "binding" }
+                    ),
+                    format!("declare the parameter `inout {}: ...`, or copy into a `let mut` local", op.name),
+                ));
+            }
+            if v.ty != want {
+                return Err(terr(
+                    aline,
+                    acol,
+                    "inout_argument",
+                    format!(
+                        "inout argument {} has type {} but parameter {} of {} expects {}",
+                        op.name,
+                        tn(&v.ty),
+                        pname,
+                        n,
+                        tn(&want)
+                    ),
+                    "pass an array of exactly the parameter's element type",
+                ));
+            }
+            if self.active_roots.iter().any(|r| *r == op.name) {
+                // G9: mutable access while a match view of the root is active
+                return Err(terr(
+                    aline,
+                    acol,
+                    "recursive_borrow",
+                    format!("cannot pass {} inout while a match on it is active", op.name),
+                    "finish the match before the call",
+                ));
+            }
+            op.ty = Some(v.ty.to_key());
+            arg.ty = Some(v.ty.to_key());
+            marked.push((i, op.name.clone()));
+        }
+        for (i, name) in &marked {
+            if e.args.iter().enumerate().any(|(j, x)| j != *i && mentions(x, name)) {
+                return Err(terr(
+                    e.args[*i].line(),
+                    e.args[*i].col(),
+                    "inout_alias",
+                    format!("{} is passed inout and also used elsewhere in the arguments of this call", name),
+                    format!("compute the other value first, e.g. `let n: i64 = len({});`, then pass n", name),
+                ));
+            }
+        }
+        if !c && self.boundary != Some(&*e as *const Call as usize) {
+            return Err(terr(
+                e.line,
+                e.col,
+                "inout_context",
+                "a call with an inout parameter must be a whole expression statement, let initializer, assignment value or return value",
+                "bind the result first: `let r: T = f(inout a);` and use r afterwards",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The contextual builtin old(a): context first, then arity and operand.
+    fn old_call(&mut self, e: &mut Call, scope: &Scope) -> Res<GType> {
+        let (line, col) = (e.line, e.col);
+        if !matches!(self.ckind, "ensures" | "invariant" | "assert") {
+            return Err(terr(
+                line,
+                col,
+                "old_context",
+                "old(..) is only allowed in ensures, loop invariants and asserts",
+                "state the property in a contract clause; in code use copy(a) (needs alloc) if the entry value is needed",
+            ));
+        }
+        if e.args.len() != 1 {
+            return Err(terr(
+                line,
+                col,
+                "old_argument",
+                format!("old takes exactly 1 argument, got {}", e.args.len()),
+                "write old(a) with the name of an inout parameter of this function",
+            ));
+        }
+        let entry: Option<Entry> = match &e.args[0] {
+            Expr::Var(v) => scope.get(&v.name).filter(|x| x.kind == "inout").cloned(),
+            _ => None,
+        };
+        let entry = match entry {
+            Some(x) => x,
+            None => {
+                return Err(terr(
+                    line,
+                    col,
+                    "old_argument",
+                    "the operand of old must be the name of an inout parameter of this function",
+                    "write old(a) where `inout a: [..]` is a parameter of the enclosing function",
+                ))
+            }
+        };
+        let mut name = String::new();
+        if let Expr::Var(v) = &mut e.args[0] {
+            v.ty = Some(entry.ty.to_key());
+            name = v.name.clone();
+        }
+        let index = self.cur_params.iter().position(|p| *p == name).unwrap_or(0);
+        e.old = Some((name, index));
+        Ok(entry.ty)
+    }
+
     fn call(&mut self, e: &mut Call, scope: &Scope, c: bool) -> Res<GType> {
         let n = e.name.clone();
         let targs = e.targs.clone();
@@ -2580,8 +2903,12 @@ impl Checker {
             Ok(())
         };
         let is_builtin = matches!(n.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr");
-        if targs.is_some() && !self.funcs.contains_key(&n) && (is_builtin || contract_only(&n).is_some()) {
+        let is_old = n == "old" && self.uses_inout && !self.funcs.contains_key(&n); // G5 A0: contextual builtin
+        if targs.is_some() && !self.funcs.contains_key(&n) && (is_builtin || contract_only(&n).is_some() || is_old) {
             return Err(terr(line, col, "type_arity", format!("builtin {} takes no type arguments", n), "remove the `::<...>`"));
+        }
+        if is_old {
+            return self.old_call(e, scope);
         }
         match n.as_str() {
             "len" => {
@@ -2729,6 +3056,8 @@ impl Checker {
                 line: 0,
                 col: 0,
                 params: cf.params.iter().map(|p| p.ty.clone()).collect(),
+                pnames: cf.params.iter().map(|p| p.name.to_string()).collect(),
+                inout: vec![false; cf.params.len()],
                 ret: cf.ret.clone(),
                 effects: cf.effects.clone(),
                 tparams: cf.tparams.clone(),
@@ -2767,6 +3096,10 @@ impl Checker {
         arity(f.params.len())?;
         match &cat {
             Some(cf) if is_catalog_contract_only(&n) => self.observer_args(e, cf, &m, scope, c)?,
+            // G5 A0: marker, place, type, exclusivity and statement context
+            None if f.inout.iter().any(|b| *b) || e.args.iter().any(|x| matches!(x, Expr::InoutArg(_))) => {
+                self.inout_args(e, &f, &m, scope, c)?
+            }
             _ => {
                 for (arg, p) in e.args.iter_mut().zip(f.params.iter()) {
                     self.expect(arg, &substitute(p, &m), scope, c, None)?;

@@ -132,6 +132,7 @@ fn kids(e: &Expr) -> Vec<&Expr> {
         Expr::FieldAccess(x) => vec![&*x.base],
         Expr::IsVariant(x) => vec![&*x.value],
         Expr::VariantField(x) => vec![&*x.value],
+        Expr::InoutArg(x) => vec![&*x.expr], // G5 A0
         Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => Vec::new(),
     }
 }
@@ -593,6 +594,7 @@ fn expr_ty(e: &Expr) -> Option<&String> {
         Expr::IsVariant(x) => x.ty.as_ref(),
         Expr::VariantField(x) => x.ty.as_ref(),
         Expr::Move(x) => x.ty.as_ref(),
+        Expr::InoutArg(x) => x.ty.as_ref(),
     }
 }
 
@@ -794,6 +796,7 @@ impl Bld {
             ty: None,
             targs: None,
             inst: None,
+            old: None,
         })
     }
     fn index(&self, a: &str, i: Expr) -> Expr {
@@ -871,6 +874,14 @@ impl Bld {
                 ty: x.ty.clone(),
                 targs: x.targs.clone(),
                 inst: x.inst.clone(),
+                old: None,
+            }),
+            // G5 A0: never reaches the proof layer (the driver's A0 guard stops the program earlier)
+            Expr::InoutArg(x) => Expr::InoutArg(ast::InoutArg {
+                line,
+                col,
+                expr: Box::new(self.clone_e(&x.expr, sub)),
+                ty: x.ty.clone(),
             }),
             Expr::Index(x) => Expr::Index(ast::Index {
                 line,

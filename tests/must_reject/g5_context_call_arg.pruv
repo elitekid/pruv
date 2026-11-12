@@ -1,0 +1,12 @@
+// G5: a call with an inout parameter cannot be an argument of another call
+fn bump(inout a: [i64]) -> i64
+  requires len(a) >= 1
+{
+  a[0] = a[0] + 1;
+  return a[0];
+}
+
+fn demo() -> () ! io, alloc {
+  let mut d: [i64] = alloc(2, 0);
+  print(bump(inout d));
+}

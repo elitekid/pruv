@@ -9,6 +9,7 @@ never standalone test roots. This module only reads tests/g4/fixtures.json; it i
   runtime()                 the runtime projects (tests/runtime/g4_*/: root.pruv, modules, main.rs, spec.json)
   example_roots()           roots of the project examples examples/g4_*/root.pruv (not in fixtures.json)
   is_companion(rel)         True for a .pruv below a project directory that is not that project's root
+  g5_entries(group) / g5_roots() / g5_project_roots()   the same inventory for tests/g5/fixtures.json (G5 A0)
   project_dir(root_rel)     absolute project directory of a repo-relative root
   project_tree(root_rel)    sorted relative file names (`/` separators) of the whole project directory
   copy_project(root, dest)  copy the project tree to the new directory `dest` (relative tree and root basename
@@ -62,6 +63,30 @@ def project_dir(root_rel):
     return os.path.dirname(os.path.join(ROOT, *root_rel.split("/")))
 
 
+G5_FIXTURES = os.path.join(TESTS, "g5", "fixtures.json")
+
+
+def g5_load():
+    """G5 A0: the parsed tests/g5/fixtures.json (same project replay helpers; kept apart from the G4 groups)"""
+    with open(G5_FIXTURES, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def g5_entries(group):
+    """[{"name", "root", ...}] of one group ("frontend" | "reject" | "proof" | "runtime") of tests/g5/fixtures.json"""
+    return list(g5_load().get(group, []))
+
+
+def g5_roots():
+    """repo-relative roots of every G5 fixture: flat files and project roots (root.pruv)"""
+    return [e["root"] for g in GROUPS for e in g5_entries(g)]
+
+
+def g5_project_roots():
+    """the G5 roots that are directory projects ("project": true; companion modules next to them)"""
+    return [e["root"] for g in GROUPS for e in g5_entries(g) if e.get("project")]
+
+
 def is_companion(rel):
     """rel: repo-relative path of a .pruv file"""
     rel = rel.replace(os.sep, "/")
@@ -72,6 +97,11 @@ def is_companion(rel):
         d = r.rsplit("/", 1)[0] + "/"
         if rel.startswith(d):
             return True
+    # G5 A0: a .pruv next to a G5 project root that is not that root is a companion module
+    if rel not in set(g5_roots()):
+        for r in g5_project_roots():
+            if rel.startswith(r.rsplit("/", 1)[0] + "/"):
+                return True
     # directories that hold G4 projects: a .pruv inside them that is not a listed root is a companion
     if rel.startswith("tests/g4/") and rel.endswith(".pruv"):
         return True

@@ -482,6 +482,70 @@ def g9_unimplemented_error(prog, stage, layer):
                      "avoid recursion, decreases, size, recursive types and array/str fields for now")
 
 
+# ---------------------------------------------------------------------------
+# G5 A0: inout parameters. `program_uses_inout` (parse level) drives the contextual `old` builtin; the staging guard
+# stops every checked program that uses inout before verification and emission (G5_SPEC 9, batches A0-A3).
+# ---------------------------------------------------------------------------
+def _has_inout_node(node) -> bool:
+    if isinstance(node, list):
+        return any(_has_inout_node(x) for x in node)
+    if isinstance(node, InoutArg):
+        return True
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return False
+    return any(_has_inout_node(getattr(node, fname)) for fname in node.__dataclass_fields__)
+
+
+def program_uses_inout(prog) -> bool:
+    """True if some parameter has the inout mode or some call argument carries the inout marker"""
+    for fn in prog.functions:
+        if any(p.mode is not None for p in fn.params):
+            return True
+        if (_has_inout_node(fn.requires) or _has_inout_node(fn.ensures) or _has_inout_node(fn.body)
+                or (fn.decreases is not None and _has_inout_node(fn.decreases))):
+            return True
+    return False
+
+
+def _g5_candidates(node, out):
+    if isinstance(node, list):
+        for x in node:
+            _g5_candidates(x, out)
+        return
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return
+    if isinstance(node, InoutArg) or (isinstance(node, Call) and node.old is not None):
+        out.append((node.line, node.col))
+    for fname in node.__dataclass_fields__:
+        _g5_candidates(getattr(node, fname), out)
+
+
+def first_g5_use(prog):
+    """first G5 construct of a checked program -> (line, col) or None: an inout parameter, an inout call argument
+    or a resolved old(..) expression (smallest line/col)"""
+    cands = []
+    for fn in prog.functions:
+        for p in fn.params:
+            if p.mode is not None and p.mode_pos is not None:
+                cands.append(p.mode_pos)
+        _g5_candidates(fn.requires, cands)
+        _g5_candidates(fn.ensures, cands)
+        _g5_candidates(fn.body, cands)
+        if fn.decreases is not None:
+            _g5_candidates(fn.decreases, cands)
+    return min(cands) if cands else None
+
+
+def g5_unimplemented_error(prog, stage="codegen"):
+    """PruvError (unsupported_type) for the first G5 construct, or None. Run right after type checking."""
+    hit = first_g5_use(prog)
+    if hit is None:
+        return None
+    return PruvError(stage, hit[0], hit[1], "unsupported_type",
+                     "G5 inout parameters are not implemented by the verify and codegen layers yet",
+                     "pass and return arrays by value for now")
+
+
 class TypeTable:
     g9 = None     # G9 A0: checker metadata dict (type_sccs, boxed, extended, fn_sccs), only when a G9 feature exists
 

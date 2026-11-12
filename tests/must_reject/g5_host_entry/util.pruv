@@ -1,0 +1,4 @@
+// companion module of g5_host_entry (not a standalone test root)
+pub fn one() -> i64 {
+  return 1;
+}

@@ -1,0 +1,5 @@
+// G5: the operand of old must be an inout parameter, not an ordinary parameter
+fn f(inout a: [i64], b: [i64]) -> ()
+  ensures len(old(b)) == len(b)
+{
+}

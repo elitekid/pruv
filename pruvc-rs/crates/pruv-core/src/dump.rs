@@ -156,8 +156,19 @@ pub fn expr(e: &Expr) -> Json {
         Expr::Call(x) => {
             let mut f: Fields = vec![("name", js(&x.name)), ("args", list(&x.args, expr)), ("ty", ty(&x.ty))];
             targs_extra(&mut f, &x.targs, &x.inst);
+            if let Some((pname, index)) = &x.old {
+                // G5 A0, written only when present (check dump): the resolved old(a) operand and its parameter position
+                f.push((
+                    "old",
+                    Json::Obj(vec![
+                        ("param".to_string(), js(pname)),
+                        ("index".to_string(), Json::Str(index.to_string())),
+                    ]),
+                ));
+            }
             node("Call", Some((x.line, x.col)), f)
         }
+        Expr::InoutArg(x) => node("InoutArg", Some((x.line, x.col)), vec![("expr", bx(&x.expr)), ("ty", ty(&x.ty))]),
         Expr::Index(x) => node(
             "Index",
             Some((x.line, x.col)),
@@ -373,6 +384,9 @@ fn param(p: &Param) -> Json {
     }
     if p.take {
         f.push(("take", Json::Bool(true))); // G6 A0, written only when present
+    }
+    if p.mode_pos.is_some() {
+        f.push(("mode", js("inout"))); // G5 A0, written only when present
     }
     node("Param", None, f)
 }

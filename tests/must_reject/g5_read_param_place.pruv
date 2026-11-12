@@ -1,0 +1,8 @@
+// G5: an ordinary (read-only) parameter of the caller cannot be passed inout
+fn set_at(inout a: [i64], i: i64, v: i64) -> () {
+  a[i] = v;
+}
+
+fn demo(a: [i64]) -> () {
+  set_at(inout a, 0, 7);
+}

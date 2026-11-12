@@ -1,0 +1,9 @@
+// G5: an element is not an admissible inout place
+fn set_at(inout a: [i64], i: i64, v: i64) -> () {
+  a[i] = v;
+}
+
+fn demo() -> () ! alloc {
+  let mut data: [i64] = alloc(2, 0);
+  set_at(inout data[0], 0, 7);
+}

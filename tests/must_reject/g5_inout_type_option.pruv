@@ -1,0 +1,3 @@
+// G5: an Option cannot be an inout parameter
+fn clear(inout o: Option<i64>) -> () {
+}

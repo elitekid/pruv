@@ -1,0 +1,11 @@
+// G5: a field is not an admissible inout place
+struct Box { n: i64 }
+
+fn set_at(inout a: [i64], i: i64, v: i64) -> () {
+  a[i] = v;
+}
+
+fn demo() -> () {
+  let b: Box = Box { n: 1 };
+  set_at(inout b.n, 0, 7);
+}

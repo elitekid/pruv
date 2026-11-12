@@ -1,0 +1,8 @@
+// G5: g(inout a, a): the marked binding is also passed read-only
+fn mixed(inout x: [i64], y: [i64]) -> () {
+}
+
+fn demo() -> () ! alloc {
+  let mut a: [i64] = alloc(2, 0);
+  mixed(inout a, a);
+}

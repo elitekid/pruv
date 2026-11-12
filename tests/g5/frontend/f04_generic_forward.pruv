@@ -1,0 +1,15 @@
+// G5 A0 frontend: an inout [T: Element] parameter forwarded to a generic inout callee with an explicit type argument
+fn set_first<T: Element>(inout a: [T], x: T) -> ()
+  requires len(a) >= 1
+  ensures a[0] == x
+  ensures len(a) == len(old(a))
+{
+  a[0] = x;
+}
+
+fn set_first_again<T: Element>(inout a: [T], x: T) -> ()
+  requires len(a) >= 1
+  ensures a[0] == x
+{
+  set_first::<T>(inout a, x);
+}

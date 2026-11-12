@@ -6,8 +6,10 @@
                              [--fuzz-count 200] [--mutations 6] [--save-dir DIR]
                              [--only GROUP[,GROUP...]]
 
-Groups: must_reject examples runtime bench edge g6 g9 g4 bytes fuzz mutate
+Groups: must_reject examples runtime bench edge g6 g9 g4 g5 bytes fuzz mutate
   g6 = tests/g6/frontend, g9 = tests/g9/frontend (the g9_* must_reject sources are part of must_reject).
+  g5 = the roots of tests/g5/fixtures.json (frontend files, the f11 module project, the g5_host_entry rejection project);
+  the flat tests/must_reject/g5_*.pruv sources are part of must_reject (G5 A0: the Rust side is ported later).
   g4 = the project roots listed in tests/g4/fixtures.json (frontend + tests/must_reject/g4_*/root.pruv); companion
   module files are never inputs. The dump tools load the declared children relative to the root file.
 --mode parse (default): expected line = diff_py_adapter.dumps(parse_result(FILE)), Rust = pruv-parse-dump,
@@ -57,6 +59,7 @@ GROUP_DIRS = [
     ("g6", "tests/g6/frontend"),
     ("g9", "tests/g9/frontend"),
     ("g4", "tests/g4"),
+    ("g5", "tests/g5"),
 ]
 CHECK_EDGE_DIR = "tests/check_edge"
 PARSE_EDGE_DIR = "tests/parse_edge"
@@ -217,6 +220,12 @@ def list_dir(sub):
         # G4 A0: project roots (frontend + rejection projects) from tests/g4/fixtures.json; companion modules are not roots
         import importlib
         return sorted(os.path.join(ROOT, *r.split("/")) for r in importlib.import_module("g4.projects").all_roots())
+    if sub == "tests/g5":
+        # G5 A0: the roots of tests/g5/fixtures.json (frontend files/projects and the rejection project); the flat
+        # tests/must_reject/g5_*.pruv sources belong to the must_reject group; companion modules are not roots
+        import importlib
+        return sorted(os.path.join(ROOT, *r.split("/")) for r in importlib.import_module("g4.projects").g5_roots()
+                      if not (r.startswith("tests/must_reject/") and r.endswith(".pruv") and r.count("/") == 2))
     return sorted(glob.glob(os.path.join(ROOT, *sub.split("/")) + os.sep + "*.pruv"))
 
 

@@ -1,0 +1,4 @@
+// G5: a trusted rust fn cannot have an inout parameter (rejected even if never called)
+trusted rust fn scramble(inout a: [i64]) -> ()
+  ensures true
+  = "::std::mem::drop";

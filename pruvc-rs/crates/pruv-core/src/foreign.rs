@@ -228,6 +228,16 @@ pub fn check_foreign_decl(f: &Function, externs: &[String]) -> Res<()> {
     }
     for prm in &f.params {
         let pt = GType::from_key(&prm.ty);
+        if let Some((ml, mc)) = prm.mode_pos {
+            // G5 A0: rejected whether or not the declaration is ever called; points at the `inout` token
+            return Err(err(
+                ml,
+                mc,
+                "foreign_signature",
+                format!("inout parameter {} is not allowed on a trusted rust fn", prm.name),
+                "remove `inout`; a foreign function only reads its arguments",
+            ));
+        }
         if prm.take {
             return Err(err(
                 fl,
@@ -789,6 +799,7 @@ fn g6_expr(e: &Expr, out: &mut Cands) {
         Expr::FieldAccess(x) => g6_expr(&x.base, out),
         Expr::IsVariant(x) => g6_expr(&x.value, out),
         Expr::VariantField(x) => g6_expr(&x.value, out),
+        Expr::InoutArg(x) => g6_expr(&x.expr, out), // G5 A0
         Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
     }
 }

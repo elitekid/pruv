@@ -315,6 +315,7 @@ fn expr_ty(e: &Expr) -> &Option<String> {
         Expr::IsVariant(x) => &x.ty,
         Expr::VariantField(x) => &x.ty,
         Expr::Move(x) => &x.ty,
+        Expr::InoutArg(x) => &x.ty,
     }
 }
 
@@ -1293,6 +1294,8 @@ impl<'a> Gen<'a> {
             }
             // G6 A0: `move` is checked but never lowered (the driver's A0 guard stops the program earlier)
             Expr::Move(_) => Err("G6 move reached the Rust generator".to_string()),
+            // G5 A0: an inout marker is checked but never lowered (the driver's A0 guard stops the program earlier)
+            Expr::InoutArg(_) => Err("G5 inout argument reached the Rust generator".to_string()),
             Expr::VariantField(x) if self.is_ext(expr_ty(&x.value).as_deref()) || self.g9_real_path(&x.value) => {
                 let fty = expr_ty(e);
                 if self.is_ext(fty.as_deref()) || fty.as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
@@ -2096,6 +2099,8 @@ impl<'a> Gen<'a> {
     fn e(&mut self, e: &Expr) -> R<String> {
         match e {
             Expr::Move(x) => Ok(x.name.clone()), // G6: Rust moves
+            // G5 A0: never reaches the generator (the driver's A0 guard stops the program earlier)
+            Expr::InoutArg(_) => Err("G5 inout argument reached the Rust generator".to_string()),
             Expr::IntLit(x) => {
                 if x.value == "-9223372036854775808" {
                     return Ok("i64::MIN".to_string());
@@ -2518,7 +2523,7 @@ mod tests {
             line: 1,
             col: 1,
             name: "f".into(),
-            params: vec![Param { name: "x".into(), ty: "i64".into(), refine: None, take: false }],
+            params: vec![Param { name: "x".into(), ty: "i64".into(), refine: None, take: false, mode_pos: None }],
             ret: "i64".into(),
             effects: vec![],
             requires,
@@ -2566,7 +2571,7 @@ mod tests {
             line: 1,
             col: 1,
             name: "g".into(),
-            params: vec![Param { name: "a".into(), ty: aty.into(), refine: None, take: false }],
+            params: vec![Param { name: "a".into(), ty: aty.into(), refine: None, take: false, mode_pos: None }],
             ret: "i64".into(),
             effects: vec![],
             requires: vec![],

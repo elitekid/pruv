@@ -4,7 +4,8 @@ from vast import *
 from typeinfo import (TypeTable, BUILTIN_TYPE_NAMES, type_name, is_user_type, is_array, array_elem,  # G2 A5: array_elem
                       TypeArityError, check_arity, bind_args, substitute, is_value, is_element,
                       dependencies, decl_owner, fn_owner,  # G3 A1
-                      COLLECTION_ARITY, COLLECTION_SPELLING, is_collection, contains_collection)  # G6 A0
+                      COLLECTION_ARITY, COLLECTION_SPELLING, is_collection, contains_collection,  # G6 A0
+                      program_uses_inout)  # G5 A0
 from refine import expand as refine_expand
 from refine import _kids as expr_kids
 from foreign import (CATALOG, CATALOG_NAMES, CATALOG_CONTRACT_ONLY, check_foreign_decl, check_ownership)  # G6 A0
@@ -21,6 +22,24 @@ FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
 
 def terr(node, code, msg, fix="", stage="type"):
     raise PruvError(stage, node.line, node.col, code, msg, fix, file=getattr(node, "file", None))   # G4: file only in explicit mode
+
+
+class _At:
+    """a (line, col, file) position for diagnostics that point at a token without an AST node (G5: `inout` marker)"""
+    def __init__(s, line, col, file=None):
+        s.line, s.col, s.file = line, col, file
+
+
+def _mode_at(f, p):
+    """position of the `inout` token of parameter p of function f"""
+    return _At(p.mode_pos[0], p.mode_pos[1], getattr(p, "file", None) or getattr(f, "file", None))
+
+
+def _mentions(e, name):
+    """G5: does the full syntax of e (every operand, reachable or not) mention the binding `name`?"""
+    if isinstance(e, (Var, Move)) and e.name == name:
+        return True
+    return any(_mentions(k, name) for k in expr_kids(e))
 
 
 def _sccs(n, adj):
@@ -106,12 +125,17 @@ class Checker:
             from modules import resolve
             resolve(prog)
         s.externs = frozenset(externs)   # G6: crate names given with --rust-extern
+        s.uses_inout = program_uses_inout(prog)   # G5 A0: enables the contextual builtin `old`
+        s.ckind = "code"          # G5: kind of the expression being checked: requires/ensures/decreases/invariant/assert/code
+        s.boundary = None         # G5: the call allowed at the statement boundary of the statement being checked
         s.funcs = {}
         for f in prog.functions:
             if f.name in s.funcs:
                 terr(f, "dup_fn", "function %s defined twice" % f.name)
             if f.name in BUILTIN_FNS or f.name in CONTRACT_ONLY or f.name in CATALOG_NAMES:
                 terr(f, "reserved", "%s is a builtin name" % f.name, "rename the function")
+            if s.uses_inout and (f.src_name or f.name) == "old":
+                terr(f, "reserved", "old is a builtin name in a program that uses inout", "rename the function")
             s.funcs[f.name] = f
         s.calls = {}
         s.decls = {}      # type name -> TypeDecl (first declaration)
@@ -143,6 +167,7 @@ class Checker:
         s.inhabitance()        # G9 A0: every declaration needs a finite value
         s.compute_extended()
         s.check_extended_uses()
+        s.check_modes()        # G5 A0: parameter modes, before host entries and bodies
         if s.prog.explicit:
             s.check_entries()      # G4 A0: host-entry signatures
         s.tt = TypeTable(s.prog)
@@ -586,12 +611,28 @@ class Checker:
                 s.ext_misuse(f, p.type)
             s.ext_misuse(f, f.ret)
 
+    def check_modes(s):
+        """G5 A0: an inout parameter must be a primitive or Element-generic array ([i64], [u8], [bool], [T: Element])"""
+        for f in s.prog.functions:
+            for p in f.params:
+                if p.mode is not None and not is_array(p.type):
+                    terr(_mode_at(f, p), "inout_type", "inout parameter %s cannot have the type %s: only [i64], [u8], "
+                         "[bool] and [T] with T: Element can be inout" % (p.name, type_name(p.type)),
+                         "declare %s without inout, or give it one of those array types" % p.name)
+
     def check_entries(s):
         """G4 A0 (explicit mode): a host entry (root `pub`, nongeneric, ordinary function) may not have a collection or an
-        extended (G9) type in its signature; child `pub` functions and generic functions are not host entries"""
+        extended (G9) type in its signature; child `pub` functions and generic functions are not host entries.
+        G5 A0: it may not have an inout parameter either"""
         for f in s.prog.functions:
             if not f.host_entry:
                 continue
+            for p in f.params:
+                if p.mode is not None:
+                    terr(_mode_at(f, p), "entry_signature", "host entry %s cannot have the inout parameter %s" % (
+                        f.name, p.name),
+                         "make %s private or child `pub` and expose a root wrapper that copies the input into a "
+                         "`let mut` local" % f.name)
             for what, ty in [("parameter %s" % p.name, p.type) for p in f.params] + [("the result", f.ret)]:
                 if contains_collection(ty) or any(n in s.extended for n in dependencies(ty)):
                     terr(f, "entry_signature", "host entry %s cannot have the type %s in %s" % (
@@ -670,17 +711,22 @@ class Checker:
             if p.take and not is_collection(p.type):
                 terr(f, "foreign_move", "take is only for collection parameters",
                      "remove `take` from %s; scalars, arrays and str are passed by value or borrowed" % p.name)
-            scope[p.name] = (p.type, False, "param")
+            # G5 A0: an inout parameter allows element stores but, like every parameter, never whole reassignment
+            scope[p.name] = (p.type, False, "inout" if p.mode is not None else "param")
         s.used_effects = set()
+        s.ckind = "requires"
         for r in f.requires:
             s.expect(r, BOOL, scope, contract=True)
         escope = dict(scope)
         if f.ret != UNIT:
             escope["result"] = (f.ret, False, "result")
+        s.ckind = "ensures"
         for e in f.ensures:
             s.expect(e, BOOL, escope, contract=True)
+        s.ckind = "decreases"
         if f.decreases is not None:      # G9 A0: scalar measure over the parameters only (no result)
             s.expect(f.decreases, I64, scope, contract=True)
+        s.ckind = "code"
         if f.foreign is not None:
             return                       # a trusted rust fn has no body to check
         s.block(f.body, dict(scope))
@@ -713,6 +759,8 @@ class Checker:
 
     def stmt(s, st, scope):
         f = s.f
+        s.ckind = "code"
+        s.boundary = None     # G5: only the statements below that allow a mutating call set it
         if isinstance(st, Let):
             if st.name in scope:
                 terr(st, "shadow", "%s is already defined; shadowing is not allowed" % st.name,
@@ -721,6 +769,7 @@ class Checker:
                 terr(st, "unit_let", "cannot bind a () value")
             s.check_type(st, st.type)
             s.ext_misuse(st, st.type)
+            s.boundary = st.value
             s.alloc_hint_for(st.value, st.type)
             s.expect(st.value, st.type, scope)
             if is_array(st.type) or st.type == STR:
@@ -731,8 +780,12 @@ class Checker:
             v = s.lookup(st, st.name, scope)
             s.check_borrow(st, st.name, [])
             if not v[1]:
+                if v[2] == "inout":      # G5 A0: element stores are allowed, replacing the binding is not
+                    terr(st, "immutable", "inout parameter %s cannot be reassigned as a whole" % st.name,
+                         "store elements with %s[i] = v, or copy into a `let mut` local" % st.name)
                 terr(st, "immutable", "%s is not mutable" % st.name,
                      "declare it with `let mut`" if v[2] == "local" else "parameters are immutable; copy into a `let mut` local")
+            s.boundary = st.value
             s.alloc_hint_for(st.value, v[0])
             s.expect(st.value, v[0], scope)
             if is_array(v[0]) or v[0] == STR:
@@ -745,7 +798,7 @@ class Checker:
                      "build a new str with substr() or copy() instead")
             if not is_array(v[0]):
                 terr(st, "not_array", "%s is not an array" % st.name)
-            if not v[1]:
+            if not v[1] and v[2] != "inout":   # G5 A0: an inout parameter permits element stores
                 terr(st, "immutable", "array %s is read-only" % st.name,
                      "use `let mut b: %s = copy(%s);` (needs alloc)" % (type_name(v[0]), st.name))
             s.expect(st.index, I64, scope)
@@ -776,9 +829,12 @@ class Checker:
             s.block(st.els, dict(scope))
         elif isinstance(st, While):
             s.expect(st.cond, BOOL, scope, op="a condition")
+            s.ckind = "invariant"
             for i in st.invariants:
                 s.expect(i, BOOL, scope, contract=True)
+            s.ckind = "decreases"
             s.expect(st.decreases, I64, scope, contract=True)
+            s.ckind = "code"
             s.block(st.body, dict(scope))
         elif isinstance(st, Return):
             if st.value is None:
@@ -787,16 +843,20 @@ class Checker:
             else:
                 if f.ret == UNIT:
                     terr(st, "return_type", "function returns (); use `return;`")
+                s.boundary = st.value
                 s.alloc_hint_for(st.value, f.ret)
                 s.expect(st.value, f.ret, scope)
                 if is_array(f.ret) or f.ret == STR:
                     s.array_source(st, st.value, scope, allow_local_var=True)
                 s.own(st.value)
         elif isinstance(st, Assert):
+            s.ckind = "assert"
             s.expect(st.cond, BOOL, scope, contract=True)
+            s.ckind = "code"
         elif isinstance(st, ExprStmt):
             if not isinstance(st.expr, Call):
                 terr(st, "useless_expr", "expression statement must be a call", "bind it with let or remove it")
+            s.boundary = st.expr
             t = s.expr(st.expr, scope)
             if t != UNIT:
                 terr(st, "unused_value", "value of type %s is dropped" % type_name(t),
@@ -866,6 +926,9 @@ class Checker:
         """arrays are moved/borrowed explicitly: new arrays come only from alloc/copy/calls"""
         if isinstance(value, (Call, StrLit)):
             return
+        if isinstance(value, Var) and scope.get(value.name, (None, None, ""))[2] == "inout":   # G5 A0
+            terr(st, "array_alias", "inout parameter %s is a borrowed array: it cannot be stored or returned" % value.name,
+                 "write copy(%s) to make an independent array (needs `! alloc`)" % value.name)
         if allow_local_var and isinstance(value, Var) and scope.get(value.name, (None, None, ""))[2] == "local":
             return
         if value.ty == STR:   # G2 B0
@@ -1088,6 +1151,9 @@ class Checker:
                 if fd.name == e.field:
                     return ft
             terr(e, "unknown_field", "variant %s::%s has no field %s" % (e.enum_name, e.variant, e.field))
+        if isinstance(e, InoutArg):   # G5 A0: valid only as a direct argument of a call (see inout_args)
+            terr(e, "inout_argument", "the `inout` marker is only valid on an argument of a function whose parameter is inout",
+                 "remove `inout`")
         if isinstance(e, Call):
             return s.call(e, scope, c)
         terr(e, "internal", "unknown expression")
@@ -1205,14 +1271,85 @@ class Checker:
             if g != want:
                 terr(arg, "type_mismatch", "expected %s, found %s" % (type_name(want), type_name(g)))
 
+    # ---- G5 A0: inout call arguments and old(..) ----
+    def inout_args(s, e, f, m, scope, c):
+        """arguments of a resolved call to a user function whose signature has an inout parameter (or that carries a
+        marker): per argument marker/place validity and the instantiated type, then exclusive use of every marked
+        binding across the whole argument list, then the statement-boundary position of the call"""
+        n = e.name
+        marked = []
+        for arg, p in zip(e.args, f.params):
+            want = substitute(p.type, m)
+            if p.mode is None:
+                if isinstance(arg, InoutArg):
+                    terr(arg, "inout_argument", "parameter %s of %s is not inout: the `inout` marker is not allowed here" % (
+                        p.name, n), "remove `inout`, or declare the parameter `inout %s: ...`" % p.name)
+                s.expect(arg, want, scope, c)
+                continue
+            if not isinstance(arg, InoutArg):
+                terr(arg, "inout_argument", "parameter %s of %s is inout: the argument needs the `inout` marker" % (p.name, n),
+                     "write `inout name` with a `let mut` local array or an inout parameter")
+            op = arg.expr
+            if not isinstance(op, Var):
+                what = ("a field" if isinstance(op, FieldAccess) else "an element" if isinstance(op, Index)
+                        else "a call" if isinstance(op, Call) else "an expression")
+                terr(arg, "inout_argument", "an inout argument must be the whole name of a local array or an inout "
+                     "parameter, not %s" % what, "name a `let mut` local array or an inout parameter of this function")
+            v = s.lookup(op, op.name, scope)
+            if v[2] == "local" and not v[1]:
+                terr(arg, "inout_argument", "%s is not mutable: it cannot be passed inout" % op.name,
+                     "declare it with `let mut`")
+            if v[2] not in ("inout", "local"):
+                terr(arg, "inout_argument", "%s is a read-only %s: it cannot be passed inout" % (
+                    op.name, "parameter" if v[2] == "param" else "binding"),
+                     "declare the parameter `inout %s: ...`, or copy into a `let mut` local" % op.name)
+            if v[0] != want:
+                terr(arg, "inout_argument", "inout argument %s has type %s but parameter %s of %s expects %s" % (
+                    op.name, type_name(v[0]), p.name, n, type_name(want)),
+                     "pass an array of exactly the parameter's element type")
+            if op.name in s.active_roots:     # G9: mutable access while a match view of the root is active
+                terr(arg, "recursive_borrow", "cannot pass %s inout while a match on it is active" % op.name,
+                     "finish the match before the call")
+            op.ty = v[0]
+            arg.ty = v[0]
+            marked.append((arg, op.name))
+        for arg, name in marked:
+            if any(x is not arg and _mentions(x, name) for x in e.args):
+                terr(arg, "inout_alias", "%s is passed inout and also used elsewhere in the arguments of this call" % name,
+                     "compute the other value first, e.g. `let n: i64 = len(%s);`, then pass n" % name)
+        if not c and e is not s.boundary:
+            terr(e, "inout_context", "a call with an inout parameter must be a whole expression statement, let initializer, "
+                 "assignment value or return value",
+                 "bind the result first: `let r: T = f(inout a);` and use r afterwards")
+
+    def old_call(s, e, scope):
+        """the contextual builtin old(a): context first, then arity and operand"""
+        if s.ckind not in ("ensures", "invariant", "assert"):
+            terr(e, "old_context", "old(..) is only allowed in ensures, loop invariants and asserts",
+                 "state the property in a contract clause; in code use copy(a) (needs alloc) if the entry value is needed")
+        a = e.args
+        if len(a) != 1:
+            terr(e, "old_argument", "old takes exactly 1 argument, got %d" % len(a),
+                 "write old(a) with the name of an inout parameter of this function")
+        arg = a[0]
+        if not (isinstance(arg, Var) and arg.name in scope and scope[arg.name][2] == "inout"):
+            terr(e, "old_argument", "the operand of old must be the name of an inout parameter of this function",
+                 "write old(a) where `inout a: [..]` is a parameter of the enclosing function")
+        arg.ty = scope[arg.name][0]
+        e.old = {"param": arg.name, "index": [p.name for p in s.f.params].index(arg.name)}
+        return arg.ty
+
     def call(s, e, scope, c):
         n, a = e.name, e.args
 
         def arity(k):
             if len(a) != k:
                 terr(e, "arity", "%s takes %d argument(s), got %d" % (n, k, len(a)))
-        if e.targs is not None and n not in s.funcs and (n in BUILTIN_FNS or n in CONTRACT_ONLY):
+        is_old = n == "old" and s.uses_inout and n not in s.funcs   # G5 A0: contextual builtin
+        if e.targs is not None and n not in s.funcs and (n in BUILTIN_FNS or n in CONTRACT_ONLY or is_old):
             terr(e, "type_arity", "builtin %s takes no type arguments" % n, "remove the `::<...>`")
+        if is_old:
+            return s.old_call(e, scope)
         if n == "len":
             arity(1); s.expect_array(a[0], scope, c, coll=True); return I64   # G6: also Vec/HashMap/String
         if n == "alloc":
@@ -1291,6 +1428,8 @@ class Checker:
         arity(len(f.params))
         if n in CATALOG_CONTRACT_ONLY:
             s.observer_args(e, f, m, scope, c)
+        elif not catalog and (any(p.mode is not None for p in f.params) or any(isinstance(x, InoutArg) for x in a)):
+            s.inout_args(e, f, m, scope, c)     # G5 A0: marker, place, type, exclusivity and statement context
         else:
             for arg, p in zip(a, f.params):
                 s.expect(arg, substitute(p.type, m), scope, c)

@@ -1,0 +1,3 @@
+// G5: str cannot be an inout parameter
+fn touch(inout s: str) -> () {
+}

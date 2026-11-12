@@ -1,0 +1,8 @@
+// G5: h(inout a, len(a)): even a scalar observation of the marked binding is rejected
+fn with_n(inout x: [i64], n: i64) -> () {
+}
+
+fn demo() -> () ! alloc {
+  let mut a: [i64] = alloc(2, 0);
+  with_n(inout a, len(a));
+}

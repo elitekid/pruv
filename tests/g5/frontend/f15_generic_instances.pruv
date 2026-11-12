@@ -1,0 +1,14 @@
+// G5 A0 frontend: a generic inout function instantiated for [bool] and [i64] locals
+fn set_first<T: Element>(inout a: [T], x: T) -> ()
+  requires len(a) >= 1
+  ensures a[0] == x
+{
+  a[0] = x;
+}
+
+fn demo() -> () ! alloc {
+  let mut flags: [bool] = alloc(2, false);
+  set_first::<bool>(inout flags, true);
+  let mut nums: [i64] = alloc(2, 0);
+  set_first::<i64>(inout nums, 5);
+}

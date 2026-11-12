@@ -1,0 +1,3 @@
+// G5: a bool scalar cannot be an inout parameter
+fn flip(inout b: bool) -> () {
+}

@@ -658,6 +658,7 @@ pub(crate) fn expr_ty(e: &Expr) -> &Option<String> {
         Expr::IsVariant(x) => &x.ty,
         Expr::VariantField(x) => &x.ty,
         Expr::Move(x) => &x.ty,
+        Expr::InoutArg(x) => &x.ty,
     }
 }
 
@@ -2011,6 +2012,8 @@ impl<'a> FnGen<'a> {
                 self.ins(format!("store ptr null, ptr {}", sl.a))?;
                 Ok(v)
             }
+            // G5 A0: never reaches the generator (the driver's A0 guard stops the program earlier)
+            Expr::InoutArg(_) => Err("G5 inout argument reached the LLVM generator".to_string()),
             Expr::Unary(x) => {
                 let v = self.ev(&x.operand, false)?;
                 if x.op == "!" {
@@ -2885,6 +2888,8 @@ impl<'a> FnGen<'a> {
             }
             // G6 A0: `move` is checked but never lowered (the driver's A0 guard stops the program earlier)
             Expr::Move(_) => Err("G6 move reached the LLVM generator".to_string()),
+            // G5 A0: an inout marker is checked but never lowered (the driver's A0 guard stops the program earlier)
+            Expr::InoutArg(_) => Err("G5 inout argument reached the LLVM generator".to_string()),
             Expr::VariantField(x) => {
                 if self.is_ext_opt(expr_ty(&x.value)) || self.g9_real_path(&x.value) {
                     return self.cload(e);

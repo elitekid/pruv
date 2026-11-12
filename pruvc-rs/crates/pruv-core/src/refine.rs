@@ -135,6 +135,7 @@ fn validate(r: &Refinement, user: &HashSet<String>) -> Res<()> {
 pub(crate) fn kids(e: &Expr) -> Vec<&Expr> {
     match e {
         Expr::Move(_) => Vec::new(),
+        Expr::InoutArg(x) => vec![x.expr.as_ref()], // G5 A0
         Expr::Unary(x) => vec![x.operand.as_ref()],
         Expr::Binary(x) => vec![x.left.as_ref(), x.right.as_ref()],
         Expr::Index(x) => vec![x.array.as_ref(), x.index.as_ref()],
@@ -287,7 +288,7 @@ impl At {
         Expr::Binary(Binary { line: self.line, col: self.col, op: op.to_string(), left: Box::new(l), right: Box::new(r), ty: None })
     }
     fn length(&self, n: &str) -> Expr {
-        Expr::Call(Call { line: self.line, col: self.col, name: "len".to_string(), args: vec![self.var(n)], ty: None, targs: None, inst: None })
+        Expr::Call(Call { line: self.line, col: self.col, name: "len".to_string(), args: vec![self.var(n)], ty: None, targs: None, inst: None, old: None })
     }
     /// L <= v && v <= U (v is a function that builds a fresh i64 expression each time)
     fn within(&self, v: &dyn Fn() -> Expr, r: &Refinement) -> Expr {

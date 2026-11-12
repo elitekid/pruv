@@ -1,0 +1,4 @@
+// G5: an inout parameter allows element stores but never whole reassignment
+fn reset(inout a: [i64]) -> () ! alloc {
+  a = alloc(2, 0);
+}

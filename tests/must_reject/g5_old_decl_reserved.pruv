@@ -1,0 +1,8 @@
+// G5: in a program that uses inout, `old` is the builtin; a function declaration named old is reserved
+fn old(x: i64) -> i64 {
+  return x;
+}
+
+fn set_at(inout a: [i64], i: i64, v: i64) -> () {
+  a[i] = v;
+}

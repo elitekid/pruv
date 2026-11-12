@@ -132,6 +132,14 @@ class Move(Expr):
     name: str          # G6: `move name` (consumes an owned collection binding)
     ty: Optional[Type] = None
 
+@dataclass
+class InoutArg(Expr):
+    # G5 A0: the call-argument marker `inout <operand>`; line/col = the `inout` token. The operand is kept as written
+    # (the checker requires a plain Var naming a mutable local array or an inout parameter of the caller). It is only
+    # valid directly as an argument of a call, never a value-producing expression of its own.
+    expr: Expr
+    ty: Optional[Type] = None
+
 # ---------- G1: structs and enums ----------
 # A user type is Type("Point"): nominal, equal iff the names are equal.
 @dataclass
@@ -358,6 +366,12 @@ Function.foreign = None    # trusted rust fn: {"path": "::std::cmp::min", "line"
 # Same convention: plain class attributes, set on an instance only when a G9 feature is present.
 Function.decreases = None  # the `decreases Expr` clause of a function header (None = absent)
 Program.g9 = None          # checker metadata dict (see check.Checker.g9_meta), only when a G9 feature exists
+
+# ---------- G5 A0: inout parameters ----------
+# Same convention: plain class attributes (absent by default), so every dump of a G5-free program is unchanged.
+Param.mode = None          # "inout" for `inout name: [..]` (None = ordinary read parameter)
+Param.mode_pos = None      # (line, col) of the `inout` token of the parameter
+Call.old = None            # set by the checker on a resolved builtin `old(a)`: {"param": name, "index": position}
 
 
 # ---------- G4 A0: modules, visibility, source identity ----------
