@@ -1,0 +1,24 @@
+// G7 A1 proof: callee old(a) is the group-entry array of that branch; two groups in a row
+fn inc(inout a: [i64]) -> ()
+  requires len(a) > 0 && a[0] < 1000
+  ensures len(a) == len(old(a))
+  ensures a[0] == old(a)[0] + 1
+  ensures forall k in 1..len(a): a[k] == old(a)[k]
+{
+  a[0] = a[0] + 1;
+}
+
+fn demo() -> () ! alloc {
+  let mut a: [i64] = alloc(2, 5);
+  let mut b: [i64] = alloc(2, 40);
+  par {
+    inc(inout a);
+    inc(inout b);
+  }
+  assert a[0] == 6 && b[0] == 41;
+  par {
+    inc(inout a);
+    inc(inout b);
+  }
+  assert a[0] == 7 && b[0] == 42;
+}

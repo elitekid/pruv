@@ -1,0 +1,21 @@
+// G7 A1 reject: only the second branch requires fails (x > 10 is not known), the first branch is fine
+fn ok(x: i64) -> ()
+  requires x > 0
+{
+  let n: i64 = x;
+}
+
+fn big(x: i64) -> ()
+  requires x > 10
+{
+  let n: i64 = x;
+}
+
+fn demo(x: i64) -> ()
+  requires x > 0
+{
+  par {
+    ok(x);
+    big(x);
+  }
+}

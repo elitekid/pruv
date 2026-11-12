@@ -226,7 +226,6 @@ fn compile(a: &Args) -> Result<(), Fail> {
         None => pruv_core::check::check_with_externs(&mut prog, &a.rust_extern),
     };
     let tt = checked.map_err(|e| Fail::Lang(vec![e]))?;
-    if let Some(e) = pruv_core::foreign::g7_unimplemented_error(&prog) { return Err(Fail::Lang(vec![e])); }
     // G4 A1: the staging guard of explicit visibility mode now comes after the proof (below), like Python compile_file.
     // G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.
     // G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm) lowers
@@ -260,7 +259,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
     } else {
         // Pre-G10 order for File-free native programs: with --no-verify, foreign_target fires before the notice.
-        if g6_native && !pruv_core::foreign::uses_files(&prog) {
+        if g6_native && pruv_core::foreign::g7_unimplemented_error(&prog).is_none() && !pruv_core::foreign::uses_files(&prog) {
             if let Some(e) = foreign_target_error(&prog) {
                 return Err(Fail::Lang(vec![e]));
             }
@@ -269,6 +268,8 @@ fn compile(a: &Args) -> Result<(), Fail> {
             eprintln!("{{\"status\": \"skipped_no_verify\"}}");
         }
     }
+    // G7 A1: verification precedes the guard in every mode, including native emission.
+    if let Some(e) = pruv_core::foreign::g7_unimplemented_error(&prog) { return Err(Fail::Lang(vec![e])); }
     if g6_native {
         if let Some(e) = foreign_target_error(&prog) {
             return Err(Fail::Lang(vec![e]));

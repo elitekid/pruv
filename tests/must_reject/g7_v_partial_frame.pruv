@@ -1,0 +1,18 @@
+// G7 A1 reject: the helper states no frame, so an untouched element of the written array is not known after the join
+fn set_first(inout a: [i64], v: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == v
+{
+  a[0] = v;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut p: [i64] = alloc(3, 0);
+  let mut q: [i64] = alloc(3, 0);
+  par {
+    set_first(inout p, 1);
+    set_first(inout q, 2);
+  }
+  assert p[1] == 0;
+  return 0;
+}

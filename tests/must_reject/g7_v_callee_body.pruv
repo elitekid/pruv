@@ -1,0 +1,23 @@
+// G7 A1 reject: a group is not a trusted boundary: the callee body does not establish its own ensures
+fn set_first(inout a: [i64], v: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == v
+{
+  a[0] = 0;
+}
+
+fn set_last(inout a: [i64], v: i64) -> ()
+  requires len(a) > 0
+  ensures a[len(a) - 1] == v
+{
+  a[len(a) - 1] = v;
+}
+
+fn demo() -> () ! alloc {
+  let mut p: [i64] = alloc(3, 0);
+  let mut q: [i64] = alloc(3, 0);
+  par {
+    set_first(inout p, 1);
+    set_last(inout q, 2);
+  }
+}

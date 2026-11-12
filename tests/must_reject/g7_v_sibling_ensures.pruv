@@ -1,0 +1,20 @@
+// G7 A1 reject: a sibling's ensures must not prove a later branch's requires (x > 0 is unknown at group entry)
+fn pos(x: i64) -> ()
+  requires x > 0
+  ensures x > 0
+{
+  let n: i64 = x;
+}
+
+fn need(x: i64) -> ()
+  requires x > 0
+{
+  let n: i64 = x;
+}
+
+fn demo(x: i64) -> () {
+  par {
+    pos(x);
+    need(x);
+  }
+}

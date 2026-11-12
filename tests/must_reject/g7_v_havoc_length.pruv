@@ -1,0 +1,15 @@
+// G7 A1 reject: the havoc keeps the length, so a wrong length claim after the group fails (3, not 4)
+fn scramble(inout a: [i64]) -> () {
+  let n: i64 = len(a);
+}
+
+fn demo() -> i64 ! alloc {
+  let mut p: [i64] = alloc(3, 0);
+  let mut q: [i64] = alloc(5, 0);
+  par {
+    scramble(inout p);
+    scramble(inout q);
+  }
+  assert len(p) == 4;
+  return 0;
+}

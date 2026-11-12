@@ -1649,6 +1649,60 @@ class FnVerifier:
             for a in getattr(e.args[i], "post_refine", None) or ():
                 st.pc.append(s.check_assert(a, st))
 
+    def par(s, p, st):
+        """G7 A1 (G7_SPEC 5): one par group. (1) every branch's actuals are evaluated against the group-entry state and
+        frozen (callee old = that actual); (2) every branch requires (and applicable recursive decreases) is proven in
+        source order against that same entry state, before any ensures is assumed (prove never adds to the path
+        condition, so nothing of a sibling is available either); (3) all inout finals of all branches are created with
+        the F3 transition (same length, element type, u8 domain) before any ensures; (4) every branch's ensures is
+        conjoined into the joined state, also for legacy unit branches without inout; (5) each branch's refined locals
+        are checked on a fork that assumes only that branch's own ensures. Unwritten bindings keep their values."""
+        st = st.fork()
+        brs = []
+        for c in p.calls:
+            f = s.funcs[c.name]
+            args = [s.ev(a, st, [], True) for a in c.args]
+            cenv = {pm.name: a for pm, a in zip(f.params, args)}
+            ios = [i for i, pm in enumerate(f.params) if pm.mode is not None]
+            for i in ios:
+                cenv[("old", f.params[i].name)] = args[i]
+            theta = c.inst["subst"] if getattr(c, "inst", None) else {}
+            brs.append((c, f, args, cenv, ios, theta))
+        for c, f, args, cenv, ios, theta in brs:
+            saved, s.theta = s.theta, theta
+            try:
+                for r in f.requires:
+                    ob = s.ev(r, st, [], False, cenv)
+                    s.prove(st, [], ob, c, "call_requires", "precondition of %s (line %d)" % (c.name, r.line))
+                s.termination(c, f, st, [], cenv)
+            finally:
+                s.theta = saved
+        for c, f, args, cenv, ios, theta in brs:
+            if ios:
+                s.inout_finals(c, f, ios, args, cenv, st, [])
+        base = st.fork()        # all finals exist, no ensures assumed yet
+        for c, f, args, cenv, ios, theta in brs:
+            saved, s.theta = s.theta, theta
+            try:
+                for en in f.ensures:
+                    s.assume(st, [], s.ev(en, st, [], False, cenv))
+            finally:
+                s.theta = saved
+        for c, f, args, cenv, ios, theta in brs:
+            if not any(getattr(c.args[i], "post_refine", None) for i in ios):
+                continue
+            b = base.fork()
+            saved, s.theta = s.theta, theta
+            try:
+                for en in f.ensures:
+                    s.assume(b, [], s.ev(en, b, [], False, cenv))
+            finally:
+                s.theta = saved
+            for i in ios:
+                for a in getattr(c.args[i], "post_refine", None) or ():
+                    st.pc.append(s.check_assert(a, b))
+        return st
+
     def termination(s, e, f, st, g, cenv):
         """G9 A1 (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:
         definedness of the instantiated callee measure (existing domain codes), M_f(actuals) >= 0
@@ -1987,6 +2041,8 @@ class FnVerifier:
             return [st]
         if isinstance(stmt, While):
             return s.loop(stmt, st)
+        if isinstance(stmt, Par):       # G7 A1
+            return [s.par(stmt, st)]
         raise Exception("exec: %r" % stmt)
 
     def loop(s, w, st):

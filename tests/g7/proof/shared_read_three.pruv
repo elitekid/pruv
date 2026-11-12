@@ -1,0 +1,20 @@
+// G7 A1 proof: three branches read one shared array and write three different arrays
+fn first_into(src: [i64], inout dst: [i64]) -> ()
+  requires len(src) > 0 && len(dst) > 0
+  ensures len(dst) == len(old(dst))
+  ensures dst[0] == src[0]
+  ensures forall k in 1..len(dst): dst[k] == old(dst)[k]
+{
+  dst[0] = src[0];
+}
+
+fn fan(src: [i64], inout x: [i64], inout y: [i64], inout z: [i64]) -> ()
+  requires len(src) > 0 && len(x) > 0 && len(y) > 0 && len(z) > 0
+  ensures x[0] == src[0] && y[0] == src[0] && z[0] == src[0]
+{
+  par {
+    first_into(src, inout x);
+    first_into(src, inout y);
+    first_into(src, inout z);
+  }
+}

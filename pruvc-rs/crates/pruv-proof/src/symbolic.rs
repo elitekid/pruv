@@ -2052,6 +2052,93 @@ impl<'a> FnVerifier<'a> {
         Ok(res)
     }
 
+    /// verify.py `par` (G7 A1): entry actuals and requires, all finals, joined ensures,
+    /// then refinements checked using only the corresponding branch's ensures.
+    fn par(&mut self, p: &ast::Par, st: &State) -> R<State> {
+        let mut st = st.fork(None);
+        let mut branches = Vec::new();
+        for e in &p.calls {
+            let c = match e {
+                Expr::Call(c) => c,
+                _ => return Err("par: not a call".into()),
+            };
+            let f: &'a ast::Function = self.funcs.get(&c.name).copied().ok_or_else(|| format!("'{}'", c.name))?;
+            let mut args = Vec::new();
+            for a in &c.args {
+                args.push(self.ev0(a, &mut st, &[], true)?);
+            }
+            let mut cenv = Env::default();
+            for (pm, a) in f.params.iter().zip(&args) {
+                cenv.set(&pm.name, a.clone());
+            }
+            let ios: Vec<usize> = f.params.iter().enumerate().filter(|(_, pm)| pm.mode_pos.is_some()).map(|(i, _)| i).collect();
+            for &i in &ios {
+                cenv.set(&old_key(&f.params[i].name), args[i].clone());
+            }
+            let theta: Mapping = match &c.inst {
+                Some(i) => i.subst.iter().map(|(o, idx, t)| ((o.clone(), *idx), t.clone())).collect(),
+                None => Mapping::new(),
+            };
+            branches.push((e, f, cenv, ios, theta));
+        }
+        for (e, f, cenv, _, theta) in &branches {
+            let saved = std::mem::replace(&mut self.theta, theta.clone());
+            let r = (|| -> R<()> {
+                for req in &f.requires {
+                    let ob = self.ev_ast(req, &mut st, &[], false, cenv)?;
+                    self.prove_core(&st.env, &st.pc, &[], &ob, pos(e), "call_requires",
+                        &format!("precondition of {} (line {})", f.name, pruv_core::diagnostic::plain_line(req.line())), None);
+                }
+                self.termination(e, f, &mut st, &[], cenv)
+            })();
+            self.theta = saved;
+            r?;
+        }
+        for (e, f, cenv, ios, _) in &mut branches {
+            if !ios.is_empty() {
+                self.inout_finals(e, f, ios, cenv, &mut st, &[])?;
+            }
+        }
+        let base = st.fork(None);
+        for (_, f, cenv, _, theta) in &branches {
+            let saved = std::mem::replace(&mut self.theta, theta.clone());
+            let r = (|| -> R<()> {
+                for en in &f.ensures {
+                    let ob = self.ev_ast(en, &mut st, &[], false, cenv)?;
+                    self.assume(&mut st, &[], ob);
+                }
+                Ok(())
+            })();
+            self.theta = saved;
+            r?;
+        }
+        for (e, f, cenv, ios, theta) in &branches {
+            let c = match e { Expr::Call(c) => c, _ => unreachable!() };
+            if !ios.iter().any(|&i| matches!(&c.args[i], Expr::InoutArg(ia) if !ia.post_refine.is_empty())) {
+                continue;
+            }
+            let mut b = base.fork(None);
+            let saved = std::mem::replace(&mut self.theta, theta.clone());
+            let r = (|| -> R<()> {
+                for en in &f.ensures {
+                    let ob = self.ev_ast(en, &mut b, &[], false, cenv)?;
+                    self.assume(&mut b, &[], ob);
+                }
+                Ok(())
+            })();
+            self.theta = saved;
+            r?;
+            for &i in ios {
+                if let Expr::InoutArg(ia) = &c.args[i] {
+                    for a in &ia.post_refine {
+                        st.pc.push(self.check_assert(a, &mut b)?);
+                    }
+                }
+            }
+        }
+        Ok(st)
+    }
+
     /// verify.py `inout_finals` (G5 A1, G5_SPEC 5.2 step 5): for every inout argument in parameter order, fresh contents of
     /// exactly the pre-call length (same length term, same element type, u8 domain for [u8]). The final array is what the
     /// callee's ensures denote by the parameter name, and it rebinds the caller's marked place. All finals exist before any
@@ -2784,7 +2871,7 @@ impl<'a> FnVerifier<'a> {
                 let ob = self.check_assert(s, &mut st)?;
                 Ok(vec![st.fork(Some(ob))])
             }
-            Stmt::Par(_) => Err("G7 verification is not implemented yet".into()),
+            Stmt::Par(p) => Ok(vec![self.par(p, &st)?]),
             Stmt::ExprStmt(s) => {
                 let mut st = st.fork(None);
                 self.ev0(&s.expr, &mut st, &[], true)?;

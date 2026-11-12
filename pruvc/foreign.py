@@ -462,11 +462,11 @@ def first_par(prog):
 
 def g7_unimplemented_error(prog, stage="codegen"):
     """G7 A0 staging guard: PruvError codegen/parallel_unavailable for a program with a par statement, or None.
-    Run right after type/ownership checking, in every mode, before verification and emission."""
+    Run after verification (or after the static checks with --no-verify), before specialization and emission."""
     p = first_par(prog)
     if p is None:
         return None
-    return PruvError(stage, p.line, p.col, "parallel_unavailable", "G7 verification is not implemented yet",
+    return PruvError(stage, p.line, p.col, "parallel_unavailable", "G7 code generation is not implemented yet",
                      "remove the par block (call the helpers one after another) until G7 is completed",
                      file=getattr(p, "file", None))
 

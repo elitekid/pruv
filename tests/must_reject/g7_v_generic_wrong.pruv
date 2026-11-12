@@ -1,0 +1,18 @@
+// G7 A1 reject: generic branches: the instantiated ensures says a[0] == 1, the claim says 2
+fn set_first<T: Element>(inout a: [T], x: T) -> ()
+  requires len(a) >= 1
+  ensures a[0] == x
+{
+  a[0] = x;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut p: [i64] = alloc(2, 0);
+  let mut q: [i64] = alloc(2, 0);
+  par {
+    set_first::<i64>(inout p, 1);
+    set_first::<i64>(inout q, 2);
+  }
+  assert p[0] == 2;
+  return 0;
+}

@@ -1,11 +1,16 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof]
                         [--backend rust|llvm|both]
 
 group g7_frontend (G7 A0; backend null rows): tests/g7/frontend/*.pruv runs on both backends in default and no-verify
-modes. A program with a par group must stop at the staging guard codegen/parallel_unavailable ("G7 verification is not
-implemented yet", exit 1); a program without a group (functions and locals named par) exits 0. The static rejections
-are the tests/must_reject/g7_*.pruv roots (sibling .json = stage/code), ordinary must_reject rows.
+modes. A program with a par group must stop at the staging guard codegen/parallel_unavailable ("G7 code generation is
+not implemented yet", exit 1, since G7 A1 after verification); a program without a group (functions and locals named par)
+exits 0. The static rejections are the tests/must_reject/g7_*.pruv roots (sibling .json = stage/code), ordinary
+must_reject rows.
+
+group g7_proof (G7 A1; backend null rows): tests/g7/proof/*.pruv runs on both backends in default and infer modes; every
+root must verify completely and then stop at the staging guard ("G7 code generation is not implemented yet", exit 1).
+The tests/must_reject/g7_v_*.pruv roots are ordinary must_reject rows (default mode, sibling .json = stage/code).
 
 group g10_frontend (G10 A0; backend null rows): tests/g10/frontend/*.pruv runs on both backends in
 default, no-verify, trust-callers and infer modes. File programs exit 0 on both backends.
@@ -619,12 +624,41 @@ def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
                     if has_group:
                         ok = (c.returncode == 1 and '"stage": "codegen"' in text
                               and '"code": "parallel_unavailable"' in text
-                              and "G7 verification is not implemented yet" in text)
+                              and "G7 code generation is not implemented yet" in text)
                         if not ok:
                             return False, "%s: exit %d (expected the G7 staging guard) %s" % (
                                 backend, c.returncode, text[-600:])
                     elif c.returncode != 0:
                         return False, "%s: exit %d (expected 0) %s" % (backend, c.returncode, text[-600:])
+                return True, ""
+            jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,
+                                       "flags": list(flags), "mode": mode, "group": group}))
+    return jobs
+
+
+def g7_proof_jobs(group="g7_proof", subdir="proof", modes=(("default", []), ("infer", ["--infer"]))):
+    """G7 A1: tests/g7/proof/*.pruv (backend null rows). Every root verifies completely (also with --infer) and then
+    stops at the staging guard codegen/parallel_unavailable "G7 code generation is not implemented yet" (exit 1) on
+    both backends; any verify diagnostic fails the row."""
+    jobs = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests", "g7", subdir, "*.pruv"))):
+        stem = os.path.splitext(os.path.basename(f))[0]
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, stem, mode)
+
+            def fn(f=f, stem=stem, mode=mode, flags=flags):
+                out = os.path.join(WORK, "%s_%s_%s" % (group, stem, mode))
+                for backend in ("rust", "llvm"):
+                    c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
+                         pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
+                    text = c.stdout + c.stderr
+                    ok = (c.returncode == 1 and '"stage": "codegen"' in text
+                          and '"code": "parallel_unavailable"' in text
+                          and "G7 code generation is not implemented yet" in text
+                          and '"stage": "verify"' not in text)
+                    if not ok:
+                        return False, "%s: exit %d (expected a complete proof, then the G7 staging guard) %s" % (
+                            backend, c.returncode, text[-600:])
                 return True, ""
             jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,
                                        "flags": list(flags), "mode": mode, "group": group}))
@@ -997,7 +1031,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -1085,7 +1119,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -1122,6 +1156,8 @@ def main():
             jobs += g10_frontend_jobs("g10_proof", "proof", (("default", []), ("infer", ["--infer"])))
         if only in (None, "g7_frontend"):
             jobs += g7_frontend_jobs()
+        if only in (None, "g7_proof"):
+            jobs += g7_proof_jobs()
         if only in (None, "g5_frontend"):
             jobs += g5_frontend_jobs()
         if only in (None, "g5_reject"):
@@ -1171,7 +1207,7 @@ def main():
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
-                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend")
+                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

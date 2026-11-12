@@ -1,0 +1,15 @@
+// G7 A1 proof: an unspecified post-state keeps its length (contents are arbitrary)
+fn scramble(inout a: [i64]) -> () {
+  let n: i64 = len(a);
+}
+
+fn demo() -> i64 ! alloc {
+  let mut p: [i64] = alloc(3, 0);
+  let mut q: [i64] = alloc(5, 0);
+  par {
+    scramble(inout p);
+    scramble(inout q);
+  }
+  assert len(p) == 3 && len(q) == 5;
+  return len(p) + len(q);
+}

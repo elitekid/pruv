@@ -1,0 +1,21 @@
+// G7 A1 proof: a [bool] branch and a [u8] branch with literal arguments
+fn set_flag(inout f: [bool], i: i64, v: bool) -> ()
+  requires 0 <= i && i < len(f)
+  ensures f[i] == v
+{ f[i] = v; }
+
+fn put_byte(inout buf: [u8], i: i64, b: i64) -> ()
+  requires 0 <= i && i < len(buf) && 0 <= b && b <= 255
+  ensures buf[i] == b
+{ buf[i] = b; }
+
+fn demo() -> i64 ! alloc {
+  let mut flags: [bool] = alloc(3, false);
+  let mut bytes: [u8] = alloc(3, 0);
+  par {
+    set_flag(inout flags, 1, true);
+    put_byte(inout bytes, 2, 200);
+  }
+  assert flags[1] == true && bytes[2] == 200;
+  return bytes[2];
+}
