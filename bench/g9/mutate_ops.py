@@ -15,8 +15,10 @@ Ground truth ("independent classification"): the mutant is graded with --no-veri
 bench/g9/run.py. `incorrect` = the grader result is wrong (a crash or a non-terminating run also counts);
 `correct` = tests pass; `not_compilable` = rejected even without verification; `unknown` = build failure.
 `contract_weak` = wrong results that still satisfy every stated wrapper ensures on all test inputs (only problems whose
-contracts do not state the full meaning, run.py CONTRACT_CHECKS: q03). Such a mutant is not a source-contract mutant
-(SPEC 15.1); it is reported separately and a verified one is not counted as wrong_but_proved.
+contracts do not state the full meaning, run.py CONTRACT_CHECKS: q03), that change no signature/contract line, and whose
+every function contract (helpers included) the independent interpreter bench/fuzz/oracle.py finds satisfied on all test
+inputs (weak_eligible). A mutant that breaks a helper contract is incorrect. Such a mutant is not a source-contract mutant (SPEC 15.1); it is reported
+separately and a verified one is not counted as wrong_but_proved.
 
 Per mutant and per configuration (py/rs x rust/llvm) the verifier verdict plus the grader result give one class:
   rejected_verify    the compiler rejected the mutant in the verifier stage
@@ -438,17 +440,78 @@ def config_class(r):
     return CRA, "status %s" % st
 
 
-def truth_of(path, pid, work):
+import threading
+_ORACLE_LOCK = threading.Lock()
+
+
+def _oracle_contract_failures(text, pid):
+    """Contract failures (requires/ensures/invariant/assert/decreases of every function, helpers included) the
+    independent reference interpreter bench/fuzz/oracle.py records over all test inputs of pid, or None when the
+    interpreter cannot run the program."""
+    O = _load("fuzz_oracle", os.path.join(ROOT, "bench", "fuzz", "oracle.py"))
+    out, box = set(), {}
+
+    def go():
+        try:
+            prog = O.parse_program(text)
+            for fn, args, _exp in G.tests()[pid]:
+                r = O.run(prog, fn, [v for _k, v in args])
+                out.update(r["contract_failures"])
+                if r["kind"] != "ok":
+                    out.add("fault %s in %s" % (r["kind"], fn))
+            box["ok"] = True
+        except (O.OracleUnsupported, RecursionError, ValueError):
+            box["ok"] = False
+
+    with _ORACLE_LOCK:                   # the recursion limit and thread stack size are process-wide
+        sys.setrecursionlimit(max(sys.getrecursionlimit(), 200000))
+        threading.stack_size(512 * 1024 * 1024)
+        try:
+            t = threading.Thread(target=go)
+            t.start()
+        finally:
+            threading.stack_size(0)
+        t.join()
+    return sorted(out) if box.get("ok") else None
+
+
+def weak_eligible(text, pid):
+    """(eligible, why). A wrong mutant is contract_weak only when no signature/contract line changed and the independent
+    interpreter finds every stated contract of every function (helpers included) satisfied on all test inputs. A
+    mutant that breaks a helper contract is a source-contract mutant the verifier must reject."""
+    import difflib
+    orig = ref_text(pid).split("\n")
+    changed = set()
+    for tag, i1, i2, _j1, _j2 in difflib.SequenceMatcher(None, orig, text.split("\n"), autojunk=False).get_opcodes():
+        if tag != "equal":
+            changed.update(range(i1, max(i2, i1 + 1)))
+    src = "\n".join(orig)
+    for m in re.finditer(r"^\s*fn\s+\w+\s*\(", src, re.M):
+        first, blin = src.count("\n", 0, m.start()), src.count("\n", 0, src.find("{", m.start()))
+        if any(first <= i <= blin for i in changed):
+            return False, "edits a signature or contract line"
+    fails = _oracle_contract_failures(text, pid)
+    if fails is None:
+        return False, "reference interpreter cannot run it"
+    if fails:
+        return False, "breaks %s" % ", ".join(fails[:3])
+    return True, ""
+
+
+def truth_of(path, pid, work, text=None):
     """Independent ground truth from the grader under --no-verify (rs compiler, rust backend)."""
     r = G.grade_one(path, pid, "rs", "rust", ["--no-verify"], work, timeout=RUN_TIMEOUT)
     st = r.get("status")
     if st == "wrong":
-        if pid in G.CONTRACT_CHECKS and not r.get("exit_code"):
+        if pid in G.CONTRACT_CHECKS and not r.get("exit_code") and text is not None:
             # the stated contracts do not fix the results (PROBLEMS.md q03): a mutant whose every result still
             # satisfies the stated ensures is contract-weak, not a source-contract mutant the verifier must reject
             c = G.grade_one(path, pid, "rs", "rust", ["--no-verify"], work, timeout=RUN_TIMEOUT, contracts=True)
             if c.get("status") == "ok":
-                return "contract_weak", "keeps the stated contracts; %s" % (r.get("first_failure") or "")
+                ok, why = weak_eligible(text, pid)
+                if ok:
+                    return "contract_weak", "keeps the stated contracts; %s" % (r.get("first_failure") or "")
+                return "incorrect", "%s; %s" % (why, r.get("first_failure") or "")
         return "incorrect", r.get("first_failure") or "exit %s" % r.get("exit_code")
     if st == "timeout":
         return "incorrect", "does not terminate on the tests (timeout)"
@@ -464,7 +527,7 @@ def classify_item(it, work):
     path = os.path.join(work, "%s_%s.pruv" % (it["id"], it["pid"]))
     with open(path, "w", encoding="utf-8") as f:
         f.write(it["text"])
-    truth, tdetail = truth_of(path, it["pid"], work)
+    truth, tdetail = truth_of(path, it["pid"], work, it["text"])
     runs = {}
     for comp, backend in CONFIGS:
         r = G.grade_one(path, it["pid"], comp, backend, [], work, timeout=RUN_TIMEOUT)

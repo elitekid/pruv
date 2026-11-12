@@ -2633,6 +2633,9 @@ impl<'a> FnGen<'a> {
         if matches!(e, Expr::Var(_) | Expr::FieldAccess(_) | Expr::VariantField(_))
             && (crate::emit_common::is_user_key(&t) || t == "option" || t == "result" || is_gopt(&t))
         {
+            if crate::emit_common::is_user_key(&t) && self.tt.holds_buffer(&t) {
+                return Err(g9_diag_err(e.line(), e.col(), "a copy of a value holding an array or str"));
+            }
             let p = self.cx(e)?;
             self.g9_charge_weight(&t, &p)?;
             if self.is_ext(&t) {

@@ -898,6 +898,8 @@ class Gen:
         if t.owner is None and t.name == "bool":
             return s.c(e)
         if isinstance(e, (Var, FieldAccess, VariantField)) and (is_user_type(t) or t.name in ("option", "result")):
+            if is_user_type(t) and not t.args and s.table.holds_buffer(t.name):
+                raise s.g9_unsupported(e, "a copy of a value holding an array or str")
             # a copy of a named value / part is charged first: its weight (one unit per nominal node)
             w = s.g9_weight(t, "pruv_c", "&mut pruv_budget")
             if w == "0i128":

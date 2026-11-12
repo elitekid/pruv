@@ -713,6 +713,28 @@ impl TypeTable {
     }
 
     /// In field order, without duplicates, declared names only.
+    /// G9 (Python `TypeTable.holds_buffer`): a value of the declared type `name` can hold an array or str field,
+    /// directly or through a field type.
+    pub fn holds_buffer(&self, name: &str) -> bool {
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut todo: Vec<String> = vec![name.to_string()];
+        while let Some(n) = todo.pop() {
+            if seen.contains(&n) {
+                continue;
+            }
+            let d = match self.decl(&n) {
+                Some(d) => d,
+                None => continue,
+            };
+            seen.insert(n.clone());
+            if d.all_fields().iter().any(|f| is_array_name(&f.ty) || f.ty == "str") {
+                return true;
+            }
+            todo.extend(self.deps(d));
+        }
+        false
+    }
+
     pub fn deps(&self, d: &TypeDecl) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for f in d.all_fields() {

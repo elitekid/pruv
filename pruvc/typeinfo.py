@@ -494,6 +494,20 @@ class TypeTable:
         self.order: List[TypeDecl] = []
         self._build_order()
 
+    def holds_buffer(self, name: str) -> bool:
+        """G9: a value of the declared type `name` can hold an array or str field, directly or through a field type"""
+        seen, todo = set(), [name]
+        while todo:
+            n = todo.pop()
+            if n in seen or n not in self.decls:
+                continue
+            seen.add(n)
+            d = self.decls[n]
+            if any(is_array(f.type) or f.type.name == "str" for f in self._all_fields(d)):
+                return True
+            todo.extend(self._deps(d))
+        return False
+
     # ---- dependency-first, declaration-stable order ----
     def _deps(self, d: TypeDecl) -> List[str]:
         out: List[str] = []

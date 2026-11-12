@@ -1,0 +1,7 @@
+// unsupported_type: a runtime requires may not copy a value holding an array (its buffer would be copied unmetered)
+struct B { a: [i64] }
+struct W { b: B }
+fn f(b: B) -> i64
+  requires size(W { b: b }) == 2
+{ return 1; }
+fn main() -> i64 { return 0; }

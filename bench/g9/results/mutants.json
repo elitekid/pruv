@@ -1,21 +1,18 @@
 {
  "summary": {
   "total": 227,
-  "incorrect": 148,
+  "incorrect": 151,
   "correct": 69,
   "not_compilable": 0,
   "truth_unknown": 0,
-  "contract_weak": 10,
+  "contract_weak": 7,
   "contract_weak_ids": [
    "m080",
    "m083",
-   "m087",
-   "m090",
    "m095",
    "m098",
    "m101",
    "m104",
-   "m181",
    "m200"
   ],
   "incorrect_by_class": {
@@ -27,10 +24,10 @@
    "unexecuted": 0,
    "accepted_correct": 0,
    "rejected_checker": 0,
-   "rejected_verify": 148
+   "rejected_verify": 151
   },
   "rejected_per_class": {
-   "rejected_verify": 148,
+   "rejected_verify": 151,
    "rejected_checker": 0
   },
   "incorrect_by_config": {
@@ -43,7 +40,7 @@
     "unexecuted": 0,
     "accepted_correct": 0,
     "rejected_checker": 0,
-    "rejected_verify": 148
+    "rejected_verify": 151
    },
    "py-llvm": {
     "wrong_but_proved": 0,
@@ -54,7 +51,7 @@
     "unexecuted": 0,
     "accepted_correct": 0,
     "rejected_checker": 0,
-    "rejected_verify": 148
+    "rejected_verify": 151
    },
    "rs-rust": {
     "wrong_but_proved": 0,
@@ -65,7 +62,7 @@
     "unexecuted": 0,
     "accepted_correct": 0,
     "rejected_checker": 0,
-    "rejected_verify": 148
+    "rejected_verify": 151
    },
    "rs-llvm": {
     "wrong_but_proved": 0,
@@ -76,7 +73,7 @@
     "unexecuted": 0,
     "accepted_correct": 0,
     "rejected_checker": 0,
-    "rejected_verify": 148
+    "rejected_verify": 151
    }
   },
   "all_by_class": {
@@ -113,7 +110,7 @@
    },
    "wrong_return": {
     "total": 46,
-    "incorrect": 44,
+    "incorrect": 46,
     "rejected": 46
    },
    "wrong_arm": {
@@ -188,7 +185,7 @@
    },
    "rx_plus1_to_plus0": {
     "total": 9,
-    "incorrect": 5,
+    "incorrect": 6,
     "rejected": 9
    },
    "rx_plus_to_minus": {
@@ -203,12 +200,12 @@
    }
   },
   "versions": {
-   "git_head": "7707b481a4f3f31e2439550827f418d4614fc97b",
+   "git_head": "6f760b4bbf8888883577f57c0d6059f373d8646d",
    "z3_python": "5.3.3",
    "z3_src_crate": "503.3.0",
    "compiler_sources_dirty": true,
-   "rs_binary_sha256": "01717e4202622f0a3bae87795095be83e19ff9dbc446e1a190adac65bfa01235",
-   "rs_binary_mtime": "2026-11-12T12:02:48"
+   "rs_binary_sha256": "93f50469d4c44b618409de42a1b806b64efab2b4c78a049ad22195fe9ed42b5e",
+   "rs_binary_mtime": "2026-11-12T12:56:22"
   }
  },
  "fault_injections": {
@@ -4332,8 +4329,8 @@
      "to": "if j == len(a) { return len(a); }"
     }
    ],
-   "truth": "contract_weak",
-   "truth_detail": "keeps the stated contracts; value_end want -1 got 1",
+   "truth": "incorrect",
+   "truth_detail": "breaks ensures items_end clause 1; value_end want -1 got 1",
    "class": "rejected_verify",
    "runs": {
     "py-rust": {
@@ -4473,8 +4470,8 @@
      "to": "if a[j] == 2 { return j; }"
     }
    ],
-   "truth": "contract_weak",
-   "truth_detail": "keeps the stated contracts; value_end want 2 got 1",
+   "truth": "incorrect",
+   "truth_detail": "breaks ensures items_end clause 1; value_end want 2 got 1",
    "class": "rejected_verify",
    "runs": {
     "py-rust": {
@@ -8794,8 +8791,8 @@
     "from": "if a[j] == 2 { return j + 1; }",
     "to": "if a[j] == 2 { return j + 0; }"
    },
-   "truth": "contract_weak",
-   "truth_detail": "keeps the stated contracts; value_end want 2 got 1",
+   "truth": "incorrect",
+   "truth_detail": "breaks ensures items_end clause 1; value_end want 2 got 1",
    "class": "rejected_verify",
    "runs": {
     "py-rust": {

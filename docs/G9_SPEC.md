@@ -328,6 +328,9 @@ Foreign signatures stay G6-only; host construction/deserialization of trees is d
 Runtime requires retain short-circuit evaluation, i128 checked arithmetic, and the
 existing shared 2^30 iteration budget. Size/equality/contract conversion visits of
 nominal nodes cost one budget unit each; charge buffer elements when visited.
+A runtime `requires` operand that would copy a named value whose type can hold an
+array or str field (directly or through field types) is rejected with
+`codegen/unsupported_type`; scalar-only nominal copies are charged one unit per node.
 Compute size with checked i128 addition; budget/overflow fails with
 `pruv: requires undefined: ...`, exit 101. Checks must not eagerly inspect an
 inactive variant or skipped operand. Ordinary ensures and decreases are erased.
@@ -600,8 +603,9 @@ unsupported feature, or unexecuted mutant is not a successful semantic rejection
 No new diagnostic codes; use existing G9 and soundness-failure classifications.
 Ground truth is graded against the problem's stated contracts: a mutant that fails
 the full functional tests but satisfies every stated requires/ensures on every test
-input (checked by executing those clauses as Rust assertions) is classified
-`contract_weak`. It is not an incorrect mutant and does not count toward the 80; it
+input (checked by executing those clauses as Rust assertions), changes no signature or
+contract line, and keeps every helper contract on those inputs (checked by the reference
+interpreter `bench/fuzz/oracle.py`) is classified `contract_weak`. It is not an incorrect mutant and does not count toward the 80; it
 measures a weakness of the problem statement, not of the verifier.
 
 ### 15.2 Independent use and exit criteria

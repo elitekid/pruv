@@ -953,6 +953,9 @@ impl<'a> Gen<'a> {
         if matches!(e, Expr::Var(_) | Expr::FieldAccess(_) | Expr::VariantField(_))
             && (is_user_key(tk) || key_name(tk) == "option" || key_name(tk) == "result")
         {
+            if is_user_key(tk) && self.table.holds_buffer(tk) {
+                return Err(self.g9_unsupported(e, "a copy of a value holding an array or str"));
+            }
             // a copy of a named value / part is charged first: its weight (one unit per nominal node)
             let g = GType::from_key(tk);
             let w = self.g9_weight(&g, "pruv_c", "&mut pruv_budget");

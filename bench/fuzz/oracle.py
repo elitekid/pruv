@@ -915,9 +915,12 @@ def _cp(v):
 
 def _g9_size(v):
     """G9 `size(x)` (SPEC 6e): the number of struct/enum constructors in the value (only the active payload of an enum is
-    walked); scalars, arrays, strings, Option/Result wrappers count 0. Written from the SPEC sentence, not from the compiler."""
+    walked); scalars, arrays, strings, Option/Result wrappers count 0 but the payload of Some / Ok is walked (None / Err
+    hold no nominal value). Written from the SPEC sentence, not from the compiler."""
     if isinstance(v, dict) and ("struct" in v or "enum" in v):
         return 1 + sum(_g9_size(x) for x in v["fields"].values())
+    if isinstance(v, dict) and v.get("tag") in ("Some", "Ok"):
+        return _g9_size(v.get("v"))
     return 0
 
 

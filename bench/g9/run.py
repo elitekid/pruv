@@ -102,18 +102,18 @@ def wrapper_header(text, name):
 
 
 def check_contracts(text, pid):
-    """None when every wrapper of pid carries its signature and contract lines unchanged (whitespace-normalized) and
-    has no extra `requires`; else a message."""
+    """None when every wrapper of pid has exactly its signature and contract lines, in order and whitespace-normalized,
+    with nothing added, removed or rewritten between `fn` and the body brace except trailing `decreases` measures; else
+    a message."""
     for name, lines in WRAPPER_CONTRACTS[pid].items():
         head = wrapper_header(text, name)
         if head is None:
             return "contract changed: wrapper %s not found" % name
-        for ln in lines:
-            if norm(ln) not in head:
-                return "contract changed: %s lacks `%s`" % (name, ln)
-        want = sum(1 for ln in lines if ln.startswith("requires"))
-        if len(re.findall(r"\brequires\b", head)) != want:
-            return "contract changed: %s has a different number of requires" % name
+        want = norm(" ".join(lines))
+        rest = head[len(want):] if head.startswith(want) else None
+        # only a solver-chosen `decreases` measure may follow the fixed lines
+        if rest is None or (rest and (not rest.startswith(" decreases ") or re.search(r"\b(requires|ensures)\b", rest))):
+            return "contract changed: %s differs from the fixed signature and contract" % name
     return None
 
 

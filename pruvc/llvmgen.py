@@ -1621,6 +1621,8 @@ class FnGen:
         if t.owner is None and t.name == "bool":
             return V("i1", s.cev(e).a)
         if isinstance(e, (Var, FieldAccess, VariantField)) and (is_user_type(t) or t.name in ("option", "result")):
+            if is_user_type(t) and not t.args and s.tt.holds_buffer(t.name):
+                raise s.g9_unsupported(e, "a copy of a value holding an array or str")
             p = s.cx(e)
             s.g9_charge_weight(t, p)
             if s.is_ext(t):
