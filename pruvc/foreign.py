@@ -85,8 +85,8 @@ def _allowed_param(t):
 
 
 class _Pos:
-    def __init__(s, line, col):
-        s.line, s.col = line, col
+    def __init__(s, line, col, file=None):
+        s.line, s.col, s.file = line, col, file
 
 
 def check_foreign_decl(f, externs):
@@ -112,7 +112,7 @@ def check_foreign_decl(f, externs):
         _err(f, "foreign_signature", "a trusted rust fn needs at least one ensures",
              "add an ensures clause; `ensures true` documents an unconstrained result")
     info = f.foreign
-    at = _Pos(info["line"], info["col"])
+    at = _Pos(info["line"], info["col"], getattr(f, "file", None))
     path = info["path"]
     if not _PATH_RE.fullmatch(path):
         _err(at, "foreign_path", "invalid Rust path",

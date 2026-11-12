@@ -1,0 +1,14 @@
+// companion module of g4_r10_visibility
+fn private_step(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result == x + 1
+{
+  return x + 1;
+}
+
+pub fn pub_step(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result == x
+{
+  return private_step(x) - 1;
+}

@@ -1,0 +1,26 @@
+// G4 example: a child module with a public struct and public functions that carry contracts; the module keeps one
+// private helper. The root exposes scalar host entries and calls the module by absolute paths.
+mod geo;
+
+pub fn rect_area(w: i64, h: i64) -> i64
+  requires 0 <= w && w <= 10000
+  requires 0 <= h && h <= 10000
+  ensures result == w * h
+{
+  let r: crate::geo::Rect = crate::geo::make(w, h);
+  return crate::geo::area(r);
+}
+
+pub fn rect_perimeter(w: i64, h: i64) -> i64
+  requires 0 <= w && w <= 10000
+  requires 0 <= h && h <= 10000
+  ensures result == 2 * (w + h)
+{
+  let r: crate::geo::Rect = crate::geo::make(w, h);
+  return crate::geo::perimeter(r);
+}
+
+pub fn main() -> () ! io {
+  print(rect_area(3, 4));
+  print(rect_perimeter(3, 4));
+}

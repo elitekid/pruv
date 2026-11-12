@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--foreign-checks", "all"]], "rust_externs": {"g4_ext": "tests/runtime/g4_r08_foreign/ext.rs"}, "exit": 0, "stdout_lines": ["42", "0"], "gen_contains": ["pruv_m_f_2_3_ffi_10_raw_triple", "crate::ffi::raw_triple"], "gen_absent": ["pub fn pruv_m_"]}

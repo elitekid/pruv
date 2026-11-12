@@ -1,0 +1,2 @@
+// companion module of g4_r07_underscore_names
+mod inner_x;

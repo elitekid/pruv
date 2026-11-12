@@ -103,13 +103,9 @@ fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
                         }
                     }
                 }
-                // G4 A1 staging guard, after the proof (same diagnostic and position as pruvc.compile_file): a failing
-                // proof (or an internal failure) reports its own errors instead
-                if !internal && errors.is_empty() {
-                    if let Some(g) = &g4 {
-                        errors.push(pruv_core::modules::guard_error(&prog, g).to_json_value());
-                    }
-                }
+                // G4 A2: no guard here (as tests/diff_py_adapter.py): the adapter's code generator is the Rust source backend,
+                // which generates explicit visibility programs; pruvc.compile_file keeps its guard only for the LLVM paths
+                let _ = internal;
             }
             }
         }

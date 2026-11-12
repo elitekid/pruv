@@ -51,10 +51,31 @@ pub fn parse_file(src: &str, tag: usize) -> R<ParsedFile> {
 }
 
 /// vparser `_sniff_explicit`: a root that failed to parse: does it use module syntax (a `mod` / `pub` token)?
+/// A lex error sniffs the text before the error position, so a `pub` ahead of a bad character still counts.
 pub fn sniff_explicit(src: &str) -> bool {
-    match lex(&normalized_chars(src)) {
-        Ok(toks) => toks.iter().any(|t| t.kind == Kind::Kw && (t.val == "mod" || t.val == "pub")),
-        Err(_) => false,
+    let chars = normalized_chars(src);
+    let has = |toks: &[Tok]| toks.iter().any(|t| t.kind == Kind::Kw && (t.val == "mod" || t.val == "pub"));
+    match lex(&chars) {
+        Ok(toks) => has(&toks),
+        Err(e) => {
+            // the prefix: whole lines before the error line, then col - 1 characters of it
+            let (mut line, mut i) = (1i64, 0usize);
+            while i < chars.len() && line < e.line {
+                if chars[i] == '\n' {
+                    line += 1;
+                }
+                i += 1;
+            }
+            let mut c = 1i64;
+            while i < chars.len() && c < e.col && chars[i] != '\n' {
+                c += 1;
+                i += 1;
+            }
+            match lex(&chars[..i]) {
+                Ok(toks) => has(&toks),
+                Err(_) => false,
+            }
+        }
     }
 }
 

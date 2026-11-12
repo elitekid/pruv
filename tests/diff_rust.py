@@ -6,8 +6,11 @@
                             [--fuzz-count 200] [--mutations 3] [--save-dir DIR]
                             [--modes VT,Vt,vT,vt,B]
 
-Groups: must_reject examples runtime bench g9 edge fuzz mutate
+Groups: must_reject examples runtime bench g9 g4 edge fuzz mutate
   g9 = tests/g9/frontend/*.pruv (until batch A2 both compilers must agree on the downstream guard diagnostic).
+  g4 = G4 project roots (G4 A2): every root of tests/g4/fixtures.json (frontend, reject, proof, runtime), examples/g4_*/root.pruv
+       and tests/must_reject/g4_*/root.pruv; they are loaded through modules.load_program (the driver's path), so the
+       companion module files are read from the project directory. The Rust dump binary is ported separately.
   edge = tests/check_edge/ok_*.pruv plus all of tests/check_edge/*.pruv (deduplicated).
 Modes (case = input x mode): the first letter V/v = verified on/off, the second letter T/t = trust_callers on/off.
   Vt=(True,False) VT=(True,True) vt=(False,False) vT=(False,True), default budget 1<<30.
@@ -39,6 +42,7 @@ sys.path.insert(0, os.path.join(ROOT, "pruvc"))
 from vast import PruvError  # noqa: E402
 from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
+from modules import load_program  # noqa: E402
 from codegen import gen_rust  # noqa: E402
 from typeinfo import g9_unimplemented_error  # noqa: E402
 
@@ -56,7 +60,7 @@ GROUP_DIRS = [
     ("g9", "tests/g9/frontend"),
 ]
 CHECK_EDGE_DIR = "tests/check_edge"
-ALL_GROUPS = ["must_reject", "examples", "runtime", "bench", "g9", "edge", "fuzz", "mutate"]
+ALL_GROUPS = ["must_reject", "examples", "runtime", "bench", "g9", "g4", "edge", "fuzz", "mutate"]
 
 # (label, verified, trust_callers). B is handled separately.
 MODE_TABLE = collections.OrderedDict([
@@ -194,6 +198,18 @@ def build_inputs(selected, args, tmp):
             base.append((rel(p), p))
             if g in selected:
                 per[g].append((rel(p), p, runtime_budgets(p) if g == "runtime" else []))
+    if "g4" in selected:   # G4 A2: project roots (companion modules are never standalone inputs)
+        sys.path.insert(0, HERE)
+        import importlib
+        P = importlib.import_module("g4.projects")
+        roots = list(P.all_roots()) + P.example_roots()
+        for p in sorted(glob.glob(os.path.join(ROOT, "tests", "must_reject", "g4_*", "root.pruv"))):
+            roots.append(rel(p))
+        seen = set()
+        for r in roots:
+            if r not in seen:
+                seen.add(r)
+                per["g4"].append((r, os.path.join(ROOT, *r.split("/")), []))
     edge = list_edge()
     if not edge:
         notes.append("warning: no *.pruv in edge (%s)" % CHECK_EDGE_DIR)
@@ -260,9 +276,12 @@ def dumps(o):
 
 def eval_python(c):
     try:
-        with open(c.path) as fh:
-            src = fh.read()
-        prog = parse(src)
+        if c.group == "g4":
+            prog = load_program(c.path)   # G4 A2: project root + its declared module files (explicit visibility mode)
+        else:
+            with open(c.path) as fh:
+                src = fh.read()
+            prog = parse(src)
         check(prog)
         # G9 A2: the Rust source backend lowers G9 programs (no guard)
         rs_src = gen_rust(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)

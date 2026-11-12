@@ -1,0 +1,33 @@
+// module crate::geo of examples/g4_geometry
+pub struct Rect { w: i64, h: i64 }
+
+// private helper: only this module can call it
+fn mul(a: i64, b: i64) -> i64
+  requires 0 <= a && a <= 10000
+  requires 0 <= b && b <= 10000
+  ensures result == a * b
+{
+  return a * b;
+}
+
+pub fn make(w: i64, h: i64) -> Rect
+  ensures result.w == w && result.h == h
+{
+  return Rect { w: w, h: h };
+}
+
+pub fn area(r: Rect) -> i64
+  requires 0 <= r.w && r.w <= 10000
+  requires 0 <= r.h && r.h <= 10000
+  ensures result == r.w * r.h
+{
+  return mul(r.w, r.h);
+}
+
+pub fn perimeter(r: Rect) -> i64
+  requires 0 <= r.w && r.w <= 10000
+  requires 0 <= r.h && r.h <= 10000
+  ensures result == 2 * (r.w + r.h)
+{
+  return 2 * (r.w + r.h);
+}

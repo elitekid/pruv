@@ -3,13 +3,20 @@ python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_fronten
                         [--backend rust|llvm|both]
 
 group g4_proof (G4 A1): tests/g4/proof/*/root.pruv from tests/g4/fixtures.json (default mode, backend null rows, each project
-copied to a new directory first). While G4_GUARD is True (until A3) a row passes when verification succeeds and pruvc then
-stops at the same staging guard codegen/unsupported_type ("G4 modules and visibility"); a verification error fails the row.
+copied to a new directory first). Since A2 (G4_GUARD False) a row passes when pruvc exits 0 (verification and Rust generation);
+with G4_GUARD True it expected the staging guard codegen/unsupported_type instead.
 
 group g4_frontend (G4 A0): tests/g4/frontend/*/root.pruv from tests/g4/fixtures.json (mode no-verify, backend null rows,
-each project copied to a new directory first). While G4_GUARD is True (until A3) a row passes when pruvc exits 1 with the
-staging guard codegen/unsupported_type ("G4 modules and visibility"). The tests/must_reject/g4_*/root.pruv projects are
-rows of the must_reject group (sample = the project's root.pruv; expected stage/code in the sibling root.json).
+each project copied to a new directory first). Since A2 (G4_GUARD False) a row passes when pruvc exits 0. The
+tests/must_reject/g4_*/root.pruv projects are rows of the must_reject group (sample = the project's root.pruv; expected
+stage/code in the sibling root.json).
+
+G4 A2 projects: tests/runtime/g4_*/ (listed in tests/g4/fixtures.json group "runtime") are runtime rows of project form:
+root.pruv + companion modules, main.rs (the host driver, appended after `mod sol;` like tests/runtime/X.rs) and spec.json
+(the fields of tests/runtime/X.json plus the optional "gen_absent": [strings] that must NOT occur in the generated Rust,
+rust backend only). The project is copied to a new work directory before it is compiled; the row sample is its root.pruv.
+examples/g4_*/root.pruv (+ companions) are examples rows (default / no-verify / trust-callers). The llvm rows of all of
+them are listed in tests/llvm_pending.txt and expect the G4 llvm guard ("the llvm codegen layer").
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
 
@@ -294,18 +301,21 @@ def g4_reject_jobs():
                     continue
                 if isinstance(d, dict):
                     diags.append(d)
-            ok = any(d.get("stage") == want.get("stage") and d.get("code") == want.get("code") for d in diags)
-            return ok, "expected stage=%s code=%s; got %s" % (
-                want.get("stage"), want.get("code"), [(d.get("stage"), d.get("code")) for d in diags])
+            ok = any(d.get("stage") == want.get("stage") and d.get("code") == want.get("code")
+                     and ("file" not in want or d.get("file") == want["file"]) for d in diags)
+            return ok, "expected stage=%s code=%s file=%s; got %s" % (
+                want.get("stage"), want.get("code"), want.get("file"),
+                [(d.get("stage"), d.get("code"), d.get("file")) for d in diags])
         jobs.append(safe(name, fn, {"sample": rel, "backend": None, "flags": list(flags), "mode": None,
                                      "group": "must_reject"}))
     return jobs
 
 
-# G4 A0 (docs/G4_SPEC.md 10): explicit-mode programs are frontend-only until A1/A2/A3. While G4_GUARD is True a g4_frontend
-# row passes when pruvc exits 1 with the staging guard codegen/unsupported_type naming G4 modules (which also shows that
-# loading, resolution, visibility and entry checks all accepted the project). A3 removes the guard: rows expect exit 0.
-G4_GUARD = True
+# G4 A0 (docs/G4_SPEC.md 10): explicit-mode programs were frontend-only until A2. While G4_GUARD is True a g4_frontend row
+# passes when pruvc exits 1 with the staging guard codegen/unsupported_type naming G4 modules (which also shows that
+# loading, resolution, visibility and entry checks all accepted the project). A2 generates Rust source for them, so the
+# rows (Rust backend) expect exit 0; the guard text below is what the LLVM backend still reports until A3.
+G4_GUARD = False
 G4_GUARD_CODE = "unsupported_type"
 G4_GUARD_LAYER = "G4 modules and visibility"
 
@@ -457,6 +467,8 @@ ARITH_OR_INDEX = re.compile(r"\b(add|sub|mul|getelementptr)\b")
 def example_job(f, mode, flags, llvm, name):
     base = os.path.basename(f)
     stem = os.path.splitext(base)[0]
+    if base == "root.pruv":      # G4 project example (examples/g4_NAME/root.pruv): work files are named by the project
+        stem = os.path.basename(os.path.dirname(f))
     work = WORK
 
     def fn():
@@ -521,14 +533,25 @@ def examples_jobs(backend):
     llvm = backend == "llvm"
     tag = " [llvm]" if llvm else ""
     jobs = []
-    for f in sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv"))):
+    for f in sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv"))):   # top level only: project companions are not examples
         base = os.path.basename(f)
         if base == "bad_index.pruv":
             jobs.append(example_job(f, "bad", [], llvm, "examples/" + base + tag))
             continue
         for mode, flags in EXAMPLE_MODES:
             jobs.append(example_job(f, mode, flags, llvm, "examples/%s [%s]%s" % (base, mode, tag)))
+    # G4 A2: project examples; the root is the only input, the companion modules are loaded by the compiler
+    for f in sorted(glob.glob(os.path.join(ROOT, "examples/g4_*/root.pruv"))):
+        proj = os.path.basename(os.path.dirname(f))
+        for mode, flags in EXAMPLE_MODES:
+            jobs.append(example_job(f, mode, flags, llvm, "examples/%s/root.pruv [%s]%s" % (proj, mode, tag)))
     return jobs
+
+
+def runtime_src(j, t):
+    """the compiler input of a runtime spec: tests/runtime/T.pruv, or root.pruv of a G4 project (spec.json)"""
+    d = os.path.dirname(j)
+    return os.path.join(d, "root.pruv") if os.path.basename(j) == "spec.json" else os.path.join(d, t + ".pruv")
 
 
 def runtime_job(j, t, spec, flags, name, suffix, llvm):
@@ -536,7 +559,9 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
 
     def fn():
         d = os.path.dirname(j)
-        pruv, drv = os.path.join(d, t + ".pruv"), os.path.join(d, t + ".rs")
+        proj = os.path.basename(j) == "spec.json"      # G4 A2 project: root.pruv + modules + main.rs + spec.json
+        pruv, drv = (os.path.join(d, "root.pruv"), os.path.join(d, "main.rs")) if proj else \
+            (os.path.join(d, t + ".pruv"), os.path.join(d, t + ".rs"))
         link = []
         # G6 A2 (G6_SPEC 12.5): "rust_externs": {"NAME": "tests/runtime/FILE.rs"} -> an rlib per job, passed to
         # pruvc as --rust-extern NAME=RLIB and to the final rustc as --extern NAME=RLIB
@@ -553,13 +578,15 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             key = t + suffix + "_llvm"
             ll = os.path.join(work, key + ".ll")
             gen = os.path.join(work, key + "_gen.rs")
-            c = pruvc_llvm(pruv, ll, gen, list(flags) + xflags)
+            src = _g4().copy_project(pruv, os.path.join(work, "g4rt_" + key)) if proj else pruv
+            c = pruvc_llvm(src, ll, gen, list(flags) + xflags)
             if rel_sample(pruv) in llvm_pending():
                 return pending_result(c)
         else:
             key = t + suffix
             gen = os.path.join(work, key + "_gen.rs")
-            c = pruvc(pruv, gen, list(flags) + xflags)
+            src = _g4().copy_project(pruv, os.path.join(work, "g4rt_" + key)) if proj else pruv
+            c = pruvc(src, gen, list(flags) + xflags)
         if c.returncode != 0:
             return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
         if llvm:
@@ -620,14 +647,17 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
                         if (s in btxt) != want:
                             problems.append("body of %s %s %r" % (fn_name, "lacks" if want else "contains", s))
         else:
-            gc = spec.get("gen_contains")
-            if gc:
+            gc, ga = spec.get("gen_contains"), spec.get("gen_absent")   # gen_absent: G4 A2 (strings that must not occur)
+            if gc or ga:
                 gen_text = open(gen).read()
-                for s in gc:
+                for s in gc or []:
                     if s not in gen_text:
                         problems.append("generated rs lacks %r" % s)
+                for s in ga or []:
+                    if s in gen_text:
+                        problems.append("generated rs contains forbidden %r" % s)
         return not problems, "; ".join(problems)
-    return safe(name, fn, {"sample": rel_sample(os.path.join(os.path.dirname(j), t + ".pruv")),
+    return safe(name, fn, {"sample": rel_sample(runtime_src(j, t)),
                            "backend": "llvm" if llvm else "rust", "flags": list(flags), "mode": None, "group": "runtime"})
 
 
@@ -635,8 +665,11 @@ def runtime_jobs(backend):
     llvm = backend == "llvm"
     tag = " [llvm]" if llvm else ""
     jobs = []
-    for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/*.json"))):
-        t = os.path.splitext(os.path.basename(j))[0]
+    specs = [(j, os.path.splitext(os.path.basename(j))[0]) for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/*.json")))]
+    # G4 A2: project directories tests/runtime/g4_*/ (spec.json next to root.pruv and main.rs)
+    specs += [(j, os.path.basename(os.path.dirname(j)))
+              for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/g4_*/spec.json")))]
+    for j, t in specs:
         try:
             spec = json.load(open(j))
             budget = spec.get("contract_budget")
@@ -651,7 +684,7 @@ def runtime_jobs(backend):
         except Exception as e:
             err = repr(e)
             jobs.append(safe("runtime/" + t + tag, lambda err=err: (False, err),
-                             {"sample": rel_sample(os.path.join(os.path.dirname(j), t + ".pruv")),
+                             {"sample": rel_sample(runtime_src(j, t)),
                               "backend": backend, "flags": None, "mode": "spec_error",
                               "group": "runtime"}))
             continue

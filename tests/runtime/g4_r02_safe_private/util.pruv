@@ -1,0 +1,10 @@
+// companion module of g4_r02_safe_private
+fn helper(x: i64) -> i64
+  requires x > 0
+{
+  return x * 2;
+}
+
+pub fn step(x: i64) -> i64 {
+  return helper(x - 5);
+}

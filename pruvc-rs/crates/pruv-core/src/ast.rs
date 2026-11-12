@@ -14,6 +14,7 @@ pub type Ty = Option<String>;
 // A structured type inside `ty` / `type` / `ret` strings is still a `GType` key (gtype.rs `to_key`/`try_from_key`);
 // a legacy type is its plain name, as before.
 use crate::gtype::GType;
+use std::collections::HashMap;
 
 /// One entry of a type-parameter list (`T` or `T: Element`); `bound` is the bound's spelling.
 #[derive(Debug, Clone, PartialEq)]
@@ -279,8 +280,36 @@ pub struct ModDecl { pub line: i64, pub col: i64, pub name: String }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Item { Fn(usize), Ty(usize) }
 
+/// G4 A2: the explicit-mode attributes of one concrete function (Python `pub` / `host_entry` / `disp` set by mono).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnMark {
+    pub is_pub: bool,
+    pub host_entry: bool,
+    /// the source-qualified identity (panic text, manifests)
+    pub disp: String,
+}
+
+/// G4 A2: explicit-mode data of a CONCRETE (specialized) program (Python `Program.explicit` plus the attributes mono puts on
+/// the concrete declarations). Only mono.rs builds it; `None` on every other program.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Explicit {
+    /// parallel to `Program.functions`
+    pub fns: Vec<FnMark>,
+    /// `pub` of every declaration, parallel to `Program.types`
+    pub type_pub: Vec<bool>,
+    /// Rust name (stem) of a nominal type -> the identity it was declared with (Python `src_name` of the nodes)
+    pub tdisp: HashMap<String, String>,
+}
+
 /// No line/col.
 #[derive(Debug, Clone, PartialEq, Default)]
 /// refined: a marker that refine::expand has already run (Python `_refined`). Not emitted in the dump.
 /// g9: G9 A0 checker metadata (Python `Program.g9`), None unless a G9 feature is present. Not emitted in the dump.
-pub struct Program { pub functions: Vec<Function>, pub types: Vec<TypeDecl>, pub refined: bool, pub g9: Option<G9Meta> }
+/// explicit: G4 A2, Some only on the concrete program of an explicit visibility program (built by mono.rs).
+pub struct Program {
+    pub functions: Vec<Function>,
+    pub types: Vec<TypeDecl>,
+    pub refined: bool,
+    pub g9: Option<G9Meta>,
+    pub explicit: Option<Explicit>,
+}

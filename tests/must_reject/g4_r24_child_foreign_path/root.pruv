@@ -1,0 +1,4 @@
+// G4 A1 reject parse/foreign_path: the diagnostic names the companion file
+mod ffi;
+
+pub fn go() -> i64 { return 1; }

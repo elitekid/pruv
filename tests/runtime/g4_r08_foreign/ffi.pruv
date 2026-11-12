@@ -1,0 +1,19 @@
+// companion module of g4_r08_foreign
+trusted rust fn raw_triple(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x * 3
+  = "::g4_ext::raw_triple";
+
+fn helper(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x * 3
+{
+  return raw_triple(x);
+}
+
+pub fn tripled(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x * 3
+{
+  return helper(x);
+}

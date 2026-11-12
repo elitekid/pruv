@@ -11,20 +11,36 @@ pub fn is_spec_fn(name: &str) -> bool {
     name.starts_with("pruv_g3_f_")
 }
 
+thread_local! {
+    /// G4 A2: Rust name of a nominal type -> its source-qualified identity, for the program being generated (Python keeps it
+    /// as `src_name` on the specialized nodes). Empty outside explicit visibility mode.
+    static TYPE_DISP: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// G4 A2: registers the identities of the explicit-mode program about to be generated (an empty map clears them).
+pub fn set_type_disp(m: std::collections::HashMap<String, String>) {
+    TYPE_DISP.with(|t| *t.borrow_mut() = m);
+}
+
 /// G3: the declaration name a generated type stem (`pruv_g3_t_<len>_<name>_...`) was made from; any other name as is.
+/// G4 A2: in explicit mode the identity the type was declared with (`crate::m::Name`).
 /// Used where Python keeps `src_name` (panic messages of requires).
-pub fn src_name(name: &str) -> &str {
+pub fn src_name(name: &str) -> String {
+    if let Some(d) = TYPE_DISP.with(|t| t.borrow().get(name).cloned()) {
+        return d;
+    }
     if let Some(rest) = name.strip_prefix("pruv_g3_t_") {
         if let Some(us) = rest.find('_') {
             if let Ok(n) = rest[..us].parse::<usize>() {
                 let start = us + 1;
                 if let Some(s) = rest.get(start..start + n) {
-                    return s;
+                    return s.to_string();
                 }
             }
         }
     }
-    name
+    name.to_string()
 }
 
 /// The type name of a key: the text before the argument list (`option` for `option<bool>`).
@@ -294,9 +310,19 @@ pub fn emit_public_types_with(prog: &Program, tt: &TypeTable) -> String {
         let r = rty(ty, false);
         if boxed.contains(label) { format!("::std::boxed::Box<{}>", r) } else { r }
     };
+    // G4 A2: in explicit mode only a source-`pub` type is a `pub` Rust item
+    let explicit = prog.explicit.as_ref();
+    let pubs: std::collections::HashMap<&str, bool> = match explicit {
+        Some(x) => prog.types.iter().zip(x.type_pub.iter()).map(|(d, p)| (d.name(), *p)).collect(),
+        None => Default::default(),
+    };
     let mut out: Vec<String> = Vec::new();
     for d in tt.ordered() {
-        out.push("#[allow(dead_code, non_camel_case_types, non_snake_case)]".to_string());
+        let pv = if explicit.is_none() || pubs.get(d.name()).copied().unwrap_or(true) { "pub " } else { "" };
+        out.push(format!(
+            "#[allow(dead_code, non_camel_case_types, non_snake_case{})]",
+            if explicit.is_some() { ", private_interfaces" } else { "" }
+        ));
         if ext.contains(d.name()) {
             out.push("#[derive(Clone, Debug)]".to_string());
         } else {
@@ -308,11 +334,11 @@ pub fn emit_public_types_with(prog: &Program, tt: &TypeTable) -> String {
                     let body: Vec<String> = s
                         .fields
                         .iter()
-                        .map(|f| format!("pub {}: {}", f.name, fty(&f.ty, &format!("{}.{}", s.name, f.name))))
+                        .map(|f| format!("{}{}: {}", pv, f.name, fty(&f.ty, &format!("{}.{}", s.name, f.name))))
                         .collect();
-                    out.push(format!("pub struct {} {{ {} }}", s.name, body.join(", ")));
+                    out.push(format!("{}struct {} {{ {} }}", pv, s.name, body.join(", ")));
                 } else {
-                    out.push(format!("pub struct {} {{}}", s.name));
+                    out.push(format!("{}struct {} {{}}", pv, s.name));
                 }
             }
             TypeDecl::Enum(e) => {
@@ -329,7 +355,7 @@ pub fn emit_public_types_with(prog: &Program, tt: &TypeTable) -> String {
                         vs.push(v.name.clone());
                     }
                 }
-                out.push(format!("pub enum {} {{ {} }}", e.name, vs.join(", ")));
+                out.push(format!("{}enum {} {{ {} }}", pv, e.name, vs.join(", ")));
             }
         }
         out.push(String::new());

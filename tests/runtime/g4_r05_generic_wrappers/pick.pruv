@@ -1,0 +1,17 @@
+// companion module of g4_r05_generic_wrappers
+pub fn choose<T>(flag: bool, x: T, y: T) -> T
+  ensures flag ==> result == x
+  ensures !flag ==> result == y
+{
+  if flag { return x; }
+  return y;
+}
+
+pub fn guarded<T>(n: i64, x: T, y: T) -> T
+  requires 0 <= n
+  ensures n == 0 ==> result == x
+  ensures n > 0 ==> result == y
+{
+  if n == 0 { return x; }
+  return y;
+}

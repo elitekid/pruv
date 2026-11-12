@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": ["42"], "stderr_contains": "pruv: requires violated: crate::bump:", "gen_contains": ["pub fn bump(", "crate::bump"], "gen_absent": ["pub fn pruv_m_"]}

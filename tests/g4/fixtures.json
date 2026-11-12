@@ -37,7 +37,9 @@
     {"name": "g4_r19_body_facts_not_leaked", "root": "tests/must_reject/g4_r19_body_facts_not_leaked/root.pruv", "stage": "verify", "code": "assert"},
     {"name": "g4_r20_unit_post_not_stronger", "root": "tests/must_reject/g4_r20_unit_post_not_stronger/root.pruv", "stage": "verify", "code": "assert"},
     {"name": "g4_r21_generic_missing_requires", "root": "tests/must_reject/g4_r21_generic_missing_requires/root.pruv", "stage": "verify", "code": "call_requires"},
-    {"name": "g4_r22_unused_generic_false_ensures", "root": "tests/must_reject/g4_r22_unused_generic_false_ensures/root.pruv", "stage": "verify", "code": "ensures"}
+    {"name": "g4_r22_unused_generic_false_ensures", "root": "tests/must_reject/g4_r22_unused_generic_false_ensures/root.pruv", "stage": "verify", "code": "ensures"},
+    {"name": "g4_r23_lex_after_pub", "root": "tests/must_reject/g4_r23_lex_after_pub/root.pruv", "stage": "parse", "code": "bad_char"},
+    {"name": "g4_r24_child_foreign_path", "root": "tests/must_reject/g4_r24_child_foreign_path/root.pruv", "stage": "type", "code": "foreign_path"}
   ],
   "proof": [
     {"name": "p01_same_spelled_types", "root": "tests/g4/proof/p01_same_spelled_types/root.pruv"},
@@ -51,5 +53,16 @@
     {"name": "p09_nested_public_closure", "root": "tests/g4/proof/p09_nested_public_closure/root.pruv"},
     {"name": "p10_generic_types_cross_file", "root": "tests/g4/proof/p10_generic_types_cross_file/root.pruv"}
   ],
-  "runtime": []
+  "runtime": [
+    {"name": "g4_r01_host_reject", "root": "tests/runtime/g4_r01_host_reject/root.pruv"},
+    {"name": "g4_r02_safe_private", "root": "tests/runtime/g4_r02_safe_private/root.pruv"},
+    {"name": "g4_r03_trust_matrix", "root": "tests/runtime/g4_r03_trust_matrix/root.pruv"},
+    {"name": "g4_r04_module_types", "root": "tests/runtime/g4_r04_module_types/root.pruv"},
+    {"name": "g4_r05_generic_wrappers", "root": "tests/runtime/g4_r05_generic_wrappers/root.pruv"},
+    {"name": "g4_r06_repeated_leaf", "root": "tests/runtime/g4_r06_repeated_leaf/root.pruv"},
+    {"name": "g4_r07_underscore_names", "root": "tests/runtime/g4_r07_underscore_names/root.pruv"},
+    {"name": "g4_r08_foreign", "root": "tests/runtime/g4_r08_foreign/root.pruv"},
+    {"name": "g4_r09_cross_file_recursion", "root": "tests/runtime/g4_r09_cross_file_recursion/root.pruv"},
+    {"name": "g4_r10_visibility", "root": "tests/runtime/g4_r10_visibility/root.pruv"}
+  ]
 }

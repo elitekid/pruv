@@ -1,0 +1,11 @@
+// module crate::bank::audit of examples/g4_ledger
+// private type: not visible outside this module
+struct Entry { amount: i64 }
+
+pub fn record(amount: i64) -> i64
+  requires -1000000 <= amount && amount <= 1000000
+  ensures result == amount
+{
+  let e: Entry = Entry { amount: amount };
+  return e.amount;
+}

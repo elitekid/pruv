@@ -1,0 +1,15 @@
+// G4 A2 runtime: underscores in module and item names; the length-delimited encoding keeps crate::a_b::c and
+// crate::a::b_c apart
+mod my_mod;
+mod a_b;
+mod a;
+
+pub fn run(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == 3 * x + 10
+{
+  let p: i64 = crate::my_mod::inner_x::do_it(x);
+  let q: i64 = crate::a_b::c(x);
+  let r: i64 = crate::a::b_c(x);
+  return p + q + r;
+}

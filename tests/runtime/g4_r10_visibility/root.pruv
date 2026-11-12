@@ -1,0 +1,10 @@
+// G4 A2 runtime (verified mode only): the generated Rust has exactly one pub function, the host entry, and no checked
+// wrapper for the private or child-public functions
+mod inner;
+
+pub fn entry(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result == x + 1
+{
+  return crate::inner::pub_step(x) + 1;
+}

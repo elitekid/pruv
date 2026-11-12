@@ -318,13 +318,8 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
             else:
                 errs = verify.verify_program(prog, rec=rec)
             errors.extend(err_dict(e) for e in errs)
-        if prog.explicit and not errors:
-            # G4 staging guard, after the proof since A1 (same diagnostic and position as pruvc.compile_file); a
-            # failing proof reports its own errors instead
-            first = prog.items[0] if prog.items else None
-            raise PruvError("codegen", first.line if first else 1, first.col if first else 1, "unsupported_type",
-                            "G4 modules and visibility are not implemented by the verify and codegen layers yet",
-                            "use a single file without `mod` and `pub` for now", file=prog.modules[0].file)
+        # G4 A2: no guard here. pruvc.compile_file keeps its staging guard only for the LLVM backend (--backend llvm /
+        # --also-llvm); this adapter's code generator is the Rust source backend, which generates explicit programs.
     except PruvError as e:
         errors.append(err_dict(e))
     except Exception as e:   # like pruvc.main: compiler-internal failure

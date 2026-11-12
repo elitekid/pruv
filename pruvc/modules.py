@@ -29,6 +29,37 @@ def disp(path):
     return "::".join(("crate",) + tuple(path))
 
 
+def encode_name(components):
+    """G4 A2 (docs/G4_SPEC.md 6): the count of the components, then for each one `_<ASCII byte length>_<component>`.
+    Length-delimited, so underscores inside a component cannot make two sequences collide."""
+    comps = tuple(components)
+    return str(len(comps)) + "".join("_%d_%s" % (len(c.encode("ascii")), c) for c in comps)
+
+
+def encode_stem(kind, components):
+    """Rust stem of an item in explicit mode: kind "f" (function) or "t" (nominal type); components = the module path
+    followed by the item's source name.  pruv_m_f_1_6_helper, pruv_m_f_3_1_a_3_geo_4_area, pruv_m_t_2_3_geo_5_Point."""
+    return "pruv_m_%s_%s" % (kind, encode_name(components))
+
+
+def identity_components(identity):
+    """"crate::a::b::x" -> ("a", "b", "x")"""
+    return tuple(identity.split("::")[1:])
+
+
+def safe_type(ty):
+    """a Type whose nominal names (identities) are replaced by their encode_name, so that the existing G3 stem and
+    argument encodings (typeinfo.encode, spec_*_stem) only ever see [0-9A-Za-z_] names; injective like the identity."""
+    if ty.owner is not None:
+        return ty
+    args = tuple(safe_type(a) for a in ty.args)
+    if ty.name in BUILTIN_TYPE_NAMES or not ty.name.startswith("crate::"):
+        if args == ty.args:
+            return ty
+        return Type(ty.name, args)
+    return Type(encode_name(identity_components(ty.name)), args)
+
+
 class Module:
     def __init__(s, path, file, parent):
         s.path = path            # tuple of module names; () is the root
@@ -61,10 +92,27 @@ def _tag(roots, file):
 
 def _sniff_explicit(src):
     """a root that failed to parse: does it use module syntax (a `mod` / `pub` token)?  -> its error carries `file`"""
+    def has(toks):
+        return any(t.kind == "kw" and t.val in ("mod", "pub") for t in toks)
     try:
-        return any(t.kind == "kw" and t.val in ("mod", "pub") for t in lex(src))
-    except PruvError:
-        return False
+        return has(lex(src))
+    except PruvError as e:
+        # a lex error sniffs the text before the error position, so a `pub` ahead of a bad character still counts
+        lines = src.split("\n")
+        pre = "\n".join(lines[:e.line - 1] + [lines[e.line - 1][:e.col - 1]]) if 1 <= e.line <= len(lines) else src
+        try:
+            return has(lex(pre))
+        except PruvError:
+            return False
+
+
+def _file_id(p):
+    """the identity of a file (device, inode), computed once per loaded file; None when it cannot be inspected"""
+    try:
+        st = os.stat(p)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino)
 
 
 def load_program(path):
@@ -86,7 +134,10 @@ def load_program(path):
     root.items = list(prog.items)
     _tag(root.items + root.mods, root_file)
     modules = [root]
-    loaded = [(os.path.abspath(path), root_file)]
+    loaded = {}                         # file identity (device, inode) -> display path of every loaded file
+    rid = _file_id(path)
+    if rid is not None:
+        loaded[rid] = root_file
 
     def visit(m):
         seen = set()
@@ -107,16 +158,13 @@ def load_program(path):
                 raise PruvError("parse", md.line, md.col, "module_file",
                                 "cannot read the file of module %s (expected %s)" % (disp(cpath), rel),
                                 "create %s next to the root file, or remove `mod %s;`" % (rel, md.name), file=m.file)
-            for ap, orel in loaded:
-                try:
-                    same = os.path.samefile(ap, fpath)
-                except OSError:
-                    same = False
-                if same:
-                    raise PruvError("parse", md.line, md.col, "module_alias",
-                                    "the file %s of module %s was already loaded as %s" % (rel, disp(cpath), orel),
-                                    "every module needs its own file; remove the alias", file=m.file)
-            loaded.append((fpath, rel))
+            fid = _file_id(fpath)
+            if fid is not None and fid in loaded:
+                raise PruvError("parse", md.line, md.col, "module_alias",
+                                "the file %s of module %s was already loaded as %s" % (rel, disp(cpath), loaded[fid]),
+                                "every module needs its own file; remove the alias", file=m.file)
+            if fid is not None:
+                loaded[fid] = rel
             try:
                 cprog = parse(text)
             except PruvError as e:
@@ -226,7 +274,10 @@ class _Resolver:
                 s.fn(it)
             else:
                 s.tdecl(it)
-        # 3. public interfaces, 4. root main and host entries
+        # 3. public interfaces, 4. root main and host entries.  One visited set for the whole program: the first leak
+        # aborts the check, so every public declaration visited by an earlier item has a closure without private
+        # declarations and need not be walked again.
+        s.iface_seen = set()
         for it in prog.items:
             if it.pub:
                 s.interface(it)
@@ -429,8 +480,8 @@ class _Resolver:
     # ---- public interfaces ----
     def private_in(s, names, seen):
         """G4 A1 (spec 5): the first private declaration reachable from the nominal names (identities): the names
-        themselves, then, transitively, the field / payload types of every public declaration reached.  seen is a
-        visited set shared by one public item (cycles terminate).  Returns (private identity, via) or None, where via
+        themselves, then, transitively, the field / payload types of every public declaration reached.  seen is the
+        visited set shared by the whole program (cycles terminate).  Returns (private identity, via) or None, where via
         is the dependency chain "P.field" leading to it ("" for a direct mention)."""
         for n in names:
             d = s.type_by_id.get(n)
@@ -475,7 +526,7 @@ class _Resolver:
             s.iface_expr(k, item, seen)
 
     def interface(s, it):
-        seen = set()        # visited public declarations of this item's dependency closure
+        seen = s.iface_seen
         if isinstance(it, Function):
             for p in it.params:
                 s.iface_type(p.type, it, it, "signature", seen)

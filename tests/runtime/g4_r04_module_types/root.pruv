@@ -1,0 +1,37 @@
+// G4 A2 runtime: a struct and an enum declared in a child module, built through child functions, read in root entries
+mod shapes;
+
+pub fn area(w: i64, h: i64) -> i64
+  requires 0 <= w && w <= 1000
+  requires 0 <= h && h <= 1000
+  ensures result == w * h
+{
+  let r: crate::shapes::Rect = crate::shapes::make(w, h);
+  return r.w * r.h;
+}
+
+pub fn skew(w: i64, h: i64) -> i64
+  requires 0 <= w && w <= 1000
+  requires 0 <= h && h <= 1000
+{
+  let r: crate::shapes::Rect = crate::shapes::make(w, h);
+  let k: crate::shapes::Kind = crate::shapes::classify(r);
+  match k {
+    crate::shapes::Kind::Square => { return 0; }
+    crate::shapes::Kind::Wide(e) => { return e; }
+    crate::shapes::Kind::Tall(e) => { return e; }
+  }
+}
+
+pub fn code(w: i64, h: i64) -> i64
+  requires 0 <= w && w <= 1000
+  requires 0 <= h && h <= 1000
+{
+  let r: crate::shapes::Rect = crate::shapes::make(w, h);
+  let k: crate::shapes::Kind = crate::shapes::classify(r);
+  match k {
+    crate::shapes::Kind::Square => { return 0; }
+    crate::shapes::Kind::Wide(e) => { return 1; }
+    crate::shapes::Kind::Tall(e) => { return 2; }
+  }
+}

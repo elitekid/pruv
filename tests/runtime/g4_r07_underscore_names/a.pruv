@@ -1,0 +1,7 @@
+// companion module of g4_r07_underscore_names
+pub fn b_c(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x + 2
+{
+  return x + 2;
+}

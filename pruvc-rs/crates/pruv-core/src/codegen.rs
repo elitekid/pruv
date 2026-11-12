@@ -443,6 +443,18 @@ struct Gen<'a> {
     need_eq: HashSet<String>,
     /// G9 A2: the diagnostic raised by g9_unsupported (the R error is only a marker)
     diag: Option<PruvError>,
+    /// G4 A2 (explicit visibility mode, docs/G4_SPEC.md 4): only host entries are `pub`. Verified: just the entries that have
+    /// a requires get a checked wrapper (host boundary; none under trust_callers) and every Pruv call goes to the body. Safe
+    /// mode (--no-verify): EVERY function with a requires has a checked wrapper and every Pruv call goes through it; under
+    /// trust_callers the entry's pub wrapper skips the checks and an extra private checked wrapper `<entry>__pruv_chk`
+    /// serves the Pruv callers.
+    explicit: bool,
+    /// G4 A2: the host entries (Rust names)
+    entries: HashSet<String>,
+    /// G4 A2: some function needs the runtime contract helpers (explicit mode)
+    checks_needed: bool,
+    /// G4 A2: function name -> its explicit-mode attributes (empty outside explicit mode)
+    fmarks: HashMap<String, &'a FnMark>,
 }
 
 impl<'a> Gen<'a> {
@@ -452,8 +464,25 @@ impl<'a> Gen<'a> {
         for f in &prog.functions {
             fmap.entry(f.name.clone()).or_insert(f);
         }
+        let explicit = prog.explicit.is_some();
+        let mut fmarks: HashMap<String, &'a FnMark> = HashMap::new();
+        if let Some(x) = &prog.explicit {
+            for (f, m) in prog.functions.iter().zip(x.fns.iter()) {
+                fmarks.entry(f.name.clone()).or_insert(m);
+            }
+        }
+        let is_host = |f: &Function| fmarks.get(&f.name).map_or(false, |m| m.host_entry);
+        let entries: HashSet<String> = prog.functions.iter().filter(|f| is_host(*f)).map(|f| f.name.clone()).collect();
+        let checks_needed = explicit
+            && prog.functions.iter().any(|f| {
+                !f.requires.is_empty() && f.foreign.is_none() && (!verified || (is_host(f) && !trust_callers))
+            });
         Gen {
             prog,
+            explicit,
+            entries,
+            checks_needed,
+            fmarks,
             budget,
             verified,
             trust: trust_callers,
@@ -507,7 +536,7 @@ impl<'a> Gen<'a> {
     fn g9_unsupported(&mut self, e: &Expr, what: &str) -> String {
         self.diag = Some(PruvError::new(
             "codegen",
-            e.line(),
+            crate::diagnostic::plain_line(e.line()), // Python raises this without `file`
             e.col(),
             "unsupported_type",
             format!("{} is not supported in a runtime requires by the Rust backend yet", what),
@@ -602,7 +631,8 @@ impl<'a> Gen<'a> {
                 self.out.push(SAFE_PRELUDE_STR.to_string());
             }
         }
-        if (!self.has_req.is_empty() && !self.trust) || self.g6 {
+        let checks = if self.explicit { self.checks_needed } else { !self.has_req.is_empty() && !self.trust };
+        if checks || self.g6 {
             if self.g6 {
                 self.out.push(contract_prelude_g6());
             } else {
@@ -723,8 +753,16 @@ impl<'a> Gen<'a> {
         let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", rty(&f.ret, false)) };
         let has = !f.requires.is_empty();
         let body_name = if has { format!("{}__pruv_body", f.name) } else { f.name.clone() };
-        // G3: generic specializations (and G6 collection-bearing functions) are private items
-        let vis = if has || self.private(f) { "" } else { "pub " };
+        // G3: generic specializations (and G6 collection-bearing functions) are private items; G4 A2: only host entries
+        // without a checked wrapper are `pub`
+        let host = self.entries.contains(&f.name);
+        let vis = if self.explicit {
+            if host && !has { "pub " } else { "" }
+        } else if has || self.private(f) {
+            ""
+        } else {
+            "pub "
+        };
         let allow = self.allow;
         self.emit(0, allow);
         self.emit(0, &format!("{}fn {}({}){} {{", vis, body_name, ps, ret));
@@ -732,29 +770,86 @@ impl<'a> Gen<'a> {
         self.emit(0, "}");
         self.emit(0, "");
         if has {
-            self.entry(f, &ps, &ret, &body_name)?;
+            if !self.explicit {
+                self.entry(f, &ps, &ret, &body_name, None, None, None)?;
+            } else if self.verified {
+                if host {
+                    // the checked host wrapper; no other function has a wrapper in verified mode
+                    let checked = !self.trust;
+                    self.entry(f, &ps, &ret, &body_name, Some(f.name.as_str()), Some(true), Some(checked))?;
+                }
+            } else if host {
+                let checked = !self.trust;
+                self.entry(f, &ps, &ret, &body_name, Some(f.name.as_str()), Some(true), Some(checked))?;
+                if self.trust {
+                    // Pruv callers of the entry keep the safe-mode check
+                    let chk = format!("{}__pruv_chk", f.name);
+                    self.entry(f, &ps, &ret, &body_name, Some(chk.as_str()), Some(false), Some(true))?;
+                }
+            } else {
+                self.entry(f, &ps, &ret, &body_name, Some(f.name.as_str()), Some(false), Some(true))?;
+            }
         }
         Ok(())
+    }
+
+    /// the source-qualified name of a function (explicit mode: its identity; otherwise the name itself)
+    fn disp_of(&self, name: &str) -> String {
+        match self.fmarks.get(name) {
+            Some(m) => m.disp.clone(),
+            None => name.to_string(),
+        }
+    }
+
+    /// explicit mode: the Rust name a Pruv call of the function `n` invokes (see Gen::new)
+    fn callee(&self, n: &str) -> String {
+        if !self.has_req.contains(n) {
+            return n.to_string();
+        }
+        if self.verified {
+            return format!("{}__pruv_body", n); // the caller proved requires
+        }
+        if self.trust && self.entries.contains(n) {
+            format!("{}__pruv_chk", n)
+        } else {
+            n.to_string()
+        }
     }
 
     /// Code of the requires checks (fills cp)
     fn entry_checks(&mut self, f: &Function) -> R<Vec<String>> {
         let mut checks: Vec<String> = Vec::new();
+        let disp = self.disp_of(&f.name);
         for r in &f.requires {
-            let msg = format!("pruv: requires violated: {}: {}", f.name, show(r));
+            let msg = format!("pruv: requires violated: {}: {}", disp, show(r));
             let code = self.c(r)?;
             checks.push(format!("if !({}) {{ panic!(\"{{}}\", {}); }}", code, rstr(&msg)));
         }
         Ok(checks)
     }
 
-    fn entry(&mut self, f: &Function, ps: &str, ret: &str, body_name: &str) -> R<()> {
+    /// the checked wrapper of f. Legacy (`None` arguments): `pub` unless private, named f.name, checks unless trust_callers.
+    /// Explicit mode passes the wrapper name, its visibility and whether it checks.
+    #[allow(clippy::too_many_arguments)]
+    fn entry(
+        &mut self,
+        f: &Function,
+        ps: &str,
+        ret: &str,
+        body_name: &str,
+        name: Option<&str>,
+        is_pub: Option<bool>,
+        checked: Option<bool>,
+    ) -> R<()> {
+        let name = name.unwrap_or(f.name.as_str());
+        let is_pub = is_pub.unwrap_or_else(|| !self.private(f));
+        let checked = checked.unwrap_or(!self.trust);
         let allow = self.allow;
         self.emit(0, allow);
         self.emit(0, "#[inline]");
-        let vis = if self.private(f) { "" } else { "pub " };
-        self.emit(0, &format!("{}fn {}({}){} {{", vis, f.name, ps, ret));
-        if !self.trust {
+        let vis = if is_pub { "pub " } else { "" };
+        self.emit(0, &format!("{}fn {}({}){} {{", vis, name, ps, ret));
+        if checked {
             self.cp = Some(HashMap::new());
             let res = self.entry_checks(f);
             let used = self.cp.take().unwrap_or_default();
@@ -1230,7 +1325,9 @@ impl<'a> Gen<'a> {
                 let nfields = k_variant(&self.table, &x.enum_name, &x.variant)?.fields.len();
                 let idx = k_field_index(&self.table, &x.enum_name, &x.field, Some(&x.variant))?;
                 let pats = (0..nfields).map(|i| if i == idx { "pruv_f" } else { "_" }).collect::<Vec<_>>().join(", ");
-                let msg = format!("variant_field expected {}::{}.{}", x.enum_name, x.variant, x.field);
+                // G4: source-qualified in explicit mode
+                let en = if self.explicit { src_name(&x.enum_name) } else { x.enum_name.clone() };
+                let msg = format!("variant_field expected {}::{}.{}", en, x.variant, x.field);
                 let val = self.c(&x.value)?;
                 Ok(format!(
                     "({{ let {tmp}: {cn} = {val}; match {tmp} {{ {cn}::{v}({pats}) => pruv_f, _ => pruv_ud({m}) }} }})",
@@ -1962,11 +2059,13 @@ impl<'a> Gen<'a> {
             (fg.req, fg.ens)
         };
         let name = f.name.as_str();
+        // G4 A2: messages name the source identity, the helper keeps its stem
+        let disp = self.disp_of(name);
         let mut body: Vec<String> = Vec::new();
         if req {
             for r in &f.requires {
                 let code = self.c(r)?;
-                body.push(format!("if !({}) {{ pruv_g6_req({}, {}); }}", code, rstr(name), rstr(&show(r))));
+                body.push(format!("if !({}) {{ pruv_g6_req({}, {}); }}", code, rstr(&disp), rstr(&show(r))));
             }
         }
         let args = join_map(&f.params, ", ", |p| p.name.clone());
@@ -1980,18 +2079,18 @@ impl<'a> Gen<'a> {
             rt, path, args
         ));
         body.push("    Ok(pruv_r) => pruv_r,".to_string());
-        body.push(format!("    Err(_) => panic!({}),", rstr(&format!("pruv: foreign panic: {}", name))));
+        body.push(format!("    Err(_) => panic!({}),", rstr(&format!("pruv: foreign panic: {}", disp))));
         body.push("};".to_string());
         if ens {
             for x in &f.ensures {
                 let code = self.c(x)?;
-                body.push(format!("if !({}) {{ pruv_g6_ens({}, {}); }}", code, rstr(name), rstr(&show(x))));
+                body.push(format!("if !({}) {{ pruv_g6_ens({}, {}); }}", code, rstr(&disp), rstr(&show(x))));
             }
         }
         body.push("result".to_string());
         let ps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, rty(&p.ty, true)));
         let ret: Option<&str> = if f.ret == "unit" { None } else { Some(rt.as_str()) };
-        Ok(self.fg_mut()?.fn_trusted(name, &ps, ret, &body))
+        Ok(self.fg_mut()?.fn_trusted(name, &ps, ret, &body, &disp))
     }
 
     fn e(&mut self, e: &Expr) -> R<String> {
@@ -2218,7 +2317,9 @@ impl<'a> Gen<'a> {
                     }
                 }
                 let mut name = n.to_string();
-                if self.verified && self.has_req.contains(&name) {
+                if self.explicit {
+                    name = self.callee(&name); // G4 A2
+                } else if self.verified && self.has_req.contains(&name) {
                     name.push_str("__pruv_body"); // the caller proved the requires
                 }
                 Ok(format!("{}({})", name, args.join(", ")))
@@ -2255,6 +2356,17 @@ pub fn gen_rust_any(prog: &Program, verified: bool, trust_callers: bool, budget:
     gen_rust_ex(prog, verified, trust_callers, budget, "requires", &[]).map(|(text, _)| text)
 }
 
+/// `gen_rust_any` for a checked program of explicit visibility mode (`g4` = Some; None is `gen_rust_any`).
+pub fn gen_rust_any_g4(
+    prog: &Program,
+    g4: Option<&crate::modules::G4>,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+) -> Result<String, GenError> {
+    gen_rust_ex_g4(prog, g4, verified, trust_callers, budget, "requires", &[]).map(|(text, _)| text)
+}
+
 /// Python `gen_rust_ex`: (rust text, manifest text or None). The manifest (G6_SPEC 12.4) exists only for a program that
 /// uses G6; externs: (name, path) as given with --rust-extern.
 pub fn gen_rust_ex(
@@ -2265,11 +2377,25 @@ pub fn gen_rust_ex(
     foreign_checks: &str,
     externs: &[(String, String)],
 ) -> Result<(String, Option<String>), GenError> {
+    gen_rust_ex_g4(prog, None, verified, trust_callers, budget, foreign_checks, externs)
+}
+
+/// `gen_rust_ex` for a program of explicit visibility mode (G4 A2): it always goes through the specialization plan, which
+/// names every function and type by its Rust stem. `g4` = None is the legacy entry point.
+pub fn gen_rust_ex_g4(
+    prog: &Program,
+    g4: Option<&crate::modules::G4>,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    foreign_checks: &str,
+    externs: &[(String, String)],
+) -> Result<(String, Option<String>), GenError> {
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
-    if crate::typeinfo::first_g3_use(prog).is_some() {
-        let plan = crate::mono::specialize(prog).map_err(|e| match e {
+    if crate::typeinfo::first_g3_use(prog).is_some() || g4.is_some() {
+        let plan = crate::mono::specialize_g4(prog, g4).map_err(|e| match e {
             crate::mono::MonoError::Limit(p) => GenError::Diag(p),
             crate::mono::MonoError::Internal(m) => GenError::Msg(m),
         })?;
@@ -2311,6 +2437,15 @@ pub fn gen_rust_concrete_ex(
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) { // G2 B2
         return Err(GenError::Msg(format!("unsupported_type: {}", e.message)));
     }
+    // G4 A2: the identities behind the Rust names (panic text); cleared again when the generator returns
+    struct DispGuard;
+    impl Drop for DispGuard {
+        fn drop(&mut self) {
+            crate::emit_common::set_type_disp(HashMap::new());
+        }
+    }
+    let _disp_guard = DispGuard;
+    crate::emit_common::set_type_disp(prog.explicit.as_ref().map(|x| x.tdisp.clone()).unwrap_or_default());
     let mut g = Gen::new(prog, verified, trust_callers, budget, foreign_checks);
     let mut mark = 0usize;
     let res: R<()> = (|| {
@@ -2394,7 +2529,7 @@ mod tests {
             foreign: None,
             decreases: None,
         };
-        Program { functions: vec![f], types: vec![], refined: false, g9: None }
+        Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None }
     }
 
     #[test]
@@ -2442,7 +2577,7 @@ mod tests {
             foreign: None,
             decreases: None,
         };
-        Program { functions: vec![f], types: vec![], refined: false, g9: None }
+        Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None }
     }
 
     #[test]

@@ -5,7 +5,9 @@ never standalone test roots. This module only reads tests/g4/fixtures.json; it i
 
   load()                    the parsed fixtures.json
   frontend() / rejects() / proof()    [{"name", "root" (repo-relative, `/`), ...}] in inventory order
-  all_roots()               repo-relative roots of every listed project (frontend, reject, and later proof/runtime)
+  all_roots()               repo-relative roots of every listed project (frontend, reject, proof, runtime)
+  runtime()                 the runtime projects (tests/runtime/g4_*/: root.pruv, modules, main.rs, spec.json)
+  example_roots()           roots of the project examples examples/g4_*/root.pruv (not in fixtures.json)
   is_companion(rel)         True for a .pruv below a project directory that is not that project's root
   project_dir(root_rel)     absolute project directory of a repo-relative root
   project_tree(root_rel)    sorted relative file names (`/` separators) of the whole project directory
@@ -74,7 +76,23 @@ def is_companion(rel):
     if rel.startswith("tests/g4/") and rel.endswith(".pruv"):
         return True
     parts = rel.split("/")
+    if len(parts) >= 3 and parts[0] == "examples" and parts[1].startswith("g4_"):   # G4 A2 project examples
+        return rel != "examples/%s/root.pruv" % parts[1]
     return len(parts) >= 4 and parts[:2] == ["tests", "must_reject"] and parts[2].startswith("g4_")
+
+
+def example_roots():
+    """repo-relative roots of the G4 project examples (examples/g4_*/root.pruv); not listed in fixtures.json"""
+    out = []
+    for name in sorted(os.listdir(os.path.join(ROOT, "examples"))):
+        p = os.path.join(ROOT, "examples", name, "root.pruv")
+        if name.startswith("g4_") and os.path.isfile(p):
+            out.append("examples/%s/root.pruv" % name)
+    return out
+
+
+def runtime():
+    return _entries("runtime")
 
 
 def project_tree(root_rel):

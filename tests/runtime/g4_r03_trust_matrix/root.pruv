@@ -1,0 +1,9 @@
+// G4 A2 runtime: the four flag combinations of verification and --trust-callers give the same results for valid input
+mod calc;
+
+pub fn score(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result == x * 2 + 1
+{
+  return crate::calc::twice(x) + 1;
+}

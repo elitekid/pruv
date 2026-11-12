@@ -1,0 +1,25 @@
+// G4 example: two nested modules (crate::bank, crate::bank::audit). Both keep a private type that never leaves its
+// module; the root exposes scalar entries and a root `pub fn main() -> ()`.
+mod bank;
+
+pub fn balance(initial: i64, deposit: i64, withdrawal: i64) -> i64
+  requires 0 <= initial && initial <= 100000
+  requires 0 <= deposit && deposit <= 100000
+  requires 0 <= withdrawal && withdrawal <= 100000
+  ensures result == initial + deposit - withdrawal
+{
+  return crate::bank::balance_after(initial, deposit, withdrawal);
+}
+
+pub fn deposit_only(initial: i64, deposit: i64) -> i64
+  requires 0 <= initial && initial <= 100000
+  requires 0 <= deposit && deposit <= 100000
+  ensures result == initial + deposit
+{
+  return crate::bank::balance_after(initial, deposit, 0);
+}
+
+pub fn main() -> () ! io {
+  print(balance(100, 50, 30));
+  print(deposit_only(10, 5));
+}

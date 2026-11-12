@@ -88,19 +88,21 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    if prog.explicit:
-        # G4 staging guard (moved after the proof in A1): explicit visibility mode verifies, but has no code generation
-        # until A2 (Rust) / A3 (LLVM); a failing proof has already returned its normal error above.
-        # Its text is the contract of tests/run_all.py (G4_GUARD_LAYER).
+    if prog.explicit and (backend == "llvm" or also_llvm):
+        # G4 staging guard (until A3): the Rust source backend generates explicit visibility programs (A2); the LLVM
+        # codegen layer does not, also with --no-verify and with --also-llvm (nothing is written then). A failing proof
+        # has already returned its normal error above. "the llvm codegen layer" is the contract of tests/run_all.py
+        # pending_result().
         first = prog.items[0] if prog.items else None
         return [PruvError("codegen", first.line if first else 1, first.col if first else 1, "unsupported_type",
-                          "G4 modules and visibility are not implemented by the verify and codegen layers yet",
-                          "use a single file without `mod` and `pub` for now", file=prog.modules[0].file)]
+                          "G4 modules and visibility are not implemented by the llvm codegen layer yet",
+                          "use the Rust source backend for now", file=prog.modules[0].file)]
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same
-    # shared specialization plan (pruvc/mono.py), also with --no-verify.
+    # shared specialization plan (pruvc/mono.py), also with --no-verify. G4 A2: explicit mode always goes through the
+    # plan (it names every function and type by its Rust stem).
     plan = None
     gprog = prog
-    if first_g3_use(prog) is not None:
+    if first_g3_use(prog) is not None or prog.explicit:
         try:
             plan = specialize(prog)   # does not mutate prog; PruvError specialization_limit -> no output at all
         except PruvError as e:

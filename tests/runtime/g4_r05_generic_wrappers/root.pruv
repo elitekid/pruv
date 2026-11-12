@@ -1,0 +1,24 @@
+// G4 A2 runtime: public generic functions of a child module are Pruv APIs; the root exposes concrete scalar wrappers
+mod pick;
+
+pub fn pick_num(flag: bool, a: i64, b: i64) -> i64
+  ensures flag ==> result == a
+  ensures !flag ==> result == b
+{
+  return crate::pick::choose::<i64>(flag, a, b);
+}
+
+pub fn pick_flag(flag: bool, a: bool, b: bool) -> bool
+  ensures flag ==> result == a
+  ensures !flag ==> result == b
+{
+  return crate::pick::choose::<bool>(flag, a, b);
+}
+
+pub fn pick_guard(n: i64, a: i64, b: i64) -> i64
+  requires 0 <= n
+  ensures n == 0 ==> result == a
+  ensures n > 0 ==> result == b
+{
+  return crate::pick::guarded::<i64>(n, a, b);
+}

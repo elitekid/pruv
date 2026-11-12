@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["42", "4", "4", "0", "1", "2", "0"], "gen_contains": ["pub struct pruv_m_t_2_6_shapes_4_Rect { pub w: i64, pub h: i64 }", "pub enum pruv_m_t_2_6_shapes_4_Kind {"], "gen_absent": ["pub fn pruv_m_"]}

@@ -254,11 +254,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
-        if let Some(g) = &g4 {
-            // G4 A1 staging guard (after the proof): explicit visibility mode verifies but has no code generation yet
-            return Err(Fail::Lang(vec![pruv_core::modules::guard_error(&prog, g)]));
-        }
-        if g6_native {
+        if g6_native && g4.is_none() {
             if let Some(e) = foreign_target_error(&prog) {
                 return Err(Fail::Lang(vec![e]));
             }
@@ -266,17 +262,20 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    if !a.verify {
-        if let Some(g) = &g4 {
-            // G4 A1 staging guard without a proof (--no-verify), same diagnostic as Python compile_file
+    if let Some(g) = &g4 {
+        // G4 staging guard (until A3), after the proof and also with --no-verify, same diagnostic as Python compile_file:
+        // the Rust source backend generates explicit visibility programs (A2); every LLVM path (--emit ll|obj|exe and
+        // --also-llvm) is rejected, nothing is written
+        if !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some() {
             return Err(Fail::Lang(vec![pruv_core::modules::guard_error(&prog, g)]));
         }
     }
     // G3 A3/A4 (same place as in Python compile_file): every backend (rust, llvm, also --also-llvm) specializes generic
-    // programs through the shared plan (mono.rs) and generates from the concrete program.
+    // programs through the shared plan (mono.rs) and generates from the concrete program. G4 A2: explicit mode always goes
+    // through the plan (it names every function and type by its Rust stem).
     let mut plan_prog: Option<Program> = None;
-    if pruv_core::typeinfo::first_g3_use(&prog).is_some() {
-        match pruv_core::mono::specialize(&prog) {
+    if pruv_core::typeinfo::first_g3_use(&prog).is_some() || g4.is_some() {
+        match pruv_core::mono::specialize_g4(&prog, g4.as_ref()) {
             Ok(plan) => plan_prog = Some(plan.program),
             Err(pruv_core::mono::MonoError::Limit(e)) => return Err(Fail::Lang(vec![e])), // no output at all
             Err(pruv_core::mono::MonoError::Internal(m)) => return Err(Fail::Internal(m)),

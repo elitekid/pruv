@@ -45,7 +45,8 @@ class ForeignGen:
         for f in g.prog.functions:
             if f.foreign is None:
                 continue
-            trusted.append({"name": f.name, "path": f.foreign["path"], "line": f.line, "col": f.col,
+            # G4 A2: explicit mode lists the source-qualified identity (crate::m::f), never the encoded stem
+            trusted.append({"name": getattr(f, "disp", f.name), "path": f.foreign["path"], "line": f.line, "col": f.col,
                             "effects": list(f.effects),
                             "requires": [show(r) for r in f.requires],
                             "ensures": [show(x) for x in f.ensures],
@@ -236,6 +237,7 @@ class ForeignGen:
             return name
         g = s.g
         s.op = name
+        disp = getattr(f, "disp", name)     # G4 A2: messages name the source identity, the helper keeps its stem
         saved = (g.params, g.vt, g.cp, g.bound, g.tmp, g.borrowed)
         g.params = set(p.name for p in f.params) | {"result"}
         g.vt = dict((p.name, p.type) for p in f.params)
@@ -244,30 +246,30 @@ class ForeignGen:
             body = []
             if s.req:
                 for r in f.requires:
-                    body.append("if !(%s) { pruv_g6_req(%s, %s); }" % (g.c(r), rstr(name), rstr(show(r))))
+                    body.append("if !(%s) { pruv_g6_req(%s, %s); }" % (g.c(r), rstr(disp), rstr(show(r))))
             args = ", ".join(p.name for p in f.params)
             rt = rty(f.ret)
             body.append("let result: %s = match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| %s(%s))) {" % (
                 rt, f.foreign["path"], args))
             body.append("    Ok(pruv_r) => pruv_r,")
-            body.append("    Err(_) => panic!(%s)," % rstr("pruv: foreign panic: " + name))
+            body.append("    Err(_) => panic!(%s)," % rstr("pruv: foreign panic: " + disp))
             body.append("};")
             if s.ens:
                 for x in f.ensures:
-                    body.append("if !(%s) { pruv_g6_ens(%s, %s); }" % (g.c(x), rstr(name), rstr(show(x))))
+                    body.append("if !(%s) { pruv_g6_ens(%s, %s); }" % (g.c(x), rstr(disp), rstr(show(x))))
             body.append("result")
             ps = ", ".join("%s: %s" % (p.name, rty(p.type, True)) for p in f.params)
-            text = s._fn_trusted(name, ps, None if f.ret == UNIT else rt, body)
+            text = s._fn_trusted(name, ps, None if f.ret == UNIT else rt, body, disp)
         finally:
             g.params, g.vt, g.cp, g.bound, g.tmp, g.borrowed = saved
         s.items[name] = text
         return name
 
-    def _fn_trusted(s, name, params, ret, body):
+    def _fn_trusted(s, name, params, ret, body, disp=None):
         g = s.g
         L = [g.allow, "fn %s(%s)%s {" % (name, params, "" if ret is None else " -> " + ret)]
         if s.req:
-            L.append("    let pruv_g = pruv_ctx(%s);" % rstr(name))
+            L.append("    let pruv_g = pruv_ctx(%s);" % rstr(name if disp is None else disp))
             L.append("    " + _budget_line(g.budget))   # shared by requires and ensures of one call
         L.extend("    " + x for x in body)
         L.append("}")

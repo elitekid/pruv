@@ -1,0 +1,34 @@
+// module crate::bank of examples/g4_ledger
+mod audit;
+
+// private type: not visible outside this module
+struct Account { balance: i64 }
+
+fn open(initial: i64) -> Account
+  requires 0 <= initial && initial <= 100000
+  ensures result.balance == initial
+{
+  return Account { balance: initial };
+}
+
+fn apply(acc: Account, delta: i64) -> Account
+  requires -1000000 <= acc.balance && acc.balance <= 1000000
+  requires -1000000 <= delta && delta <= 1000000
+  ensures result.balance == acc.balance + delta
+{
+  return Account { balance: acc.balance + delta };
+}
+
+pub fn balance_after(initial: i64, deposit: i64, withdrawal: i64) -> i64
+  requires 0 <= initial && initial <= 100000
+  requires 0 <= deposit && deposit <= 100000
+  requires 0 <= withdrawal && withdrawal <= 100000
+  ensures result == initial + deposit - withdrawal
+{
+  let dep: i64 = crate::bank::audit::record(deposit);
+  let wd: i64 = crate::bank::audit::record(withdrawal);
+  let a: Account = open(initial);
+  let b: Account = apply(a, dep);
+  let c: Account = apply(b, 0 - wd);
+  return c.balance;
+}

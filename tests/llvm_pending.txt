@@ -6,3 +6,17 @@
 tests/runtime/g6_a02_option_find.pruv
 tests/runtime/g6_a03_result_half.pruv
 tests/runtime/g6_v05_option_elems.pruv
+# G4 A2: the Rust source backend generates explicit visibility programs; the LLVM codegen layer is guarded until A3
+# (the guard text names "the llvm codegen layer"). Runtime projects and project examples:
+tests/runtime/g4_r01_host_reject/root.pruv
+tests/runtime/g4_r02_safe_private/root.pruv
+tests/runtime/g4_r03_trust_matrix/root.pruv
+tests/runtime/g4_r04_module_types/root.pruv
+tests/runtime/g4_r05_generic_wrappers/root.pruv
+tests/runtime/g4_r06_repeated_leaf/root.pruv
+tests/runtime/g4_r07_underscore_names/root.pruv
+tests/runtime/g4_r08_foreign/root.pruv
+tests/runtime/g4_r09_cross_file_recursion/root.pruv
+tests/runtime/g4_r10_visibility/root.pruv
+examples/g4_geometry/root.pruv
+examples/g4_ledger/root.pruv

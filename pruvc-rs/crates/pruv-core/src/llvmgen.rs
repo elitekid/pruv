@@ -4137,6 +4137,7 @@ mod tests {
             }],
             refined: false,
             g9: None,
+            explicit: None,
         }
     }
 

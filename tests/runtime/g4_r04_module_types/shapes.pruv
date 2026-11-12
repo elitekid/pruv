@@ -1,0 +1,20 @@
+// companion module of g4_r04_module_types
+pub struct Rect { w: i64, h: i64 }
+
+pub enum Kind { Square, Wide(extra: i64), Tall(extra: i64) }
+
+pub fn make(w: i64, h: i64) -> Rect
+  ensures result.w == w && result.h == h
+{
+  return Rect { w: w, h: h };
+}
+
+pub fn classify(r: Rect) -> Kind
+  requires 0 <= r.w && r.w <= 1000
+  requires 0 <= r.h && r.h <= 1000
+  ensures r.w == r.h ==> is_variant(result, Kind::Square)
+{
+  if r.w == r.h { return Kind::Square; }
+  if r.w > r.h { return Kind::Wide(r.w - r.h); }
+  return Kind::Tall(r.h - r.w);
+}

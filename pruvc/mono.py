@@ -11,6 +11,12 @@ The pass runs after verification (after full checking under --no-verify). It bui
     their argument unless X is i64 (legacy Option<i64> / Result<i64>), arrays are the legacy [i64]/[bool].
 The back ends consume plan.program as if it were an ordinary G1 program (the Rust source back end today, LLVM in A4).
 
+G4 A2: in explicit visibility mode (prog.explicit) the pass always runs and also renames every nongeneric function / type
+to its Rust stem (modules.encode_stem; root host entries and root `pub` types keep the source spelling), builds the pruv_g3
+stems from the encoded identity (modules.encode_name / safe_type), and copies pub / host_entry / src_name / mod_path and
+`disp` (the identity, for panic text and manifests) onto the concrete declarations; a specialization inherits its generic
+declaration's visibility and display name.
+
 Roots are all non-generic functions (they are the public entry points, called or not). Concrete generic calls,
 struct literals and enum constructors (the checker records them in `.inst`) are substituted and followed with a
 work list (no recursion over call chains). Specializations are deduplicated by declaration identity and the full
@@ -41,6 +47,7 @@ from vast import *
 from typeinfo import (bind_args, decl_owner, encode, first_g3_use, format_type, spec_fn_stem, spec_type_stem,
                       substitute, COLLECTION_ARITY)
 from foreign import CATALOG   # G6: catalog calls keep their name (never specialized)
+from modules import encode_name, encode_stem, identity_components, safe_type   # G4 A2: shared symbol encoding
 
 MAX_FN_SPECS = 4096
 MAX_TYPE_APPS = 4096
@@ -175,6 +182,7 @@ class SpecPlan:
 class _Mono:
     def __init__(self, prog):
         self.prog = prog
+        self.explicit = bool(prog.explicit)
         self.tdecls = {}
         self.tindex = {}
         for i, d in enumerate(prog.types):
@@ -187,11 +195,68 @@ class _Mono:
             if f.name not in self.fdecls:
                 self.fdecls[f.name] = f
                 self.findex[f.name] = i
+        # G4 A2 (explicit mode only): identity -> Rust stem of every NONGENERIC function / type. Root host entries and
+        # root `pub` types keep their source spelling; everything else gets its encoded stem (modules.encode_stem).
+        # Generic declarations are named by their specialization stems (pruv_g3_*), built from the identity.
+        self.rfns = {}
+        self.rtypes = {}
+        if self.explicit:
+            for f in prog.functions:
+                if not f.tparams and self.fdecls[f.name] is f:
+                    self.rfns[f.name] = f.src_name if f.host_entry else encode_stem("f", f.mod_path + (f.src_name,))
+            for d in prog.types:
+                if not d.tparams and self.tdecls[d.name] is d:
+                    self.rtypes[d.name] = d.src_name if (d.pub and d.mod_path == ()) else \
+                        encode_stem("t", d.mod_path + (d.src_name,))
         self.fns = {}            # stem -> FnSpec
         self.types = {}          # stem -> TypeSpec
         self.queue = deque()
         self.map = {}            # substitution of the declaration being copied
         self.pos = (1, 1)
+
+    # ---------- G4 A2 naming (explicit mode) ----------
+    def _gname(self, name):
+        """the name token of a generic declaration inside a pruv_g3 stem / argument encoding"""
+        return encode_name(identity_components(name)) if self.explicit else name
+
+    def _enc(self, t):
+        return encode(safe_type(t)) if self.explicit else encode(t)
+
+    def _nom(self, c):
+        """explicit mode: a nongeneric nominal type gets its Rust stem"""
+        if self.explicit and c.owner is None and not c.args and c.name in self.rtypes:
+            return Type(self.rtypes[c.name])
+        return c
+
+    def _mark_fn(self, new, f, private):
+        if self.explicit:
+            new.pub = f.pub                      # a specialization inherits the generic declaration's visibility
+            new.host_entry = bool(f.host_entry) and not private
+            new.src_name, new.mod_path = f.src_name, f.mod_path
+            new.disp = f.name                    # display name = resolved identity (source-qualified)
+        return new
+
+    def _mark_type(self, new, d):
+        if self.explicit:
+            new.pub = d.pub
+            new.src_name, new.mod_path = d.src_name, d.mod_path
+            new.disp = d.name
+        return new
+
+    def _g9_meta(self):
+        meta = self.prog.g9
+        if not self.explicit or meta is None:
+            return meta
+        ren = lambda n: self.rtypes.get(n, n)    # noqa: E731
+        boxed = []
+        for lab in meta["boxed"]:               # "Type.field" / "Type::Variant.field" over identities
+            head, _, field = lab.rpartition(".")
+            if head in self.rtypes:
+                boxed.append("%s.%s" % (ren(head), field))
+            else:
+                tn, _, v = head.rpartition("::")
+                boxed.append("%s::%s.%s" % (ren(tn), v, field))
+        return dict(meta, boxed=boxed, extended=[ren(n) for n in meta["extended"]])
 
     # ---------- errors ----------
     def limit(self, msg):
@@ -218,7 +283,7 @@ class _Mono:
         if c.owner is not None:
             raise RuntimeError("specialization: unbound type parameter %s" % c.name)
         if not c.args:
-            return c
+            return self._nom(c)
         self.check_shape(c, "type")
         return self.lower(c)
 
@@ -226,7 +291,7 @@ class _Mono:
         if c.owner is not None:
             raise RuntimeError("specialization: unbound type parameter %s" % c.name)
         if not c.args:
-            return c
+            return self._nom(c)
         if c.name == "array":
             return mk_array(self.lower(c.args[0]))
         if c.name == "option":
@@ -244,13 +309,13 @@ class _Mono:
         """register the application name<args> (concrete args); returns its stem"""
         args = tuple(args)
         self.check_shape(Type(name, args), "application of %s" % name)
-        stem = spec_type_stem(name, args)
+        stem = spec_type_stem(self._gname(name), tuple(safe_type(a) for a in args) if self.explicit else args)
         if stem in self.types:
             return stem
         if len(self.types) >= MAX_TYPE_APPS:
             raise self.limit("more than %d distinct generic type applications (trigger: %s<%s>)" % (
                 MAX_TYPE_APPS, name, ", ".join(short_type(a, 32) for a in args)))
-        spec = TypeSpec(name, args, stem, tuple(encode(a) for a in args))
+        spec = TypeSpec(name, args, stem, tuple(self._enc(a) for a in args))
         self.types[stem] = spec
         self.queue.append(spec)
         return stem
@@ -259,13 +324,13 @@ class _Mono:
         args = tuple(args)
         for a in args:
             self.check_shape(a, "type argument of function %s" % name)
-        stem = spec_fn_stem(name, args)
+        stem = spec_fn_stem(self._gname(name), tuple(safe_type(a) for a in args) if self.explicit else args)
         if stem in self.fns:
             return stem
         if len(self.fns) >= MAX_FN_SPECS:
             raise self.limit("more than %d distinct generic function specializations (trigger: %s<%s>)" % (
                 MAX_FN_SPECS, name, ", ".join(short_type(a, 32) for a in args)))
-        spec = FnSpec(name, args, stem, tuple(encode(a) for a in args))
+        spec = FnSpec(name, args, stem, tuple(self._enc(a) for a in args))
         self.fns[stem] = spec
         self.queue.append(spec)
         return stem
@@ -298,19 +363,30 @@ class _Mono:
             elif node.inst is not None:
                 self.pos = (node.line, node.col)
                 new.name = self.request_fn(node.name, self.concrete_args(node.inst))
+            elif node.name in self.rfns:       # G4 A2: a nongeneric user function -> its Rust stem
+                new.name = self.rfns[node.name]
         elif isinstance(node, StructLit):
             if node.inst is not None:
                 self.pos = (node.line, node.col)
                 new.name = self.request_type(node.name, self.concrete_args(node.inst))
                 new.src_name = node.name      # for panic messages (codegen.show)
+            elif node.name in self.rtypes:
+                new.name = self.rtypes[node.name]
+                new.src_name = node.name
         elif isinstance(node, EnumCtor):
             if node.inst is not None:
                 self.pos = (node.line, node.col)
                 new.enum_name = self.request_type(node.enum_name, self.concrete_args(node.inst))
                 new.src_name = node.enum_name
+            elif node.enum_name in self.rtypes:
+                new.enum_name = self.rtypes[node.enum_name]
+                new.src_name = node.enum_name
         elif isinstance(node, (IsVariant, VariantField)):
             if node.enum_ty is not None:
                 new.enum_name = self.ty(node.enum_ty).name
+                new.src_name = node.enum_name
+            elif node.enum_name in self.rtypes:
+                new.enum_name = self.rtypes[node.enum_name]
                 new.src_name = node.enum_name
         elif isinstance(node, Match):
             sty = new.scrutinee.ty
@@ -318,6 +394,10 @@ class _Mono:
                 for old_arm, arm in zip(node.arms, new.arms):
                     if old_arm.enum_name is not None:
                         arm.enum_name = sty.name
+            elif self.explicit:
+                for arm in new.arms:
+                    if arm.enum_name in self.rtypes:
+                        arm.enum_name = self.rtypes[arm.enum_name]
         return new
 
     def function(self, f, name, mapping, private):
@@ -336,7 +416,7 @@ class _Mono:
         new.private = private
         if f.foreign is not None:
             new.foreign = f.foreign
-        return new
+        return self._mark_fn(new, f, private)
 
     def type_decl(self, d, stem, mapping):
         self.map = mapping
@@ -345,9 +425,10 @@ class _Mono:
         def fields(fs):
             return [FieldDecl(fd.line, fd.col, fd.name, self.ty(fd.type)) for fd in fs]
         if isinstance(d, StructDecl):
-            return StructDecl(line=d.line, col=d.col, name=stem, fields=fields(d.fields))
-        return EnumDecl(line=d.line, col=d.col, name=stem,
-                        variants=[VariantDecl(v.line, v.col, v.name, fields(v.fields)) for v in d.variants])
+            return self._mark_type(StructDecl(line=d.line, col=d.col, name=stem, fields=fields(d.fields)), d)
+        return self._mark_type(EnumDecl(line=d.line, col=d.col, name=stem,
+                                        variants=[VariantDecl(v.line, v.col, v.name, fields(v.fields))
+                                                  for v in d.variants]), d)
 
     # ---------- driver ----------
     def run(self):
@@ -356,11 +437,11 @@ class _Mono:
         for d in prog.types:
             if d.name in plain_types or d.tparams or self.tdecls[d.name] is not d:
                 continue
-            plain_types[d.name] = self.type_decl(d, d.name, {})
+            plain_types[d.name] = self.type_decl(d, self.rtypes.get(d.name, d.name), {})
         roots = {}
         for f in prog.functions:
             if not f.tparams and self.fdecls[f.name] is f:
-                roots[f.name] = self.function(f, f.name, {}, False)
+                roots[f.name] = self.function(f, self.rfns.get(f.name, f.name), {}, False)
         while self.queue:
             spec = self.queue.popleft()
             if isinstance(spec, FnSpec):
@@ -395,7 +476,8 @@ class _Mono:
         # types are never generic (check.py), so their names are the same in the concrete program; the metadata is
         # shared read-only, never mutated.
         if prog.g9 is not None:
-            program.g9 = prog.g9
+            program.g9 = self._g9_meta()      # explicit mode: the same metadata over the Rust stems
+        program.explicit = self.explicit      # G4 A2: the code generator applies the explicit visibility rules
         return SpecPlan(prog, program, fn_specs, type_specs, root_names)
 
 

@@ -42,6 +42,42 @@ pub fn ident(path: &[String], name: &str) -> String {
     format!("{}::{}", disp(path), name)
 }
 
+/// G4 A2 (docs/G4_SPEC.md 6; Python `encode_name`): the count of the components, then for each one `_<ASCII byte length>_<component>`.
+pub fn encode_name(components: &[String]) -> String {
+    let mut s = components.len().to_string();
+    for c in components {
+        s.push_str(&format!("_{}_{}", c.len(), c));
+    }
+    s
+}
+
+/// Rust stem of an item in explicit mode (Python `encode_stem`): kind "f" (function) or "t" (nominal type); components = the
+/// module path followed by the item's source name.
+pub fn encode_stem(kind: &str, components: &[String]) -> String {
+    format!("pruv_m_{}_{}", kind, encode_name(components))
+}
+
+/// "crate::a::b::x" -> ["a", "b", "x"] (Python `identity_components`)
+pub fn identity_components(identity: &str) -> Vec<String> {
+    identity.split("::").skip(1).map(|s| s.to_string()).collect()
+}
+
+/// A type whose nominal names (identities) are replaced by their `encode_name` (Python `safe_type`), so that the G3 stem and
+/// argument encodings only ever see [0-9A-Za-z_] names; injective like the identity.
+pub fn safe_type(ty: &GType) -> GType {
+    if ty.owner.is_some() {
+        return ty.clone();
+    }
+    let args: Vec<GType> = ty.args.iter().map(safe_type).collect();
+    if BUILTIN_TYPE_NAMES.contains(&ty.name.as_str()) || !ty.name.starts_with("crate::") {
+        if args == ty.args {
+            return ty.clone();
+        }
+        return GType::new(&ty.name, args);
+    }
+    GType::new(&encode_name(&identity_components(&ty.name)), args)
+}
+
 #[derive(Debug, Clone)]
 pub struct Module {
     /// module names from the root; empty is the root
@@ -128,29 +164,24 @@ pub enum LoadError {
 // loading
 // ---------------------------------------------------------------------------
 
+/// the identity of a file (device, inode), computed once per loaded file; None when the file cannot be inspected
 #[cfg(unix)]
-fn same_file(a: &Path, b: &Path) -> bool {
+fn file_id(a: &Path) -> Option<String> {
     use std::os::unix::fs::MetadataExt;
-    match (std::fs::metadata(a), std::fs::metadata(b)) {
-        (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
-        _ => false,
-    }
+    std::fs::metadata(a).ok().map(|x| format!("{}:{}", x.dev(), x.ino()))
 }
 
 #[cfg(not(unix))]
-fn same_file(a: &Path, b: &Path) -> bool {
-    match (a.canonicalize(), b.canonicalize()) {
-        (Ok(x), Ok(y)) => x == y,
-        _ => false,
-    }
+fn file_id(a: &Path) -> Option<String> {
+    a.canonicalize().ok().map(|x| x.to_string_lossy().into_owned())
 }
 
 struct Loader {
     root_dir: PathBuf,
     modules: Vec<Module>,
     parsed: Vec<crate::parser::ParsedFile>,
-    /// (path as opened, display path) of every loaded file
-    loaded: Vec<(PathBuf, String)>,
+    /// file identity -> display path of every loaded file
+    loaded: HashMap<String, String>,
 }
 
 impl Loader {
@@ -203,19 +234,20 @@ impl Loader {
                     ));
                 }
             };
-            for (ap, orel) in &self.loaded {
-                if same_file(ap, &fpath) {
-                    return Err(PruvError::new(
-                        "parse",
-                        md.line,
-                        md.col,
-                        "module_alias",
-                        format!("the file {} of module {} was already loaded as {}", rel, disp(&cpath), orel),
-                        "every module needs its own file; remove the alias",
-                    ));
-                }
+            let fid = file_id(&fpath);
+            if let Some(orel) = fid.as_ref().and_then(|k| self.loaded.get(k)) {
+                return Err(PruvError::new(
+                    "parse",
+                    md.line,
+                    md.col,
+                    "module_alias",
+                    format!("the file {} of module {} was already loaded as {}", rel, disp(&cpath), orel),
+                    "every module needs its own file; remove the alias",
+                ));
             }
-            self.loaded.push((fpath, rel.clone()));
+            if let Some(k) = fid {
+                self.loaded.insert(k, rel.clone());
+            }
             let tag = self.modules.len() + 1;
             let parsed = match crate::parser::parse_file(&text, tag) {
                 Ok(p) => p,
@@ -282,7 +314,11 @@ pub fn load_source(path: &Path, src: &str) -> Result<Loaded, LoadError> {
     let root_dir = abs.parent().map(|p| p.to_path_buf()).unwrap_or_default();
     let mut root_mod = Module::new(Vec::new(), root_file.clone(), None);
     root_mod.mods = root.mods.clone();
-    let mut ld = Loader { root_dir, modules: vec![root_mod], parsed: vec![root], loaded: vec![(abs, root_file)] };
+    let mut loaded = HashMap::new();
+    if let Some(k) = file_id(&abs) {
+        loaded.insert(k, root_file);
+    }
+    let mut ld = Loader { root_dir, modules: vec![root_mod], parsed: vec![root], loaded };
     ld.publish(None);
     ld.visit(0).map_err(LoadError::Lang)?;
 
@@ -324,8 +360,8 @@ pub fn load_source(path: &Path, src: &str) -> Result<Loaded, LoadError> {
     Ok(Loaded { prog, g4: Some(g4) })
 }
 
-/// The A0 staging guard of explicit mode (pruvc.compile_file / diff_py_adapter.trace_result): the verify and codegen layers
-/// do not know modules yet. Reported at the first item (1:1 without items) with `file` = the root module file.
+/// The staging guard of explicit mode (pruvc.compile_file): the LLVM codegen layer does not know modules yet (G4 A2: the Rust
+/// source backend does). Reported at the first item (1:1 without items) with `file` = the root module file.
 pub fn guard_error(prog: &Program, g4: &G4) -> PruvError {
     let (line, col) = match g4.items.first() {
         Some(Item::Fn(i)) => (plain_line(prog.functions[*i].line), prog.functions[*i].col),
@@ -337,8 +373,8 @@ pub fn guard_error(prog: &Program, g4: &G4) -> PruvError {
         tagged_line(line, 1),
         col,
         "unsupported_type",
-        "G4 modules and visibility are not implemented by the verify and codegen layers yet",
-        "use a single file without `mod` and `pub` for now",
+        "G4 modules and visibility are not implemented by the llvm codegen layer yet",
+        "use the Rust source backend for now",
     )
 }
 
@@ -485,16 +521,19 @@ fn run(prog: &mut Program, g4: &mut G4) -> Res<()> {
             type_by_id.insert(ident(&m.path, name), TyIface { is_pub: g4.ty_meta[*ti].is_pub, fields });
         }
     }
+    // one visited set for the whole program: the first leak aborts the check, so every public declaration visited by an
+    // earlier item has a closure without private declarations and need not be walked again
+    let mut iface_seen: HashSet<String> = HashSet::new();
     for it in &items {
         match *it {
             Item::Fn(fi) => {
                 if g4.fn_meta[fi].is_pub {
-                    iface_fn(&type_by_id, &prog.functions[fi])?;
+                    iface_fn(&type_by_id, &prog.functions[fi], &mut iface_seen)?;
                 }
             }
             Item::Ty(ti) => {
                 if g4.ty_meta[ti].is_pub {
-                    iface_ty(&type_by_id, &prog.types[ti])?;
+                    iface_ty(&type_by_id, &prog.types[ti], &mut iface_seen)?;
                 }
             }
         }
@@ -907,7 +946,7 @@ fn decl_fields(d: &TypeDecl) -> Vec<&FieldDecl> {
 
 /// G4 A1 (spec 5): the first private declaration reachable from the nominal `names` (identities): the names themselves,
 /// then, transitively, the field / payload types of every public declaration reached. `seen` is the visited set shared by
-/// one public item (cycles terminate). Returns (private identity, via) where via is the chain "P.field -> Q.g" leading to
+/// the whole program (cycles terminate). Returns (private identity, via) where via is the chain "P.field -> Q.g" leading to
 /// it ("" for a direct mention).
 fn private_in(types: &HashMap<String, TyIface>, names: &[String], seen: &mut HashSet<String>) -> Option<(String, String)> {
     for n in names {
@@ -1018,22 +1057,20 @@ fn iface_expr(types: &HashMap<String, TyIface>, e: &Expr, item_name: &str, seen:
     Ok(())
 }
 
-fn iface_fn(types: &HashMap<String, TyIface>, f: &Function) -> Res<()> {
-    let mut seen: HashSet<String> = HashSet::new(); // visited public declarations of this item's dependency closure
+fn iface_fn(types: &HashMap<String, TyIface>, f: &Function, seen: &mut HashSet<String>) -> Res<()> {
     for p in &f.params {
-        iface_type(types, &GType::from_key(&p.ty), f.line, f.col, true, &f.name, "signature", &mut seen)?;
+        iface_type(types, &GType::from_key(&p.ty), f.line, f.col, true, &f.name, "signature", seen)?;
     }
-    iface_type(types, &GType::from_key(&f.ret), f.line, f.col, true, &f.name, "signature", &mut seen)?;
+    iface_type(types, &GType::from_key(&f.ret), f.line, f.col, true, &f.name, "signature", seen)?;
     for e in f.requires.iter().chain(f.ensures.iter()).chain(f.decreases.iter()) {
-        iface_expr(types, e, &f.name, &mut seen)?;
+        iface_expr(types, e, &f.name, seen)?;
     }
     Ok(())
 }
 
-fn iface_ty(types: &HashMap<String, TyIface>, d: &TypeDecl) -> Res<()> {
-    let mut seen: HashSet<String> = HashSet::new();
+fn iface_ty(types: &HashMap<String, TyIface>, d: &TypeDecl, seen: &mut HashSet<String>) -> Res<()> {
     for fd in decl_fields(d) {
-        iface_type(types, &GType::from_key(&fd.ty), fd.line, fd.col, false, d.name(), &format!("field {}", fd.name), &mut seen)?;
+        iface_type(types, &GType::from_key(&fd.ty), fd.line, fd.col, false, d.name(), &format!("field {}", fd.name), seen)?;
     }
     Ok(())
 }

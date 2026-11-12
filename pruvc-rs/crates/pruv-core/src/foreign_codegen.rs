@@ -80,15 +80,20 @@ impl ForeignGen {
 
     pub fn manifest(&self, prog: &Program, externs: &[(String, String)]) -> String {
         let mut trusted: Vec<J> = Vec::new();
-        for f in &prog.functions {
+        for (fi, f) in prog.functions.iter().enumerate() {
             let info = match &f.foreign {
                 Some(i) => i,
                 None => continue,
             };
+            // G4 A2: explicit mode lists the source-qualified identity (crate::m::f), never the encoded stem
+            let disp: &str = match &prog.explicit {
+                Some(x) => &x.fns[fi].disp,
+                None => &f.name,
+            };
             trusted.push(J::O(vec![
-                ("name".to_string(), J::s(&f.name)),
+                ("name".to_string(), J::s(disp)),
                 ("path".to_string(), J::s(&info.path)),
-                ("line".to_string(), J::I(f.line)),
+                ("line".to_string(), J::I(crate::diagnostic::plain_line(f.line))),
                 ("col".to_string(), J::I(f.col)),
                 ("effects".to_string(), J::A(f.effects.iter().map(|e| J::s(e)).collect())),
                 ("requires".to_string(), J::A(f.requires.iter().map(|r| J::Str(show(r))).collect())),
@@ -149,7 +154,8 @@ impl ForeignGen {
     }
 
     /// the helper of a trusted fn: the guard and the budget are shared by requires and ensures of one call
-    pub fn fn_trusted(&self, name: &str, params: &str, ret: Option<&str>, body: &[String]) -> String {
+    /// `disp`: the name the boundary guard reports (G4 A2: the source identity; the helper itself keeps its stem `name`)
+    pub fn fn_trusted(&self, name: &str, params: &str, ret: Option<&str>, body: &[String], disp: &str) -> String {
         let mut l: Vec<String> = Vec::new();
         l.push(ALLOW_G6.to_string());
         let arrow = match ret {
@@ -158,7 +164,7 @@ impl ForeignGen {
         };
         l.push(format!("fn {}({}){} {{", name, params, arrow));
         if self.req {
-            l.push(format!("    let pruv_g = pruv_ctx({});", rstr(name)));
+            l.push(format!("    let pruv_g = pruv_ctx({});", rstr(disp)));
             l.push(format!("    {}", budget_line(self.budget)));
         }
         for x in body {

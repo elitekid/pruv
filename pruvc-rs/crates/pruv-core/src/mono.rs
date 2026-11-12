@@ -24,12 +24,13 @@
 //! it passed the limits.
 
 use crate::ast::*;
-use crate::diagnostic::PruvError;
+use crate::diagnostic::{plain_line, PruvError};
 use crate::foreign::is_catalog;
 use crate::gtype::{
     bind_args, decl_owner, encode, fn_owner, format_type, is_g3_key, mk_array, mk_option, mk_result, spec_fn_stem,
     spec_type_stem, substitute, GType, Mapping, ParamId,
 };
+use crate::modules::{encode_name, encode_stem, identity_components, safe_type, G4};
 use crate::typeinfo::first_g3_use;
 use std::collections::{HashMap, VecDeque};
 
@@ -151,10 +152,16 @@ struct Mono<'a> {
     map: Mapping,
     pmeas: HashMap<ParamId, Meas>,
     pos: (i64, i64),
+    /// G4 A2: Some in explicit visibility mode (Python `prog.explicit`)
+    g4: Option<&'a G4>,
+    /// G4 A2 (explicit mode only): identity -> Rust stem of every NONGENERIC function / type. Root host entries and root
+    /// `pub` types keep their source spelling; everything else gets its encoded stem (modules::encode_stem).
+    rfns: HashMap<String, String>,
+    rtypes: HashMap<String, String>,
 }
 
 impl<'a> Mono<'a> {
-    fn new(prog: &'a Program) -> Mono<'a> {
+    fn new(prog: &'a Program, g4: Option<&'a G4>) -> Mono<'a> {
         let mut tindex = HashMap::new();
         for (i, d) in prog.types.iter().enumerate() {
             tindex.entry(d.name().to_string()).or_insert(i); // first declaration wins
@@ -163,8 +170,42 @@ impl<'a> Mono<'a> {
         for (i, f) in prog.functions.iter().enumerate() {
             findex.entry(f.name.clone()).or_insert(i);
         }
+        let mut rfns: HashMap<String, String> = HashMap::new();
+        let mut rtypes: HashMap<String, String> = HashMap::new();
+        if let Some(g) = g4 {
+            for (i, f) in prog.functions.iter().enumerate() {
+                if f.tparams.is_empty() && findex.get(&f.name) == Some(&i) {
+                    let m = &g.fn_meta[i];
+                    let stem = if m.host_entry {
+                        m.src_name.clone()
+                    } else {
+                        let mut comps = g.modules[m.module].path.clone();
+                        comps.push(m.src_name.clone());
+                        encode_stem("f", &comps)
+                    };
+                    rfns.insert(f.name.clone(), stem);
+                }
+            }
+            for (i, d) in prog.types.iter().enumerate() {
+                if d.tparams().is_empty() && tindex.get(d.name()) == Some(&i) {
+                    let m = &g.ty_meta[i];
+                    let path = &g.modules[m.module].path;
+                    let stem = if m.is_pub && path.is_empty() {
+                        m.src_name.clone()
+                    } else {
+                        let mut comps = path.clone();
+                        comps.push(m.src_name.clone());
+                        encode_stem("t", &comps)
+                    };
+                    rtypes.insert(d.name().to_string(), stem);
+                }
+            }
+        }
         Mono {
             prog,
+            g4,
+            rfns,
+            rtypes,
             tindex,
             findex,
             fns: Vec::new(),
@@ -192,11 +233,78 @@ impl<'a> Mono<'a> {
         meas_with(t, &self.pmeas)
     }
 
+    // ---------- G4 A2 naming (explicit mode) ----------
+    /// the name token of a generic declaration inside a pruv_g3 stem / argument encoding
+    fn gname(&self, name: &str) -> String {
+        if self.g4.is_some() {
+            encode_name(&identity_components(name))
+        } else {
+            name.to_string()
+        }
+    }
+
+    fn enc(&self, t: &GType) -> Result<String, String> {
+        if self.g4.is_some() {
+            encode(&safe_type(t))
+        } else {
+            encode(t)
+        }
+    }
+
+    fn safe_args(&self, args: &[GType]) -> Vec<GType> {
+        if self.g4.is_some() {
+            args.iter().map(safe_type).collect()
+        } else {
+            args.to_vec()
+        }
+    }
+
+    /// explicit mode: a nongeneric nominal type gets its Rust stem
+    fn nom(&self, c: &GType) -> GType {
+        if self.g4.is_some() && c.owner.is_none() && c.args.is_empty() {
+            if let Some(r) = self.rtypes.get(&c.name) {
+                return GType::new(r, Vec::new());
+            }
+        }
+        c.clone()
+    }
+
+    /// G9 metadata of the concrete program: in explicit mode the same metadata over the Rust stems
+    fn g9_meta(&self, m: &G9Meta) -> G9Meta {
+        if self.g4.is_none() {
+            return m.clone();
+        }
+        let ren = |n: &str| self.rtypes.get(n).cloned().unwrap_or_else(|| n.to_string());
+        let mut boxed: Vec<String> = Vec::new();
+        for lab in &m.boxed {
+            // "Type.field" / "Type::Variant.field" over identities
+            let (head, field) = match lab.rfind('.') {
+                Some(i) => (&lab[..i], &lab[i + 1..]),
+                None => ("", lab.as_str()),
+            };
+            if self.rtypes.contains_key(head) {
+                boxed.push(format!("{}.{}", ren(head), field));
+            } else {
+                let (tn, v) = match head.rfind("::") {
+                    Some(i) => (&head[..i], &head[i + 2..]),
+                    None => ("", head),
+                };
+                boxed.push(format!("{}::{}.{}", ren(tn), v, field));
+            }
+        }
+        G9Meta {
+            type_sccs: m.type_sccs.clone(),
+            boxed,
+            extended: m.extended.iter().map(|n| ren(n.as_str())).collect(),
+            fn_sccs: m.fn_sccs.clone(),
+        }
+    }
+
     // ---------- errors ----------
     fn limit(&self, msg: String) -> MonoError {
         MonoError::Limit(PruvError::new(
             "codegen",
-            self.pos.0,
+            plain_line(self.pos.0), // Python raises this without `file`
             self.pos.1,
             "specialization_limit",
             msg,
@@ -284,6 +392,10 @@ impl<'a> Mono<'a> {
     // ---------- types ----------
     fn ty_key(&mut self, k: &str) -> MR<String> {
         if !is_g3_key(k) {
+            // G4 A2: a nongeneric nominal type gets its Rust stem
+            if let Some(r) = self.rtypes.get(k) {
+                return Ok(r.clone());
+            }
             return Ok(k.to_string()); // a legacy name: no arguments, no parameter
         }
         let g = GType::try_from_key(k).map_err(MonoError::Internal)?;
@@ -300,7 +412,7 @@ impl<'a> Mono<'a> {
     /// concrete, lowered form of a declared/checked type in the current substitution
     fn ty_g(&mut self, t: &GType) -> MR<GType> {
         if t.owner.is_none() && t.args.is_empty() {
-            return Ok(t.clone());
+            return Ok(self.nom(t));
         }
         if let Some(o) = &t.owner {
             if !self.map.contains_key(&(o.clone(), t.index)) {
@@ -309,7 +421,7 @@ impl<'a> Mono<'a> {
         }
         let m = self.meas(t);
         if !m.args {
-            return Ok(substitute(t, &self.map));
+            return Ok(self.nom(&substitute(t, &self.map)));
         }
         self.check_shape(m, "type", t)?;
         let c = substitute(t, &self.map);
@@ -321,7 +433,7 @@ impl<'a> Mono<'a> {
             return Err(MonoError::Internal(format!("specialization: unbound type parameter {}", c.name)));
         }
         if c.args.is_empty() {
-            return Ok(c.clone());
+            return Ok(self.nom(c));
         }
         match c.name.as_str() {
             "array" => Ok(mk_array(self.lower(&c.args[0])?)),
@@ -344,7 +456,7 @@ impl<'a> Mono<'a> {
 
     /// register the application name<args> (concrete args, already within the limits); returns its stem
     fn request_type(&mut self, name: &str, args: &[GType]) -> MR<String> {
-        let stem = spec_type_stem(name, args).map_err(MonoError::Internal)?;
+        let stem = spec_type_stem(&self.gname(name), &self.safe_args(args)).map_err(MonoError::Internal)?;
         if self.ty_idx.contains_key(&stem) {
             return Ok(stem);
         }
@@ -359,7 +471,7 @@ impl<'a> Mono<'a> {
         }
         let mut encs = Vec::new();
         for a in args {
-            encs.push(encode(a).map_err(MonoError::Internal)?);
+            encs.push(self.enc(a).map_err(MonoError::Internal)?);
         }
         let i = self.types.len();
         self.types.push(TySpec { name: name.to_string(), args: args.to_vec(), stem: stem.clone(), encs, decl: None });
@@ -391,7 +503,7 @@ impl<'a> Mono<'a> {
             self.check_shape(m, &format!("type argument of function {}", name), a)?;
         }
         let args: Vec<GType> = targs.iter().map(|a| substitute(a, &self.map)).collect();
-        let stem = spec_fn_stem(name, &args).map_err(MonoError::Internal)?;
+        let stem = spec_fn_stem(&self.gname(name), &self.safe_args(&args)).map_err(MonoError::Internal)?;
         if self.fn_idx.contains_key(&stem) {
             return Ok(stem);
         }
@@ -406,7 +518,7 @@ impl<'a> Mono<'a> {
         }
         let mut encs = Vec::new();
         for a in &args {
-            encs.push(encode(a).map_err(MonoError::Internal)?);
+            encs.push(self.enc(a).map_err(MonoError::Internal)?);
         }
         let i = self.fns.len();
         self.fns.push(FnSpec { name: name.to_string(), args, stem: stem.clone(), encs, func: None });
@@ -472,6 +584,8 @@ impl<'a> Mono<'a> {
                 } else if let Some(inst) = &x.inst {
                     self.pos = (x.line, x.col);
                     name = self.request_fn_inst(&x.name, &inst.args)?;
+                } else if let Some(r) = self.rfns.get(&x.name) {
+                    name = r.clone(); // G4 A2: a nongeneric user function -> its Rust stem
                 }
                 Expr::Call(Call { line: x.line, col: x.col, name, args, ty, targs: None, inst: new_inst })
             }
@@ -520,6 +634,8 @@ impl<'a> Mono<'a> {
                 if let Some(inst) = &x.inst {
                     self.pos = (x.line, x.col);
                     name = self.request_type_inst(&x.name, &inst.args)?;
+                } else if let Some(r) = self.rtypes.get(&x.name) {
+                    name = r.clone(); // G4 A2
                 }
                 Expr::StructLit(StructLit { line: x.line, col: x.col, name, fields, ty, targs: None, inst: None })
             }
@@ -530,6 +646,8 @@ impl<'a> Mono<'a> {
                 if let Some(inst) = &x.inst {
                     self.pos = (x.line, x.col);
                     enum_name = self.request_type_inst(&x.enum_name, &inst.args)?;
+                } else if let Some(r) = self.rtypes.get(&x.enum_name) {
+                    enum_name = r.clone(); // G4 A2
                 }
                 Expr::EnumCtor(EnumCtor {
                     line: x.line,
@@ -558,6 +676,8 @@ impl<'a> Mono<'a> {
                 let mut enum_name = x.enum_name.clone();
                 if let Some(et) = &x.enum_ty {
                     enum_name = self.ty_g(et)?.name;
+                } else if let Some(r) = self.rtypes.get(&x.enum_name) {
+                    enum_name = r.clone(); // G4 A2
                 }
                 Expr::IsVariant(IsVariant {
                     line: x.line,
@@ -575,6 +695,8 @@ impl<'a> Mono<'a> {
                 let mut enum_name = x.enum_name.clone();
                 if let Some(et) = &x.enum_ty {
                     enum_name = self.ty_g(et)?.name;
+                } else if let Some(r) = self.rtypes.get(&x.enum_name) {
+                    enum_name = r.clone(); // G4 A2
                 }
                 Expr::VariantField(VariantField {
                     line: x.line,
@@ -684,6 +806,14 @@ impl<'a> Mono<'a> {
                             a.enum_name = Some(name.clone());
                         }
                     }
+                } else if self.g4.is_some() {
+                    // G4 A2: no recorded scrutinee type: the arms name the Rust stem of a nongeneric enum
+                    for a in arms.iter_mut() {
+                        let r = a.enum_name.as_ref().and_then(|en| self.rtypes.get(en)).cloned();
+                        if let Some(r) = r {
+                            a.enum_name = Some(r);
+                        }
+                    }
                 }
                 Stmt::Match(Match { line: x.line, col: x.col, scrutinee, arms })
             }
@@ -761,13 +891,15 @@ impl<'a> Mono<'a> {
             if !d.tparams().is_empty() || self.tindex.get(d.name()) != Some(&i) {
                 continue;
             }
-            let nd = self.type_decl(d, d.name(), Mapping::new())?;
+            let stem = self.rtypes.get(d.name()).cloned().unwrap_or_else(|| d.name().to_string());
+            let nd = self.type_decl(d, &stem, Mapping::new())?;
             plain_types.push((i, nd));
         }
         let mut roots: HashMap<String, Function> = HashMap::new();
         for (i, f) in prog.functions.iter().enumerate() {
             if f.tparams.is_empty() && self.findex.get(&f.name) == Some(&i) {
-                let nf = self.function(f, &f.name, Mapping::new())?;
+                let stem = self.rfns.get(&f.name).cloned().unwrap_or_else(|| f.name.clone());
+                let nf = self.function(f, &stem, Mapping::new())?;
                 roots.insert(f.name.clone(), nf);
             }
         }
@@ -807,6 +939,14 @@ impl<'a> Mono<'a> {
         let mut fn_stems: Vec<String> = Vec::new();
         let mut functions: Vec<Function> = Vec::new();
         let mut root_names: Vec<String> = Vec::new();
+        // G4 A2: the attributes of the concrete declarations (a specialization inherits the generic declaration's visibility;
+        // it is never a host entry)
+        let mut fmarks: Vec<FnMark> = Vec::new();
+        let mark_fn = |g: &G4, i: usize, private: bool| FnMark {
+            is_pub: g.fn_meta[i].is_pub,
+            host_entry: g.fn_meta[i].host_entry && !private,
+            disp: prog.functions[i].name.clone(),
+        };
         for (i, f) in prog.functions.iter().enumerate() {
             if self.findex.get(&f.name) != Some(&i) {
                 continue;
@@ -814,6 +954,9 @@ impl<'a> Mono<'a> {
             if f.tparams.is_empty() {
                 if let Some(nf) = roots.remove(&f.name) {
                     functions.push(nf);
+                    if let Some(g) = self.g4 {
+                        fmarks.push(mark_fn(g, i, false));
+                    }
                 }
                 root_names.push(f.name.clone());
             } else {
@@ -823,12 +966,17 @@ impl<'a> Mono<'a> {
                     fn_stems.push(self.fns[si].stem.clone());
                     if let Some(nf) = self.fns[si].func.take() {
                         functions.push(nf);
+                        if let Some(g) = self.g4 {
+                            fmarks.push(mark_fn(g, i, true));
+                        }
                     }
                 }
             }
         }
-        let mut keyed: Vec<((usize, Vec<String>), TypeDecl)> =
-            plain_types.into_iter().map(|(i, d)| ((i, Vec::new()), d)).collect();
+        let mut keyed: Vec<((usize, Vec<String>), TypeDecl, bool)> = plain_types
+            .into_iter()
+            .map(|(i, d)| ((i, Vec::new()), d, self.g4.map_or(false, |g| g.ty_meta[i].is_pub)))
+            .collect();
         let mut order: Vec<usize> = (0..self.types.len()).collect();
         order.sort_by(|a, b| {
             let (x, y) = (&self.types[*a], &self.types[*b]);
@@ -837,15 +985,32 @@ impl<'a> Mono<'a> {
         let mut type_stems: Vec<String> = Vec::new();
         for i in order {
             type_stems.push(self.types[i].stem.clone());
-            let key = (self.tindex[&self.types[i].name], self.types[i].encs.clone());
+            let ti = self.tindex[&self.types[i].name];
+            let key = (ti, self.types[i].encs.clone());
             if let Some(d) = self.types[i].decl.take() {
-                keyed.push((key, d));
+                keyed.push((key, d, self.g4.map_or(false, |g| g.ty_meta[ti].is_pub)));
             }
         }
         keyed.sort_by(|a, b| a.0.cmp(&b.0));
-        let program = Program { functions, types: keyed.into_iter().map(|(_, d)| d).collect(), refined: prog.refined,
-            // G9 A2: the concrete program keeps the checker's G9 metadata (extended types are never generic)
-            g9: prog.g9.clone(),
+        let explicit = self.g4.map(|_| {
+            // stem -> identity: the nongeneric declarations and every application of a generic one
+            let mut tdisp: HashMap<String, String> = HashMap::new();
+            for (ident, stem) in &self.rtypes {
+                tdisp.insert(stem.clone(), ident.clone());
+            }
+            for s in &self.types {
+                tdisp.insert(s.stem.clone(), s.name.clone());
+            }
+            Explicit { fns: fmarks, type_pub: keyed.iter().map(|k| k.2).collect(), tdisp }
+        });
+        let program = Program {
+            functions,
+            types: keyed.into_iter().map(|(_, d, _)| d).collect(),
+            refined: prog.refined,
+            // G9 A2: the concrete program keeps the checker's G9 metadata (extended types are never generic); G4 A2: in
+            // explicit mode over the Rust stems
+            g9: prog.g9.as_ref().map(|m| self.g9_meta(m)),
+            explicit,
         };
         Ok(SpecPlan { program, fn_stems, type_stems, roots: root_names })
     }
@@ -875,5 +1040,11 @@ fn expr_ty_of(e: &Expr) -> &Option<String> {
 /// The specialization plan of a checked program (does not mutate it). `MonoError::Limit` carries the
 /// codegen/specialization_limit diagnostic when a limit of G3_SPEC 5.1 is exceeded.
 pub fn specialize(prog: &Program) -> Result<SpecPlan, MonoError> {
-    Mono::new(prog).run()
+    Mono::new(prog, None).run()
+}
+
+/// `specialize` for a program of explicit visibility mode (G4 A2): `g4` names every function and type by its Rust stem and
+/// supplies `pub` / host entries; the concrete program carries them in `Program.explicit`.
+pub fn specialize_g4(prog: &Program, g4: Option<&G4>) -> Result<SpecPlan, MonoError> {
+    Mono::new(prog, g4).run()
 }

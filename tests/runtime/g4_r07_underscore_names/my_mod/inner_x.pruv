@@ -1,0 +1,7 @@
+// companion module of g4_r07_underscore_names (path crate::my_mod::inner_x)
+pub fn do_it(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x + 7
+{
+  return x + 7;
+}

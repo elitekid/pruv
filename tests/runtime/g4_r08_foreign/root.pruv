@@ -1,0 +1,10 @@
+// G4 A2 runtime: a trusted Rust function declared in a child module, used from a private function there and exposed
+// through a public Pruv wrapper; the root entry calls the wrapper
+mod ffi;
+
+pub fn run(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x * 3
+{
+  return crate::ffi::tripled(x);
+}

@@ -1,0 +1,4 @@
+// G4 A1 reject parse/bad_char: a lex error after a top-level `pub` still names the root file
+pub fn one() -> i64 { return 1; }
+
+fn two() -> i64 { return 2 $ 1; }

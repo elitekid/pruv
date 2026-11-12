@@ -1,0 +1,12 @@
+// G4 A2 runtime: two modules a::util and b::util declare a function `f` and a type `T` of the same spelling
+mod a;
+mod b;
+
+pub fn both(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == 4 * x + 1
+{
+  let p: crate::a::util::T = crate::a::util::f(x);
+  let q: crate::b::util::T = crate::b::util::f(x);
+  return p.v + q.v + q.w;
+}

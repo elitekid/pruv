@@ -1,0 +1,7 @@
+// G4 A2 runtime (--no-verify only, the program does not verify): a root entry reaches a PRIVATE helper of a child module
+// with a violating argument; the internal checked wrapper of the helper panics even though no host boundary is involved
+mod util;
+
+pub fn go(x: i64) -> i64 {
+  return crate::util::step(x);
+}

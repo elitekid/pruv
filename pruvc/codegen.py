@@ -68,6 +68,14 @@ A function with an extended type in its signature is private (and so is its chec
 only the needed ones) over the REAL values: nothing is converted eagerly, only active variants are visited, one budget
 unit per node, i128 checked additions; exhaustion -> `pruv: requires undefined: ...`. Types are emitted in the order of
 the SCC condensation of the field graph (the same as before for acyclic programs).
+
+G4 A2 (explicit visibility mode, docs/G4_SPEC.md 4, 6; Program.explicit): the program always comes from mono.specialize, which
+renames every function and type to its Rust stem (modules.encode_stem; root host entries and root `pub` types keep their
+source spelling) and records `pub` / `host_entry` / `disp` (the source-qualified identity used in panic text and manifests).
+Only host entries are `pub fn`; source-`pub` types are `pub` Rust types, private ones are private items. Wrappers: verified
+mode emits a checked wrapper only for host entries with a requires (none under trust_callers) and Pruv calls invoke
+`<stem>__pruv_body`; safe mode emits a private checked wrapper `<stem>` for EVERY function with a requires (and Pruv calls
+go through it), under trust_callers the pub entry is unchecked and `<entry>__pruv_chk` is the checked one Pruv callers use.
 """
 from vast import *
 from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str, is_collection, dependencies
@@ -486,9 +494,11 @@ def emit_public_types(prog, order=None):
     (recursive edge inside a recursive type SCC) is `::std::boxed::Box<Child>`; buffer fields are Vec / String.
     Every other type keeps its exact old text."""
     ext, boxed = g9_sets(prog)
+    explicit = bool(getattr(prog, "explicit", False))   # G4 A2: only a source-`pub` type is a `pub` Rust item
     out = []
     for d in (order if order is not None else make_type_table(prog).order):
-        out.append("#[allow(dead_code, non_camel_case_types, non_snake_case)]")
+        pv = "pub " if (not explicit or d.pub) else ""
+        out.append("#[allow(dead_code, non_camel_case_types, non_snake_case%s)]" % (", private_interfaces" if explicit else ""))
         if d.name in ext:
             out.append("#[derive(Clone, Debug)]")
         else:
@@ -499,10 +509,10 @@ def emit_public_types(prog, order=None):
             return "::std::boxed::Box<%s>" % r if label in boxed else r
         if isinstance(d, StructDecl):
             if d.fields:
-                body = ", ".join("pub %s: %s" % (f.name, fty(f, "%s.%s" % (d.name, f.name))) for f in d.fields)
-                out.append("pub struct %s { %s }" % (d.name, body))
+                body = ", ".join("%s%s: %s" % (pv, f.name, fty(f, "%s.%s" % (d.name, f.name))) for f in d.fields)
+                out.append("%sstruct %s { %s }" % (pv, d.name, body))
             else:
-                out.append("pub struct %s {}" % d.name)
+                out.append("%sstruct %s {}" % (pv, d.name))
         else:
             vs = []
             for v in d.variants:
@@ -511,7 +521,7 @@ def emit_public_types(prog, order=None):
                         fty(f, "%s::%s.%s" % (d.name, v.name, f.name)) for f in v.fields)))
                 else:
                     vs.append(v.name)
-            out.append("pub enum %s { %s }" % (d.name, ", ".join(vs)))
+            out.append("%senum %s { %s }" % (pv, d.name, ", ".join(vs)))
         out.append("")
     return "\n".join(out) + ("\n" if out else "")
 
@@ -606,6 +616,16 @@ class Gen:
         s.trust = trust_callers
         s.out = []
         s.has_req = {f.name for f in prog.functions if f.requires and f.foreign is None}
+        # G4 A2 (explicit visibility mode, docs/G4_SPEC.md 4): only host entries are `pub`. Verified: just the entries
+        # that have a requires get a checked wrapper (host boundary; none under trust_callers), every Pruv call goes to
+        # the body. Safe mode (--no-verify): EVERY function with a requires has a checked wrapper and every Pruv call goes
+        # through it; under trust_callers the entry's pub wrapper skips the checks and an extra private checked wrapper
+        # `<entry>__pruv_chk` serves the Pruv callers.
+        s.explicit = bool(getattr(prog, "explicit", False))
+        s.entries = {f.name for f in prog.functions if f.host_entry}
+        s.checks_needed = s.explicit and any(
+            f.requires and f.foreign is None and (not verified or (f.host_entry and not trust_callers))
+            for f in prog.functions)
         s.cp = None    # set during requires entry checks: user-type params already converted
         s.bound = []   # quantifier variables in scope (contract evaluation)
         s.tmp = 0
@@ -670,7 +690,7 @@ class Gen:
                 s.out.append(SAFE_PRELUDE_BOOL)
             if str_used:
                 s.out.append(SAFE_PRELUDE_STR)
-        if (s.has_req and not s.trust) or s.g6:
+        if (s.checks_needed if s.explicit else (s.has_req and not s.trust)) or s.g6:
             s.out.append(CONTRACT_PRELUDE_G6 if s.g6 else CONTRACT_PRELUDE)
             if u8_used:
                 s.out.append(CONTRACT_PRELUDE_U8)
@@ -743,25 +763,51 @@ class Gen:
         ps = ", ".join("%s: %s" % (p.name, s.rt(p.type, not p.take)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
         body_name = f.name + "__pruv_body" if f.requires else f.name
-        vis = "" if (f.requires or s.private(f)) else "pub "   # G3: specializations are private
+        if s.explicit:
+            vis = "pub " if (f.host_entry and not f.requires) else ""
+        else:
+            vis = "" if (f.requires or s.private(f)) else "pub "   # G3: specializations are private
         s.emit(0, s.allow)
         s.emit(0, "%sfn %s(%s)%s {" % (vis, body_name, ps, ret))
         s.block(f.body, 1)
         s.emit(0, "}")
         s.emit(0, "")
         if f.requires:
-            s.entry(f, ps, ret, body_name)
+            if not s.explicit:
+                s.entry(f, ps, ret, body_name)
+            elif s.verified:
+                if f.host_entry:     # the checked host wrapper; no other function has a wrapper in verified mode
+                    s.entry(f, ps, ret, body_name, f.name, True, not s.trust)
+            elif f.host_entry:
+                s.entry(f, ps, ret, body_name, f.name, True, not s.trust)
+                if s.trust:          # Pruv callers of the entry keep the safe-mode check
+                    s.entry(f, ps, ret, body_name, f.name + "__pruv_chk", False, True)
+            else:
+                s.entry(f, ps, ret, body_name, f.name, False, True)
 
-    def entry(s, f, ps, ret, body_name):
+    def callee(s, n):
+        """explicit mode: the Rust name a Pruv call of the function n invokes (see Gen.__init__)"""
+        if n not in s.has_req:
+            return n
+        if s.verified:
+            return n + "__pruv_body"     # the caller proved requires
+        return n + "__pruv_chk" if (s.trust and n in s.entries) else n
+
+    def entry(s, f, ps, ret, body_name, name=None, pub=None, checked=None):
+        """the checked wrapper of f. Legacy: `pub` unless private, checks unless trust_callers. Explicit mode passes the
+        wrapper name, its visibility and whether it checks."""
+        name = f.name if name is None else name
+        pub = (not s.private(f)) if pub is None else pub
+        checked = (not s.trust) if checked is None else checked
         s.emit(0, s.allow)
         s.emit(0, "#[inline]")
-        s.emit(0, "%sfn %s(%s)%s {" % ("" if s.private(f) else "pub ", f.name, ps, ret))
-        if not s.trust:
+        s.emit(0, "%sfn %s(%s)%s {" % ("pub " if pub else "", name, ps, ret))
+        if checked:
             s.cp = {}   # user-type parameter -> its type, converted once below
             checks = []
             try:
                 for n, r in enumerate(f.requires, 1):
-                    msg = "pruv: requires violated: %s: %s" % (f.name, show(r))
+                    msg = "pruv: requires violated: %s: %s" % (getattr(f, "disp", f.name), show(r))
                     code = s.c(r)
                     checks.append("if !(%s) { panic!(\"{}\", %s); }" % (code, rstr(msg)))
                 used = dict(s.cp)
@@ -1064,7 +1110,8 @@ class Gen:
             vf = s.table.variant(Type(e.enum_name), e.variant)
             idx = s.table.field_index(Type(e.enum_name), e.field, e.variant)
             pats = ", ".join("pruv_f" if i == idx else "_" for i in range(len(vf.fields)))
-            msg = "variant_field expected %s::%s.%s" % (e.enum_name, e.variant, e.field)
+            msg = "variant_field expected %s::%s.%s" % (
+                getattr(e, "src_name", e.enum_name) if s.explicit else e.enum_name, e.variant, e.field)   # G4: source-qualified
             return "({ let %s: %s = %s; match %s { %s::%s(%s) => pruv_f, _ => pruv_ud(%s) } })" % (
                 tmp, cn, s.c(e.value), tmp, cn, e.variant, pats, rstr(msg))
         if isinstance(e, Call):
@@ -1563,7 +1610,9 @@ class Gen:
                     args.append(s.arr_ref(x))
                 else:
                     args.append(s.e(x))
-            if s.verified and n in s.has_req:
+            if s.explicit:
+                n = s.callee(n)
+            elif s.verified and n in s.has_req:
                 n = n + "__pruv_body"   # caller proved requires
             return "%s(%s)" % (n, ", ".join(args))
         raise Exception("codegen: contract-only expression in code: %r" % e)
@@ -1584,7 +1633,7 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
     from typeinfo import g2_unimplemented_error, first_g3_use
     if foreign_checks not in ("requires", "all", "off"):
         raise ValueError("foreign_checks must be requires, all or off")
-    if plan is None and first_g3_use(prog) is not None:
+    if plan is None and (first_g3_use(prog) is not None or prog.explicit):   # G4 A2: explicit mode always names via mono
         from mono import specialize
         plan = specialize(prog)
     if plan is not None:

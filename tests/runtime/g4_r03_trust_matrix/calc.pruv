@@ -1,0 +1,7 @@
+// companion module of g4_r03_trust_matrix
+pub fn twice(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result == x * 2
+{
+  return x * 2;
+}

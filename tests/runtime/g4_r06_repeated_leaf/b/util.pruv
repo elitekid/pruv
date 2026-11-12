@@ -1,0 +1,9 @@
+// companion module of g4_r06_repeated_leaf (path crate::b::util)
+pub struct T { v: i64, w: i64 }
+
+pub fn f(x: i64) -> T
+  requires 0 <= x && x <= 1000
+  ensures result.v == x * 2 && result.w == x
+{
+  return T { v: x * 2, w: x };
+}
