@@ -1,0 +1,4 @@
+fn f(n: i64) -> () requires n >= 0 cost n {
+ let mut i: i64 = 0;
+ while i < n invariant 0 <= i && i <= n decreases n - i { i = i + 1; }
+}

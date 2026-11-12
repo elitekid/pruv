@@ -72,7 +72,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     prog = load_program(path)   # G4: the root file plus its declared module files; a legacy root is plain parse(src)
     check(prog, externs=externs)
     s5err = s5_unimplemented_error(prog)
-    if s5err is not None:
+    if s5err is not None and not verify:
         return [s5err]
     # G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.
     # G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm)
@@ -91,6 +91,8 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
+    if s5err is not None:
+        return [s5err]
     g7err = g7_target_error(prog) if emit in ("exe", "obj") else None
     if g7err is not None:
         return [g7err]

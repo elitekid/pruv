@@ -1,0 +1,2 @@
+fn identity<T>(x: T) -> T cost 0 { return x; }
+fn f() -> i64 cost 2 { let b: bool = identity::<bool>(true); return identity::<i64>(1); }

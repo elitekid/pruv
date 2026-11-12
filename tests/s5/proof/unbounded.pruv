@@ -1,0 +1,9 @@
+fn leaf() -> () cost 9223372036854775807 {}
+fn f(n: i64) -> () requires 0 <= n cost n * (9223372036854775807 + 2) {
+ let mut i: i64 = 0;
+ while i < n
+ invariant 0 <= i && i <= n
+ invariant spent == i * (9223372036854775807 + 2)
+ decreases n - i
+ { leaf(); i = i + 1; }
+}

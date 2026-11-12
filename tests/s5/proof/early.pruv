@@ -1,0 +1,2 @@
+fn leaf() -> i64 cost 0 { return 0; }
+fn f(b: bool) -> i64 cost 1 { if b { return leaf(); } else { return 0; } }

@@ -615,7 +615,7 @@ class TypeTable:
 
 
 def s5_unimplemented_error(prog, stage="codegen"):
-    """After static/ownership checks, before verification and emission."""
+    """Code generation guard; verified callers invoke this after successful verification."""
     def spent(node):
         if isinstance(node, Spent):
             return node
@@ -636,7 +636,7 @@ def s5_unimplemented_error(prog, stage="codegen"):
             e = spent([f.requires, f.ensures, f.decreases, f.body])
         if e is not None:
             return PruvError(stage, e.line, e.col, "cost_unavailable",
-                             "Stage 5 cost verification is not implemented yet",
-                             "remove cost/spent until Stage 5 verification is available",
+                             "Stage 5 cost code generation is not implemented yet",
+                             "remove cost/spent until Stage 5 code generation is available",
                              file=getattr(e, "file", None))
     return None

@@ -1,4 +1,5 @@
 fn sum(a: [i64]) -> i64
+ requires forall k in 0..len(a): a[k] == 0
  requires len(a) <= 1_000_000
  cost len(a)
 {
@@ -6,6 +7,7 @@ fn sum(a: [i64]) -> i64
  let mut i: i64 = 0;
  while i < len(a)
  invariant 0 <= i && i <= len(a)
+ invariant s == 0
  invariant spent == i
  decreases len(a) - i
  { s = s + a[i]; i = i + 1; }

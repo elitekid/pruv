@@ -957,7 +957,7 @@ mod tests {
     }
 }
 
-/// Stage 5 A0: reject checked cost programs before verification or emission.
+/// Stage 5: code generation guard, applied after successful verification.
 pub fn s5_unimplemented_error(prog: &Program) -> Option<crate::diagnostic::PruvError> {
     for fun in &prog.functions {
         let mut pos = fun.cost.as_ref().map(|e| (e.line(), e.col()));
@@ -970,8 +970,8 @@ pub fn s5_unimplemented_error(prog: &Program) -> Option<crate::diagnostic::PruvE
         }
         if let Some((line, col)) = pos {
             return Some(crate::diagnostic::PruvError::new("codegen", line, col, "cost_unavailable",
-                "Stage 5 cost verification is not implemented yet",
-                "remove cost/spent until Stage 5 verification is available"));
+                "Stage 5 cost code generation is not implemented yet",
+                "remove cost/spent until Stage 5 code generation is available"));
         }
     }
     None

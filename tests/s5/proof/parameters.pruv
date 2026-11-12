@@ -1,0 +1,1 @@
+fn f(n: i64, m: i64) -> () ! alloc requires 0 <= n && n <= 100 requires 0 <= m && m <= 100 cost n + m + 2 { let a: [i64] = alloc(n, 0); let b: [i64] = alloc(m, 0); }

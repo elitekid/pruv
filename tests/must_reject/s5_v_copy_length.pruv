@@ -1,0 +1,1 @@
+fn f(a: [i64]) -> () ! alloc cost 1 { let b: [i64] = copy(a); }

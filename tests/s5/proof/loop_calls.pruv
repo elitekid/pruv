@@ -1,0 +1,7 @@
+fn tick() -> () cost 2 {}
+fn f(n: i64) -> () requires 0 <= n cost 4 * n {
+ let mut i: i64 = 0;
+ while i < n invariant 0 <= i && i <= n invariant spent == 4 * i decreases n - i {
+  tick(); i = i + 1;
+ }
+}

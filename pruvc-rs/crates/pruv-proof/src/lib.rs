@@ -67,7 +67,6 @@ pub fn verify_program_opts(
     opts: &VerifyOptions,
     mut report: Option<&mut Vec<pruv_core::pyjson::Json>>,
 ) -> Result<Vec<PruvError>, String> {
-    if let Some(e) = pruv_core::typeinfo::s5_unimplemented_error(prog) { return Ok(vec![e]); }
     // G3 A2: the verifier handles generics (no guard here); the code generators and the driver still reject them.
     // The structured `[T]` is never a G2 hit (the plain `[i64]` is not either), so "array" needs no skip entry.
     if let Some(e) = pruv_core::typeinfo::g2_unimplemented_error(prog, "verify", None, &["array_u8", "array_bool", "str"], None) { return Ok(vec![e]); } // G2 B1

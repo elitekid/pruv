@@ -442,6 +442,11 @@ impl<'a> FnVerifier<'a> {
                 set_key(&mut out, name, j);
             }
         }
+        if let Some(cost) = &self.cost0 {
+            if let Some(j) = self.cex_one(m, &Val::Int(cost.clone())) {
+                set_key(&mut out, "C", j);
+            }
+        }
         out
     }
 

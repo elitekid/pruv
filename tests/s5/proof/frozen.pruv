@@ -1,0 +1,9 @@
+fn f(inout a: [i64]) -> () ! alloc
+ requires len(a) > 0
+ requires a[0] == 1
+ cost a[0]
+{
+ let b: [i64] = alloc(0, 0);
+ a[0] = 0;
+ assert spent == 1;
+}

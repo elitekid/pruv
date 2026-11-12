@@ -1,0 +1,2 @@
+fn f(n: i64) -> () cost 10 { leaf(n); }
+fn leaf(n: i64) -> () cost 1 / n {}

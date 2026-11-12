@@ -685,6 +685,8 @@ pub struct FnVerifier<'a> {
     pub(crate) scc_id: HashMap<String, usize>,
     /// G9 A1: the frozen entry value of this function's decreases measure (`s.m0`).
     pub(crate) m0: Option<Ast>,
+    /// Stage 5: frozen entry cost bound.
+    pub(crate) cost0: Option<Ast>,
     /// G4 A1: the file tag of the function being proved (0 in legacy mode). A function of an explicit-mode program has a
     /// nonzero tag, so `fn_tag != 0` is the explicit visibility mode (Python `s.explicit`); legacy programs keep tag 0.
     pub(crate) fn_tag: u32,
@@ -747,6 +749,7 @@ impl<'a> FnVerifier<'a> {
             opq: RefCell::new(HashMap::new()),
             scc_id: HashMap::new(),
             m0: None,
+            cost0: None,
             fn_tag: 0,
             snap: Env::default(),
         }
@@ -1332,7 +1335,9 @@ impl<'a> FnVerifier<'a> {
                 Val::Int(_) => {
                     let nv = self.try_fresh(n, &Ty::I64)?;
                     let a = nv.try_ast()?.clone();
-                    h.pc.push(in_range(&self.z, &a));
+                    if n != "spent" || !self.has_cost() {
+                        h.pc.push(in_range(&self.z, &a));
+                    }
                     h.env.set(n, Val::Int(a));
                 }
                 Val::Bool(_) => {
@@ -1546,7 +1551,7 @@ impl<'a> FnVerifier<'a> {
     pub(crate) fn ev(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Val> {
         let model: &'a Model = self.model;
         match e {
-            Expr::Spent(_) => Err("cost_unavailable: Stage 5 cost verification is not implemented yet".into()),
+            Expr::Spent(_) => Ok(st.env.get("spent").clone()),
             Expr::IntLit(x) => Ok(Val::Int(self.z.int_str(&norm_int(&x.value)))),
             Expr::BoolLit(x) => Ok(Val::Bool(self.z.bool_val(x.value))),
             Expr::StrLit(x) => {
@@ -1873,6 +1878,7 @@ impl<'a> FnVerifier<'a> {
                         None,
                     );
                 }
+                self.spend(st, g, self.z.int(1).add(&a0));
                 self.k += 1;
                 let ka = self.z.const_array(&self.z.int_sort(), &a1);
                 return Ok(Val::Arr(match aety {
@@ -1882,6 +1888,7 @@ impl<'a> FnVerifier<'a> {
             }
             "copy" => {
                 let a = arg(0)?.try_arr()?;
+                self.spend(st, g, self.z.int(1).add(&a.n));
                 return Ok(Val::Arr(a.like(a.a.clone(), a.n.clone(), "copy")));
             }
             "is_char_boundary" => {
@@ -2000,6 +2007,7 @@ impl<'a> FnVerifier<'a> {
             }
             // G9 A1: only a call inside the caller's own recursive SCC
             self.termination(e, f, st, g, &cenv)?;
+            self.call_cost(e, f, st, g, &cenv)?;
         }
         let ios: Vec<usize> = f.params.iter().enumerate().filter(|(_, p)| p.mode_pos.is_some()).map(|(i, _)| i).collect();
         if !ios.is_empty() {
@@ -2093,7 +2101,8 @@ impl<'a> FnVerifier<'a> {
                     self.prove_core(&st.env, &st.pc, &[], &ob, pos(e), "call_requires",
                         &format!("precondition of {} (line {})", f.name, pruv_core::diagnostic::plain_line(req.line())), None);
                 }
-                self.termination(e, f, &mut st, &[], cenv)
+                self.termination(e, f, &mut st, &[], cenv)?;
+                self.call_cost(e, f, &mut st, &[], cenv)
             })();
             self.theta = saved;
             r?;
@@ -2220,6 +2229,34 @@ impl<'a> FnVerifier<'a> {
             }
         }
         Ok(ob)
+    }
+
+    fn has_cost(&self) -> bool {
+        self.f.is_some_and(|f| f.cost.is_some())
+    }
+
+    fn spend(&self, st: &mut State, g: &[Ast], units: Ast) {
+        if self.has_cost() {
+            let units = if g.is_empty() { units } else { self.z.ite(&self.z.and(g), &units, &self.z.int(0)) };
+            st.env.set("spent", Val::Int(st.env.get("spent").ast().add(&units)));
+        }
+    }
+
+    fn cost_value(&mut self, expr: &Expr, st: &mut State, g: &[Ast], node: Pos, env: &Env) -> R<Ast> {
+        if let Some(domain) = self.dom(expr, st, g, env, PKind::All)? {
+            self.prove_core(&st.env, &st.pc, g, &domain, node, "contract_domain",
+                &format!("cost `{}` is defined", expr_text(expr)), None);
+        }
+        self.ev_ast(expr, st, g, false, env)
+    }
+
+    fn call_cost(&mut self, e: &Expr, f: &'a ast::Function, st: &mut State, g: &[Ast], cenv: &Env) -> R<()> {
+        if self.has_cost() {
+            let expr = f.cost.as_ref().ok_or_else(|| "callee has no cost".to_string())?;
+            let bound = self.cost_value(expr, st, g, pos(e), cenv)?;
+            self.spend(st, g, self.z.int(1).add(&bound));
+        }
+        Ok(())
     }
 
     /// verify.py `termination` (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:
@@ -2646,6 +2683,11 @@ impl<'a> FnVerifier<'a> {
     /// verify.py `ensures_ok` (line 647).
     fn ensures_ok(&mut self, st: &mut State, val: Option<Val>, node: Pos) -> R<()> {
         let f = self.f.ok_or_else(|| "no function".to_string())?;
+        if let Some(cost) = &f.cost {
+            let ob = st.env.get("spent").ast().le(self.cost0.as_ref().ok_or_else(|| "no entry cost".to_string())?);
+            self.prove_core(&st.env, &st.pc, &[], &ob, node, "cost_bound",
+                &format!("spent <= cost `{}` (C at entry)", expr_text(cost)), None);
+        }
         let mut env = st.env.clone();
         for p in &f.params {
             // G5 A1: ordinary parameters denote their entry values; an inout parameter keeps its current (final) value,
@@ -2935,6 +2977,7 @@ impl<'a> FnVerifier<'a> {
         }
         let mut names: BTreeSet<String> = BTreeSet::new();
         assigned(&w.body, &mut names);
+        if self.has_cost() { names.insert("spent".to_string()); }
         // G5 A1 (5.3): inout call arguments are changed too. Inout parameters keep their entry length; a local changed
         // by inout calls keeps the loop-head length only if no whole assignment in the body can replace it.
         // Without inout, calls = {} and snap = {}: names/keep (and the SMT) are exactly the old ones.
@@ -2962,6 +3005,7 @@ impl<'a> FnVerifier<'a> {
         let d0 = self.ev0_ast(&w.decreases, &mut b, &[], false)?;
         let ob = d0.ge_i(0);
         self.prove_core(&b.env, &b.pc, &[], &ob, dpos, "decreases_nonneg", "decreases >= 0", None);
+        self.spend(&mut b, &[], self.z.int(1));
         for mut end in self.exec_block(&w.body, b)? {
             let mut prev: Vec<Ast> = Vec::new();
             for &(cid, inv, text) in &invs {
@@ -3093,6 +3137,11 @@ impl<'a> FnVerifier<'a> {
             }
             let v = self.ev0_ast(r, &mut st, &[], false)?;
             st.pc.push(v);
+        }
+        if let Some(cost) = &f.cost {
+            let env = st.env.clone();
+            self.cost0 = Some(self.cost_value(cost, &mut st, &[], pos(cost), &env)?);
+            st.env.set("spent", Val::Int(self.z.int(0)));
         }
         if let (Some(d), None) = (&f.decreases, &f.foreign) {
             // G9 A1 (G9_SPEC 5): the measure is defined and >= 0 under the requires at every entry (errors point to the

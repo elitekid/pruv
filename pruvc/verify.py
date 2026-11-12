@@ -851,6 +851,7 @@ class FnVerifier:
             for i, names in enumerate(meta["fn_sccs"]):
                 for n in names:
                     s.scc_id[n] = i
+        s.cost0 = None
         s.m0 = None
         s._cex_m = None
         # G5 A1: immutable entry snapshots {inout parameter name: entry array}; separate from the current environment.
@@ -1084,6 +1085,8 @@ class FnVerifier:
                     out[name] = s.fmt_val(m.eval(v, model_completion=True))
             except Exception:
                 pass
+        if s.cost0 is not None:
+            out["C"] = m.eval(s.cost0, model_completion=True).as_long()
         return out
 
     # G9 A1: display bounds of a recursive counterexample value (they never constrain the solver)
@@ -1204,6 +1207,8 @@ class FnVerifier:
     def ev(s, e, st, g, code, env=None):
         """code=True: emit proof obligations and i64 semantics. env overrides st.env (contracts)."""
         env = st.env if env is None else env
+        if isinstance(e, Spent):
+            return st.env["spent"]
         if isinstance(e, IntLit):
             return z3.IntVal(e.value)
         if isinstance(e, BoolLit):
@@ -1544,9 +1549,11 @@ class FnVerifier:
             if aelem == U8:
                 s.prove(st, g, z3.And(args[1] >= 0, args[1] <= 255), e, "elem_range",
                         "u8 element range 0..=255 for the alloc fill value")
+            s.spend(st, g, 1 + args[0])
             s.k += 1
             return mk_arr(z3.K(z3.IntSort(), args[1]), args[0], "alloc", aelem)
         if n == "copy":
+            s.spend(st, g, 1 + args[0].n)
             return mk_arr(args[0].a, args[0].n, "copy", args[0].elem)
         if n == "is_char_boundary":
             return str_boundary(args[0], args[1])
@@ -1591,6 +1598,7 @@ class FnVerifier:
                     ob = s.ev(r, st, g, False, cenv)
                     s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
                 s.termination(e, f, st, g, cenv)    # G9 A1: only a call inside the caller's own recursive SCC
+                s.call_cost(e, f, st, g, cenv)
             if ios:
                 s.inout_finals(e, f, ios, args, cenv, st, g)    # G5 A1 (5.2 step 5): fresh same-length contents
             if f.ret == UNIT:
@@ -1675,6 +1683,7 @@ class FnVerifier:
                     ob = s.ev(r, st, [], False, cenv)
                     s.prove(st, [], ob, c, "call_requires", "precondition of %s (line %d)" % (c.name, r.line))
                 s.termination(c, f, st, [], cenv)
+                s.call_cost(c, f, st, [], cenv)
             finally:
                 s.theta = saved
         for c, f, args, cenv, ios, theta in brs:
@@ -1702,6 +1711,22 @@ class FnVerifier:
                 for a in getattr(c.args[i], "post_refine", None) or ():
                     st.pc.append(s.check_assert(a, b))
         return st
+
+    def spend(s, st, g, units):
+        # Ghost arithmetic is mathematical, including across loop havoc.
+        if s.f.cost is not None:
+            st.env["spent"] = st.env["spent"] + (z3.If(z3.And(*g), units, 0) if g else units)
+
+    def cost_value(s, expr, st, g, node, env):
+        domain = s.dom(expr, st, g, env)
+        if domain is not None:
+            s.prove(st, g, domain, node, "contract_domain", "cost `%s` is defined" % _expr_text(expr))
+        return s.ev(expr, st, g, False, env)
+
+    def call_cost(s, e, f, st, g, cenv):
+        if s.f.cost is not None:
+            bound = s.cost_value(f.cost, st, g, e, cenv)
+            s.spend(st, g, 1 + bound)
 
     def termination(s, e, f, st, g, cenv):
         """G9 A1 (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:
@@ -1812,6 +1837,9 @@ class FnVerifier:
 
     # ---------- statements ----------
     def ensures_ok(s, st, val, node):
+        if s.f.cost is not None:
+            s.prove(st, [], st.env["spent"] <= s.cost0, node, "cost_bound",
+                    "spent <= cost `%s` (C at entry)" % _expr_text(s.f.cost))
         env = dict(st.env)
         for p in s.f.params:
             if p.mode is None:      # G5 A1: ordinary parameters denote their entry values; an inout parameter keeps its
@@ -1924,7 +1952,8 @@ class FnVerifier:
                 h.env[n] = nv
             elif z3.is_int(old):
                 nv = s.fresh(n, I64)
-                h.pc.append(in_range(nv))
+                if n != "spent" or s.f.cost is None:
+                    h.pc.append(in_range(nv))
                 h.env[n] = nv
             elif z3.is_bool(old):
                 h.env[n] = s.fresh(n, BOOL)
@@ -2063,6 +2092,8 @@ class FnVerifier:
             s.prove(st, [], ob, inv, "invariant_entry", w_ob, cid, cid)
             prev.append(ob)
         names = s.assigned(w.body, set())
+        if s.f.cost is not None:
+            names.add("spent")
         # G5 A1 (5.3): inout call arguments are changed too. Inout parameters keep their entry length; a local changed
         # by inout calls keeps the loop-head length only if no whole assignment in the body can replace it.
         # Without inout, calls = {} and snap = {}: names/keep (and the SMT) are exactly the old ones.
@@ -2084,6 +2115,7 @@ class FnVerifier:
         s.check_dom(b, [], w.decreases, w.decreases, "variant_field lookups in decreases are defined")
         d0 = s.ev(w.decreases, b, [], False)
         s.prove(b, [], d0 >= 0, w.decreases, "decreases_nonneg", "decreases >= 0")
+        s.spend(b, [], z3.IntVal(1))
         for end in s.exec_block(w.body, b):
             prev = []
             for cid, inv, text in invs:
@@ -2173,6 +2205,9 @@ class FnVerifier:
             if d is not None:
                 st.pc.append(d)
             st.pc.append(s.ev(r, st, [], False))
+        if f.cost is not None:
+            s.cost0 = s.cost_value(f.cost, st, [], f.cost, dict(st.env))
+            st.env["spent"] = z3.IntVal(0)
         if f.decreases is not None and f.foreign is None:
             # G9 A1 (G9_SPEC 5): the measure is defined and >= 0 under the requires at every entry (errors point to the
             # clause); its value is frozen here and is the caller measure of every recursive call in the body
@@ -2192,10 +2227,7 @@ def verify_program(prog, rec=None, infer=False, report=None):
     """infer=True (STAGE1 B2, --infer): per function, explore template invariant candidates (infer.py), then
     verify the whole function with the survivors as extra loop invariants. report (a list) receives one record
     per loop (docs/STAGE1_B_INFER.md section 5). infer=False: exactly the old path."""
-    from typeinfo import g2_unimplemented_error, s5_unimplemented_error
-    s5err = s5_unimplemented_error(prog)
-    if s5err is not None:
-        return [s5err]
+    from typeinfo import g2_unimplemented_error
     # G3 A2: the verifier handles generics (no guard here); the code generators and pruvc.py still reject them.
     # "array" in skip exempts only the structured [T] (the plain [i64] is never a G2 hit).
     g2err = g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool", "str", "array"))  # G2 B1

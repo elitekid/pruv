@@ -1,6 +1,9 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof]
                         [--backend rust|llvm|both]
+
+group s5_proof: tests/s5/proof/*.pruv verifies in default, trust-callers and infer modes
+on both backends, then stops at codegen/cost_unavailable (one row checks both backends).
 
 group g7_frontend / g7_proof: Rust rows generate and compile (run if main exists);
 LLVM and dual-emission rows produce IR and Rust bindings after successful verification.
@@ -631,16 +634,16 @@ def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
     return jobs
 
 
-def s5_frontend_jobs():
+def s5_frontend_jobs(group="s5_frontend", folder="frontend", modes=None):
     jobs = []
-    for f in sorted(glob.glob(os.path.join(ROOT, "tests", "s5", "frontend", "*.pruv"))):
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests", "s5", folder, "*.pruv"))):
         stem = os.path.splitext(os.path.basename(f))[0]
         source = open(f, encoding="utf-8").read()
         guarded = re.search(r"\b(cost|spent)\b", source) is not None
-        for mode, flags in (("default", []), ("no-verify", ["--no-verify"]),
-                            ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"])):
+        for mode, flags in (modes or (("default", []), ("no-verify", ["--no-verify"]),
+                            ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"]))):
             def fn(f=f, stem=stem, mode=mode, flags=flags, guarded=guarded):
-                out = os.path.join(WORK, "s5_%s_%s" % (stem, mode))
+                out = os.path.join(WORK, "%s_%s_%s" % (group, stem, mode))
                 for backend in ("rust", "llvm"):
                     c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
                          pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
@@ -651,16 +654,21 @@ def s5_frontend_jobs():
                             ds = []
                         ok = c.returncode == 1 and any(
                             d.get("stage") == "codegen" and d.get("code") == "cost_unavailable"
-                            and d.get("message") == "Stage 5 cost verification is not implemented yet" for d in ds)
+                            and d.get("message") == "Stage 5 cost code generation is not implemented yet" for d in ds)
                     else:
                         ok = c.returncode == 0
                     if not ok:
                         return False, backend + ": " + c.stdout + c.stderr
                 return True, ""
-            jobs.append(safe("s5_frontend/%s [%s]" % (stem, mode), fn,
+            jobs.append(safe("%s/%s [%s]" % (group, stem, mode), fn,
                              {"sample": rel_sample(f), "backend": None, "flags": list(flags),
-                              "mode": mode, "group": "s5_frontend"}))
+                              "mode": mode, "group": group}))
     return jobs
+
+
+def s5_proof_jobs():
+    return s5_frontend_jobs("s5_proof", "proof", (("default", []),
+                            ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"])))
 
 
 def g7_proof_jobs():
@@ -1052,7 +1060,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -1140,7 +1148,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -1177,6 +1185,8 @@ def main():
             jobs += g10_frontend_jobs("g10_proof", "proof", (("default", []), ("infer", ["--infer"])))
         if only in (None, "s5_frontend"):
             jobs += s5_frontend_jobs()
+        if only in (None, "s5_proof"):
+            jobs += s5_proof_jobs()
         if only in (None, "g7_frontend"):
             jobs += g7_frontend_jobs()
         if only in (None, "g7_proof"):
@@ -1230,7 +1240,7 @@ def main():
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
-                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend")
+                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

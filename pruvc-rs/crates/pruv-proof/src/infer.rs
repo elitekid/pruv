@@ -1905,7 +1905,6 @@ pub fn infer_function(
     seq: u32,
     rec: &mut Trace,
 ) -> R<InferResult> {
-    if let Some(e) = pruv_core::typeinfo::s5_unimplemented_error(prog) { return Err(format!("{}: {}", e.code, e.message)); }
     let kname = pick_bound_name(&fn_names(f));
     let ranges = elem_ranges(f);
     let mut loops: Vec<LoopInfo> = Vec::new();
