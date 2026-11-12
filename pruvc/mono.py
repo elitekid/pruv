@@ -479,6 +479,7 @@ class _Mono:
         keyed += [((self.tindex[s.name], s.encs), s.decl) for s in type_specs]
         keyed.sort(key=lambda kd: kd[0])
         program = Program(functions=functions, types=[d for _, d in keyed])
+        program.uses_inout = getattr(prog, "uses_inout", None)   # G5 A2: keeps codegen's inout gate (as the Rust port)
         # G9 A2: the concrete program keeps the checker's G9 metadata (recursive/boxed/extended declarations). Extended
         # types are never generic (check.py), so their names are the same in the concrete program; the metadata is
         # shared read-only, never mutated.
