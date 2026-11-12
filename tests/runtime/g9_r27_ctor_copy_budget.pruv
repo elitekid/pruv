@@ -1,0 +1,18 @@
+// G9 A2 audit fix: copying a buffer into a constructor inside a runtime requires is charged to the contract budget
+// (one unit per element) before the copy; with --contract-budget 100 the 3-element call passes and the 1000-element
+// call fails with the budget error instead of copying unmetered
+struct B { a: [i64] }
+
+fn one_node(a: [i64]) -> i64
+  requires len(a) <= 100000
+  requires size(B { a: a }) == 1
+{
+  return len(a);
+}
+
+fn run(n: i64) -> i64 ! alloc
+  requires n >= 0 && n <= 1000
+{
+  let a: [i64] = alloc(n, 7);
+  return one_node(a);
+}

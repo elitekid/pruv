@@ -45,6 +45,19 @@
  *   pruv: invalid representation: <v> (<what>)
  * and exits 101; pruv_check_bool(data, len) (G2 A5) calls it for the first byte
  * of a [bool] array that is not 0 or 1 (raw ABI entry check).
+ * G9 A3 (docs/G9_SPEC.md 7, 13): recursive-type nodes use a separate allocator pair,
+ * pruv_node_alloc_v1(size, align) / pruv_node_free_v1(ptr, size, align), and the link
+ * marker pruv_runtime_nodes_v1 (a no-op function the generated module references). The G2 v2
+ * buffer ABI above is unchanged. A node is one zero-initialized object of `size` bytes with
+ * alignment `align` (a power of two, at most 16); a zero-sized node still allocates one byte.
+ * An invalid layout or an allocation failure is pruv_panic_arith("allocation failed").
+ * Default mode: calloc/free. -DPRUV_RUST_ALLOCATOR: the node is allocated and freed through
+ * the existing generated host helpers pruv_host_alloc_zeroed_v2 / pruv_host_free_v2 with the
+ * layout (len 1, size max(size, 1), align), so allocation and free use identical layouts and
+ * a Rust-allocated node is never released by C free (or the reverse). Reusing the v2 host
+ * helpers keeps every generated bindings file (also those of programs without nodes) linkable
+ * with this runtime. Under -DPRUV_COUNT_ALLOCS node allocations and frees go into the SAME
+ * counters as buffers, so the "pruv-alloc-balance" line covers nodes.
  * str (G2 B2): pruv_str_boundary(data, len, i) is the UTF-8 character boundary test (i == 0 or i == len, else 0 < i < len and data[i] is not a continuation byte); pruv_substr(data, len, lo, hi) checks the range then both boundaries ("pruv: string slice out of bounds: lo..hi (len n)" / "pruv: UTF-8 boundary error: lo..hi (len n)", exit 101) and returns a fresh copy (v2 layout 1,1); pruv_check_utf8(data, len) rejects a negative len (pruv_panic_repr(len, "str length")), NULL data with len > 0 (pruv_panic_repr(len, "str NULL data")) and ill-formed UTF-8 (Unicode Table 3-7) with pruv_panic_repr(offset, "str UTF-8, byte offset").
  */
 #include <stdint.h>
@@ -72,6 +85,9 @@ _Noreturn void pruv_panic_slice(const char *what, int64_t lo, int64_t hi, int64_
 int32_t pruv_str_boundary(const uint8_t *data, int64_t len, int64_t i);
 void *pruv_substr(const uint8_t *data, int64_t len, int64_t lo, int64_t hi);
 void pruv_check_utf8(const uint8_t *data, int64_t len);
+void pruv_runtime_nodes_v1(void);
+void *pruv_node_alloc_v1(int64_t size, int64_t align);
+void pruv_node_free_v1(void *ptr, int64_t size, int64_t align);
 
 #ifdef PRUV_RUST_ALLOCATOR
 extern int64_t *pruv_host_alloc(int64_t len);
@@ -245,6 +261,45 @@ void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align) {
     (void)size;
     (void)align;
     free(data);
+#endif
+}
+
+/* G9 A3: node allocator (recursive-type nodes), see the header comment */
+void pruv_runtime_nodes_v1(void) {}
+
+static int pruv_node_layout_ok(int64_t size, int64_t align) {
+    if (size < 0 || align <= 0 || align > 16 || (align & (align - 1)) != 0) return 0;
+    if ((uint64_t)size > (uint64_t)INT64_MAX - (uint64_t)align) return 0; /* size + padding must not overflow */
+    if ((uint64_t)size > (uint64_t)SIZE_MAX) return 0;
+    return 1;
+}
+
+void *pruv_node_alloc_v1(int64_t size, int64_t align) {
+    if (!pruv_node_layout_ok(size, align)) pruv_panic_arith("allocation failed");
+    int64_t bytes = size > 0 ? size : 1; /* a zero-sized node still gets one byte */
+#ifdef PRUV_RUST_ALLOCATOR
+    void *p = pruv_host_alloc_zeroed_v2(1, bytes, align);
+#else
+    void *p = calloc(1, (size_t)bytes);
+#endif
+    if (!p) pruv_panic_arith("allocation failed");
+#ifdef PRUV_COUNT_ALLOCS
+    pruv_n_allocs++;
+#endif
+    return p;
+}
+
+void pruv_node_free_v1(void *ptr, int64_t size, int64_t align) {
+#ifdef PRUV_COUNT_ALLOCS
+    if (ptr) pruv_n_frees++;
+#endif
+    if (!ptr) return;
+#ifdef PRUV_RUST_ALLOCATOR
+    pruv_host_free_v2(ptr, 1, size > 0 ? size : 1, align);
+#else
+    (void)size;
+    (void)align;
+    free(ptr);
 #endif
 }
 

@@ -1,0 +1,59 @@
+// G9 A3 runtime (LLVM layout/cleanup): cleanup on branch exits and on early returns from inside a match on a tree;
+// find_depth keeps a temporary owned tree alive in every Node arm and returns early while it is still live
+// sample: Node(4, Node(2), Node(7, Node(5), Empty)); depth of x: 4 -> 1, 5 -> 3 (4,7,5), 9 -> -1
+// branchy(k): 0 -> root of a tree built from a clone = 2, 1 -> length of a local buffer = 3, 2 -> root of the original = 1
+// expected stdout: found(5)=3, found(4)=1, found(9)=-1, branchy(0)=2, branchy(1)=3, branchy(2)=1
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn root_of(t: Tree) -> i64 {
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => { return v; }
+  }
+}
+
+fn sample() -> Tree ! alloc
+  ensures size(result) == 9
+{
+  return Tree::Node(4, Tree::Node(2, Tree::Empty, Tree::Empty), Tree::Node(7, Tree::Node(5, Tree::Empty, Tree::Empty), Tree::Empty));
+}
+
+fn find_depth(t: Tree, x: i64) -> i64 ! alloc
+  requires size(t) <= 1000
+  ensures result >= -1 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => {
+      let tmp: Tree = Tree::Node(v, Tree::Empty, Tree::Empty);
+      let k: i64 = root_of(tmp);
+      if k == x { return 1; }
+      let a: i64 = find_depth(l, x);
+      if a >= 1 { return a + 1; }
+      let b: i64 = find_depth(r, x);
+      if b >= 1 { return b + 1; }
+      return 0 - 1;
+    }
+  }
+}
+
+fn found(x: i64) -> i64 ! alloc {
+  let t: Tree = sample();
+  return find_depth(t, x);
+}
+
+fn branchy(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 2
+{
+  let a: Tree = Tree::Node(1, Tree::Empty, Tree::Empty);
+  if k == 0 {
+    let b: Tree = Tree::Node(2, a, Tree::Empty);
+    return root_of(b);
+  }
+  if k == 1 {
+    let c: [i64] = alloc(3, 4);
+    return len(c);
+  }
+  return root_of(a);
+}

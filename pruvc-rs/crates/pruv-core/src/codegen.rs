@@ -814,6 +814,11 @@ impl<'a> Gen<'a> {
                 Ok(format!("(&{}({}).{})", deref, base, x.field))
             }
             Expr::VariantField(x) => {
+                if g9_owned(&x.value) {
+                    // the selected value is a fresh constructor (or a part of one): select from the OWNED temporary and
+                    // borrow the moved-out field, so no reference into a block-local temporary escapes its block
+                    return Ok(format!("(&{})", self.g9_owned_expr(e)?));
+                }
                 self.tmp += 1;
                 let tmp = format!("pruv_e{}", self.tmp);
                 let nfields = k_variant(&self.table, &x.enum_name, &x.variant)?.fields.len();
@@ -841,6 +846,37 @@ impl<'a> Gen<'a> {
             // a constructor (with or without payload) is a REAL temporary value of the type; a reference to it lives
             // through the enclosing statement. Every i64 field is converted from the i128 contract value (checked).
             Expr::EnumCtor(_) | Expr::StructLit(_) => Ok(format!("(&{})", self.g9_real(e, None)?)),
+            _ => Err(self.g9_unsupported(e, "this expression as an aggregate operand")),
+        }
+    }
+
+    /// OWNED Rust value of `e` (g9_owned(e)): a constructor is built (g9_real); a part is moved out of the owned value of
+    /// its base (a Box edge is unboxed). Python `g9_owned_expr`.
+    fn g9_owned_expr(&mut self, e: &Expr) -> R<String> {
+        match e {
+            Expr::EnumCtor(_) | Expr::StructLit(_) => self.g9_real(e, None),
+            Expr::FieldAccess(x) => {
+                let deref = if self.field_boxed(expr_ty(&x.base), &x.field) { "*" } else { "" };
+                let base = self.g9_owned_expr(&x.base)?;
+                Ok(format!("({}({}).{})", deref, base, x.field))
+            }
+            Expr::VariantField(x) => {
+                let nfields = k_variant(&self.table, &x.enum_name, &x.variant)?.fields.len();
+                let idx = k_field_index(&self.table, &x.enum_name, &x.field, Some(&x.variant))?;
+                let pats = (0..nfields).map(|i| if i == idx { "pruv_f" } else { "_" }).collect::<Vec<_>>().join(", ");
+                let boxed = self.boxed.contains(&format!("{}::{}.{}", x.enum_name, x.variant, x.field));
+                let msg = format!("variant_field expected {}::{}.{}", src_name(&x.enum_name), x.variant, x.field);
+                let val = self.g9_owned_expr(&x.value)?;
+                Ok(format!(
+                    "(match {} {{ {}::{}({}) => {}, _ => pruv_ud({}) }})",
+                    val,
+                    x.enum_name,
+                    x.variant,
+                    pats,
+                    if boxed { "*pruv_f" } else { "pruv_f" },
+                    rstr(&msg)
+                ))
+            }
             _ => Err(self.g9_unsupported(e, "this expression as an aggregate operand")),
         }
     }
@@ -917,13 +953,30 @@ impl<'a> Gen<'a> {
         if matches!(e, Expr::Var(_) | Expr::FieldAccess(_) | Expr::VariantField(_))
             && (is_user_key(tk) || key_name(tk) == "option" || key_name(tk) == "result")
         {
-            return Ok(format!("::std::clone::Clone::clone({})", self.cx(e)?));
+            // a copy of a named value / part is charged first: its weight (one unit per nominal node)
+            let g = GType::from_key(tk);
+            let w = self.g9_weight(&g, "pruv_c", "&mut pruv_budget");
+            if w == "0i128" {
+                return Ok(format!("::std::clone::Clone::clone({})", self.cx(e)?));
+            }
+            for n in nominals_in(&g) {
+                self.need_size.insert(n);
+            }
+            let r = self.cx(e)?;
+            return Ok(format!(
+                "({{ let pruv_c: &{} = {}; let _ = {}; ::std::clone::Clone::clone(pruv_c) }})",
+                rty(tk, false),
+                r,
+                w
+            ));
         }
         if is_array_name(tk) {
-            return Ok(format!("{}.to_vec()", self.carr(e)?));
+            let a = self.carr(e)?;
+            return Ok(format!("({{ {} {}.to_vec() }})", g9_charge(&format!("{}.len()", a)), a));
         }
         if tk == "str" {
-            return Ok(format!("{}.to_owned()", self.carr(e)?));
+            let a = self.carr(e)?;
+            return Ok(format!("({{ {} {}.to_owned() }})", g9_charge(&format!("{}.len()", a)), a));
         }
         Err(self.g9_unsupported(e, "this expression as a constructor field of an aggregate operand"))
     }
@@ -1167,6 +1220,11 @@ impl<'a> Gen<'a> {
                 ))
             }
             Expr::VariantField(x) => {
+                if g9_owned(&x.value) {
+                    // the selected value is a fresh constructor (or a part of one): select from the OWNED temporary and
+                    // borrow the moved-out field, so no reference into a block-local temporary escapes its block
+                    return Ok(format!("(&{})", self.g9_owned_expr(e)?));
+                }
                 self.tmp += 1;
                 let tmp = format!("pruv_e{}", self.tmp);
                 let cn = format!("pruv_contract__{}", x.enum_name);
@@ -2288,6 +2346,24 @@ pub fn gen_rust_concrete_ex(
     let mut s = g.out.join("\n");
     s.push('\n');
     Ok((s, manifest))
+}
+
+/// `e` denotes a fresh constructor value, or a field / variant_field part of one (Python `Gen.g9_owned`)
+fn g9_owned(e: &Expr) -> bool {
+    match e {
+        Expr::EnumCtor(_) | Expr::StructLit(_) => true,
+        Expr::VariantField(x) => g9_owned(&x.value),
+        Expr::FieldAccess(x) => g9_owned(&x.base),
+        _ => false,
+    }
+}
+
+/// charge the shared contract budget `n` units (a Rust usize expression) before a buffer copy (Python `Gen.g9_charge`)
+fn g9_charge(n: &str) -> String {
+    format!(
+        "{{ let pruv_n: usize = {}; pruv_budget = pruv_budget.saturating_sub(i64::try_from(pruv_n).unwrap_or(i64::MAX)); if pruv_budget < 0 {{ pruv_ud(\"contract iteration budget exceeded\") }} }}",
+        n
+    )
 }
 
 #[cfg(test)]

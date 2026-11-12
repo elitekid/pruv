@@ -1,0 +1,72 @@
+// G9 A3 runtime (LLVM layout/cleanup): struct <-> enum mutual recursion (Dir holds Entries, Entries::Item holds Dir)
+// sample tree: 1[ 2, 3[ 4, 5[ 6 ] ], 7 ]  (7 dirs, depth 4)
+// expected stdout: sample_depth() = 4, sample_dirs() = 7
+struct Dir { weight: i64, kids: Entries }
+enum Entries { End, Item(dir: Dir, rest: Entries) }
+
+fn leaf(w: i64) -> Dir ! alloc
+  ensures size(result) == 2
+{
+  return Dir { weight: w, kids: Entries::End };
+}
+
+fn sample() -> Dir ! alloc
+  ensures size(result) <= 100
+{
+  let d5: Dir = Dir { weight: 5, kids: Entries::Item(leaf(6), Entries::End) };
+  let d3: Dir = Dir { weight: 3, kids: Entries::Item(leaf(4), Entries::Item(d5, Entries::End)) };
+  return Dir { weight: 1, kids: Entries::Item(leaf(2), Entries::Item(d3, Entries::Item(leaf(7), Entries::End))) };
+}
+
+fn depth(d: Dir) -> i64
+  requires size(d) <= 1000
+  ensures result >= 1 && result <= size(d)
+  decreases size(d)
+{
+  return 1 + entries_depth(d.kids);
+}
+
+fn entries_depth(e: Entries) -> i64
+  requires size(e) <= 1000
+  ensures result >= 0 && result <= size(e)
+  decreases size(e)
+{
+  match e {
+    Entries::End => { return 0; }
+    Entries::Item(d, rest) => {
+      let a: i64 = depth(d);
+      let b: i64 = entries_depth(rest);
+      if a > b { return a; }
+      return b;
+    }
+  }
+}
+
+fn dirs(d: Dir) -> i64
+  requires size(d) <= 1000
+  ensures result >= 1 && result <= size(d)
+  decreases size(d)
+{
+  return 1 + entries_dirs(d.kids);
+}
+
+fn entries_dirs(e: Entries) -> i64
+  requires size(e) <= 1000
+  ensures result >= 0 && result <= size(e)
+  decreases size(e)
+{
+  match e {
+    Entries::End => { return 0; }
+    Entries::Item(d, rest) => { return dirs(d) + entries_dirs(rest); }
+  }
+}
+
+fn sample_depth() -> i64 ! alloc {
+  let s: Dir = sample();
+  return depth(s);
+}
+
+fn sample_dirs() -> i64 ! alloc {
+  let s: Dir = sample();
+  return dirs(s);
+}

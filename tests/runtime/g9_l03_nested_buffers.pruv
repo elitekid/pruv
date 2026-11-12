@@ -1,0 +1,57 @@
+// G9 A3 runtime (LLVM layout/cleanup): [u8] and str buffers nested inside recursive nodes (Node -> Chain -> Node)
+// build(k) makes nodes with data lengths k, k-1, ..., 1; size(build(k)) = 2k + 1
+// expected stdout: big_count() = 3 (lengths 5,4,3 are > 2), head_len_of(5) = 5, head_len_of(0) = 0
+struct Node { data: [u8], tag: str, next: Chain }
+enum Chain { End, More(node: Node) }
+
+fn build(k: i64) -> Chain ! alloc
+  requires k >= 0 && k <= 50
+  ensures size(result) == 2 * k + 1
+  decreases k
+{
+  if k == 0 { return Chain::End; }
+  let d: [u8] = alloc(k, 3);
+  let rest: Chain = build(k - 1);
+  return Chain::More(Node { data: copy(d), tag: copy("n"), next: rest });
+}
+
+fn big_chain(c: Chain) -> i64
+  requires size(c) <= 1000
+  ensures result >= 0 && result <= size(c)
+  decreases size(c)
+{
+  match c {
+    Chain::End => { return 0; }
+    Chain::More(n) => { return big_node(n); }
+  }
+}
+
+fn big_node(n: Node) -> i64
+  requires size(n) <= 1000
+  ensures result >= 0 && result <= size(n)
+  decreases size(n)
+{
+  if len(n.data) > 2 { return 1 + big_chain(n.next); }
+  return big_chain(n.next);
+}
+
+fn head_len(c: Chain) -> i64
+  ensures result >= 0
+{
+  match c {
+    Chain::End => { return 0; }
+    Chain::More(n) => { return len(n.data); }
+  }
+}
+
+fn big_count() -> i64 ! alloc {
+  let c: Chain = build(5);
+  return big_chain(c);
+}
+
+fn head_len_of(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 50
+{
+  let c: Chain = build(k);
+  return head_len(c);
+}

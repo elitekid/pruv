@@ -46,7 +46,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse, RUST_KEYWORDS  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust, gen_rust_ex  # noqa: E402
-from typeinfo import g2_unimplemented_error, first_g3_use, g9_unimplemented_error  # noqa: E402
+from typeinfo import g2_unimplemented_error, first_g3_use  # noqa: E402
 from mono import specialize  # noqa: E402
 from foreign import g6_unimplemented_error  # noqa: E402
 
@@ -71,14 +71,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     src = open(path, encoding="utf-8").read()
     prog = parse(src)
     check(prog, externs=externs)
-    # G9 A1: the verifier handles G9 programs; the code generation guard (A2/A3 lift it) runs after verification,
-    # so a G9 program that does not verify reports its proof errors first. --no-verify: the guard runs right here.
-    # G9 A2: the Rust source backend lowers G9 programs; only the LLVM backend (and --also-llvm) keeps the guard.
-    if not verify:
-        if backend == "llvm" or also_llvm:
-            g9err = g9_unimplemented_error(prog, "codegen", "llvm codegen layer")
-            if g9err is not None:
-                return [g9err]
+    # G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.
     # G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm)
     # lowers the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type: that decision
     # is made inside llvmgen.gen_llvm (after verification, so verification errors win).
@@ -93,11 +86,6 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             errs = verify_program(prog)
         if errs:
             return errs
-        # G9: verification succeeded; the LLVM guard (lifted by A3) still stops G9 programs there
-        if backend == "llvm" or also_llvm:
-            g9err = g9_unimplemented_error(prog, "codegen", "llvm codegen layer")
-            if g9err is not None:
-                return [g9err]
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same

@@ -688,6 +688,10 @@ pub struct TypeTable {
     pub words_memo: std::cell::RefCell<HashMap<String, usize>>,
     /// G9 A0: checker metadata (type_sccs, boxed, extended, fn_sccs), only when the program has a G9 feature.
     pub g9: Option<G9Meta>,
+    /// G9 A3 (Python `tt.g9_ext`): names of the extended declarations; set by `llvmgen::new_tt`, empty otherwise.
+    pub g9_ext: HashSet<String>,
+    /// G9 A3 (Python `tt.g9_boxed`): labels of the boxed fields; set by `llvmgen::new_tt`, empty otherwise.
+    pub g9_boxed: HashSet<String>,
 }
 
 impl TypeTable {

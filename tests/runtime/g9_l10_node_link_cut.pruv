@@ -1,0 +1,93 @@
+// G9 A3 runtime (LLVM layout/cleanup): struct <-> enum recursion where every node owns an [i64] buffer; a mutable clone has its
+// recursive tail (Link) and its buffer replaced by whole-field assignment, dropping the whole old tail with all its buffers
+// make(k): nodes with buffer lengths k, k-1, ..., 1 (size 2k); make(3): 3 nodes, last buffer length 1
+// expected stdout: chain_count() = 3, chain_last() = 1, cut_count() = 1, cut_head() = 7, orig_after_cut() = 3
+struct Node { vals: [i64], next: Link }
+enum Link { End, More(node: Node) }
+
+fn make(k: i64) -> Node ! alloc
+  requires k >= 1 && k <= 50
+  ensures size(result) == 2 * k
+  decreases k
+{
+  let a: [i64] = alloc(k, k);
+  if k == 1 { return Node { vals: copy(a), next: Link::End }; }
+  return Node { vals: copy(a), next: Link::More(make(k - 1)) };
+}
+
+fn node_count(n: Node) -> i64
+  requires size(n) <= 1000
+  ensures result >= 1 && result <= size(n)
+  decreases size(n)
+{
+  return 1 + link_count(n.next);
+}
+
+fn link_count(l: Link) -> i64
+  requires size(l) <= 1000
+  ensures result >= 0 && result <= size(l)
+  decreases size(l)
+{
+  match l {
+    Link::End => { return 0; }
+    Link::More(n) => { return node_count(n); }
+  }
+}
+
+fn last_len(n: Node) -> i64
+  requires size(n) <= 1000
+  ensures result >= 0
+  decreases size(n)
+{
+  return link_last(n.next, len(n.vals));
+}
+
+fn link_last(l: Link, fb: i64) -> i64
+  requires size(l) <= 1000
+  requires fb >= 0
+  ensures result >= 0
+  decreases size(l)
+{
+  match l {
+    Link::End => { return fb; }
+    Link::More(n) => { return last_len(n); }
+  }
+}
+
+fn cut(n: Node) -> Node ! alloc
+  ensures size(result) == 2
+{
+  let mut c: Node = n;
+  c.next = Link::End;
+  let buf: [i64] = alloc(7, 0);
+  c.vals = copy(buf);
+  return c;
+}
+
+fn chain_count() -> i64 ! alloc {
+  let m: Node = make(3);
+  return node_count(m);
+}
+
+fn chain_last() -> i64 ! alloc {
+  let m: Node = make(3);
+  return last_len(m);
+}
+
+fn cut_count() -> i64 ! alloc {
+  let m: Node = make(3);
+  let c: Node = cut(m);
+  return node_count(c);
+}
+
+fn cut_head() -> i64 ! alloc {
+  let m: Node = make(3);
+  let c: Node = cut(m);
+  return len(c.vals);
+}
+
+fn orig_after_cut() -> i64 ! alloc {
+  let m: Node = make(3);
+  let c: Node = cut(m);
+  return node_count(m);
+}

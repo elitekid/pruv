@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"]], "contract_budget": 1000, "exit": 0, "stdout_lines": ["0", "10", "50"]}
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"]], "contract_budget": 1000, "exit": 0, "alloc_balance": true, "stdout_lines": ["0", "10", "50"]}

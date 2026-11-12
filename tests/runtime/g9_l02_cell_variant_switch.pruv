@@ -1,0 +1,51 @@
+// G9 A3 runtime (LLVM layout/cleanup): enum whose variants hold buffers or recursive children; a mutable local switches
+// variants (Pair -> Text -> Ints -> Empty), each assignment drops the previously active payload; inactive slots stay null
+// expected stdout: pair_nodes() = 3, switched(0) = 0 (Pair), switched(1) = 5 (Text "hello"), switched(2) = 4 (Ints), switched(3) = 0 (Empty)
+enum Cell { Empty, Ints(items: [i64]), Text(s: str), Pair(left: Cell, right: Cell) }
+
+fn buf_len(c: Cell) -> i64
+  ensures result >= 0
+{
+  match c {
+    Cell::Empty => { return 0; }
+    Cell::Ints(a) => { return len(a); }
+    Cell::Text(s) => { return len(s); }
+    Cell::Pair(l, r) => { return 0; }
+  }
+}
+
+fn nodes(c: Cell) -> i64
+  requires size(c) <= 1000
+  ensures result >= 0 && result <= size(c)
+  decreases size(c)
+{
+  match c {
+    Cell::Empty => { return 0; }
+    Cell::Ints(a) => { return 1; }
+    Cell::Text(s) => { return 1; }
+    Cell::Pair(l, r) => { return 1 + nodes(l) + nodes(r); }
+  }
+}
+
+fn make_pair() -> Cell ! alloc
+  ensures size(result) <= 100
+{
+  let a: [i64] = alloc(4, 1);
+  return Cell::Pair(Cell::Ints(copy(a)), Cell::Text(copy("abc")));
+}
+
+fn pair_nodes() -> i64 ! alloc {
+  let c: Cell = make_pair();
+  return nodes(c);
+}
+
+fn switched(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 3
+{
+  let a: [i64] = alloc(4, 1);
+  let mut c: Cell = Cell::Pair(Cell::Ints(copy(a)), Cell::Text(copy("abc")));
+  if k >= 1 { c = Cell::Text(copy("hello")); }
+  if k >= 2 { c = Cell::Ints(copy(a)); }
+  if k >= 3 { c = Cell::Empty; }
+  return buf_len(c);
+}

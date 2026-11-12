@@ -1,0 +1,57 @@
+// G9 A3 runtime (LLVM layout/cleanup): bounded while loops (no break) that build and drop trees on every iteration,
+// and a loop that replaces a mutable tree with a larger one that contains its old value
+// grow(n): left spine of n nodes (size 2n + 1); nodes(grow(n)) = n
+// loop_acc(): sum over i = 0..4 of nodes(grow(i)) = 0 + 1 + 2 + 3 + 4 = 10
+// loop_cur(): cur = Node(j, cur, Empty) for j = 0..5 -> 6 nodes
+// expected stdout: 10, 6
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn grow(n: i64) -> Tree ! alloc
+  requires n >= 0 && n <= 100
+  ensures size(result) == 2 * n + 1
+  decreases n
+{
+  if n == 0 { return Tree::Empty; }
+  return Tree::Node(n, grow(n - 1), Tree::Empty);
+}
+
+fn nodes(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + nodes(l) + nodes(r); }
+  }
+}
+
+fn loop_acc() -> i64 ! alloc {
+  let mut i: i64 = 0;
+  let mut acc: i64 = 0;
+  while i < 5
+    invariant 0 <= i && i <= 5
+    invariant 0 <= acc && acc <= 10 * i
+    decreases 5 - i
+  {
+    let t: Tree = grow(i);
+    let c: i64 = nodes(t);
+    acc = acc + c;
+    i = i + 1;
+  }
+  return acc;
+}
+
+fn loop_cur() -> i64 ! alloc {
+  let mut cur: Tree = Tree::Empty;
+  let mut j: i64 = 0;
+  while j < 6
+    invariant 0 <= j && j <= 6
+    invariant size(cur) == 2 * j + 1
+    decreases 6 - j
+  {
+    cur = Tree::Node(j, cur, Tree::Empty);
+    j = j + 1;
+  }
+  return nodes(cur);
+}

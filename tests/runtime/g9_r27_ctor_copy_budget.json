@@ -1,0 +1,1 @@
+{"flags_matrix": [["--no-verify"]], "contract_budget": 100, "exit": 101, "stdout_lines": ["3"], "stderr_contains": "budget"}

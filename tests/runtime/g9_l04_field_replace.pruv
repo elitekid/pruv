@@ -1,0 +1,74 @@
+// G9 A3 runtime (LLVM layout/cleanup): whole-field replacement of a recursive child (tree) and of a buffer field on a mutable clone;
+// the RHS reads the old field before it is dropped; the original holder keeps its fields
+// mutate(h, k): k>=1 wraps the old tree as left child of a new root 2; k>=2 swaps tag for a 5-element buffer; k>=3 replaces the tree by Empty
+// expected stdout: new_root(0)=1, new_root(1)=2, new_left_root(1)=1, new_root(3)=-1, tag_len(1)=2, tag_len(2)=5, orig_root()=1, orig_tag_len()=2
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+struct Holder { tree: Tree, tag: [i64], n: i64 }
+
+fn root_of(t: Tree) -> i64 {
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => { return v; }
+  }
+}
+
+fn left_root(t: Tree) -> i64 {
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => { return root_of(l); }
+  }
+}
+
+fn make() -> Holder ! alloc {
+  let a: [i64] = alloc(2, 9);
+  return Holder { tree: Tree::Node(1, Tree::Empty, Tree::Empty), tag: copy(a), n: 7 };
+}
+
+fn mutate(h0: Holder, k: i64) -> Holder ! alloc
+  requires 0 <= k && k <= 3
+{
+  let mut h: Holder = h0;
+  if k >= 1 { h.tree = Tree::Node(2, h.tree, Tree::Empty); }
+  if k >= 2 {
+    let buf: [i64] = alloc(5, 1);
+    h.tag = copy(buf);
+  }
+  if k >= 3 { h.tree = Tree::Empty; }
+  return h;
+}
+
+fn new_root(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 3
+{
+  let h: Holder = make();
+  let m: Holder = mutate(h, k);
+  return root_of(m.tree);
+}
+
+fn new_left_root(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 3
+{
+  let h: Holder = make();
+  let m: Holder = mutate(h, k);
+  return left_root(m.tree);
+}
+
+fn tag_len(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 3
+{
+  let h: Holder = make();
+  let m: Holder = mutate(h, k);
+  return len(m.tag);
+}
+
+fn orig_root() -> i64 ! alloc {
+  let h: Holder = make();
+  let m: Holder = mutate(h, 3);
+  return root_of(h.tree);
+}
+
+fn orig_tag_len() -> i64 ! alloc {
+  let h: Holder = make();
+  let m: Holder = mutate(h, 3);
+  return len(h.tag);
+}

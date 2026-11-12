@@ -1,0 +1,58 @@
+// G9 A3 runtime (LLVM layout/cleanup): clone-then-mutate independence on a deep-ish tree
+// build(d): spine Node(d, build(d-1), Node(d, Empty, Empty)) down to Empty: 2d nodes, size 4d + 1 (d = 10 -> 41)
+// count_eq(t, x) = number of nodes whose value equals x; fill(t, x) rebuilds the same shape with every value x
+// a = build(10): value 3 occurs twice (spine node 3 and its leaf 3); c = fill(clone of a, 3) has all 20 nodes equal to 3
+// expected stdout: orig_count() = 2, clone_count() = 20, orig_after() = 2
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn build(d: i64) -> Tree ! alloc
+  requires d >= 0 && d <= 100
+  ensures size(result) == 4 * d + 1
+  decreases d
+{
+  if d == 0 { return Tree::Empty; }
+  return Tree::Node(d, build(d - 1), Tree::Node(d, Tree::Empty, Tree::Empty));
+}
+
+fn fill(t: Tree, x: i64) -> Tree ! alloc
+  ensures size(result) == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return Tree::Empty; }
+    Tree::Node(v, l, r) => { return Tree::Node(x, fill(l, x), fill(r, x)); }
+  }
+}
+
+fn count_eq(t: Tree, x: i64) -> i64
+  requires size(t) <= 1000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => {
+      if v == x { return 1 + count_eq(l, x) + count_eq(r, x); }
+      return count_eq(l, x) + count_eq(r, x);
+    }
+  }
+}
+
+fn orig_count() -> i64 ! alloc {
+  let a: Tree = build(10);
+  return count_eq(a, 3);
+}
+
+fn clone_count() -> i64 ! alloc {
+  let a: Tree = build(10);
+  let mut c: Tree = a;
+  c = fill(c, 3);
+  return count_eq(c, 3);
+}
+
+fn orig_after() -> i64 ! alloc {
+  let a: Tree = build(10);
+  let mut c: Tree = a;
+  c = fill(c, 3);
+  return count_eq(a, 3);
+}

@@ -807,6 +807,10 @@ class Gen:
             deref = "*" if s.field_boxed(e.base.ty, e.field) else ""
             return "(&%s(%s).%s)" % (deref, s.cx(e.base), e.field)
         if isinstance(e, VariantField):
+            if s.g9_owned(e.value):
+                # the selected value is a fresh constructor (or a part of one): select from the OWNED temporary and
+                # borrow the moved-out field, so no reference into a block-local temporary escapes its block
+                return "(&%s)" % s.g9_owned_expr(e)
             s.tmp += 1
             tmp = "pruv_e%d" % s.tmp
             ety = Type(e.enum_name)
@@ -822,6 +826,40 @@ class Gen:
             # conversion (pruv_ud when out of range).
             return "(&%s)" % s.g9_real(e)
         raise s.g9_unsupported(e, "this expression as an aggregate operand")
+
+    @staticmethod
+    def g9_owned(e):
+        """e denotes a fresh constructor value, or a field / variant_field part of one"""
+        if isinstance(e, (EnumCtor, StructLit)):
+            return True
+        if isinstance(e, VariantField):
+            return Gen.g9_owned(e.value)
+        if isinstance(e, FieldAccess):
+            return Gen.g9_owned(e.base)
+        return False
+
+    def g9_owned_expr(s, e):
+        """OWNED Rust value of e (g9_owned(e)): a constructor is built (g9_real); a part is moved out of the owned
+        value of its base (a Box edge is unboxed)"""
+        if isinstance(e, (EnumCtor, StructLit)):
+            return s.g9_real(e)
+        if isinstance(e, FieldAccess):
+            deref = "*" if s.field_boxed(e.base.ty, e.field) else ""
+            return "(%s(%s).%s)" % (deref, s.g9_owned_expr(e.base), e.field)
+        ety = Type(e.enum_name)
+        vf = s.table.variant(ety, e.variant)
+        idx = s.table.field_index(ety, e.field, e.variant)
+        pats = ", ".join("pruv_f" if i == idx else "_" for i in range(len(vf.fields)))
+        boxed = ("%s::%s.%s" % (e.enum_name, e.variant, e.field)) in s.boxed
+        msg = "variant_field expected %s::%s.%s" % (getattr(e, "src_name", e.enum_name), e.variant, e.field)
+        return "(match %s { %s::%s(%s) => %s, _ => pruv_ud(%s) })" % (
+            s.g9_owned_expr(e.value), e.enum_name, e.variant, pats, "*pruv_f" if boxed else "pruv_f", rstr(msg))
+
+    @staticmethod
+    def g9_charge(n):
+        """charge the shared contract budget n units (n: a Rust usize expression) before a buffer copy"""
+        return ("{ let pruv_n: usize = %s; pruv_budget = pruv_budget.saturating_sub(i64::try_from(pruv_n).unwrap_or(i64::MAX)); "
+                "if pruv_budget < 0 { pruv_ud(\"contract iteration budget exceeded\") } }" % n)
 
     def g9_field_real(s, x, ty, label):
         """a constructor field of declared type ty: the real value, boxed on a recursive edge"""
@@ -860,11 +898,19 @@ class Gen:
         if t.owner is None and t.name == "bool":
             return s.c(e)
         if isinstance(e, (Var, FieldAccess, VariantField)) and (is_user_type(t) or t.name in ("option", "result")):
-            return "::std::clone::Clone::clone(%s)" % s.cx(e)
+            # a copy of a named value / part is charged first: its weight (one unit per nominal node)
+            w = s.g9_weight(t, "pruv_c", "&mut pruv_budget")
+            if w == "0i128":
+                return "::std::clone::Clone::clone(%s)" % s.cx(e)
+            if nominals_in(t):
+                s.need_size.update(nominals_in(t))
+            return "({ let pruv_c: &%s = %s; let _ = %s; ::std::clone::Clone::clone(pruv_c) })" % (rty(t), s.cx(e), w)
         if is_array(t):
-            return "%s.to_vec()" % s.carr(e)
+            a = s.carr(e)
+            return "({ %s %s.to_vec() })" % (s.g9_charge("%s.len()" % a), a)
         if t == STR:
-            return "%s.to_owned()" % s.carr(e)
+            a = s.carr(e)
+            return "({ %s %s.to_owned() })" % (s.g9_charge("%s.len()" % a), a)
         raise s.g9_unsupported(e, "this expression as a constructor field of an aggregate operand")
 
     def g9_real_path(s, e):
@@ -1011,6 +1057,10 @@ class Gen:
             return "({ let %s: &%s = %s; match %s { %s::%s(%s) => %s, _ => pruv_ud(%s) } })" % (
                 tmp, e.enum_name, s.cx(e.value), tmp, e.enum_name, e.variant, pats, s.g9_metered(e.ty, "pruv_f"), rstr(msg))
         if isinstance(e, VariantField):
+            if s.g9_owned(e.value):
+                # the selected value is a fresh constructor (or a part of one): select from the OWNED temporary and
+                # borrow the moved-out field, so no reference into a block-local temporary escapes its block
+                return "(&%s)" % s.g9_owned_expr(e)
             s.tmp += 1
             tmp = "pruv_e%d" % s.tmp
             cn = "pruv_contract__%s" % e.enum_name

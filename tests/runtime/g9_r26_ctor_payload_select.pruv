@@ -1,0 +1,23 @@
+// G9 A2 audit fix: variant_field over a constructor with payload (and over a part of one) in a runtime requires;
+// the selected field is moved out of the owned temporary, so no reference escapes its block (rustc lifetime check)
+struct P { n: i64 }
+enum T { End, Node(p: P, next: T) }
+
+fn head_is_one() -> i64
+  requires variant_field(T::Node(P { n: 1 }, T::End), T::Node, p).n == 1
+  ensures result == 1
+{
+  return 1;
+}
+
+fn second_is(x: i64) -> i64
+  requires x >= 0 && x <= 100
+  requires variant_field(variant_field(T::Node(P { n: x }, T::Node(P { n: 2 }, T::End)), T::Node, next), T::Node, p).n == 2
+  ensures result == x
+{
+  return x;
+}
+
+fn both() -> i64 {
+  return head_is_one() + second_is(5);
+}

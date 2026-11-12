@@ -23,6 +23,8 @@ Generated names (user identifiers never start with `pruv_` nor contain `__`, so 
                   two i64, array results through a trailing `ptr out`, Option/Result results by value as { i64, i64 }).
   @pruv_cdiv/@pruv_crem  internal i128 Euclidean division for requires (only if some entry checks).
   @.str.N         private string constants.
+  G9 A3 helpers   @pruv_drop__T / @pruv_clone__T / @pruv_box__T / @pruv_dropnode__T / @pruv_clonenode__T (extended
+                  types), @pruv_csize__T / @pruv_ceq__T (runtime contracts); see the G9 A3 design note before class Words.
 Local IR names: %tN temporaries, %lN.name.{a,b} local slots (entry-block alloca), %p.name parameters,
 %qN.* quantifier slots, labels `hint.N` (per-function counters).
 
@@ -83,6 +85,14 @@ declare void @pruv_panic_elem(i64, ptr) noreturn cold nounwind
 
 # G2 A5 (docs/G2_A5_IMPL.md 4.2): only emitted when the program uses [bool]
 DECLS_BOOL = "declare void @pruv_check_bool(ptr nocapture readonly, i64) nounwind\n"
+
+# G9 A3: only emitted when the program has a recursive (boxed) edge.  The marker global is kept alive through
+# @llvm.used, so linking a runtime without pruv_runtime_nodes_v1 fails even when no node helper survives inlining.
+DECLS_NODE = ("declare noalias ptr @pruv_node_alloc_v1(i64, i64) nounwind\n"
+              "declare void @pruv_node_free_v1(ptr nocapture, i64, i64) nounwind\n"
+              "declare void @pruv_runtime_nodes_v1() nounwind\n"
+              "@pruv_nodes_marker = internal global ptr @pruv_runtime_nodes_v1\n"
+              '@llvm.used = appending global [1 x ptr] [ptr @pruv_nodes_marker], section "llvm.metadata"\n')
 
 # G2 B2 (docs/G2_B2_IMPL.md 2.7): only emitted when the program uses str
 DECLS_STR = ("declare i32 @pruv_str_boundary(ptr nocapture readonly, i64, i64) nounwind willreturn memory(argmem: read)\n"
@@ -186,6 +196,8 @@ def st(t, c=False):
         return "i1"
     if n in ("option", "result"):
         return COPT if c else OPT
+    if n in ("array", "array_u8", "array_bool", "str"):  # G9 A3: buffer fields keep the { ptr, i64 } form
+        return ARR
     return "%%pruv_%s_%s" % ("c" if c else "t", n)
 
 
@@ -223,26 +235,65 @@ def words(tt, ty):
     return r
 
 
+def fld_label(d, vname, fname):
+    """G9 field label as in prog.g9["boxed"]: "Struct.field" or "Enum::Variant.field" """
+    return "%s.%s" % (d.name, fname) if vname is None else "%s::%s.%s" % (d.name, vname, fname)
+
+
+def new_tt(prog):
+    """type table of a program: SCC-condensed declaration order for G9 programs (identical to TypeTable otherwise),
+    plus the G9 metadata sets tt.g9_ext (extended declaration names) and tt.g9_boxed (boxed field labels)"""
+    tt = codegen.make_type_table(prog)
+    tt.g9_ext, tt.g9_boxed = codegen.g9_sets(prog)
+    return tt
+
+
+def is_ext_t(tt, t):
+    """t is an extended user type (G9): recursive, or holding a buffer or an extended type"""
+    return bool(tt.g9_ext) and t is not None and t.owner is None and not t.args and t.name in tt.g9_ext
+
+
 def type_defs(tt):
     out = []
+    ext, boxed = tt.g9_ext, tt.g9_boxed
     for c in (False, True):
         for d in tt.order:
+            if c and d.name in ext:     # G9: an extended value has no i128 contract mirror
+                continue
+
+            def fs_of(fields, vname):
+                # a boxed (recursive SCC) field is an opaque ptr to an independently allocated node
+                return ["ptr" if fld_label(d, vname, f.name) in boxed else st(f.type, c) for f in fields]
             if isinstance(d, StructDecl):
-                fs = [st(f.type, c) for f in d.fields]
+                fs = fs_of(d.fields, None)
             else:
-                fs = ["i64"] + [st(f.type, c) for v in d.variants for f in v.fields]
+                fs = ["i64"]
+                for v in d.variants:
+                    fs += fs_of(v.fields, v.name)
             out.append("%%pruv_%s_%s = type %s" % ("c" if c else "t", d.name, "{ %s }" % ", ".join(fs) if fs else "{}"))
     return "\n".join(out) + ("\n" if out else "")
+
+
+def type_has_field(prog, name):
+    """G9: some struct field / enum payload has the internal type `name` (array_u8, array_bool, str)"""
+    for d in prog.types:
+        fields = d.fields if isinstance(d, StructDecl) else [f for v in d.variants for f in v.fields]
+        if any(f.type.name == name for f in fields):
+            return True
+    return False
 
 
 class V:
     """an SSA value: k in i64 | i1 | i128 | arr (a=ptr, b=len) | opt (a=tag i1, b=payload) | unit |
     agg (a=aggregate SSA of a user struct/enum, ty=its Type; %pruv_t_* in code, %pruv_c_* in requires) |
-    coll (G6: a=ptr, an opaque handle of a Vec/HashMap/String box, ty=its Type)"""
-    __slots__ = ("k", "a", "b", "ty")
+    coll (G6: a=ptr, an opaque handle of a Vec/HashMap/String box, ty=its Type) |
+    ref (G9 contract evaluation: a=ptr to the REAL storage of an extended value, ty=its Type).
+    p (G9, agg only): address of storage that holds this value when known (a parameter, a local slot, a boxed
+    node, a call-result slot); lets a read argument pass the pointer instead of spilling a copy."""
+    __slots__ = ("k", "a", "b", "ty", "p")
 
-    def __init__(s, k, a=None, b=None, ty=None):
-        s.k, s.a, s.b, s.ty = k, a, b, ty
+    def __init__(s, k, a=None, b=None, ty=None, p=None):
+        s.k, s.a, s.b, s.ty, s.p = k, a, b, ty, p
 
 
 class Slot:
@@ -261,6 +312,8 @@ class Mod:
         s.g6_decls = {}         # G6 A3: shim symbol -> declare line
         s.g6_v2 = False         # G6 A3: string_to_str needs the v2 copy/free declarations
         s.g6_bridge = False     # G6 A3: some function references @pruv_g6_bridge_v1
+        s.need_size = set()     # G9 A3: types whose runtime-contract size / equality helpers are needed
+        s.need_eq = set()
 
     def string(s, text):
         if text not in s.strs:
@@ -277,10 +330,27 @@ class Mod:
         return "\n".join(out) + ("\n" if out else "")
 
 
-def ir_params(f):
-    """internal parameter list [(type, name)]"""
+def ir_ret(tt, f):
+    """internal LLVM result type: an extended (G9) aggregate result goes through explicit output storage"""
+    return "void" if is_ext_t(tt, f.ret) else lty(f.ret)
+
+
+def is_internal_fn(f, tt):
+    """G9: a function with an extended type in its signature has no raw ABI wrapper and no binding"""
+    return any(is_ext_t(tt, p.type) for p in f.params) or is_ext_t(tt, f.ret)
+
+
+def ir_params(f, tt=None):
+    """internal parameter list [(type, name)].  G9: an extended result is the leading `ptr %out` (output storage);
+    an extended parameter is a plain `ptr %p.NAME` to valid caller-owned storage (no noalias: the same subtree can
+    be passed twice)."""
     out = []
+    if tt is not None and is_ext_t(tt, f.ret):
+        out.append(("ptr", "%out"))
     for p in f.params:
+        if tt is not None and is_ext_t(tt, p.type):
+            out.append(("ptr", "%%p.%s" % mangle(p.name)))
+            continue
         n = mangle(p.name)
         if is_arr(p.type):
             out += [("ptr", "%%p.%s.a" % n), ("i64", "%%p.%s.n" % n)]
@@ -413,7 +483,7 @@ class FnGen:
         if sl.k in ("i64", "i1"):
             return V(sl.k, s.op("load %s, ptr %s" % (sl.k, sl.a)))
         if sl.k == "agg":
-            return V("agg", s.op("load %s, ptr %s" % (lty(sl.ty), sl.a)), None, sl.ty)
+            return V("agg", s.op("load %s, ptr %s" % (lty(sl.ty), sl.a)), None, sl.ty, sl.a)
         if sl.k == "coll":
             return V("coll", s.op("load ptr, ptr %s" % sl.a), None, sl.ty)
         if sl.k == "arr":
@@ -447,9 +517,107 @@ class FnGen:
     def push_scope(s):
         s.scopes.append({"names": {}, "arrays": []})
 
+    # ---------- G9 A3: extended values (ownership helpers) ----------
+    def is_ext(s, t):
+        return is_ext_t(s.tt, t)
+
+    def fb(s, ty, variant, fname):
+        """the field `fname` (of `variant` for an enum) of the user type ty is a boxed recursive edge"""
+        return bool(s.tt.g9_boxed) and is_user_type(ty) and fld_label(s.tt.decl(ty), variant, fname) in s.tt.g9_boxed
+
+    def spill(s, v):
+        """address of storage that holds the aggregate v: its known address, else a fresh entry-block copy"""
+        if v.p is not None:
+            return v.p
+        base = "%%sp%d" % s.nslot
+        s.nslot += 1
+        s.allocas.append("%s = alloca %s" % (base, lty(v.ty)))
+        s.ins("store %s %s, ptr %s" % (lty(v.ty), v.a, base))
+        return base
+
+    def new_out(s, ty):
+        """fresh entry-block output storage for an aggregate result"""
+        base = "%%o%d" % s.nslot
+        s.nslot += 1
+        s.allocas.append("%s = alloca %s" % (base, lty(ty)))
+        return base
+
+    def fresh(s, v, owned):
+        """a fresh extended value: owned by the destination, or a temporary dropped at the end of the statement"""
+        if not owned:
+            s.temps[-1].append(v)
+        return v
+
+    def clone_val(s, v):
+        """deep copy of the extended value v (a view) into new owned storage"""
+        src = s.spill(v)
+        dst = s.new_out(v.ty)
+        s.ins("call void @pruv_clone__%s(ptr %s, ptr %s)" % (v.ty.name, src, dst))
+        return V("agg", s.op("load %s, ptr %s" % (lty(v.ty), dst)), None, v.ty, dst)
+
+    def drop_agg(s, v):
+        s.ins("call void @pruv_drop__%s(ptr %s)" % (v.ty.name, s.spill(v)))
+
+    def view_ptr(s, e):
+        """address of the storage of an extended expression in a READ position (argument): a local slot or a
+        parameter is passed as is, a fresh temporary lives (registered in s.temps) until the end of the statement"""
+        if isinstance(e, Var):
+            kind, x = s.lookup(e.name)
+            if kind == "slot":
+                return x.a
+            return s.spill(x)
+        return s.spill(s.ev(e))
+
+    def getf(s, base, ty, idx, fd, variant, c=False):
+        """field value of the aggregate `base` (type ty) at storage index idx; a boxed field is a VIEW of the child
+        node (a shallow load, never dropped through this value)"""
+        if not c and s.fb(ty, variant, fd.name):
+            x = s.op("extractvalue %s %s, %d" % (st(ty, c), base.a, idx))
+            return V("agg", s.op("load %s, ptr %s" % (lty(fd.type), x)), None, fd.type, x)
+        return s.get(base, ty, idx, fd.type, c)
+
+    def putf(s, acc, ty, idx, v, fd, variant, c=False):
+        """insertvalue of the owned field value v; a boxed field first moves into a new node"""
+        if not c and s.fb(ty, variant, fd.name):
+            nd = s.op("call ptr @pruv_box__%s(%s %s)" % (fd.type.name, lty(fd.type), v.a))
+            return s.op("insertvalue %s %s, ptr %s, %d" % (st(ty, c), acc, nd, idx))
+        return s.put(acc, ty, idx, v, fd.type, c)
+
+    def assign_path(s, sl, path, v):
+        """store the owned value v into the field path of the extended local slot sl (in place).  The old value of
+        the last field is released (nodes: drop then free; buffers: free) after v is complete."""
+        cur, cty = sl.a, sl.ty
+        for k, fname in enumerate(path):
+            i = s.tt.field_index(cty, fname)
+            fd = s.tt.fields(cty)[i]
+            g = s.op("getelementptr inbounds %s, ptr %s, i32 0, i32 %d" % (lty(cty), cur, i))
+            boxed = s.fb(cty, None, fname)
+            if k < len(path) - 1:
+                cur = s.op("load ptr, ptr %s" % g) if boxed else g
+                cty = fd.type
+                continue
+            ft = fd.type
+            if boxed:
+                old = s.op("load ptr, ptr %s" % g)
+                s.ins("call void @pruv_dropnode__%s(ptr %s)" % (ft.name, old))
+                nd = s.op("call ptr @pruv_box__%s(%s %s)" % (ft.name, lty(ft), v.a))
+                s.ins("store ptr %s, ptr %s" % (nd, g))
+            elif is_arr(ft):
+                x = s.op("load %s, ptr %s" % (ARR, g))
+                s.free_val(V("arr", s.op("extractvalue %s %s, 0" % (ARR, x)), s.op("extractvalue %s %s, 1" % (ARR, x)),
+                             elem_ty(ft)))
+                s.ins("store %s %s, ptr %s" % (ARR, s.agg(v), g))
+            elif s.is_ext(ft):
+                s.ins("call void @pruv_drop__%s(ptr %s)" % (ft.name, g))
+                s.ins("store %s %s, ptr %s" % (lty(ft), v.a, g))
+            else:
+                s.ins("store %s %s, ptr %s" % (st(ft), s.pack(v, ft, False), g))
+
     def free_val(s, v):
         if v.k == "coll":  # G6 A3: a fresh (non-null) collection temporary
             s.g6_drop(v)
+        elif v.k == "agg":  # G9 A3: an extended temporary
+            s.drop_agg(v)
         elif is_bytes(v):  # G2 A5
             s.ins("call void @pruv_free_v2(ptr %s, i64 %s, i64 1, i64 1)" % (v.a, v.b))
         else:
@@ -459,8 +627,22 @@ class FnGen:
         for sl in reversed(sc["arrays"]):
             if sl.k == "coll":
                 s.drop_slot(sl)
+            elif sl.k == "agg":     # G9 A3: an owned extended local
+                s.ins("call void @pruv_drop__%s(ptr %s)" % (sl.ty.name, sl.a))
             else:
                 s.free_val(s.load(sl))
+
+    def hold(s, v):
+        """move a temporary into a fresh owner slot (returned); the caller registers it in a scope"""
+        if v.k == "agg":
+            sl = s.new_slot("hold", v.ty)
+        elif v.k == "coll":
+            sl = s.new_slot("hold", v.ty)
+        else:
+            sl = s.new_slot("hold", ARRAY)
+            sl.ty = v.ty
+        s.store(sl, v)
+        return sl
 
     # ---------- G6 A3: shim calls, owner slots ----------
     def g6_decl(s, sym, ret, argtys):
@@ -511,10 +693,15 @@ class FnGen:
             ot, pt = (COPT, "i128") if c else (OPT, "i64")
             a = s.op("insertvalue %s undef, i1 %s, 0" % (ot, v.a))
             return s.op("insertvalue %s %s, %s %s, 1" % (ot, a, pt, v.b))
+        if is_arr(ty):  # G9 A3: a buffer field is stored as { ptr, i64 }
+            return s.agg(v)
         return v.a
 
     def unpack(s, x, ty, c):
         n = ty.name
+        if is_arr(ty):  # G9 A3
+            return V("arr", s.op("extractvalue %s %s, 0" % (ARR, x)), s.op("extractvalue %s %s, 1" % (ARR, x)),
+                     elem_ty(ty))
         if n == "i64":
             return V("i128" if c else "i64", x)
         if n == "bool":
@@ -545,7 +732,7 @@ class FnGen:
             vals[fi.name] = evf(fi.value)
         acc = "zeroinitializer"
         for i, fd in enumerate(s.tt.fields(ty)):
-            acc = s.put(acc, ty, i, vals[fd.name], fd.type, c)
+            acc = s.putf(acc, ty, i, vals[fd.name], fd, None, c)    # G9: a boxed field moves into a new node
         return V("agg", acc, None, ty)
 
     def mk_enum(s, e, evf, c):
@@ -554,7 +741,7 @@ class FnGen:
         tag = s.tt.variant_index(ty, e.variant)
         acc = s.op("insertvalue %s zeroinitializer, i64 %d, 0" % (st(ty, c), tag))
         for i, fd in enumerate(s.tt.fields(ty, e.variant)):
-            acc = s.put(acc, ty, payload_index(s.tt, ty, e.variant, i), vals[i], fd.type, c)
+            acc = s.putf(acc, ty, payload_index(s.tt, ty, e.variant, i), vals[i], fd, e.variant, c)
         return V("agg", acc, None, ty)
 
     def mk_gctor(s, e, evf, c):
@@ -753,6 +940,9 @@ class FnGen:
                     owned.append(sl)
                 else:        # borrowed: never dropped here
                     names[p.name] = ("ssa", V("coll", "%%p.%s.h" % n, None, p.type))
+            elif s.is_ext(p.type):   # G9 A3: a read view of caller-owned storage; never dropped here
+                pv = s.op("load %s, ptr %%p.%s" % (lty(p.type), n))
+                names[p.name] = ("ssa", V("agg", pv, None, p.type, "%%p.%s" % n))
             elif is_agg(p.type):
                 names[p.name] = ("ssa", V("agg", "%%p.%s" % n, None, p.type))
             else:
@@ -763,7 +953,10 @@ class FnGen:
 
     def emit_ret(s, v):
         rt = s.f.ret
-        if rt == UNIT:
+        if s.is_ext(rt):    # G9 A3: explicit output storage; v is an owned value
+            s.ins("store %s %s, ptr %%out" % (lty(rt), v.a))
+            s.term("ret void")
+        elif rt == UNIT:
             s.term("ret void")
         elif rt in (I64, BOOL) or is_collection(rt):
             s.term("ret %s %s" % (lty(rt), v.a))
@@ -802,17 +995,19 @@ class FnGen:
             s.store(sl, v)
             sc = s.scopes[-1]
             sc["names"][st.name] = ("slot", sl)
-            if sl.k == "arr" or sl.k == "coll":
-                sc["arrays"].append(sl)
+            if sl.k == "arr" or sl.k == "coll" or (sl.k == "agg" and s.is_ext(sl.ty)):
+                sc["arrays"].append(sl)     # an owner released when the scope ends
             s.end_temps()
         elif isinstance(st, Assign):
             s.begin_temps()
             sl = s.lookup(st.name)[1]
-            v = s.ev(st.value, True)
+            v = s.ev(st.value, True)        # the right side is complete and owned before the old value is destroyed
             if sl.k == "arr":
                 s.free_val(s.load(sl))
             elif sl.k == "coll":   # G6 A3: drop the old value (null when moved out) after the right side
                 s.drop_slot(sl)
+            elif sl.k == "agg" and s.is_ext(sl.ty):   # G9 A3
+                s.ins("call void @pruv_drop__%s(ptr %s)" % (sl.ty.name, sl.a))
             s.store(sl, v)
             s.end_temps()
         elif isinstance(st, FieldAssign):
@@ -820,6 +1015,11 @@ class FnGen:
             kind, sl = s.lookup(st.name)
             if kind != "slot":
                 raise Exception("llvmgen: field assignment to non-local %s" % st.name)
+            if s.is_ext(sl.ty):             # G9 A3: owned right side first, then an in-place store along the path
+                v = s.ev(st.value, True)
+                s.assign_path(sl, st.fields, v)
+                s.end_temps()
+                return
             v = s.ev(st.value)              # right side first, then root load -> insertvalue chain -> store
             root = s.load(sl)
             s.store(sl, s.set_path(root, sl.ty, st.fields, v))
@@ -898,6 +1098,18 @@ class FnGen:
             s.begin_temps()
             s.ev(st.expr)
             s.end_temps()
+        elif isinstance(st, Match) and s.is_ext(st.scrutinee.ty):
+            # G9 A3: the scrutinee is borrowed, never consumed; every temporary it created (a fresh scrutinee, a
+            # fresh base of a field path, a fresh argument) is moved into owner slots of a scope that spans all
+            # arms, so it lives until the selected arm exits (also through an early return) and is dropped once.
+            s.begin_temps()
+            sv = s.ev(st.scrutinee)
+            held = s.temps.pop()
+            s.push_scope()
+            for tv in held:
+                s.scopes[-1]["arrays"].append(s.hold(tv))
+            s.user_match(st, sv)
+            s.pop_scope()
         elif isinstance(st, Match):
             s.begin_temps()
             sv = s.ev(st.scrutinee)
@@ -943,7 +1155,7 @@ class FnGen:
             s.place(l)
             bind = {}
             for i, (name, fd) in enumerate(zip(a.binders, s.tt.fields(ty, a.ctor))):
-                bind[name] = ("ssa", s.get(sv, ty, payload_index(s.tt, ty, a.ctor, i), fd.type, False))
+                bind[name] = ("ssa", s.getf(sv, ty, payload_index(s.tt, ty, a.ctor, i), fd, a.ctor, False))
             if s.run_block(a.body, bind):
                 s.br(end)
                 reach = True
@@ -995,7 +1207,10 @@ class FnGen:
             return V("i1", "true" if e.value else "false")
         if isinstance(e, Var):
             kind, x = s.lookup(e.name)
-            return x if kind == "ssa" else s.load(x)
+            v = x if kind == "ssa" else s.load(x)
+            if owned and v.k == "agg" and s.is_ext(v.ty):   # G9 A3: a named extended value in an owning position
+                return s.clone_val(v)
+            return v
         if isinstance(e, Move):   # G6 A3: load the owner slot, then null it
             kind, x = s.lookup(e.name)
             v = s.load(x)
@@ -1036,14 +1251,22 @@ class FnGen:
         if isinstance(e, Call):
             return s.ev_call(e, owned)
         if isinstance(e, StructLit):
+            if s.is_ext(Type(e.name)):   # G9 A3: constructor fields are owning positions; the result is fresh
+                return s.fresh(s.mk_struct(e, lambda x: s.ev(x, True), False), owned)
             return s.mk_struct(e, s.ev, False)
         if isinstance(e, EnumCtor):
+            if s.is_ext(Type(e.enum_name)):
+                return s.fresh(s.mk_enum(e, lambda x: s.ev(x, True), False), owned)
             return s.mk_enum(e, s.ev, False)
         if isinstance(e, FieldAccess):
             b = s.ev(e.base)
             ty = b.ty if b.ty is not None else e.base.ty
             i = s.tt.field_index(ty, e.field)
-            return s.get(b, ty, i, s.tt.fields(ty)[i].type, False)
+            fd = s.tt.fields(ty)[i]
+            v = s.getf(b, ty, i, fd, None, False)
+            if owned and v.k == "agg" and s.is_ext(fd.type):   # G9 A3: a field path in an owning position clones
+                return s.clone_val(v)
+            return v
         raise Exception("llvmgen: contract-only expression in code: %r" % e)
 
     def ev_binary(s, e):
@@ -1144,6 +1367,9 @@ class FnGen:
             return s.trusted_call(f, e)
         args = []
         for i, x in enumerate(a):
+            if s.is_ext(f.params[i].type):   # G9 A3: a read argument is a pointer to valid caller-owned storage
+                args.append("ptr %s" % s.view_ptr(x))
+                continue
             v = s.ev(x, f.params[i].take)
             if v.k == "coll":   # G6 A3: opaque handle
                 args.append("ptr %s" % v.a)
@@ -1156,6 +1382,11 @@ class FnGen:
             else:
                 args.append("%s %s" % (v.k, v.a))
         callee = "@%s__pruv_%s" % (mangle(f.name), "body" if s.verified else "entry")
+        if s.is_ext(f.ret):   # G9 A3: explicit output storage; the result is a fresh owned value
+            outp = s.new_out(f.ret)
+            s.ins("call void %s(%s)" % (callee, ", ".join(["ptr %s" % outp] + args)))
+            r = s.op("load %s, ptr %s" % (lty(f.ret), outp))
+            return s.fresh(V("agg", r, None, f.ret, outp), owned)
         if f.ret == UNIT:
             s.ins("call void %s(%s)" % (callee, ", ".join(args)))
             return V("unit")
@@ -1244,6 +1475,7 @@ class FnGen:
     # ---------- contract evaluation (requires), i128 ----------
     def bind_contract_params(s):
         s.place("start")
+        s.cparams = set(p.name for p in s.f.params)
         for p in s.f.params:
             n = mangle(p.name)
             if is_arr(p.type):
@@ -1254,12 +1486,80 @@ class FnGen:
                 s.cenv[p.name] = V("i128", s.op("sext i64 %%p.%s to i128" % n))
             elif is_collection(p.type):   # G6 A3: only len(c) is evaluable in a requires on LLVM
                 s.cenv[p.name] = V("coll", "%%p.%s.h" % n, None, p.type)
+            elif s.is_ext(p.type):   # G9 A3: no i128 mirror; contracts read the REAL storage lazily (see cx)
+                s.cenv[p.name] = V("ref", "%%p.%s" % n, None, p.type)
             elif is_agg(p.type):
                 s.cenv[p.name] = s.to_c(V("agg", "%%p.%s" % n, None, p.type), p.type)
             else:
                 t = s.op("extractvalue %s %%p.%s, 0" % (OPT, n))
                 v = s.op("extractvalue %s %%p.%s, 1" % (OPT, n))
                 s.cenv[p.name] = V("opt", t, s.op("sext i64 %s to i128" % v))
+
+    # ---------- G9 A3: contract operands over REAL values ----------
+    def g9_unsupported(s, e, what):
+        return PruvError("codegen", e.line, e.col, "unsupported_type",
+                         "%s is not supported in a runtime requires by the llvm codegen layer yet" % what,
+                         "compare tags with is_variant and fields with variant_field, or move the check into the body")
+
+    def tag_ptr(s, ty, p):
+        return s.op("getelementptr inbounds %s, ptr %s, i32 0, i32 0" % (lty(ty), p))
+
+    def cx(s, e):
+        """pointer to the REAL (code form) storage of a contract operand of nominal or buffer type.  Nothing is
+        converted eagerly, so an inactive variant or a skipped operand is never inspected.  Supported (same set as the
+        Rust backend): a parameter, a field path, variant_field (partial: pruv_panic_undefined when the variant is not
+        active; the tag is checked before the payload address is formed) and nullary constructors."""
+        und = lambda msg: s.panic1("pruv_panic_undefined", msg)
+        if isinstance(e, Var):
+            if e.name not in s.cparams:
+                raise s.g9_unsupported(e, "the variable %s as an aggregate operand" % e.name)
+            n = mangle(e.name)
+            if s.is_ext(e.ty):
+                return "%%p.%s" % n
+            return s.spill(V("agg", "%%p.%s" % n, None, e.ty))     # a non-extended parameter is an SSA value
+        if isinstance(e, FieldAccess):
+            bty = e.base.ty
+            bp = s.cx(e.base)
+            i = s.tt.field_index(bty, e.field)
+            g = s.op("getelementptr inbounds %s, ptr %s, i32 0, i32 %d" % (lty(bty), bp, i))
+            if s.fb(bty, None, e.field):
+                g = s.op("load ptr, ptr %s" % g)
+            return g
+        if isinstance(e, VariantField):
+            ety = Type(e.enum_name)
+            bp = s.cx(e.value)
+            k = s.tt.variant_index(ety, e.variant)
+            tag = s.op("load i64, ptr %s" % s.tag_ptr(ety, bp))
+            ok = s.op("icmp eq i64 %s, %d" % (tag, k))
+            s.guard(ok, und("variant_field expected %s::%s.%s" % (getattr(e, "src_name", e.enum_name), e.variant, e.field)),
+                    False)
+            i = s.tt.field_index(ety, e.field, e.variant)
+            g = s.op("getelementptr inbounds %s, ptr %s, i32 0, i32 %d" % (
+                lty(ety), bp, payload_index(s.tt, ety, e.variant, i)))
+            if s.fb(ety, e.variant, e.field):
+                g = s.op("load ptr, ptr %s" % g)
+            return g
+        if isinstance(e, EnumCtor) and not e.args:
+            ety = Type(e.enum_name)
+            x = s.op("insertvalue %s zeroinitializer, i64 %d, 0" % (st(ety), s.tt.variant_index(ety, e.variant)))
+            return s.spill(V("agg", x, None, ety))
+        if isinstance(e, StructLit) and not e.fields:
+            return s.spill(V("agg", "zeroinitializer", None, Type(e.name)))
+        raise s.g9_unsupported(e, "a constructor with payload as an aggregate operand")
+
+    def cload(s, e):
+        """value of a field path / variant_field whose root is an extended value: a buffer (arr), an extended value
+        (ref) or a scalar-like value converted to its contract form"""
+        p = s.cx(e)
+        t = e.ty
+        if is_arr(t):
+            x = s.op("load %s, ptr %s" % (ARR, p))
+            return V("arr", s.op("extractvalue %s %s, 0" % (ARR, x)), s.op("extractvalue %s %s, 1" % (ARR, x)),
+                     elem_ty(t))
+        if s.is_ext(t):
+            return V("ref", p, None, t)
+        x = s.op("load %s, ptr %s" % (st(t), p))
+        return s.to_c(s.unpack(x, t, False), t)
 
     def cev(s, e):
         und = lambda msg: s.panic1("pruv_panic_undefined", msg)
@@ -1283,6 +1583,16 @@ class FnGen:
                 if op == "==>":
                     l = V("i1", s.op("xor i1 %s, true" % l.a))
                 return V("i1", s.shortcircuit(l.a, lambda: s.cev(e.right).a, op != "&&"))
+            if op in ("==", "!=") and s.is_ext(e.left.ty):
+                # G9 A3: structural equality of buffer-free extended aggregates, visited lazily on the real values:
+                # one budget unit per visited node pair, only the active variant's fields are compared
+                pl = s.cx(e.left)
+                pr = s.cx(e.right)
+                s.m.need_eq.add(e.left.ty.name)
+                eq = s.op("call i1 @pruv_ceq__%s(ptr %s, ptr %s, ptr %s)" % (e.left.ty.name, pl, pr, s.budget))
+                if op == "!=":
+                    eq = s.op("xor i1 %s, true" % eq)
+                return V("i1", eq)
             l = s.cev(e.left)
             r = s.cev(e.right)
             if op in ("+", "-", "*"):
@@ -1344,13 +1654,22 @@ class FnGen:
         if isinstance(e, EnumCtor):
             return s.mk_enum(e, s.cev, True)
         if isinstance(e, FieldAccess):
+            if s.is_ext(e.base.ty):     # G9 A3: a field of a real extended value
+                return s.cload(e)
             b = s.cev(e.base)
             i = s.tt.field_index(b.ty, e.field)
             return s.get(b, b.ty, i, s.tt.fields(b.ty)[i].type, True)
         if isinstance(e, IsVariant):
+            if s.is_ext(e.value.ty):    # G9 A3: the tag of the real value
+                ety = e.value.ty
+                p = s.cx(e.value)
+                tag = s.op("load i64, ptr %s" % s.tag_ptr(ety, p))
+                return V("i1", s.op("icmp eq i64 %s, %d" % (tag, s.tt.variant_index(ety, e.variant))))
             b = s.cev(e.value)
             k = s.tt.variant_index(b.ty, e.variant)
             return V("i1", s.op("icmp eq i64 %s, %d" % (s.tag_of(b, True), k)))
+        if isinstance(e, VariantField) and s.is_ext(e.value.ty):
+            return s.cload(e)
         if isinstance(e, VariantField):
             b = s.cev(e.value)
             k = s.tt.variant_index(b.ty, e.variant)
@@ -1361,6 +1680,10 @@ class FnGen:
             return s.get(b, b.ty, payload_index(s.tt, b.ty, e.variant, i), fd.type, True)
         if isinstance(e, Call):
             n, a = e.name, e.args
+            if n == "size":   # G9 A3: structural size of the real value, checked i128 additions, one unit per node
+                p = s.cx(a[0])
+                s.m.need_size.add(a[0].ty.name)
+                return V("i128", s.op("call i128 @pruv_csize__%s(ptr %s, ptr %s)" % (a[0].ty.name, p, s.budget)))
             if n == "len":
                 x = s.cev(a[0])
                 if x.k == "coll":   # G6 A3
@@ -1534,8 +1857,8 @@ class FnGen:
 
 def entry_of(m, funcs, f, trust, budget=1 << 30):
     g = FnGen(m, funcs, f, True)
-    params = ir_params(f)
-    rt = lty(f.ret)
+    params = ir_params(f, m.tt)
+    rt = ir_ret(m.tt, f)    # G9 A3: "void" for an extended result (output storage is the leading `ptr %out`)
     if trust:
         g.place("start")
     else:
@@ -1551,13 +1874,375 @@ def entry_of(m, funcs, f, trust, budget=1 << 30):
                     False)
     args = ", ".join("%s %s" % (t, n) for t, n in params)
     callee = "@%s__pruv_body" % mangle(f.name)
-    if f.ret == UNIT:
+    if f.ret == UNIT or rt == "void":
         g.ins("call void %s(%s)" % (callee, args))
         g.term("ret void")
     else:
         r = g.op("call %s %s(%s)" % (rt, callee, args))
         g.term("ret %s %s" % (rt, r))
     return g.render("define internal %s @%s__pruv_entry(%s)" % (rt, mangle(f.name), sig_text(params)))
+
+
+# ======================================================================================================================
+# G9 A3: recursive values and aggregate buffer fields (docs/G9_SPEC.md 4, 6, 7, 13)
+#
+# Design note.
+#  Layout.  An ordinary acyclic aggregate stays inline (%pruv_t_Name, declaration order).  A field whose type is in the
+#    same recursive type SCC as its container (prog.g9["boxed"]) is an opaque `ptr` to an independently allocated node
+#    holding one %pruv_t_Child; buffers ([i64], [u8], [bool], str) are { ptr, i64 }.  An enum is { i64 tag, every
+#    variant's payload slots }: inactive pointers are null, inactive scalar storage is zero, and only the ACTIVE payload
+#    is ever loaded, cloned, compared, sized or dropped.  Node size and alignment come from the target's own layout
+#    (getelementptr-from-null, evaluated by the backend), never from Python host sizes.
+#  Values.  Code evaluates an extended aggregate as an SSA value that is a shallow copy of its storage.  Whether a value
+#    OWNS its resources is decided syntactically, as in the Rust backend: a constructor or a call result is fresh; a
+#    variable, a parameter, a match binder or a field path is a borrowed VIEW.  A view is never dropped.
+#  Ownership.  Owners are local slots (dropped, in reverse order, when their scope ends and on `return`), fresh
+#    temporaries (dropped at the end of the statement; a fresh match scrutinee, and everything created while evaluating
+#    it, is moved into a scope that spans all arms), constructor fields and the output storage of a result.  An owning
+#    position (let, assignment, constructor field, return, field replacement) receives a fresh value as is and CLONES a
+#    view.  An assignment evaluates its right side and takes ownership of the result before the old value is dropped.
+#  Calls.  An extended read argument is `ptr` to valid caller-owned storage (a slot, a parameter, a node, or a spilled
+#    copy of a fresh temporary that lives through the call).  An extended result is written through the leading
+#    `ptr %out`.  Extended signatures are internal (no ABI wrapper, no binding).  Pointer parameters carry no noalias:
+#    the same subtree may be passed twice.
+#  Helpers (stable names, SCC-condensed declaration order): pruv_drop__T(ptr) releases the owned parts of the value at
+#    the pointer, children first, but never the root storage itself; pruv_clone__T(ptr src, ptr dst) writes a deep copy;
+#    pruv_box__T / pruv_dropnode__T / pruv_clonenode__T allocate, release and clone a node (pruv_node_alloc_v1 /
+#    pruv_node_free_v1); pruv_csize__T and pruv_ceq__T implement `size` and `==` in runtime contracts (checked i128
+#    addition, one budget unit per visited node, same messages as the Rust backend helpers).
+# ======================================================================================================================
+def g9_gep(g, T, p, idx):
+    return g.op("getelementptr inbounds %s, ptr %s, i32 0, i32 %d" % (T, p, idx))
+
+
+def g9_variants(d):
+    """[(variant name or None, tag or None, fields)] in declaration order"""
+    if isinstance(d, StructDecl):
+        return [(None, None, d.fields)]
+    return [(v.name, i, v.fields) for i, v in enumerate(d.variants)]
+
+
+def g9_sidx(tt, ty, vn, i):
+    """storage index of field i of variant vn (a struct: vn is None) inside the aggregate"""
+    return i if vn is None else payload_index(tt, ty, vn, i)
+
+
+def g9_each_variant(g, ty, d, base, vs, emit):
+    """emit(variant name, fields) for the variants in vs.  A struct runs it inline.  An enum switches on the tag of
+    the value at `base` and continues, on every path, at a join label that is left as the current block."""
+    if isinstance(d, StructDecl):
+        for vn, _t, fs in vs:
+            emit(vn, fs)
+        return
+    if not vs:
+        return
+    tag = g.op("load i64, ptr %s" % g.tag_ptr(ty, base))
+    done = g.label("gdone")
+    lbls = [g.label("gv") for _ in vs]
+    g.term("switch i64 %s, label %%%s [ %s ]" % (tag, done, " ".join(
+        "i64 %d, label %%%s" % (t, l) for (_vn, t, _fs), l in zip(vs, lbls))))
+    for (vn, _t, fs), l in zip(vs, lbls):
+        g.place(l)
+        emit(vn, fs)
+        g.br(done)
+    g.place(done)
+
+
+def g9_node_layout(g, T):
+    """(size, align) SSA names of the node type T computed by the backend from the target layout"""
+    z = g.op("getelementptr %s, ptr null, i32 1" % T)
+    size = g.op("ptrtoint ptr %s to i64" % z)
+    a = g.op("getelementptr { i8, %s }, ptr null, i32 0, i32 1" % T)
+    align = g.op("ptrtoint ptr %s to i64" % a)
+    return size, align
+
+
+def g9_drop_text(m, tt, d):
+    ty = Type(d.name)
+    T = lty(ty)
+    g = FnGen(m, {}, None, True)
+    g.place("start")
+
+    def emit(vn, fs):
+        for i, f in enumerate(fs):
+            ft = f.type
+            if not (is_arr(ft) or g.is_ext(ft)):
+                continue
+            gp = g9_gep(g, T, "%v", g9_sidx(tt, ty, vn, i))
+            if g.fb(ty, vn, f.name):       # a boxed child: its contents first, then its node
+                c = g.op("load ptr, ptr %s" % gp)
+                g.ins("call void @pruv_dropnode__%s(ptr %s)" % (ft.name, c))
+            elif is_arr(ft):
+                x = g.op("load %s, ptr %s" % (ARR, gp))
+                g.free_val(V("arr", g.op("extractvalue %s %s, 0" % (ARR, x)), g.op("extractvalue %s %s, 1" % (ARR, x)),
+                             elem_ty(ft)))
+            else:                          # an inline extended child (not a node)
+                g.ins("call void @pruv_drop__%s(ptr %s)" % (ft.name, gp))
+    vs = [(vn, t, fs) for vn, t, fs in g9_variants(d) if any(is_arr(f.type) or g.is_ext(f.type) for f in fs)]
+    g9_each_variant(g, ty, d, "%v", vs, emit)
+    g.term("ret void")
+    return g.render("define internal void @pruv_drop__%s(ptr %%v)" % d.name)
+
+
+def g9_clone_text(m, tt, d):
+    ty = Type(d.name)
+    T = lty(ty)
+    g = FnGen(m, {}, None, True)
+    g.place("start")
+    v0 = g.op("load %s, ptr %%src" % T)      # shallow copy: scalars, inactive null/zero slots; owners are fixed below
+    g.ins("store %s %s, ptr %%dst" % (T, v0))
+
+    def emit(vn, fs):
+        for i, f in enumerate(fs):
+            ft = f.type
+            if not (is_arr(ft) or g.is_ext(ft)):
+                continue
+            idx = g9_sidx(tt, ty, vn, i)
+            gs = g9_gep(g, T, "%src", idx)
+            gd = g9_gep(g, T, "%dst", idx)
+            if g.fb(ty, vn, f.name):
+                c = g.op("load ptr, ptr %s" % gs)
+                nb = g.op("call ptr @pruv_clonenode__%s(ptr %s)" % (ft.name, c))
+                g.ins("store ptr %s, ptr %s" % (nb, gd))
+            elif is_arr(ft):
+                x = g.op("load %s, ptr %s" % (ARR, gs))
+                p = g.op("extractvalue %s %s, 0" % (ARR, x))
+                n = g.op("extractvalue %s %s, 1" % (ARR, x))
+                if is_bytes(V("arr", p, n, elem_ty(ft))):
+                    np_ = g.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (p, n))
+                else:
+                    np_ = g.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (p, n))
+                a1 = g.op("insertvalue %s %s, ptr %s, 0" % (ARR, x, np_))
+                g.ins("store %s %s, ptr %s" % (ARR, a1, gd))
+            else:
+                g.ins("call void @pruv_clone__%s(ptr %s, ptr %s)" % (ft.name, gs, gd))
+    vs = [(vn, t, fs) for vn, t, fs in g9_variants(d) if any(is_arr(f.type) or g.is_ext(f.type) for f in fs)]
+    g9_each_variant(g, ty, d, "%src", vs, emit)
+    g.term("ret void")
+    return g.render("define internal void @pruv_clone__%s(ptr %%src, ptr %%dst)" % d.name)
+
+
+def g9_node_texts(m, tt, d):
+    """box / dropnode / clonenode of a type that is the target of a boxed edge"""
+    n, T = d.name, lty(Type(d.name))
+    out = []
+    g = FnGen(m, {}, None, True)
+    g.place("start")
+    size, align = g9_node_layout(g, T)
+    p = g.op("call ptr @pruv_node_alloc_v1(i64 %s, i64 %s)" % (size, align))
+    g.ins("store %s %%v, ptr %s" % (T, p))
+    g.term("ret ptr %s" % p)
+    out.append(g.render("define internal ptr @pruv_box__%s(%s %%v)" % (n, T)))
+    g = FnGen(m, {}, None, True)
+    g.place("start")
+    g.ins("call void @pruv_drop__%s(ptr %%n)" % n)
+    size, align = g9_node_layout(g, T)
+    g.ins("call void @pruv_node_free_v1(ptr %%n, i64 %s, i64 %s)" % (size, align))
+    g.term("ret void")
+    out.append(g.render("define internal void @pruv_dropnode__%s(ptr %%n)" % n))
+    g = FnGen(m, {}, None, True)
+    g.place("start")
+    size, align = g9_node_layout(g, T)
+    p = g.op("call ptr @pruv_node_alloc_v1(i64 %s, i64 %s)" % (size, align))
+    g.ins("call void @pruv_clone__%s(ptr %%src, ptr %s)" % (n, p))
+    g.term("ret ptr %s" % p)
+    out.append(g.render("define internal ptr @pruv_clonenode__%s(ptr %%src)" % n))
+    return out
+
+
+def g9_walks(t):
+    """size / equality walk into t: a nominal value, or Option / Result of one"""
+    if gopt(t):
+        return g9_walks(t.args[0])
+    return is_user_type(t)
+
+
+def g9_weight(g, t, p):
+    """i128 SSA value of weight(value stored at p) (G9_SPEC 3), or None when it is statically 0.  Some / Ok weigh their
+    payload, None / Err 0; a nominal value weighs its size (one budget unit per node, inside pruv_csize)."""
+    if gopt(t):
+        X = t.args[0]
+        if not g9_walks(X):
+            return None
+        T = st(t)
+        tag = g.op("load i1, ptr %s" % g9_gep(g, T, p, 0))
+        pl = g9_gep(g, T, p, 1)
+        lcur, yes, end = g.cur, g.label("gwy"), g.label("gwe")
+        g.condbr(tag, yes, end)
+        g.place(yes)
+        w = g9_weight(g, X, pl)
+        wcur = g.cur
+        g.br(end)
+        g.place(end)
+        return g.op("phi i128 [ 0, %%%s ], [ %s, %%%s ]" % (lcur, w, wcur))
+    if is_user_type(t):
+        return g.op("call i128 @pruv_csize__%s(ptr %s, ptr %%bud)" % (t.name, p))
+    return None
+
+
+def g9_size_text(m, tt, d):
+    """pruv_csize__T: 1 + the weights of the ACTIVE fields, checked i128 additions in field order, one budget unit"""
+    ty = Type(d.name)
+    T = lty(ty)
+    g = FnGen(m, {}, None, True)
+    g.place("start")
+    g.budget = "%bud"
+    g.spend()
+
+    def fold(vn, fs):
+        acc = "1"
+        for i, f in enumerate(fs):
+            if not g9_walks(f.type):
+                continue
+            gp = g9_gep(g, T, "%v", g9_sidx(tt, ty, vn, i))
+            if g.fb(ty, vn, f.name):
+                gp = g.op("load ptr, ptr %s" % gp)
+            acc = g.checked("i128", "sadd", "+", acc, g9_weight(g, f.type, gp))
+        return acc
+    if isinstance(d, StructDecl):
+        g.term("ret i128 %s" % fold(None, d.fields))
+    else:
+        g.allocas.append("%res = alloca i128")
+        g.ins("store i128 1, ptr %res")
+        vs = [(vn, t, fs) for vn, t, fs in g9_variants(d) if any(g9_walks(f.type) for f in fs)]
+        g9_each_variant(g, ty, d, "%v", vs, lambda vn, fs: g.ins("store i128 %s, ptr %%res" % fold(vn, fs)))
+        g.term("ret i128 %s" % g.op("load i128, ptr %res"))
+    return g.render("define internal i128 @pruv_csize__%s(ptr %%v, ptr %%bud)" % d.name)
+
+
+def g9_eq_val(g, t, pa, pb):
+    """i1 SSA value: structural equality of the values stored at pa and pb (type t)"""
+    n = t.name
+    if gopt(t):     # Option<X> / Result<X>: equal tags, then the active payload only
+        T = st(t)
+        X = t.args[0]
+        ta = g.op("load i1, ptr %s" % g9_gep(g, T, pa, 0))
+        tb = g.op("load i1, ptr %s" % g9_gep(g, T, pb, 0))
+        te = g.op("icmp eq i1 %s, %s" % (ta, tb))
+        lcur, l1, lend = g.cur, g.label("gqa"), g.label("gqe")
+        g.condbr(te, l1, lend)
+        g.place(l1)
+        l2 = g.label("gqb")
+        if n == "option":
+            g.condbr(ta, l2, lend)          # None == None
+            g.place(l2)
+            e = g9_eq_val(g, X, g9_gep(g, T, pa, 1), g9_gep(g, T, pb, 1))
+            l2cur = g.cur
+            g.br(lend)
+            g.place(lend)
+            return g.op("phi i1 [ false, %%%s ], [ true, %%%s ], [ %s, %%%s ]" % (lcur, l1, e, l2cur))
+        l3 = g.label("gqc")
+        g.condbr(ta, l2, l3)
+        g.place(l2)
+        e = g9_eq_val(g, X, g9_gep(g, T, pa, 1), g9_gep(g, T, pb, 1))
+        l2cur = g.cur
+        g.br(lend)
+        g.place(l3)
+        ea = g.op("load i64, ptr %s" % g9_gep(g, T, pa, 2))
+        eb = g.op("load i64, ptr %s" % g9_gep(g, T, pb, 2))
+        e3 = g.op("icmp eq i64 %s, %s" % (ea, eb))
+        l3cur = g.cur
+        g.br(lend)
+        g.place(lend)
+        return g.op("phi i1 [ false, %%%s ], [ %s, %%%s ], [ %s, %%%s ]" % (lcur, e, l2cur, e3, l3cur))
+    if n in ("option", "result"):   # legacy Option<i64> / Result<i64>: { i1, i64 }
+        la = g.op("load %s, ptr %s" % (OPT, pa))
+        lb = g.op("load %s, ptr %s" % (OPT, pb))
+        ta, tb = g.op("extractvalue %s %s, 0" % (OPT, la)), g.op("extractvalue %s %s, 0" % (OPT, lb))
+        va, vb = g.op("extractvalue %s %s, 1" % (OPT, la)), g.op("extractvalue %s %s, 1" % (OPT, lb))
+        te = g.op("icmp eq i1 %s, %s" % (ta, tb))
+        pe = g.op("icmp eq i64 %s, %s" % (va, vb))
+        if n == "option":
+            pe = g.op("or i1 %s, %s" % (g.op("xor i1 %s, true" % ta), pe))
+        return g.op("and i1 %s, %s" % (te, pe))
+    if n == "i64" or n == "bool":
+        ty = "i64" if n == "i64" else "i1"
+        return g.op("icmp eq %s %s, %s" % (ty, g.op("load %s, ptr %s" % (ty, pa)), g.op("load %s, ptr %s" % (ty, pb))))
+    if is_user_type(t):
+        return g.op("call i1 @pruv_ceq__%s(ptr %s, ptr %s, ptr %%bud)" % (n, pa, pb))
+    raise Exception("llvmgen: internal error: no structural equality for type %s" % n)
+
+
+def g9_eq_text(m, tt, d):
+    """pruv_ceq__T: one budget unit, then equal tags and the fields of the active variant, left to right"""
+    ty = Type(d.name)
+    T = lty(ty)
+    g = FnGen(m, {}, None, True)
+    g.place("start")
+    g.budget = "%bud"
+    g.spend()
+    fail = g.label("ceqf")
+
+    def conj(vn, fs):
+        for i, f in enumerate(fs):
+            idx = g9_sidx(tt, ty, vn, i)
+            pa, pb = g9_gep(g, T, "%a", idx), g9_gep(g, T, "%b", idx)
+            if g.fb(ty, vn, f.name):
+                pa, pb = g.op("load ptr, ptr %s" % pa), g.op("load ptr, ptr %s" % pb)
+            e = g9_eq_val(g, f.type, pa, pb)
+            nxt = g.label("ceqn")
+            g.condbr(e, nxt, fail)
+            g.place(nxt)
+        g.term("ret i1 true")
+    if isinstance(d, StructDecl):
+        conj(None, d.fields)
+    else:
+        tl = g.op("load i64, ptr %s" % g.tag_ptr(ty, "%a"))
+        tr = g.op("load i64, ptr %s" % g.tag_ptr(ty, "%b"))
+        same, dflt = g.label("ceqs"), g.label("ceqt")
+        g.condbr(g.op("icmp eq i64 %s, %s" % (tl, tr)), same, fail)
+        g.place(same)
+        vs = [(vn, t, fs) for vn, t, fs in g9_variants(d) if fs]
+        lbls = [g.label("ceqv") for _ in vs]
+        g.term("switch i64 %s, label %%%s [ %s ]" % (tl, dflt, " ".join(
+            "i64 %d, label %%%s" % (t, l) for (_vn, t, _fs), l in zip(vs, lbls))))
+        g.place(dflt)
+        g.term("ret i1 true")
+        for (vn, _t, fs), l in zip(vs, lbls):
+            g.place(l)
+            conj(vn, fs)
+    g.place(fail)
+    g.term("ret i1 false")
+    return g.render("define internal i1 @pruv_ceq__%s(ptr %%a, ptr %%b, ptr %%bud)" % d.name)
+
+
+def g9_helper_chunks(m, tt):
+    """clone / drop / node helpers of every extended type (SCC-condensed order), then the contract size / equality
+    helpers the requires checks needed (closed over the nominal field types, declaration order)"""
+    boxed = tt.g9_boxed
+    targets = set()
+    for d in tt.order:
+        for vn, _t, fs in g9_variants(d):
+            for f in fs:
+                if fld_label(d, vn, f.name) in boxed:
+                    targets.add(f.type.name)
+    chunks = []
+    for d in tt.order:
+        if d.name not in tt.g9_ext:
+            continue
+        chunks.append(g9_drop_text(m, tt, d))
+        chunks.append(g9_clone_text(m, tt, d))
+        if d.name in targets:
+            chunks.extend(g9_node_texts(m, tt, d))
+
+    def close(seed):
+        out, work = set(), sorted(seed)
+        while work:
+            n = work.pop()
+            if n in out or n not in tt.decls:
+                continue
+            out.add(n)
+            for _vn, _t, fs in g9_variants(tt.decls[n]):
+                for f in fs:
+                    work.extend(codegen.nominals_in(f.type))
+        return out
+    sizes, eqs = close(m.need_size), close(m.need_eq)
+    for d in tt.decls.values():
+        if d.name in sizes:
+            chunks.append(g9_size_text(m, tt, d))
+        if d.name in eqs:
+            chunks.append(g9_eq_text(m, tt, d))
+    return chunks
 
 
 class Words:
@@ -2071,7 +2756,7 @@ def rs_de(tt, ty, arr, off):
 
 def gen_bindings(prog, shim=None):
     """shim: the `mod pruv_g6_shim` text of a G6 program (foreign_shim.build_shim); None for every other program"""
-    tt = TypeTable(prog)
+    tt = new_tt(prog)
     o = []
     o.append("// generated by pruvc llvmgen -- Rust bindings for the LLVM back end (include with #[path] mod sol;)")
     if prog.types:
@@ -2164,8 +2849,9 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
 }""")
     # G3: specializations of generic functions are private (no ABI symbol, not callable from the bindings)
     # G6 A3: trusted declarations and collection-bearing functions have no binding
+    # G9 A3: a function with an extended type in its signature has no binding either
     pubs = [f for f in prog.functions if not getattr(f, "private", False) and f.foreign is None
-            and not _is_coll_fn(f)]
+            and not _is_coll_fn(f) and not is_internal_fn(f, tt)]
     returns_array = any(is_arr(f.ret) for f in pubs)  # G2 B2: str counts
     decls = []
     for f in pubs:
@@ -2363,7 +3049,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
-    tt = TypeTable(prog)
+    tt = new_tt(prog)   # G9: SCC-condensed order and the extended / boxed metadata (identical to TypeTable otherwise)
     m = Mod(tt)
     funcs = {f.name: f for f in prog.functions}
     chunks = []
@@ -2373,25 +3059,33 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     for f in prog.functions:
         if f.foreign is not None:   # G6 A3: a trusted rust fn has no body; its calls go to the shim adapter
             continue
-        coll = _is_coll_fn(f)       # G6 A3: collection-bearing functions are internal (no ABI wrapper, no binding)
+        # G6 A3: collection-bearing functions are internal (no ABI wrapper, no binding); G9 A3: so are functions with
+        # an extended type in their signature
+        coll = _is_coll_fn(f) or is_internal_fn(f, tt)
         g = FnGen(m, funcs, f, verified)
         g.body()
-        params = ir_params(f)
-        chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (lty(f.ret), mangle(f.name), sig_text(params))))
+        params = ir_params(f, tt)
+        chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (ir_ret(tt, f), mangle(f.name), sig_text(params))))
         if not (coll and verified):   # verified callers call the body; the entry only serves safe-mode callers
             chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
         if not getattr(f, "private", False) and not coll:  # G3: a generic specialization has no ABI symbol
             chunks.append(abi_of(f, tt, m))
-    has_str = uses_str(prog)  # G2 B2: walk the AST once
+    if tt.g9_ext or m.need_size or m.need_eq:   # G9 A3: clone / drop / node helpers, then the contract helpers above
+        chunks.extend(g9_helper_chunks(m, tt))
+    # G9 A3: buffer fields count as uses of the buffer runtime declarations
+    has_str = uses_str(prog) or type_has_field(prog, "str")  # G2 B2: walk the AST once
     g6decls = ""
     if m.g6_bridge or m.g6_decls:   # G6 A3: bridge marker and the shim symbols used, sorted by symbol
         g6decls = G6_BRIDGE_DECL + "".join(m.g6_decls[k] + "\n" for k in sorted(m.g6_decls))
+    g9_u8 = type_has_field(prog, "array_u8") or type_has_field(prog, "array_bool")
     ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + (
-        DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool") or has_str or m.g6_v2)
+        DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool") or has_str or m.g6_v2
+                     or g9_u8)
         else "") + (
         DECLS_BOOL if uses_array_type(prog, "array_bool") else "") + (
         DECLS_STR if has_str else "") + (
-        DECLS_REPR if m.uses_repr else "") + g6decls + "\n" + "\n".join(chunks)  # G2 A5/B2, G3, G6 A3
+        DECLS_REPR if m.uses_repr else "") + (
+        DECLS_NODE if tt.g9_boxed else "") + g6decls + "\n" + "\n".join(chunks)  # G2 A5/B2, G3, G6 A3, G9 A3
     shim = None
     if is_g6:
         shim = foreign_shim.build_shim(prog, verified, trust_callers, budget, foreign_checks)

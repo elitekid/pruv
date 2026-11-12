@@ -7,7 +7,7 @@
                             [--modes VT,Vt,vT,vt,B]
 
 Groups: must_reject examples runtime bench g9 edge fuzz mutate
-  g9 = tests/g9/frontend/*.pruv (until batch A3 both compilers must agree on the llvm downstream guard diagnostic).
+  g9 = tests/g9/frontend/*.pruv (G9 A3: both compilers must produce byte-identical LLVM IR and bindings).
   edge = tests/check_edge/ok_*.pruv plus all of tests/check_edge/*.pruv (deduplicated).
 Modes (case = input x mode): the first letter V/v = verified on/off, the second letter T/t = trust_callers on/off.
   Vt=(True,False) VT=(True,True) vt=(False,False) vT=(False,True), default budget 1<<30.
@@ -40,7 +40,6 @@ from vast import PruvError  # noqa: E402
 from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from llvmgen import gen_llvm  # noqa: E402
-from typeinfo import g9_unimplemented_error  # noqa: E402
 
 BATCH = 200
 RS_TIMEOUT = 300
@@ -264,9 +263,6 @@ def eval_python(c):
             src = fh.read()
         prog = parse(src)
         check(prog)
-        g9err = g9_unimplemented_error(prog, "codegen", "llvm codegen layer")
-        if g9err is not None:
-            raise g9err
         ir, bindings = gen_llvm(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)
         obj = {"bindings": bindings, "ir": ir}
     except UnicodeDecodeError:
