@@ -1,0 +1,16 @@
+// G7: a par branch must return (); a helper returning a value cannot be a branch
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn first_of(inout a: [i64]) -> i64
+  requires len(a) > 0
+{ return a[0]; }
+
+fn demo(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    first_of(inout a);
+    set_first(inout b, 2);
+  }
+}

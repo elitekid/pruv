@@ -582,6 +582,7 @@ impl<'a> Ownership<'a> {
                 }
                 Ok(None)
             }
+            Stmt::Par(p) => { for c in &p.calls { self.expr(c, &mut st)?; } Ok(Some(st)) }
             Stmt::ExprStmt(e) => {
                 self.expr(&e.expr, &mut st)?;
                 Ok(Some(st))
@@ -931,6 +932,11 @@ fn g6_stmts(stmts: &[Stmt], out: &mut Cands) {
                 }
             }
             Stmt::Assert(a) => g6_expr(&a.cond, out),
+            Stmt::Par(e) => {
+                for c in &e.calls {
+                    g6_expr(c, out);
+                }
+            }
             Stmt::ExprStmt(e) => g6_expr(&e.expr, out),
             Stmt::FieldAssign(f) => g6_expr(&f.value, out),
             Stmt::Match(m) => {
@@ -1026,6 +1032,7 @@ fn g10_stmts(stmts: &[Stmt]) -> bool {
         }
         Stmt::Return(r) => r.value.as_ref().map_or(false, g10_expr),
         Stmt::Assert(a) => g10_expr(&a.cond),
+        Stmt::Par(e) => e.calls.iter().any(g10_expr),
         Stmt::ExprStmt(e) => g10_expr(&e.expr),
         Stmt::FieldAssign(f) => g10_expr(&f.value),
         Stmt::Match(m) => g10_expr(&m.scrutinee) || m.arms.iter().any(|a| g10_stmts(&a.body)),
@@ -1083,4 +1090,21 @@ mod tests {
         let j = join(Some(a), Some(b)).unwrap();
         assert_eq!(j.iter().cloned().collect::<Vec<_>>(), vec![("x".to_string(), V::Maybe), ("y".to_string(), V::Dead)]);
     }
+}
+
+/// A0 stops before proof or emission, in every driver mode.
+pub fn parallel_error(p: &Par) -> PruvError {
+    PruvError::new("codegen", p.line, p.col, "parallel_unavailable", "G7 verification is not implemented yet", "remove the par block (call the helpers one after another) until G7 is completed")
+}
+pub fn first_par(stmts: &[Stmt]) -> Option<&Par> {
+    stmts.iter().filter_map(|s| match s {
+        Stmt::Par(p) => Some(p),
+        Stmt::If(x) => [first_par(&x.then), first_par(&x.els)].into_iter().flatten().min_by_key(|p| (p.line,p.col)),
+        Stmt::While(x) => first_par(&x.body),
+        Stmt::Match(x) => x.arms.iter().filter_map(|a| first_par(&a.body)).min_by_key(|p| (p.line,p.col)),
+        Stmt::Let(_) | Stmt::Assign(_) | Stmt::IndexAssign(_) | Stmt::FieldAssign(_) | Stmt::Return(_) | Stmt::Assert(_) | Stmt::ExprStmt(_) => None,
+    }).min_by_key(|p| (p.line,p.col))
+}
+pub fn g7_unimplemented_error(prog: &Program) -> Option<PruvError> {
+    prog.functions.iter().find_map(|f| first_par(&f.body)).map(parallel_error)
 }

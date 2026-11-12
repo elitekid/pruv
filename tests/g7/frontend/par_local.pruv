@@ -1,0 +1,9 @@
+// G7 A0 frontend (no group): a local named par, assigned and read
+fn demo(n: i64) -> i64
+  requires 0 <= n && n <= 1000
+  ensures result == n + 2
+{
+  let mut par: i64 = n + 1;
+  par = par + 1;
+  return par;
+}

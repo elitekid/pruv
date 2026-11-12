@@ -1,0 +1,13 @@
+// G7: only calls may appear directly inside a par group (no let)
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    let x: i64 = 1;
+    set_first(inout a, 1);
+    set_first(inout b, 2);
+  }
+}

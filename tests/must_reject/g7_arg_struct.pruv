@@ -1,0 +1,17 @@
+// G7: a struct cannot cross a branch boundary
+struct Point { x: i64 }
+
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn show(p: Point) -> () {
+}
+
+fn demo(p: Point, inout b: [i64]) -> () {
+  par {
+    show(p);
+    set_first(inout b, 2);
+  }
+}

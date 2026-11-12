@@ -308,6 +308,7 @@ struct Checker {
     call_log: Vec<(String, i64, i64, Option<Vec<GType>>, String)>,
     /// root variable names of the enclosing match arms on extended scrutinees
     active_roots: Vec<String>,
+    par_groups: Vec<Vec<Expr>>,
     /// G4 A0: explicit visibility mode (the declaration names are resolved identities)
     explicit: bool,
     /// G4 A0: per function (same index as Program.functions): a host entry
@@ -487,6 +488,7 @@ impl Checker {
             fn_sccs: Vec::new(),
             call_log: Vec::new(),
             active_roots: Vec::new(),
+            par_groups: Vec::new(),
             explicit: false,
             host_entry: Vec::new(),
             uses_inout,
@@ -538,6 +540,7 @@ impl Checker {
             self.fn_(f)?;
         }
         self.check_fn_sccs(&prog.functions)?; // G9 A0: measures and stable type parameters of recursive call SCCs
+        self.check_par_eligibility(&prog.functions)?; // G7 A0: effects, foreign calls, then nested groups
         self.record_g9(prog);
         Ok(())
     }
@@ -724,6 +727,11 @@ impl Checker {
                     self.norm_stmts(&mut s.body);
                 }
                 Stmt::Assert(s) => self.norm_expr(&mut s.cond),
+                Stmt::Par(s) => {
+                    for c in &mut s.calls {
+                        self.norm_expr(c);
+                    }
+                }
                 Stmt::ExprStmt(s) => self.norm_expr(&mut s.expr),
                 Stmt::Match(s) => {
                     self.norm_expr(&mut s.scrutinee);
@@ -1956,7 +1964,181 @@ impl Checker {
                     ));
                 }
             }
+            Stmt::Par(p) => self.par(p, scope)?,
             Stmt::Match(m) => self.match_stmt(m, scope)?,
+        }
+        Ok(())
+    }
+
+    // G7: preserve Python's validation order and source-order alias witnesses.
+    fn par(&mut self, p: &mut Par, scope: &Scope) -> Res<()> {
+        if p.calls.len() < 2 {
+            return Err(terr(p.line, p.col, "parallel_arity",
+                format!("a par group needs at least two branch calls, found {}", p.calls.len()),
+                "write a single ordinary call instead of a par group"));
+        }
+        for e in &p.calls {
+            self.par_target(e)?;
+        }
+        for e in &mut p.calls {
+            self.ckind = "code";
+            self.boundary = boundary_of(e);
+            self.expr(e, scope, false)?;
+        }
+        self.boundary = None;
+        for e in &p.calls {
+            self.par_args(e)?;
+        }
+        Self::par_overlap(&p.calls)?;
+        self.par_groups.push(p.calls.clone());
+        Ok(())
+    }
+
+    fn par_target(&self, e: &Expr) -> Res<()> {
+        let c = match e {
+            Expr::Call(c) => c,
+            _ => return Err(terr(e.line(), e.col(), "parallel_call",
+                "a par branch must be a call to a Pruv function",
+                "call a unit Pruv helper that takes the arrays as inout parameters")),
+        };
+        let n = &c.name;
+        if let Some(f) = self.funcs.get(n) {
+            if f.foreign {
+                return Err(terr(c.line, c.col, "parallel_call",
+                    format!("{} is a trusted rust fn: it cannot be a par branch", n),
+                    "call a unit Pruv helper, and keep trusted rust fns outside the par group"));
+            }
+            if f.ret != unitt() {
+                return Err(terr(c.line, c.col, "parallel_call",
+                    format!("{} returns {}: a par branch must return ()", n, tn(&f.ret)),
+                    "call a unit Pruv helper and pass results back through whole inout arrays"));
+            }
+        } else if ["len", "alloc", "copy", "print", "is_char_boundary", "substr"].contains(&n.as_str())
+            || contract_only(n).is_some() || is_catalog(n) || (n == "old" && self.uses_inout)
+        {
+            return Err(terr(c.line, c.col, "parallel_call",
+                format!("{} is a builtin or catalog operation: it cannot be a par branch", n),
+                "call a unit Pruv helper that performs the operation"));
+        }
+        Ok(())
+    }
+
+    fn par_type_ok(&self, t: &GType) -> bool {
+        is_element(t, &self.elem_params)
+            || matches!(t.to_key().as_str(), "array" | "array_u8" | "array_bool")
+            || (t.name == "array" && t.args.len() == 1
+                && t.args[0].owner.is_some() && is_element(&t.args[0], &self.elem_params))
+    }
+
+    fn par_args(&self, e: &Expr) -> Res<()> {
+        if let Expr::Call(c) = e {
+            for arg in &c.args {
+                if !matches!(arg, Expr::InoutArg(_) | Expr::Var(_) | Expr::IntLit(_) | Expr::BoolLit(_)) {
+                    return Err(terr(arg.line(), arg.col(), "parallel_argument",
+                        "a par branch argument must be a binding name, an integer or bool literal, or `inout name`",
+                        "bind the value before the group, e.g. `let n: i64 = len(a);`, and pass n"));
+                }
+                let t = expr_ty(arg).as_ref().map(|k| GType::from_key(k));
+                if !t.as_ref().map_or(false, |t| self.par_type_ok(t)) {
+                    return Err(terr(arg.line(), arg.col(), "parallel_argument",
+                        format!("an argument of type {} cannot cross a par branch boundary",
+                            t.as_ref().map(tn).unwrap_or("?".into())),
+                        "bind a scalar first, or pass whole [i64], [u8] or [bool] arrays"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn par_overlap(calls: &[Expr]) -> Res<()> {
+        // Vectors preserve Python dict insertion order and the first operand at each binding.
+        let sets: Vec<_> = calls.iter().map(|e| {
+            let mut w: Vec<(&str, &Expr)> = Vec::new();
+            let mut r: Vec<(&str, &Expr)> = Vec::new();
+            if let Expr::Call(c) = e {
+                for a in &c.args {
+                    match a {
+                        Expr::InoutArg(x) => if let Expr::Var(v) = x.expr.as_ref() {
+                            if !w.iter().any(|(n, _)| *n == v.name) {
+                                w.push((&v.name, a));
+                            }
+                        },
+                        Expr::Var(v) if v.ty.as_ref().map_or(false, |k| GType::from_key(k).is_array()) => {
+                            if !r.iter().any(|(n, _)| *n == v.name) {
+                                r.push((&v.name, a));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            (w, r)
+        }).collect();
+        for j in 1..sets.len() {
+            for i in 0..j {
+                for (name, node) in &sets[j].0 {
+                    for (set, theirs) in [(&sets[i].0, "also writes"), (&sets[i].1, "reads")] {
+                        if set.iter().any(|(n, _)| n == name) {
+                            return Err(Self::par_alias(node, name, j, i, "writes", theirs));
+                        }
+                    }
+                }
+                for (name, node) in &sets[j].1 {
+                    if sets[i].0.iter().any(|(n, _)| n == name) {
+                        return Err(Self::par_alias(node, name, j, i, "reads", "writes"));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn par_alias(node: &Expr, name: &str, j: usize, i: usize, mine: &str, theirs: &str) -> PruvError {
+        terr(node.line(), node.col(), "parallel_alias",
+            format!("branch {} {} `{}`, which branch {} {}", j + 1, mine, name, i + 1, theirs),
+            "use separate arrays for the two branches, or call the helpers one after another")
+    }
+
+    fn check_par_eligibility(&self, functions: &[Function]) -> Res<()> {
+        if self.par_groups.is_empty() {
+            return Ok(());
+        }
+        let infos: HashMap<_, _> = functions.iter().map(|f| (f.name.clone(), par_info(f, &self.funcs))).collect();
+        for calls in &self.par_groups {
+            for e in calls {
+                if let Expr::Call(c) = e {
+                    // At each branch, effect witnesses take precedence over foreign and nesting witnesses.
+                    for kind in 0..3 {
+                        if let Some(path) = par_witness(&c.name, kind, &infos) {
+                            let last = path.last().unwrap();
+                            let info = &infos[last];
+                            let (stage, code, msg, fix) = match kind {
+                                0 => {
+                                    let eff = info.effects[0].as_str();
+                                    ("effect", "parallel_effect",
+                                        format!("par branch {} reaches {}, which declares the `{}` effect ({})",
+                                            c.name, last, eff, path.join(" -> ")),
+                                        format!("move the {} work outside the par group", if eff == "io" { "I/O" } else { "file" }))
+                                }
+                                1 => {
+                                    let leaf = info.foreign.as_ref().unwrap();
+                                    let mut chain = path.clone();
+                                    if leaf != last { chain.push(leaf.clone()); }
+                                    ("type", "parallel_foreign",
+                                        format!("par branch {} reaches the trusted rust fn or catalog operation {} ({})",
+                                            c.name, leaf, chain.join(" -> ")),
+                                        "use Pruv computation below the par group, and keep foreign calls outside it".into())
+                                }
+                                _ => ("type", "parallel_nested",
+                                    format!("par branch {} reaches {}, which contains a par group ({})",
+                                        c.name, last, path.join(" -> ")),
+                                    "keep only the outer par group; call the inner helpers one after another".into()),
+                            };
+                            return Err(PruvError::new(stage, c.line, c.col, code, msg, fix));
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -3190,4 +3372,90 @@ mod tests {
         let e = run("fn f() -> i64 { return 9223372036854775808; }").unwrap_err();
         assert_eq!(e.code, "int_range");
     }
+}
+
+/// Executable calls only: contracts do not contribute to branch eligibility.
+struct ParInfo {
+    effects: Vec<String>,
+    foreign: Option<String>,
+    par: bool,
+    callees: Vec<String>,
+}
+
+fn par_info(f: &Function, funcs: &HashMap<String, Rc<FuncInfo>>) -> ParInfo {
+    let mut info = ParInfo {
+        effects: ["io", "fs"].iter().filter(|e| f.effects.iter().any(|x| x == **e)).map(|e| e.to_string()).collect(),
+        foreign: f.foreign.as_ref().map(|_| f.name.clone()),
+        par: false,
+        callees: Vec::new(),
+    };
+    fn ex(e: &Expr, info: &mut ParInfo, funcs: &HashMap<String, Rc<FuncInfo>>) {
+        if let Expr::Call(c) = e {
+            if funcs.contains_key(&c.name) {
+                if !info.callees.contains(&c.name) { info.callees.push(c.name.clone()); }
+            } else if is_catalog(&c.name) && info.foreign.is_none() {
+                info.foreign = Some(c.name.clone());
+            }
+        }
+        for k in crate::refine::kids(e) { ex(k, info, funcs); }
+    }
+    fn walk(stmts: &[Stmt], info: &mut ParInfo, funcs: &HashMap<String, Rc<FuncInfo>>) {
+        for st in stmts {
+            match st {
+                Stmt::Let(x) => ex(&x.value, info, funcs),
+                Stmt::Assign(x) => ex(&x.value, info, funcs),
+                Stmt::FieldAssign(x) => ex(&x.value, info, funcs),
+                Stmt::IndexAssign(x) => {
+                    ex(&x.index, info, funcs);
+                    ex(&x.value, info, funcs);
+                }
+                Stmt::If(x) => {
+                    ex(&x.cond, info, funcs);
+                    walk(&x.then, info, funcs);
+                    walk(&x.els, info, funcs);
+                }
+                Stmt::While(x) => {
+                    ex(&x.cond, info, funcs);
+                    walk(&x.body, info, funcs);
+                }
+                Stmt::Return(x) => if let Some(v) = &x.value { ex(v, info, funcs); },
+                Stmt::ExprStmt(x) => ex(&x.expr, info, funcs),
+                Stmt::Par(x) => {
+                    info.par = true;
+                    for c in &x.calls { ex(c, info, funcs); }
+                }
+                Stmt::Match(x) => {
+                    ex(&x.scrutinee, info, funcs);
+                    for a in &x.arms { walk(&a.body, info, funcs); }
+                }
+                Stmt::Assert(_) => {},
+            }
+        }
+    }
+    walk(&f.body, &mut info, funcs);
+    info
+}
+
+/// Source-order DFS, including the starting function, with cycles visited only once.
+fn par_witness(start: &str, kind: usize, infos: &HashMap<String, ParInfo>) -> Option<Vec<String>> {
+    let mut seen = HashSet::new();
+    let mut stack = vec![(start.to_string(), vec![start.to_string()])];
+    while let Some((n, path)) = stack.pop() {
+        if !seen.insert(n.clone()) { continue; }
+        let info = &infos[&n];
+        let found = match kind {
+            0 => !info.effects.is_empty(),
+            1 => info.foreign.is_some(),
+            _ => info.par,
+        };
+        if found { return Some(path); }
+        for c in info.callees.iter().rev() {
+            if !seen.contains(c) {
+                let mut p = path.clone();
+                p.push(c.clone());
+                stack.push((c.clone(), p));
+            }
+        }
+    }
+    None
 }

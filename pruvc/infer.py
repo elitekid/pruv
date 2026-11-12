@@ -157,6 +157,9 @@ def _stmt_inout(st):
             _expr_inout(st.value, out)
     elif isinstance(st, ExprStmt):
         _expr_inout(st.expr, out)
+    elif isinstance(st, Par):       # G7 A0: every branch's inout operands are written (no stale initializer facts)
+        for c in st.calls:
+            _expr_inout(c, out)
     return out
 
 

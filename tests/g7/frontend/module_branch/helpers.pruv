@@ -1,0 +1,5 @@
+// companion module of module_branch (not a standalone test root)
+pub fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }

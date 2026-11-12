@@ -1456,6 +1456,9 @@ class Gen:
             pass
         elif isinstance(st, ExprStmt):
             s.emit(ind, s.e(st.expr) + ";")
+        elif isinstance(st, Par):      # G7 A0: the staging guard stops first; never drop a group silently
+            raise PruvError("codegen", st.line, st.col, "parallel_unavailable",
+                            "G7 verification is not implemented yet", "remove the par block until G7 is completed")
         elif isinstance(st, Match) and s.is_ext(st.scrutinee.ty):
             s.match_ext(st, ind)
         elif isinstance(st, Match):

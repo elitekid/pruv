@@ -1,6 +1,11 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend]
                         [--backend rust|llvm|both]
+
+group g7_frontend (G7 A0; backend null rows): tests/g7/frontend/*.pruv runs on both backends in default and no-verify
+modes. A program with a par group must stop at the staging guard codegen/parallel_unavailable ("G7 verification is not
+implemented yet", exit 1); a program without a group (functions and locals named par) exits 0. The static rejections
+are the tests/must_reject/g7_*.pruv roots (sibling .json = stage/code), ordinary must_reject rows.
 
 group g10_frontend (G10 A0; backend null rows): tests/g10/frontend/*.pruv runs on both backends in
 default, no-verify, trust-callers and infer modes. File programs exit 0 on both backends.
@@ -587,6 +592,45 @@ def g10_frontend_jobs(group="g10_frontend", subdir="frontend", modes=None):
     return jobs
 
 
+G7_GROUP_RE = re.compile(r"^\s*par\s*\{", re.M)
+
+
+def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
+                     modes=(("default", []), ("no-verify", ["--no-verify"]))):
+    """G7 A0: tests/g7/frontend/*.pruv (backend null rows). A program with a par group must stop at the staging guard
+    codegen/parallel_unavailable (exit 1) on both backends; a program without a group (contextual `par` names) exits 0."""
+    jobs = []
+    roots = sorted(glob.glob(os.path.join(ROOT, "tests", "g7", subdir, "*.pruv")))
+    roots += sorted(glob.glob(os.path.join(ROOT, "tests", "g7", subdir, "*", "root.pruv")))   # module projects
+    for f in roots:
+        stem = (os.path.basename(os.path.dirname(f)) if os.path.basename(f) == "root.pruv"
+                else os.path.splitext(os.path.basename(f))[0])
+        with open(f, encoding="utf-8") as fh:
+            has_group = G7_GROUP_RE.search(fh.read()) is not None
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, stem, mode)
+
+            def fn(f=f, stem=stem, mode=mode, flags=flags, has_group=has_group):
+                out = os.path.join(WORK, "%s_%s_%s" % (group, stem, mode))
+                for backend in ("rust", "llvm"):
+                    c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
+                         pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
+                    text = c.stdout + c.stderr
+                    if has_group:
+                        ok = (c.returncode == 1 and '"stage": "codegen"' in text
+                              and '"code": "parallel_unavailable"' in text
+                              and "G7 verification is not implemented yet" in text)
+                        if not ok:
+                            return False, "%s: exit %d (expected the G7 staging guard) %s" % (
+                                backend, c.returncode, text[-600:])
+                    elif c.returncode != 0:
+                        return False, "%s: exit %d (expected 0) %s" % (backend, c.returncode, text[-600:])
+                return True, ""
+            jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,
+                                       "flags": list(flags), "mode": mode, "group": group}))
+    return jobs
+
+
 def g5_reject_jobs(group="g5_reject", modes=(("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"]))):
     """G5 A0: every G5 rejection root (tests/g5/fixtures.json) is static: it must be rejected with the recorded stage/code
     also with --no-verify and --trust-callers (the default-mode rows are the ordinary must_reject rows)."""
@@ -953,7 +997,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -1041,7 +1085,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -1076,6 +1120,8 @@ def main():
             jobs += g10_frontend_jobs()
         if only in (None, "g10_proof"):
             jobs += g10_frontend_jobs("g10_proof", "proof", (("default", []), ("infer", ["--infer"])))
+        if only in (None, "g7_frontend"):
+            jobs += g7_frontend_jobs()
         if only in (None, "g5_frontend"):
             jobs += g5_frontend_jobs()
         if only in (None, "g5_reject"):
@@ -1125,7 +1171,7 @@ def main():
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
-                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof")
+                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

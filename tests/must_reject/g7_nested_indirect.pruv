@@ -1,0 +1,23 @@
+// G7: a helper reachable from a branch contains its own par group (indirect nesting)
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn inner(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    set_first(inout a, 1);
+    set_first(inout b, 2);
+  }
+}
+
+fn wrap(inout a: [i64], inout b: [i64]) -> () {
+  inner(inout a, inout b);
+}
+
+fn demo(inout a: [i64], inout b: [i64], inout c: [i64]) -> () {
+  par {
+    wrap(inout a, inout b);
+    set_first(inout c, 3);
+  }
+}

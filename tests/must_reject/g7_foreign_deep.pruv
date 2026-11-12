@@ -1,0 +1,29 @@
+// G7: a trusted rust fn is reachable two levels below a branch
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn clamp_first(inout a: [i64]) -> ()
+  requires len(a) > 0
+{
+  a[0] = rust_min(a[0], 3);
+}
+
+fn clamp_wrapper(inout a: [i64]) -> ()
+  requires len(a) > 0
+{
+  clamp_first(inout a);
+}
+
+fn demo(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    clamp_wrapper(inout a);
+    set_first(inout b, 2);
+  }
+}

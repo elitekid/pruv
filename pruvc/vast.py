@@ -269,6 +269,12 @@ class ExprStmt(Stmt):
     expr: Expr         # Call returning unit (incl. print)
 
 @dataclass
+class Par(Stmt):
+    # G7 A0: `par { f(..); g(..); }`. calls = the branch calls in source order (each an ordinary Call expression);
+    # line/col = the `par` token. The group has no value and joins before the next statement.
+    calls: List[Expr]
+
+@dataclass
 class FieldAssign(Stmt):
     name: str              # root local variable
     fields: List[str]      # non-empty path: `p.a.b = e` -> name="p", fields=["a", "b"]

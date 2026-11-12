@@ -1,0 +1,12 @@
+// G7: a par member must end with a semicolon
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    set_first(inout a, 1)
+    set_first(inout b, 2);
+  }
+}

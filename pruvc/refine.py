@@ -126,6 +126,9 @@ def _stmt_names(stmts, out):
             _expr_names(st.cond, out)
         elif isinstance(st, ExprStmt):
             _expr_names(st.expr, out)
+        elif isinstance(st, Par):      # G7 A0
+            for c in st.calls:
+                _expr_names(c, out)
         elif isinstance(st, Match):
             _expr_names(st.scrutinee, out)
             for a in st.arms:
@@ -168,6 +171,9 @@ def _stmt_inout(st, out):
             _inout_operands(st.value, out)
     elif isinstance(st, ExprStmt):
         _inout_operands(st.expr, out)
+    elif isinstance(st, Par):       # G7 A0: every branch's inout operands are changed variables
+        for c in st.calls:
+            _inout_operands(c, out)
 
 
 def _assigned(stmts, out):
@@ -291,6 +297,9 @@ class _Expander:
             elif isinstance(st, Match):
                 for a in st.arms:
                     a.body = s.block(a.body, dict(scope))
+            elif isinstance(st, Par):      # G7 A0: branch calls carry the same post-call refinement annotations
+                for c in st.calls:
+                    s.annotate(c, scope)
         return out
 
     def run(s):

@@ -157,6 +157,7 @@ class Checker:
         s.fn_sccs = []            # recursive function SCCs (lists of names in function order)
         s.call_log = []           # (caller Function, Call node, callee Function) of every checked user call
         s.active_roots = []       # root variable names of the enclosing match arms on extended scrutinees
+        s.par_groups = []         # G7 A0: (enclosing Function, Par statement, [branch Function]) of every checked group
 
     def run(s):
         refine_expand(s.prog)  # STAGE1 A: validate refinement annotations, desugar them into contracts/asserts
@@ -176,6 +177,7 @@ class Checker:
         for f in s.prog.functions:
             s.fn(f)
         s.check_fn_sccs()      # G9 A0: measures and stable type parameters of recursive call SCCs
+        s.check_par_eligibility()   # G7 A0: transitive eligibility of every par branch (effects, foreign, nesting)
         s.record_g9()
 
     # ---- user type declarations ----
@@ -266,6 +268,9 @@ class Checker:
                 s.norm_expr(st.cond)
             elif isinstance(st, ExprStmt):
                 s.norm_expr(st.expr)
+            elif isinstance(st, Par):      # G7 A0
+                for c in st.calls:
+                    s.norm_expr(c)
             elif isinstance(st, Match):
                 s.norm_expr(st.scrutinee)
                 for a in st.arms:
@@ -863,6 +868,8 @@ class Checker:
             if t != UNIT:
                 terr(st, "unused_value", "value of type %s is dropped" % type_name(t),
                      "bind it with `let` or `match` it")
+        elif isinstance(st, Par):
+            s.par(st, scope)
         elif isinstance(st, Match):
             t = s.expr(st.scrutinee, scope)
             user = s.tt.is_enum(t)
@@ -923,6 +930,196 @@ class Checker:
                     s.active_roots.pop()
         else:
             terr(st, "internal", "unknown statement")
+
+    # ---- G7 A0: par groups (G7_SPEC 3, 4, 7) ----
+    def par(s, st, scope):
+        """one par statement: arity, direct targets, ordinary typing of every branch (G5 rules included), the restricted
+        argument form, then cross-branch overlap, in source order. The transitive eligibility summary (effects, foreign
+        leaves, nesting) needs every function typed, so it runs later in check_par_eligibility."""
+        calls = st.calls
+        if len(calls) < 2:
+            terr(st, "parallel_arity", "a par group needs at least two branch calls, found %d" % len(calls),
+                 "write a single ordinary call instead of a par group")
+        for c in calls:
+            s.par_target(c)
+        for c in calls:
+            s.ckind = "code"
+            s.boundary = c       # each branch is a whole-statement call for the G5 statement-boundary rule
+            s.expr(c, scope)
+        s.boundary = None
+        for c in calls:
+            s.par_args(c)
+        s.par_overlap(calls)
+        s.par_groups.append((s.f, st, list(calls)))
+
+    def par_target(s, c):
+        """direct branch target: a user Pruv function returning () (builtins, catalog operations, trusted rust fns and
+        non-unit functions are type/parallel_call; an unknown name is left to the ordinary resolution)"""
+        if not isinstance(c, Call):
+            terr(c, "parallel_call", "a par branch must be a call to a Pruv function",
+                 "call a unit Pruv helper that takes the arrays as inout parameters")
+        n = c.name
+        if n in s.funcs:
+            f = s.funcs[n]
+            if f.foreign is not None:
+                terr(c, "parallel_call", "%s is a trusted rust fn: it cannot be a par branch" % n,
+                     "call a unit Pruv helper, and keep trusted rust fns outside the par group")
+            if f.ret != UNIT:
+                terr(c, "parallel_call", "%s returns %s: a par branch must return ()" % (n, type_name(f.ret)),
+                     "call a unit Pruv helper and pass results back through whole inout arrays")
+        elif n in BUILTIN_FNS or n in CONTRACT_ONLY or n in CATALOG or (n == "old" and s.uses_inout):
+            terr(c, "parallel_call", "%s is a builtin or catalog operation: it cannot be a par branch" % n,
+                 "call a unit Pruv helper that performs the operation")
+
+    def par_type_ok(s, ty):
+        """boundary types: i64, bool, [i64], [u8], [bool], and T / [T] for an Element-bounded type parameter"""
+        if ty in (I64, BOOL, ARRAY, ARRAY_U8, ARRAY_BOOL):
+            return True
+        if ty.owner is not None:
+            return (ty.owner, ty.index) in s.elem_params
+        if ty.name == "array" and len(ty.args) == 1:
+            el = ty.args[0]
+            return el.owner is not None and (el.owner, el.index) in s.elem_params
+        return False
+
+    def par_args(s, c):
+        for arg in c.args:
+            if not isinstance(arg, (InoutArg, Var, IntLit, BoolLit)):
+                terr(arg, "parallel_argument", "a par branch argument must be a binding name, an integer or bool "
+                     "literal, or `inout name`",
+                     "bind the value before the group, e.g. `let n: i64 = len(a);`, and pass n")
+            if arg.ty is None or not s.par_type_ok(arg.ty):
+                terr(arg, "parallel_argument", "an argument of type %s cannot cross a par branch boundary" % (
+                    type_name(arg.ty) if arg.ty is not None else "?"),
+                     "bind a scalar first, or pass whole [i64], [u8] or [bool] arrays")
+
+    def par_overlap(s, calls):
+        """W_i must not meet W_j or R_j, and W_j must not meet R_i, for i < j: the later branch is reported"""
+        sets = []
+        for c in calls:
+            w, r = {}, {}
+            for arg in c.args:
+                if isinstance(arg, InoutArg) and isinstance(arg.expr, Var):
+                    w.setdefault(arg.expr.name, arg)
+                elif isinstance(arg, Var) and arg.ty is not None and is_array(arg.ty):
+                    r.setdefault(arg.name, arg)
+            sets.append((w, r))
+        for j in range(1, len(calls)):
+            wj, rj = sets[j]
+            for i in range(j):
+                wi, ri = sets[i]
+                for name, node in wj.items():
+                    if name in wi:
+                        s.par_alias(node, name, j, i, "writes", "also writes")
+                    if name in ri:
+                        s.par_alias(node, name, j, i, "writes", "reads")
+                for name, node in rj.items():
+                    if name in wi:
+                        s.par_alias(node, name, j, i, "reads", "writes")
+
+    def par_alias(s, node, name, j, i, mine, theirs):
+        terr(node, "parallel_alias", "branch %d %s `%s`, which branch %d %s" % (j + 1, mine, name, i + 1, theirs),
+             "use separate arrays for the two branches, or call the helpers one after another")
+
+    # transitive eligibility summary (G7_SPEC 4.2): per function, from the typed bodies; foreign and catalog leaves kept
+    def par_info(s, f, cache):
+        info = cache.get(f.name)
+        if info is not None:
+            return info
+        info = {"effects": [e for e in ("io", "fs") if e in f.effects],
+                "foreign": f.name if f.foreign is not None else None, "par": False, "callees": []}
+        items = []
+        s.par_items(f.body, items)
+        for kind, x in items:
+            if kind == "par":
+                info["par"] = True
+            elif x.name in s.funcs:
+                if x.name not in info["callees"]:
+                    info["callees"].append(x.name)
+            elif x.name in CATALOG and info["foreign"] is None:
+                info["foreign"] = x.name
+        cache[f.name] = info
+        return info
+
+    def par_items(s, stmts, out):
+        """executable calls and par statements of a body in source order (contracts are not executable)"""
+        def ex(e):
+            if isinstance(e, Call):
+                out.append(("call", e))
+            for k in expr_kids(e):
+                ex(k)
+        for st in stmts:
+            if isinstance(st, (Let, Assign, FieldAssign)):
+                ex(st.value)
+            elif isinstance(st, IndexAssign):
+                ex(st.index); ex(st.value)
+            elif isinstance(st, If):
+                ex(st.cond); s.par_items(st.then, out); s.par_items(st.els, out)
+            elif isinstance(st, While):
+                ex(st.cond); s.par_items(st.body, out)
+            elif isinstance(st, Return):
+                if st.value is not None:
+                    ex(st.value)
+            elif isinstance(st, ExprStmt):
+                ex(st.expr)
+            elif isinstance(st, Par):
+                out.append(("par", st))
+                for c in st.calls:
+                    ex(c)
+            elif isinstance(st, Match):
+                ex(st.scrutinee)
+                for a in st.arms:
+                    s.par_items(a.body, out)
+
+    def par_witness(s, start, pred, cache):
+        """first function in a deterministic source-order depth-first walk from `start` (itself included) whose summary
+        satisfies pred -> the call path start .. witness, or None"""
+        seen = set()
+        parent = {}
+        stack = [(start, None)]
+        while stack:
+            n, p = stack.pop()
+            if n in seen:
+                continue
+            seen.add(n)
+            parent[n] = p
+            info = s.par_info(s.funcs[n], cache)
+            if pred(info):
+                path = []
+                x = n
+                while x is not None:
+                    path.append(x)
+                    x = parent[x]
+                path.reverse()
+                return path
+            for c in reversed(info["callees"]):
+                if c not in seen:
+                    stack.append((c, n))
+        return None
+
+    def check_par_eligibility(s):
+        cache = {}
+        for _f, _st, calls in s.par_groups:
+            for c in calls:
+                n = c.name
+                path = s.par_witness(n, lambda i: bool(i["effects"]), cache)
+                if path is not None:
+                    eff = s.par_info(s.funcs[path[-1]], cache)["effects"][0]
+                    terr(c, "parallel_effect", "par branch %s reaches %s, which declares the `%s` effect (%s)" % (
+                        n, path[-1], eff, " -> ".join(path)),
+                         "move the %s work outside the par group" % ("I/O" if eff == "io" else "file"), stage="effect")
+                path = s.par_witness(n, lambda i: i["foreign"] is not None, cache)
+                if path is not None:
+                    leaf = s.par_info(s.funcs[path[-1]], cache)["foreign"]
+                    chain = path if leaf == path[-1] else path + [leaf]
+                    terr(c, "parallel_foreign", "par branch %s reaches the trusted rust fn or catalog operation %s (%s)" % (
+                        n, leaf, " -> ".join(chain)),
+                         "use Pruv computation below the par group, and keep foreign calls outside it")
+                path = s.par_witness(n, lambda i: i["par"], cache)
+                if path is not None:
+                    terr(c, "parallel_nested", "par branch %s reaches %s, which contains a par group (%s)" % (
+                        n, path[-1], " -> ".join(path)),
+                         "keep only the outer par group; call the inner helpers one after another")
 
     def array_source(s, st, value, scope, allow_local_var=False):
         """arrays are moved/borrowed explicitly: new arrays come only from alloc/copy/calls"""

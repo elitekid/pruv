@@ -1,0 +1,16 @@
+// G7: a branch callee declares alloc, so the enclosing function must declare it too
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn scratch(inout a: [i64]) -> () ! alloc {
+  let t: [i64] = alloc(1, 0);
+}
+
+fn demo(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    scratch(inout a);
+    set_first(inout b, 2);
+  }
+}

@@ -1,0 +1,15 @@
+// G7: exclusivity is static: a write/read overlap is rejected with --trust-callers too
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn touch(a: [i64]) -> () {
+}
+
+fn demo(inout a: [i64]) -> () {
+  par {
+    set_first(inout a, 1);
+    touch(a);
+  }
+}

@@ -402,6 +402,8 @@ class _Resolver:
                 st.cond = s.rexpr(st.cond)
             elif isinstance(st, ExprStmt):
                 st.expr = s.rexpr(st.expr)
+            elif isinstance(st, Par):      # G7 A0: every branch call resolves like an ordinary call
+                st.calls = [s.rexpr(c) for c in st.calls]
             elif isinstance(st, Match):
                 st.scrutinee = s.rexpr(st.scrutinee)
                 for a in st.arms:

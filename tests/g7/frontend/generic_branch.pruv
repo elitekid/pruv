@@ -1,0 +1,27 @@
+// G7 A0 frontend: generic [T: Element] branches with explicit type arguments, a scalar T argument, and an instantiation
+fn set_first<T: Element>(inout a: [T], x: T) -> ()
+  requires len(a) >= 1
+  ensures a[0] == x
+{
+  a[0] = x;
+}
+
+fn set_both<T: Element>(inout a: [T], inout b: [T], x: T) -> ()
+  requires len(a) >= 1 && len(b) >= 1
+{
+  par {
+    set_first::<T>(inout a, x);
+    set_first::<T>(inout b, x);
+  }
+}
+
+fn demo() -> i64 ! alloc {
+  let mut p: [i64] = alloc(2, 0);
+  let mut q: [i64] = alloc(2, 0);
+  set_both::<i64>(inout p, inout q, 5);
+  par {
+    set_first::<i64>(inout p, 1);
+    set_first::<i64>(inout q, 2);
+  }
+  return p[0] + q[0];
+}

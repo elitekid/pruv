@@ -289,6 +289,7 @@ fn stmt_pos(s: &Stmt) -> Pos {
         Stmt::While(x) => (x.line, x.col),
         Stmt::Return(x) => (x.line, x.col),
         Stmt::Assert(x) => (x.line, x.col),
+        Stmt::Par(x) => (x.line, x.col),
         Stmt::ExprStmt(x) => (x.line, x.col),
         Stmt::FieldAssign(x) => (x.line, x.col),
         Stmt::Match(x) => (x.line, x.col),
@@ -348,6 +349,11 @@ fn call_writes(stmts: &[Stmt], out: &mut BTreeSet<String>) {
             Stmt::Return(x) => {
                 if let Some(v) = &x.value {
                     inout_ops(v, out);
+                }
+            }
+            Stmt::Par(x) => {
+                for c in &x.calls {
+                    inout_ops(c, out);
                 }
             }
             Stmt::ExprStmt(x) => inout_ops(&x.expr, out),
@@ -2778,6 +2784,7 @@ impl<'a> FnVerifier<'a> {
                 let ob = self.check_assert(s, &mut st)?;
                 Ok(vec![st.fork(Some(ob))])
             }
+            Stmt::Par(_) => Err("G7 verification is not implemented yet".into()),
             Stmt::ExprStmt(s) => {
                 let mut st = st.fork(None);
                 self.ev0(&s.expr, &mut st, &[], true)?;

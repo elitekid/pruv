@@ -133,6 +133,11 @@ fn walk_stmt(s: &Stmt, f: &mut dyn FnMut(Node<'_>)) {
             }
         }
         Stmt::Assert(a) => walk_expr(&a.cond, f),
+        Stmt::Par(x) => {
+            for c in &x.calls {
+                walk_expr(c, f);
+            }
+        }
         Stmt::ExprStmt(x) => walk_expr(&x.expr, f),
         Stmt::FieldAssign(x) => walk_expr(&x.value, f),
         Stmt::Match(m) => {

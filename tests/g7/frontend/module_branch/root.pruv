@@ -1,0 +1,11 @@
+// G7 A0 frontend: a module program; both branches call a pub helper of another file by absolute path
+mod helpers;
+
+fn run(inout a: [i64], inout b: [i64]) -> ()
+  requires len(a) > 0 && len(b) > 0
+{
+  par {
+    crate::helpers::set_first(inout a, 1);
+    crate::helpers::set_first(inout b, 2);
+  }
+}

@@ -1,0 +1,15 @@
+// G7: an earlier branch reads an array that a later branch writes
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn touch(a: [i64]) -> () {
+}
+
+fn demo(inout a: [i64]) -> () {
+  par {
+    touch(a);
+    set_first(inout a, 1);
+  }
+}

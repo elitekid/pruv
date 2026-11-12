@@ -1,0 +1,15 @@
+// G7: overlap inside one branch call keeps the ordinary G5 code type/inout_alias
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn two(inout x: [i64], inout y: [i64]) -> () {
+}
+
+fn demo(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    two(inout a, inout a);
+    set_first(inout b, 2);
+  }
+}

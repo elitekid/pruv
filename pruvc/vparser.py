@@ -342,6 +342,38 @@ class Parser:
     def inout_syntax(s, tok, msg, fix=""):
         raise PruvError("parse", tok.line, tok.col, "inout_syntax", msg, fix)
 
+    def parallel_syntax(s, tok, msg, fix="write semicolon-terminated calls: `par { f(inout a); g(inout b); }`"):
+        raise PruvError("parse", tok.line, tok.col, "parallel_syntax", msg, fix)
+
+    def par_stmt(s):
+        """G7 A0: at the contextual `par` followed by `{`: `par { call; call; ... }` (no trailing semicolon).
+        Every member must be a semicolon-terminated call; fewer than two branches is the checker's type/parallel_arity."""
+        t = s.next()
+        s.next()   # `{`
+        calls = []
+        while not s.at("}"):
+            if s.peek().kind == "eof":
+                s.parallel_syntax(s.peek(), "unclosed par block", "add '}'")
+            m = s.peek()
+            try:
+                e = s.expr()
+            except PruvError as ex:
+                if ex.code != "syntax":
+                    raise
+                raise PruvError("parse", ex.line, ex.col, "parallel_syntax",
+                                "malformed par block: " + ex.message,
+                                "write semicolon-terminated calls: `par { f(inout a); g(inout b); }`")
+            if not isinstance(e, Call):
+                s.parallel_syntax(m, "a par block member must be a call", "write only calls, e.g. `f(inout a);`")
+            if not s.at(";"):
+                s.parallel_syntax(s.peek(), "a par block call must end with ';'", "insert ';' after the call")
+            s.next()
+            calls.append(e)
+        s.next()   # `}`
+        if s.at(";"):
+            s.parallel_syntax(s.peek(), "a par block takes no trailing ';'", "remove the ';' after '}'")
+        return Par(t.line, t.col, calls)
+
     def unsupported(s, what, tok):
         raise PruvError("parse", tok.line, tok.col, "unsupported_type",
                        "%s is not supported" % what,
@@ -760,6 +792,8 @@ class Parser:
             return Let(L, C, n, mut, ty, v, rf)
         if s.at("if"):
             return s.if_()
+        if t.kind == "id" and t.val == "par" and s.at("{", 1):
+            return s.par_stmt()
         if s.at("while"):
             s.next()
             cond = s.expr()

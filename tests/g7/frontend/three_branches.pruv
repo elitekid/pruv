@@ -1,0 +1,17 @@
+// G7 A0 frontend: three branches over three local owners, with a literal and a negative literal
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo() -> i64 ! alloc {
+  let mut a: [i64] = alloc(2, 0);
+  let mut b: [i64] = alloc(2, 0);
+  let mut c: [i64] = alloc(2, 0);
+  par {
+    set_first(inout a, 1);
+    set_first(inout b, -2);
+    set_first(inout c, 3);
+  }
+  return a[0] + b[0] + c[0];
+}

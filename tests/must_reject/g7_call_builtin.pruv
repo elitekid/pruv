@@ -1,0 +1,12 @@
+// G7: a builtin cannot be a par branch directly (print returns (), but it is not a Pruv helper)
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo(inout b: [i64]) -> () ! io {
+  par {
+    print(1);
+    set_first(inout b, 2);
+  }
+}

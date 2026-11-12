@@ -1,0 +1,11 @@
+// G7: a par group with one branch is rejected; write the ordinary call
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo(inout a: [i64]) -> () {
+  par {
+    set_first(inout a, 1);
+  }
+}

@@ -1,0 +1,21 @@
+// G7 A0 frontend: one read-only array shared by two branches, and repeated within one branch
+fn copy_first(inout dst: [i64], src: [i64]) -> ()
+  requires len(dst) > 0 && len(src) > 0
+  ensures dst[0] == src[0]
+{ dst[0] = src[0]; }
+
+fn add_firsts(inout dst: [i64], s1: [i64], s2: [i64]) -> ()
+  requires len(dst) > 0 && len(s1) > 0 && len(s2) > 0
+  requires s1[0] >= 0 && s1[0] <= 1000 && s2[0] >= 0 && s2[0] <= 1000
+  ensures dst[0] == s1[0] + s2[0]
+{ dst[0] = s1[0] + s2[0]; }
+
+fn fan_out(inout x: [i64], inout y: [i64], src: [i64]) -> ()
+  requires len(x) > 0 && len(y) > 0 && len(src) > 0
+  requires src[0] >= 0 && src[0] <= 1000
+{
+  par {
+    copy_first(inout x, src);
+    add_firsts(inout y, src, src);
+  }
+}

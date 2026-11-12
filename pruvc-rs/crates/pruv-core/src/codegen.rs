@@ -2004,6 +2004,10 @@ impl<'a> Gen<'a> {
                 }
             },
             Stmt::Assert(_) => {}
+            Stmt::Par(p) => {
+                self.diag = Some(PruvError::new("codegen", crate::diagnostic::plain_line(p.line), p.col, "parallel_unavailable", "G7 verification is not implemented yet", "remove the par block until G7 is completed"));
+                return Err("G7 verification is not implemented yet".into());
+            },
             Stmt::ExprStmt(x) => {
                 let t = self.e(&x.expr)?;
                 self.emit(ind, &format!("{};", t));

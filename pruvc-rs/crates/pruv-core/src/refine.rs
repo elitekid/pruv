@@ -209,6 +209,11 @@ fn stmt_names(stmts: &[Stmt], out: &mut HashSet<String>) {
                 }
             }
             Stmt::Assert(x) => expr_names(&x.cond, out),
+            Stmt::Par(x) => {
+                for c in &x.calls {
+                    expr_names(c, out);
+                }
+            }
             Stmt::ExprStmt(x) => expr_names(&x.expr, out),
             Stmt::Match(x) => {
                 expr_names(&x.scrutinee, out);
@@ -266,6 +271,11 @@ fn stmt_inout(st: &Stmt, out: &mut HashSet<String>) {
         Stmt::Return(x) => {
             if let Some(v) = &x.value {
                 inout_operands(v, out);
+            }
+        }
+        Stmt::Par(x) => {
+            for c in &x.calls {
+                inout_operands(c, out);
             }
         }
         Stmt::ExprStmt(x) => inout_operands(&x.expr, out),
@@ -434,6 +444,11 @@ impl Expander {
                 Stmt::Return(r) => {
                     if let Some(v) = r.value.as_mut() {
                         self.annotate(v, scope);
+                    }
+                }
+                Stmt::Par(x) => {
+                    for c in &mut x.calls {
+                        self.annotate(c, scope);
                     }
                 }
                 Stmt::ExprStmt(x) => self.annotate(&mut x.expr, scope),

@@ -262,6 +262,10 @@ class _Ownership:
         if isinstance(x, ExprStmt):
             s.expr(x.expr, st)
             return st
+        if isinstance(x, Par):      # G7 A0: each branch is an ordinary call
+            for c in x.calls:
+                s.expr(c, st)
+            return st
         if isinstance(x, Match):
             s.expr(x.scrutinee, st)
             out = None
@@ -430,6 +434,41 @@ def g6_unimplemented_error(prog, stage="codegen"):
     return PruvError(stage, line, col, "unsupported_type",
                      "G6 foreign calls and collections are not implemented by the llvm codegen layer yet",
                      "avoid trusted rust fn, Vec, HashMap, String, take and move for now")
+
+
+def _par_nodes(node, out):
+    if isinstance(node, list):
+        for x in node:
+            _par_nodes(x, out)
+        return
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return
+    if isinstance(node, Par):
+        out.append(node)
+    for fname in node.__dataclass_fields__:
+        _par_nodes(getattr(node, fname), out)
+
+
+def first_par(prog):
+    """G7 A0: the first par statement of a checked program (functions in order, smallest position inside a function)
+    or None."""
+    for f in prog.functions:
+        found = []
+        _par_nodes(f.body, found)
+        if found:
+            return min(found, key=lambda p: (p.line, p.col))
+    return None
+
+
+def g7_unimplemented_error(prog, stage="codegen"):
+    """G7 A0 staging guard: PruvError codegen/parallel_unavailable for a program with a par statement, or None.
+    Run right after type/ownership checking, in every mode, before verification and emission."""
+    p = first_par(prog)
+    if p is None:
+        return None
+    return PruvError(stage, p.line, p.col, "parallel_unavailable", "G7 verification is not implemented yet",
+                     "remove the par block (call the helpers one after another) until G7 is completed",
+                     file=getattr(p, "file", None))
 
 
 def uses_files(prog):

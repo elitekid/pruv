@@ -1,0 +1,15 @@
+// G7: a str cannot cross a branch boundary
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn note(s: str) -> () {
+}
+
+fn demo(s: str, inout b: [i64]) -> () {
+  par {
+    note(s);
+    set_first(inout b, 2);
+  }
+}

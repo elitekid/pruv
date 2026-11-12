@@ -1,0 +1,16 @@
+// G7 A0 frontend: explicit visibility mode (single file with `pub`); the pub root entry runs a group of private helpers
+fn double_first(inout a: [i64]) -> ()
+  requires len(a) > 0 && a[0] >= 0 && a[0] <= 1000
+{ a[0] = 2 * a[0]; }
+
+pub fn run(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+{
+  let mut a: [i64] = alloc(1, n);
+  let mut b: [i64] = alloc(1, n);
+  par {
+    double_first(inout a);
+    double_first(inout b);
+  }
+  return a[0] + b[0];
+}

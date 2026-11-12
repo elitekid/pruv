@@ -784,6 +784,11 @@ impl<'a> Rs<'a> {
                     }
                 }
                 Stmt::Assert(a) => self.rexpr(&mut a.cond)?,
+                Stmt::Par(x) => {
+                    for c in &mut x.calls {
+                        self.rexpr(c)?;
+                    }
+                }
                 Stmt::ExprStmt(x) => self.rexpr(&mut x.expr)?,
                 Stmt::Match(m) => {
                     self.rexpr(&mut m.scrutinee)?;

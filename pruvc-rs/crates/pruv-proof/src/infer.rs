@@ -195,6 +195,11 @@ fn stmt_names(stmts: &[Stmt], out: &mut HashSet<String>) {
                 }
             }
             Stmt::Assert(x) => expr_names(&x.cond, out),
+            Stmt::Par(x) => {
+                for c in &x.calls {
+                    expr_names(c, out);
+                }
+            }
             Stmt::ExprStmt(x) => expr_names(&x.expr, out),
             Stmt::Match(x) => {
                 expr_names(&x.scrutinee, out);
@@ -364,6 +369,11 @@ fn stmt_inout(st: &Stmt) -> BTreeSet<String> {
         Stmt::Return(x) => {
             if let Some(v) = &x.value {
                 expr_inout(v, &mut out);
+            }
+        }
+        Stmt::Par(x) => {
+            for c in &x.calls {
+                expr_inout(c, &mut out);
             }
         }
         Stmt::ExprStmt(x) => expr_inout(&x.expr, &mut out),

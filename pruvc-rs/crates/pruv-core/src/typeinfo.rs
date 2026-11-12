@@ -208,6 +208,11 @@ fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, best: 
                 }
             }
             Stmt::Assert(a) => g2_cand_expr(&a.cond, lits, best),
+            Stmt::Par(e) => {
+                for c in &e.calls {
+                    g2_cand_expr(c, lits, best);
+                }
+            }
             Stmt::ExprStmt(e) => g2_cand_expr(&e.expr, lits, best),
             Stmt::FieldAssign(f) => g2_cand_expr(&f.value, lits, best),
             Stmt::Match(m) => {
@@ -411,6 +416,11 @@ fn g3_stmts(stmts: &[Stmt], out: &mut G3Cands) {
                 }
             }
             Stmt::Assert(a) => g3_expr(&a.cond, out),
+            Stmt::Par(e) => {
+                for c in &e.calls {
+                    g3_expr(c, out);
+                }
+            }
             Stmt::ExprStmt(e) => g3_expr(&e.expr, out),
             Stmt::FieldAssign(f) => g3_expr(&f.value, out),
             Stmt::Match(m) => {
@@ -560,6 +570,11 @@ fn g9_size_stmts(stmts: &[Stmt], out: &mut Vec<(i64, i64)>) {
                 }
             }
             Stmt::Assert(a) => g9_size_expr(&a.cond, out),
+            Stmt::Par(e) => {
+                for c in &e.calls {
+                    g9_size_expr(c, out);
+                }
+            }
             Stmt::ExprStmt(e) => g9_size_expr(&e.expr, out),
             Stmt::FieldAssign(f) => g9_size_expr(&f.value, out),
             Stmt::Match(m) => {
@@ -688,6 +703,11 @@ fn g5_walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 }
             }
             Stmt::Assert(a) => g5_walk_expr(&a.cond, f),
+            Stmt::Par(e) => {
+                for c in &e.calls {
+                    g5_walk_expr(c, f);
+                }
+            }
             Stmt::ExprStmt(e) => g5_walk_expr(&e.expr, f),
             Stmt::FieldAssign(x) => g5_walk_expr(&x.value, f),
             Stmt::Match(m) => {

@@ -245,7 +245,11 @@ pub struct FieldAssign { pub line: i64, pub col: i64, pub name: String, pub fiel
 pub struct Match { pub line: i64, pub col: i64, pub scrutinee: Expr, pub arms: Vec<MatchArm> }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Par { pub line: i64, pub col: i64, pub calls: Vec<Expr> }
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
+    Par(Par),
     Let(Let),
     Assign(Assign),
     IndexAssign(IndexAssign),

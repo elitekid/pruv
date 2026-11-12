@@ -104,6 +104,7 @@ NODE_FIELDS = {
     "ExprStmt": ("expr",),
     "FieldAssign": ("name", "fields", "value"),
     "Match": ("scrutinee", "arms"),
+    "Par": ("calls",),           # G7 A0: `par { call; call; }` (the Rust port gets its node in the same batch)
 }
 # STAGE1 A (refinement types). New node and optional keys: an optional key is written ONLY when its value
 # is not None, so the dump of an input without refinements is byte-identical to before.

@@ -1138,10 +1138,53 @@ impl Parser {
         Ok(out)
     }
 
+    /// Contextual `par {`: members must be semicolon-terminated calls, with no trailing semicolon.
+    fn par_stmt(&mut self) -> R<Stmt> {
+        let t = self.peek(0).clone();
+        self.bump();
+        self.bump(); // opening brace
+        let mut calls = Vec::new();
+        while !self.at("}", 0) {
+            let m = self.peek(0).clone();
+            if m.kind == Kind::Eof {
+                return Err(PruvError::new("parse", m.line, m.col, "parallel_syntax",
+                    "unclosed par block", "add '}'"));
+            }
+            let e = self.expr().map_err(|ex| {
+                if ex.code == "syntax" {
+                    PruvError::new("parse", ex.line, ex.col, "parallel_syntax",
+                        format!("malformed par block: {}", ex.message),
+                        "write semicolon-terminated calls: `par { f(inout a); g(inout b); }`")
+                } else { ex }
+            })?;
+            if !matches!(e, Expr::Call(_)) {
+                return Err(PruvError::new("parse", m.line, m.col, "parallel_syntax",
+                    "a par block member must be a call", "write only calls, e.g. `f(inout a);`"));
+            }
+            if !self.at(";", 0) {
+                let m = self.peek(0);
+                return Err(PruvError::new("parse", m.line, m.col, "parallel_syntax",
+                    "a par block call must end with ';'", "insert ';' after the call"));
+            }
+            self.bump();
+            calls.push(e);
+        }
+        self.bump(); // closing brace
+        if self.at(";", 0) {
+            let m = self.peek(0);
+            return Err(PruvError::new("parse", m.line, m.col, "parallel_syntax",
+                "a par block takes no trailing ';'", "remove the ';' after '}'"));
+        }
+        Ok(Stmt::Par(Par { line: t.line, col: t.col, calls }))
+    }
+
     // ---- statements ----
     fn stmt(&mut self) -> R<Stmt> {
         let t = self.peek(0).clone();
         let (l, c) = (t.line, t.col);
+        if t.kind == Kind::Id && t.val == "par" && self.at("{", 1) {
+            return self.par_stmt();
+        }
         if self.at("let", 0) {
             self.bump();
             let mut mutable = false;

@@ -1122,6 +1122,9 @@ class FnGen:
             s.begin_temps()
             s.ev(st.expr)
             s.end_temps()
+        elif isinstance(st, Par):      # G7 A0: the staging guard stops first; never drop a group silently
+            raise PruvError("codegen", st.line, st.col, "parallel_unavailable",
+                            "G7 verification is not implemented yet", "remove the par block until G7 is completed")
         elif isinstance(st, Match) and s.is_ext(st.scrutinee.ty):
             # G9 A3: the scrutinee is borrowed, never consumed; every temporary it created (a fresh scrutinee, a
             # fresh base of a field path, a fresh argument) is moved into owner slots of a scope that spans all

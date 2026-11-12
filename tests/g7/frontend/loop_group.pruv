@@ -1,0 +1,20 @@
+// G7 A0 frontend: a par group inside a while loop body
+fn bump(inout a: [i64], i: i64) -> ()
+  requires 0 <= i && i < len(a)
+{ a[i] = 1; }
+
+fn run(inout a: [i64], inout b: [i64], n: i64) -> ()
+  requires 0 <= n && n <= len(a) && n <= len(b)
+{
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    decreases n - i
+  {
+    par {
+      bump(inout a, i);
+      bump(inout b, i);
+    }
+    i = i + 1;
+  }
+}

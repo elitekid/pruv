@@ -783,6 +783,7 @@ impl<'a> Mono<'a> {
                 origin_code: x.origin_code.clone(),
                 origin_what: x.origin_what.clone(),
             }),
+            Stmt::Par(x) => Stmt::Par(Par { line: x.line, col: x.col, calls: x.calls.iter().map(|c| self.cp_e(c)).collect::<Result<_, _>>()? }),
             Stmt::ExprStmt(x) => Stmt::ExprStmt(ExprStmt { line: x.line, col: x.col, expr: self.cp_e(&x.expr)? }),
             Stmt::FieldAssign(x) => Stmt::FieldAssign(FieldAssign {
                 line: x.line,

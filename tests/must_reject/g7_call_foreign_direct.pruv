@@ -1,0 +1,17 @@
+// G7: a trusted rust fn cannot be a par branch directly
+trusted rust fn rust_min(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+  = "::std::cmp::min";
+
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo(inout b: [i64]) -> () {
+  par {
+    rust_min(1, 2);
+    set_first(inout b, 2);
+  }
+}

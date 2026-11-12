@@ -1,0 +1,12 @@
+// G7: an expression argument such as len(b) is not allowed; bind it before the group
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo(inout a: [i64], inout b: [i64]) -> () {
+  par {
+    set_first(inout a, len(b));
+    set_first(inout b, 2);
+  }
+}

@@ -17,6 +17,7 @@ pub const G6_UNSUPPORTED_FIX: &str = "avoid trusted rust fn, Vec, HashMap, Strin
 pub const G6_BRIDGE_DECL: &str = "@pruv_g6_bridge_v1 = external global i8\n";
 /// A PruvError (codegen/unsupported_type) raised in the middle of a function body travels through `R<T>` as a string
 /// with this prefix and `line:col`; `gen_llvm_concrete_ex` turns it back into the diagnostic.
+const G7_DIAG_TAG: &str = "\u{0}g7diag:";
 const G6_DIAG_TAG: &str = "\u{0}g6diag:";
 
 fn g6_diag_err(line: i64, col: i64) -> String {
@@ -1843,6 +1844,7 @@ impl<'a> FnGen<'a> {
                 self.emit_ret(&v)
             }
             Stmt::Assert(_) => Ok(()),
+            Stmt::Par(p) => return Err(format!("{}{}:{}", G7_DIAG_TAG, crate::diagnostic::plain_line(p.line), p.col)),
             Stmt::ExprStmt(x) => {
                 self.begin_temps();
                 self.ev(&x.expr, false)?;
@@ -4071,7 +4073,15 @@ pub fn gen_llvm_concrete_ex(
                     "compare tags with is_variant and fields with variant_field, or move the check into the body",
                 ))
             }
-            None => GenError::Msg(s),
+            None => match s.strip_prefix(G7_DIAG_TAG) {
+                Some(rest) => {
+                    let mut it = rest.split(':');
+                    let line = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+                    let col = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+                    GenError::Diag(crate::diagnostic::PruvError::new("codegen", line, col, "parallel_unavailable", "G7 verification is not implemented yet", "remove the par block until G7 is completed"))
+                }
+                None => GenError::Msg(s),
+            },
         },
     })
 }

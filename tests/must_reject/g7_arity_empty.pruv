@@ -1,0 +1,5 @@
+// G7: an empty par group has fewer than two branches
+fn demo() -> () {
+  par {
+  }
+}

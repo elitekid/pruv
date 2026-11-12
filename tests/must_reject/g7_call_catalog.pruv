@@ -1,0 +1,12 @@
+// G7: a catalog operation cannot be a par branch directly
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn demo(inout b: [i64]) -> () ! alloc {
+  par {
+    string_new();
+    set_first(inout b, 2);
+  }
+}

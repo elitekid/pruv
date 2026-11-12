@@ -1,0 +1,21 @@
+// G7: io is reachable from a branch through a helper
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn show(inout a: [i64]) -> () ! io {
+  print(len(a));
+}
+
+fn show_twice(inout a: [i64]) -> () ! io {
+  show(inout a);
+  show(inout a);
+}
+
+fn demo(inout a: [i64], inout b: [i64]) -> () ! io {
+  par {
+    show_twice(inout a);
+    set_first(inout b, 2);
+  }
+}

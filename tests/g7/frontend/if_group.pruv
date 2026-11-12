@@ -1,0 +1,18 @@
+// G7 A0 frontend: a par group inside an if branch (the else branch has an ordinary call)
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn pick(inout a: [i64], inout b: [i64], flag: bool) -> ()
+  requires len(a) > 0 && len(b) > 0
+{
+  if flag {
+    par {
+      set_first(inout a, 1);
+      set_first(inout b, 2);
+    }
+  } else {
+    set_first(inout a, 3);
+  }
+}

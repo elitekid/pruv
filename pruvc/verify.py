@@ -1815,6 +1815,9 @@ class FnVerifier:
                     s._inout_ops(st.value, out)
             elif isinstance(st, ExprStmt):
                 s._inout_ops(st.expr, out)
+            elif isinstance(st, Par):      # G7 A0: every branch's inout operands (verification itself is A1)
+                for c in st.calls:
+                    s._inout_ops(c, out)
             elif isinstance(st, If):
                 s.call_writes(st.then, out); s.call_writes(st.els, out)
             elif isinstance(st, While):

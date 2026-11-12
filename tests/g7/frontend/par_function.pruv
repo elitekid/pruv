@@ -1,0 +1,12 @@
+// G7 A0 frontend (no group): a function named par stays a legal ordinary function and call
+fn par(x: i64) -> i64
+  requires 0 <= x && x <= 1000
+  ensures result == x + 1
+{ return x + 1; }
+
+fn demo(n: i64) -> i64
+  requires 0 <= n && n <= 1000
+  ensures result == n + 1
+{
+  return par(n);
+}

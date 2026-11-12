@@ -1,0 +1,19 @@
+// G7 A0 frontend: inout parameters of the enclosing function forwarded into branches, and into a helper that forwards
+fn set_first(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ a[0] = value; }
+
+fn set_first_again(inout a: [i64], value: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == value
+{ set_first(inout a, value); }
+
+fn both(inout a: [i64], inout b: [i64], v: i64) -> ()
+  requires len(a) > 0 && len(b) > 0
+{
+  par {
+    set_first_again(inout a, v);
+    set_first(inout b, v);
+  }
+}

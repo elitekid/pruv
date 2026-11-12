@@ -332,6 +332,7 @@ pub fn stmt(s: &Stmt) -> Json {
             }
             node("Assert", Some((x.line, x.col)), f)
         }
+        Stmt::Par(x) => node("Par", Some((x.line, x.col)), vec![("calls", list(&x.calls, expr))]),
         Stmt::ExprStmt(x) => node("ExprStmt", Some((x.line, x.col)), vec![("expr", expr(&x.expr))]),
         Stmt::FieldAssign(x) => node(
             "FieldAssign",
