@@ -1092,9 +1092,9 @@ mod tests {
     }
 }
 
-/// A1 stops after proof and before emission, in every driver mode.
+/// LLVM staging guard, after proof and before emission.
 pub fn parallel_error(p: &Par) -> PruvError {
-    PruvError::new("codegen", p.line, p.col, "parallel_unavailable", "G7 code generation is not implemented yet", "remove the par block (call the helpers one after another) until G7 is completed")
+    PruvError::new("codegen", p.line, p.col, "parallel_unavailable", "G7 LLVM code generation is not implemented yet", "use the Rust backend without --also-llvm")
 }
 pub fn first_par(stmts: &[Stmt]) -> Option<&Par> {
     stmts.iter().filter_map(|s| match s {

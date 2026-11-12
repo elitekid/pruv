@@ -1,0 +1,27 @@
+{
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "g7_guard": true,
+  "exit": 0,
+  "gen_contains": [
+    "spawn_scoped",
+    "std::thread::scope",
+    "move ||",
+    "::std::vec::Vec::new()"
+  ],
+  "gen_absent": [
+    ".clone()",
+    "pruv test joined"
+  ],
+  "stdout_lines": [
+    "[6, 2, 2]"
+  ]
+}

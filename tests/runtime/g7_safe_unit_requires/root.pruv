@@ -1,0 +1,2 @@
+fn check(n: i64) -> () requires n > 0 {}
+fn run() -> () ! alloc { let mut a: [i64] = alloc(0, 0); let mut b: [i64] = alloc(0, 0); par { check(0); check(1); } }

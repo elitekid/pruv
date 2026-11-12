@@ -1,0 +1,30 @@
+fn set(inout a: [i64], v: i64) -> ()
+ requires len(a) > 0
+ ensures a[0] == v
+ ensures forall k in 1..len(a): a[k] == old(a)[k]
+{ a[0] = v; }
+fn both(inout a: [i64], inout b: [i64]) -> ()
+ requires len(a) > 0 && len(b) > 0
+ { par { set(inout a, 5); set(inout b, 6); } }
+
+fn run(pick: i64) -> [i64] ! alloc {
+let mut a: [i64] = alloc(3, 0);
+ let mut b: [i64] = alloc(3, 0);
+ let mut c: [i64] = alloc(3, 0);
+ both(inout a, inout b);
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}
+
+fn sequential(pick: i64) -> [i64] ! alloc {
+let mut a: [i64] = alloc(3, 0);
+ let mut b: [i64] = alloc(3, 0);
+ let mut c: [i64] = alloc(3, 0);
+ set(inout a, 5); set(inout b, 6);
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}

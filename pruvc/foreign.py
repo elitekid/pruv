@@ -461,13 +461,13 @@ def first_par(prog):
 
 
 def g7_unimplemented_error(prog, stage="codegen"):
-    """G7 A0 staging guard: PruvError codegen/parallel_unavailable for a program with a par statement, or None.
+    """G7 LLVM staging guard: codegen/parallel_unavailable for a par statement, or None.
     Run after verification (or after the static checks with --no-verify), before specialization and emission."""
     p = first_par(prog)
     if p is None:
         return None
-    return PruvError(stage, p.line, p.col, "parallel_unavailable", "G7 code generation is not implemented yet",
-                     "remove the par block (call the helpers one after another) until G7 is completed",
+    return PruvError(stage, p.line, p.col, "parallel_unavailable", "G7 LLVM code generation is not implemented yet",
+                     "use the Rust backend without --also-llvm",
                      file=getattr(p, "file", None))
 
 

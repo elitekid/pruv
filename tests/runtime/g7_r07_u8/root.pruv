@@ -1,0 +1,29 @@
+fn set(inout a: [u8], v: i64) -> ()
+ requires len(a) > 0 && 0 <= v && v <= 255
+ ensures a[0] == v
+ ensures forall k in 1..len(a): a[k] == old(a)[k]
+{ a[0] = v; }
+
+fn run(pick: i64) -> [u8] ! alloc {
+let mut a: [u8] = alloc(3, 0);
+ let mut b: [u8] = alloc(3, 0);
+ let mut c: [u8] = alloc(3, 0);
+ 
+ par { set(inout a, 255); set(inout b, 200); }
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}
+
+fn sequential(pick: i64) -> [u8] ! alloc {
+let mut a: [u8] = alloc(3, 0);
+ let mut b: [u8] = alloc(3, 0);
+ let mut c: [u8] = alloc(3, 0);
+ 
+ set(inout a, 255); set(inout b, 200);
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}

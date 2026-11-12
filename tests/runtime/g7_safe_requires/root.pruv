@@ -1,0 +1,7 @@
+fn set(inout a: [i64], v: i64) -> ()
+ requires len(a) > 0
+ ensures a[0] == v
+ ensures forall k in 1..len(a): a[k] == old(a)[k]
+{ a[0] = v; }
+
+fn run() -> () ! alloc { let mut a: [i64] = alloc(0, 0); let mut b: [i64] = alloc(0, 0); par { set(inout a, 1); set(inout b, 2); } }

@@ -1,0 +1,28 @@
+fn read(inout dst: [i64], src: [i64]) -> ()
+ requires len(dst) > 0 && len(src) > 0
+ ensures dst[0] == src[0]
+{ dst[0] = src[0]; }
+
+fn run(pick: i64) -> [i64] ! alloc {
+let mut a: [i64] = alloc(3, 4);
+ let mut b: [i64] = alloc(3, 4);
+ let mut c: [i64] = alloc(3, 4);
+ 
+ par { read(inout a, c); read(inout b, c); }
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}
+
+fn sequential(pick: i64) -> [i64] ! alloc {
+let mut a: [i64] = alloc(3, 4);
+ let mut b: [i64] = alloc(3, 4);
+ let mut c: [i64] = alloc(3, 4);
+ 
+ read(inout a, c); read(inout b, c);
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}

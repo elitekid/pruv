@@ -414,6 +414,8 @@ struct Gen<'a> {
     trust: bool,
     out: Vec<String>,
     has_req: HashSet<String>,
+    par_callees: HashSet<String>,
+    par_hook: String,
     /// During the requires entry check: user-type parameters already converted -> type
     cp: Option<HashMap<String, String>>,
     /// Quantifier variables in scope (contract evaluation)
@@ -470,6 +472,21 @@ struct Gen<'a> {
 
 impl<'a> Gen<'a> {
     fn new(prog: &'a Program, verified: bool, trust_callers: bool, budget: u64, foreign_checks: &str) -> Gen<'a> {
+        fn collect_par(stmts: &[Stmt], names: &mut HashSet<String>) {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Par(p) => for call in &p.calls {
+                        if let Expr::Call(c) = call { names.insert(c.name.clone()); }
+                    },
+                    Stmt::If(x) => { collect_par(&x.then, names); collect_par(&x.els, names); }
+                    Stmt::While(x) => collect_par(&x.body, names),
+                    Stmt::Match(x) => for arm in &x.arms { collect_par(&arm.body, names); },
+                    _ => {}
+                }
+            }
+        }
+        let mut par_callees = HashSet::new();
+        for f in &prog.functions { collect_par(&f.body, &mut par_callees); }
         let g6 = crate::foreign::first_g6_use(prog).is_some();
         let mut fmap: HashMap<String, &'a Function> = HashMap::new();
         for f in &prog.functions {
@@ -498,6 +515,8 @@ impl<'a> Gen<'a> {
             verified,
             trust: trust_callers,
             out: Vec::new(),
+            par_callees,
+            par_hook: std::env::var("PRUV_G7_TEST_HOOK").unwrap_or_default(),
             has_req: prog
                 .functions
                 .iter()
@@ -657,7 +676,7 @@ impl<'a> Gen<'a> {
         let checks = if self.explicit {
             self.checks_needed
         } else {
-            !self.has_req.is_empty() && (!self.trust || self.inout_req)
+            !self.has_req.is_empty() && (!self.trust || self.inout_req || (!self.par_callees.is_empty() && !self.verified))
         };
         if checks || self.g6 {
             if self.g6 {
@@ -811,6 +830,10 @@ impl<'a> Gen<'a> {
                 // G5: a wrapper of an inout function always checks (trust_callers does not waive it)
                 let chk = if self.inouts.is_empty() { None } else { Some(true) };
                 self.entry(f, &ps, &ret, &body_name, None, None, chk)?;
+                if !self.verified && self.trust && self.inouts.is_empty() && self.par_callees.contains(&f.name) {
+                    let name = format!("{}__pruv_par_chk", f.name);
+                    self.entry(f, &ps, &ret, &body_name, Some(&name), Some(false), Some(true))?;
+                }
             } else if self.verified {
                 if host {
                     // the checked host wrapper; no other function has a wrapper in verified mode
@@ -2004,10 +2027,7 @@ impl<'a> Gen<'a> {
                 }
             },
             Stmt::Assert(_) => {}
-            Stmt::Par(p) => {
-                self.diag = Some(PruvError::new("codegen", crate::diagnostic::plain_line(p.line), p.col, "parallel_unavailable", "G7 verification is not implemented yet", "remove the par block until G7 is completed"));
-                return Err("G7 verification is not implemented yet".into());
-            },
+            Stmt::Par(p) => self.parallel(p, ind)?,
             Stmt::ExprStmt(x) => {
                 let t = self.e(&x.expr)?;
                 self.emit(ind, &format!("{};", t));
@@ -2035,6 +2055,91 @@ impl<'a> Gen<'a> {
     }
 
     /// G5: a mutable borrow of the array `name`: a reborrow for an inout parameter (already `&mut [T]`)
+    fn parallel(&mut self, st: &Par, ind: usize) -> R<()> {
+        self.emit(ind, "{");
+        let hook = matches!(self.par_hook.as_str(), "spawn" | "panic" | "overlap");
+        if hook {
+            self.emit(ind + 1, "let pruv_gate = &(::std::sync::Mutex::new((false, 0usize, 0usize)), ::std::sync::Condvar::new());");
+        }
+        let ind = ind + 1;
+        self.emit(ind, "::std::thread::scope(|pruv_scope| {");
+        let d = ind + 1;
+        let mut prepared = Vec::new();
+        for (i, expr) in st.calls.iter().enumerate() {
+            let call = match expr {
+                Expr::Call(c) => c,
+                _ => return Err("codegen: par branch is not a call".into()),
+            };
+            let mut args = Vec::new();
+            for (j, x) in call.args.iter().enumerate() {
+                let n = format!("pruv_arg_{}_{}", i, j);
+                let (ty, val) = if let Expr::InoutArg(ia) = x {
+                    let name = match ia.expr.as_ref() {
+                        Expr::Var(v) => &v.name,
+                        _ => return Err("codegen: inout operand is not a variable".into()),
+                    };
+                    (format!("&mut {}", &rty(&self.vars[name], true)[1..]), self.mut_ref(name))
+                } else {
+                    let ty = expr_ty(x).as_deref().ok_or("codegen: par argument has no type")?;
+                    if is_array_name(&ty) {
+                        (rty(ty, true), self.arr_ref(x)?)
+                    } else {
+                        (rty(ty, false), self.e(x)?)
+                    }
+                };
+                self.emit(d, &format!("let {}: {} = {};", n, ty, val));
+                args.push(n);
+            }
+            let mut n = if self.explicit { self.callee(&call.name) } else { call.name.clone() };
+            if !self.explicit && self.has_req.contains(&call.name) {
+                if self.verified {
+                    n.push_str("__pruv_body");
+                } else if self.trust && !call.args.iter().any(|x| matches!(x, Expr::InoutArg(_))) {
+                    n.push_str("__pruv_par_chk");
+                }
+            }
+            prepared.push(format!("{}({});", n, args.join(", ")));
+        }
+        self.emit(d, "let mut pruv_handles = ::std::vec::Vec::new();");
+        self.emit(d, "let mut pruv_spawn_failed = false;");
+        for (i, call) in prepared.iter().enumerate() {
+            self.emit(d, "if !pruv_spawn_failed {");
+            if self.par_hook == "spawn" && i == 1 {
+                self.emit(d + 1, "pruv_spawn_failed = true;");
+            } else {
+                self.emit(d + 1, "match ::std::thread::Builder::new().spawn_scoped(pruv_scope, move || {");
+                if hook {
+                    self.emit(d + 2, "let mut gate = pruv_gate.0.lock().unwrap();");
+                    self.emit(d + 2, "gate.1 += 1; pruv_gate.1.notify_all();");
+                    self.emit(d + 2, "while !gate.0 || gate.1 < gate.2 { gate = pruv_gate.1.wait(gate).unwrap(); }");
+                    self.emit(d + 2, "::std::mem::drop(gate);");
+                    if self.par_hook == "panic" && i == 0 {
+                        self.emit(d + 2, "panic!(\"pruv test worker panic\");");
+                    }
+                }
+                self.emit(d + 2, call);
+                self.emit(d + 1, "}) {");
+                self.emit(d + 2, "::std::result::Result::Ok(h) => pruv_handles.push(h),");
+                self.emit(d + 2, "::std::result::Result::Err(_) => pruv_spawn_failed = true,");
+                self.emit(d + 1, "}");
+            }
+            self.emit(d, "}");
+        }
+        if hook {
+            self.emit(d, "{ let mut gate = pruv_gate.0.lock().unwrap(); gate.0 = true; gate.2 = pruv_handles.len(); pruv_gate.1.notify_all(); }");
+        }
+        self.emit(d, "let mut pruv_panicked = false;");
+        self.emit(d, "for h in pruv_handles {");
+        self.emit(d + 1, "if h.join().is_err() { pruv_panicked = true; }");
+        if hook { self.emit(d + 1, "eprintln!(\"pruv test joined\");"); }
+        self.emit(d, "}");
+        self.emit(d, "if pruv_spawn_failed { eprintln!(\"pruv: parallel spawn failed\"); ::std::process::exit(101); }");
+        self.emit(d, "if pruv_panicked { ::std::process::exit(101); }");
+        self.emit(ind, "});");
+        self.emit(ind - 1, "}");
+        Ok(())
+    }
+
     fn mut_ref(&self, name: &str) -> String {
         if self.inouts.contains(name) { format!("&mut *{}", name) } else { format!("&mut {}", name) }
     }

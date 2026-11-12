@@ -1,0 +1,7 @@
+fn noop(inout a: [i64]) -> () {}
+fn run() -> [i64] ! alloc {
+ let mut a: [i64] = alloc(0, 0);
+ let mut b: [i64] = alloc(0, 0);
+ par { noop(inout a); noop(inout b); }
+ return a;
+}

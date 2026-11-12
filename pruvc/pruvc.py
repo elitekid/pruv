@@ -88,9 +88,8 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    # G7 A1 staging guard: a program with a par block is verified (or, with --no-verify, only statically checked)
-    # and then stops here in every mode, before specialization and emission
-    g7err = g7_unimplemented_error(prog)
+    # G7 A2: LLVM (including dual emission) stops after proof, before any output.
+    g7err = g7_unimplemented_error(prog) if backend == "llvm" or also_llvm else None
     if g7err is not None:
         return [g7err]
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same

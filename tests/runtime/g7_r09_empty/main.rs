@@ -1,0 +1,1 @@
+fn main() { let a = sol::run(); assert!(a.is_empty()); println!("{:?}", a); }

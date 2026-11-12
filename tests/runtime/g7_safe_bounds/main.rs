@@ -1,0 +1,1 @@
+fn main() { sol::run(); panic!("unreachable continuation"); }

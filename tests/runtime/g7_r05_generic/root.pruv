@@ -1,0 +1,28 @@
+fn set<T: Element>(inout a: [T], v: T) -> ()
+ requires len(a) > 0
+ ensures a[0] == v
+{ a[0] = v; }
+
+fn run(pick: i64) -> [i64] ! alloc {
+let mut a: [i64] = alloc(3, 0);
+ let mut b: [i64] = alloc(3, 0);
+ let mut c: [i64] = alloc(3, 0);
+ 
+ par { set::<i64>(inout a, 8); set::<i64>(inout b, 9); }
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}
+
+fn sequential(pick: i64) -> [i64] ! alloc {
+let mut a: [i64] = alloc(3, 0);
+ let mut b: [i64] = alloc(3, 0);
+ let mut c: [i64] = alloc(3, 0);
+ 
+ set::<i64>(inout a, 8); set::<i64>(inout b, 9);
+ 
+ if pick == 0 { return a; }
+ if pick == 1 { return b; }
+ return c;
+}

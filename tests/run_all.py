@@ -2,15 +2,8 @@
 python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof]
                         [--backend rust|llvm|both]
 
-group g7_frontend (G7 A0; backend null rows): tests/g7/frontend/*.pruv runs on both backends in default and no-verify
-modes. A program with a par group must stop at the staging guard codegen/parallel_unavailable ("G7 code generation is
-not implemented yet", exit 1, since G7 A1 after verification); a program without a group (functions and locals named par)
-exits 0. The static rejections are the tests/must_reject/g7_*.pruv roots (sibling .json = stage/code), ordinary
-must_reject rows.
-
-group g7_proof (G7 A1; backend null rows): tests/g7/proof/*.pruv runs on both backends in default and infer modes; every
-root must verify completely and then stop at the staging guard ("G7 code generation is not implemented yet", exit 1).
-The tests/must_reject/g7_v_*.pruv roots are ordinary must_reject rows (default mode, sibling .json = stage/code).
+group g7_frontend / g7_proof: Rust rows generate and compile (run if main exists);
+LLVM rows expect codegen/parallel_unavailable after successful verification.
 
 group g10_frontend (G10 A0; backend null rows): tests/g10/frontend/*.pruv runs on both backends in
 default, no-verify, trust-callers and infer modes. File programs exit 0 on both backends.
@@ -600,69 +593,55 @@ def g10_frontend_jobs(group="g10_frontend", subdir="frontend", modes=None):
 G7_GROUP_RE = re.compile(r"^\s*par\s*\{", re.M)
 
 
+def g7_guard_result(c):
+    text = c.stdout + c.stderr
+    ok = (c.returncode == 1 and '"stage": "codegen"' in text
+          and '"code": "parallel_unavailable"' in text
+          and "G7 LLVM code generation is not implemented yet" in text)
+    return ok, "" if ok else "expected G7 LLVM guard: " + text[-600:]
+
+
 def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
                      modes=(("default", []), ("no-verify", ["--no-verify"]))):
-    """G7 A0: tests/g7/frontend/*.pruv (backend null rows). A program with a par group must stop at the staging guard
-    codegen/parallel_unavailable (exit 1) on both backends; a program without a group (contextual `par` names) exits 0."""
     jobs = []
     roots = sorted(glob.glob(os.path.join(ROOT, "tests", "g7", subdir, "*.pruv")))
-    roots += sorted(glob.glob(os.path.join(ROOT, "tests", "g7", subdir, "*", "root.pruv")))   # module projects
+    roots += sorted(glob.glob(os.path.join(ROOT, "tests", "g7", subdir, "*", "root.pruv")))
     for f in roots:
-        stem = (os.path.basename(os.path.dirname(f)) if os.path.basename(f) == "root.pruv"
-                else os.path.splitext(os.path.basename(f))[0])
-        with open(f, encoding="utf-8") as fh:
-            has_group = G7_GROUP_RE.search(fh.read()) is not None
+        stem = os.path.basename(os.path.dirname(f)) if os.path.basename(f) == "root.pruv" else os.path.splitext(os.path.basename(f))[0]
+        source = open(f, encoding="utf-8").read()
+        has_group = G7_GROUP_RE.search(source) is not None
+        has_main = re.search(r"\bfn\s+main\s*\(", source) is not None
         for mode, flags in modes:
             name = "%s/%s [%s]" % (group, stem, mode)
-
-            def fn(f=f, stem=stem, mode=mode, flags=flags, has_group=has_group):
+            def fn(f=f, stem=stem, mode=mode, flags=flags, has_group=has_group, has_main=has_main):
                 out = os.path.join(WORK, "%s_%s_%s" % (group, stem, mode))
-                for backend in ("rust", "llvm"):
-                    c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
-                         pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
-                    text = c.stdout + c.stderr
-                    if has_group:
-                        ok = (c.returncode == 1 and '"stage": "codegen"' in text
-                              and '"code": "parallel_unavailable"' in text
-                              and "G7 code generation is not implemented yet" in text)
-                        if not ok:
-                            return False, "%s: exit %d (expected the G7 staging guard) %s" % (
-                                backend, c.returncode, text[-600:])
-                    elif c.returncode != 0:
-                        return False, "%s: exit %d (expected 0) %s" % (backend, c.returncode, text[-600:])
-                return True, ""
-            jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,
-                                       "flags": list(flags), "mode": mode, "group": group}))
-    return jobs
-
-
-def g7_proof_jobs(group="g7_proof", subdir="proof", modes=(("default", []), ("infer", ["--infer"]))):
-    """G7 A1: tests/g7/proof/*.pruv (backend null rows). Every root verifies completely (also with --infer) and then
-    stops at the staging guard codegen/parallel_unavailable "G7 code generation is not implemented yet" (exit 1) on
-    both backends; any verify diagnostic fails the row."""
-    jobs = []
-    for f in sorted(glob.glob(os.path.join(ROOT, "tests", "g7", subdir, "*.pruv"))):
-        stem = os.path.splitext(os.path.basename(f))[0]
-        for mode, flags in modes:
-            name = "%s/%s [%s]" % (group, stem, mode)
-
-            def fn(f=f, stem=stem, mode=mode, flags=flags):
-                out = os.path.join(WORK, "%s_%s_%s" % (group, stem, mode))
-                for backend in ("rust", "llvm"):
-                    c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
-                         pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
-                    text = c.stdout + c.stderr
-                    ok = (c.returncode == 1 and '"stage": "codegen"' in text
-                          and '"code": "parallel_unavailable"' in text
-                          and "G7 code generation is not implemented yet" in text
-                          and '"stage": "verify"' not in text)
+                c = pruvc(f, out + ".rs", flags)
+                if c.returncode:
+                    return False, c.stdout + c.stderr
+                argv = [RUSTC, "--edition=2021", "--crate-name", "g7_fixture", out + ".rs", "-o", out + "_bin"]
+                if not has_main:
+                    argv += ["--crate-type=lib"]
+                r = subprocess.run(argv, capture_output=True, text=True, timeout=300)
+                if r.returncode:
+                    return False, r.stderr[-1200:]
+                if has_main:
+                    r = subprocess.run([out + "_bin"], capture_output=True, text=True, timeout=60)
+                    if r.returncode:
+                        return False, r.stderr
+                c = pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags)
+                if has_group:
+                    ok, detail = g7_guard_result(c)
                     if not ok:
-                        return False, "%s: exit %d (expected a complete proof, then the G7 staging guard) %s" % (
-                            backend, c.returncode, text[-600:])
-                return True, ""
+                        return ok, detail
+                    return g7_guard_result(pruvc(f, out + "_dual.rs", list(flags) + ["--also-llvm", out + "_dual.ll", out + "_dual_bindings.rs"]))
+                return c.returncode == 0, c.stdout + c.stderr
             jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,
                                        "flags": list(flags), "mode": mode, "group": group}))
     return jobs
+
+
+def g7_proof_jobs():
+    return g7_frontend_jobs("g7_proof", "proof", (("default", []), ("infer", ["--infer"])))
 
 
 def g5_reject_jobs(group="g5_reject", modes=(("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"]))):
@@ -783,6 +762,8 @@ def example_job(f, mode, flags, llvm, name):
             ll = os.path.join(work, key + ".ll")
             rs = os.path.join(work, key + ".rs")
             c = pruvc_llvm(f, ll, rs, flags)
+            if stem.startswith("g7_"):
+                return g7_guard_result(c)
             if rel_sample(f) in llvm_pending():
                 return pending_result(c)
             if c.returncode != 0:
@@ -892,13 +873,20 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             gen = os.path.join(work, key + "_gen.rs")
             src = _g4().copy_project(pruv, os.path.join(work, "g4rt_" + key)) if proj else pruv
             c = pruvc_llvm(src, ll, gen, list(flags) + xflags)
+            if spec.get("g7_guard"):
+                return g7_guard_result(c)
             if rel_sample(pruv) in llvm_pending():
                 return pending_result(c)
         else:
             key = t + suffix
             gen = os.path.join(work, key + "_gen.rs")
             src = _g4().copy_project(pruv, os.path.join(work, "g4rt_" + key)) if proj else pruv
-            c = pruvc(src, gen, list(flags) + xflags)
+            if spec.get("g7_hook"):
+                c = subprocess.run(_driver().argv(src, gen, list(flags) + xflags, "rust"),
+                                   env=dict(os.environ, PRUV_G7_TEST_HOOK=spec["g7_hook"]),
+                                   capture_output=True, text=True, timeout=300)
+            else:
+                c = pruvc(src, gen, list(flags) + xflags)
         if c.returncode != 0:
             return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
         if llvm:
@@ -922,6 +910,8 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
         else:
             p = subprocess.run([exe], capture_output=True, text=True, timeout=60, env=env)
         problems = []
+        if "g7_joined" in spec and p.stderr.count("pruv test joined") != spec["g7_joined"]:
+            problems.append("wrong joined worker count: " + p.stderr)
         if g6_count:
             m = re.search(r"pruv-g6-live: (-?\d+)", p.stderr)
             if m is None or m.group(1) != "0":
@@ -1004,6 +994,8 @@ def runtime_jobs(backend):
     # G5 A2: project directories tests/runtime/g5_*/ follow the same convention
     specs += [(j, os.path.basename(os.path.dirname(j)))
               for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/g5_*/spec.json")))]
+    specs += [(j, os.path.basename(os.path.dirname(j)))
+              for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/g7_*/spec.json")))]
     for j, t in specs:
         try:
             spec = json.load(open(j))

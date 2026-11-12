@@ -1,0 +1,2 @@
+fn set(inout a: [i64], v: i64) -> () { a[0] = v + 1; }
+fn run() -> () ! alloc { let mut a: [i64] = alloc(1, 0); let mut b: [i64] = alloc(1, 0); par { set(inout a, 9223372036854775807); set(inout b, 2); } }

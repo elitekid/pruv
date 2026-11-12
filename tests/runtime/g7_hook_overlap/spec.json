@@ -1,0 +1,25 @@
+{
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "g7_guard": true,
+  "exit": 0,
+  "gen_contains": [
+    "spawn_scoped",
+    "std::thread::scope",
+    "move ||"
+  ],
+  "gen_absent": [
+    ".clone()"
+  ],
+  "g7_hook": "overlap",
+  "g7_joined": 2,
+  "stderr_contains": "pruv test joined"
+}

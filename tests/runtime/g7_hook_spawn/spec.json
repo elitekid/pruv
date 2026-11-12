@@ -1,0 +1,26 @@
+{
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "g7_guard": true,
+  "exit": 101,
+  "gen_contains": [
+    "spawn_scoped",
+    "std::thread::scope",
+    "move ||"
+  ],
+  "gen_absent": [
+    ".clone()"
+  ],
+  "g7_hook": "spawn",
+  "g7_joined": 1,
+  "stderr_contains": "pruv: parallel spawn failed",
+  "stdout_lines": []
+}

@@ -1,0 +1,16 @@
+struct Vec { x: i64 }
+fn bump(inout a: [i64]) -> () {
+ let mut i: i64 = 0;
+ while i < len(a) invariant 0 <= i && i <= len(a) decreases len(a) - i {
+  if a[i] < 1000 { a[i] = a[i] + 1; }
+  i = i + 1;
+ }
+}
+fn run() -> [i64] ! alloc {
+ let mut a: [i64] = alloc(3, 1);
+ let mut b: [i64] = alloc(2, 5);
+ par { bump(inout a); bump(inout b); }
+ let v: Vec = Vec { x: b[0] };
+ a[0] = v.x;
+ return a;
+}

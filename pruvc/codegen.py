@@ -621,6 +621,17 @@ class Gen:
         s.trust = trust_callers
         s.out = []
         s.has_req = {f.name for f in prog.functions if f.requires and f.foreign is None}
+        from foreign import _par_nodes
+        groups = []
+        for f in prog.functions:
+            _par_nodes(f.body, groups)
+        s.par_callees = {c.name for g in groups for c in g.calls}
+        # Compile-time PRUV_G7_TEST_HOOK=spawn|panic|overlap is test-only.
+        # Fail spawn 2 / panic worker 1 / rendezvous all workers; report each completed join.
+        # Without this opt-in, generated output contains no test instrumentation.
+        import os
+        s.par_hook = os.environ.get("PRUV_G7_TEST_HOOK", "")
+
         # G4 A2 (explicit visibility mode, docs/G4_SPEC.md 4): only host entries are `pub`. Verified: just the entries
         # that have a requires get a checked wrapper (host boundary; none under trust_callers), every Pruv call goes to
         # the body. Safe mode (--no-verify): EVERY function with a requires has a checked wrapper and every Pruv call goes
@@ -705,7 +716,7 @@ class Gen:
                 s.out.append(SAFE_PRELUDE_BOOL)
             if str_used:
                 s.out.append(SAFE_PRELUDE_STR)
-        if (s.checks_needed if s.explicit else (s.has_req and (not s.trust or s.inout_req))) or s.g6:
+        if (s.checks_needed if s.explicit else (s.has_req and (not s.trust or s.inout_req or (s.par_callees and not s.verified)))) or s.g6:
             s.out.append(CONTRACT_PRELUDE_G6 if s.g6 else CONTRACT_PRELUDE)
             if u8_used:
                 s.out.append(CONTRACT_PRELUDE_U8)
@@ -798,6 +809,8 @@ class Gen:
             if not s.explicit:
                 # G5: a wrapper of an inout function always checks (trust_callers does not waive it)
                 s.entry(f, ps, ret, body_name, checked=True if s.inouts else None)
+                if not s.verified and s.trust and not s.inouts and f.name in s.par_callees:
+                    s.entry(f, ps, ret, body_name, f.name + "__pruv_par_chk", False, True)
             elif s.verified:
                 if f.host_entry:     # the checked host wrapper; no other function has a wrapper in verified mode
                     s.entry(f, ps, ret, body_name, f.name, True, not s.trust)
@@ -1456,9 +1469,8 @@ class Gen:
             pass
         elif isinstance(st, ExprStmt):
             s.emit(ind, s.e(st.expr) + ";")
-        elif isinstance(st, Par):      # G7 A0: the staging guard stops first; never drop a group silently
-            raise PruvError("codegen", st.line, st.col, "parallel_unavailable",
-                            "G7 verification is not implemented yet", "remove the par block until G7 is completed")
+        elif isinstance(st, Par):
+            s.parallel(st, ind)
         elif isinstance(st, Match) and s.is_ext(st.scrutinee.ty):
             s.match_ext(st, ind)
         elif isinstance(st, Match):
@@ -1499,6 +1511,71 @@ class Gen:
             s.vt, s.refs = saved_vt, saved_refs
             s.emit(ind + 1, "}")
         s.emit(ind, "}")
+
+    def parallel(s, st, ind):
+        s.emit(ind, "{")
+        hook = s.par_hook in ("spawn", "panic", "overlap")
+        if hook:
+            # Workers rendezvous after spawning; expected count is the actual number started,
+            # so even an unexpected OS spawn failure cannot deadlock the test gate.
+            s.emit(ind + 1, "let pruv_gate = &(::std::sync::Mutex::new((false, 0usize, 0usize)), ::std::sync::Condvar::new());")
+        ind += 1
+        s.emit(ind, "::std::thread::scope(|pruv_scope| {")
+        d = ind + 1
+        prepared = []
+        for i, call in enumerate(st.calls):
+            args = []
+            for j, x in enumerate(call.args):
+                n = "pruv_arg_%d_%d" % (i, j)
+                if isinstance(x, InoutArg):
+                    ty = "&mut " + rty(s.vt[x.expr.name], True)[1:]
+                    val = s.mut_ref(x.expr.name)
+                elif is_array(x.ty):
+                    ty, val = rty(x.ty, True), s.arr_ref(x)
+                else:
+                    ty, val = rty(x.ty), s.e(x)
+                s.emit(d, "let %s: %s = %s;" % (n, ty, val))
+                args.append(n)
+            n = s.callee(call.name) if s.explicit else call.name
+            if not s.explicit and call.name in s.has_req:
+                if s.verified:
+                    n += "__pruv_body"
+                elif s.trust and not any(isinstance(x, InoutArg) for x in call.args):
+                    n += "__pruv_par_chk"
+            prepared.append("%s(%s);" % (n, ", ".join(args)))
+        s.emit(d, "let mut pruv_handles = ::std::vec::Vec::new();")
+        s.emit(d, "let mut pruv_spawn_failed = false;")
+        for i, call in enumerate(prepared):
+            s.emit(d, "if !pruv_spawn_failed {")
+            if s.par_hook == "spawn" and i == 1:
+                s.emit(d + 1, "pruv_spawn_failed = true;")
+            else:
+                s.emit(d + 1, "match ::std::thread::Builder::new().spawn_scoped(pruv_scope, move || {")
+                if hook:
+                    s.emit(d + 2, "let mut gate = pruv_gate.0.lock().unwrap();")
+                    s.emit(d + 2, "gate.1 += 1; pruv_gate.1.notify_all();")
+                    s.emit(d + 2, "while !gate.0 || gate.1 < gate.2 { gate = pruv_gate.1.wait(gate).unwrap(); }")
+                    s.emit(d + 2, "::std::mem::drop(gate);")
+                    if s.par_hook == "panic" and i == 0:
+                        s.emit(d + 2, 'panic!("pruv test worker panic");')
+                s.emit(d + 2, call)
+                s.emit(d + 1, "}) {")
+                s.emit(d + 2, "::std::result::Result::Ok(h) => pruv_handles.push(h),")
+                s.emit(d + 2, "::std::result::Result::Err(_) => pruv_spawn_failed = true,")
+                s.emit(d + 1, "}")
+            s.emit(d, "}")
+        if hook:
+            s.emit(d, "{ let mut gate = pruv_gate.0.lock().unwrap(); gate.0 = true; gate.2 = pruv_handles.len(); pruv_gate.1.notify_all(); }")
+        s.emit(d, "let mut pruv_panicked = false;")
+        s.emit(d, "for h in pruv_handles {")
+        s.emit(d + 1, "if h.join().is_err() { pruv_panicked = true; }")
+        if hook:
+            s.emit(d + 1, 'eprintln!("pruv test joined");')
+        s.emit(d, "}")
+        s.emit(d, 'if pruv_spawn_failed { eprintln!("pruv: parallel spawn failed"); ::std::process::exit(101); }')
+        s.emit(d, "if pruv_panicked { ::std::process::exit(101); }")
+        s.emit(ind, "});")
+        s.emit(ind - 1, "}")
 
     def mut_ref(s, name):
         """G5: a mutable borrow of the array `name`: a reborrow for an inout parameter (already `&mut [T]`)"""

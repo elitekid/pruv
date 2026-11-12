@@ -1,0 +1,24 @@
+{
+  "flags_matrix": [
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "g7_guard": true,
+  "exit": 101,
+  "gen_contains": [
+    "spawn_scoped",
+    "std::thread::scope",
+    "move ||"
+  ],
+  "gen_absent": [
+    ".clone()",
+    "pruv test joined"
+  ],
+  "stderr_contains": "index",
+  "stderr_absent": "unreachable continuation"
+}
