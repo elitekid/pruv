@@ -6,6 +6,7 @@
     python bench/fuzz/run.py --g2 [--seed 41] [--programs 200] [--rejected-sample 30]   (G2 mode, see README)
     python bench/fuzz/run.py --g3 [--seed 41] [--programs 100] [--g3-safe-only 20] [--inputs 8]   (G3 mode, see README)
     python bench/fuzz/run.py --g6 [--seed 41] [--programs 100] [--g6-safe-only 20] [--inputs 8]   (G6 mode, see README)
+    python bench/fuzz/run.py --g9 [--seed 41] [--programs 100] [--g9-safe-only 20] [--inputs 8]   (G9 mode, see README)
     python bench/fuzz/run.py --replay DIR_OR_PRUVFILE
     (every form accepts [--compiler py|rs] [--compiler-path PATH], see tests/compiler_driver.py; default rs)
 
@@ -362,8 +363,8 @@ def choose_inputs(rec, args, fixed=None):
     if fixed is not None:
         inputs = fixed
     else:
-        prefix = ("g6:" if getattr(args, "g6", False) else "g3:" if getattr(args, "g3", False)
-                  else ("g2:" if getattr(args, "g2", False) else ""))
+        prefix = ("g9:" if getattr(args, "g9", False) else "g6:" if getattr(args, "g6", False)
+                  else "g3:" if getattr(args, "g3", False) else ("g2:" if getattr(args, "g2", False) else ""))
         rng = random.Random(prefix + "%s:%s:inputs" % (args.seed, rec["name"]))
         cands = generate.candidate_inputs(rec["case"], rng, 300)
         ok_l, bad_l, seen = [], [], set()
@@ -800,6 +801,11 @@ def save_failure(out_dir, rec, kind, items):
         res["g6_features"] = rec["case"].get("g6_features", [])
         res["g6_unproved_by_design"] = bool(rec["case"].get("g6_bad"))
         res["g6_mutation"] = rec["case"].get("g6_mutation")
+    if (rec.get("case") or {}).get("g9"):   # g9 cases only
+        res["g9"] = True
+        res["g9_features"] = rec["case"].get("g9_features", [])
+        res["g9_unproved_by_design"] = bool(rec["case"].get("g9_bad"))
+        res["g9_mutation"] = rec["case"].get("g9_mutation")
     write(os.path.join(d, "results.json"), json.dumps(res, indent=1, default=str))
     write(os.path.join(d, "pruvc_output.txt"),
           "".join("== %s ==\n%s\n" % (k, v) for k, v in rec["logs"].items()))
@@ -871,6 +877,9 @@ def replay(path, args):
         case["g3"] = True   # generic program: the run-time callee name of a generic instance is not compared strictly
     if re.search(r"\b(vec_new|map_new|string_new)\b|\btrusted\s+rust\s+fn\b", src):
         case["g6"] = True   # G6 program: collections / trusted Rust calls (shim symbols are renamed per module, see prep_llvm)
+    if src.startswith("// g9 fuzz case"):
+        case["g9"] = True   # G9 program (saved by --g9): the oracle needs a deeper Python recursion limit, see g9_prepare_process
+        g9_prepare_process()
     if any(t in ("array_u8", "array_bool", "str") for t in [p[1] for p in params] + [ret]):
         case["g2"] = True   # G2 types (the driver only looks at the params/ret strings); g2_features is left empty if the saved copy has none
         case["g2_features"] = []
@@ -912,6 +921,24 @@ def g3_unproved(r):
 def g6_unproved(r):
     """A rejected program that the G6 generator built to be unproved (dropped requires, false ensures, body mutation, ...)."""
     return bool((r.get("case") or {}).get("g6_bad"))
+
+
+def g9_unproved(r):
+    """A rejected program that the G9 generator built to be unproved (false ensures, wrong decreases/phase, wrong return or base
+    case, missing base case, dropped helper contract)."""
+    return bool((r.get("case") or {}).get("g9_bad"))
+
+
+def g9_prepare_process():
+    """G9 oracle runs recursive Pruv programs as nested Python calls (about 10 frames per Pruv call). The generators bound the
+    depth (a few dozen calls), so a moderate recursion limit and a large stack for the worker threads are enough; a RecursionError
+    would be reported as an oracle_error (never as a pass)."""
+    sys.setrecursionlimit(max(sys.getrecursionlimit(), 8000))
+    try:
+        import threading
+        threading.stack_size(128 * 1024 * 1024)
+    except (ValueError, RuntimeError):
+        pass
 
 
 def g3_ran(r, names):
@@ -1023,6 +1050,12 @@ def main():
                          "operations); output folder out/g6_<seed>[_rs], gate (g6_shortfall) applies; --rejected-sample is not used")
     ap.add_argument("--g6-safe-only", type=int, default=20,
                     help="G6 mode: number of deliberately unproved programs that must be built and run in safe mode only")
+    ap.add_argument("--g9", action="store_true",
+                    help="G9 mode: recursion (direct, mutual, phase measures), recursive types (bounded trees/lists, token cursor "
+                         "descent) and buffer fields (clone isolation, field replacement); output folder out/g9_<seed>[_rs], "
+                         "gate (g9_shortfall) applies; --rejected-sample is not used")
+    ap.add_argument("--g9-safe-only", type=int, default=20,
+                    help="G9 mode: number of deliberately unproved programs that must be built and run in safe mode only")
     ap.add_argument("--seeds", default=None,
                     help="comma-separated seeds (e.g. 41,56,57): one run per seed with the other options unchanged; "
                          "with --out each seed gets the subfolder OUT/<seed>")
@@ -1037,13 +1070,17 @@ def main():
         ap.error("--g2 and --g3 are separate modes")
     if args.g6 and (args.g2 or args.g3):
         ap.error("--g6 is a separate mode (not combinable with --g2/--g3)")
-    if args.g3 or args.g6:
+    if args.g9 and (args.g2 or args.g3 or args.g6):
+        ap.error("--g9 is a separate mode (not combinable with --g2/--g3/--g6)")
+    if args.g3 or args.g6 or args.g9:
         args.inputs = max(args.inputs, 8)    # exit criterion: at least eight concrete inputs per accepted program
+    if args.g9:
+        g9_prepare_process()
     if args.replay:
         return replay(args.replay, args)
     # per-compiler result/work folders: the py default path (out/<seed>) is unchanged, rs uses out/<seed>_rs;
-    # G6: out/g6_<seed> (py), out/g6_<seed>_rs (rs)
-    out_dir = args.out or os.path.join(HERE, "out", ("g6_" if args.g6 else "") + str(args.seed)
+    # G6: out/g6_<seed> (py), out/g6_<seed>_rs (rs); G9: out/g9_<seed>[_rs]
+    out_dir = args.out or os.path.join(HERE, "out", ("g9_" if args.g9 else "g6_" if args.g6 else "") + str(args.seed)
                                        + ("" if DRIVER.name == "py" else "_" + DRIVER.name)
                                        + ("_g2" if args.g2 else "") + ("_g3" if args.g3 else ""))
     os.makedirs(out_dir, exist_ok=True)
@@ -1064,7 +1101,9 @@ def main():
             """Generate candidate i and run it through phase_a. Exceptions are recorded as harness failures."""
             case = None
             try:
-                if args.g6:
+                if args.g9:
+                    case = generate.generate_case(args.seed, i, g9=True)
+                elif args.g6:
                     case = generate.generate_case(args.seed, i, g6=True)
                 elif args.g3:
                     case = generate.generate_case(args.seed, i, g3=True)
@@ -1085,7 +1124,7 @@ def main():
             st = rec["status"]
             if st in ("oracle_unsupported", "oracle_parse_error", "generator_invalid"):
                 counts[st] += 1
-                if (args.g3 or args.g6) and st != "generator_invalid" and oracle_gap_saved[0] < 10:
+                if (args.g3 or args.g6 or args.g9) and st != "generator_invalid" and oracle_gap_saved[0] < 10:
                     # an oracle that cannot evaluate a generated program is a gap in the oracle, never a success
                     oracle_gap_saved[0] += 1
                     gd = os.path.join(out_dir, "oracle_gap")
@@ -1120,16 +1159,20 @@ def main():
         # Once enough are collected or --max-candidates is reached, stop submitting but collect the results of every candidate already submitted.
         # G2 mode collects an extra 10% (+5 for rejected) to cover programs dropped by the counting condition (existing path unchanged)
         # G3 mode does the same and additionally keeps generating until enough deliberately unproved programs were rejected
-        want_programs = args.programs + (args.programs // 10 if (args.g2 or args.g3 or args.g6) else 0)
+        want_programs = args.programs + (args.programs // 10 if (args.g2 or args.g3 or args.g6 or args.g9) else 0)
         want_rejected = args.rejected_sample + (5 if args.g2 else 0)
         if args.g3:
             want_rejected = args.g3_safe_only + 5
         if args.g6:
             want_rejected = args.g6_safe_only + 5
+        if args.g9:
+            want_rejected = args.g9_safe_only + 5
 
         def need_more():
             if len(verified) < want_programs:
                 return True
+            if args.g9:
+                return sum(1 for r in rejected_all if g9_unproved(r)) < want_rejected
             if args.g6:
                 return sum(1 for r in rejected_all if g6_unproved(r)) < want_rejected
             return args.g3 and sum(1 for r in rejected_all if g3_unproved(r)) < want_rejected
@@ -1160,6 +1203,11 @@ def main():
             # deliberately unproved programs first; a few rejected programs that were meant to verify ride along (safe modes only)
             unproved = [r for r in rejected_all if g3_unproved(r)]
             unexpected = [r for r in rejected_all if not g3_unproved(r)]
+            sample = unproved[:want_rejected] + unexpected[:10]
+        elif args.g9:
+            # same as G6: deliberately unproved programs first, a few rejected "meant to verify" ones ride along (safe modes only)
+            unproved = [r for r in rejected_all if g9_unproved(r)]
+            unexpected = [r for r in rejected_all if not g9_unproved(r)]
             sample = unproved[:want_rejected] + unexpected[:10]
         elif args.g6:
             # same as G3: deliberately unproved programs first, a few rejected "meant to verify" ones ride along (safe modes only)
@@ -1381,6 +1429,65 @@ def main():
                 fail_kinds["g6_shortfall"] = miss_v + miss_s
                 summary["g6_shortfall"] = {"verified_missing": miss_v, "safe_only_missing": miss_s}
             summary["g6_failures"] = sum(fail_kinds.values())
+        if args.g9:
+            # Keys are added only in G9 mode (same shape as the G6 ones, prefix g9_). A timeout (verifier, build or run) is a
+            # failure kind of its own and never counts as a pass: g3_counted() rejects every program with a timed-out run.
+            failed_set = set(failed_cases)
+            g9_ver = [r for r in verified if r["name"] not in failed_set and g3_counted(r, True, args.inputs, "g9")]
+            g9_safe = [r for r in sample if g9_unproved(r) and r["name"] not in failed_set
+                       and g3_counted(r, False, args.inputs, "g9")]
+            unexpected_rej = [r for r in rejected_all if not g9_unproved(r)]
+            feat = {}
+            for r in g9_ver:
+                for t in (r["case"].get("g9_features") or []):
+                    feat[t] = feat.get(t, 0) + 1
+            kinds = {}
+            for r in g9_ver:
+                kinds[r["case"].get("kind")] = kinds.get(r["case"].get("kind"), 0) + 1
+            cmp_done, cmp_skipped = g3_comparisons(progs)
+            dig_full, dig_quiet = g3_digests(progs)
+            ipp = [len(r.get("inputs", [])) for r in progs]
+            summary["g9"] = True
+            summary["compiler"] = DRIVER.name
+            summary["g9_generated"] = counts["candidates"]
+            summary["g9_verified"] = len(g9_ver)
+            summary["g9_safe_only"] = len(g9_safe)
+            summary["g9_executions_compared"] = cmp_done
+            summary["g9_executions_not_compared"] = cmp_skipped
+            summary["g9_kinds_verified"] = dict(sorted(kinds.items()))
+            summary["g9_features_verified"] = dict(sorted(feat.items()))
+            summary["g9_inputs_per_program_min"] = min(ipp) if ipp else 0
+            # rust-X != llvm-X or proof != safe where the oracle says they agree (mode_mismatch), a run that differs from the
+            # oracle (oracle_mismatch), a verified program the oracle's proof mode faults on or whose ensures it violates (unsound)
+            summary["g9_mismatches"] = {"backend_or_mode_mismatch": fail_kinds.get("mode_mismatch", 0),
+                                        "oracle_mismatch": fail_kinds.get("oracle_mismatch", 0),
+                                        "unsound": fail_kinds.get("unsound", 0)}
+            summary["g9_timeouts"] = {k: v for k, v in sorted(fail_kinds.items()) if "timeout" in k}
+            summary["g9_unproved_by_design_verified_anyway"] = sum(1 for r in verified if g9_unproved(r))
+            summary["g9_unproved_by_design_verified_names"] = [
+                (r.get("name"), (r.get("case") or {}).get("g9_mutation") or (r.get("case") or {}).get("kind"))
+                for r in verified if g9_unproved(r)]
+            summary["g9_unexpected_rejects"] = {
+                "count": len(unexpected_rej), "names": [r["name"] for r in unexpected_rej[:20]],
+                "codes": sorted(set(c for r in unexpected_rej for c in r.get("codes", [])))}
+            summary["g9_digest"] = dig_full
+            summary["g9_digest_exit_stdout"] = dig_quiet
+            ud = os.path.join(out_dir, "unexpected_rejects")
+            for r in unexpected_rej[:10]:
+                os.makedirs(ud, exist_ok=True)
+                write(os.path.join(ud, r["name"] + ".pruv"), r["src"])
+                write(os.path.join(ud, r["name"] + ".txt"), r["logs"].get("verify", ""))
+            # the generator must produce well-typed programs and the oracle must be able to run them
+            if counts["generator_invalid"]:
+                fail_kinds["g9_generator_invalid"] = counts["generator_invalid"]
+            if counts["oracle_unsupported"] + counts["oracle_parse_error"]:
+                fail_kinds["g9_oracle_gap"] = counts["oracle_unsupported"] + counts["oracle_parse_error"]
+            if summary["g9_verified"] < args.programs or summary["g9_safe_only"] < args.g9_safe_only:
+                miss_v = max(0, args.programs - summary["g9_verified"])
+                miss_s = max(0, args.g9_safe_only - summary["g9_safe_only"])
+                fail_kinds["g9_shortfall"] = miss_v + miss_s
+                summary["g9_shortfall"] = {"verified_missing": miss_v, "safe_only_missing": miss_s}
+            summary["g9_failures"] = sum(fail_kinds.values())
         write(os.path.join(out_dir, "summary.json"), json.dumps(summary, indent=2))
         print("---- summary ----")
         print("candidates %d (generator errors %d, oracle unsupported %d) -> pass %d / reject %d %s"
@@ -1429,6 +1536,19 @@ def main():
                   % (summary["g6_unexpected_rejects"]["count"], json.dumps(summary["g6_unexpected_rejects"]["codes"]),
                      summary["g6_unproved_by_design_verified_anyway"]))
             print("G6 digest %s (exit+stdout only %s)" % (summary["g6_digest"][:16], summary["g6_digest_exit_stdout"][:16]))
+        if args.g9:
+            print("G9 seed %d (%s): generated %d, verified %d (requested %d), safe-only %d (requested %d), "
+                  "executions compared %d (not compared %d), failures %d, min inputs per program %d"
+                  % (args.seed, summary["compiler"], summary["g9_generated"], summary["g9_verified"], args.programs,
+                     summary["g9_safe_only"], args.g9_safe_only, summary["g9_executions_compared"],
+                     summary["g9_executions_not_compared"], summary["g9_failures"], summary["g9_inputs_per_program_min"]))
+            print("G9 kinds %s" % json.dumps(summary["g9_kinds_verified"]))
+            print("G9 features %s" % json.dumps(summary["g9_features_verified"]))
+            print("G9 mismatches %s, timeouts %s" % (json.dumps(summary["g9_mismatches"]), json.dumps(summary["g9_timeouts"])))
+            print("G9 programs meant to verify but rejected: %d %s; meant to be unproved but verified: %d"
+                  % (summary["g9_unexpected_rejects"]["count"], json.dumps(summary["g9_unexpected_rejects"]["codes"]),
+                     summary["g9_unproved_by_design_verified_anyway"]))
+            print("G9 digest %s (exit+stdout only %s)" % (summary["g9_digest"][:16], summary["g9_digest_exit_stdout"][:16]))
         print("failures: %s" % (json.dumps(fail_kinds) if fail_kinds else "none"))
         print("results: " + out_dir)
         return 1 if fail_kinds else 0

@@ -1117,3 +1117,33 @@ Fourth G6 batch (`docs/G6_SPEC.md` §7.5, decisions in §13). Python reference f
 - **Guard:** the G9 guard now runs after verification, so G9 programs are proved first and then stop at the Rust codegen layer. `run_all` expects that for the new `g9_proof` group.
 - **Fixtures:** 32 proof samples (`tests/g9/proof`, trees, JSON numbers, buffers, mutual and generic recursion) and 32 new must-reject pairs (`g9p_*`, all rejected by the verifier).
 - **Results:** g9_proof 32/32, g9_frontend 37/37, must_reject 392/392 on both compilers; Python full suite 1791/1791 (both backends); diff_trace all same on every group (4 + 14 counterexample-value-only differences); diff_compilers 2066 same, 0 diff; diff_llvm (g9, must_reject, examples) and diff_parse all same; Rust full suite 1791/1791 (both backends, rows compare clean); m3_all 12/12; cargo test 91; inference 41/41; run_all rows 1791.
+
+## 56. G9 A2: Rust source backend (2026-11-12)
+
+- **A1 audit fixes** (verifier, both compilers): observed terms are cached by id and a field access observes its parent first. A generic application's weight is a constant when its size does not depend on the value (`fixed_size`); otherwise it is a per-instance uninterpreted size with positivity only. This removed a Z3 crash on deeply nested generic sorts (p34). New proof fixtures p33–p35.
+- **Code generation:** extended types derive `Clone` and `Debug`, and recursive edges become `Box<...>`. Values are read through `&T` views and owning positions clone explicitly. Runtime `requires` that use `size` or `==` call generated helpers that charge a contract budget per visited node. Types are emitted in SCC-condensed order. The Rust guard is lifted; LLVM stays guarded until A3.
+- **A2 audit fixes:** `fixed_size` adds sizes as unbounded decimal numbers (no i64 wrap). Constructors with payload are allowed as aggregate operands in runtime contracts (real temporaries, i64 fields narrowed with a check). Subfields of a non-extended payload inside an extended value are read from the original reference, and a nominal value converted whole is charged to the contract budget first. The size helpers sum field weights with a linear accumulator. New proof fixtures p36, p37.
+- **Fixtures:** runtime tests g9_r01–g9_r25.
+- **Results:** both compilers emit the same Rust source; `run_all --backend rust` 1267/1267 with each compiler; m3_all 12/12; cargo test 91; inference 41/41. A 64-level nested generic example hits a Z3 limit and is covered by a unit test instead.
+
+## 57. G9 A3: LLVM backend (2026-11-12)
+
+- **Code generation** (both compilers, byte-identical IR): recursive types become heap nodes, with generated drop, clone, size and equality helpers. Reads borrow, and contract walks are metered by the same budget as on the Rust backend. The G9 LLVM guards are removed.
+- **A2 confirmation audit fixes:** `variant_field` and field reads on constructor values no longer copy the whole value, and constructor copies inside contracts are charged to the contract budget (runtime tests g9_r26, g9_r27).
+- **Fixtures:** LLVM runtime tests g9_l01–g9_l10, and an allocation balance check (every allocation freed) on the existing G9 runtime tests.
+- **Results:** LLVM output the same from both compilers; `run_all --backend both` 2051/2051 with each compiler; m3_all 12/12; cargo test passes. Constructors with payload as aggregate operands of a runtime `requires` were still Rust-only (listed in `tests/llvm_pending.txt`); see §59.
+
+## 58. G9 A4: user documentation and examples (2026-11-12)
+
+- **SPEC.md §6e** explains `decreases`, recursive functions and types, `size`, and buffer fields for users.
+- **Examples:** eight `examples/g9_*` programs that run on both backends, and a proof test for the SPEC tree example. `run_all` rows regenerated.
+- **Results:** examples 48/48; CI (including windows-abi) passes.
+
+## 59. G9 A3 audit fixes and G9 Q: mutants, fuzzing and independent use (2026-11-12)
+
+- **A3 audit fixes** (both compilers, byte-identical output): on the LLVM backend, constructors with payload are real temporaries as aggregate operands of a runtime `requires` (i64 fields narrowed with a checked conversion, buffers charged their length then copied, temporaries dropped per clause, per short-circuit right side and per quantifier body). Field paths below `variant_field` read only the selected leaf, and whole non-extended payloads are charged to the contract budget before conversion. The payload index is memoized (no quadratic helper generation). On the Rust backend a buffer field operand is evaluated once. Runtime tests g9_l11, g9_l12, g9_r28; the r26/r27 entries are removed from `tests/llvm_pending.txt`.
+- **Problems and solutions:** four problems in `bench/g9/PROBLEMS.md` (array recursive search, tree traversal with size termination, bounded JSON-like descent with a cursor, nested buffer copying with independence assertions) with graders in `bench/g9/run.py`. Reference solutions and an independent author's solutions (SPEC and problem statements only) both pass every grader test on all four configurations (py/rs compiler x rust/llvm backend). The independent author solved 4/4 on the first attempt with no diagnostic-driven revision.
+- **Source mutants** (`bench/g9/mutate_ops.py`): 227 mutants, 148 incorrect, 69 correct, 10 contract-weak (fail the full tests but satisfy the problem's stated contract; §15.1). All 148 incorrect mutants are rejected by the verifier on all four configurations; wrong-but-proved 0. Compiler fault injections are covered by the existing differential, runtime and model tests and are not rerun here.
+- **Fuzzing** (`bench/fuzz/run.py --g9`): seeds 41, 56 and 57, 100 programs each, on both compilers: 0 backend/mode mismatches, 0 oracle mismatches, 0 unsound results; the result digests are identical between the compilers. A few programs meant to verify were rejected (2, 2, 3; `verify:ensures`, solver incompleteness) and one program meant to be unproved verified (seed 57); neither is a soundness issue.
+- **Measurements** (reference solutions, this Mac): compile with proofs 0.02-0.08 s (Rust compiler) and 0.07-0.16 s (Python compiler), without proofs 0.01 s and 0.04 s; generated Rust source 4.1-6.6 KB and LLVM IR 7.8-14.0 KB, the same from both compilers. Clone allocations are checked for balance (every allocation freed) by the G9 runtime tests; per-call clone counts, traversal time and a legacy latency comparison were not measured in this batch.
+- **Results:** `run_all --backend both` 2063/2063 with each compiler; diff_compilers 1166 same, 0 diff; diff_llvm, diff_rust and diff_trace all same; m3_all ok; cargo test passes.

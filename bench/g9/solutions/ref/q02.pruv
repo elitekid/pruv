@@ -1,0 +1,50 @@
+// G9 q02 reference: build a balanced tree from an array slice, then walk it with decreases size(t)
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn build(a: [i64], lo: i64, hi: i64) -> Tree ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(a) && len(a) <= 1000
+  ensures size(result) == 2 * (hi - lo) + 1
+  decreases hi - lo
+{
+  if lo == hi { return Tree::Empty; }
+  let mid: i64 = lo + (hi - lo) / 2;
+  return Tree::Node(a[mid], build(a, lo, mid), build(a, mid + 1, hi));
+}
+
+fn nodes(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 2 * result + 1 == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + nodes(l) + nodes(r); }
+  }
+}
+
+fn empties(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 2 * result - 1 == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 1; }
+    Tree::Node(v, l, r) => { return empties(l) + empties(r); }
+  }
+}
+
+fn node_count(a: [i64]) -> i64 ! alloc
+  requires len(a) <= 1000
+  ensures result == len(a)
+{
+  let t: Tree = build(a, 0, len(a));
+  return nodes(t);
+}
+
+fn empty_count(a: [i64]) -> i64 ! alloc
+  requires len(a) <= 1000
+  ensures result == len(a) + 1
+{
+  let t: Tree = build(a, 0, len(a));
+  return empties(t);
+}

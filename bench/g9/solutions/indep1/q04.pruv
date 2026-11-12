@@ -1,0 +1,36 @@
+// q04: nested buffer copies are independent.
+
+struct Buf { data: [i64] }
+struct Pair { left: Buf, right: Buf }
+
+fn bumped_first(a: [i64], d: i64) -> i64 ! alloc
+  requires 1 <= len(a) && len(a) <= 1000
+  requires -1000000000 <= a[0] && a[0] <= 1000000000
+  requires -1000000000 <= d && d <= 1000000000
+  ensures result == 2 * a[0] + d
+{
+  let lb: Buf = Buf { data: copy(a) };
+  let rb: Buf = Buf { data: copy(a) };
+  let p: Pair = Pair { left: lb, right: rb };
+  let mut q: Pair = p;
+  let mut tmp: [i64] = copy(q.left.data);
+  tmp[0] = tmp[0] + d;
+  q.left.data = copy(tmp);
+  assert p.left.data[0] == a[0];
+  return p.left.data[0] + q.left.data[0];
+}
+
+fn swapped_lengths(a: [i64], b: [i64]) -> i64 ! alloc
+  requires len(a) <= 1000 && len(b) <= 1000
+  ensures result == 1000 * len(b) + len(a)
+{
+  let lb: Buf = Buf { data: copy(a) };
+  let rb: Buf = Buf { data: copy(b) };
+  let p: Pair = Pair { left: lb, right: rb };
+  let mut q: Pair = p;
+  let saved: Buf = q.left;
+  q.left = q.right;
+  q.right = saved;
+  assert len(p.left.data) == len(a);
+  return 1000 * len(q.left.data) + len(q.right.data);
+}

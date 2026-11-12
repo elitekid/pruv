@@ -1,0 +1,110 @@
+{
+ "solutions": "bench/g9/solutions/indep1",
+ "flags": [],
+ "results": {
+  "py-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 400,
+    "tests_total": 400,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 36,
+    "tests_total": 36,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 841,
+    "tests_total": 841,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 125,
+    "tests_total": 125,
+    "panics": 0
+   }
+  },
+  "py-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 400,
+    "tests_total": 400,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 36,
+    "tests_total": 36,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 841,
+    "tests_total": 841,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 125,
+    "tests_total": 125,
+    "panics": 0
+   }
+  },
+  "rs-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 400,
+    "tests_total": 400,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 36,
+    "tests_total": 36,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 841,
+    "tests_total": 841,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 125,
+    "tests_total": 125,
+    "panics": 0
+   }
+  },
+  "rs-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 400,
+    "tests_total": 400,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 36,
+    "tests_total": 36,
+    "panics": 0
+   },
+   "q03": {
+    "status": "ok",
+    "tests_passed": 841,
+    "tests_total": 841,
+    "panics": 0
+   },
+   "q04": {
+    "status": "ok",
+    "tests_passed": 125,
+    "tests_total": 125,
+    "panics": 0
+   }
+  }
+ }
+}

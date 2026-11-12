@@ -176,6 +176,7 @@ def _lex(src):
 # ---------------------------------------------------------------- parser
 class _Fn(object):
     foreign = None      # G6: the Rust path string of a `trusted rust fn` (body is empty), else None
+    decreases = None    # G9: the (parsed, never evaluated) function-level `decreases e` of a recursive function
 
     def __init__(self, name, params, ret, requires, ensures, body, line):
         self.name, self.params, self.ret = name, params, ret
@@ -418,13 +419,21 @@ class _Parser(object):
             while self.is_(","):
                 self.next()
                 self.ident()
-        req, ens = [], []
-        while self.is_("requires") or self.is_("ensures"):
+        req, ens, dec = [], [], None
+        while self.is_("requires") or self.is_("ensures") or self.is_("decreases"):
             kw = self.next()
+            if kw[1] == "decreases":
+                # G9: exactly one function-level measure; the oracle is a value interpreter and does not check it
+                if dec is not None:
+                    self.err("duplicate decreases")
+                dec = (self.imp(), kw[2])
+                continue
             (req if kw[1] == "requires" else ens).append((self.imp(), kw[2]))
         self.scopes = [dict(params)]
         self.cur_ret = ret
-        return _Fn(name, params, ret, req, ens, self.block(), line)
+        fn_ = _Fn(name, params, ret, req, ens, self.block(), line)
+        fn_.decreases = dec
+        return fn_
 
     def foreign_fn(self):
         """G6: `trusted rust fn NAME(params) -> T [! effects] (requires|ensures)* = "::path";` -> _Fn with .foreign = path."""
@@ -904,6 +913,14 @@ def _cp(v):
     return v
 
 
+def _g9_size(v):
+    """G9 `size(x)` (SPEC 6e): the number of struct/enum constructors in the value (only the active payload of an enum is
+    walked); scalars, arrays, strings, Option/Result wrappers count 0. Written from the SPEC sentence, not from the compiler."""
+    if isinstance(v, dict) and ("struct" in v or "enum" in v):
+        return 1 + sum(_g9_size(x) for x in v["fields"].values())
+    return 0
+
+
 class _Interp(object):
     def __init__(self, prog, max_steps, mode="safe"):
         if mode not in ("safe", "proof"):
@@ -1060,6 +1077,14 @@ class _Interp(object):
                 s = self.cev(e[2][0], env, lim)
                 i = self.cev(e[2][1], env, lim)
                 return _boundary(s, i)
+            if e[1] == "size" and len(e[2]) == 1 and "size" not in self.prog.fns:      # G9
+                v = self.cev(e[2][0], env, lim)
+                if not (isinstance(v, dict) and ("struct" in v or "enum" in v)):
+                    raise OracleUnsupported("size() of a non-struct/enum value")
+                self.steps += _g9_size(v)      # run-time requires/ensures cost one budget unit per node visited
+                if self.steps > self.max_steps:
+                    raise _Fault("limit", "steps")
+                return chk(_g9_size(v))
             if e[1] == "map_lookup" and len(e[2]) == 2:       # G6: total, Some(value) if the key is present
                 gm = self.cev(e[2][0], env, lim)
                 gk = self.cev(e[2][1], env, lim)
@@ -2286,7 +2311,73 @@ def _selftest_g6():
         pass
 
 
+def _selftest_g9():
+    """G9 (docs/G9_SPEC.md, SPEC.md 6e): function-level `decreases`, size(), recursive types, mutual recursion, token cursor
+    descent, buffer-field clones. Expected values were computed by hand."""
+    import sys
+    sys.setrecursionlimit(max(sys.getrecursionlimit(), 6000))
+
+    def go(src, fn, args, **kw):
+        return run(parse_program(src), fn, args, **kw)
+
+    # examples/g9_linked_struct.pruv shape: Node <-> Link, size() in contracts, recursion with `decreases`
+    src = ("struct Node { value: i64, next: Link }\nenum Link { End, More(node: Node) }\n"
+           "fn single(v: i64) -> Node ! alloc\n  ensures size(result) == 2 && result.value == v\n"
+           "{\n  return Node { value: v, next: Link::End };\n}\n"
+           "fn push(n: Node, v: i64) -> Node ! alloc\n  ensures size(result) == size(n) + 2 && result.value == v\n"
+           "{\n  return Node { value: v, next: Link::More(n) };\n}\n"
+           "fn grow(k: i64) -> Node ! alloc\n  requires k >= 0\n  ensures size(result) == 2 * k + 2\n  decreases k\n{\n"
+           "  if k == 0 { return single(0); }\n  let r: Node = grow(k - 1);\n  return push(r, k);\n}\n"
+           "fn node_len(n: Node) -> i64\n  requires size(n) <= 1000\n  ensures 2 * result == size(n)\n"
+           "  decreases size(n)\n{\n  return 1 + link_len(n.next);\n}\n"
+           "fn link_len(l: Link) -> i64\n  requires size(l) <= 1000\n  ensures 2 * result + 1 == size(l)\n"
+           "  decreases size(l)\n{\n  match l {\n    Link::End => { return 0; }\n    Link::More(n) => { return node_len(n); }\n  }\n}\n"
+           "fn f(k: i64) -> i64 ! alloc\n  requires k >= 0 && k <= 100\n  ensures result == k + 1\n{\n"
+           "  let g: Node = grow(k);\n  return node_len(g);\n}\n")
+    for mode in ("safe", "proof"):
+        r = go(src, "f", [3], mode=mode)
+        assert r["kind"] == "ok" and r["value"] == 4 and not r["contract_failures"], r
+        assert go(src, "f", [-1], mode=mode)["kind"] == "requires_violated"
+    bad = src.replace("ensures result == k + 1", "ensures result == k + 2")
+    assert go(bad, "f", [3], mode="proof")["contract_failures"] == ["ensures f clause 1"]
+    # mutual recursion with phase measures (examples/g9_phase_measure.pruv with C = 2, D = 1)
+    src = ("fn ping(n: i64) -> i64\n  requires 0 <= n && n <= 20\n  ensures result == 2 * n + 1\n  decreases 2 * n + 1\n{\n"
+           "  if n == 0 { return 1; }\n  return pong(n);\n}\n"
+           "fn pong(n: i64) -> i64\n  requires 1 <= n && n <= 20\n  ensures result == 2 * n + 1\n  decreases 2 * n\n{\n"
+           "  return 2 + ping(n - 1);\n}\n")
+    r = go(src, "ping", [3], mode="proof")
+    assert r["kind"] == "ok" and r["value"] == 7 and not r["contract_failures"], r
+    # token cursor descent (bench/g9/solutions/ref/q03.pruv): atom 0, open 1, close 2
+    src = ("fn value_end(a: [i64], i: i64) -> i64\n  requires 0 <= i && i <= len(a) && len(a) <= 20\n"
+           "  ensures result == 0 - 1 || (i < result && result <= len(a))\n"
+           "  decreases 2 * (len(a) - i) + 1\n{\n"
+           "  if i == len(a) { return 0 - 1; }\n  if a[i] == 0 { return i + 1; }\n  if a[i] != 1 { return 0 - 1; }\n"
+           "  return items_end(a, i + 1);\n}\n"
+           "fn items_end(a: [i64], j: i64) -> i64\n  requires 0 <= j && j <= len(a) && len(a) <= 20\n"
+           "  ensures result == 0 - 1 || (j < result && result <= len(a))\n  decreases 2 * (len(a) - j) + 2\n{\n"
+           "  if j == len(a) { return 0 - 1; }\n  if a[j] == 2 { return j + 1; }\n"
+           "  let k: i64 = value_end(a, j);\n  if k < 0 { return 0 - 1; }\n  return items_end(a, k);\n}\n"
+           "fn f(a: [i64]) -> bool\n  requires len(a) <= 20\n  ensures result ==> len(a) >= 1\n{\n"
+           "  return value_end(a, 0) == len(a);\n}\n")
+    for arr, want in (([1, 0, 0, 2], True), ([1, 0], False), ([0], True), ([0, 0], False), ([], False), ([1, 1, 2, 2], True)):
+        r = go(src, "f", [arr], mode="proof")
+        assert r["kind"] == "ok" and r["value"] is want and not r["contract_failures"], (arr, r)
+    # buffer-field clone: copy into a mutable local, replace the field, the original keeps its elements
+    src = ("struct Bag { items: [i64], tag: i64 }\n"
+           "fn with_first(b: Bag, v: i64) -> Bag ! alloc\n  requires len(b.items) >= 1\n"
+           "  ensures len(result.items) == len(b.items)\n  ensures result.items[0] == v\n{\n"
+           "  let mut c: Bag = b;\n  let mut arr: [i64] = copy(c.items);\n  arr[0] = v;\n  c.items = copy(arr);\n  return c;\n}\n"
+           "fn f(a: [i64], v: i64) -> i64 ! alloc\n  requires 1 <= len(a) && len(a) <= 20\n"
+           "  requires -1000 <= a[0] && a[0] <= 1000 && -1000 <= v && v <= 1000\n{\n"
+           "  let b: Bag = Bag { items: copy(a), tag: 1 };\n  let c: Bag = with_first(b, v);\n"
+           "  return b.items[0] * 100 + c.items[0];\n}\n")
+    r = go(src, "f", [[5, 6], 9], mode="proof")
+    assert r["kind"] == "ok" and r["value"] == 509 and not r["contract_failures"], r
+    assert go(src, "f", [[], 9])["kind"] == "requires_violated"
+
+
 if __name__ == "__main__":
     _selftest()
     _selftest_g3()
     _selftest_g6()
+    _selftest_g9()

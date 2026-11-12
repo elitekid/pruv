@@ -260,6 +260,73 @@ G6-specific harness details:
 | Seed | Compiler | Generated | Verified | Safe-only | Executions compared | Failures | Digest |
 |---|---|---|---|---|---|---|---|
 
+## G9 mode (`--g9`)
+
+A separate mode for recursion, recursive types and buffer fields (`SPEC.md` §6e, `docs/G9_SPEC.md` §10–§14, binding design §15.1): direct recursion over an array
+cursor, mutual recursion with phase measures, bounded finite trees / linked lists built from scalar inputs and walked with `decreases size(t)`, JSON-like token cursor
+descent, clone isolation and buffer-field replacement. `--g9` is not combinable with `--g2`/`--g3`/`--g6`. Without `--g9` nothing changes
+(`generate_case(seed, index, g2=False, g3=False, g6=False, g9=False)`; same seeds, same programs).
+
+```
+python bench/fuzz/run.py --g9 --seed 41 --programs 100 --compiler rs      # then again with --compiler py
+python bench/fuzz/run.py --g9 --seed 41 --programs 100 --compiler py
+python bench/fuzz/run.py --g9 --seed 56 --programs 100 --compiler rs      # and --compiler py
+python bench/fuzz/run.py --g9 --seed 57 --programs 100 --compiler rs      # and --compiler py
+python bench/fuzz/run.py --g9 --seeds 41,56,57 --programs 100 --max-candidates 600 --compiler rs
+python bench/fuzz/generate.py --g9 --seed 41 --count 24 --out /tmp/pruvgen_g9
+python bench/fuzz/oracle.py                                               # oracle self-test, includes the G9 cases
+python bench/fuzz/run.py --replay bench/fuzz/out/g9_41_rs/failures/<kind>_<case>
+```
+
+Output folder: `out/g9_<seed>` (`--compiler py`) and `out/g9_<seed>_rs` (default compiler). Options as for `--g6` (`--programs`, `--inputs` raised to 8, `--max-candidates`,
+`--jobs`, `--batch`, `--keep-work`, `--seeds`, `--out`), plus `--g9-safe-only N` (default 20: deliberately unproved programs that must be built and run in the safe modes).
+About 1.4 candidates per verified program are needed; raise `--max-candidates` (e.g. 600) when `g9_shortfall` appears.
+
+**Generator** (`generate.py`, `generate_g9_case`, rng `"g9:<seed>:<index>"`, input rng `"g9:<seed>:<name>:inputs"`). One public entry `fn f(..)` with parameters `i64` / `[i64]` and result `i64` / `bool`
+(recursive and buffer-field types cannot be in exported signatures), plus helper declarations. The shape rotates with the candidate index (`G9_SHAPES`, 8 shapes), the sub-variant and the constants come from the rng:
+
+- `arr`: direct recursion over an array cursor with `decreases len(a) - i` and `requires len(a) <= N` (N = 8..20): suffix `sum` (range-bounded elements, also negative), `count` of `a[k] OP t`, `find` (`exists`/`forall` ensures), `index` (first match, quantified postconditions), `below`, `max`;
+- `mutual`: `ping`/`pong` with phase measures `2*n+1` / `2*n` (`result == C*n + D`, optionally two calls), `even`/`odd` with a shared measure, and `alt_a`/`alt_b` alternating over an array with measures `2*(len(a)-i)+1` / `2*(len(a)-i)`;
+- `list`: `Node <-> Link` list built by `grow(k)` (`size(result) == 2*k + 2`, `requires 0 <= k && k <= K`, K = 8..16), walked by `node_len`/`link_len` (exact) or `node_sum`/`link_sum` with a clamped value (bounded by `CL * size`);
+- `tree`: `build(d)` as spine / mirrored spine / chain (`size(result) == 4*d+1` or `2*d+1`) called with `0 <= n <= D` (D = 6..10), walked by `tree_nodes` (`2*result + 1 == size(t)`, so `f` states an exact count), `tree_sum` (clamped), `tree_count` (`v OP x`) or `tree_depth`;
+- `bst`: 2–4 `insert` calls on scalar inputs (`size(result) == size(t) + 2`), then `tree_nodes` (`result == m`) or `tree_count`;
+- `tokens`: JSON-like token cursor descent over `[i64]` (atom / open / close codes drawn from 0..3, mutual `value_end`/`items_end`, measures `2*(len-i)+1` / `2*(len-j)+2`), returned as `end position` or `is_value`;
+- `clone_bag`: `struct Bag { items: [i64], tag: i64 }`, `with_first` copies the buffer into a mutable local and replaces the field; `f` reads the original, the clone, the tag, both lengths or the sum;
+- `clone_other`: the same with `struct Packet { bytes: [u8], label: str }` (`alloc(n, x)` typed as `[u8]`, label replaced by `copy("new")`), or a deep clone of a built `Tree` (`let mut c: Tree = a; c = fill(c, x);`) and a walk of the original or the clone.
+
+All recursion depths and tree sizes are bounded by small constants in `f`'s `requires` (arrays up to 20 elements, trees up to 41 nodes, ping/pong up to 40 calls), so the compiled programs and the oracle's Python recursion stay small; arrays up to 3 longer than the bound and
+values just outside the ranges are also generated (3/4 of the inputs satisfy `requires`, as in the other modes). Every verified-by-design program has an `ensures` that follows from the generator's own model (exact sums/counts/sizes where the verifier can prove them, bounds otherwise); the oracle evaluates every
+`ensures` at run time too (proof mode), so a claim that is false for some input shows up as `unsound`. The contracts are modelled on programs known to verify (`examples/g9_*.pruv`, `tests/runtime/g9_*.pruv`, `bench/g9/solutions/ref/*.pruv`): `0 - 1` for -1, exactly one `decreases e` per recursive function, `! alloc` wherever a recursive/buffer value is built or copied.
+
+**About 30% are deliberately unproved but well-typed** (`g9_bad`, `g9_mutation`, also the first source line): a false `ensures` (`false_ensures`) or a source mutation on the rendered program (`body_mut:<label>`): `wrong_decreases` (measure `0`), `wrong_phase`, `wrong_return`, `wrong_base`, `missing_base` (reaches an out-of-range index or a callee `requires` failure, never infinite recursion),
+`weak_helper_ensures` / `dropped_helper_requires` / `dropped_walker_bound` (stale facts: the program is true but unprovable), `wrong_store`, `lost_field_replacement`, `lost_clone_isolation`, `stale_field_read`, `duplicated_child`, `wrong_clone_child`, `missing_error_check`. A *missing* `decreases` is the type error `recursive_decreases` (also with `--no-verify`), so it is not generated.
+They are expected to be rejected and are then built/run in the two safe modes (`--no-verify` does not check `decreases`). A mutant that the verifier proves anyway is treated like any verified program (`g9_unproved_by_design_verified_anyway`). A candidate that the verifier rejects although it was meant to verify is not a pass: it lands in `g9_unexpected_rejects`
+(source + verifier output in `unexpected_rejects/`), is run in the safe modes only, and the run continues with more candidates (`--max-candidates`); a program rejected by parse/type/effect checking is `generator_invalid`.
+
+**Oracle** (`oracle.py`). The existing independent interpreter (own lexer/parser/value interpreter written from SPEC, no import from `pruvc`, no SMT terms, no compiler helpers) evaluates the generated source. G9 needed three additions that do not change other modes: the function-level `decreases e` clause is parsed (not evaluated; the oracle is a value interpreter),
+`size(x)` in contracts (number of struct/enum constructors in the value, only active payloads; one budget unit per node), and the already existing deep-copy value semantics (let/assignment/argument/return copy, `copy(view)`, whole-field assignment `q.f = e`, `match` on recursive enums, struct literals with `[i64]`/`[u8]`/`str` fields) are what clone isolation relies on.
+The oracle returns the expected `f` result for every concrete input in both modes (`safe` and `proof`), including `requires_violated`, `oob`, `overflow` faults and recorded contract failures. `python bench/fuzz/oracle.py` runs `_selftest_g9` (linked list with `size`, ping/pong, token descent, buffer-field clone).
+
+**Harness** (`run.py --g9`). Same pipeline and gate as `--g6`: each program is compiled with the chosen compiler (`--compiler py|rs`) to both backends (rust and llvm), verified runs in 4 modes (`rust-proof`, `rust-safe`, `llvm-proof`, `llvm-safe`), unproved ones in the 2 safe modes (`--no-verify`),
+all on the same 8 inputs, each mode compared with its own oracle result, `rust-X == llvm-X` required; both compilers must give the same `g9_digest` (the generator and the inputs do not depend on the compiler). Counting, shortfall and report keys mirror G6 with the prefix `g9_`:
+`g9_generated`, `g9_verified`, `g9_safe_only`, `g9_executions_compared` (and `g9_executions_not_compared`), `g9_failures`, `g9_kinds_verified`, `g9_features_verified`, `g9_inputs_per_program_min`, `g9_unproved_by_design_verified_anyway`, `g9_unexpected_rejects`, `g9_digest`, `g9_digest_exit_stdout`,
+plus `g9_mismatches` (`backend_or_mode_mismatch`, `oracle_mismatch`, `unsound`) and `g9_timeouts`. Extra failure kinds: `g9_shortfall`, `g9_generator_invalid`, `g9_oracle_gap`. A resource timeout (pruvc 120 s, rustc build, a run above 10 s) is a failure of its own (`timeout`, `build_error`, `run_timeout`), never a pass: a program with a timed-out run is not counted in `g9_verified`/`g9_safe_only`, and an oracle `limit` or exception is not counted either.
+G9-specific details: the oracle runs recursive Pruv calls as nested Python calls, so `--g9` raises the Python recursion limit and gives worker threads a 128 MB stack (`g9_prepare_process`); `--replay` detects a G9 source by its first line (`// g9 fuzz case`).
+The G9 LLVM output defines its clone/drop/node helpers as `internal` symbols, so (unlike G6) no per-module symbol renaming is done beyond the existing `pruv_abi_` prefix.
+
+**Known gaps (G9).**
+
+- Not run by this tool when it was written (nothing here was executed; run `python bench/fuzz/oracle.py` and a small `--g9 --programs 5` first): which programs the verifier accepts is a guess based on programs that are known to verify, so a systematic rejection of one shape shows up as `g9_unexpected_rejects` and reduces `g9_verified`;
+  the generator's well-typedness rests on SPEC §6e as read (`g9_generator_invalid` shows any misreading). The `copy(a)`-based element claims (`clone_bag`), the `result.items[0] == v` / `result.bytes[0] == v` ensures of `with_first`/`replaced` and the `len(p.label) + len(q.label) == 5` claim are the least certain contracts.
+- No exported recursive-type values (not allowed), no `main`, no generics, no collections inside recursive values, no `str` token parsers (`examples/g9_parser.pruv` shape), no `[bool]` fields, no recursion through `Option`/`Result` (all rejected by SPEC §6e), no mutation of a recursive value in place through a `match` view (`type/recursive_borrow` is must_reject territory).
+- Resource failures that SPEC §6e declares (stack overflow on very deep recursion, contract budget 2^30) are not reachable by design (depths and sizes are bounded); `--no-verify` programs with a wrong `decreases` always terminate on the generated inputs.
+- The oracle does not check `decreases` at run time; wrong measures are only exercised through the verifier (unproved programs), and the oracle's `size` is written from the SPEC sentence ("number of struct/enum constructors, only active payloads") so a disagreement with the compiler shows up as `unsound`/`oracle_mismatch`.
+
+### G9 run log (filled in by the main)
+
+| Seed | Compiler | Generated | Verified | Safe-only | Executions compared | Failures | Digest |
+|---|---|---|---|---|---|---|---|
+
 ## Failure kinds
 
 | kind | Meaning |
@@ -280,6 +347,9 @@ G6-specific harness details:
 | `g6_shortfall` | (`--g6` only) Fewer counted verified programs than `--programs` or fewer counted unproved safe-only programs than `--g6-safe-only`. The value is the sum of the shortfalls |
 | `g6_generator_invalid` | (`--g6` only) A generated program did not pass parse/type/effect checking (ownership errors count here too) |
 | `g6_oracle_gap` | (`--g6` only) The oracle could not parse or evaluate a generated program |
+| `g9_shortfall` | (`--g9` only) Fewer counted verified programs than `--programs` or fewer counted unproved safe-only programs than `--g9-safe-only`. The value is the sum of the shortfalls |
+| `g9_generator_invalid` | (`--g9` only) A generated program did not pass parse/type/effect checking |
+| `g9_oracle_gap` | (`--g9` only) The oracle could not parse or evaluate a generated program |
 
 ## Oracle independence
 

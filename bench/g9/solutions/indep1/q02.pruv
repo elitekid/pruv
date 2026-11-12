@@ -1,0 +1,60 @@
+// q02: build a tree from an array, then walk it with decreases size(t).
+
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn build(a: [i64], lo: i64, hi: i64) -> Tree ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(a)
+  ensures size(result) == 2 * (hi - lo) + 1
+  decreases hi - lo
+{
+  if lo == hi {
+    return Tree::Empty;
+  }
+  let mid: i64 = lo + (hi - lo) / 2;
+  assert lo <= mid && mid < hi;
+  let l: Tree = build(a, lo, mid);
+  let r: Tree = build(a, mid + 1, hi);
+  return Tree::Node(a[mid], l, r);
+}
+
+fn count_nodes(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 2 * result + 1 == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => {
+      return 1 + count_nodes(l) + count_nodes(r);
+    }
+  }
+}
+
+fn count_empties(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 2 * result == size(t) + 1
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 1; }
+    Tree::Node(v, l, r) => {
+      return count_empties(l) + count_empties(r);
+    }
+  }
+}
+
+fn node_count(a: [i64]) -> i64 ! alloc
+  requires len(a) <= 1000
+  ensures result == len(a)
+{
+  let t: Tree = build(a, 0, len(a));
+  return count_nodes(t);
+}
+
+fn empty_count(a: [i64]) -> i64 ! alloc
+  requires len(a) <= 1000
+  ensures result == len(a) + 1
+{
+  let t: Tree = build(a, 0, len(a));
+  return count_empties(t);
+}

@@ -598,6 +598,11 @@ Separate source-contract mutants (must be rejected) from compiler fault injectio
 (must be caught by differential/runtime/model tests). A timeout, unknown, crash,
 unsupported feature, or unexecuted mutant is not a successful semantic rejection.
 No new diagnostic codes; use existing G9 and soundness-failure classifications.
+Ground truth is graded against the problem's stated contracts: a mutant that fails
+the full functional tests but satisfies every stated requires/ensures on every test
+input (checked by executing those clauses as Rust assertions) is classified
+`contract_weak`. It is not an incorrect mutant and does not count toward the 80; it
+measures a weakness of the problem statement, not of the verifier.
 
 ### 15.2 Independent use and exit criteria
 

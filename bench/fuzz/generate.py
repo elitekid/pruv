@@ -17,7 +17,8 @@ The struct template also puts struct literals, enums, and Option/Result ==/!= in
 Result fields, and enum fields. There is also a variant that observes evaluation order, single evaluation, and two-field overflow order via `tap(v) ! io`.
 
 G2 mode (generate_case(.., g2=True)), G3 mode (generate_case(.., g3=True), generics, see the G3 block and bench/fuzz/README.md) and
-G6 mode (generate_case(.., g6=True), trusted Rust calls and Vec/HashMap/String, see the G6 block) use their own
+G6 mode (generate_case(.., g6=True), trusted Rust calls and Vec/HashMap/String, see the G6 block) and
+G9 mode (generate_case(.., g9=True), recursion / recursive types / buffer fields, see the G9 block) use their own
 rng streams and templates; without them the output for a given seed is unchanged.
 """
 import argparse
@@ -4612,6 +4613,712 @@ def g6_candidate_inputs(case, rng, n):
     return [[g6_value(rng, tag, name, h) for name, tag in case["params"]] for _ in range(n)]
 
 
+# ---------------------------------------------------------------- G9 mode (--g9)
+# Recursion, recursive types and buffer fields (docs/G9_SPEC.md 15.1, SPEC.md 6e). Only generate_case(seed, index, g9=True)
+# uses this block; it creates its own rng ("g9:<seed>:<index>"), so the streams of every other mode are untouched.
+#
+# A G9 case is a few helper declarations (recursive functions with exactly one `decreases e`, recursive types, structs with
+# buffer fields) plus one public entry `fn f(..)` whose parameters are i64 / [i64] and whose result is i64 or bool (recursive
+# and buffer-field types never cross the f boundary, SPEC 6e). The program shapes rotate with the candidate index
+# (G9_SHAPES): array-cursor recursion, mutual recursion with phase measures, a built linked list, a built tree (and a BST
+# built by inserts) walked with `decreases size(t)`, JSON-like token cursor descent, and two clone/field-replacement shapes.
+# Every bound that drives recursion depth or tree size is a small constant in f's `requires`, so run time and the oracle's
+# Python recursion stay bounded. The contracts are modelled on programs that are known to verify (examples/g9_*.pruv,
+# tests/runtime/g9_*.pruv, bench/g9/solutions/ref/*.pruv); the oracle re-checks every ensures at run time as well.
+#
+# About G9_BAD_SHARE of the cases are deliberately unproved but well-typed and terminating on every input that satisfies
+# f's requires: a false ensures, a wrong `decreases` (not decreasing / wrong phase), a wrong return or base case, a missing
+# base case (reaches an out-of-range index or a callee `requires` failure, never infinite recursion), a dropped helper
+# ensures/requires (stale facts). A missing `decreases` is a type error (recursive_decreases), so it is not generated.
+# They run in the two safe modes only (`--no-verify` does not check `decreases`).
+
+G9_BAD_SHARE = 0.30
+G9_SHAPES = ["arr", "mutual", "list", "tree", "bst", "tokens", "clone_bag", "clone_other"]
+G9_TREE_DECL = "enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }"
+
+
+class G9P(object):
+    """Parts of one G9 case under construction."""
+
+    def __init__(self, rng):
+        self.rng = rng
+        self.decls = []        # type declaration blocks
+        self.helpers = []      # helper function blocks, in source order (recursive ones carry their own `decreases`)
+        self.params = []       # [[name, tag]]: "i64" "array"
+        self.ret = "i64"       # "i64" "bool"
+        self.effects = []
+        self.requires = []
+        self.ensures = []
+        self.false_ens = []    # contract clauses that are false (offered to the defect step)
+        self.body = []
+        self.muts = []         # [(old text, new text, label)]: first-occurrence replacements on the rendered program
+        self.hints = {"ranges": {}, "maxlen": {}, "minlen": {}, "elem": {}, "tokens": {}}
+        self.feats = set()
+        self.detail = ""
+        self.mutation = None
+
+
+def g9_lines(*ls):
+    return "\n".join(ls)
+
+
+# -- Tree helpers shared by the tree, bst and clone_other shapes
+
+def g9_t_build(kind, valexpr, leafv):
+    leaf = "Tree::Node(%s, Tree::Empty, Tree::Empty)" % leafv
+    if kind == "spine":
+        ret, size = "Tree::Node(%s, build(d - 1), %s)" % (valexpr, leaf), "4 * d + 1"
+    elif kind == "mirror":
+        ret, size = "Tree::Node(%s, %s, build(d - 1))" % (valexpr, leaf), "4 * d + 1"
+    else:
+        ret, size = "Tree::Node(%s, build(d - 1), Tree::Empty)" % valexpr, "2 * d + 1"
+    return g9_lines("fn build(d: i64) -> Tree ! alloc", "  requires 0 <= d && d <= 100",
+                    "  ensures size(result) == %s" % size, "  decreases d", "{",
+                    "  if d == 0 { return Tree::Empty; }", "  return %s;" % ret, "}")
+
+
+G9_T_NODES = g9_lines(
+    "fn tree_nodes(t: Tree) -> i64", "  requires size(t) <= 1000", "  ensures 2 * result + 1 == size(t)",
+    "  decreases size(t)", "{", "  match t {", "    Tree::Empty => { return 0; }",
+    "    Tree::Node(v, l, r) => { return 1 + tree_nodes(l) + tree_nodes(r); }", "  }", "}")
+
+G9_T_DEPTH = g9_lines(
+    "fn tree_depth(t: Tree) -> i64", "  requires size(t) <= 1000", "  ensures result >= 0 && result <= size(t)",
+    "  decreases size(t)", "{", "  match t {", "    Tree::Empty => { return 0; }", "    Tree::Node(v, l, r) => {",
+    "      let dl: i64 = tree_depth(l);", "      let dr: i64 = tree_depth(r);", "      if dl > dr { return 1 + dl; }",
+    "      return 1 + dr;", "    }", "  }", "}")
+
+G9_T_FILL = g9_lines(
+    "fn fill(t: Tree, x: i64) -> Tree ! alloc", "  ensures size(result) == size(t)", "  decreases size(t)", "{",
+    "  match t {", "    Tree::Empty => { return Tree::Empty; }",
+    "    Tree::Node(v, l, r) => { return Tree::Node(x, fill(l, x), fill(r, x)); }", "  }", "}")
+
+G9_T_INSERT = g9_lines(
+    "fn insert(t: Tree, x: i64) -> Tree ! alloc", "  ensures size(result) == size(t) + 2", "  decreases size(t)", "{",
+    "  match t {", "    Tree::Empty => { return Tree::Node(x, Tree::Empty, Tree::Empty); }", "    Tree::Node(v, l, r) => {",
+    "      if x < v { return Tree::Node(v, insert(l, x), r); }", "      return Tree::Node(v, l, insert(r, x));", "    }",
+    "  }", "}")
+
+
+def g9_t_count(op):
+    return g9_lines(
+        "fn tree_count(t: Tree, x: i64) -> i64", "  requires size(t) <= 1000", "  ensures result >= 0 && result <= size(t)",
+        "  decreases size(t)", "{", "  match t {", "    Tree::Empty => { return 0; }", "    Tree::Node(v, l, r) => {",
+        "      if v %s x { return 1 + tree_count(l, x) + tree_count(r, x); }" % op,
+        "      return tree_count(l, x) + tree_count(r, x);", "    }", "  }", "}")
+
+
+def g9_t_sum(cl):
+    return g9_lines(
+        "fn clamp(v: i64) -> i64", "  ensures result >= 0 && result <= %d" % cl, "{", "  if v < 0 { return 0; }",
+        "  if v > %d { return %d; }" % (cl, cl), "  return v;", "}", "",
+        "fn tree_sum(t: Tree) -> i64", "  requires size(t) <= 1000", "  ensures result >= 0 && result <= %d * size(t)" % cl,
+        "  decreases size(t)", "{", "  match t {", "    Tree::Empty => { return 0; }",
+        "    Tree::Node(v, l, r) => { return clamp(v) + tree_sum(l) + tree_sum(r); }", "  }", "}")
+
+
+G9_WALK_DEC = ("  decreases size(t)\n", "  decreases 0\n", "wrong_decreases")
+G9_WALK_BOUND = ("  requires size(t) <= 1000\n", "", "dropped_walker_bound")
+
+
+# -- scenarios: each fills in params/ret/effects/requires/ensures/false_ens/body/decls/helpers/muts/hints/feats of a G9P
+
+def g9_sc_arr(P):
+    """Direct recursion over an array cursor (search/count/sum/max) with `decreases len(a) - i`."""
+    rng = P.rng
+    N = rng.choice([8, 12, 16, 20])
+    sub = rng.choice(["sum", "sum", "count", "find", "index", "below", "max"])
+    P.detail = sub
+    P.params = [["a", "array"]]
+    P.hints["maxlen"]["a"] = N
+    P.feats.update(["array_cursor", "direct_recursion", "arr_" + sub])
+    lenreq = "len(a) <= %d" % N
+    dec = ("  decreases len(a) - i\n", "  decreases len(a)\n", "wrong_decreases")
+    if sub == "sum":
+        H = rng.choice([10, 100, 1000])
+        neg = rng.random() < 0.25
+        lo = "0 - %d" % H if neg else "0"
+        elem = "forall k in 0..len(a): %s <= a[k] && a[k] <= %d" % (lo, H)
+        P.hints["elem"]["a"] = (-H if neg else 0, H)
+        low_h = ("0 <= result + %d * (len(a) - i)" % H) if neg else "0 <= result"
+        low_f = ("0 <= result + %d * len(a)" % H) if neg else "0 <= result"
+        P.helpers.append(g9_lines(
+            "fn sum_from(a: [i64], i: i64) -> i64", "  requires 0 <= i && i <= len(a)", "  requires " + lenreq,
+            "  requires " + elem, "  ensures result == sum(k in i..len(a): a[k])",
+            "  ensures %s && result <= %d * (len(a) - i)" % (low_h, H), "  decreases len(a) - i", "{",
+            "  if i == len(a) { return 0; }", "  return a[i] + sum_from(a, i + 1);", "}"))
+        P.requires = [lenreq, elem]
+        P.ensures = ["result == sum(k in 0..len(a): a[k])", "%s && result <= %d * len(a)" % (low_f, H)]
+        P.false_ens = ["result == %d * len(a) + 1" % H]
+        P.body = ["  return sum_from(a, 0);"]
+        P.muts = [("  return a[i] + sum_from(a, i + 1);", "  return a[i] + sum_from(a, i + 1) + 1;", "wrong_return"),
+                  ("  if i == len(a) { return 0; }\n", "", "missing_base"), dec,
+                  ("  ensures result == sum(k in i..len(a): a[k])\n", "", "weak_helper_ensures")]
+    elif sub == "count":
+        op = rng.choice([">", ">=", "<", "<=", "=="])
+        P.params.append(["t", "i64"])
+        P.hints["ranges"]["t"] = (-5, 9)
+        P.helpers.append(g9_lines(
+            "fn count_from(a: [i64], t: i64, i: i64) -> i64", "  requires 0 <= i && i <= len(a)", "  requires " + lenreq,
+            "  ensures result == count(k in i..len(a): a[k] %s t)" % op, "  ensures 0 <= result && result <= len(a) - i",
+            "  decreases len(a) - i", "{", "  if i == len(a) { return 0; }",
+            "  if a[i] %s t { return 1 + count_from(a, t, i + 1); }" % op, "  return count_from(a, t, i + 1);", "}"))
+        P.requires = [lenreq]
+        P.ensures = ["result == count(k in 0..len(a): a[k] %s t)" % op, "0 <= result && result <= len(a)"]
+        P.false_ens = ["result == len(a) + 1", "result == 0"]
+        P.body = ["  return count_from(a, t, 0);"]
+        P.muts = [("  if a[i] %s t { return 1 + count_from(a, t, i + 1); }" % op,
+                   "  if a[i] %s t { return 2 + count_from(a, t, i + 1); }" % op, "wrong_return"),
+                  ("  if i == len(a) { return 0; }\n", "", "missing_base"), dec,
+                  ("  ensures result == count(k in i..len(a): a[k] %s t)\n" % op, "", "weak_helper_ensures")]
+    elif sub == "find":
+        P.ret = "bool"
+        P.params.append(["x", "i64"])
+        P.hints["ranges"]["x"] = (-5, 9)
+        P.helpers.append(g9_lines(
+            "fn find_from(a: [i64], i: i64, x: i64) -> bool", "  requires 0 <= i && i <= len(a)", "  requires " + lenreq,
+            "  ensures !result ==> forall k in i..len(a): a[k] != x", "  ensures result ==> exists k in i..len(a): a[k] == x",
+            "  decreases len(a) - i", "{", "  if i == len(a) { return false; }", "  if a[i] == x { return true; }",
+            "  return find_from(a, i + 1, x);", "}"))
+        P.requires = [lenreq]
+        P.ensures = ["!result ==> forall k in 0..len(a): a[k] != x", "result ==> exists k in 0..len(a): a[k] == x"]
+        P.false_ens = ["result", "!result"]
+        P.body = ["  return find_from(a, 0, x);"]
+        P.muts = [("  if a[i] == x { return true; }", "  if a[i] == x { return false; }", "wrong_return"),
+                  ("  if i == len(a) { return false; }\n", "", "missing_base"), dec]
+    elif sub == "index":
+        P.params.append(["q", "i64"])
+        P.hints["ranges"]["q"] = (-5, 9)
+        P.helpers.append(g9_lines(
+            "fn search_from(a: [i64], q: i64, i: i64) -> i64", "  requires 0 <= i && i <= len(a)", "  requires " + lenreq,
+            "  requires forall k in 0..i: a[k] != q", "  ensures result == 0 - 1 || (i <= result && result < len(a))",
+            "  ensures result >= 0 ==> a[result] == q && (forall k in 0..result: a[k] != q)",
+            "  ensures result < 0 ==> (forall k in 0..len(a): a[k] != q)", "  decreases len(a) - i", "{",
+            "  if i == len(a) { return 0 - 1; }", "  if a[i] == q { return i; }", "  return search_from(a, q, i + 1);", "}"))
+        P.requires = [lenreq]
+        P.ensures = ["result == 0 - 1 || (0 <= result && result < len(a))",
+                     "result >= 0 ==> a[result] == q && (forall k in 0..result: a[k] != q)",
+                     "result < 0 ==> (forall k in 0..len(a): a[k] != q)"]
+        P.false_ens = ["result >= 0", "result < 0"]
+        P.body = ["  return search_from(a, q, 0);"]
+        P.muts = [("  if a[i] == q { return i; }", "  if a[i] == q { return i + 1; }", "wrong_return"),
+                  ("  if i == len(a) { return 0 - 1; }\n", "", "missing_base"), dec,
+                  ("  requires forall k in 0..i: a[k] != q\n", "", "dropped_helper_requires")]
+    elif sub == "below":
+        P.ret = "bool"
+        P.params.append(["t", "i64"])
+        P.hints["ranges"]["t"] = (-5, 9)
+        P.helpers.append(g9_lines(
+            "fn all_below_from(a: [i64], t: i64, i: i64) -> bool", "  requires 0 <= i && i <= len(a)", "  requires " + lenreq,
+            "  ensures result == (forall k in i..len(a): a[k] < t)", "  decreases len(a) - i", "{",
+            "  if i == len(a) { return true; }", "  if a[i] >= t { return false; }", "  return all_below_from(a, t, i + 1);", "}"))
+        P.requires = [lenreq]
+        P.ensures = ["result == (forall k in 0..len(a): a[k] < t)"]
+        P.false_ens = ["result", "!result"]
+        P.body = ["  return all_below_from(a, t, 0);"]
+        P.muts = [("  if a[i] >= t { return false; }", "  if a[i] > t { return false; }", "wrong_boundary"),
+                  ("  if i == len(a) { return true; }\n", "", "missing_base"), dec]
+    else:
+        P.hints["minlen"]["a"] = 1
+        P.helpers.append(g9_lines(
+            "fn max_from(a: [i64], i: i64) -> i64", "  requires 0 <= i && i < len(a)", "  requires " + lenreq,
+            "  ensures forall k in i..len(a): a[k] <= result", "  ensures exists k in i..len(a): a[k] == result",
+            "  decreases len(a) - i", "{", "  if i == len(a) - 1 { return a[i]; }", "  let m: i64 = max_from(a, i + 1);",
+            "  if a[i] > m { return a[i]; }", "  return m;", "}"))
+        P.requires = ["1 <= len(a)", lenreq]
+        P.ensures = ["forall k in 0..len(a): a[k] <= result", "exists k in 0..len(a): a[k] == result"]
+        P.false_ens = ["result == a[0]", "result > a[0]"]
+        P.body = ["  return max_from(a, 0);"]
+        P.muts = [("  if a[i] > m { return a[i]; }", "  if a[i] < m { return a[i]; }", "wrong_return"), dec,
+                  ("  if i == len(a) - 1 { return a[i]; }\n", "", "missing_base")]
+
+
+def g9_sc_mutual(P):
+    """Mutual recursion with phase measures (ping/pong), a shared measure (even/odd), or alternating array sums."""
+    rng = P.rng
+    sub = rng.choice(["pingpong", "pingpong", "evenodd", "altsum"])
+    P.detail = sub
+    P.feats.update(["mutual_recursion", "mutual_" + sub])
+    if sub == "pingpong":
+        C, D, B = rng.randint(1, 9), rng.randint(0, 9), rng.choice([10, 20])
+        P.feats.add("phase_measure")
+        P.helpers.append(g9_lines(
+            "fn ping(n: i64) -> i64", "  requires 0 <= n && n <= %d" % B, "  ensures result == %d * n + %d" % (C, D),
+            "  decreases 2 * n + 1", "{", "  if n == 0 { return %d; }" % D, "  return pong(n);", "}", "",
+            "fn pong(n: i64) -> i64", "  requires 1 <= n && n <= %d" % B, "  ensures result == %d * n + %d" % (C, D),
+            "  decreases 2 * n", "{", "  return %d + ping(n - 1);" % C, "}"))
+        P.params = [["n", "i64"]]
+        P.hints["ranges"]["n"] = (0, B)
+        P.requires = ["0 <= n && n <= %d" % B]
+        if rng.random() < 0.4:
+            P.params.append(["m", "i64"])
+            P.hints["ranges"]["m"] = (0, B)
+            P.requires.append("0 <= m && m <= %d" % B)
+            P.ensures = ["result == %d * n + %d * m + %d" % (C, C, 2 * D)]
+            P.false_ens = ["result == %d * n + %d * m + %d" % (C, C, 2 * D + 1)]
+            P.body = ["  return ping(n) + ping(m);"]
+        else:
+            P.ensures = ["result == %d * n + %d" % (C, D)]
+            P.false_ens = ["result == %d * n + %d" % (C, D + 1)]
+            P.body = ["  return ping(n);"]
+        P.muts = [("  decreases 2 * n\n", "  decreases 2 * n + 1\n", "wrong_phase"),
+                  ("  return %d + ping(n - 1);" % C, "  return %d + ping(n - 1);" % (C + 1), "wrong_return"),
+                  ("  if n == 0 { return %d; }" % D, "  if n == 0 { return %d; }" % (D + 1), "wrong_base"),
+                  ("  ensures result == %d * n + %d\n" % (C, D), "", "weak_helper_ensures")]
+    elif sub == "evenodd":
+        B, K = rng.choice([20, 30]), rng.randint(0, 5)
+        which = rng.choice(["even", "odd"])
+        P.helpers.append(g9_lines(
+            "fn even(n: i64) -> bool", "  requires n >= 0", "  ensures result == (n % 2 == 0)", "  decreases n", "{",
+            "  if n == 0 { return true; }", "  return odd(n - 1);", "}", "",
+            "fn odd(n: i64) -> bool", "  requires n >= 0", "  ensures result == (n % 2 == 1)", "  decreases n", "{",
+            "  if n == 0 { return false; }", "  return even(n - 1);", "}"))
+        arg = "n + %d" % K if K else "n"
+        P.params = [["n", "i64"]]
+        P.ret = "bool"
+        P.hints["ranges"]["n"] = (0, B)
+        P.requires = ["0 <= n && n <= %d" % B]
+        par = 0 if which == "even" else 1
+        P.ensures = ["result == ((%s) %% 2 == %d)" % (arg, par)]
+        P.false_ens = ["result != ((%s) %% 2 == %d)" % (arg, par)]
+        P.body = ["  return %s(%s);" % (which, arg)]
+        P.muts = [("  if n == 0 { return true; }", "  if n == 0 { return false; }", "wrong_return"),
+                  ("  decreases n\n", "  decreases 0\n", "wrong_decreases"),
+                  ("  ensures result == (n % 2 == 0)\n", "", "weak_helper_ensures")]
+    else:
+        N, H = rng.choice([8, 12, 16, 20]), rng.choice([10, 100, 1000])
+        lenreq = "len(a) <= %d" % N
+        elem = "forall k in 0..len(a): 0 <= a[k] && a[k] <= %d" % H
+        P.feats.update(["phase_measure", "array_cursor"])
+        P.helpers.append(g9_lines(
+            "fn alt_a(a: [i64], i: i64) -> i64", "  requires 0 <= i && i <= len(a)", "  requires " + lenreq, "  requires " + elem,
+            "  ensures 0 <= result && result <= %d * (len(a) - i)" % H, "  decreases 2 * (len(a) - i) + 1", "{",
+            "  if i == len(a) { return 0; }", "  return a[i] + alt_b(a, i + 1);", "}", "",
+            "fn alt_b(a: [i64], i: i64) -> i64", "  requires 0 <= i && i <= len(a)", "  requires " + lenreq, "  requires " + elem,
+            "  ensures 0 <= result && result <= %d * (len(a) - i)" % H, "  decreases 2 * (len(a) - i)", "{",
+            "  if i == len(a) { return 0; }", "  return alt_a(a, i + 1);", "}"))
+        P.params = [["a", "array"]]
+        P.hints["maxlen"]["a"] = N
+        P.hints["elem"]["a"] = (0, H)
+        P.requires = [lenreq, elem]
+        P.ensures = ["0 <= result && result <= %d * len(a)" % (2 * H)]
+        P.false_ens = ["result == %d * len(a) + 1" % (2 * H)]
+        P.body = ["  return alt_a(a, 0) + alt_b(a, 0);"]
+        P.muts = [("  decreases 2 * (len(a) - i)\n", "  decreases 2 * (len(a) - i) + 1\n", "wrong_phase"),
+                  ("  return a[i] + alt_b(a, i + 1);", "  return a[i] + a[i] + alt_b(a, i + 1);", "wrong_return"),
+                  ("  if i == len(a) { return 0; }\n", "", "missing_base")]
+
+
+def g9_sc_list(P):
+    """A linked list (Node <-> Link) built from a clamped scalar, then walked with decreases size(..)."""
+    rng = P.rng
+    K, M, V0, CL = rng.choice([8, 12, 16]), rng.randint(1, 9), rng.randint(0, 9), rng.choice([10, 50, 100])
+    sub = rng.choice(["len", "sum"])
+    P.detail = sub
+    P.effects = ["alloc"]
+    P.feats.update(["recursive_struct", "linked_list", "size_contract", "mutual_recursion", "build_then_walk", "list_" + sub])
+    P.decls = ["struct Node { value: i64, next: Link }\nenum Link { End, More(node: Node) }"]
+    P.helpers.append(g9_lines(
+        "fn single(v: i64) -> Node ! alloc", "  ensures size(result) == 2 && result.value == v", "{",
+        "  return Node { value: v, next: Link::End };", "}", "",
+        "fn push(n: Node, v: i64) -> Node ! alloc", "  ensures size(result) == size(n) + 2 && result.value == v", "{",
+        "  return Node { value: v, next: Link::More(n) };", "}", "",
+        "fn grow(k: i64) -> Node ! alloc", "  requires 0 <= k && k <= 100", "  ensures size(result) == 2 * k + 2",
+        "  decreases k", "{", "  if k == 0 { return single(%d); }" % V0, "  let r: Node = grow(k - 1);",
+        "  return push(r, k * %d);" % M, "}"))
+    P.params = [["k", "i64"]]
+    P.hints["ranges"]["k"] = (0, K)
+    P.requires = ["0 <= k && k <= %d" % K]
+    P.muts = [("  decreases k\n", "  decreases 0\n", "wrong_decreases_builder"),
+              ("  if k == 0 { return single(%d); }" % V0, "  if k == 0 { return push(single(%d), 1); }" % V0, "wrong_base")]
+    if sub == "len":
+        P.helpers.append(g9_lines(
+            "fn node_len(n: Node) -> i64", "  requires size(n) <= 1000", "  ensures 2 * result == size(n)",
+            "  decreases size(n)", "{", "  return 1 + link_len(n.next);", "}", "",
+            "fn link_len(l: Link) -> i64", "  requires size(l) <= 1000", "  ensures 2 * result + 1 == size(l)",
+            "  decreases size(l)", "{", "  match l {", "    Link::End => { return 0; }",
+            "    Link::More(n) => { return node_len(n); }", "  }", "}"))
+        P.ensures = ["result == k + 1"]
+        P.false_ens = ["result == k + 2", "result == k"]
+        P.body = ["  let g: Node = grow(k);", "  return node_len(g);"]
+        P.muts += [("  return 1 + link_len(n.next);", "  return 2 + link_len(n.next);", "wrong_return"),
+                   ("  decreases size(n)\n", "  decreases 0\n", "wrong_decreases")]
+    else:
+        P.helpers.append(g9_lines(
+            "fn clamp(v: i64) -> i64", "  ensures result >= 0 && result <= %d" % CL, "{", "  if v < 0 { return 0; }",
+            "  if v > %d { return %d; }" % (CL, CL), "  return v;", "}", "",
+            "fn node_sum(n: Node) -> i64", "  requires size(n) <= 1000", "  ensures 0 <= result && result <= %d * size(n)" % CL,
+            "  decreases size(n)", "{", "  return clamp(n.value) + link_sum(n.next);", "}", "",
+            "fn link_sum(l: Link) -> i64", "  requires size(l) <= 1000", "  ensures 0 <= result && result <= %d * size(l)" % CL,
+            "  decreases size(l)", "{", "  match l {", "    Link::End => { return 0; }",
+            "    Link::More(n) => { return node_sum(n); }", "  }", "}"))
+        P.ensures = ["0 <= result && result <= %d * (2 * k + 2)" % CL]
+        P.false_ens = ["result == %d * (2 * k + 2) + 1" % CL]
+        P.body = ["  let g: Node = grow(k);", "  return node_sum(g);"]
+        P.muts += [("  return clamp(n.value) + link_sum(n.next);", "  return clamp(n.value) + 1 + link_sum(n.next);", "wrong_return"),
+                   ("  requires size(n) <= 1000\n", "", "dropped_helper_requires"),
+                   ("  decreases size(n)\n", "  decreases 0\n", "wrong_decreases")]
+
+
+def g9_sc_tree(P):
+    """A finite tree built from a clamped scalar (spine / mirror / chain), then walked with decreases size(t)."""
+    rng = P.rng
+    bk = rng.choice(["spine", "mirror", "chain"])
+    wk = rng.choice(["nodes", "sum", "count", "depth"])
+    D, M, C = rng.choice([6, 8, 10]), rng.randint(1, 9), rng.randint(1, 9)
+    valexpr = rng.choice(["d", "d * %d" % M, "d + %d" % C])
+    leafv = rng.choice(["d", "d + %d" % C, str(rng.randint(0, 9))])
+    sz = "2 * n + 1" if bk == "chain" else "4 * n + 1"
+    nn = "n" if bk == "chain" else "2 * n"
+    P.detail = bk + "_" + wk
+    P.effects = ["alloc"]
+    P.feats.update(["recursive_enum", "bounded_tree", "size_contract", "build_then_walk", "build_" + bk, "walk_" + wk])
+    P.decls = [G9_TREE_DECL]
+    P.helpers.append(g9_t_build(bk, valexpr, leafv))
+    P.params = [["n", "i64"]]
+    P.hints["ranges"]["n"] = (0, D)
+    P.requires = ["0 <= n && n <= %d" % D]
+    call = "tree_nodes(t)"
+    P.muts = [("  if d == 0 { return Tree::Empty; }", "  if d == 0 { return Tree::Node(0, Tree::Empty, Tree::Empty); }", "wrong_base"),
+              ("  decreases d\n", "  decreases 0\n", "wrong_decreases_builder")]
+    if wk == "nodes":
+        P.helpers.append(G9_T_NODES)
+        P.ensures = ["result == %s" % nn]
+        P.false_ens = ["result == %s + 1" % nn]
+        P.muts += [("{ return 1 + tree_nodes(l) + tree_nodes(r); }", "{ return 2 + tree_nodes(l) + tree_nodes(r); }", "wrong_return"),
+                   G9_WALK_DEC, G9_WALK_BOUND]
+    elif wk == "sum":
+        CL = rng.choice([10, 50, 100])
+        P.helpers.append(g9_t_sum(CL))
+        call = "tree_sum(t)"
+        P.ensures = ["0 <= result && result <= %d * (%s)" % (CL, sz)]
+        P.false_ens = ["result == %d * (%s) + 1" % (CL, sz)]
+        P.muts += [("{ return clamp(v) + tree_sum(l) + tree_sum(r); }", "{ return clamp(v) + 1 + tree_sum(l) + tree_sum(r); }",
+                    "wrong_return"), G9_WALK_DEC, G9_WALK_BOUND]
+    elif wk == "count":
+        op = rng.choice(["==", ">", "<", ">="])
+        P.helpers.append(g9_t_count(op))
+        P.params.append(["x", "i64"])
+        P.hints["ranges"]["x"] = (-2, 14)
+        call = "tree_count(t, x)"
+        P.ensures = ["0 <= result && result <= %s" % sz]
+        P.false_ens = ["result > %s" % sz, "result == 0"]
+        P.muts += [("      if v %s x { return 1 + tree_count(l, x) + tree_count(r, x); }" % op,
+                    "      if v %s x { return 2 + tree_count(l, x) + tree_count(r, x); }" % op, "wrong_return"),
+                   G9_WALK_DEC, G9_WALK_BOUND]
+    else:
+        P.helpers.append(G9_T_DEPTH)
+        call = "tree_depth(t)"
+        P.ensures = ["0 <= result && result <= %s" % sz]
+        P.false_ens = ["result > %s" % sz, "result == 0"]
+        P.muts += [("      if dl > dr { return 1 + dl; }", "      if dl > dr { return 3 + dl; }", "wrong_return"),
+                   G9_WALK_DEC, G9_WALK_BOUND]
+    P.body = ["  let t: Tree = build(n);", "  return %s;" % call]
+
+
+def g9_sc_bst(P):
+    """A tree built by 2-4 inserts of scalar inputs (insert adds exactly two constructors), then walked."""
+    rng = P.rng
+    m = rng.randint(2, 4)
+    names = ["a", "b", "c", "d"][:m]
+    ops = [names[0]] + [names[i] if rng.random() < 0.8 else str(rng.randint(0, 9)) for i in range(1, m)]
+    P.params = [[x, "i64"] for x in names if x in ops]
+    P.effects = ["alloc"]
+    sub = rng.choice(["nodes", "count"])
+    P.detail = sub
+    P.feats.update(["recursive_enum", "size_contract", "build_then_walk", "bst_insert", "walk_" + sub])
+    P.decls = [G9_TREE_DECL]
+    P.helpers.append(G9_T_INSERT)
+    P.body = ["  let t0: Tree = Tree::Empty;"]
+    for i, o in enumerate(ops, 1):
+        P.body.append("  let t%d: Tree = insert(t%d, %s);" % (i, i - 1, o))
+    P.muts = [("{ return Tree::Node(x, Tree::Empty, Tree::Empty); }",
+               "{ return Tree::Node(x, Tree::Empty, Tree::Node(x, Tree::Empty, Tree::Empty)); }", "wrong_return"),
+              ("      if x < v { return Tree::Node(v, insert(l, x), r); }",
+               "      if x < v { return Tree::Node(v, insert(l, x), insert(r, x)); }", "duplicated_child"),
+              ("  decreases size(t)\n", "  decreases 0\n", "wrong_decreases")]
+    if sub == "nodes":
+        P.helpers.append(G9_T_NODES)
+        P.body.append("  return tree_nodes(t%d);" % m)
+        P.ensures = ["result == %d" % m]
+        P.false_ens = ["result == %d" % (m + 1)]
+        P.muts.append(G9_WALK_BOUND)
+    else:
+        op = rng.choice([">", "<", "==", ">="])
+        P.helpers.append(g9_t_count(op))
+        P.params.append(["q", "i64"])
+        P.body.append("  return tree_count(t%d, q);" % m)
+        P.ensures = ["0 <= result && result <= %d" % (2 * m + 1)]
+        P.false_ens = ["result > %d" % (2 * m + 1), "result == 0"]
+        P.muts.append(("      if v %s x { return 1 + tree_count(l, x) + tree_count(r, x); }" % op,
+                       "      if v %s x { return 2 + tree_count(l, x) + tree_count(r, x); }" % op, "wrong_return"))
+        # the tree_count call in f names its argument q: the helper's own parameter stays x
+
+
+def g9_sc_tokens(P):
+    """JSON-like token cursor descent over an [i64] array (mutual recursion, measures 2*(len-i)+1 / +2)."""
+    rng = P.rng
+    A, O, C = rng.sample([0, 1, 2, 3], 3)
+    N = rng.choice([10, 16, 20])
+    sub = rng.choice(["is_value", "end"])
+    P.detail = sub
+    P.feats.update(["token_cursor", "mutual_recursion", "phase_measure", "array_cursor", "tokens_" + sub])
+    P.helpers.append(g9_lines(
+        "fn value_end(a: [i64], i: i64) -> i64", "  requires 0 <= i && i <= len(a) && len(a) <= %d" % N,
+        "  ensures result == 0 - 1 || (i < result && result <= len(a))",
+        "  ensures (i < len(a) && a[i] == %d) ==> result == i + 1" % A,
+        "  ensures (i == len(a) || (a[i] != %d && a[i] != %d)) ==> result == 0 - 1" % (A, O),
+        "  decreases 2 * (len(a) - i) + 1", "{", "  if i == len(a) { return 0 - 1; }", "  if a[i] == %d { return i + 1; }" % A,
+        "  if a[i] != %d { return 0 - 1; }" % O, "  return items_end(a, i + 1);", "}", "",
+        "fn items_end(a: [i64], j: i64) -> i64", "  requires 0 <= j && j <= len(a) && len(a) <= %d" % N,
+        "  ensures result == 0 - 1 || (j < result && result <= len(a))", "  decreases 2 * (len(a) - j) + 2", "{",
+        "  if j == len(a) { return 0 - 1; }", "  if a[j] == %d { return j + 1; }" % C, "  let k: i64 = value_end(a, j);",
+        "  if k < 0 { return 0 - 1; }", "  return items_end(a, k);", "}"))
+    P.params = [["a", "array"]]
+    P.hints["maxlen"]["a"] = N
+    P.hints["tokens"]["a"] = (A, O, C)
+    P.requires = ["len(a) <= %d" % N]
+    if sub == "is_value":
+        P.ret = "bool"
+        P.ensures = ["result ==> len(a) >= 1", "(len(a) == 1 && a[0] == %d) ==> result" % A,
+                     "(len(a) >= 1 && a[0] == %d && len(a) != 1) ==> !result" % A]
+        P.false_ens = ["result", "!result"]
+        P.body = ["  return value_end(a, 0) == len(a);"]
+    else:
+        P.ensures = ["result == 0 - 1 || (0 < result && result <= len(a))", "(len(a) >= 1 && a[0] == %d) ==> result == 1" % A]
+        P.false_ens = ["result == 0 - 1", "result >= 0"]
+        P.body = ["  return value_end(a, 0);"]
+    P.muts = [("  decreases 2 * (len(a) - j) + 2\n", "  decreases 2 * (len(a) - j) + 1\n", "wrong_phase"),
+              ("  decreases 2 * (len(a) - i) + 1\n", "  decreases 0\n", "wrong_decreases"),
+              ("  if a[i] == %d { return i + 1; }" % A, "  if a[i] == %d { return i + 2; }" % A, "wrong_return"),
+              ("  if i == len(a) { return 0 - 1; }\n", "", "missing_base"),
+              ("  if k < 0 { return 0 - 1; }\n", "", "missing_error_check")]
+
+
+def g9_sc_clone_bag(P):
+    """Struct with an [i64] buffer field: clone, change the copy's buffer through a mutable local, read the original."""
+    rng = P.rng
+    N = rng.choice([8, 12, 20])
+    T = rng.randint(0, 9)
+    read = rng.choice(["orig_first", "new_first", "orig_tag", "lens", "sum"])
+    P.detail = read
+    P.effects = ["alloc"]
+    P.feats.update(["buffer_field", "clone_isolation", "field_replacement", "clone_" + read])
+    P.decls = ["struct Bag { items: [i64], tag: i64 }"]
+    P.helpers.append(g9_lines(
+        "fn with_first(b: Bag, v: i64) -> Bag ! alloc", "  requires len(b.items) >= 1", "  ensures len(result.items) == len(b.items)",
+        "  ensures result.items[0] == v", "{", "  let mut c: Bag = b;", "  let mut arr: [i64] = copy(c.items);", "  arr[0] = v;",
+        "  c.items = copy(arr);", "  return c;", "}"))
+    P.params = [["a", "array"], ["v", "i64"]]
+    P.hints["maxlen"]["a"] = N
+    P.hints["minlen"]["a"] = 1
+    P.requires = ["1 <= len(a) && len(a) <= %d" % N]
+    if read == "sum":
+        P.requires.append("-1000000000 <= a[0] && a[0] <= 1000000000 && -1000000000 <= v && v <= 1000000000")
+        P.hints["ranges"]["v"] = (-1000, 1000)
+        P.hints["elem"]["a"] = (-1000, 1000)
+    elif read == "orig_first":
+        P.hints["ranges"]["v"] = (-5, 9)
+    rexpr, ens, fe = {
+        "orig_first": ("b.items[0]", "result == a[0]", "result == v"),
+        "new_first": ("c.items[0]", "result == v", "result == a[0] + 1"),
+        "orig_tag": ("b.tag", "result == %d" % T, "result == %d" % (T + 1)),
+        "lens": ("len(b.items) + len(c.items)", "result == 2 * len(a)", "result == len(a)"),
+        "sum": ("b.items[0] + c.items[0]", "result == a[0] + v", "result == a[0]"),
+    }[read]
+    P.ensures = [ens]
+    P.false_ens = [fe]
+    P.body = ["  let b: Bag = Bag { items: copy(a), tag: %d };" % T, "  let c: Bag = with_first(b, v);", "  return %s;" % rexpr]
+    P.muts = [("  arr[0] = v;", "  arr[0] = v + 1;", "wrong_store"),
+              ("  c.items = copy(arr);\n", "", "lost_field_replacement")]
+    if read == "orig_first":
+        P.muts.append(("  return b.items[0];", "  return c.items[0];", "lost_clone_isolation"))
+    elif read == "new_first":
+        P.muts.append(("  return c.items[0];", "  return b.items[0];", "stale_field_read"))
+    elif read == "sum":
+        P.muts.append(("  return b.items[0] + c.items[0];", "  return c.items[0] + c.items[0];", "lost_clone_isolation"))
+
+
+def g9_sc_clone_other(P):
+    """Clone isolation with a [u8] + str struct (field replacement) or with a deep-cloned recursive tree."""
+    rng = P.rng
+    P.effects = ["alloc"]
+    if rng.random() < 0.55:
+        read = rng.choice(["orig_first", "new_first", "lens", "sum", "labels"])
+        P.detail = "packet_" + read
+        P.feats.update(["buffer_field", "u8_field", "str_field", "clone_isolation", "field_replacement", "clone_" + read])
+        P.decls = ["struct Packet { bytes: [u8], label: str }"]
+        P.helpers.append(g9_lines(
+            "fn replaced(p: Packet, v: i64) -> Packet ! alloc", "  requires len(p.bytes) >= 1 && 0 <= v && v <= 255",
+            "  ensures len(result.bytes) == len(p.bytes)", "  ensures result.bytes[0] == v", "{", "  let mut q: Packet = p;",
+            "  let mut ch: [u8] = copy(q.bytes);", "  ch[0] = v;", "  q.bytes = copy(ch);", "  q.label = copy(\"new\");",
+            "  return q;", "}"))
+        P.params = [["n", "i64"], ["x", "i64"], ["v", "i64"]]
+        for nm, rg in (("n", (1, 8)), ("x", (0, 255)), ("v", (0, 255))):
+            P.hints["ranges"][nm] = rg
+        P.requires = ["1 <= n && n <= 8", "0 <= x && x <= 255", "0 <= v && v <= 255"]
+        rexpr, ens, fe = {
+            "orig_first": ("p.bytes[0]", "result == x", "result == v"),
+            "new_first": ("q.bytes[0]", "result == v", "result == x"),
+            "lens": ("len(p.bytes) + len(q.bytes)", "result == 2 * n", "result == n"),
+            "sum": ("p.bytes[0] + q.bytes[0]", "result == x + v", "result == x"),
+            "labels": ("len(p.label) + len(q.label)", "result == 5", "result == 4"),
+        }[read]
+        P.ensures = [ens]
+        P.false_ens = [fe]
+        P.body = ["  let raw: [u8] = alloc(n, x);", "  let p: Packet = Packet { bytes: copy(raw), label: \"ok\" };",
+                  "  let q: Packet = replaced(p, v);", "  return %s;" % rexpr]
+        P.muts = [("  ch[0] = v;", "  ch[0] = 0;", "wrong_store"), ("  q.bytes = copy(ch);\n", "", "lost_field_replacement")]
+        if read == "orig_first":
+            P.muts.append(("  return p.bytes[0];", "  return q.bytes[0];", "lost_clone_isolation"))
+        elif read == "new_first":
+            P.muts.append(("  return q.bytes[0];", "  return p.bytes[0];", "stale_field_read"))
+        return
+    D, M = rng.choice([6, 8, 10]), rng.randint(1, 9)
+    valexpr = rng.choice(["d", "d * %d" % M, "d + %d" % rng.randint(1, 9)])
+    leafv = rng.choice(["d", str(rng.randint(0, 9))])
+    read = rng.choice(["nodes_orig", "nodes_clone", "count_orig", "count_clone"])
+    P.detail = "tree_" + read
+    P.feats.update(["recursive_enum", "size_contract", "deep_clone", "clone_isolation", "clone_" + read])
+    P.decls = [G9_TREE_DECL]
+    P.helpers += [g9_t_build("spine", valexpr, leafv), G9_T_FILL]
+    P.params = [["n", "i64"], ["x", "i64"]]
+    P.hints["ranges"]["n"] = (0, D)
+    P.hints["ranges"]["x"] = (-2, 14)
+    P.requires = ["0 <= n && n <= %d" % D]
+    who = "a" if read.endswith("orig") else "c"
+    if read.startswith("nodes"):
+        P.helpers.append(G9_T_NODES)
+        P.ensures = ["result == 2 * n"]
+        P.false_ens = ["result == 2 * n + 1"]
+        call = "tree_nodes(%s)" % who
+    else:
+        P.helpers.append(g9_t_count("=="))
+        P.ensures = ["0 <= result && result <= 4 * n + 1"]
+        P.false_ens = ["result > 4 * n + 1", "result == 0"]
+        call = "tree_count(%s, x)" % who
+    P.body = ["  let a: Tree = build(n);", "  let mut c: Tree = a;", "  c = fill(c, x);", "  return %s;" % call]
+    P.muts = [("{ return Tree::Node(x, fill(l, x), fill(r, x)); }", "{ return Tree::Node(x, fill(l, x), Tree::Empty); }", "wrong_clone_child"),
+              ("  if d == 0 { return Tree::Empty; }", "  if d == 0 { return Tree::Node(0, Tree::Empty, Tree::Empty); }", "wrong_base"),
+              ("  decreases size(t)\n", "  decreases 0\n", "wrong_decreases")]
+
+
+G9_SCENARIOS = {"arr": g9_sc_arr, "mutual": g9_sc_mutual, "list": g9_sc_list, "tree": g9_sc_tree, "bst": g9_sc_bst,
+                "tokens": g9_sc_tokens, "clone_bag": g9_sc_clone_bag, "clone_other": g9_sc_clone_other}
+
+
+def g9_render(P, kind, edit=None, mutation=None):
+    blocks = list(P.decls) + list(P.helpers)
+    sig = ", ".join("%s: %s" % (n, {"array": "[i64]"}.get(t, t)) for n, t in P.params)
+    head = "fn f(%s) -> %s" % (sig, P.ret)
+    if P.effects:
+        head += " ! " + ", ".join(P.effects)
+    out = [head] + ["  requires " + r for r in P.requires] + ["  ensures " + e for e in P.ensures] + ["{"] + P.body + ["}"]
+    blocks.append("\n".join(out))
+    text = "\n\n".join(blocks) + "\n"
+    if edit is not None:
+        text = text.replace(edit[0], edit[1], 1)
+    return "// g9 fuzz case: %s%s\n%s" % (kind, " (defect: %s)" % mutation if mutation else "", text)
+
+
+def generate_g9_case(seed, index):
+    rng = random.Random("g9:%s:%s" % (seed, index))
+    shape = G9_SHAPES[index % len(G9_SHAPES)]
+    want_bad = rng.random() < G9_BAD_SHARE
+    P = G9P(rng)
+    G9_SCENARIOS[shape](P)
+    kind = "g9_%s_%s" % (shape, P.detail) if P.detail else "g9_" + shape
+    edit = None
+    if want_bad:
+        base = g9_render(P, kind)
+        valid = [m for m in P.muts if m[0] in base]
+        choices = (["false_ensures"] if P.false_ens else []) + ["body_mut"] * 3 * (1 if valid else 0)
+        if choices:
+            c = rng.choice(choices)
+            if c == "false_ensures":
+                P.ensures.append(rng.choice(P.false_ens))
+                P.mutation = "false_ensures"
+            else:
+                edit = rng.choice(valid)
+                P.mutation = "body_mut:" + edit[2]
+            P.hints["violate"] = 0.3      # unproved cases: reach the requires failures more often
+    src = g9_render(P, kind, edit, P.mutation)
+    ret = {"array": "[i64]"}.get(P.ret, P.ret)
+    return {"name": "c%s_%s" % (seed, index), "src": src, "entry": "f", "params": P.params, "ret": ret,
+            "kind": kind, "input_hints": P.hints, "g9": True, "g9_bad": P.mutation is not None,
+            "g9_mutation": P.mutation, "g9_features": sorted(P.feats | {"shape_" + shape})}
+
+
+def g9_tokens(rng, tok, mx):
+    """A random nested token sequence (atom / open items* close), then corrupted about half of the time."""
+    A, O, C = tok
+    out = []
+
+    def val(depth):
+        if depth >= 3 or len(out) > mx - 4 or rng.random() < 0.45:
+            out.append(A)
+            return
+        out.append(O)
+        for _ in range(rng.choice([0, 1, 1, 2, 3])):
+            if len(out) > mx - 4:
+                break
+            val(depth + 1)
+        out.append(C)
+
+    val(0)
+    r = rng.random()
+    if r < 0.15 and out:
+        out.pop()                                        # truncated
+    elif r < 0.30 and out:
+        out[rng.randrange(len(out))] = rng.choice([A, O, C, 3, 7])
+    elif r < 0.40:
+        out.append(rng.choice([A, C]))                   # trailing junk
+    elif r < 0.48:
+        out = [rng.choice([A, O, C]) for _ in range(rng.randint(0, 6))]
+    elif r < 0.52:
+        out = []
+    return out[:mx]
+
+
+def g9_array(rng, name, h):
+    mx = h["maxlen"].get(name, 8)
+    mn = h["minlen"].get(name, 0)
+    viol = rng.random() < h.get("violate", 0.05)
+    tok = h["tokens"].get(name)
+    if tok is not None:
+        arr = g9_tokens(rng, tok, mx)
+        if viol:
+            arr = arr + [tok[0]] * (mx + rng.randint(1, 3) - len(arr))       # longer than the `len(a) <= mx` requires
+        return arr
+    if viol:
+        n = mx + rng.randint(1, 3)
+    else:
+        n = rng.choice([x for x in (0, 1, 1, 2, 3, 3, 4, 5, 6, 8, 10, 12, 16, 20) if mn <= x <= mx] or [mn])
+    rg = h["elem"].get(name)
+    if rg is None:
+        return [rng.randint(-5, 9) if rng.random() < 0.85 else g6_int_value(rng, None) for _ in range(n)]
+    lo, hi = rg
+    out = [rng.choice([lo, hi, rng.randint(lo, hi), rng.randint(max(lo, -4), min(hi, 9))]) for _ in range(n)]
+    if out and rng.random() < h.get("violate", 0.05):
+        out[rng.randrange(len(out))] = hi + rng.randint(1, 3)         # one element outside the element-range requires
+    return out
+
+
+def g9_value(rng, tag, name, h):
+    if tag == "i64":
+        return g6_int_value(rng, h["ranges"].get(name))
+    if tag == "bool":
+        return rng.random() < 0.5
+    if tag == "array":
+        return g9_array(rng, name, h)
+    raise ValueError("unknown G9 parameter type %r" % (tag,))
+
+
+def g9_candidate_inputs(case, rng, n):
+    h = case["input_hints"]
+    return [[g9_value(rng, tag, name, h) for name, tag in case["params"]] for _ in range(n)]
+
+
 # ---------------------------------------------------------------- case assembly
 
 def render(ctx, body):
@@ -4635,7 +5342,9 @@ def render(ctx, body):
     return fsrc + "\n"
 
 
-def generate_case(seed, index, g2=False, g3=False, g6=False):
+def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False):
+    if g9:
+        return generate_g9_case(seed, index)
     if g6:
         return generate_g6_case(seed, index)
     if g3:
@@ -4856,6 +5565,8 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g9"):
+        return g9_candidate_inputs(case, rng, n)
     if case.get("g6"):
         return g6_candidate_inputs(case, rng, n)
     if case.get("g3"):
@@ -4912,10 +5623,14 @@ def main(argv=None):
     ap.add_argument("--g3", action="store_true", help="G3 mode: generate generic programs (some deliberately unproved)")
     ap.add_argument("--g6", action="store_true",
                     help="G6 mode: trusted Rust calls and Vec/HashMap/String programs (some deliberately unproved)")
+    ap.add_argument("--g9", action="store_true",
+                    help="G9 mode: recursion, recursive types and buffer fields (some deliberately unproved)")
     a = ap.parse_args(argv)
+    if a.g9 and (a.g2 or a.g3 or a.g6):
+        ap.error("--g9 is a separate mode (not combinable with --g2/--g3/--g6)")
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6)
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9)
         with open(os.path.join(a.out, case["name"] + ".pruv"), "w", encoding="utf-8") as fh:
             fh.write(case["src"])
     print("wrote %d files to %s" % (a.count, a.out))
