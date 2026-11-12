@@ -3,7 +3,7 @@ python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_fronten
                         [--backend rust|llvm|both]
 
 group g7_frontend / g7_proof: Rust rows generate and compile (run if main exists);
-LLVM rows expect codegen/parallel_unavailable after successful verification.
+LLVM and dual-emission rows produce IR and Rust bindings after successful verification.
 
 group g10_frontend (G10 A0; backend null rows): tests/g10/frontend/*.pruv runs on both backends in
 default, no-verify, trust-callers and infer modes. File programs exit 0 on both backends.
@@ -593,14 +593,6 @@ def g10_frontend_jobs(group="g10_frontend", subdir="frontend", modes=None):
 G7_GROUP_RE = re.compile(r"^\s*par\s*\{", re.M)
 
 
-def g7_guard_result(c):
-    text = c.stdout + c.stderr
-    ok = (c.returncode == 1 and '"stage": "codegen"' in text
-          and '"code": "parallel_unavailable"' in text
-          and "G7 LLVM code generation is not implemented yet" in text)
-    return ok, "" if ok else "expected G7 LLVM guard: " + text[-600:]
-
-
 def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
                      modes=(("default", []), ("no-verify", ["--no-verify"]))):
     jobs = []
@@ -630,10 +622,9 @@ def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
                         return False, r.stderr
                 c = pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags)
                 if has_group:
-                    ok, detail = g7_guard_result(c)
-                    if not ok:
-                        return ok, detail
-                    return g7_guard_result(pruvc(f, out + "_dual.rs", list(flags) + ["--also-llvm", out + "_dual.ll", out + "_dual_bindings.rs"]))
+                    if c.returncode:
+                        return False, c.stdout + c.stderr
+                    c = pruvc(f, out + "_dual.rs", list(flags) + ["--also-llvm", out + "_dual.ll", out + "_dual_bindings.rs"])
                 return c.returncode == 0, c.stdout + c.stderr
             jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,
                                        "flags": list(flags), "mode": mode, "group": group}))
@@ -762,8 +753,6 @@ def example_job(f, mode, flags, llvm, name):
             ll = os.path.join(work, key + ".ll")
             rs = os.path.join(work, key + ".rs")
             c = pruvc_llvm(f, ll, rs, flags)
-            if stem.startswith("g7_"):
-                return g7_guard_result(c)
             if rel_sample(f) in llvm_pending():
                 return pending_result(c)
             if c.returncode != 0:
@@ -872,9 +861,12 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             ll = os.path.join(work, key + ".ll")
             gen = os.path.join(work, key + "_gen.rs")
             src = _g4().copy_project(pruv, os.path.join(work, "g4rt_" + key)) if proj else pruv
-            c = pruvc_llvm(src, ll, gen, list(flags) + xflags)
-            if spec.get("g7_guard"):
-                return g7_guard_result(c)
+            if spec.get("g7_hook"):
+                c = subprocess.run(_driver().argv(src, ll, ["--rust-bindings", gen] + list(flags) + xflags, "llvm"),
+                                   env=dict(os.environ, PRUV_G7_TEST_HOOK=spec["g7_hook"]),
+                                   capture_output=True, text=True, timeout=300)
+            else:
+                c = pruvc_llvm(src, ll, gen, list(flags) + xflags)
             if rel_sample(pruv) in llvm_pending():
                 return pending_result(c)
         else:
@@ -889,6 +881,11 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
                 c = pruvc(src, gen, list(flags) + xflags)
         if c.returncode != 0:
             return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
+        if spec.get("g7_native_reject"):
+            for target in ("exe", "obj"):
+                c = pruvc(src, os.path.join(work, key + "." + target), list(flags) + ["--emit", target], "llvm")
+                if c.returncode != 1 or '"code": "parallel_target"' not in c.stdout:
+                    return False, "native target rejection: " + c.stdout + c.stderr
         if llvm:
             link, err = llvm_objects(ll, key, work, bool(spec.get("alloc_balance")))
             if err:

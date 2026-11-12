@@ -1,0 +1,15 @@
+fn set<T: Element>(inout a: [T], x: T) -> ()
+ requires len(a) == 1
+ ensures a[0] == x
+{ a[0] = x; }
+
+fn run() -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [bool] = alloc(1, false);
+par { set::<i64>(inout a, 7); set::<bool>(inout b, true); }
+let mut out: [i64] = alloc(2, 0); if b[0] { out[0] = a[0]; out[1] = 9; } return out;
+}
+fn sequential() -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [bool] = alloc(1, false);
+set::<i64>(inout a, 7); set::<bool>(inout b, true);
+let mut out: [i64] = alloc(2, 0); if b[0] { out[0] = a[0]; out[1] = 9; } return out;
+}

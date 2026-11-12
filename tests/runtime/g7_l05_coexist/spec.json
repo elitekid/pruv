@@ -1,0 +1,31 @@
+{
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "exit": 0,
+  "llvm_exports": [
+    "pruv_abi_run",
+    "pruv_abi_sequential"
+  ],
+  "ll_contains": [
+    "%pruv_g7_job = type { ptr, ptr }",
+    "define private void @pruv_g7_cb_"
+  ],
+  "ll_absent": [
+    "ptr readonly %ctx",
+    "ptr noalias %ctx",
+    "ptr nocapture %ctx"
+  ],
+  "bindings_contains": [
+    "mod pruv_g6_shim",
+    "mod pruv_g7_shim"
+  ],
+  "g6_drop_balance": true
+}

@@ -1,0 +1,17 @@
+fn write(inout a: [i64], x: i64) -> ()
+ requires len(a) == 1
+ ensures a[0] == x
+{ a[0] = x; }
+
+fn run() -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [i64] = alloc(1, 0); let mut v: Vec<i64> = vec_new::<i64>();
+ v = vec_push::<i64>(move v, 7); let value: i64 = vec_get::<i64>(v, 0);
+par { write(inout a, value); write(inout b, 9); }
+let mut out: [i64] = alloc(2, 0); out[0] = a[0]; out[1] = b[0]; return out;
+}
+fn sequential() -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [i64] = alloc(1, 0); let mut v: Vec<i64> = vec_new::<i64>();
+ v = vec_push::<i64>(move v, 7); let value: i64 = vec_get::<i64>(v, 0);
+write(inout a, value); write(inout b, 9);
+let mut out: [i64] = alloc(2, 0); out[0] = a[0]; out[1] = b[0]; return out;
+}

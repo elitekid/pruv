@@ -17,7 +17,6 @@ pub const G6_UNSUPPORTED_FIX: &str = "avoid trusted rust fn, Vec, HashMap, Strin
 pub const G6_BRIDGE_DECL: &str = "@pruv_g6_bridge_v1 = external global i8\n";
 /// A PruvError (codegen/unsupported_type) raised in the middle of a function body travels through `R<T>` as a string
 /// with this prefix and `line:col`; `gen_llvm_concrete_ex` turns it back into the diagnostic.
-const G7_DIAG_TAG: &str = "\u{0}g7diag:";
 const G6_DIAG_TAG: &str = "\u{0}g6diag:";
 
 fn g6_diag_err(line: i64, col: i64) -> String {
@@ -520,6 +519,8 @@ pub struct Mod {
     order: Vec<String>,
     /// G3: a wrapper rejects an invalid enum ordinal through pruv_panic_repr
     pub uses_repr: bool,
+    par_types: Vec<String>,
+    par_trampolines: Vec<String>,
     /// G6 A3: shim symbol -> declare line (iterated sorted by symbol)
     pub g6_decls: BTreeMap<String, String>,
     /// G6 A3: string_to_str needs the v2 copy/free declarations
@@ -541,6 +542,8 @@ impl Mod {
             strs: HashMap::new(),
             order: Vec::new(),
             uses_repr: false,
+            par_types: Vec::new(),
+            par_trampolines: Vec::new(),
             g6_decls: BTreeMap::new(),
             g6_v2: false,
             g6_bridge: false,
@@ -762,6 +765,60 @@ impl<'a> FnGen<'a> {
         self.ins(text)?;
         self.dead = true;
         Ok(())
+    }
+
+    fn parallel(&mut self, st: &Par) -> R<()> {
+        // Entry storage can be reused after the synchronous bridge joins.
+        let jobs = self.tmp();
+        let jt = format!("[{} x %pruv_g7_job]", st.calls.len());
+        self.allocas.push(format!("{} = alloca {}", jobs, jt));
+        for (i, call) in st.calls.iter().enumerate() {
+            let Expr::Call(call) = call else { return Err("invalid par call".into()); };
+            let f = self.funcs[&call.name];
+            let mut fields = Vec::new();
+            for x in &call.args {
+                let x = if let Expr::InoutArg(x) = x { &*x.expr } else { x };
+                let v = self.ev(x, false)?;
+                if v.k == Kind::Arr {
+                    fields.push(("ptr", v.a));
+                    fields.push(("i64", v.b));
+                } else if v.k == Kind::I1 {
+                    fields.push(("i8", self.op(format!("zext i1 {} to i8", v.a))?));
+                } else {
+                    fields.push((v.k.name(), v.a));
+                }
+            }
+            let n = self.m.par_types.len();
+            let ct = format!("%pruv_g7_ctx_{}", n);
+            let cb = format!("@pruv_g7_cb_{}", n);
+            self.m.par_types.push(format!("{} = type {{ {} }}", ct, fields.iter().map(|(t, _)| *t).collect::<Vec<_>>().join(", ")));
+            let ctx = self.tmp();
+            self.allocas.push(format!("{} = alloca {}", ctx, ct));
+            let mut tr = vec![format!("define private void {}(ptr %ctx) {{", cb), "entry:".into()];
+            let mut args = Vec::new();
+            for (j, (ty, value)) in fields.iter().enumerate() {
+                let ptr = self.op(format!("getelementptr inbounds {}, ptr {}, i32 0, i32 {}", ct, ctx, j))?;
+                self.ins(format!("store {} {}, ptr {}", ty, value, ptr))?;
+                tr.push(format!("  %p{} = getelementptr inbounds {}, ptr %ctx, i32 0, i32 {}", j, ct, j));
+                tr.push(format!("  %v{} = load {}, ptr %p{}", j, ty, j));
+                if *ty == "i8" {
+                    tr.push(format!("  %b{} = icmp ne i8 %v{}, 0", j, j));
+                    args.push(format!("i1 %b{}", j));
+                } else {
+                    args.push(format!("{} %v{}", ty, j));
+                }
+            }
+            let target = if !self.verified && !f.requires.is_empty() { "par_chk" } else { "body" };
+            tr.push(format!("  call void @{}__pruv_{}({})", mangle(&f.name), target, args.join(", ")));
+            tr.push("  ret void".into());
+            tr.push("}".into());
+            self.m.par_trampolines.push(tr.join("\n") + "\n");
+            for (j, value) in [&cb, &ctx].iter().enumerate() {
+                let ptr = self.op(format!("getelementptr inbounds {}, ptr {}, i32 0, i64 {}, i32 {}", jt, jobs, i, j))?;
+                self.ins(format!("store ptr {}, ptr {}", value, ptr))?;
+            }
+        }
+        self.ins(format!("call void @pruv_g7_v1_run(ptr {}, i64 {})", jobs, st.calls.len()))
     }
 
     pub fn tmp(&mut self) -> String {
@@ -1844,7 +1901,7 @@ impl<'a> FnGen<'a> {
                 self.emit_ret(&v)
             }
             Stmt::Assert(_) => Ok(()),
-            Stmt::Par(p) => return Err(format!("{}{}:{}", G7_DIAG_TAG, crate::diagnostic::plain_line(p.line), p.col)),
+            Stmt::Par(p) => self.parallel(p),
             Stmt::ExprStmt(x) => {
                 self.begin_temps();
                 self.ev(&x.expr, false)?;
@@ -4073,15 +4130,7 @@ pub fn gen_llvm_concrete_ex(
                     "compare tags with is_variant and fields with variant_field, or move the check into the body",
                 ))
             }
-            None => match s.strip_prefix(G7_DIAG_TAG) {
-                Some(rest) => {
-                    let mut it = rest.split(':');
-                    let line = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
-                    let col = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
-                    GenError::Diag(crate::diagnostic::PruvError::new("codegen", line, col, "parallel_unavailable", "G7 verification is not implemented yet", "remove the par block until G7 is completed"))
-                }
-                None => GenError::Msg(s),
-            },
+            None => GenError::Msg(s),
         },
     })
 }
@@ -4094,6 +4143,21 @@ fn gen_llvm_body(
     target: AbiTarget,
     foreign_checks: &str,
 ) -> R<(String, String)> {
+    fn collect_par(stmts: &[Stmt], names: &mut BTreeSet<String>) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Par(p) => for call in &p.calls {
+                    if let Expr::Call(c) = call { names.insert(c.name.clone()); }
+                },
+                Stmt::If(x) => { collect_par(&x.then, names); collect_par(&x.els, names); }
+                Stmt::While(x) => collect_par(&x.body, names),
+                Stmt::Match(x) => for arm in &x.arms { collect_par(&arm.body, names); },
+                _ => {}
+            }
+        }
+    }
+    let mut par_targets = BTreeSet::new();
+    for f in &prog.functions { collect_par(&f.body, &mut par_targets); }
     let is_g6 = crate::foreign::first_g6_use(prog).is_some();
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) {
         // G2 B2: str also opens the generation layer
@@ -4142,6 +4206,7 @@ fn gen_llvm_body(
             !f.requires.is_empty() && f.foreign.is_none() && (!trust_callers || (!verified && has_inout(f)))
         })
     };
+    let need_cdiv = need_cdiv || (!verified && prog.functions.iter().any(|f| !f.requires.is_empty() && par_targets.contains(&f.name)));
     if need_cdiv {
         chunks.push(cdivrem(&mut m, true));
         chunks.push(cdivrem(&mut m, false));
@@ -4163,6 +4228,11 @@ fn gen_llvm_body(
             mangle(&f.name),
             sig_text(&params, Some(f))
         )));
+        if !verified && !f.requires.is_empty() && par_targets.contains(&f.name) {
+            chunks.push(entry_of(&mut m, &tt, &funcs, f, false, budget)?.replace(
+                &format!("@{}__pruv_entry(", mangle(&f.name)),
+                &format!("@{}__pruv_par_chk(", mangle(&f.name))));
+        }
         if explicit {
             // G4 A3: bodies and checked wrappers are internal; only a host entry gets pruv_abi_* (and its typed variant).
             // The host boundary calls the checked wrapper unless trust_callers skips the check (or there is no requires).
@@ -4215,7 +4285,7 @@ fn gen_llvm_body(
             g6decls.push('\n');
         }
     }
-    let ir = format!(
+    let mut ir = format!(
         "{}{}\n{}{}{}{}{}{}{}{}{}\n{}",
         if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
@@ -4238,11 +4308,19 @@ fn gen_llvm_body(
         g6decls,
         chunks.join("\n")
     );
-    let shim = if is_g6 {
+    if !m.par_trampolines.is_empty() {
+        ir = format!("%pruv_g7_job = type {{ ptr, ptr }}\n{}\n{}", m.par_types.join("\n"), ir);
+        ir.push_str("declare void @pruv_g7_v1_run(ptr, i64) nounwind\n");
+        ir.push_str(&m.par_trampolines.join("\n"));
+    }
+    let mut shim = if is_g6 {
         Some(crate::foreign_shim::build_shim(prog, verified, trust_callers, budget, foreign_checks)?)
     } else {
         None
     };
+    if prog.functions.iter().any(|f| crate::foreign::first_par(&f.body).is_some()) {
+        shim.get_or_insert_with(String::new).push_str(&crate::parallel_shim::build_shim());
+    }
     let bindings = crate::bindings::gen_bindings_with(prog, shim.as_deref())?;
     Ok((ir, bindings))
 }

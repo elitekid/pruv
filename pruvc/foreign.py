@@ -460,14 +460,14 @@ def first_par(prog):
     return None
 
 
-def g7_unimplemented_error(prog, stage="codegen"):
-    """G7 LLVM staging guard: codegen/parallel_unavailable for a par statement, or None.
-    Run after verification (or after the static checks with --no-verify), before specialization and emission."""
+def g7_target_error(prog):
+    """Native targets cannot link the Rust scoped-thread bridge."""
     p = first_par(prog)
     if p is None:
         return None
-    return PruvError(stage, p.line, p.col, "parallel_unavailable", "G7 LLVM code generation is not implemented yet",
-                     "use the Rust backend without --also-llvm",
+    return PruvError("codegen", p.line, p.col, "parallel_target",
+                     "native obj/exe emission is unavailable for par",
+                     "emit LLVM IR with --rust-bindings and link using Rust",
                      file=getattr(p, "file", None))
 
 

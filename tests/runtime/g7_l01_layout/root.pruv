@@ -1,0 +1,16 @@
+fn mixed(inout dst: [i64], n: i64, flag: bool, byte: i64, src: [u8], bits: [bool]) -> ()
+ requires len(dst) == 1 && len(src) == 1 && len(bits) == 1
+ ensures (flag && bits[0] && byte == src[0]) ==> dst[0] == n
+ ensures !(flag && bits[0] && byte == src[0]) ==> dst[0] == 0
+{ if flag && bits[0] && byte == src[0] { dst[0] = n; } else { dst[0] = 0; } }
+
+fn run(flag: bool) -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [i64] = alloc(1, 0); let bytes: [u8] = alloc(1, 255); let bits: [bool] = alloc(1, true);
+par { mixed(inout a, 7, flag, 255, bytes, bits); mixed(inout b, 9, flag, 255, bytes, bits); }
+let mut out: [i64] = alloc(2, 0); out[0] = a[0]; out[1] = b[0]; return out;
+}
+fn sequential(flag: bool) -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [i64] = alloc(1, 0); let bytes: [u8] = alloc(1, 255); let bits: [bool] = alloc(1, true);
+mixed(inout a, 7, flag, 255, bytes, bits); mixed(inout b, 9, flag, 255, bytes, bits);
+let mut out: [i64] = alloc(2, 0); out[0] = a[0]; out[1] = b[0]; return out;
+}

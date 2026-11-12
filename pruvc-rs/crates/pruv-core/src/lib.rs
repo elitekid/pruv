@@ -34,6 +34,7 @@ pub mod llvmgen;
 pub mod modules;
 pub mod mono;
 pub mod parser;
+pub mod parallel_shim;
 pub mod pyio;
 pub mod pyjson;
 pub mod pyrepr;

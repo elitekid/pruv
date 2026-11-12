@@ -1,0 +1,24 @@
+{
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "exit": 0,
+  "llvm_exports": [
+    "pruv_abi_run",
+    "pruv_abi_sequential"
+  ],
+  "ll_contains": [
+    "ptr noalias nocapture readonly %p.src.a",
+    "ptr noalias nocapture %p.a.a"
+  ],
+  "ll_absent": [
+    "ptr noalias nocapture readonly %p.a.a"
+  ]
+}

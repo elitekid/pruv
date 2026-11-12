@@ -1092,9 +1092,9 @@ mod tests {
     }
 }
 
-/// LLVM staging guard, after proof and before emission.
+/// Native targets cannot link the Rust scoped-thread bridge.
 pub fn parallel_error(p: &Par) -> PruvError {
-    PruvError::new("codegen", p.line, p.col, "parallel_unavailable", "G7 LLVM code generation is not implemented yet", "use the Rust backend without --also-llvm")
+    PruvError::new("codegen", p.line, p.col, "parallel_target", "native obj/exe emission is unavailable for par", "emit LLVM IR with --rust-bindings and link using Rust")
 }
 pub fn first_par(stmts: &[Stmt]) -> Option<&Par> {
     stmts.iter().filter_map(|s| match s {
@@ -1105,6 +1105,6 @@ pub fn first_par(stmts: &[Stmt]) -> Option<&Par> {
         Stmt::Let(_) | Stmt::Assign(_) | Stmt::IndexAssign(_) | Stmt::FieldAssign(_) | Stmt::Return(_) | Stmt::Assert(_) | Stmt::ExprStmt(_) => None,
     }).min_by_key(|p| (p.line,p.col))
 }
-pub fn g7_unimplemented_error(prog: &Program) -> Option<PruvError> {
+pub fn g7_target_error(prog: &Program) -> Option<PruvError> {
     prog.functions.iter().find_map(|f| first_par(&f.body)).map(parallel_error)
 }

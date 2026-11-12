@@ -47,6 +47,8 @@ from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_st
 from typeinfo import is_collection, contains_collection, encode  # G6 A3
 from foreign import CATALOG, CATALOG_CONTRACT_ONLY, first_g6_use  # G6 A3
 import foreign_shim  # G6 A3
+import parallel_shim
+from foreign import first_par
 
 G6_UNSUPPORTED_MSG = "G6 foreign calls and collections are not implemented by the llvm codegen layer yet"
 G6_UNSUPPORTED_FIX = "avoid trusted rust fn, Vec, HashMap, String, take and move for now"
@@ -322,6 +324,8 @@ class Mod:
         s.strs = {}
         s.order = []
         s.uses_repr = False     # G3: the wrappers reject an invalid enum ordinal through pruv_panic_repr
+        s.par_types = []
+        s.par_trampolines = []
         s.g6_decls = {}         # G6 A3: shim symbol -> declare line
         s.g6_v2 = False         # G6 A3: string_to_str needs the v2 copy/free declarations
         s.g6_bridge = False     # G6 A3: some function references @pruv_g6_bridge_v1
@@ -1122,9 +1126,8 @@ class FnGen:
             s.begin_temps()
             s.ev(st.expr)
             s.end_temps()
-        elif isinstance(st, Par):      # G7 A0: the staging guard stops first; never drop a group silently
-            raise PruvError("codegen", st.line, st.col, "parallel_unavailable",
-                            "G7 verification is not implemented yet", "remove the par block until G7 is completed")
+        elif isinstance(st, Par):
+            s.parallel(st)
         elif isinstance(st, Match) and s.is_ext(st.scrutinee.ty):
             # G9 A3: the scrutinee is borrowed, never consumed; every temporary it created (a fresh scrutinee, a
             # fresh base of a field path, a fresh argument) is moved into owner slots of a scope that spans all
@@ -1166,6 +1169,49 @@ class FnGen:
                 s.dead = True
         else:
             raise Exception("llvmgen: unsupported statement %r" % st)
+
+    def parallel(s, st):
+        # Entry-block storage is reused only after the synchronous bridge has joined.
+        jobs = s.tmp()
+        jt = "[%d x %%pruv_g7_job]" % len(st.calls)
+        s.allocas.append("%s = alloca %s" % (jobs, jt))
+        for i, call in enumerate(st.calls):
+            f = s.funcs[call.name]
+            fields = []
+            for x in call.args:
+                v = s.ev(x.expr if isinstance(x, InoutArg) else x)
+                if v.k == "arr":
+                    fields.extend([("ptr", v.a), ("i64", v.b)])
+                elif v.k == "i1":
+                    fields.append(("i8", s.op("zext i1 %s to i8" % v.a)))
+                else:
+                    fields.append((v.k, v.a))
+            n = len(s.m.par_types)
+            ct = "%%pruv_g7_ctx_%d" % n
+            cb = "@pruv_g7_cb_%d" % n
+            s.m.par_types.append("%s = type { %s }" % (ct, ", ".join(t for t, _ in fields)))
+            ctx = s.tmp()
+            s.allocas.append("%s = alloca %s" % (ctx, ct))
+            tr = ["define private void %s(ptr %%ctx) {" % cb, "entry:"]
+            args = []
+            for j, (ty, value) in enumerate(fields):
+                ptr = s.op("getelementptr inbounds %s, ptr %s, i32 0, i32 %d" % (ct, ctx, j))
+                s.ins("store %s %s, ptr %s" % (ty, value, ptr))
+                tr += ["  %%p%d = getelementptr inbounds %s, ptr %%ctx, i32 0, i32 %d" % (j, ct, j),
+                       "  %%v%d = load %s, ptr %%p%d" % (j, ty, j)]
+                if ty == "i8":
+                    tr.append("  %%b%d = icmp ne i8 %%v%d, 0" % (j, j))
+                    args.append("i1 %%b%d" % j)
+                else:
+                    args.append("%s %%v%d" % (ty, j))
+            target = "par_chk" if not s.verified and f.requires else "body"
+            tr += ["  call void @%s__pruv_%s(%s)" % (mangle(f.name), target, ", ".join(args)),
+                   "  ret void", "}"]
+            s.m.par_trampolines.append("\n".join(tr) + "\n")
+            for j, value in enumerate((cb, ctx)):
+                ptr = s.op("getelementptr inbounds %s, ptr %s, i32 0, i64 %d, i32 %d" % (jt, jobs, i, j))
+                s.ins("store ptr %s, ptr %s" % (value, ptr))
+        s.ins("call void @pruv_g7_v1_run(ptr %s, i64 %d)" % (jobs, len(st.calls)))
 
     def user_match(s, st, sv):
         """match on a user enum: tag switch; payload extraction only inside the arm block; default unreachable"""
@@ -3245,6 +3291,12 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     if g6err is not None:
         raise g6err
     is_g6 = first_g6_use(prog) is not None
+    par_targets = set()
+    def find_par(node):
+        if isinstance(node, Par):
+            par_targets.update(c.name for c in node.calls)
+    for f in prog.functions:
+        foreign_shim._walk(f.body, find_par)
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
@@ -3265,6 +3317,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     else:
         need_cdiv = any(f.requires and f.foreign is None and (not trust_callers or (not verified and has_inout(f)))
                         for f in prog.functions)    # G5 A3: an inout entry checks also under trust_callers
+    need_cdiv = need_cdiv or (not verified and any(f.requires and f.name in par_targets for f in prog.functions))
     if need_cdiv:
         chunks.append(cdivrem(m, True))
         chunks.append(cdivrem(m, False))
@@ -3278,6 +3331,9 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         g.body()
         params = ir_params(f, tt)
         chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (ir_ret(tt, f), mangle(f.name), sig_text(params, f))))
+        if not verified and f.requires and f.name in par_targets:
+            chunks.append(entry_of(m, funcs, f, False, budget).replace(
+                "@%s__pruv_entry(" % mangle(f.name), "@%s__pruv_par_chk(" % mangle(f.name)))
         if explicit:
             # G4 A3: bodies and checked wrappers are internal; only a host entry gets pruv_abi_* (and its typed variant).
             # The host boundary calls the checked wrapper unless trust_callers skips the check (or there is no requires).
@@ -3307,7 +3363,13 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         DECLS_STR if has_str else "") + (
         DECLS_REPR if m.uses_repr else "") + (
         DECLS_NODE if tt.g9_boxed else "") + g6decls + "\n" + "\n".join(chunks)  # G2 A5/B2, G3, G6 A3, G9 A3
+    if m.par_trampolines:
+        ir = "%pruv_g7_job = type { ptr, ptr }\n" + "\n".join(m.par_types) + "\n" + ir
+        ir += "declare void @pruv_g7_v1_run(ptr, i64) nounwind\n"
+        ir += "\n".join(m.par_trampolines)
     shim = None
     if is_g6:
         shim = foreign_shim.build_shim(prog, verified, trust_callers, budget, foreign_checks)
+    if first_par(prog) is not None:
+        shim = (shim or "") + parallel_shim.build_shim()
     return ir, gen_bindings(prog, shim)

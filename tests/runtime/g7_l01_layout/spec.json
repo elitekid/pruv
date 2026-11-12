@@ -1,0 +1,27 @@
+{
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "exit": 0,
+  "llvm_exports": [
+    "pruv_abi_run",
+    "pruv_abi_sequential"
+  ],
+  "ll_contains": [
+    "%pruv_g7_job = type { ptr, ptr }",
+    "type { ptr, i64, i64, i8, i64, ptr, i64, ptr, i64 }",
+    "icmp ne i8"
+  ],
+  "ll_absent": [
+    "ptr readonly %ctx",
+    "ptr noalias %ctx",
+    "ptr nocapture %ctx"
+  ]
+}

@@ -49,7 +49,7 @@ from check import check  # noqa: E402
 from codegen import gen_rust, gen_rust_ex  # noqa: E402
 from typeinfo import g2_unimplemented_error, first_g3_use  # noqa: E402
 from mono import specialize  # noqa: E402
-from foreign import g6_unimplemented_error, g7_unimplemented_error  # noqa: E402
+from foreign import g6_unimplemented_error, g7_target_error  # noqa: E402
 
 USAGE = ("usage: pruvc.py in.pruv -o OUT [--no-verify] [--trust-callers] "
          "[--backend rust|llvm] [--rust-bindings PATH] [--infer [--show-inferred]] "
@@ -62,7 +62,7 @@ def default_bindings_path(out):
 
 def compile_file(path, out, verify=True, trust_callers=False, backend="rust", rust_bindings=None,
                  budget=None, also_llvm=None, infer=False, show_inferred=False, externs=(),
-                 foreign_checks="requires", extern_specs=()):
+                 foreign_checks="requires", extern_specs=(), emit=None):
     """extern_specs: [(name, path)] of --rust-extern (recorded in the manifest); externs: the names only."""
     if budget is None:
         budget = 1 << 30
@@ -88,10 +88,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    # G7 A2: LLVM (including dual emission) stops after proof, before any output.
-    g7err = g7_unimplemented_error(prog) if backend == "llvm" or also_llvm else None
+    g7err = g7_target_error(prog) if emit in ("exe", "obj") else None
     if g7err is not None:
         return [g7err]
+    if emit is not None:
+        raise NativeEmitUnavailable()
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same
     # shared specialization plan (pruvc/mono.py), also with --no-verify. G4 A2: explicit mode always goes through the
     # plan (it names every function and type by its Rust stem). G4 A3: the LLVM backend generates explicit programs
@@ -147,6 +148,10 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     return []
 
 
+class NativeEmitUnavailable(Exception):
+    """The Python driver only diagnoses G7 native targets; native builds use the Rust driver."""
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message):
         print(USAGE)
@@ -162,6 +167,7 @@ def main(argv):
     ap.add_argument("--trust-callers", action="store_true")
     ap.add_argument("--backend", choices=["rust", "llvm"], default="rust")
     ap.add_argument("--rust-bindings", default=None)
+    ap.add_argument("--emit", choices=["exe", "obj"], default=None)
     ap.add_argument("--infer", action="store_true")
     ap.add_argument("--show-inferred", dest="show_inferred", action="store_true")
     ap.add_argument("--rust-extern", dest="rust_extern", action="append", default=[], metavar="NAME=PATH")
@@ -210,7 +216,9 @@ def main(argv):
         errs = compile_file(a.input, a.out, not a.no_verify, a.trust_callers, a.backend, bindings,
                           a.budget, tuple(a.also_llvm) if a.also_llvm else None,
                           infer=a.infer, show_inferred=a.show_inferred, externs=tuple(externs),
-                          foreign_checks=a.foreign_checks, extern_specs=tuple(extern_specs))
+                          foreign_checks=a.foreign_checks, extern_specs=tuple(extern_specs), emit=a.emit)
+    except NativeEmitUnavailable:
+        ap.error("unrecognized arguments: --emit " + a.emit)
     except PruvError as e:
         errs = [e]
     except Exception as e:  # compiler-internal failure, not a language error

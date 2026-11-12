@@ -9,7 +9,6 @@
       "--trust-callers"
     ]
   ],
-  "g7_guard": true,
   "exit": 0,
   "gen_contains": [
     "spawn_scoped",
@@ -23,5 +22,18 @@
   ],
   "stdout_lines": [
     "[6, 2, 2]"
+  ],
+  "ll_contains": [
+    "%pruv_g7_job = type { ptr, ptr }",
+    "declare void @pruv_g7_v1_run(ptr, i64) nounwind",
+    "define private void @pruv_g7_cb_"
+  ],
+  "ll_absent": [
+    "ptr readonly %ctx",
+    "ptr nocapture %ctx",
+    "ptr noalias %ctx"
+  ],
+  "llvm_exports": [
+    "pruv_abi_run"
   ]
 }

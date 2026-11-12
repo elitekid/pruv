@@ -259,7 +259,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
     } else {
         // Pre-G10 order for File-free native programs: with --no-verify, foreign_target fires before the notice.
-        if g6_native && pruv_core::foreign::g7_unimplemented_error(&prog).is_none() && !pruv_core::foreign::uses_files(&prog) {
+        if g6_native && pruv_core::foreign::g7_target_error(&prog).is_none() && !pruv_core::foreign::uses_files(&prog) {
             if let Some(e) = foreign_target_error(&prog) {
                 return Err(Fail::Lang(vec![e]));
             }
@@ -268,9 +268,9 @@ fn compile(a: &Args) -> Result<(), Fail> {
             eprintln!("{{\"status\": \"skipped_no_verify\"}}");
         }
     }
-    // G7 A2: LLVM (including dual and native emission) stops after proof, before output.
-    if !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some() {
-        if let Some(e) = pruv_core::foreign::g7_unimplemented_error(&prog) { return Err(Fail::Lang(vec![e])); }
+    // G7 A3: native targets cannot link the scoped-thread bridge.
+    if g6_native {
+        if let Some(e) = pruv_core::foreign::g7_target_error(&prog) { return Err(Fail::Lang(vec![e])); }
     }
     if g6_native {
         if let Some(e) = foreign_target_error(&prog) {

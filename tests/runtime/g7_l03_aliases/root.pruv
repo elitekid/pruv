@@ -1,0 +1,16 @@
+fn read(inout a: [i64], x: [i64], y: [i64]) -> ()
+ requires len(a) == 1 && len(x) == 1 && len(y) == 1
+ ensures a[0] == x[0] + y[0]
+ requires 0 <= x[0] && x[0] < 10 && 0 <= y[0] && y[0] < 10
+{ a[0] = x[0] + y[0]; }
+
+fn run() -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [i64] = alloc(1, 0); let src: [i64] = alloc(1, 4);
+par { read(inout a, src, src); read(inout b, src, src); }
+let mut out: [i64] = alloc(2, 0); out[0] = a[0]; out[1] = b[0]; return out;
+}
+fn sequential() -> [i64] ! alloc {
+let mut a: [i64] = alloc(1, 0); let mut b: [i64] = alloc(1, 0); let src: [i64] = alloc(1, 4);
+read(inout a, src, src); read(inout b, src, src);
+let mut out: [i64] = alloc(2, 0); out[0] = a[0]; out[1] = b[0]; return out;
+}

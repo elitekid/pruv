@@ -496,6 +496,59 @@ Rust uses `pruv_File`; LLVM uses an opaque pointer and the same Rust operations 
 `codegen/foreign_target`. `--foreign-checks` follows §6d: with `--no-verify`, reading a write handle exits 101
 with `pruv: foreign requires violated:`. Programs without File retain their generated output.
 
+## 6i. Parallel calls: par (G7)
+
+A `par` statement runs two or more semicolon-terminated unit calls and joins them
+before the next statement. `par` remains an ordinary identifier elsewhere.
+
+```pruv
+fn set(inout a: [i64], x: i64) -> ()
+  requires len(a) > 0
+  ensures a[0] == x
+{ a[0] = x; }
+
+fn pair(inout a: [i64], inout b: [i64]) -> ()
+  requires len(a) > 0 && len(b) > 0
+  ensures a[0] == 7 && b[0] == 9
+{
+  par { set(inout a, 7); set(inout b, 9); }
+}
+```
+
+Each branch must call an ordinary Pruv function returning `()`. Arguments are
+binding names, integer/bool literals, or `inout name`; bind calculations first.
+Boundary types are `i64`, `bool`, primitive arrays (`[i64]`, `[u8]`, `[bool]`),
+and supported concrete `Element` specializations. Arrays are borrowed, never
+moved or copied. Every written array must be disjoint from every other branch's
+read or write arrays; immutable inputs may repeat. These rules apply even with
+`--no-verify --trust-callers`.
+
+The entire reachable branch call graph may use only the `alloc` effect, with no
+trusted Rust functions, catalog operations, or nested `par`. Ordinary pure
+builtins and sequential helpers are allowed. The caller may perform I/O outside
+the group; branch allocation effects propagate to it. Scheduling adds no source
+effect. Arguments are captured once in branch and parameter order before workers
+start. All started workers join before normal continuation; successful results
+match sequential calls in source order. Execution order and overlap are unspecified.
+
+Verification checks every callee normally and proves all branch preconditions
+against the same group-entry state. At join it assumes their postconditions,
+including unit calls without inout; written arrays retain their lengths and only
+contracted contents. `old` in a branch contract refers to its group-entry values.
+Safe mode retains bounds, arithmetic and branch precondition checks even under
+`--trust-callers`; postconditions are not checked dynamically.
+
+A caught worker panic joins started workers and exits 101. Spawn failure joins
+started workers, prints `pruv: parallel spawn failed`, and exits 101. Failures do
+not roll back mutations. Process-fatal failures and LLVM runtime check exits may
+terminate immediately; no Rust panic unwinds across the callback ABI.
+
+The Rust backend uses scoped threads. LLVM keeps branch bodies in LLVM and emits
+private callbacks with stack contexts; its generated `--rust-bindings` file
+contains the synchronous Rust thread bridge. Emit IR and bindings, compile the
+IR with the usual Pruv runtime, and link with a Rust host. Native `--emit exe` and
+`--emit obj` reject `par` with `codegen/parallel_target`.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.
