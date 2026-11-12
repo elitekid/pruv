@@ -29,7 +29,6 @@ def main(work):
     app.mkdir()
     root = app / "root.pruv"
     root.write_text("mod std;\n")
-    out = work / "out"
     sys.path.insert(0, str(package / "pruvc"))
     from pruvc import compile_file
     import verify
@@ -40,9 +39,30 @@ def main(work):
     sys.path.insert(0, str(ROOT / "tests/g8"))
     from check_bundle import canonical
 
-    def compile(backend="rust", verified=True):
-        errors = compile_file(str(root), str(out), verify=verified, backend=backend)
+    serial = 0
+
+    def compile(backend="rust", verified=True, artifact=None):
+        nonlocal serial
+        serial += 1
+        out = work / ("out_%d" % serial)
+        bindings, ll = out.with_suffix(".rs"), out.with_suffix(".ll")
+        options, extra = {}, []
+        if artifact == "bindings":
+            options["rust_bindings"] = str(bindings)
+            extra = [bindings]
+        elif artifact == "also_llvm":
+            options["also_llvm"] = (str(ll), str(bindings))
+            extra = [ll, bindings]
+        elif artifact in ("obj", "exe"):
+            # Python accepts emit but must return proof errors before NativeEmitUnavailable.
+            options["emit"] = artifact
+        elif backend == "llvm":
+            extra = [bindings]
+        assert all(not p.exists() for p in [out, *extra])
+        errors = compile_file(str(root), str(out), verify=verified, backend=backend, **options)
         assert out.exists() == (not errors), "artifact disagrees with compile result"
+        if errors:
+            assert all(not p.exists() for p in extra), (artifact, extra)
         if out.exists():
             out.unlink()
         return errors
@@ -83,6 +103,11 @@ def main(work):
             errors = compile(backend)
             assert errors and all(e.stage == "verify" for e in errors), [vars(e) for e in errors]
             assert any(e.code == "ensures" and e.file == "@std/std.pruv" for e in errors)
+    for backend, artifact in (("llvm", "bindings"), ("rust", "also_llvm"),
+                              ("llvm", "obj"), ("llvm", "exe")):
+        errors = compile(backend, artifact=artifact)
+        assert errors and all(e.stage == "verify" for e in errors), [vars(e) for e in errors]
+        assert any(e.code == "ensures" and e.file == "@std/std.pruv" for e in errors)
     # No-verify must skip SMT for both a false user assertion and the broken bundle.
     root.write_text("mod std;\npub fn f() -> () { assert false; }\n")
     def forbidden(*args, **kwargs):
@@ -144,7 +169,7 @@ def main(work):
             assert errors and all(e.stage == "verify" and e.file == "root.pruv" and e.code == "assert"
                                   for e in errors), [vars(e) for e in errors]
     assert observations[0] and observations[0] == observations[1], "body leaked into caller obligations/facts"
-    print("unused false ensures: 4 rejections; no-verify: 2; unknown: 2; alternative bodies: 4 proofs; isolated callers: 4 backend rejections, 2 trace captures")
+    print("unused false ensures: 4 rejections; artifact modes: 4 rejections without output; no-verify: 2; unknown: 2; alternative bodies: 4 proofs; isolated callers: 4 backend rejections, 2 trace captures")
 
 
 def alias_roots(app, target):
@@ -185,12 +210,31 @@ def rs_main(work, binary):
     app = work / "app"
     app.mkdir()
     root = app / "root.pruv"
-    out = work / "out"
 
-    def compile(exe, backend="rust", verified=True):
+    serial = 0
+
+    def compile(exe, backend="rust", verified=True, artifact=None):
+        nonlocal serial
+        serial += 1
+        out = work / ("out_%d" % serial)
+        bindings, ll = out.with_suffix(".rs"), out.with_suffix(".ll")
         argv = [str(exe), str(root), "-o", str(out), "--backend", backend] + ([] if verified else ["--no-verify"])
+        extra = []
+        if artifact == "bindings":
+            argv += ["--rust-bindings", str(bindings)]
+            extra = [bindings]
+        elif artifact == "also_llvm":
+            argv += ["--also-llvm", str(ll), str(bindings)]
+            extra = [ll, bindings]
+        elif artifact in ("obj", "exe"):
+            argv += ["--emit", artifact]
+        elif backend == "llvm":
+            extra = [bindings]
+        assert all(not p.exists() for p in [out, *extra])
         c = subprocess.run(argv, capture_output=True, text=True, timeout=300)
         assert out.exists() == (c.returncode == 0), (c.returncode, c.stdout, c.stderr)
+        if c.returncode != 0:
+            assert all(not p.exists() for p in extra), (artifact, extra, c.stdout, c.stderr)
         if c.returncode == 0:
             out.unlink()
             return None
@@ -218,6 +262,11 @@ def rs_main(work, binary):
             ds = compile(broken, backend)
             assert all(d["stage"] == "verify" for d in ds), ds
             assert any(d["code"] == "ensures" and d["file"] == "@std/std.pruv" for d in ds), ds
+    for backend, artifact in (("llvm", "bindings"), ("rust", "also_llvm"),
+                              ("llvm", "obj"), ("llvm", "exe")):
+        ds = compile(broken, backend, artifact=artifact)
+        assert ds and all(d["stage"] == "verify" for d in ds), ds
+        assert any(d["code"] == "ensures" and d["file"] == "@std/std.pruv" for d in ds), ds
     root.write_text("mod std;\npub fn f() -> () { assert false; }\n")
     for backend in ("rust", "llvm"):
         success(compile(broken, backend, verified=False), backend)
@@ -235,7 +284,7 @@ def rs_main(work, binary):
         assert all(d["file"] == "root.pruv" and d["code"] == "assert" for d in ds), ds
         observations.append([{k: v for k, v in d.items() if k != "counterexample"} for d in ds])
     assert observations[0] == observations[1], observations
-    print("rs: alias orders: %d; unused false ensures: 4 rejections; no-verify: 2; alternative bodies: 4 proofs; "
+    print("rs: alias orders: %d; unused false ensures: 4 rejections; artifact modes: 4 rejections without output; no-verify: 2; alternative bodies: 4 proofs; "
           "isolated callers: 2 rejections" % aliases)
 
 

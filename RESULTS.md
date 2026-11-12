@@ -1264,3 +1264,11 @@ Fourth G6 batch (`docs/G6_SPEC.md` §7.5, decisions in §13). Python reference f
 - **Results:** `run_all --backend both` 3283/3283 on the Python compiler with the 3295-row list compared (missing 0, extra 0; the 12 native-output rows are Rust-compiler only).
 
 **G8 complete.** Deferred work: `docs/G8_SPEC.md` section 15.
+
+## 69. L0: side cross-check of Lair's `clipBytes` (2026-11-13)
+
+- **Target:** Lair `src/backend/engine-import/tail.ts` `clipBytes(text, max)`, intended as the longest prefix of `text` within `max` UTF-8 bytes that ends on a character boundary. The body is copied verbatim to `bench/l0/clip_bytes.mjs`; Lair itself is not changed.
+- **Pruv version:** `bench/l0/clip_bytes.pruv` proves `len(result) <= max`, the result is a byte prefix ending on a character boundary, and maximality (no boundary of the source in `len(result)+1 ..= max` unless the whole source fits). It verifies on both compilers.
+- **Driver:** `bench/l0/run.py` builds the Pruv function natively through the G2 harness on both compilers and both backends, runs the JS in one node process, and checks both against an independent forward-accumulating oracle. 20,083 cases (83 edge cases plus 20,000 random strings with frequent U+FFFD and cuts inside characters, seed 12345).
+- **Results (each of py/rust, py/llvm, rs/rust, rs/llvm):** Pruv meets the spec in 20,083/20,083 cases; the JS meets it in 14,157. The 5,926 differences are all "JS shorter": the JS never exceeds `max` and never returns an invalid or non-prefix string. Cause: `.replace(/�+$/, '')` also strips genuine U+FFFD characters of the source that end the cut prefix. Minimal example: input `efbfbd61` (U+FFFD, `a`) with `max = 3` gives `""` in JS and `efbfbd` in Pruv. Reported to Lair as a bug; not fixed here.
+- **G8 audit follow-ups (test-only):** `tests/g8/check_llvm.py` now also asserts every std symbol is defined once and every call to a std symbol targets a definition in the same module; `tests/g8/check_proof.py` asserts that a failed proof writes no `--rust-bindings`, `--also-llvm`, `--emit obj` or `--emit exe` output on either compiler. g8_proof 35/35 and g8_frontend 39/39 (rs) / 27/27 (py); no compiler defect found.

@@ -36,6 +36,10 @@ def main(work, binary=None):
                 stem = "pruv_m_f_2_3_std_%d_%s" % (len(name), name)
                 own = [line for line in definitions if "@" + stem + "__" in line]
                 assert own and all(line.startswith(("internal ", "private ")) for line in own), (src, name)
+                symbols = [re.search(r"@([^ (]+)\(", line).group(1) for line in own]
+                assert len(symbols) == len(set(symbols)), (src, mode, name, "duplicate definitions", symbols)
+                calls = set(re.findall(r"\bcall\b[^\n@]*@(" + re.escape(stem) + r"__[^ (]+)\(", text))
+                assert calls <= set(symbols), (src, mode, name, "undefined calls", sorted(calls - set(symbols)))
                 assert stem not in bind, (src, name)
                 if flags and name in ("clamp_i64", "abs_i64", "sum_i64", "array_max_i64"):
                     assert any("__pruv_entry(" in line for line in own), name

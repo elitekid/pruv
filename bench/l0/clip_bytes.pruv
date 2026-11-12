@@ -1,0 +1,21 @@
+// Return the longest UTF-8 boundary prefix within the byte budget.
+fn clip_bytes(s: str, max: i64) -> str ! alloc
+  requires 0 <= max && max <= 1_000_000
+  requires len(s) <= 1_000_000
+  ensures len(result) <= max
+  ensures len(result) <= len(s)
+  ensures is_char_boundary(s, len(result))
+  ensures forall t in 0..len(result): result[t] == s[t]
+  ensures len(result) == len(s) || (forall t in len(result)+1..max+1: !is_char_boundary(s, t))
+{
+  let mut i: i64 = max;
+  if i > len(s) { i = len(s); }
+  while i > 0 && !is_char_boundary(s, i)
+    invariant 0 <= i && i <= len(s) && i <= max
+    invariant forall t in i+1..max+1: !is_char_boundary(s, t)
+    decreases i
+  {
+    i = i - 1;
+  }
+  return substr(s, 0, i);
+}

@@ -197,7 +197,7 @@ The language today has only i64, bool, integer arrays, Option, and Result, so it
 Language development and the Lair migration proceed in alternation. While migrating, Lair must keep running, and each replaced piece is cross-checked against the existing TS implementation.
 | Stage | What to do | Prerequisite |
 |---|---|---|
-| L0 | Cross-check on the side without putting it in the product: write Lair's core computations in Pruv and compare with the TS implementation on random inputs to find bugs. First candidate `src/backend/engine-import/tail.ts` `clipBytes` (the same shape as G2 q06, a bug candidate that also erases a genuine `�` at the end of the source text), next `src/shared/web-sources.ts` `hostWithin` | possible now (G2) |
+| L0 | Cross-check on the side without putting it in the product: write Lair's core computations in Pruv and compare with the TS implementation on random inputs to find bugs. `src/backend/engine-import/tail.ts` `clipBytes` done (`bench/l0/`, RESULTS.md section 69: the TS version drops genuine `�` before the cut in 5,926 of 20,083 cases; Pruv meets the spec in all). Next `src/shared/web-sources.ts` `hostWithin` | clipBytes done, hostWithin next |
 | L1 | JS bridge: a native module that calls Pruv functions from Electron + per-platform builds. Pure computation functions (path checks, line merging, limit computation) are swapped in one by one | M3 I 4-platform distribution build (on hold, CI cost is a user decision) |
 | L2 | Large components that use Rust libraries (parsers, document conversion, protocols, terminal-character interpretation) in Pruv | G3, G6 (and G9) |
 | L3 | The whole backend (processes, files, network, delegation, remote) in Pruv, replacing the Node backend | G4, G5, G7, G10 |

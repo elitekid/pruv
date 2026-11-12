@@ -1,0 +1,83 @@
+{
+  "seed": 12345,
+  "random_cases": 20000,
+  "runs": {
+    "py/rust": {
+      "status": "ok",
+      "verified": true,
+      "cases": 20083,
+      "counts": {
+        "equal": 14157,
+        "TS shorter": 5926,
+        "TS longer": 0,
+        "TS invalid": 0
+      },
+      "differences": 5926,
+      "pruv_spec_pass": 20083,
+      "ts_spec_pass": 14157
+    },
+    "py/llvm": {
+      "status": "ok",
+      "verified": true,
+      "cases": 20083,
+      "counts": {
+        "equal": 14157,
+        "TS shorter": 5926,
+        "TS longer": 0,
+        "TS invalid": 0
+      },
+      "differences": 5926,
+      "pruv_spec_pass": 20083,
+      "ts_spec_pass": 14157
+    },
+    "rs/rust": {
+      "status": "ok",
+      "verified": true,
+      "cases": 20083,
+      "counts": {
+        "equal": 14157,
+        "TS shorter": 5926,
+        "TS longer": 0,
+        "TS invalid": 0
+      },
+      "differences": 5926,
+      "pruv_spec_pass": 20083,
+      "ts_spec_pass": 14157
+    },
+    "rs/llvm": {
+      "status": "ok",
+      "verified": true,
+      "cases": 20083,
+      "counts": {
+        "equal": 14157,
+        "TS shorter": 5926,
+        "TS longer": 0,
+        "TS invalid": 0
+      },
+      "differences": 5926,
+      "pruv_spec_pass": 20083,
+      "ts_spec_pass": 14157
+    }
+  },
+  "tools": {
+    "commands": {
+      "py": [
+        "python",
+        "pruvc.py"
+      ],
+      "rs": [
+        "pruvc"
+      ]
+    },
+    "rust_source_sha256": "f35d77adb6a2c267a8123df8809f21a7bb46e8d550c5553c9ecdec81fb2da819",
+    "rust_binary_sha256": "0c6a873fafff14f8770fecbb1084c307e62d7f125b8507d31cd708f016a4d7d2",
+    "node": "v26.4.0"
+  },
+  "edge_cases": 83,
+  "total_cases": 20083,
+  "difference_order": "input byte length, max, input hex, compiler/backend",
+  "difference_limit": 50,
+  "difference_records_total": 23704,
+  "difference_records_saved": 50,
+  "status": "ok"
+}
