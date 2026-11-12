@@ -1,0 +1,11 @@
+fn nested(n: i64, m: i64) -> () requires n >= 0 requires m >= 0 cost n * (m + 1) {
+ let mut i: i64 = 0;
+ while i < n invariant 0 <= i && i <= n invariant spent == i * (m + 1) decreases n - i {
+   let mut j: i64 = 0;
+   while j < m invariant 0 <= j && j <= m invariant spent == i * (m + 1) + 1 + j decreases m - j {
+     j = j + 1;
+   }
+   i = i + 1;
+ }
+ assert spent <= n * (m + 1);
+}

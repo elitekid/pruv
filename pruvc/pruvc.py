@@ -71,7 +71,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
         raise ValueError("also_llvm requires backend='rust'")
     prog = load_program(path)   # G4: the root file plus its declared module files; a legacy root is plain parse(src)
     check(prog, externs=externs)
-    s5err = s5_unimplemented_error(prog)
+    s5err = s5_unimplemented_error(prog) if backend == "llvm" or also_llvm else None
     if s5err is not None and not verify:
         return [s5err]
     # G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.

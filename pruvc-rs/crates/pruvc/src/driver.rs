@@ -226,7 +226,11 @@ fn compile(a: &Args) -> Result<(), Fail> {
         None => pruv_core::check::check_with_externs(&mut prog, &a.rust_extern),
     };
     let tt = checked.map_err(|e| Fail::Lang(vec![e]))?;
-    let s5err = pruv_core::typeinfo::s5_unimplemented_error(&prog);
+    let s5err = if !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some() {
+        pruv_core::typeinfo::s5_unimplemented_error(&prog)
+    } else {
+        None
+    };
     if !a.verify {
         if let Some(e) = s5err { return Err(Fail::Lang(vec![e])); }
     }

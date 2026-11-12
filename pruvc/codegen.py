@@ -620,6 +620,8 @@ class Gen:
         s.verified = verified
         s.trust = trust_callers
         s.out = []
+        s.cost = False
+        s.cost_used = not verified and any(f.cost is not None for f in prog.functions)
         s.has_req = {f.name for f in prog.functions if f.requires and f.foreign is None}
         from foreign import _par_nodes
         groups = []
@@ -699,7 +701,7 @@ class Gen:
             s.out.append(types)
         u8_used = uses_array_type(s.prog, "array_u8") or s.g10
         bool_used = uses_array_type(s.prog, "array_bool")  # G2 A5
-        str_used = uses_str(s.prog)  # G2 B2
+        str_used = uses_str(s.prog, cost=not s.verified)  # G2 B2; S5: an erased cost bound emits nothing
         if s.g9:
             u8_used = u8_used or s.field_uses("array_u8")
             bool_used = bool_used or s.field_uses("array_bool")
@@ -716,7 +718,7 @@ class Gen:
                 s.out.append(SAFE_PRELUDE_BOOL)
             if str_used:
                 s.out.append(SAFE_PRELUDE_STR)
-        if (s.checks_needed if s.explicit else (s.has_req and (not s.trust or s.inout_req or (s.par_callees and not s.verified)))) or s.g6:
+        if (s.checks_needed if s.explicit else (s.has_req and (not s.trust or s.inout_req or (s.par_callees and not s.verified)))) or s.g6 or s.cost_used:
             s.out.append(CONTRACT_PRELUDE_G6 if s.g6 else CONTRACT_PRELUDE)
             if u8_used:
                 s.out.append(CONTRACT_PRELUDE_U8)
@@ -802,9 +804,30 @@ class Gen:
             vis = "" if (f.requires or s.private(f)) else "pub "   # G3: specializations are private
         s.emit(0, s.allow)
         s.emit(0, "%sfn %s(%s)%s {" % (vis, body_name, ps, ret))
+        s.cost = not s.verified and f.cost is not None
+        if s.cost:
+            s.emit(1, "let pruv_cost: i128 = %s__pruv_cost(%s);" % (f.name, ", ".join(p.name for p in f.params)))
+            s.emit(1, "let mut pruv_spent: u128 = 0;")
         s.block(f.body, 1)
+        if s.cost and f.ret == UNIT:
+            s.emit(1, s.cost_check())
         s.emit(0, "}")
         s.emit(0, "")
+        if s.cost:
+            # Use the requires evaluator on parameter views, including immutable views of inout.
+            cps = ", ".join("%s: %s" % (p.name, s.rt(p.type, True)) for p in f.params)
+            s.emit(0, s.allow)
+            s.emit(0, "fn %s__pruv_cost(%s) -> i128 {" % (f.name, cps))
+            # The bound is evaluated only inside the callee's requires (spec 5: requires before contract_domain).
+            conversions, checks = s.req_checks(f) if f.requires and not s.trust else ([], [])
+            for line in conversions:
+                s.emit(1, line)
+            s.emit(1, "let mut pruv_budget: i64 = %s;" % format(s.budget, "_"))
+            for line in checks:
+                s.emit(1, line)
+            s.emit(1, s.c(f.cost))
+            s.emit(0, "}")
+            s.emit(0, "")
         if f.requires:
             if not s.explicit:
                 # G5: a wrapper of an inout function always checks (trust_callers does not waive it)
@@ -821,6 +844,20 @@ class Gen:
             else:
                 s.entry(f, ps, ret, body_name, f.name, False, True)
 
+    @staticmethod
+    def cost_add(units):
+        return ('pruv_spent = pruv_spent.checked_add(%s).unwrap_or_else(|| panic!("pruv: cost exceeded"));' % units)
+
+    @staticmethod
+    def cost_check():
+        return 'if pruv_cost < 0 || pruv_spent > pruv_cost as u128 { panic!("pruv: cost exceeded"); }'
+
+    def cost_call(s, name, args):
+        # A negative modular bound cannot be met by a nonnegative callee counter.
+        return ('let pruv_units = %s__pruv_cost(%s); '
+                'if pruv_units < 0 { panic!("pruv: cost exceeded"); } %s' %
+                (name, ", ".join(args), s.cost_add('(pruv_units as u128).checked_add(1).unwrap_or_else(|| panic!("pruv: cost exceeded"))')))
+
     def callee(s, n):
         """explicit mode: the Rust name a Pruv call of the function n invokes (see Gen.__init__)"""
         if n not in s.has_req:
@@ -828,6 +865,22 @@ class Gen:
         if s.verified:
             return n + "__pruv_body"     # the caller proved requires
         return n + "__pruv_chk" if (s.trust and n in s.entries) else n
+
+    def req_checks(s, f):
+        """(parameter conversion lines, requires check lines) of f's runtime requires"""
+        s.cp = {}   # user-type parameter -> its type, converted once below
+        checks = []
+        try:
+            for n, r in enumerate(f.requires, 1):
+                msg = "pruv: requires violated: %s: %s" % (getattr(f, "disp", f.name), show(r))
+                code = s.c(r)
+                checks.append("if !(%s) { panic!(\"{}\", %s); }" % (code, rstr(msg)))
+            used = dict(s.cp)
+        finally:
+            s.cp = None
+        conversions = ["let pruv_cp_%s: %s = %s;" % (p.name, cty(used[p.name]), conv(used[p.name], p.name))
+                       for p in f.params if p.name in used]
+        return conversions, checks
 
     def entry(s, f, ps, ret, body_name, name=None, pub=None, checked=None):
         """the checked wrapper of f. Legacy: `pub` unless private, checks unless trust_callers. Explicit mode passes the
@@ -839,19 +892,9 @@ class Gen:
         s.emit(0, "#[inline]")
         s.emit(0, "%sfn %s(%s)%s {" % ("pub " if pub else "", name, ps, ret))
         if checked:
-            s.cp = {}   # user-type parameter -> its type, converted once below
-            checks = []
-            try:
-                for n, r in enumerate(f.requires, 1):
-                    msg = "pruv: requires violated: %s: %s" % (getattr(f, "disp", f.name), show(r))
-                    code = s.c(r)
-                    checks.append("if !(%s) { panic!(\"{}\", %s); }" % (code, rstr(msg)))
-                used = dict(s.cp)
-            finally:
-                s.cp = None
-            for p in f.params:
-                if p.name in used:
-                    s.emit(1, "let pruv_cp_%s: %s = %s;" % (p.name, cty(used[p.name]), conv(used[p.name], p.name)))
+            conversions, checks = s.req_checks(f)
+            for line in conversions:
+                s.emit(1, line)
             if checks:
                 s.emit(1, "let mut pruv_budget: i64 = %s;" % format(s.budget, "_"))
             for line in checks:
@@ -1461,9 +1504,17 @@ class Gen:
             s.emit(ind, "}")
         elif isinstance(st, While):
             s.emit(ind, "while %s {" % s.e(st.cond))
+            if s.cost:
+                s.emit(ind + 1, s.cost_add("1"))
             s.block(st.body, ind + 1)
             s.emit(ind, "}")
         elif isinstance(st, Return):
+            if s.cost:
+                if st.value is not None:
+                    s.emit(ind, "let pruv_return = %s;" % s.own_e(st.value))
+                s.emit(ind, s.cost_check())
+                s.emit(ind, "return;" if st.value is None else "return pruv_return;")
+                return
             s.emit(ind, "return;" if st.value is None else "return %s;" % s.own_e(st.value))
         elif isinstance(st, Assert):
             pass
@@ -1542,6 +1593,8 @@ class Gen:
                     n += "__pruv_body"
                 elif s.trust and not any(isinstance(x, InoutArg) for x in call.args):
                     n += "__pruv_par_chk"
+            if s.cost:
+                s.emit(d, s.cost_call(call.name, args))
             prepared.append("%s(%s);" % (n, ", ".join(args)))
         s.emit(d, "let mut pruv_handles = ::std::vec::Vec::new();")
         s.emit(d, "let mut pruv_spawn_failed = false;")
@@ -1683,6 +1736,13 @@ class Gen:
             return "%s.%s" % (s.e(e.base), e.field)
         if isinstance(e, Call):
             n, a = e.name, e.args
+            if s.cost and n in ("alloc", "copy") and not getattr(e, "pruv_cost_wrapped", False):
+                # Count the validated result length; nested argument calls still spend.
+                import copy
+                plain = copy.copy(e)
+                plain.pruv_cost_wrapped = True
+                result = s.e(plain)
+                return '{ let pruv_buffer = %s; %s pruv_buffer }' % (result, s.cost_add('(pruv_buffer.len() as u128).checked_add(1).unwrap_or_else(|| panic!("pruv: cost exceeded"))'))
             if n == "len":
                 return "(%s.len() as i64)" % s.e(a[0])
             if n == "alloc":
@@ -1731,11 +1791,18 @@ class Gen:
                     args.append(s.arr_ref(x))
                 else:
                     args.append(s.e(x))
+            captured = []
+            if s.cost and n in s.fmap:
+                for i, arg in enumerate(args):
+                    captured.append("let pruv_cost_arg_%d = %s;" % (i, arg))
+                args = ["pruv_cost_arg_%d" % i for i in range(len(args))]
+                captured.append(s.cost_call(n, args))
             if s.explicit:
                 n = s.callee(n)
             elif s.verified and n in s.has_req:
                 n = n + "__pruv_body"   # caller proved requires
-            return "%s(%s)" % (n, ", ".join(args))
+            call = "%s(%s)" % (n, ", ".join(args))
+            return "{ %s %s }" % (" ".join(captured), call) if captured else call
         raise Exception("codegen: contract-only expression in code: %r" % e)
 
 
@@ -1751,10 +1818,7 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
                 externs=()):
     """(rust text, manifest text or None). The manifest (G6_SPEC 12.4) exists only for programs that use G6;
     externs: [(name, path)] as given with --rust-extern."""
-    from typeinfo import g2_unimplemented_error, first_g3_use, s5_unimplemented_error
-    s5err = s5_unimplemented_error(prog)
-    if s5err is not None:
-        raise s5err
+    from typeinfo import g2_unimplemented_error, first_g3_use
     if foreign_checks not in ("requires", "all", "off"):
         raise ValueError("foreign_checks must be requires, all or off")
     if plan is None and (first_g3_use(prog) is not None or prog.explicit):   # G4 A2: explicit mode always names via mono

@@ -262,14 +262,15 @@ pub fn uses_array_type(prog: &Program, name: &str) -> bool {
 }
 
 /// G2 B2: whether a parameter, return or (nested) let type is `str`, or any expression in requires/ensures/body has a StrLit.
-pub fn uses_str(prog: &Program) -> bool {
+/// `cost` false ignores cost bounds (S5: erased in verified mode).
+pub fn uses_str(prog: &Program, cost: bool) -> bool {
     let pick = |t: &str| t == "str";
     for f in &prog.functions {
         if f.params.iter().any(|p| p.ty == "str") || f.ret == "str" {
             return true;
         }
         let mut best: Option<(i64, i64, String)> = None;
-        for e in f.requires.iter().chain(f.cost.iter()) {
+        for e in f.requires.iter().chain(f.cost.iter().filter(|_| cost)) {
             g2_cand_expr(e, true, &mut best);
         }
         for e in &f.ensures {

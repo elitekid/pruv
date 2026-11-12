@@ -1,0 +1,6 @@
+fn leaf(n: i64) -> i64
+requires n != 0
+cost 1 / n
+{ return 0; }
+
+fn f() -> i64 cost 2 { return leaf(0); }

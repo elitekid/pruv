@@ -4279,7 +4279,7 @@ fn gen_llvm_body(
         chunks.extend(g9_helper_chunks(&mut m, &tt)?);
     }
     // G9 A3: buffer fields count as uses of the buffer runtime declarations
-    let has_str = crate::typeinfo::uses_str(prog) || type_has_field(prog, "str"); // G2 B2
+    let has_str = crate::typeinfo::uses_str(prog, true) || type_has_field(prog, "str"); // G2 B2
     let g9_u8 = type_has_field(prog, "array_u8") || type_has_field(prog, "array_bool");
     // G6 A3: bridge marker and the shim symbols used, sorted by symbol
     let mut g6decls = String::new();

@@ -1,0 +1,1 @@
+fn leaf() -> () cost 2 {} fn f() -> () cost 5 { par { leaf(); leaf(); } }

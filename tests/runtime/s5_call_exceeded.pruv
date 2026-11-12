@@ -1,0 +1,1 @@
+fn leaf() -> i64 cost 4 { return 7; } fn f() -> i64 cost 4 { return leaf(); }

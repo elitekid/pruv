@@ -3,7 +3,7 @@ python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_fronten
                         [--backend rust|llvm|both]
 
 group s5_proof: tests/s5/proof/*.pruv verifies in default, trust-callers and infer modes
-on both backends, then stops at codegen/cost_unavailable (one row checks both backends).
+with Rust erasure checks; LLVM retains codegen/cost_unavailable (one row checks both backends).
 
 group g7_frontend / g7_proof: Rust rows generate and compile (run if main exists);
 LLVM and dual-emission rows produce IR and Rust bindings after successful verification.
@@ -45,7 +45,7 @@ examples/g4_*/root.pruv (+ companions) are examples rows (default / no-verify / 
 for real (the guard is gone); every G4 llvm row also checks the exported symbols of the .ll: the defined external symbols
 must be exactly the host-entry `pruv_abi_*` symbols (runtime projects: spec.json "llvm_exports"; project examples: the
 root `pub fn` names).
-                        [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
+                        [--sample-prefix PATH] [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
 
 groups g9_frontend / g9_proof (G9 A0): tests/g9/frontend/*.pruv (mode no-verify, --no-verify) and tests/g9/proof/*.pruv
@@ -634,6 +634,15 @@ def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
     return jobs
 
 
+def s5_erase(source):
+    # These proof fixtures use expression-only cost headers and assert/invariant clauses.
+    # Remove whole ghost clauses (including inline ones), preserving executable source.
+    source = re.sub(r"\bcost\b[^{}]*(?=\{)", "", source)
+    source = re.sub(r"\bassert\b[^;]*\bspent\b[^;]*;", "", source)
+    return re.sub(r"\binvariant\b(?:(?!\binvariant\b|\bdecreases\b|[{}]).)*\bspent\b"
+                  r"(?:(?!\binvariant\b|\bdecreases\b|[{}]).)*", "", source, flags=re.S)
+
+
 def s5_frontend_jobs(group="s5_frontend", folder="frontend", modes=None):
     jobs = []
     for f in sorted(glob.glob(os.path.join(ROOT, "tests", "s5", folder, "*.pruv"))):
@@ -647,7 +656,7 @@ def s5_frontend_jobs(group="s5_frontend", folder="frontend", modes=None):
                 for backend in ("rust", "llvm"):
                     c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
                          pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
-                    if guarded:
+                    if guarded and backend == "llvm":
                         try:
                             ds = [json.loads(line) for line in c.stdout.splitlines()]
                         except ValueError:
@@ -659,6 +668,15 @@ def s5_frontend_jobs(group="s5_frontend", folder="frontend", modes=None):
                         ok = c.returncode == 0
                     if not ok:
                         return False, backend + ": " + c.stdout + c.stderr
+                if folder == "proof" and mode in ("default", "trust-callers"):
+                    twin = out + "_erased.pruv"
+                    with open(twin, "w", encoding="utf-8") as fh:
+                        fh.write(s5_erase(open(f, encoding="utf-8").read()))
+                    c = pruvc(twin, out + "_erased.rs", flags)
+                    if c.returncode != 0:
+                        return False, "erased twin: " + c.stdout + c.stderr
+                    if open(out + ".rs", "rb").read() != open(out + "_erased.rs", "rb").read():
+                        return False, "cost erasure changed generated Rust"
                 return True, ""
             jobs.append(safe("%s/%s [%s]" % (group, stem, mode), fn,
                              {"sample": rel_sample(f), "backend": None, "flags": list(flags),
@@ -1036,6 +1054,8 @@ def runtime_jobs(backend):
     for j, t in specs:
         try:
             spec = json.load(open(j))
+            if backend not in spec.get("backends", ["rust", "llvm"]):
+                continue
             if llvm and isinstance(spec.get("llvm"), dict):   # G4 A3: "llvm": {...} overrides fields on the llvm backend
                 spec = dict(spec, **spec["llvm"])
             budget = spec.get("contract_budget")
@@ -1061,7 +1081,7 @@ def runtime_jobs(backend):
 
 
 USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof] [--backend rust|llvm|both] "
-         "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
+         "[--sample-prefix PATH] [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
 def row_key(row, with_compiler=True):
@@ -1143,6 +1163,11 @@ def main():
             return 2
         IR_TOOL = tool
         del argv[i:i + 2]
+    sample_prefix = None
+    if "--sample-prefix" in argv:
+        i = argv.index("--sample-prefix")
+        sample_prefix = argv[i + 1]
+        del argv[i:i + 2]
     only = None
     if "--only" in sys.argv:
         i = sys.argv.index("--only")
@@ -1202,6 +1227,8 @@ def main():
                 jobs += examples_jobs(b)
             if only in (None, "runtime"):
                 jobs += runtime_jobs(b)
+        if sample_prefix is not None:
+            jobs = [job for job in jobs if job.row and job.row.get("sample", "").startswith(sample_prefix)]
         rows = build_rows(jobs)
         if list_rows:
             lines = sorted(row_key(r) for r in rows)

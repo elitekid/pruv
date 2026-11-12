@@ -661,7 +661,7 @@ pub fn build_shim(prog: &Program, verified: bool, _trust_callers: bool, budget: 
     if uses_array_type(prog, "array_bool") {
         out.push(CONTRACT_PRELUDE_BOOL.to_string());
     }
-    if uses_str(prog) {
+    if uses_str(prog, true) {
         out.push(CONTRACT_PRELUDE_STR.to_string());
     }
     out.push(G6_PRELUDE.to_string());

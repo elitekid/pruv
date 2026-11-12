@@ -335,12 +335,13 @@ def _has_str_node(node):
     return False
 
 
-def uses_str(prog):
-    """G2 B2: True if some param/return/let type is str or any requires/ensures/body expression has a string literal."""
+def uses_str(prog, cost=True):
+    """G2 B2: True if some param/return/let type is str or any requires/ensures/body expression has a string literal.
+    cost=False ignores cost bounds (S5: erased in verified mode)."""
     if uses_array_type(prog, "str"):
         return True
     for fn in prog.functions:
-        if _has_str_node(fn.cost) or _has_str_node(fn.requires) or _has_str_node(fn.ensures) or _has_str_node(fn.body):
+        if (cost and _has_str_node(fn.cost)) or _has_str_node(fn.requires) or _has_str_node(fn.ensures) or _has_str_node(fn.body):
             return True
     return False
 

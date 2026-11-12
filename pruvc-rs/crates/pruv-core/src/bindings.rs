@@ -335,7 +335,7 @@ pub fn gen_bindings_with(prog: &Program, shim: Option<&str>) -> Result<String, S
         o.push(ALLOW.to_string());
         o.push("#[repr(C)]\npub struct Pruv__ArrayBool { pub data: *mut u8, pub len: i64 }".to_string());
     }
-    if uses_str(prog) {
+    if uses_str(prog, true) {
         // G2 B2
         o.push(ALLOW.to_string());
         o.push("#[repr(C)]\npub struct Pruv__Str { pub data: *mut u8, pub len: i64 }".to_string());

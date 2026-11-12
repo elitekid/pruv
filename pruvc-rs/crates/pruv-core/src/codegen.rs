@@ -414,6 +414,8 @@ struct Gen<'a> {
     verified: bool,
     trust: bool,
     out: Vec<String>,
+    cost: bool,
+    cost_used: bool,
     has_req: HashSet<String>,
     par_callees: HashSet<String>,
     par_hook: String,
@@ -516,6 +518,8 @@ impl<'a> Gen<'a> {
             verified,
             trust: trust_callers,
             out: Vec::new(),
+            cost: false,
+            cost_used: !verified && prog.functions.iter().any(|f| f.cost.is_some()),
             par_callees,
             par_hook: std::env::var("PRUV_G7_TEST_HOOK").unwrap_or_default(),
             has_req: prog
@@ -648,7 +652,7 @@ impl<'a> Gen<'a> {
         }
         let mut u8_used = uses_array_type(self.prog, "array_u8") || self.g10;
         let mut bool_used = uses_array_type(self.prog, "array_bool"); // G2 A5
-        let mut str_used = uses_str(self.prog); // G2 B2
+        let mut str_used = uses_str(self.prog, !self.verified); // G2 B2; S5: an erased cost bound emits nothing
         if self.g9 {
             // G9: the G2 helpers are emitted by usage; uses_array_type / uses_str look at parameters, results and lets only
             u8_used = u8_used || self.field_uses("array_u8");
@@ -679,7 +683,7 @@ impl<'a> Gen<'a> {
         } else {
             !self.has_req.is_empty() && (!self.trust || self.inout_req || (!self.par_callees.is_empty() && !self.verified))
         };
-        if checks || self.g6 {
+        if checks || self.g6 || self.cost_used {
             if self.g6 {
                 self.out.push(contract_prelude_g6());
             } else {
@@ -823,9 +827,37 @@ impl<'a> Gen<'a> {
         let allow = self.allow;
         self.emit(0, allow);
         self.emit(0, &format!("{}fn {}({}){} {{", vis, body_name, ps, ret));
+        self.cost = !self.verified && f.cost.is_some();
+        if self.cost {
+            let args = join_map(&f.params, ", ", |p| p.name.clone());
+            self.emit(1, &format!("let pruv_cost: i128 = {}__pruv_cost({});", f.name, args));
+            self.emit(1, "let mut pruv_spent: u128 = 0;");
+        }
         self.block(&f.body, 1)?;
+        if self.cost && f.ret == "unit" {
+            self.emit(1, Self::cost_check());
+        }
         self.emit(0, "}");
         self.emit(0, "");
+        if self.cost {
+            let cps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, self.rt(&p.ty, true)));
+            self.emit(0, allow);
+            self.emit(0, &format!("fn {}__pruv_cost({}) -> i128 {{", f.name, cps));
+            // The bound is evaluated only inside the callee's requires (spec 5: requires before contract_domain).
+            let (conversions, checks) =
+                if !f.requires.is_empty() && !self.trust { self.req_checks(f)? } else { (Vec::new(), Vec::new()) };
+            for line in &conversions {
+                self.emit(1, line);
+            }
+            self.emit(1, &format!("let mut pruv_budget: i64 = {};", fmt_underscore(self.budget)));
+            for line in &checks {
+                self.emit(1, line);
+            }
+            let code = self.c(f.cost.as_ref().unwrap())?;
+            self.emit(1, &code);
+            self.emit(0, "}");
+            self.emit(0, "");
+        }
         if has {
             if !self.explicit {
                 // G5: a wrapper of an inout function always checks (trust_callers does not waive it)
@@ -854,6 +886,28 @@ impl<'a> Gen<'a> {
             }
         }
         Ok(())
+    }
+
+    fn cost_add(units: &str) -> String {
+        format!("pruv_spent = pruv_spent.checked_add({}).unwrap_or_else(|| panic!(\"pruv: cost exceeded\"));", units)
+    }
+
+    fn cost_check() -> &'static str {
+        "if pruv_cost < 0 || pruv_spent > pruv_cost as u128 { panic!(\"pruv: cost exceeded\"); }"
+    }
+
+    fn cost_call(name: &str, args: &[String]) -> String {
+        format!("let pruv_units = {}__pruv_cost({}); if pruv_units < 0 {{ panic!(\"pruv: cost exceeded\"); }} {}",
+            name, args.join(", "), Self::cost_add("(pruv_units as u128).checked_add(1).unwrap_or_else(|| panic!(\"pruv: cost exceeded\"))"))
+    }
+
+    fn cost_buffer(&self, result: String) -> String {
+        if self.cost {
+            format!("{{ let pruv_buffer = {}; {} pruv_buffer }}", result,
+                Self::cost_add("(pruv_buffer.len() as u128).checked_add(1).unwrap_or_else(|| panic!(\"pruv: cost exceeded\"))"))
+        } else {
+            result
+        }
     }
 
     /// the source-qualified name of a function (explicit mode: its identity; otherwise the name itself)
@@ -891,6 +945,21 @@ impl<'a> Gen<'a> {
         Ok(checks)
     }
 
+    /// (parameter conversion lines, requires check lines) of f's runtime requires
+    fn req_checks(&mut self, f: &Function) -> R<(Vec<String>, Vec<String>)> {
+        self.cp = Some(HashMap::new());
+        let res = self.entry_checks(f);
+        let used = self.cp.take().unwrap_or_default();
+        let checks = res?;
+        let mut conversions = Vec::new();
+        for p in &f.params {
+            if let Some(ty) = used.get(&p.name) {
+                conversions.push(format!("let pruv_cp_{}: {} = {};", p.name, try_cty(ty)?, try_conv(ty, &p.name)?));
+            }
+        }
+        Ok((conversions, checks))
+    }
+
     /// the checked wrapper of f. Legacy (`None` arguments): `pub` unless private, named f.name, checks unless trust_callers.
     /// Explicit mode passes the wrapper name, its visibility and whether it checks.
     #[allow(clippy::too_many_arguments)]
@@ -913,15 +982,9 @@ impl<'a> Gen<'a> {
         let vis = if is_pub { "pub " } else { "" };
         self.emit(0, &format!("{}fn {}({}){} {{", vis, name, ps, ret));
         if checked {
-            self.cp = Some(HashMap::new());
-            let res = self.entry_checks(f);
-            let used = self.cp.take().unwrap_or_default();
-            let checks = res?;
-            for p in &f.params {
-                if let Some(ty) = used.get(&p.name) {
-                    let line = format!("let pruv_cp_{}: {} = {};", p.name, try_cty(ty)?, try_conv(ty, &p.name)?);
-                    self.emit(1, &line);
-                }
+            let (conversions, checks) = self.req_checks(f)?;
+            for line in &conversions {
+                self.emit(1, line);
             }
             if !checks.is_empty() {
                 let line = format!("let mut pruv_budget: i64 = {};", fmt_underscore(self.budget));
@@ -2018,8 +2081,19 @@ impl<'a> Gen<'a> {
             Stmt::While(x) => {
                 let c = self.e(&x.cond)?;
                 self.emit(ind, &format!("while {} {{", c));
+                if self.cost {
+                    self.emit(ind + 1, &Self::cost_add("1"));
+                }
                 self.block(&x.body, ind + 1)?;
                 self.emit(ind, "}");
+            }
+            Stmt::Return(x) if self.cost => {
+                if let Some(v) = &x.value {
+                    let t = self.own_e(v)?;
+                    self.emit(ind, &format!("let pruv_return = {};", t));
+                }
+                self.emit(ind, Self::cost_check());
+                self.emit(ind, if x.value.is_some() { "return pruv_return;" } else { "return;" });
             }
             Stmt::Return(x) => match &x.value {
                 None => self.emit(ind, "return;"),
@@ -2099,6 +2173,9 @@ impl<'a> Gen<'a> {
                 } else if self.trust && !call.args.iter().any(|x| matches!(x, Expr::InoutArg(_))) {
                     n.push_str("__pruv_par_chk");
                 }
+            }
+            if self.cost {
+                self.emit(d, &Self::cost_call(&call.name, &args));
             }
             prepared.push(format!("{}({});", n, args.join(", ")));
         }
@@ -2412,7 +2489,7 @@ impl<'a> Gen<'a> {
                         } else {
                             "pruv_alloc"
                         };
-                        return Ok(format!("{}({}, {})", f, n0, v0));
+                        return Ok(self.cost_buffer(format!("{}({}, {})", f, n0, v0)));
                     }
                     // Source order: n first, v later (vec![v; n] evaluates v first)
                     let n0 = self.e(arg(a, 0)?)?;
@@ -2433,9 +2510,11 @@ impl<'a> Gen<'a> {
                 if n == "copy" {
                     if expr_ty(arg(a, 0)?).as_deref() == Some("str") {
                         // G2 B2
-                        return Ok(format!("{}.to_owned()", self.e(arg(a, 0)?)?));
+                        let result = format!("{}.to_owned()", self.e(arg(a, 0)?)?);
+                        return Ok(self.cost_buffer(result));
                     }
-                    return Ok(format!("{}.to_vec()", self.e(arg(a, 0)?)?));
+                    let result = format!("{}.to_vec()", self.e(arg(a, 0)?)?);
+                    return Ok(self.cost_buffer(result));
                 }
                 if n == "print" {
                     return Ok(format!("println!(\"{{}}\", {})", self.e(arg(a, 0)?)?));
@@ -2497,13 +2576,22 @@ impl<'a> Gen<'a> {
                         args.push(self.e(xa)?);
                     }
                 }
+                let mut captured = Vec::new();
+                if self.cost && self.fmap.contains_key(n) {
+                    for (i, arg) in args.iter().enumerate() {
+                        captured.push(format!("let pruv_cost_arg_{} = {};", i, arg));
+                    }
+                    args = (0..args.len()).map(|i| format!("pruv_cost_arg_{}", i)).collect();
+                    captured.push(Self::cost_call(n, &args));
+                }
                 let mut name = n.to_string();
                 if self.explicit {
                     name = self.callee(&name); // G4 A2
                 } else if self.verified && self.has_req.contains(&name) {
                     name.push_str("__pruv_body"); // the caller proved the requires
                 }
-                Ok(format!("{}({})", name, args.join(", ")))
+                let call = format!("{}({})", name, args.join(", "));
+                Ok(if captured.is_empty() { call } else { format!("{{ {} {} }}", captured.join(" "), call) })
             }
             other => Err(format!("codegen: contract-only expression in code: {:?}", other)),
         }
@@ -2583,7 +2671,6 @@ pub fn gen_rust_ex_g4(
     foreign_checks: &str,
     externs: &[(String, String)],
 ) -> Result<(String, Option<String>), GenError> {
-    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
@@ -2624,7 +2711,6 @@ pub fn gen_rust_concrete_ex(
     foreign_checks: &str,
     externs: &[(String, String)],
 ) -> Result<(String, Option<String>), GenError> {
-    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }

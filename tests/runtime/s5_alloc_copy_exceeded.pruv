@@ -1,0 +1,1 @@
+fn f(n: i64) -> i64 ! alloc requires n >= 0 requires n <= 100 cost 2 * n + 1 { let a: [i64] = alloc(n, 0); let b: [i64] = copy(a); return len(b); }
