@@ -1,0 +1,33 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -2235,12 +2235,30 @@
+         return [g2err]
+     errors = []
+     model = Model(prog)
++    from vast import Call
++    def calls(node):
++        if isinstance(node, (list, tuple)):
++            return set().union(*(calls(n) for n in node)) if node else set()
++        if not hasattr(node, '__dataclass_fields__'):
++            return set()
++        found = {node.name} if isinstance(node, Call) else set()
++        for value in vars(node).values():
++            found.update(calls(value))
++        return found
++    reachable = {f.name for f in prog.functions if f.file != '@std/std.pruv'}
++    while True:
++        expanded = reachable | set().union(*(calls(f.body) for f in prog.functions if f.name in reachable))
++        if expanded == reachable:
++            break
++        reachable = expanded
+     if not infer:
+         for f in prog.functions:
++            if f.name not in reachable: continue  # FAULT
+             FnVerifier(prog, f, errors, model, rec=rec).run()
+         return errors
+     import infer as infer_mod      # lazy: infer.py imports this module
+     for f in prog.functions:
++        if f.name not in reachable: continue  # FAULT
+         res = infer_mod.infer_function(prog, f, model, rec)
+         before = len(errors)
+         if res.status == "timeout":

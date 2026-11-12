@@ -1,0 +1,15 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -2237,10 +2237,12 @@
+     model = Model(prog)
+     if not infer:
+         for f in prog.functions:
++            if f.file == '@std/std.pruv': continue  # FAULT
+             FnVerifier(prog, f, errors, model, rec=rec).run()
+         return errors
+     import infer as infer_mod      # lazy: infer.py imports this module
+     for f in prog.functions:
++        if f.file == '@std/std.pruv': continue  # FAULT
+         res = infer_mod.infer_function(prog, f, model, rec)
+         before = len(errors)
+         if res.status == "timeout":

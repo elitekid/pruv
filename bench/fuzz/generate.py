@@ -6605,7 +6605,110 @@ def s5_inputs(seed, index, count):
     return values[:count]
 
 
-def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False, g5=False, g7=False, s5=False):
+G8_FUNCTIONS = ("min", "max", "clamp", "abs", "checked_add", "checked_sub",
+                "sum", "contains", "index_of", "is_sorted", "array_max", "reverse")
+G8_FAMILIES = G8_FUNCTIONS + ("sum_add", "max_clamp", "reverse_index")
+
+
+def generate_g8_case(seed, index):
+    """Direct and cross-module clients with preconditions exposed on the root."""
+    rng = random.Random("g8:%s:%s" % (seed, index))
+    kind = G8_FAMILIES[index % 15]
+    params, ret, req, effects = [["a", "i64"], ["b", "i64"]], "i64", [], ""
+    names = [kind]
+    bounds = sorted([rng.randint(-100, 0), rng.randint(0, 100)])
+    if kind in ("min", "max", "checked_add", "checked_sub"):
+        expr = "crate::std::%s_i64(a, b)" % kind
+        if kind.startswith("checked"):
+            ret = "Option<i64>"
+    elif kind == "abs":
+        params, req = [["x", "i64"]], ["x > -9223372036854775808"]
+        expr = "crate::std::abs_i64(x)"
+    elif kind == "clamp":
+        params = [[n, "i64"] for n in ("x", "lo", "hi")]
+        req, expr = ["lo <= hi"], "crate::std::clamp_i64(x, lo, hi)"
+    else:
+        params, req = [["a", "array"]], ["len(a) <= 8"]
+        if kind in ("sum", "sum_add"):
+            req += ["forall k in 0..len(a): -1000000000 <= a[k] && a[k] <= 1000000000"]
+        if kind in ("array_max", "max_clamp"):
+            req += ["len(a) > 0"]
+        if kind in ("contains", "index_of", "reverse_index"):
+            params += [["x", "i64"]]
+        if kind in ("contains", "is_sorted"):
+            ret = "bool"
+        if kind in ("index_of", "reverse_index", "sum_add"):
+            ret = "Option<i64>"
+        if kind in ("reverse", "reverse_index"):
+            effects = " ! alloc"
+        if kind == "reverse":
+            ret = "[i64]"
+        if kind == "sum_add":
+            params += [["b", "array"]]
+            req += ["len(b) <= 8", "forall k in 0..len(b): -1000000000 <= b[k] && b[k] <= 1000000000"]
+            expr = "crate::std::checked_add_i64(crate::std::sum_i64(a), crate::std::sum_i64(b))"
+            names = ["checked_add", "sum"]
+        elif kind == "max_clamp":
+            expr = "crate::std::clamp_i64(crate::std::array_max_i64(a), %s, %s)" % tuple(map(lit, bounds))
+            names = ["clamp", "array_max"]
+        elif kind == "reverse_index":
+            expr = "crate::std::index_of_i64(crate::std::reverse_i64(a), x)"
+            names = ["index_of", "reverse"]
+        else:
+            expr = "crate::std::%s_i64(%s)" % (kind, "a, x" if kind in ("contains", "index_of") else "a")
+    sig = "(%s) -> %s%s\n" % (", ".join(n + ": " + ("[i64]" if t == "array" else t) for n, t in params), ret, effects)
+    sig += "".join(" requires " + r + "\n" for r in (req or ["true"]))
+    child = index >= 15
+    files = {}
+    body = "{ return %s; }\n" % expr
+    if child:
+        files["child.pruv"] = "pub fn apply" + sig + body
+        body = "{ return crate::child::apply(%s); }\n" % ", ".join(n for n, _ in params)
+    src = "mod std;\n" + ("mod child;\n" if child else "") + "pub fn f" + sig + body
+    files["root.pruv"] = src
+    return {"name": "g8c%s_%s" % (seed, index), "src": src, "files": files,
+            "params": params, "ret": ret, "g8": True, "kind": kind, "bounds": bounds,
+            "functions": [n + "_i64" for n in names], "cross_module": child,
+            "seed": seed, "index": index}
+
+
+def g8_inputs(case, count):
+    rng = random.Random("g8-inputs:%s:%s" % (case["seed"], case["index"]))
+    kind, mn, mx = case["kind"], I64_MIN, I64_MAX
+    if kind in ("min", "max", "checked_add", "checked_sub"):
+        values = [[mx, 1], [mn, -1], [mn, 1], [mx, -1], [0, mn], [-1, mn], [mn, mx], [mx, mx]]
+        extra = lambda: [rng.randint(mn, mx), rng.randint(mn, mx)]
+    elif kind == "abs":
+        values = [[mn + 1], [mx], [0], [-1], [1], [-2], [rng.randint(mn + 1, mx)], [rng.randint(mn + 1, mx)]]
+        extra = lambda: [rng.randint(mn + 1, mx)]
+    elif kind == "clamp":
+        values = [[mn, 0, 0], [mx, 0, 0], [mn, mn, mx], [mx, mn, mx], [-1, 0, 1], [2, 0, 1], [0, -1, 1], [1, 1, 1]]
+        extra = lambda: [rng.randint(mn, mx)] + sorted([rng.randint(mn, mx), rng.randint(mn, mx)])
+    else:
+        bound = 1000000000
+        arrays = [[], [0], [7, 7, 7], [3, 2, 1], [-8, -2, -8], [bound] * 8, [-bound] * 8,
+                  [rng.randint(-bound, bound) for _ in range(8)]]
+        nonempty = kind in ("array_max", "max_clamp")
+        if nonempty:
+            arrays[0] = [mn]
+        def args(a):
+            if kind in ("contains", "index_of", "reverse_index"):
+                return [a, a[0] if a else 9]
+            if kind == "sum_add":
+                return [a, list(reversed(a))]
+            return [a]
+        values = [args(a) for a in arrays]
+        if kind in ("contains", "index_of", "reverse_index"):
+            values[4][1] = 99
+        extra = lambda: args([rng.randint(-bound, bound) for _ in range(rng.randint(int(nonempty), 8))])
+    while len(values) < count:
+        values.append(extra())
+    return values[:count]
+
+
+def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False, g5=False, g7=False, s5=False, g8=False):
+    if g8:
+        return generate_g8_case(seed, index)
     if s5:
         return generate_s5_case(seed, index)
     if g7:
@@ -6836,6 +6939,8 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g8"):
+        return g8_inputs(case, n)
     if case.get("g7"):
         vals = g5_candidate_inputs(case, rng, n)
         for a in vals:
@@ -6917,7 +7022,10 @@ def main(argv=None):
                     help="G5 mode: inout-parameter programs, one directory per program (root.pruv + module files)")
     ap.add_argument("--g7", action="store_true", help="G7 scoped parallel calls")
     ap.add_argument("--s5", action="store_true", help="Stage 5 cost bounds and minus-one twins")
+    ap.add_argument("--g8", action="store_true", help="G8 verified bundled std clients")
     a = ap.parse_args(argv)
+    if a.g8 and any((a.g2, a.g3, a.g4, a.g5, a.g6, a.g7, a.g9, a.s5)):
+        ap.error("--g8 is a separate mode")
     if a.s5 and any((a.g2, a.g3, a.g4, a.g5, a.g6, a.g7, a.g9)):
         ap.error("--s5 is a separate mode")
     if a.g7 and any((a.g2, a.g3, a.g4, a.g5, a.g6, a.g9)):
@@ -6930,11 +7038,11 @@ def main(argv=None):
         ap.error("--g5 is a separate mode (not combinable with --g2/--g3/--g6/--g9/--g4)")
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4, g5=a.g5, g7=a.g7, s5=a.s5)
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4, g5=a.g5, g7=a.g7, s5=a.s5, g8=a.g8)
         if a.s5 and case["twin_src"]:
             with open(os.path.join(a.out, case["name"] + "_minus_one.pruv"), "w") as fh:
                 fh.write(case["twin_src"])
-        if a.g4 or a.g5 or a.g7:
+        if a.g4 or a.g5 or a.g7 or a.g8:
             for rel, text in case["files"].items():
                 path = os.path.join(a.out, case["name"], *rel.split("/"))
                 os.makedirs(os.path.dirname(path), exist_ok=True)

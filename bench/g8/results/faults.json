@@ -1,0 +1,332 @@
+{
+  "rows": [
+    {
+      "id": "f1_unused",
+      "patch_sha256": "666a37aa7c81b4e8bf4f8ced95582b4767807090f8612aee46f2f69e2f5bbdef",
+      "baselines": {
+        "g8_proof": {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/clean_bxsvqxtr/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "g8_proof"
+          ],
+          "rc": 0,
+          "stdout": "PASS g8_proof/min_i64 [default/rust]\nPASS g8_proof/min_i64 [default/llvm]\nPASS g8_proof/max_i64 [default/rust]\nPASS g8_proof/max_i64 [default/llvm]\nPASS g8_proof/clamp_i64 [default/rust]\nPASS g8_proof/clamp_i64 [default/llvm]\nPASS g8_proof/abs_i64 [default/rust]\nPASS g8_proof/abs_i64 [default/llvm]\nPASS g8_proof/checked_add_i64 [default/rust]\nPASS g8_proof/checked_add_i64 [default/llvm]\nPASS g8_proof/checked_sub_i64 [default/rust]\nPASS g8_proof/checked_sub_i64 [default/llvm]\nPASS g8_proof/sum_i64 [default/rust]\nPASS g8_proof/sum_i64 [default/llvm]\nPASS g8_proof/sum_i64 [infer/rust]\nPASS g8_proof/sum_i64 [infer/llvm]\nPASS g8_proof/contains_i64 [default/rust]\nPASS g8_proof/contains_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [default/rust]\nPASS g8_proof/index_of_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [infer/rust]\nPASS g8_proof/index_of_i64 [infer/llvm]\nPASS g8_proof/is_sorted_i64 [default/rust]\nPASS g8_proof/is_sorted_i64 [default/llvm]\nPASS g8_proof/array_max_i64 [default/rust]\nPASS g8_proof/array_max_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [default/rust]\nPASS g8_proof/reverse_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [infer/rust]\nPASS g8_proof/reverse_i64 [infer/llvm]\nPASS g8_proof/compose [default/rust]\nPASS g8_proof/compose [default/llvm]\nPASS g8_proof/cross_module [default/rust]\nPASS g8_proof/cross_module [default/llvm]\nbundle: 12 bodies, inference disabled, 1.941295 seconds\nunused false ensures: 4 rejections; no-verify: 2; unknown: 2; alternative bodies: 4 proofs; isolated callers: 4 backend rejections, 2 trace captures\nPASS g8_proof/bundle\ncompiler: py\nobject path: clang\nTOTAL 35/35\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f1_unused_a2bsz100/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "g8_proof"
+          ],
+          "rc": 1,
+          "stdout": "PASS g8_proof/min_i64 [default/rust]\nPASS g8_proof/min_i64 [default/llvm]\nPASS g8_proof/max_i64 [default/rust]\nPASS g8_proof/max_i64 [default/llvm]\nPASS g8_proof/clamp_i64 [default/rust]\nPASS g8_proof/clamp_i64 [default/llvm]\nPASS g8_proof/abs_i64 [default/rust]\nPASS g8_proof/abs_i64 [default/llvm]\nPASS g8_proof/checked_add_i64 [default/rust]\nPASS g8_proof/checked_add_i64 [default/llvm]\nPASS g8_proof/checked_sub_i64 [default/rust]\nPASS g8_proof/checked_sub_i64 [default/llvm]\nPASS g8_proof/sum_i64 [default/rust]\nPASS g8_proof/sum_i64 [default/llvm]\nPASS g8_proof/sum_i64 [infer/rust]\nPASS g8_proof/sum_i64 [infer/llvm]\nPASS g8_proof/contains_i64 [default/rust]\nPASS g8_proof/contains_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [default/rust]\nPASS g8_proof/index_of_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [infer/rust]\nPASS g8_proof/index_of_i64 [infer/llvm]\nPASS g8_proof/is_sorted_i64 [default/rust]\nPASS g8_proof/is_sorted_i64 [default/llvm]\nPASS g8_proof/array_max_i64 [default/rust]\nPASS g8_proof/array_max_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [default/rust]\nPASS g8_proof/reverse_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [infer/rust]\nPASS g8_proof/reverse_i64 [infer/llvm]\nPASS g8_proof/compose [default/rust]\nPASS g8_proof/compose [default/llvm]\nPASS g8_proof/cross_module [default/rust]\nPASS g8_proof/cross_module [default/llvm]\nFAIL g8_proof/bundle  -- bundle: 12 bodies, inference disabled, 0.000532 seconds Traceback (most recent call last):   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f1_unused_a2bsz100/tests/g8/check_proof.py\", line 246, in <module>     main(sys.argv[1])   File \"/Users/spica4345/Library/Appl\ncompiler: py\nobject path: clang\nTOTAL 34/35\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "g8_proof/bundle  -- bundle: 12 bodies, inference disabled, 0.000532 seconds Traceback (most recent call last):   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f1_unused_a2bsz100/tests/g8/check_proof.py\", line 246, in <module>     main(sys.argv[1])   File \"/Users/spica4345/Library/Appl"
+      ],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f1_unused.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": "",
+      "excluded_failures": []
+    },
+    {
+      "id": "f2_trusted",
+      "patch_sha256": "ba7411dabdfe5da1f5c33461039edb87208fe2d32353bc507171862343aee693",
+      "baselines": {
+        "g8_proof": {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/clean_emv2g4z0/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "g8_proof"
+          ],
+          "rc": 0,
+          "stdout": "PASS g8_proof/min_i64 [default/rust]\nPASS g8_proof/min_i64 [default/llvm]\nPASS g8_proof/max_i64 [default/rust]\nPASS g8_proof/max_i64 [default/llvm]\nPASS g8_proof/clamp_i64 [default/rust]\nPASS g8_proof/clamp_i64 [default/llvm]\nPASS g8_proof/abs_i64 [default/rust]\nPASS g8_proof/abs_i64 [default/llvm]\nPASS g8_proof/checked_add_i64 [default/rust]\nPASS g8_proof/checked_add_i64 [default/llvm]\nPASS g8_proof/checked_sub_i64 [default/rust]\nPASS g8_proof/checked_sub_i64 [default/llvm]\nPASS g8_proof/sum_i64 [default/rust]\nPASS g8_proof/sum_i64 [default/llvm]\nPASS g8_proof/sum_i64 [infer/rust]\nPASS g8_proof/sum_i64 [infer/llvm]\nPASS g8_proof/contains_i64 [default/rust]\nPASS g8_proof/contains_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [default/rust]\nPASS g8_proof/index_of_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [infer/rust]\nPASS g8_proof/index_of_i64 [infer/llvm]\nPASS g8_proof/is_sorted_i64 [default/rust]\nPASS g8_proof/is_sorted_i64 [default/llvm]\nPASS g8_proof/array_max_i64 [default/rust]\nPASS g8_proof/array_max_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [default/rust]\nPASS g8_proof/reverse_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [infer/rust]\nPASS g8_proof/reverse_i64 [infer/llvm]\nPASS g8_proof/compose [default/rust]\nPASS g8_proof/compose [default/llvm]\nPASS g8_proof/cross_module [default/rust]\nPASS g8_proof/cross_module [default/llvm]\nbundle: 12 bodies, inference disabled, 0.406138 seconds\nunused false ensures: 4 rejections; no-verify: 2; unknown: 2; alternative bodies: 4 proofs; isolated callers: 4 backend rejections, 2 trace captures\nPASS g8_proof/bundle\ncompiler: py\nobject path: clang\nTOTAL 35/35\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f2_trusted_vkk0u7sl/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "g8_proof"
+          ],
+          "rc": 1,
+          "stdout": "PASS g8_proof/min_i64 [default/rust]\nPASS g8_proof/min_i64 [default/llvm]\nPASS g8_proof/max_i64 [default/rust]\nPASS g8_proof/max_i64 [default/llvm]\nPASS g8_proof/clamp_i64 [default/rust]\nPASS g8_proof/clamp_i64 [default/llvm]\nPASS g8_proof/abs_i64 [default/rust]\nPASS g8_proof/abs_i64 [default/llvm]\nPASS g8_proof/checked_add_i64 [default/rust]\nPASS g8_proof/checked_add_i64 [default/llvm]\nPASS g8_proof/checked_sub_i64 [default/rust]\nPASS g8_proof/checked_sub_i64 [default/llvm]\nPASS g8_proof/sum_i64 [default/rust]\nPASS g8_proof/sum_i64 [default/llvm]\nPASS g8_proof/sum_i64 [infer/rust]\nPASS g8_proof/sum_i64 [infer/llvm]\nPASS g8_proof/contains_i64 [default/rust]\nPASS g8_proof/contains_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [default/rust]\nPASS g8_proof/index_of_i64 [default/llvm]\nPASS g8_proof/index_of_i64 [infer/rust]\nPASS g8_proof/index_of_i64 [infer/llvm]\nPASS g8_proof/is_sorted_i64 [default/rust]\nPASS g8_proof/is_sorted_i64 [default/llvm]\nPASS g8_proof/array_max_i64 [default/rust]\nPASS g8_proof/array_max_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [default/rust]\nPASS g8_proof/reverse_i64 [default/llvm]\nPASS g8_proof/reverse_i64 [infer/rust]\nPASS g8_proof/reverse_i64 [infer/llvm]\nPASS g8_proof/compose [default/rust]\nPASS g8_proof/compose [default/llvm]\nPASS g8_proof/cross_module [default/rust]\nPASS g8_proof/cross_module [default/llvm]\nFAIL g8_proof/bundle  -- bundle: 12 bodies, inference disabled, 0.000531 seconds Traceback (most recent call last):   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f2_trusted_vkk0u7sl/tests/g8/check_proof.py\", line 246, in <module>     main(sys.argv[1])   File \"/Users/spica4345/Library/App\ncompiler: py\nobject path: clang\nTOTAL 34/35\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "g8_proof/bundle  -- bundle: 12 bodies, inference disabled, 0.000531 seconds Traceback (most recent call last):   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f2_trusted_vkk0u7sl/tests/g8/check_proof.py\", line 246, in <module>     main(sys.argv[1])   File \"/Users/spica4345/Library/App"
+      ],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f2_trusted.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": "",
+      "excluded_failures": []
+    },
+    {
+      "id": "f3_local",
+      "patch_sha256": "5e20a4cc1569eb0abb726becc7889ac324bf8603d46e4d720251ee96ac2b75fb",
+      "baselines": {
+        "g8_frontend": {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/clean_2szvwtd6/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "g8_frontend"
+          ],
+          "rc": 0,
+          "stdout": "PASS g8_frontend/import_only [default]\nPASS g8_frontend/import_only [no-verify]\nPASS g8_frontend/import_only [trust-callers]\nPASS g8_frontend/import_only [infer]\nPASS g8_frontend/root_calls [default]\nPASS g8_frontend/root_calls [no-verify]\nPASS g8_frontend/root_calls [trust-callers]\nPASS g8_frontend/root_calls [infer]\nPASS g8_frontend/child_calls [default]\nPASS g8_frontend/child_calls [no-verify]\nPASS g8_frontend/child_calls [trust-callers]\nPASS g8_frontend/child_calls [infer]\nPASS g8_frontend/local_name [default]\nPASS g8_frontend/local_name [no-verify]\nPASS g8_frontend/local_name [trust-callers]\nPASS g8_frontend/local_name [infer]\nPASS g8_frontend/catalog [default]\nPASS g8_frontend/catalog [no-verify]\nPASS g8_frontend/catalog [trust-callers]\nPASS g8_frontend/catalog [infer]\nPASS g8_frontend/wrappers [default]\nPASS g8_frontend/wrappers [no-verify]\nPASS g8_frontend/wrappers [trust-callers]\nPASS g8_frontend/wrappers [infer]\nPASS g8_frontend/bundle\nPASS g8_frontend/codegen\nPASS g8_frontend/llvm\ncompiler: py\nobject path: clang\nTOTAL 27/27\n",
+          "stderr": ""
+        },
+        "must_reject": {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/clean_2szvwtd6/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/g8_"
+          ],
+          "rc": 0,
+          "stdout": "PASS must_reject/g8_abs_min/root.pruv\nPASS must_reject/g8_absent/root.pruv\nPASS must_reject/g8_child_import/root.pruv\nPASS must_reject/g8_clamp_bounds/root.pruv\nPASS must_reject/g8_collision/root.pruv\nPASS must_reject/g8_conflict/root.pruv\nPASS must_reject/g8_contract/root.pruv\nPASS must_reject/g8_contract_ensures/root.pruv\nPASS must_reject/g8_duplicate/root.pruv\nPASS must_reject/g8_first_index/root.pruv\nPASS must_reject/g8_max_empty/root.pruv\nPASS must_reject/g8_membership/root.pruv\nPASS must_reject/g8_option_payload/root.pruv\nPASS must_reject/g8_reverse_element/root.pruv\nPASS must_reject/g8_sortedness/root.pruv\nPASS must_reject/g8_sum_element/root.pruv\nPASS must_reject/g8_sum_length/root.pruv\nPASS must_reject/g8_symlink_conflict/root.pruv\nPASS must_reject/g8_unknown/root.pruv\nPASS must_reject/g8_user_type/root.pruv\ncompiler: py\nobject path: clang\nTOTAL 20/20\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f3_local_ofafwqbw/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "g8_frontend"
+          ],
+          "rc": 1,
+          "stdout": "PASS g8_frontend/import_only [default]\nPASS g8_frontend/import_only [no-verify]\nPASS g8_frontend/import_only [trust-callers]\nPASS g8_frontend/import_only [infer]\nPASS g8_frontend/root_calls [default]\nPASS g8_frontend/root_calls [no-verify]\nPASS g8_frontend/root_calls [trust-callers]\nPASS g8_frontend/root_calls [infer]\nPASS g8_frontend/child_calls [default]\nPASS g8_frontend/child_calls [no-verify]\nPASS g8_frontend/child_calls [trust-callers]\nPASS g8_frontend/child_calls [infer]\nPASS g8_frontend/local_name [default]\nPASS g8_frontend/local_name [no-verify]\nPASS g8_frontend/local_name [trust-callers]\nPASS g8_frontend/local_name [infer]\nPASS g8_frontend/catalog [default]\nPASS g8_frontend/catalog [no-verify]\nPASS g8_frontend/catalog [trust-callers]\nPASS g8_frontend/catalog [infer]\nPASS g8_frontend/wrappers [default]\nPASS g8_frontend/wrappers [no-verify]\nPASS g8_frontend/wrappers [trust-callers]\nPASS g8_frontend/wrappers [infer]\nFAIL g8_frontend/bundle  -- Traceback (most recent call last):   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f3_local_ofafwqbw/tests/g8/check_bundle.py\", line 157, in <module>     main(sys.argv[1])   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/\nPASS g8_frontend/codegen\nPASS g8_frontend/llvm\ncompiler: py\nobject path: clang\nTOTAL 26/27\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f3_local_ofafwqbw/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/g8_"
+          ],
+          "rc": 1,
+          "stdout": "PASS must_reject/g8_abs_min/root.pruv\nPASS must_reject/g8_absent/root.pruv\nPASS must_reject/g8_child_import/root.pruv\nPASS must_reject/g8_clamp_bounds/root.pruv\nPASS must_reject/g8_collision/root.pruv\nFAIL must_reject/g8_conflict/root.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/g8_contract/root.pruv\nPASS must_reject/g8_contract_ensures/root.pruv\nPASS must_reject/g8_duplicate/root.pruv\nPASS must_reject/g8_first_index/root.pruv\nPASS must_reject/g8_max_empty/root.pruv\nPASS must_reject/g8_membership/root.pruv\nPASS must_reject/g8_option_payload/root.pruv\nPASS must_reject/g8_reverse_element/root.pruv\nPASS must_reject/g8_sortedness/root.pruv\nPASS must_reject/g8_sum_element/root.pruv\nPASS must_reject/g8_sum_length/root.pruv\nFAIL must_reject/g8_symlink_conflict/root.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/g8_unknown/root.pruv\nPASS must_reject/g8_user_type/root.pruv\ncompiler: py\nobject path: clang\nTOTAL 18/20\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "g8_frontend/bundle  -- Traceback (most recent call last):   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f3_local_ofafwqbw/tests/g8/check_bundle.py\", line 157, in <module>     main(sys.argv[1])   File \"/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/",
+        "must_reject/g8_conflict/root.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/g8_symlink_conflict/root.pruv  -- exit 0 (expected 1) {\"ok\": true}"
+      ],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f3_local.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/modules.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": "",
+      "excluded_failures": []
+    },
+    {
+      "id": "f4_rust_requires",
+      "patch_sha256": "92465ab232df702d666a45a5d5413383b1fc3af3ec5e49f781b667190a5de43f",
+      "baselines": {
+        "runtime": {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/clean_08gx0xsb/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/g8_"
+          ],
+          "rc": 0,
+          "stdout": "PASS runtime/g8_r01_min_i64 [default]\nPASS runtime/g8_r01_min_i64 [--no-verify]\nPASS runtime/g8_r02_max_i64 [default]\nPASS runtime/g8_r02_max_i64 [--no-verify]\nPASS runtime/g8_r03_clamp_i64 [default]\nPASS runtime/g8_r03_clamp_i64 [--no-verify]\nPASS runtime/g8_r03_clamp_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r04_abs_i64 [default]\nPASS runtime/g8_r04_abs_i64 [--no-verify]\nPASS runtime/g8_r04_abs_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r05_checked_add_i64 [default]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify]\nPASS runtime/g8_r06_checked_sub_i64 [default]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify]\nPASS runtime/g8_r07_sum_i64 [default]\nPASS runtime/g8_r07_sum_i64 [--no-verify]\nPASS runtime/g8_r07_sum_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r08_contains_i64 [default]\nPASS runtime/g8_r08_contains_i64 [--no-verify]\nPASS runtime/g8_r09_index_of_i64 [default]\nPASS runtime/g8_r09_index_of_i64 [--no-verify]\nPASS runtime/g8_r10_is_sorted_i64 [default]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify]\nPASS runtime/g8_r11_array_max_i64 [default]\nPASS runtime/g8_r11_array_max_i64 [--no-verify]\nPASS runtime/g8_r11_array_max_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r12_reverse_i64 [default]\nPASS runtime/g8_r12_reverse_i64 [--no-verify]\nPASS runtime/g8_r13_option_abi [default]\nPASS runtime/g8_r13_option_abi [--no-verify]\nPASS runtime/g8_r14_reverse_owned [default]\nPASS runtime/g8_r14_reverse_owned [--no-verify]\nPASS runtime/g8_r15_module_names [default]\nPASS runtime/g8_r15_module_names [--no-verify]\nPASS runtime/g8_r16_trust_internal [--no-verify --trust-callers]\nPASS runtime/g8_r01_min_i64 [default] [llvm]\nPASS runtime/g8_r01_min_i64 [--no-verify] [llvm]\nPASS runtime/g8_r02_max_i64 [default] [llvm]\nPASS runtime/g8_r02_max_i64 [--no-verify] [llvm]\nPASS runtime/g8_r03_clamp_i64 [default] [llvm]\nPASS runtime/g8_r03_clamp_i64 [--no-verify] [llvm]\nPASS runtime/g8_r03_clamp_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r04_abs_i64 [default] [llvm]\nPASS runtime/g8_r04_abs_i64 [--no-verify] [llvm]\nPASS runtime/g8_r04_abs_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r05_checked_add_i64 [default] [llvm]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [default] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify] [llvm]\nPASS runtime/g8_r07_sum_i64 [default] [llvm]\nPASS runtime/g8_r07_sum_i64 [--no-verify] [llvm]\nPASS runtime/g8_r07_sum_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r08_contains_i64 [default] [llvm]\nPASS runtime/g8_r08_contains_i64 [--no-verify] [llvm]\nPASS runtime/g8_r09_index_of_i64 [default] [llvm]\nPASS runtime/g8_r09_index_of_i64 [--no-verify] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [default] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify] [llvm]\nPASS runtime/g8_r11_array_max_i64 [default] [llvm]\nPASS runtime/g8_r11_array_max_i64 [--no-verify] [llvm]\nPASS runtime/g8_r11_array_max_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r12_reverse_i64 [default] [llvm]\nPASS runtime/g8_r12_reverse_i64 [--no-verify] [llvm]\nPASS runtime/g8_r13_option_abi [default] [llvm]\nPASS runtime/g8_r13_option_abi [--no-verify] [llvm]\nPASS runtime/g8_r14_reverse_owned [default] [llvm]\nPASS runtime/g8_r14_reverse_owned [--no-verify] [llvm]\nPASS runtime/g8_r15_module_names [default] [llvm]\nPASS runtime/g8_r15_module_names [--no-verify] [llvm]\nPASS runtime/g8_r16_trust_internal [--no-verify --trust-callers] [llvm]\ncompiler: py\nobject path: clang\nTOTAL 70/70\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f4_rust_requires_lkbxf08d/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/g8_"
+          ],
+          "rc": 1,
+          "stdout": "PASS runtime/g8_r01_min_i64 [default]\nPASS runtime/g8_r01_min_i64 [--no-verify]\nPASS runtime/g8_r02_max_i64 [default]\nPASS runtime/g8_r02_max_i64 [--no-verify]\nPASS runtime/g8_r03_clamp_i64 [default]\nPASS runtime/g8_r03_clamp_i64 [--no-verify]\nFAIL runtime/g8_r03_clamp_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)\nPASS runtime/g8_r04_abs_i64 [default]\nPASS runtime/g8_r04_abs_i64 [--no-verify]\nFAIL runtime/g8_r04_abs_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)\nPASS runtime/g8_r05_checked_add_i64 [default]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify]\nPASS runtime/g8_r06_checked_sub_i64 [default]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify]\nPASS runtime/g8_r07_sum_i64 [default]\nPASS runtime/g8_r07_sum_i64 [--no-verify]\nFAIL runtime/g8_r07_sum_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)\nPASS runtime/g8_r08_contains_i64 [default]\nPASS runtime/g8_r08_contains_i64 [--no-verify]\nPASS runtime/g8_r09_index_of_i64 [default]\nPASS runtime/g8_r09_index_of_i64 [--no-verify]\nPASS runtime/g8_r10_is_sorted_i64 [default]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify]\nPASS runtime/g8_r11_array_max_i64 [default]\nPASS runtime/g8_r11_array_max_i64 [--no-verify]\nFAIL runtime/g8_r11_array_max_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)\nPASS runtime/g8_r12_reverse_i64 [default]\nPASS runtime/g8_r12_reverse_i64 [--no-verify]\nPASS runtime/g8_r13_option_abi [default]\nPASS runtime/g8_r13_option_abi [--no-verify]\nPASS runtime/g8_r14_reverse_owned [default]\nPASS runtime/g8_r14_reverse_owned [--no-verify]\nPASS runtime/g8_r15_module_names [default]\nPASS runtime/g8_r15_module_names [--no-verify]\nFAIL runtime/g8_r16_trust_internal [--no-verify --trust-callers]  -- exit 101 (expected 0)\nPASS runtime/g8_r01_min_i64 [default] [llvm]\nPASS runtime/g8_r01_min_i64 [--no-verify] [llvm]\nPASS runtime/g8_r02_max_i64 [default] [llvm]\nPASS runtime/g8_r02_max_i64 [--no-verify] [llvm]\nPASS runtime/g8_r03_clamp_i64 [default] [llvm]\nPASS runtime/g8_r03_clamp_i64 [--no-verify] [llvm]\nPASS runtime/g8_r03_clamp_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r04_abs_i64 [default] [llvm]\nPASS runtime/g8_r04_abs_i64 [--no-verify] [llvm]\nPASS runtime/g8_r04_abs_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r05_checked_add_i64 [default] [llvm]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [default] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify] [llvm]\nPASS runtime/g8_r07_sum_i64 [default] [llvm]\nPASS runtime/g8_r07_sum_i64 [--no-verify] [llvm]\nPASS runtime/g8_r07_sum_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r08_contains_i64 [default] [llvm]\nPASS runtime/g8_r08_contains_i64 [--no-verify] [llvm]\nPASS runtime/g8_r09_index_of_i64 [default] [llvm]\nPASS runtime/g8_r09_index_of_i64 [--no-verify] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [default] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify] [llvm]\nPASS runtime/g8_r11_array_max_i64 [default] [llvm]\nPASS runtime/g8_r11_array_max_i64 [--no-verify] [llvm]\nPASS runtime/g8_r11_array_max_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r12_reverse_i64 [default] [llvm]\nPASS runtime/g8_r12_reverse_i64 [--no-verify] [llvm]\nPASS runtime/g8_r13_option_abi [default] [llvm]\nPASS runtime/g8_r13_option_abi [--no-verify] [llvm]\nPASS runtime/g8_r14_reverse_owned [default] [llvm]\nPASS runtime/g8_r14_reverse_owned [--no-verify] [llvm]\nPASS runtime/g8_r15_module_names [default] [llvm]\nPASS runtime/g8_r15_module_names [--no-verify] [llvm]\nPASS runtime/g8_r16_trust_internal [--no-verify --trust-callers] [llvm]\ncompiler: py\nobject path: clang\nTOTAL 65/70\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "runtime/g8_r03_clamp_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)",
+        "runtime/g8_r04_abs_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)",
+        "runtime/g8_r07_sum_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)",
+        "runtime/g8_r11_array_max_i64 [--no-verify --trust-callers]  -- exit 101 (expected 0)",
+        "runtime/g8_r16_trust_internal [--no-verify --trust-callers]  -- exit 101 (expected 0)"
+      ],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f4_rust_requires.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/codegen.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": "",
+      "excluded_failures": []
+    },
+    {
+      "id": "f5_llvm_requires",
+      "patch_sha256": "0052af1b2e44ee4128a1b7a45cb4a68e317f467df9862e8735bdabe2ce826d5a",
+      "baselines": {
+        "runtime": {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/clean_0o82vj4a/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/g8_"
+          ],
+          "rc": 0,
+          "stdout": "PASS runtime/g8_r01_min_i64 [default]\nPASS runtime/g8_r01_min_i64 [--no-verify]\nPASS runtime/g8_r02_max_i64 [default]\nPASS runtime/g8_r02_max_i64 [--no-verify]\nPASS runtime/g8_r03_clamp_i64 [default]\nPASS runtime/g8_r03_clamp_i64 [--no-verify]\nPASS runtime/g8_r03_clamp_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r04_abs_i64 [default]\nPASS runtime/g8_r04_abs_i64 [--no-verify]\nPASS runtime/g8_r04_abs_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r05_checked_add_i64 [default]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify]\nPASS runtime/g8_r06_checked_sub_i64 [default]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify]\nPASS runtime/g8_r07_sum_i64 [default]\nPASS runtime/g8_r07_sum_i64 [--no-verify]\nPASS runtime/g8_r07_sum_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r08_contains_i64 [default]\nPASS runtime/g8_r08_contains_i64 [--no-verify]\nPASS runtime/g8_r09_index_of_i64 [default]\nPASS runtime/g8_r09_index_of_i64 [--no-verify]\nPASS runtime/g8_r10_is_sorted_i64 [default]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify]\nPASS runtime/g8_r11_array_max_i64 [default]\nPASS runtime/g8_r11_array_max_i64 [--no-verify]\nPASS runtime/g8_r11_array_max_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r12_reverse_i64 [default]\nPASS runtime/g8_r12_reverse_i64 [--no-verify]\nPASS runtime/g8_r13_option_abi [default]\nPASS runtime/g8_r13_option_abi [--no-verify]\nPASS runtime/g8_r14_reverse_owned [default]\nPASS runtime/g8_r14_reverse_owned [--no-verify]\nPASS runtime/g8_r15_module_names [default]\nPASS runtime/g8_r15_module_names [--no-verify]\nPASS runtime/g8_r16_trust_internal [--no-verify --trust-callers]\nPASS runtime/g8_r01_min_i64 [default] [llvm]\nPASS runtime/g8_r01_min_i64 [--no-verify] [llvm]\nPASS runtime/g8_r02_max_i64 [default] [llvm]\nPASS runtime/g8_r02_max_i64 [--no-verify] [llvm]\nPASS runtime/g8_r03_clamp_i64 [default] [llvm]\nPASS runtime/g8_r03_clamp_i64 [--no-verify] [llvm]\nPASS runtime/g8_r03_clamp_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r04_abs_i64 [default] [llvm]\nPASS runtime/g8_r04_abs_i64 [--no-verify] [llvm]\nPASS runtime/g8_r04_abs_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r05_checked_add_i64 [default] [llvm]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [default] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify] [llvm]\nPASS runtime/g8_r07_sum_i64 [default] [llvm]\nPASS runtime/g8_r07_sum_i64 [--no-verify] [llvm]\nPASS runtime/g8_r07_sum_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r08_contains_i64 [default] [llvm]\nPASS runtime/g8_r08_contains_i64 [--no-verify] [llvm]\nPASS runtime/g8_r09_index_of_i64 [default] [llvm]\nPASS runtime/g8_r09_index_of_i64 [--no-verify] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [default] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify] [llvm]\nPASS runtime/g8_r11_array_max_i64 [default] [llvm]\nPASS runtime/g8_r11_array_max_i64 [--no-verify] [llvm]\nPASS runtime/g8_r11_array_max_i64 [--no-verify --trust-callers] [llvm]\nPASS runtime/g8_r12_reverse_i64 [default] [llvm]\nPASS runtime/g8_r12_reverse_i64 [--no-verify] [llvm]\nPASS runtime/g8_r13_option_abi [default] [llvm]\nPASS runtime/g8_r13_option_abi [--no-verify] [llvm]\nPASS runtime/g8_r14_reverse_owned [default] [llvm]\nPASS runtime/g8_r14_reverse_owned [--no-verify] [llvm]\nPASS runtime/g8_r15_module_names [default] [llvm]\nPASS runtime/g8_r15_module_names [--no-verify] [llvm]\nPASS runtime/g8_r16_trust_internal [--no-verify --trust-callers] [llvm]\ncompiler: py\nobject path: clang\nTOTAL 70/70\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Users/spica4345/Projects/pruv/.venv/bin/python",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f5_llvm_requires_vvpkpz1d/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/g8_"
+          ],
+          "rc": 1,
+          "stdout": "PASS runtime/g8_r01_min_i64 [default]\nPASS runtime/g8_r01_min_i64 [--no-verify]\nPASS runtime/g8_r02_max_i64 [default]\nPASS runtime/g8_r02_max_i64 [--no-verify]\nPASS runtime/g8_r03_clamp_i64 [default]\nPASS runtime/g8_r03_clamp_i64 [--no-verify]\nPASS runtime/g8_r03_clamp_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r04_abs_i64 [default]\nPASS runtime/g8_r04_abs_i64 [--no-verify]\nPASS runtime/g8_r04_abs_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r05_checked_add_i64 [default]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify]\nPASS runtime/g8_r06_checked_sub_i64 [default]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify]\nPASS runtime/g8_r07_sum_i64 [default]\nPASS runtime/g8_r07_sum_i64 [--no-verify]\nPASS runtime/g8_r07_sum_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r08_contains_i64 [default]\nPASS runtime/g8_r08_contains_i64 [--no-verify]\nPASS runtime/g8_r09_index_of_i64 [default]\nPASS runtime/g8_r09_index_of_i64 [--no-verify]\nPASS runtime/g8_r10_is_sorted_i64 [default]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify]\nPASS runtime/g8_r11_array_max_i64 [default]\nPASS runtime/g8_r11_array_max_i64 [--no-verify]\nPASS runtime/g8_r11_array_max_i64 [--no-verify --trust-callers]\nPASS runtime/g8_r12_reverse_i64 [default]\nPASS runtime/g8_r12_reverse_i64 [--no-verify]\nPASS runtime/g8_r13_option_abi [default]\nPASS runtime/g8_r13_option_abi [--no-verify]\nPASS runtime/g8_r14_reverse_owned [default]\nPASS runtime/g8_r14_reverse_owned [--no-verify]\nPASS runtime/g8_r15_module_names [default]\nPASS runtime/g8_r15_module_names [--no-verify]\nPASS runtime/g8_r16_trust_internal [--no-verify --trust-callers]\nPASS runtime/g8_r01_min_i64 [default] [llvm]\nPASS runtime/g8_r01_min_i64 [--no-verify] [llvm]\nPASS runtime/g8_r02_max_i64 [default] [llvm]\nPASS runtime/g8_r02_max_i64 [--no-verify] [llvm]\nPASS runtime/g8_r03_clamp_i64 [default] [llvm]\nPASS runtime/g8_r03_clamp_i64 [--no-verify] [llvm]\nFAIL runtime/g8_r03_clamp_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)\nPASS runtime/g8_r04_abs_i64 [default] [llvm]\nPASS runtime/g8_r04_abs_i64 [--no-verify] [llvm]\nFAIL runtime/g8_r04_abs_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)\nPASS runtime/g8_r05_checked_add_i64 [default] [llvm]\nPASS runtime/g8_r05_checked_add_i64 [--no-verify] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [default] [llvm]\nPASS runtime/g8_r06_checked_sub_i64 [--no-verify] [llvm]\nPASS runtime/g8_r07_sum_i64 [default] [llvm]\nPASS runtime/g8_r07_sum_i64 [--no-verify] [llvm]\nFAIL runtime/g8_r07_sum_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)\nPASS runtime/g8_r08_contains_i64 [default] [llvm]\nPASS runtime/g8_r08_contains_i64 [--no-verify] [llvm]\nPASS runtime/g8_r09_index_of_i64 [default] [llvm]\nPASS runtime/g8_r09_index_of_i64 [--no-verify] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [default] [llvm]\nPASS runtime/g8_r10_is_sorted_i64 [--no-verify] [llvm]\nPASS runtime/g8_r11_array_max_i64 [default] [llvm]\nPASS runtime/g8_r11_array_max_i64 [--no-verify] [llvm]\nFAIL runtime/g8_r11_array_max_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)\nPASS runtime/g8_r12_reverse_i64 [default] [llvm]\nPASS runtime/g8_r12_reverse_i64 [--no-verify] [llvm]\nPASS runtime/g8_r13_option_abi [default] [llvm]\nPASS runtime/g8_r13_option_abi [--no-verify] [llvm]\nPASS runtime/g8_r14_reverse_owned [default] [llvm]\nPASS runtime/g8_r14_reverse_owned [--no-verify] [llvm]\nPASS runtime/g8_r15_module_names [default] [llvm]\nPASS runtime/g8_r15_module_names [--no-verify] [llvm]\nFAIL runtime/g8_r16_trust_internal [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)\ncompiler: py\nobject path: clang\nTOTAL 65/70\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "runtime/g8_r03_clamp_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)",
+        "runtime/g8_r04_abs_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)",
+        "runtime/g8_r07_sum_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)",
+        "runtime/g8_r11_array_max_i64 [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)",
+        "runtime/g8_r16_trust_internal [--no-verify --trust-callers] [llvm]  -- exit 101 (expected 0)"
+      ],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/218ec0dd-93b0-4e9d-889e-ece276ae00be/af8b7bcf-1b56-4545-bf32-0a40d84ef8ef/bench/g8/faults/f5_llvm_requires.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/llvmgen.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": "",
+      "excluded_failures": []
+    }
+  ],
+  "isolation": "One patch per disposable compiler, bundle and unchanged test snapshot inside owned faults directory; removed after each run. TMPDIR stays under owned perf directory."
+}

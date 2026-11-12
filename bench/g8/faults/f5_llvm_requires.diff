@@ -1,0 +1,11 @@
+--- a/pruvc/llvmgen.py
++++ b/pruvc/llvmgen.py
+@@ -3399,7 +3399,7 @@
+             # G4 A3: bodies and checked wrappers are internal; only a host entry gets pruv_abi_* (and its typed variant).
+             # The host boundary calls the checked wrapper unless trust_callers skips the check (or there is no requires).
+             if checked_entry(f):
+-                chunks.append(entry_of(m, funcs, f, False, budget))
++                chunks.append(entry_of(m, funcs, f, trust_callers and f.file == '@std/std.pruv', budget))
+             if is_host_abi_fn(f, tt, True):
+                 chunks.append(abi_of(f, tt, m, "entry" if (checked_entry(f) and not trust_callers) else "body"))
+             continue

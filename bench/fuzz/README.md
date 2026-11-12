@@ -635,6 +635,41 @@ Failures preserve source, inputs, diagnostics, first results and repeat results.
 The recorded seed summaries live in `results_g7/<seed>_<compiler>.json`; only summaries
 and any necessary reproducers belong there, not generated build trees.
 
+## G8 bundled standard module
+
+`--g8` is a separate mode with 30 verified-intended clients per seed: twelve
+individual functions and three compositions, each called directly and through a
+generated child module. Root and child preconditions bound sum elements and array
+lengths, exclude empty maxima and abs(MIN), and order clamp bounds. Compositions
+cover checked addition of two sums, clamping an array maximum, and first-index
+search in a reversed array. Constants and random interior inputs are seed-stable.
+
+```sh
+python bench/fuzz/oracle.py
+python bench/fuzz/generate.py --g8 --seed 41 --count 30 --out bench/fuzz/out/g8_generated
+python bench/fuzz/run.py --g8 --seed 41 --programs 30 --inputs 8 --compiler py --jobs 4
+python bench/fuzz/run.py --g8 --seed 41 --programs 30 --inputs 8 --compiler rs --jobs 4
+```
+
+Repeat for seeds 56 and 57. Each run targets 960 comparisons (5,760 overall).
+The independent `g8_value` oracle uses Python arbitrary-precision arithmetic and
+direct array operations, without parsing the bundle or consulting SMT/emitted
+code. `_selftest_g8` checks all twelve operations and the three compositions.
+Eight mandatory witnesses include MIN/MAX overflow pairs, abs(MIN+1), empty,
+duplicate, descending and all-equal arrays, and sums at both element bounds.
+Smaller `--inputs` truncates these witnesses. Arrays are at most eight elements;
+million-element performance, allocation failure and invalid caller inputs are
+outside this corpus.
+
+Default compilation must verify before rust-proof, rust-safe, llvm-proof and
+llvm-safe are compared against the oracle. Rejected/unknown/unsupported/failed
+programs and incomplete comparisons are separate counters, never padded with
+replacement programs. Summaries go to `results_g8/<seed>_<compiler>.json` and
+include compiler identity, bundle SHA-256, coverage, inputs and source hashes.
+Transient build trees are removed. Failures preserve sources, inputs, logs,
+actual outputs and exact replay argv under `results_g8/repro/`; replay with
+`--g8 --replay DIR --compiler py|rs` (and `--compiler-path` when needed).
+
 ## Stage 5 cost-bound differential fuzzing
 
 `--s5` is a separate mode. Run `python bench/fuzz/oracle.py` for all oracle self-tests,

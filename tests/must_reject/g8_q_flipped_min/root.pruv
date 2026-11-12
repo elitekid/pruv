@@ -1,0 +1,9 @@
+// Source finding: bench/g8/results/mutants.json m001 (flipped_comparison).
+mod std;
+pub fn min_i64(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+{
+  if a > b { return a; }
+  return b;
+}

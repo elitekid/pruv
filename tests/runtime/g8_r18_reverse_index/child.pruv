@@ -1,0 +1,2 @@
+pub fn find(a: [i64], x: i64) -> Option<i64> ! alloc
+{ return crate::std::index_of_i64(crate::std::reverse_i64(a), x); }

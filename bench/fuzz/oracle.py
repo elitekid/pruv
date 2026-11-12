@@ -2791,7 +2791,85 @@ def _selftest_s5():
     print("oracle s5 self-test: OK")
 
 
+def g8_value(name, args):
+    """Independent mathematical values; never parse std or use compiler/SMT output."""
+    def option(v):
+        return {"tag": "Some", "v": v}
+    if name in ("checked_add", "checked_sub"):
+        a, b = args
+        v = a + b if name == "checked_add" else a - b
+        return option(v) if -(1 << 63) <= v < (1 << 63) else {"tag": "None"}
+    if name == "min":
+        return min(args)
+    if name == "max":
+        return max(args)
+    if name == "abs":
+        assert args[0] > -(1 << 63)
+        return abs(args[0])
+    if name == "clamp":
+        x, lo, hi = args
+        assert lo <= hi
+        return min(hi, max(lo, x))
+    a = args[0]
+    if name == "sum":
+        assert len(a) <= 1000000 and all(-1000000000 <= x <= 1000000000 for x in a)
+        return sum(a)
+    if name == "contains":
+        return args[1] in a
+    if name == "index_of":
+        return option(a.index(args[1])) if args[1] in a else {"tag": "None"}
+    if name == "is_sorted":
+        return all(x <= y for x, y in zip(a, a[1:]))
+    if name == "array_max":
+        assert a
+        return max(a)
+    if name == "reverse":
+        return a[::-1]
+    raise OracleUnsupported("G8 function: " + name)
+
+
+def g8_run(case, args):
+    kind = case["kind"]
+    if kind == "sum_add":
+        value = g8_value("checked_add", [g8_value("sum", [a]) for a in args])
+    elif kind == "max_clamp":
+        value = g8_value("clamp", [g8_value("array_max", args)] + case["bounds"])
+    elif kind == "reverse_index":
+        value = g8_value("index_of", [g8_value("reverse", [args[0]]), args[1]])
+    else:
+        value = g8_value(kind, args)
+    return {"kind": "ok", "value": value, "output": [], "contract_failures": []}
+
+
+def _selftest_g8():
+    mn, mx = -(1 << 63), (1 << 63) - 1
+    some = lambda v: {"tag": "Some", "v": v}
+    none = {"tag": "None"}
+    rows = [("min", [mn, mx], mn), ("max", [mn, mx], mx),
+            ("abs", [mn + 1], mx), ("clamp", [mn, 0, 0], 0),
+            ("clamp", [mx, -2, 2], 2), ("clamp", [1, -2, 2], 1),
+            ("checked_add", [mx, 1], none), ("checked_add", [mn, -1], none),
+            ("checked_add", [mn, mx], some(-1)), ("checked_add", [mx - 1, 1], some(mx)),
+            ("checked_sub", [mn, 1], none), ("checked_sub", [mx, -1], none),
+            ("checked_sub", [0, mn], none), ("checked_sub", [-1, mn], some(mx)),
+            ("sum", [[]], 0), ("sum", [[1000000000] * 8], 8000000000),
+            ("sum", [[-1000000000] * 8], -8000000000),
+            ("contains", [[], 0], False), ("contains", [[2, 2], 2], True),
+            ("index_of", [[2, 3, 2], 2], some(0)), ("index_of", [[2], 3], none),
+            ("index_of", [[], 0], none), ("is_sorted", [[]], True),
+            ("is_sorted", [[7, 7, 7]], True), ("is_sorted", [[3, 2, 1]], False),
+            ("array_max", [[mn, -1, mn]], -1), ("reverse", [[]], []),
+            ("reverse", [[mn, 0, mx]], [mx, 0, mn])]
+    for name, args, expected in rows:
+        assert g8_value(name, args) == expected, (name, args)
+    assert g8_run({"kind": "sum_add"}, [[1, 2], [-5]])["value"] == some(-2)
+    assert g8_run({"kind": "max_clamp", "bounds": [-2, 2]}, [[-8, 9]])["value"] == 2
+    assert g8_run({"kind": "reverse_index"}, [[4, 2, 4, 9], 4])["value"] == some(1)
+    print("oracle g8 self-test: OK")
+
+
 if __name__ == "__main__":
+    _selftest_g8()
     _selftest()
     _selftest_g3()
     _selftest_g6()

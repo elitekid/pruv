@@ -208,6 +208,30 @@
       "root": "tests/must_reject/g8_contract_ensures/root.pruv",
       "stage": "type",
       "code": "call_in_contract"
+    },
+    {
+      "name": "q_flipped_min",
+      "root": "tests/must_reject/g8_q_flipped_min/root.pruv",
+      "stage": "verify",
+      "code": "ensures"
+    },
+    {
+      "name": "q_add_boundary",
+      "root": "tests/must_reject/g8_q_add_boundary/root.pruv",
+      "stage": "verify",
+      "code": "ensures"
+    },
+    {
+      "name": "q_premature_sum",
+      "root": "tests/must_reject/g8_q_premature_sum/root.pruv",
+      "stage": "verify",
+      "code": "ensures"
+    },
+    {
+      "name": "q_zero_maximum",
+      "root": "tests/must_reject/g8_q_zero_maximum/root.pruv",
+      "stage": "verify",
+      "code": "invariant_entry"
     }
   ],
   "proof_checks": [
@@ -229,12 +253,15 @@
     "tests/runtime/g8_r13_option_abi/root.pruv",
     "tests/runtime/g8_r14_reverse_owned/root.pruv",
     "tests/runtime/g8_r15_module_names/root.pruv",
-    "tests/runtime/g8_r16_trust_internal/root.pruv"
+    "tests/runtime/g8_r16_trust_internal/root.pruv",
+    "tests/runtime/g8_r17_first_duplicate/root.pruv",
+    "tests/runtime/g8_r18_reverse_index/root.pruv"
   ],
   "examples": [
     "examples/g8_std_clamp.pruv",
     "examples/g8_std_index.pruv",
-    "examples/g8_std_modules/root.pruv"
+    "examples/g8_std_modules/root.pruv",
+    "examples/g8_q_sum_add/root.pruv"
   ],
   "codegen_checks": [
     "tests/g8/check_codegen.py",

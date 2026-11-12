@@ -1,0 +1,10 @@
+// Source finding: bench/g8/results/mutants.json m014 (overflow_boundary).
+mod std;
+pub fn checked_add_i64(a: i64, b: i64) -> Option<i64>
+  ensures is_some(result) == (-9223372036854775808 <= a + b && a + b <= 9223372036854775807)
+  ensures is_some(result) ==> some_val(result) == a + b
+{
+  if b > 0 { if a >= 9223372036854775807 - b { return None; } }
+  if b < 0 { if a < -9223372036854775808 - b { return None; } }
+  return Some(a + b);
+}

@@ -1,0 +1,5 @@
+// Source finding: G8 fuzz seed 41 case 29, cross-module reverse_index composition.
+mod std;
+mod child;
+pub fn run(a: [i64], x: i64) -> Option<i64> ! alloc
+{ return crate::child::find(a, x); }

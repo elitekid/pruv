@@ -123,7 +123,7 @@ def read_tree(base):
 
 def is_tree(case):
     """G4/G5/G7 programs are directories (root.pruv + module files)."""
-    return bool(case.get("g4") or case.get("g5") or case.get("g7"))
+    return bool(case.get("g4") or case.get("g5") or case.get("g7") or case.get("g8"))
 
 
 def save_program(dir_, rec, name=None):
@@ -321,7 +321,8 @@ def phase_a(case, work):
         write(pruv, case["src"])
     rec["pruv"] = pruv
     try:
-        rec["prog"] = oracle.parse_modules(case["files"]) if is_tree(case) else oracle.parse_program(case["src"])
+        rec["prog"] = (None if case.get("g8") else
+                       oracle.parse_modules(case["files"]) if is_tree(case) else oracle.parse_program(case["src"]))
     except oracle.OracleUnsupported as e:
         rec["status"], rec["detail"] = "oracle_unsupported", str(e)
         return rec
@@ -400,6 +401,13 @@ def safe_check(prog, args):
 
 
 def choose_inputs(rec, args, fixed=None):
+    if rec["case"].get("g8"):
+        rec["inputs"] = fixed if fixed is not None else generate.g8_inputs(rec["case"], args.inputs)
+        rec["input_errors"] = 0
+        rec["req"] = ["ok"] * len(rec["inputs"])
+        values = [oracle.g8_run(rec["case"], a) for a in rec["inputs"]]
+        rec["oracle"] = rec["oracle_safe"] = rec["oracle_proof"] = values
+        return
     prog = rec["prog"]
     rec["input_errors"] = 0
     if fixed is not None:
@@ -1216,6 +1224,126 @@ def run_seeds(args):
 
 # ---------------------------------------------------------------- main run
 
+def run_g8(args):
+    """Finite G8 gate: count only completed oracle comparisons, save every failure."""
+    oracle._selftest_g8()
+    started = time.time()
+    out = args.out or os.path.join(HERE, "results_g8")
+    os.makedirs(out, exist_ok=True)
+    if args.replay:
+        with open(os.path.join(args.replay, "case.json")) as fh:
+            cases = [json.load(fh)]
+    else:
+        cases = [generate.generate_g8_case(args.seed, i) for i in range(args.programs or 30)]
+        for case in cases:
+            case["fixed_inputs"] = generate.g8_inputs(case, args.inputs)
+    with open(os.path.join(ROOT, "stdlib", "std.pruv"), "rb") as fh:
+        bundle_hash = hashlib.sha256(fh.read()).hexdigest()
+    summary = {"g8": True, "seed": args.seed, "compiler": DRIVER.name,
+               "compiler_identity": DRIVER.version_info(), "bundle_sha256": bundle_hash,
+               "programs_generated": len(cases), "programs_verified": 0,
+               "programs_rejected": 0, "programs_unknown": 0, "programs_unsupported": 0,
+               "programs_failed": 0, "comparisons_target": sum(4 * len(c["fixed_inputs"]) for c in cases),
+               "comparisons_completed": 0, "mismatches": 0, "oracle_gaps": 0,
+               "functions_generated": sorted({f for c in cases for f in c["functions"]}),
+               "functions_verified": [], "failures": [], "programs": []}
+    with tempfile.TemporaryDirectory(prefix=".g8-work-", dir=HERE) as work:
+        old_env = {k: os.environ.get(k) for k in ("TMPDIR", "PYTHONDONTWRITEBYTECODE")}
+        os.environ.update(TMPDIR=work, PYTHONDONTWRITEBYTECODE="1")
+        try:
+            def compile_case(case):
+                try:
+                    return phase_a(case, work)
+                except Exception as exc:
+                    return {"name": case["name"], "case": case, "status": "failed", "codes": [],
+                            "logs": {}, "failures": [{"kind": "harness_error", "detail": str(exc)}]}
+            with cf.ThreadPoolExecutor(args.jobs) as ex:
+                records = list(ex.map(compile_case, cases))
+            try:
+                rt_o = build_runtime(work)
+            except Exception as exc:
+                rt_o = None
+                summary["failures"].append({"kind": "runtime_build", "detail": str(exc)})
+            covered = set()
+            for i, rec in enumerate(records):
+                rec["idx"] = i
+                status = rec["status"]
+                if status == "verified":
+                    summary["programs_verified"] += 1
+                    covered.update(rec["case"]["functions"])
+                    try:
+                        choose_inputs(rec, args, rec["case"]["fixed_inputs"])
+                        if rt_o:
+                            phase_b(rec, args, rt_o, rec["inputs"])
+                    except Exception as exc:
+                        summary["oracle_gaps"] += 1
+                        rec["failures"].append({"kind": "preparation_error", "detail": str(exc)})
+                else:
+                    if any("unknown" in c for c in rec["codes"]):
+                        key = "programs_unknown"
+                    elif status == "rejected":
+                        key = "programs_rejected"
+                    elif "unsupported" in status or status == "generator_invalid":
+                        key = "programs_unsupported"
+                    else:
+                        key = "programs_failed"
+                    summary[key] += 1
+                    rec["failures"].append({"kind": "not_verified", "status": status, "codes": rec["codes"]})
+            summary["functions_verified"] = sorted(covered)
+            build_all(records, args, work, rt_o)
+            run_all(records, args.jobs)
+            for rec in records:
+                completed, mismatches = 0, 0
+                for mode, rows in rec.get("runs", {}).items():
+                    for k, actual in enumerate(rows):
+                        if actual is None or actual["exit"] in (TIMEOUT_RC, -998):
+                            rec["failures"].append({"kind": "run_incomplete", "mode": mode, "input": k})
+                            continue
+                        completed += 1
+                        expected = {"exit": 0, "stdout": expected_stdout(rec["oracle"][k]), "pruv": ""}
+                        if actual != expected:
+                            mismatches += 1
+                            rec["failures"].append({"kind": "oracle_mismatch", "mode": mode, "input": k,
+                                                    "expected": expected, "actual": actual})
+                summary["comparisons_completed"] += completed
+                summary["mismatches"] += mismatches
+                case = rec["case"]
+                row = {"name": rec["name"], "family": case["kind"], "status": rec["status"],
+                       "codes": rec["codes"], "cross_module": case["cross_module"],
+                       "functions": case["functions"], "inputs": case["fixed_inputs"],
+                       "source_sha256": hashlib.sha256(json.dumps(case["files"], sort_keys=True).encode()).hexdigest(),
+                       "comparisons_completed": completed, "mismatches": mismatches,
+                       "incomplete": 4 * len(case["fixed_inputs"]) - completed}
+                summary["programs"].append(row)
+                if rec["failures"] or row["incomplete"]:
+                    dest = os.path.join(out, "repro", DRIVER.name + "_" + case["name"])
+                    write_tree(dest, case["files"])
+                    write(os.path.join(dest, "case.json"), json.dumps(case, indent=2) + "\n")
+                    replay = [sys.executable, "-B", "bench/fuzz/run.py", "--g8", "--replay",
+                              os.path.relpath(dest, ROOT), "--compiler", DRIVER.name,
+                              "--compiler-path", DRIVER.path, "--seed", str(args.seed), "--jobs", str(args.jobs)]
+                    write(os.path.join(dest, "results.json"), json.dumps({
+                        "compiler_identity": summary["compiler_identity"], "bundle_sha256": bundle_hash,
+                        "replay_argv": replay, "failures": rec["failures"], "logs": rec["logs"],
+                        "inputs": case["fixed_inputs"], "runs": rec.get("runs", {})}, indent=2) + "\n")
+                    summary["failures"].append({"program": rec["name"], "reproducer": os.path.relpath(dest, ROOT),
+                                                "replay_argv": replay, "failures": rec["failures"]})
+        finally:
+            for key, value in old_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+    summary["incomplete"] = summary["comparisons_target"] - summary["comparisons_completed"]
+    summary["shortfall"] = {"verified_programs": len(cases) - summary["programs_verified"],
+                            "comparisons": summary["incomplete"]}
+    summary["elapsed_seconds"] = round(time.time() - started, 3)
+    path = os.path.join(out, ("replay_" if args.replay else "") + "%s_%s.json" % (args.seed, DRIVER.name))
+    write(path, json.dumps(summary, indent=2) + "\n")
+    print(json.dumps({k: v for k, v in summary.items() if k not in ("programs", "failures")}, indent=2))
+    return int(bool(summary["failures"] or summary["incomplete"] or summary["mismatches"]))
+
+
 def run_s5(args):
     """Stage 5 gate: finite candidates, no replacement/padding, persisted replay inputs."""
     start = time.time()
@@ -1389,7 +1517,12 @@ def main():
     CD.add_args(ap)
     ap.add_argument("--g7", action="store_true", help="G7 parallel calls; twice per input, four modes")
     ap.add_argument("--s5", action="store_true", help="Stage 5 cost differential gate")
+    ap.add_argument("--g8", action="store_true", help="G8 bundled std independent value oracle")
     args = ap.parse_args()
+    if args.g8 and any((args.g2, args.g3, args.g4, args.g5, args.g6, args.g7, args.g9, args.s5)):
+        ap.error("--g8 is a separate mode")
+    if args.g8 and (args.inputs < 1 or args.jobs < 1 or (args.programs is not None and args.programs < 1)):
+        ap.error("--g8 requires positive --programs, --inputs and --jobs")
     if args.s5 and any((args.g2, args.g3, args.g4, args.g5, args.g6, args.g7, args.g9)):
         ap.error("--s5 is a separate mode")
     if args.s5 and (args.inputs < 1 or args.jobs < 1 or (args.programs is not None and args.programs < 1)):
@@ -1400,6 +1533,8 @@ def main():
         return run_seeds(args)
     global DRIVER
     DRIVER = CD.from_args(args)
+    if args.g8:
+        return run_g8(args)
     if args.s5:
         return run_s5(args)
     generate.AVOID.update(x.strip() for x in args.avoid_known.split(",") if x.strip())

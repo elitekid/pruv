@@ -1,0 +1,11 @@
+--- a/pruvc/codegen.py
++++ b/pruvc/codegen.py
+@@ -842,7 +842,7 @@
+                 if s.trust:          # Pruv callers of the entry keep the safe-mode check
+                     s.entry(f, ps, ret, body_name, f.name + "__pruv_chk", False, True)
+             else:
+-                s.entry(f, ps, ret, body_name, f.name, False, True)
++                s.entry(f, ps, ret, body_name, f.name, False, not (s.trust and f.file == '@std/std.pruv'))
+ 
+     @staticmethod
+     def cost_add(units):

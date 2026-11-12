@@ -1,0 +1,23 @@
+mod std;
+
+pub fn bounded_sum(a: [i64]) -> i64
+  requires len(a) <= 1000000
+  requires forall k in 0..len(a): -1000000000 <= a[k] && a[k] <= 1000000000
+  ensures result == sum(k in 0..len(a): a[k])
+{
+  return crate::std::sum_i64(a);
+}
+
+pub fn maximum(a: [i64]) -> i64
+  requires len(a) > 0
+  ensures result == max(k in 0..len(a): a[k])
+{
+  return crate::std::array_max_i64(a);
+}
+
+pub fn reversed(a: [i64]) -> [i64] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[len(a) - 1 - k]
+{
+  return crate::std::reverse_i64(a);
+}

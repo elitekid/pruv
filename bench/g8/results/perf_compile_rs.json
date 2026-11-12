@@ -1,0 +1,131 @@
+{
+  "machine": {
+    "os": "macOS-26.5-arm64-arm-64bit",
+    "architecture": "arm64",
+    "cores": 10,
+    "cpu": {
+      "command": [
+        "/usr/sbin/sysctl",
+        "-n",
+        "machdep.cpu.brand_string"
+      ],
+      "rc": 1,
+      "stdout": "",
+      "stderr": "sysctl: sysctl fmt -1 1024 1: Operation not permitted\n"
+    },
+    "rustc": {
+      "command": [
+        "/Users/spica4345/.cargo/bin/rustc",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+      "stderr": ""
+    },
+    "clang": {
+      "command": [
+        "/usr/bin/clang",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+      "stderr": ""
+    }
+  },
+  "repeat": 10,
+  "compiler": "rs",
+  "backend": "rust",
+  "mode": "verified",
+  "rows": [
+    {
+      "client": "none",
+      "raw_ms": [
+        20.345583,
+        9.959957999999936,
+        10.043165999999992,
+        10.127167000000048,
+        10.109332999999943,
+        9.761499999999979,
+        9.628666999999869,
+        9.725125000000112,
+        9.805041999999986,
+        10.435708000000155
+      ],
+      "median_ms": 10.001561999999964,
+      "min_ms": 9.628666999999869,
+      "max_ms": 20.345583,
+      "stdev_ms": 3.2944062532576686
+    },
+    {
+      "client": "unused",
+      "raw_ms": [
+        134.114542,
+        132.302625,
+        130.10116700000006,
+        127.93587499999992,
+        138.33991699999993,
+        127.78241700000015,
+        127.27850000000007,
+        128.70675000000008,
+        127.70204199999968,
+        127.10195799999991
+      ],
+      "median_ms": 128.3213125,
+      "min_ms": 127.10195799999991,
+      "max_ms": 138.33991699999993,
+      "stdev_ms": 3.7050423843853073
+    },
+    {
+      "client": "calls",
+      "raw_ms": [
+        128.164834,
+        128.04325000000006,
+        129.68433300000004,
+        131.44050000000007,
+        135.15070800000007,
+        128.1103330000002,
+        130.26195900000005,
+        130.51100000000025,
+        129.59599999999983,
+        126.44358300000036
+      ],
+      "median_ms": 129.64016649999994,
+      "min_ms": 126.44358300000036,
+      "max_ms": 135.15070800000007,
+      "stdev_ms": 2.40232438733051
+    }
+  ],
+  "status": "ok",
+  "compiler_path": "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc",
+  "compiler_sha256": "0c6a873fafff14f8770fecbb1084c307e62d7f125b8507d31cd708f016a4d7d2",
+  "embedded_bundle_matches": true,
+  "method": "Fresh process parse/check/prove/Rust emission, no native build, no proof cache. Rotating client order. Existing toolchain read-only when absent in copy.",
+  "python_compiler_hashes": {
+    "mono.py": "c890309e8b939538a3e54ba867f828974ce44e228166b7ecac52c66a8e2c8554",
+    "check.py": "90747528d3e0b492d23afc3dc2f97a5b76a15fbe213ca95099751d801f3dea22",
+    "foreign_shim.py": "f32de2e4cba713f3a30b5e7d7209141d9d6dd7de191be0e9e504dcaa44943164",
+    "foreign_codegen.py": "d084ac2d14c83fa03035ec5603fcac9431b9835f150cffa63da6766a0411141e",
+    "refine.py": "b63f278b0232be67668d8d6ac85a2c20c26a18998bead0db7032051f12b5aee7",
+    "typeinfo.py": "6ce8f98e095afc0bf1a2393727dc8671d70c84549966f1a12a7b813fff29ad88",
+    "vparser.py": "a2707f7fda0372b5e656c468e5b61090119dd099c00bdfc9ebd248c73fbfa9e8",
+    "parallel_shim.py": "9dc7fd46c00d45f9b233f7b763379683c261d6c336c43e068e51ea29d6e5da72",
+    "pruvc.py": "cb03e71df2cc8bf29848e1739726b53564cb66646e722e56cced1aef602f6a9b",
+    "infer.py": "3165617d7cee38113d014cd7bdedfbbb35662a4c7d1b71da3327ec57f07f371f",
+    "modules.py": "da8b1991cd53815518f3dedccdf47f08be1bd33c85090c9739c7249438fd8f0c",
+    "verify.py": "4ec116c10564e4cbd8a2069f55bbf194e5e84b3376865d7f58bff0d1430fa81c",
+    "llvmgen.py": "b2836aa701961cc76145156525910d2928bfd1d6d656f415c886969277f971f3",
+    "codegen.py": "77de8d08ea8bf8c47ee0cd4243f0d47d235b52d735cff5d8da65ebbbe3a5b41b",
+    "foreign.py": "975225f9860bf5f12b008407ab1aed0ef309908866001a666888ee664dc6ed57",
+    "vast.py": "e5e3dd8a33ca707f6b629ca9f118510cfa052f0443669e4b63edfbe87fe9c1ea"
+  },
+  "bundle_sha256": "99ae7d71b2e4122ecae42e38f445329fd4974744fea3e3a37e858ba79eefddd6",
+  "source_hashes": {
+    "compile_unused.pruv": "7c386ba4c81e0a4d201c1c7ad3e463a9ecbe3e43e0e2dd0085be84996facd0ce",
+    "reverse_local.pruv": "23cde9556dd78aa2c6a23e25782defe1ac93a73711dd17d7a9ce09d5740617b4",
+    "compile_none.pruv": "dcd23780b70e502877556667e6306a94893dc946cbb6a50f2695426ffc69f5d3",
+    "sum_local.pruv": "93bc0497e07702f1de1d8bbee9282c2bec7d105e3794c36a7f3c29c2b06c9a8c",
+    "reverse_std.pruv": "bb92e2007b5f52741ab8f0405ea39f431b1a6570da1292cce4abe06e758a6b85",
+    "sum_std.pruv": "52e412962e7e030f6da00bd838b7b13e0020888c07664d8e3164163f6032e09c",
+    "compile_calls.pruv": "7678bfaa6a60dad5da9676dd015b4798cdb6087944d7d8d883ba6f8ee6af7c3f"
+  }
+}

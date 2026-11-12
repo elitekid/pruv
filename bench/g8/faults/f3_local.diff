@@ -1,0 +1,16 @@
+--- a/pruvc/modules.py
++++ b/pruvc/modules.py
+@@ -148,11 +148,8 @@
+                     raise PruvError("parse", md.line, md.col, "std_import_location",
+                                     "std may only be imported at the program root",
+                                     "move `mod std;` to the root and call `crate::std::name`", file=m.file)
+-                if os.path.lexists(fpath):
+-                    raise PruvError("parse", md.line, md.col, "std_module_conflict",
+-                                    "local std.pruv conflicts with the bundled std module",
+-                                    "rename the user module/file and its paths", file=m.file)
+-                fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stdlib", "std.pruv")
++                if not os.path.lexists(fpath):  # FAULT: local wins
++                    fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stdlib", "std.pruv")
+                 rel = "@std/std.pruv"
+                 try:
+                     with open(fpath, encoding="utf-8") as source:
