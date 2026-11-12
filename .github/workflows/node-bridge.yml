@@ -1,0 +1,57 @@
+# Node-API bridge (stage L1). Deliberately path-filtered and manual-dispatchable
+# only: it builds on four OS runners, so it runs just when the bridge, the L0
+# Pruv sources it is generated from, or this file change. No schedule and no
+# pull_request trigger, to keep CI rare. ci.yml and windows-abi.yml are unchanged.
+name: node-bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "bridge/node/**"
+      - "bench/l0/*.pruv"
+      - ".github/workflows/node-bridge.yml"
+
+env:
+  PYTHONUTF8: "1"
+  Z3_SOLVER_VERSION: "5.3.3.0"  # same value as ci.yml
+
+concurrency:
+  group: node-bridge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.9"
+      - run: python -m pip install -q "z3-solver==${Z3_SOLVER_VERSION}"
+        shell: bash
+      - run: python bridge/node/regen.py --check
+
+  build:
+    needs: regen
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, windows-latest, ubuntu-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: |
+          rustup show
+          rustc -vV
+      - run: node bridge/node/build.mjs
+      - run: node bridge/node/test.mjs
