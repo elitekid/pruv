@@ -31,12 +31,12 @@ fn g9_diag_err(line: i64, col: i64, what: &str) -> String {
     format!("{}{}:{}:{}", G9_DIAG_TAG, line, col, what)
 }
 
-/// G6: an owned collection type key (`vec<..>`, `hashmap<..>`, `string`); never a bound parameter.
+/// An owned collection/File type key; never a bound parameter.
 pub fn is_collection(t: &str) -> bool {
     if t.starts_with('\u{1}') {
         return false;
     }
-    matches!(crate::emit_common::key_name(t), "vec" | "hashmap" | "string")
+    matches!(crate::emit_common::key_name(t), "vec" | "hashmap" | "string" | "file")
 }
 
 /// G6: a collection type or one anywhere inside its type arguments.
@@ -2384,13 +2384,20 @@ impl<'a> FnGen<'a> {
             let v = self.ev(x, p.take)?;
             args.extend(self.g6_arg(&v)?);
         }
-        if matches!(n, "vec_new" | "map_new" | "string_new" | "vec_push" | "map_insert" | "string_push_str") {
+        if matches!(
+            n,
+            "vec_new" | "map_new" | "string_new" | "vec_push" | "map_insert" | "string_push_str"
+                | "file_open_read" | "file_create" | "file_read_all" | "file_write_str" | "file_write_bytes"
+        ) {
             // a fresh box, or the very same box pointer of a consuming update
             let r = self.g6_call(&sym, "ptr", &args)?;
             let rv = V { k: Kind::Coll, a: r, b: "None".to_string(), ty: e.ty.clone(), p: None };
             return self.temp_arr(rv, owned);
         }
-        if n == "vec_get" || n == "string_byte" {
+        if matches!(
+            n,
+            "vec_get" | "string_byte" | "file_close" | "file_ok" | "file_readable" | "file_writable" | "file_size" | "file_byte"
+        ) {
             let r = self.g6_call(&sym, "i64", &args)?;
             if e.ty.as_deref() == Some("bool") {
                 let c = self.op(format!("icmp ne i64 {}, 0", r))?;
@@ -2944,6 +2951,23 @@ impl<'a> FnGen<'a> {
             Expr::Call(x) => {
                 let n = x.name.as_str();
                 let a = &x.args;
+                if crate::foreign::FILE_OBSERVERS.contains(&n) {
+                    let v = self.cev(arg(a, 0)?)?;
+                    let mut args = vec![("ptr".to_string(), v.a)];
+                    if n == "file_byte" {
+                        let i = self.cev(arg(a, 1)?)?;
+                        let size = self.g6_call(&crate::foreign_shim::adapter_sym("pruv_g6_file_size"), "i64", &args)?;
+                        let size = self.op(format!("zext i64 {} to i128", size))?;
+                        let ok = self.op(format!("icmp ult i128 {}, {}", i.a, size))?;
+                        self.guard(&ok, und("array index out of range".to_string()), false)?;
+                        args.push(("i64".to_string(), self.op(format!("trunc i128 {} to i64", i.a))?));
+                    }
+                    let r = self.g6_call(&crate::foreign_shim::adapter_sym(&format!("pruv_g6_{}", n)), "i64", &args)?;
+                    if x.ty.as_deref() == Some("bool") {
+                        return Ok(V::new(Kind::I1, self.op(format!("icmp ne i64 {}, 0", r))?));
+                    }
+                    return Ok(V::new(Kind::I128, self.op(format!("zext i64 {} to i128", r))?));
+                }
                 if n == "size" {
                     // G9 A3: structural size of the real value, checked i128 additions, one unit per node
                     let p = self.cx(arg(a, 0)?)?;
@@ -3832,14 +3856,14 @@ fn g6_scalar(t: &str) -> bool {
     t == "i64" || t == "bool"
 }
 
-/// G6_SPEC 13.1: Vec<i64|bool>, HashMap<i64|bool, i64|bool>, String
+/// G6_SPEC 13.1 collections, plus the G10 File handle.
 fn g6_coll_ok(t: &str) -> bool {
     use crate::gtype::GType;
     match GType::try_from_key(t) {
         Ok(g) => match g.name.as_str() {
             "vec" => g.args.first().map_or(false, |a| g6_scalar(&a.to_key())),
             "hashmap" => g.args.len() >= 2 && g6_scalar(&g.args[0].to_key()) && g6_scalar(&g.args[1].to_key()),
-            _ => g.name == "string",
+            _ => matches!(g.name.as_str(), "string" | "file"),
         },
         Err(_) => false,
     }

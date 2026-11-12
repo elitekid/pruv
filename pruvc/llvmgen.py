@@ -1462,10 +1462,12 @@ class FnGen:
         args = []
         for p, x in zip(cat.params, e.args):   # arguments once, in source order; take arguments are owned values
             args += s.g6_arg(s.ev(x, bool(p.take)))
-        if n in ("vec_new", "map_new", "string_new", "vec_push", "map_insert", "string_push_str"):
+        if n in ("vec_new", "map_new", "string_new", "vec_push", "map_insert", "string_push_str",
+                 "file_open_read", "file_create", "file_read_all", "file_write_str", "file_write_bytes"):
             r = s.g6_call(sym, "ptr", args)     # a fresh box, or the very same box pointer of a consuming update
             return s.temp_arr(V("coll", r, None, e.ty), owned)
-        if n in ("vec_get", "string_byte"):
+        if n in ("vec_get", "string_byte", "file_close", "file_ok", "file_readable",
+                 "file_writable", "file_size", "file_byte"):
             r = s.g6_call(sym, "i64", args)
             if e.ty == BOOL:
                 return V("i1", s.op("icmp ne i64 %s, 0" % r))
@@ -1814,6 +1816,20 @@ class FnGen:
             return s.get(b, b.ty, payload_index(s.tt, b.ty, e.variant, i), fd.type, True)
         if isinstance(e, Call):
             n, a = e.name, e.args
+            if n in ("file_ok", "file_readable", "file_writable", "file_size", "file_byte"):
+                x = s.cev(a[0])
+                args = [("ptr", x.a)]
+                if n == "file_byte":
+                    i = s.cev(a[1])
+                    size = s.g6_call(foreign_shim.adapter_sym("pruv_g6_file_size"), "i64", args)
+                    size = s.op("zext i64 %s to i128" % size)
+                    ok = s.op("icmp ult i128 %s, %s" % (i.a, size))
+                    s.guard(ok, und("array index out of range"), False)
+                    args += [("i64", s.op("trunc i128 %s to i64" % i.a))]
+                r = s.g6_call(foreign_shim.adapter_sym("pruv_g6_" + n), "i64", args)
+                if e.ty == BOOL:
+                    return V("i1", s.op("icmp ne i64 %s, 0" % r))
+                return V("i128", s.op("zext i64 %s to i128" % r))
             if n == "size":   # G9 A3: structural size of the real value, checked i128 additions, one unit per node
                 p = s.cx(a[0])
                 s.m.need_size.add(a[0].ty.name)
@@ -3150,12 +3166,12 @@ def _g6_scalar(t):
 
 
 def _g6_coll_ok(t):
-    """G6_SPEC 13.1: Vec<i64|bool>, HashMap<i64|bool, i64|bool>, String"""
+    """G6_SPEC 13.1 collections, plus the G10 File handle."""
     if t.name == "vec":
         return _g6_scalar(t.args[0])
     if t.name == "hashmap":
         return _g6_scalar(t.args[0]) and _g6_scalar(t.args[1])
-    return t.name == "string"
+    return t.name in ("string", "file")
 
 
 def _g6_type_ok(t):

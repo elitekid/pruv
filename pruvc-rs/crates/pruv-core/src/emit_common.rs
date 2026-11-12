@@ -123,7 +123,7 @@ fn rty_name(t: &str, param: bool) -> String {
         }
         // G10: File is owned; a borrowed parameter is a reference
         "file" => {
-            if param { "&PruvFile".to_string() } else { "PruvFile".to_string() }
+            if param { "&pruv_File".to_string() } else { "pruv_File".to_string() }
         }
         // G6: String is owned; a borrowed parameter is a reference
         "string" => {

@@ -11,10 +11,10 @@
 
 use crate::ast::*;
 use crate::codegen::{
-    contract_prelude_g6, shim_helpers, CONTRACT_PRELUDE_BOOL, CONTRACT_PRELUDE_STR, CONTRACT_PRELUDE_U8, G6_PRELUDE,
+    contract_prelude_g6, shim_helpers, CONTRACT_PRELUDE_BOOL, CONTRACT_PRELUDE_STR, CONTRACT_PRELUDE_U8, FILE_PRELUDE, G6_PRELUDE,
 };
 use crate::emit_common::rty_g;
-use crate::foreign::{is_catalog, is_catalog_contract_only};
+use crate::foreign::{is_catalog, is_catalog_contract_only, FILE_OBSERVERS};
 use crate::gtype::{encode, GType};
 use crate::llvmgen::{expr_ty, is_collection};
 use crate::typeinfo::{uses_array_type, uses_str};
@@ -53,6 +53,7 @@ pub fn cname(t: &GType) -> R<String> {
             }
             Ok(format!("hashmap__{}__{}", encode(&t.args[0])?, encode(&t.args[1])?))
         }
+        "file" => Ok("File".to_string()),
         _ => Ok("string".to_string()),
     }
 }
@@ -207,10 +208,12 @@ fn add_coll(colls: &mut Colls, key: &str, err: &mut Option<String>) {
     }
 }
 
-/// (cats, colls, trusted): cats: helper name -> (op, low types); colls: <C> -> collection type (sorted by <C>);
-/// trusted: name -> Function of the trusted declarations called from a body
-fn collect<'a>(prog: &'a Program) -> R<(Cats, Colls, HashMap<String, &'a Function>)> {
+/// (cats, colls, trusted, observers): cats: helper name -> (op, low types); colls: <C> -> collection type (sorted by <C>);
+/// trusted: name -> Function of the trusted declarations called from a body;
+/// observers: File helpers in Python catalog insertion order (including implicit file_size).
+fn collect<'a>(prog: &'a Program) -> R<(Cats, Colls, HashMap<String, &'a Function>, Vec<(String, Vec<GType>)>)> {
     let mut cats: Cats = HashMap::new();
+    let mut observers = Vec::new();
     let mut colls: Colls = BTreeMap::new();
     let mut trusted: HashMap<String, &'a Function> = HashMap::new();
     let mut fmap: HashMap<&str, &'a Function> = HashMap::new();
@@ -226,7 +229,7 @@ fn collect<'a>(prog: &'a Program) -> R<(Cats, Colls, HashMap<String, &'a Functio
             add_coll(&mut colls, &p.ty, &mut err);
         }
         add_coll(&mut colls, &f.ret, &mut err);
-        walk_stmts(&f.body, &mut |n: Node<'_>| match n {
+        let mut visit = |n: Node<'_>| match n {
             Node::Let(l) => add_coll(&mut colls, &l.ty, &mut err),
             Node::Expr(e) => {
                 if let Some(t) = expr_ty(e) {
@@ -237,7 +240,17 @@ fn collect<'a>(prog: &'a Program) -> R<(Cats, Colls, HashMap<String, &'a Functio
                         let (low, src) = inst_types(c);
                         match helper_name(&c.name, &src) {
                             Ok(h) => {
+                                if !cats.contains_key(&h) && FILE_OBSERVERS.contains(&c.name.as_str()) {
+                                    observers.push((c.name.clone(), low.clone()));
+                                }
                                 cats.entry(h).or_insert((c.name.clone(), low));
+                                if c.name == "file_byte" {
+                                    let size = "pruv_g6_file_size".to_string();
+                                    if !cats.contains_key(&size) {
+                                        observers.push(("file_size".to_string(), vec![]));
+                                    }
+                                    cats.entry(size).or_insert(("file_size".to_string(), vec![]));
+                                }
                             }
                             Err(e2) => {
                                 if err.is_none() {
@@ -252,12 +265,22 @@ fn collect<'a>(prog: &'a Program) -> R<(Cats, Colls, HashMap<String, &'a Functio
                     }
                 }
             }
-        });
+        };
+        walk_stmts(&f.body, &mut visit);
+        for e in f.requires.iter().chain(f.ensures.iter()) {
+            walk_expr(e, &mut |n| {
+                if let Node::Expr(Expr::Call(c)) = &n {
+                    if FILE_OBSERVERS.contains(&c.name.as_str()) {
+                        visit(n);
+                    }
+                }
+            });
+        }
         if let Some(e) = err.take() {
             return Err(e);
         }
     }
-    Ok((cats, colls, trusted))
+    Ok((cats, colls, trusted, observers))
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +400,9 @@ fn low_at(low: &[GType], i: usize) -> R<&GType> {
 
 fn cat_adapter(helper: &str, op: &str, low: &[GType]) -> R<String> {
     let s = adapter_sym(helper);
+    if op.starts_with("file_") {
+        return Ok(file_adapter(&s, helper, op));
+    }
     let mut t: Option<&GType> = None;
     let mut k: Option<&GType> = None;
     let mut v: Option<&GType> = None;
@@ -491,6 +517,36 @@ fn cat_adapter(helper: &str, op: &str, low: &[GType]) -> R<String> {
     }
 }
 
+fn file_adapter(sym: &str, helper: &str, op: &str) -> String {
+    if matches!(op, "file_open_read" | "file_create") {
+        return fn_text(sym, "p: *const u8, n: i64", Some("PruvH"),
+            &format!("pruv_g6_guard(|| pruv_g6_new({}(pruv_g6_str(p, n))))", helper));
+    }
+    let mut params = "h: PruvH".to_string();
+    let mut arg = "";
+    if op == "file_byte" {
+        params.push_str(", i: i64");
+        arg = ", i";
+    }
+    if FILE_OBSERVERS.contains(&op) {
+        return fn_text(sym, &params, Some("i64"),
+            &format!("pruv_g6_guard(|| {}(pruv_g6_ref::<pruv_File>(h){}) as i64)", helper, arg));
+    }
+    let mut body = String::new();
+    if matches!(op, "file_write_str" | "file_write_bytes") {
+        params.push_str(", p: *const u8, n: i64");
+        arg = ", pruv_data";
+        let conv = if op == "file_write_str" { "pruv_g6_str(p, n)" } else { "pruv_g6_slice::<u8>(p, n)" };
+        body.push_str(&format!("let pruv_data = {}; ", conv));
+    }
+    // Consume the box before the A2 helper; File has no Default placeholder.
+    body.push_str(r#"if h.is_null() { pruv_g6_repr("null handle") } let f: pruv_File = unsafe { *::std::boxed::Box::from_raw(h as *mut pruv_File) }; PRUV_G6_LIVE.fetch_sub(1, ::std::sync::atomic::Ordering::SeqCst); "#);
+    let call = format!("{}(f{})", helper, arg);
+    body.push_str(&if op == "file_close" { format!("{} as i64", call) } else { format!("pruv_g6_new({})", call) });
+    fn_text(sym, &params, Some(if op == "file_close" { "i64" } else { "PruvH" }),
+        &format!("pruv_g6_guard(|| {{ {} }})", body))
+}
+
 fn trusted_adapter(f: &Function) -> R<String> {
     let mut params: Vec<String> = Vec::new();
     let mut args: Vec<String> = Vec::new();
@@ -546,6 +602,10 @@ fn trusted_adapter(f: &Function) -> R<String> {
 
 fn coll_adapters(t: &GType) -> R<String> {
     let c = rty_t(t);
+    if t.name == "file" {
+        return Ok(fn_text(&format!("{}drop__{}", PREFIX, cname(t)?), "h: PruvH", None,
+            "pruv_g6_guard(|| pruv_g6_free::<pruv_File>(h))"));
+    }
     let mut out = fn_text(
         &format!("{}len__{}", PREFIX, cname(t)?),
         "h: PruvH",
@@ -578,15 +638,19 @@ fn string_bytes_adapter() -> String {
 
 /// text of `mod pruv_g6_shim` for the (concrete) program prog; deterministic
 pub fn build_shim(prog: &Program, verified: bool, _trust_callers: bool, budget: u64, foreign_checks: &str) -> R<String> {
-    let (cats, colls, trusted) = collect(prog)?;
+    let (cats, colls, trusted, observers) = collect(prog)?;
     // helper discovery: exactly the A2 helpers (same texts, same mode and budget). The entry checks of the Rust
     // source backend are not emitted here (trust=True): the LLVM entries evaluate requires themselves.
-    let items = shim_helpers(prog, verified, budget, foreign_checks)?;
+    let items = shim_helpers(prog, verified, budget, foreign_checks, &observers)?;
     let mut out: Vec<String> = Vec::new();
     out.push(MOD_ALLOW.to_string());
     out.push("mod pruv_g6_shim {".to_string());
+    let g10 = crate::foreign::uses_files(prog);
+    if g10 {
+        out.push(FILE_PRELUDE.to_string());
+    }
     out.push(contract_prelude_g6());
-    if uses_array_type(prog, "array_u8") {
+    if uses_array_type(prog, "array_u8") || g10 {
         out.push(CONTRACT_PRELUDE_U8.to_string());
     }
     if uses_array_type(prog, "array_bool") {

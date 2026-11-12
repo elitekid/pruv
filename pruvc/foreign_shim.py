@@ -16,14 +16,14 @@ bindings of a G6 program.  The module contains
 Bridge representations (section 13.2): i64 as i64; bool as i64 0/1 (anything else -> `pruv: invalid representation:
 bool`); a collection handle as an opaque pointer to a Box of the concrete Rust collection; a borrowed array/str as
 (ptr, i64 len); Option<i64|bool> results through (ptr tag_out, ptr val_out).  Consuming updates return the same
-pointer.  The helper-name part of a symbol is the full A2 helper name (`pruv_g6_vec_push__i` ->
+pointer (File updates consume the old box and return a fresh box).  The helper-name part of a symbol is the full A2 helper name (`pruv_g6_vec_push__i` ->
 `pruv_g6_v1_pruv_g6_vec_push__i`, `trusted rust fn min2` -> `pruv_g6_v1_min2`).
 """
 from vast import *
 from typeinfo import encode, is_collection, uses_array_type, uses_str
 from codegen import (Gen, rty, CONTRACT_PRELUDE_G6, CONTRACT_PRELUDE_U8, CONTRACT_PRELUDE_BOOL,
-                     CONTRACT_PRELUDE_STR, G6_PRELUDE)
-from foreign import CATALOG, CATALOG_CONTRACT_ONLY
+                     CONTRACT_PRELUDE_STR, G6_PRELUDE, FILE_PRELUDE)
+from foreign import CATALOG, CATALOG_CONTRACT_ONLY, FILE_OBSERVERS
 
 PREFIX = "pruv_g6_v1_"
 BRIDGE_SYM = "pruv_g6_bridge_v1"
@@ -46,7 +46,7 @@ def cname(t):
         return "vec__" + encode(t.args[0])
     if t.name == "hashmap":
         return "hashmap__%s__%s" % (encode(t.args[0]), encode(t.args[1]))
-    return "string"
+    return "File" if t.name == "file" else "string"
 
 
 def drop_sym(t):
@@ -103,6 +103,8 @@ def collect(prog):
             if n.name in CATALOG and n.name not in CATALOG_CONTRACT_ONLY:
                 low, src = inst_types(n)
                 cats.setdefault(helper_name(n.name, src), (n.name, low))
+                if n.name == "file_byte":
+                    cats.setdefault(helper_name("file_size", ()), ("file_size", ()))
             else:
                 f = fmap.get(n.name)
                 if f is not None and f.foreign is not None:
@@ -115,6 +117,11 @@ def collect(prog):
             add(p.type)
         add(f.ret)
         _walk(f.body, visit)
+        def contract_visit(n):
+            if isinstance(n, Call) and n.name in FILE_OBSERVERS:
+                visit(n)
+        _walk(f.requires, contract_visit)
+        _walk(f.ensures, contract_visit)
     return cats, colls, trusted
 
 
@@ -220,6 +227,8 @@ def _fn(sym, params, ret, body):
 
 def _cat_adapter(helper, op, low):
     S = adapter_sym(helper)
+    if op.startswith("file_"):
+        return _file_adapter(S, helper, op)
     if op in ("vec_new", "vec_push", "vec_get"):
         T = low[0]
         C = rty(Type("vec", (T,)))
@@ -259,6 +268,32 @@ def _cat_adapter(helper, op, low):
     raise Exception("foreign_shim: no adapter for catalog operation %s" % op)
 
 
+def _file_adapter(sym, helper, op):
+    if op in ("file_open_read", "file_create"):
+        return _fn(sym, "p: *const u8, n: i64", "PruvH",
+                   "pruv_g6_guard(|| pruv_g6_new(%s(pruv_g6_str(p, n))))" % helper)
+    params, arg = "h: PruvH", ""
+    if op == "file_byte":
+        params += ", i: i64"
+        arg = ", i"
+    if op in ("file_ok", "file_readable", "file_writable", "file_size", "file_byte"):
+        return _fn(sym, params, "i64",
+                   "pruv_g6_guard(|| %s(pruv_g6_ref::<pruv_File>(h)%s) as i64)" % (helper, arg))
+    body = ""
+    if op in ("file_write_str", "file_write_bytes"):
+        params += ", p: *const u8, n: i64"
+        arg = ", pruv_data"
+        conv = "pruv_g6_str(p, n)" if op == "file_write_str" else "pruv_g6_slice::<u8>(p, n)"
+        body += "let pruv_data = %s; " % conv
+    # Consume the box before the A2 helper; File has no Default placeholder.
+    body += ('if h.is_null() { pruv_g6_repr("null handle") } '
+             "let f: pruv_File = unsafe { *::std::boxed::Box::from_raw(h as *mut pruv_File) }; "
+             "PRUV_G6_LIVE.fetch_sub(1, ::std::sync::atomic::Ordering::SeqCst); ")
+    call = "%s(f%s)" % (helper, arg)
+    body += call + " as i64" if op == "file_close" else "pruv_g6_new(%s)" % call
+    return _fn(sym, params, "i64" if op == "file_close" else "PruvH", "pruv_g6_guard(|| { %s })" % body)
+
+
 def _trusted_adapter(f):
     params, args = [], []
     for i, p in enumerate(f.params):
@@ -294,6 +329,8 @@ def _trusted_adapter(f):
 
 def _coll_adapters(t):
     C = rty(t)
+    if t.name == "file":
+        return _fn(drop_sym(t), "h: PruvH", None, "pruv_g6_guard(|| pruv_g6_free::<pruv_File>(h))")
     return (_fn(len_sym(t), "h: PruvH", "i64", "pruv_g6_guard(|| pruv_g6_ref::<%s>(h).len() as i64)" % C) +
             _fn(drop_sym(t), "h: PruvH", None, "pruv_g6_guard(|| pruv_g6_free::<%s>(h))" % C))
 
@@ -316,10 +353,15 @@ def build_shim(prog, verified=True, trust_callers=False, budget=1 << 30, foreign
     g = Gen(prog, verified, True, budget, foreign_checks)
     for f in prog.functions:
         g.fn(f)
+    for op, low in cats.values():
+        if op in FILE_OBSERVERS:
+            g.fg.catalog_helper(op, low, low)
     items = g.fg.items
     out = [MOD_ALLOW, "mod pruv_g6_shim {"]
+    if g.g10:
+        out.append(FILE_PRELUDE)
     out.append(CONTRACT_PRELUDE_G6)
-    if uses_array_type(prog, "array_u8"):
+    if uses_array_type(prog, "array_u8") or g.g10:
         out.append(CONTRACT_PRELUDE_U8)
     if uses_array_type(prog, "array_bool"):
         out.append(CONTRACT_PRELUDE_BOOL)

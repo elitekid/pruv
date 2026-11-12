@@ -120,7 +120,9 @@ fn generate(a: &Args, prog: &Program) -> Result<(String, String), Fail> {
 
 /// G6_SPEC 13.1: `--emit exe|obj` of a G6 program needs the Rust host build (the shim lives in the generated bindings).
 fn foreign_target_error(prog: &Program) -> Option<PruvError> {
-    pruv_core::foreign::first_g6_use(prog)?;
+    if pruv_core::foreign::first_g6_use(prog).is_none() && !pruv_core::foreign::uses_files(prog) {
+        return None;
+    }
     Some(PruvError::new(
         "codegen",
         0,
@@ -257,19 +259,13 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
     } else {
         // Pre-G10 order for File-free native programs: with --no-verify, foreign_target fires before the notice.
-        if g6_native && pruv_core::foreign::g10_unimplemented_error(&prog).is_none() {
+        if g6_native && !pruv_core::foreign::uses_files(&prog) {
             if let Some(e) = foreign_target_error(&prog) {
                 return Err(Fail::Lang(vec![e]));
             }
         }
         if a.infer && a.show_inferred {
             eprintln!("{{\"status\": \"skipped_no_verify\"}}");
-        }
-    }
-    // G10 A2: only LLVM paths retain the guard; verification errors still precede it.
-    if !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some() {
-        if let Some(e) = pruv_core::foreign::g10_unimplemented_error(&prog) {
-            return Err(Fail::Lang(vec![e]));
         }
     }
     if g6_native {

@@ -439,6 +439,63 @@ set_at(inout w, 0, 7);
   `old_argument`; reused: `immutable`, `array_alias`, `recursive_borrow`, `entry_signature`, `foreign_signature`,
   `reserved`, `refinement_assign`.
 
+## 6h. Files (G10)
+
+`fs` is the file-system effect, independent of `io` (stdout) and `alloc`. Direct and transitive calls
+must declare their effects. `File` is an owned type: local, borrowed parameter, `take` parameter or
+result; never nested in aggregates/collections or exposed in a host-entry signature. Host entries take paths
+as `str`; paths are relative to the process working directory.
+
+| Operation | Effects | Meaning / contract |
+|---|---|---|
+| `file_open_read(path: str) -> File` | fs | readable iff ok; not writable; size 0 |
+| `file_create(path: str) -> File` | fs | truncate/create; writable iff ok; not readable; size 0 |
+| `file_read_all(take f: File) -> File` | fs, alloc | requires readable; read remaining bytes into the handle; readable iff ok; not writable; failure clears buffer |
+| `file_write_str(take f: File, text: str) -> File` | fs | requires writable; write UTF-8 bytes; writable iff ok; not readable; size 0 |
+| `file_write_bytes(take f: File, data: [u8]) -> File` | fs | same as write_str, for bytes |
+| `file_close(take f: File) -> bool` | fs | consume/close; true only if ok and final flush succeeds |
+| `file_ok/readable/writable(f: File) -> bool` | none | status/mode observers, usable in code and contracts |
+| `file_size(f: File) -> i64` | none | buffered byte count, >= 0 |
+| `file_byte(f: File, i: i64) -> i64` | none | requires 0 <= i < size; returns 0..255 |
+
+Pass ownership with `move f`; a moved/closed binding cannot be read until reassigned. Branch joins and loops
+follow §6d. Borrowing never transfers ownership. Every live owner is dropped on scope exit, including early
+return; drop closes the handle and ignores errors. Explicit close reports flush success; it does not sync
+to disk. OS failures become `file_ok == false`, not panics. Verification models each operation's result only
+through its catalog contract: writing and reopening a path does not prove its contents.
+
+```
+fn sum_bytes(f: File) -> i64
+  requires file_size(f) <= 1000000
+  ensures result >= 0
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < file_size(f)
+    invariant 0 <= i && i <= file_size(f) && 0 <= s && s <= 255 * i
+    decreases file_size(f) - i
+  {
+    s = s + file_byte(f, i);
+    i = i + 1;
+  }
+  return s;
+}
+pub fn checksum(path: str) -> i64 ! fs, alloc
+  ensures result >= -1
+{
+  let f: File = file_open_read(path);
+  if !file_readable(f) { return -1; }
+  let g: File = file_read_all(move f);
+  if !file_ok(g) || file_size(g) > 1000000 { return -1; }
+  return sum_bytes(g);
+}
+```
+
+Rust uses `pruv_File`; LLVM uses an opaque pointer and the same Rust operations in the §6d shim emitted with
+`--rust-bindings`, including observers and drop. Link with Rust; `--emit exe|obj` rejects File programs with
+`codegen/foreign_target`. `--foreign-checks` follows §6d: with `--no-verify`, reading a write handle exits 101
+with `pruv: foreign requires violated:`. Programs without File retain their generated output.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.

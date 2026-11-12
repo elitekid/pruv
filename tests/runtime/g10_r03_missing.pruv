@@ -1,3 +1,4 @@
+struct PruvFile { x: i64 }
 fn missing(path: str) -> bool ! fs {
   let f: File = file_open_read(path);
   let failed: bool = !file_ok(f) && !file_readable(f) && !file_writable(f) && file_size(f) == 0;

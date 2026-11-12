@@ -56,6 +56,8 @@ pub fn contract_prelude_g6() -> String {
     CONTRACT_PRELUDE.replace(UD_OLD, UD_G6)
 }
 
+pub const FILE_PRELUDE: &str = "struct pruv_File { file: ::std::option::Option<::std::fs::File>, ok: bool, readable: bool, writable: bool, buf: ::std::vec::Vec<u8> }\n";
+
 pub const G6_PRELUDE: &str = r##"#[allow(dead_code)]
 #[cold]
 #[inline(never)]
@@ -516,7 +518,7 @@ impl<'a> Gen<'a> {
                 }),
             vars: HashMap::new(),
             g6,
-            g10: crate::foreign::g10_unimplemented_error(prog).is_some(),
+            g10: crate::foreign::uses_files(prog),
             allow: if g6 { ALLOW_G6 } else { ALLOW },
             fmap,
             borrowed: HashSet::new(),
@@ -618,7 +620,7 @@ impl<'a> Gen<'a> {
 
     fn prelude(&mut self) -> R<()> {
         if self.g10 {
-            self.out.push("struct PruvFile { file: ::std::option::Option<::std::fs::File>, ok: bool, readable: bool, writable: bool, buf: ::std::vec::Vec<u8> }\n".to_string());
+            self.out.push(FILE_PRELUDE.to_string());
         }
         let types = emit_public_types_with(self.prog, &self.table);
         if !types.is_empty() {
@@ -2399,10 +2401,21 @@ impl<'a> Gen<'a> {
 /// G6 A3 (foreign_shim.py build_shim): the A2 boundary helpers of a concrete G6 program, discovered by generating every
 /// function with a Gen created for the same program and check mode (trust=True: the entry checks of the Rust source
 /// backend are not emitted, the LLVM entries evaluate requires themselves): (helper name, text) in first-use order.
-pub fn shim_helpers(prog: &Program, verified: bool, budget: u64, foreign_checks: &str) -> R<Vec<(String, String)>> {
+pub fn shim_helpers(
+    prog: &Program,
+    verified: bool,
+    budget: u64,
+    foreign_checks: &str,
+    observers: &[(String, Vec<GType>)],
+) -> R<Vec<(String, String)>> {
     let mut g = Gen::new(prog, verified, true, budget, foreign_checks);
     for f in &prog.functions {
         g.func(f)?;
+    }
+    if let Some(fg) = g.fg.as_mut() {
+        for (op, low) in observers {
+            fg.catalog_helper(op, low, low)?;
+        }
     }
     match g.fg.as_ref() {
         Some(fg) => Ok(fg.items().to_vec()),

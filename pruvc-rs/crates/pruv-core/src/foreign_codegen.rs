@@ -379,13 +379,13 @@ impl ForeignGen {
     /// G10: I/O failures stay in the owned handle.
     fn file_text(&self, op: &str, name: &str) -> String {
         if matches!(op, "file_ok" | "file_readable" | "file_writable") {
-            return self.fn_text(name, "f: &PruvFile", Some("bool"), &[format!("f.{}", &op[5..])]);
+            return self.fn_text(name, "f: &pruv_File", Some("bool"), &[format!("f.{}", &op[5..])]);
         }
         if op == "file_size" {
             let mut body = vec!["let pruv_r = f.buf.len() as i64;".to_string()];
             body.extend(self.ens_line("pruv_r >= 0", "result >= 0"));
             body.push("pruv_r".to_string());
-            return self.fn_text(name, "f: &PruvFile", Some("i64"), &body);
+            return self.fn_text(name, "f: &pruv_File", Some("i64"), &body);
         }
         if op == "file_byte" {
             let cond = "i >= 0 && (i as u64) < (f.buf.len() as u64)";
@@ -394,7 +394,7 @@ impl ForeignGen {
             body.push("let pruv_r = f.buf[pruv_k] as i64;".to_string());
             body.extend(self.ens_line("0 <= pruv_r && pruv_r <= 255", "0 <= result && result <= 255"));
             body.push("pruv_r".to_string());
-            return self.fn_text(name, "f: &PruvFile, i: i64", Some("i64"), &body);
+            return self.fn_text(name, "f: &pruv_File, i: i64", Some("i64"), &body);
         }
         let read;
         let params;
@@ -404,7 +404,7 @@ impl ForeignGen {
             body = vec![
                 format!("let file = ::std::fs::File::{}(path).ok();", if read { "open" } else { "create" }),
                 "let ok = file.is_some();".to_string(),
-                format!("let f = PruvFile {{ file, ok, readable: {}, writable: {}, buf: ::std::vec::Vec::new() }};",
+                format!("let f = pruv_File {{ file, ok, readable: {}, writable: {}, buf: ::std::vec::Vec::new() }};",
                     if read { "ok" } else { "false" }, if read { "false" } else { "ok" }),
             ];
             params = "path: &str".to_string();
@@ -417,12 +417,12 @@ impl ForeignGen {
             ];
             body.extend(self.ens_line("!pruv_r || pruv_ok", "result ==> file_ok(f)"));
             body.push("pruv_r".to_string());
-            return self.fn_text(name, "mut f: PruvFile", Some("bool"), &body);
+            return self.fn_text(name, "mut f: pruv_File", Some("bool"), &body);
         } else {
             read = op == "file_read_all";
             let field = if read { "readable" } else { "writable" };
             body = self.req_line(&format!("f.{}", field), &format!("file_{}(f)", field));
-            let mut ps = "mut f: PruvFile".to_string();
+            let mut ps = "mut f: pruv_File".to_string();
             let action;
             if read {
                 body.push("f.buf.clear();".to_string());
@@ -454,7 +454,7 @@ impl ForeignGen {
                 "!file_readable(result) && file_writable(result) == file_ok(result) && file_size(result) == 0"));
         }
         body.push("f".to_string());
-        self.fn_text(name, &params, Some("PruvFile"), &body)
+        self.fn_text(name, &params, Some("pruv_File"), &body)
     }
 
     // ------------------------------------------------------------------ contract-only scan (requires)

@@ -988,7 +988,7 @@ pub fn g6_unimplemented_error(prog: &Program, stage: &str) -> Option<PruvError> 
 }
 
 // ---------------------------------------------------------------------------
-// G10 A0 guard (counterpart of foreign.py g10_unimplemented_error)
+// G10 File runtime detection (counterpart of foreign.py uses_files)
 // ---------------------------------------------------------------------------
 
 fn key_has_file(key: &str) -> bool {
@@ -1032,28 +1032,16 @@ fn g10_stmts(stmts: &[Stmt]) -> bool {
     })
 }
 
-/// G10 A0 guard: the first function that uses `File` or a `file_*` operation -> codegen/unsupported_type.
-/// G10 A2: runs after verification (or its bypass) on LLVM paths.
-pub fn g10_unimplemented_error(prog: &Program) -> Option<PruvError> {
-    for f in &prog.functions {
-        let uses = f.params.iter().any(|p| key_has_file(&p.ty))
+/// Whether the program needs the G10 File runtime.
+pub fn uses_files(prog: &Program) -> bool {
+    prog.functions.iter().any(|f| {
+        f.params.iter().any(|p| key_has_file(&p.ty))
             || key_has_file(&f.ret)
             || f.requires.iter().any(g10_expr)
             || f.ensures.iter().any(g10_expr)
             || f.decreases.as_ref().map_or(false, g10_expr)
-            || g10_stmts(&f.body);
-        if uses {
-            return Some(PruvError::new(
-                "codegen",
-                f.line,
-                f.col,
-                "unsupported_type",
-                "files (G10) are not implemented by the llvm codegen layer yet",
-                "avoid File and file_* operations for now",
-            ));
-        }
-    }
-    None
+            || g10_stmts(&f.body)
+    })
 }
 
 #[cfg(test)]

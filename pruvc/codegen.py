@@ -291,6 +291,9 @@ fn pruv_ud(what: &str) -> ! {
 assert _UD_OLD in CONTRACT_PRELUDE
 CONTRACT_PRELUDE_G6 = CONTRACT_PRELUDE.replace(_UD_OLD, _UD_G6)
 
+FILE_PRELUDE = ("struct pruv_File { file: ::std::option::Option<::std::fs::File>, "
+                "ok: bool, readable: bool, writable: bool, buf: ::std::vec::Vec<u8> }\n")
+
 G6_PRELUDE = """\
 #[allow(dead_code)]
 #[cold]
@@ -344,7 +347,7 @@ def rty(t, param=False):
         elif t.name == "hashmap":
             r = "::std::collections::HashMap<%s, %s>" % (rty(t.args[0]), rty(t.args[1]))
         elif t.name == "file":
-            r = "PruvFile"
+            r = "pruv_File"
         else:
             r = "::std::string::String"
         return "&" + r if param else r
@@ -652,8 +655,8 @@ class Gen:
         s.need_size = set()
         s.need_eq = set()
         # G6 (section 12): only a program that uses G6 gets any of the following
-        from foreign import first_g6_use, g10_unimplemented_error
-        s.g10 = g10_unimplemented_error(prog) is not None
+        from foreign import first_g6_use, uses_files
+        s.g10 = uses_files(prog)
         s.g6 = first_g6_use(prog) is not None
         s.fmode = foreign_checks
         s.allow = ALLOW_G6 if s.g6 else ALLOW
@@ -679,8 +682,7 @@ class Gen:
 
     def prelude(s):
         if s.g10:
-            s.out.append("struct PruvFile { file: ::std::option::Option<::std::fs::File>, "
-                         "ok: bool, readable: bool, writable: bool, buf: ::std::vec::Vec<u8> }\n")
+            s.out.append(FILE_PRELUDE)
         types = emit_public_types(s.prog, s.table.order if s.g9 else None)
         if types:
             s.out.append(types)

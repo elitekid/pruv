@@ -190,17 +190,17 @@ calls it. Requiring a call to `file_close` (linear typing) is deferred (section 
 ## 5. Rust backend (binding)
 
 1. The generated runtime prelude gets one struct
-   `PruvFile { file: Option<std::fs::File>, ok: bool, readable: bool, writable: bool, buf: Vec<u8> }`; `File` maps to
-   `PruvFile`. Operations never panic on an I/O error: they set `ok = false`, drop the inner file and keep going.
+   `pruv_File { file: Option<std::fs::File>, ok: bool, readable: bool, writable: bool, buf: Vec<u8> }`; `File` maps to
+   `pruv_File`. Operations never panic on an I/O error: they set `ok = false`, drop the inner file and keep going.
 2. `file_close` flushes and syncs nothing beyond `std::io::Write::flush` and reports `ok && flush succeeded`.
-   Dropping a `PruvFile` drops the inner `std::fs::File` (closes it); errors are ignored.
+   Dropping a `pruv_File` drops the inner `std::fs::File` (closes it); errors are ignored.
 3. Run-time checks of catalog `requires` follow `--foreign-checks` unchanged: with `--no-verify`, reading a
    non-readable handle exits 101 with `pruv: foreign requires violated:`.
 4. Host entries with `! fs` are allowed; the File itself never crosses the host boundary.
 
 ## 6. LLVM backend (binding)
 
-1. `File` uses the G6 shim bridge: the Rust shim generated with `--rust-bindings` holds `PruvFile` (the same code as
+1. `File` uses the G6 shim bridge: the Rust shim generated with `--rust-bindings` holds `pruv_File` (the same code as
    section 5), the LLVM code holds an opaque pointer and calls shim functions for every operation and for drop
    (`@pruv_drop__File` through `g6_drop`).
 2. `--emit exe|obj` rejects programs that use `File` with `codegen/foreign_target`, like every G6 program that needs
@@ -242,13 +242,18 @@ rows; `cargo test` for `pruvc-rs` passes; CI is green after the push.
   use after close via a renamed binding, missing close of a write before reopen, off-by-one `file_byte`), zero
   mutants wrongly verified; one compiler fault injection per section 3.2 rule family and per section 4 item 4,
   each detected by a named test; one independent author (spec and problems only) solves both problems, both
-  backends; measurement: reading and summing a 10 MB file is within 1.5x of a hand-written Rust program on both
-  backends.
+  backends; measurement: reading and summing a 10 MB file against a hand-written Rust program on both backends,
+  reported with its causes. The target was within 1.5x; Q measured about 2.1-2.2x on the Rust backend (every
+  `file_byte`/`file_size` helper call sets the thread-local foreign-contract context, and the checked sum does not
+  vectorize) and about 22x on the LLVM backend (each byte is a non-inlined shim call through the panic guard). The
+  target is not met; a fast byte path is deferred work (section 9), like G6 (G6_SPEC, no invented speedup gate).
 
 ## 9. Deferred work
 
 - `proc` and `net` effects with their handle types (`Process`, `Socket`), each reusing this pattern.
 - Linear handles: a `File` that was written must reach `file_close` (a new "must consume" rule in `_Ownership`).
 - Streaming reads/writes, seeking, appending, directories, metadata.
+- A fast byte path: set the foreign-contract context only on the failure path of the A2 helpers, and give the LLVM
+  backend direct access to the read buffer (one shim call per handle, not per byte), so the Q measurement reaches 1.5x.
 - `io none` / `reads` contracts (Stage 5 item 2) and a finer split of `io` (stdout vs stderr).
 - Async (after G7), cost bounds (Stage 5 item 4), caching (Stage 5 item 1).
