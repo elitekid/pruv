@@ -4,7 +4,7 @@ import z3
 from vast import *
 from typeinfo import (TypeTable, is_array, array_elem, array_of, bind_args, substitute, decl_owner, format_type,
                       is_collection)
-from foreign import CATALOG_NAMES   # G6 A1: the twelve reserved catalog names
+from foreign import CATALOG, CATALOG_NAMES, FILE, FILE_OBSERVERS
 
 I64_MIN, I64_MAX = -2 ** 63, 2 ** 63 - 1
 MAX_LEN = 2 ** 40
@@ -550,6 +550,8 @@ class Model:
 
     def type_of(s, v):
         """Pruv Type of a z3 datatype value (Opt/Res/user), or None"""
+        if isinstance(v, File):
+            return FILE
         if isinstance(v, Map):      # G6 A1
             return Type("hashmap", (v.kty, v.vty))
         try:
@@ -583,7 +585,7 @@ def _partial_here(e, kind):
     if isinstance(e, Binary):
         return e.op in ("/", "%")
     if isinstance(e, Call):
-        return e.name in _TAG_FNS
+        return e.name in _TAG_FNS or e.name == "file_byte"
     if isinstance(e, Quant):
         return e.kind in ("max", "min")
     return False
@@ -642,7 +644,15 @@ class Map:
         s.d, s.a, s.n, s.name, s.kty, s.vty = d, a, n, name, kty, vty
 
 
-_COLL = ("vec", "hashmap", "string")
+class File:
+    """G10: three independent Bool fields and a String-shaped byte buffer (size, map)."""
+    __slots__ = ("ok", "readable", "writable", "buf")
+
+    def __init__(s, ok, readable, writable, buf):
+        s.ok, s.readable, s.writable, s.buf = ok, readable, writable, buf
+
+
+_COLL = ("vec", "hashmap", "string", "file")
 _STRING = Type("string")
 
 
@@ -666,6 +676,8 @@ def _wf_of(m, ty, v):
     if isinstance(v, Arr) and m.is_buf(ty):
         ln = z3.And(v.n >= 0, v.n <= MAX_LEN)
         return z3.And(ln, u8_dom(v)) if v.elem == U8 else ln
+    if ty == FILE:
+        return z3.And(v.buf.n >= 0, u8_dom(v.buf))
     if ty.owner is None and ty.name in _COLL:     # G6 A1: 0 <= n <= MAX_LEN (and the u8 domain of a String)
         ln = z3.And(v.n >= 0, v.n <= MAX_LEN)
         return z3.And(ln, u8_dom(v)) if ty.name == "string" else ln
@@ -872,6 +884,9 @@ class FnVerifier:
                 esort = z3.BoolSort() if elem == BOOL else z3.IntSort()
             return mk_arr(z3.Array(n, z3.IntSort(), esort), z3.Int(n + ".len"), base, elem)
         if ty.owner is None and ty.name in _COLL:   # G6 A1: Vec = [T] array, String = u8 array, HashMap = (d, a, n)
+            if ty.name == "file":
+                buf = mk_arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".size"), base, U8)
+                return File(z3.Bool(n + ".ok"), z3.Bool(n + ".readable"), z3.Bool(n + ".writable"), buf)
             if ty.name == "string":
                 return mk_arr(z3.Array(n, z3.IntSort(), z3.IntSort()), z3.Int(n + ".len"), base, U8)
             if ty.name == "vec":
@@ -894,7 +909,7 @@ class FnVerifier:
         condition of st, once per fact. Only for recursive-related types, or any non-generic nominal when forced
         (an explicit `size` call). A no-op for programs without recursive types."""
         m = s.model
-        if ty is None or isinstance(t, (Arr, Map)):
+        if ty is None or isinstance(t, (Arr, Map, File)):
             return
         if not (m.rel(ty) or (force and m.rel_nominal(ty))):
             return
@@ -1046,7 +1061,11 @@ class FnVerifier:
         s._cex_m = m
         for name, v in st.env.items():
             try:
-                if isinstance(v, Arr):
+                if isinstance(v, File):
+                    out[name] = {field: z3.is_true(m.eval(getattr(v, field), model_completion=True))
+                                 for field in ("ok", "readable", "writable")}
+                    out[name]["size"] = m.eval(v.buf.n, model_completion=True).as_long()
+                elif isinstance(v, Arr):
                     n = m.eval(v.n, model_completion=True).as_long()
                     if v.elem == BOOL:   # G2 A5: bool elements print as true/false
                         els = [z3.is_true(m.eval(z3.Select(v.a, i), model_completion=True))
@@ -1358,6 +1377,10 @@ class FnVerifier:
             return s.dom(e.arg, st, g, env, kind)
         if isinstance(e, Call):
             parts = [s.dom(a, st, g, env, kind) for a in e.args]
+            if wo and e.name == "file_byte":
+                f = s.ev(e.args[0], st, g, False, env)
+                i = s.ev(e.args[1], st, g, False, env)
+                parts.append(z3.And(i >= 0, i < f.buf.n))
             if wo and e.name in _TAG_FNS:
                 v = s.ev(e.args[0], st, g, False, env)
                 vty = s.model.type_of(v)       # G3: the Option/Result instance of the argument
@@ -1646,7 +1669,7 @@ class FnVerifier:
 
     def catalog_call(s, e, args, st, g, code):
         """G6 A1 (G6_SPEC 11.3): the standard catalog; every requires is a `call_requires` obligation
-        (only in code), then an exact term is the result (a fresh symbol only for new_* and string_push_str)."""
+        (only in code), then an exact term is the result. G10 fs calls return fresh values with catalog ensures."""
         n = e.name
         rty = s.T(e.ty)
 
@@ -1654,6 +1677,32 @@ class FnVerifier:
             if code:
                 s.prove(st, g, ob, e, "call_requires", "precondition of %s (catalog)" % n)
 
+        if n in FILE_OBSERVERS:
+            f = args[0]
+            if n == "file_size":
+                return f.buf.n
+            if n == "file_byte":
+                i = args[1]
+                need(z3.And(i >= 0, i < f.buf.n))
+                r = z3.Select(f.buf.a, i)
+                if code:
+                    s.assume(st, g, z3.And(r >= 0, r <= 255))
+                return r
+            return getattr(f, n[len("file_"):])
+        if n.startswith("file_"):
+            f = CATALOG[n]
+            # Keep the entry arguments, including a consumed handle, for file_close's ensures.
+            cenv = {p.name: a for p, a in zip(f.params, args)}
+            for req in f.requires:
+                need(s.ev(req, st, g, False, cenv))
+            res = s.fresh(n, rty)
+            w = s.wf(rty, res)
+            if w is not None:
+                s.assume(st, g, w)
+            cenv["result"] = res
+            for en in f.ensures:
+                s.assume(st, g, s.ev(en, st, g, False, cenv))
+            return res
         if n in ("vec_new", "string_new", "map_new"):
             r = s.fresh(n, rty)
             if n == "map_new":
@@ -1797,7 +1846,11 @@ class FnVerifier:
             if n not in h.env:
                 continue
             old = h.env[n]
-            if isinstance(old, Arr):
+            if isinstance(old, File):
+                nv = s.fresh(n, FILE)
+                h.pc.append(s.wf(FILE, nv))
+                h.env[n] = nv
+            elif isinstance(old, Arr):
                 # G6 A1: an element type without a legacy array type (a Vec<X>) is re-created as a Vec
                 legacy = old.elem in (I64, U8, BOOL) or old.elem.owner is not None
                 nv = s.fresh(n, arr_type(old.elem) if legacy else Type("vec", (old.elem,)))

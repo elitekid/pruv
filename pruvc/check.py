@@ -8,7 +8,8 @@ from typeinfo import (TypeTable, BUILTIN_TYPE_NAMES, type_name, is_user_type, is
                       program_uses_inout)  # G5 A0
 from refine import expand as refine_expand
 from refine import _kids as expr_kids
-from foreign import (CATALOG, CATALOG_NAMES, CATALOG_CONTRACT_ONLY, check_foreign_decl, check_ownership)  # G6 A0
+from foreign import (CATALOG, CATALOG_NAMES, CATALOG_CONTRACT_ONLY, FILE_OBSERVERS,
+                     check_foreign_decl, check_ownership)  # G6 A0 / G10 A0
 
 # name -> (argument kind, result: BOOL | I64 | "payload" = the Option/Result payload type)
 CONTRACT_ONLY = {"is_some": ("option", BOOL), "some_val": ("option", "payload"), "is_ok": ("result", BOOL),
@@ -208,14 +209,14 @@ class Checker:
 
     # ---- G6 A0: collection spellings ----
     def norm_type(s, ty):
-        """the parser yields nominal Vec/HashMap/String; map them to the catalog types unless a user type of
+        """the parser yields nominal Vec/HashMap/String/File; map them to the catalog types unless a user type of
         that name is declared (an existing user type keeps its meaning)"""
         if ty.owner is not None:
             return ty
         args = tuple(s.norm_type(a) for a in ty.args)
         name = ty.name
-        if name not in s.decls and name in ("Vec", "HashMap", "String"):
-            name = {"Vec": "vec", "HashMap": "hashmap", "String": "string"}[name]
+        if name not in s.decls and name in ("Vec", "HashMap", "String", "File"):
+            name = {"Vec": "vec", "HashMap": "hashmap", "String": "string", "File": "file"}[name]
         if name == ty.name and args == ty.args:
             return ty
         if name == "array" and len(args) == 1:
@@ -1406,7 +1407,7 @@ class Checker:
                 if not c:
                     terr(e, "foreign_contract", "%s is only allowed in contracts" % n,
                          "use map_get in code" if n == "map_lookup" else "state the update in ensures")
-            elif c:
+            elif c and n not in FILE_OBSERVERS:
                 terr(e, "foreign_contract", "%s cannot be called in a contract" % n,
                      "contracts observe collections with len(x), x[i], map_lookup and map_updated")
             f = CATALOG[n]
@@ -1435,6 +1436,7 @@ class Checker:
             for arg, p in zip(a, f.params):
                 s.expect(arg, substitute(p.type, m), scope, c)
         if catalog:
+            # Includes fs for G10 operations, through the same path as alloc.
             s.used_effects.update(f.effects)
             return substitute(f.ret, m)
         if c and f.effects:

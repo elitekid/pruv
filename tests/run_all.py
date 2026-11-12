@@ -1,6 +1,14 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof]
                         [--backend rust|llvm|both]
+
+group g10_frontend (G10 A0; backend null rows): tests/g10/frontend/*.pruv runs on both backends in
+default, no-verify, trust-callers and infer modes. File programs expect codegen/unsupported_type with the
+G10 staging message; fs_only.pruv must exit 0. No inventory is needed for these flat roots.
+
+group g10_proof (G10 A1; backend null rows): tests/g10/proof/*.pruv runs on both backends in
+default and infer modes, expecting the code-generation guard after a complete proof.
+The g10_v_* roots are ordinary must_reject rows in default mode.
 
 groups g5_frontend / g5_reject (G5 A0, inventory tests/g5/fixtures.json; rows have backend null): g5_frontend runs the roots of
 tests/g5/frontend (flat files and <name>/root.pruv projects, copied to a new directory first) in modes no-verify and default.
@@ -552,6 +560,46 @@ def g5_frontend_jobs(group="g5_frontend", modes=(("no-verify", ["--no-verify"]),
     return jobs
 
 
+
+def g10_frontend_jobs(group="g10_frontend", subdir="frontend", modes=None):
+    """G10: both backends; proof roots must reach the guard after verification."""
+    if modes is None:
+        modes = (("default", []), ("no-verify", ["--no-verify"]),
+                 ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"]))
+    jobs = []
+    message = "files (G10) are not implemented by the code generation layers yet"
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests", "g10", subdir, "*.pruv"))):
+        stem = os.path.splitext(os.path.basename(f))[0]
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, stem, mode)
+
+            def fn(f=f, stem=stem, mode=mode, flags=flags):
+                out = os.path.join(WORK, "%s_%s_%s" % (group, stem, mode))
+                for backend in ("rust", "llvm"):
+                    c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
+                         pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
+                    if stem == "fs_only":
+                        ok = c.returncode == 0
+                    else:
+                        diags = []
+                        for line in c.stdout.splitlines():
+                            try:
+                                d = json.loads(line)
+                            except ValueError:
+                                continue
+                            if isinstance(d, dict):
+                                diags.append(d)
+                        ok = c.returncode == 1 and any(
+                            d.get("stage") == "codegen" and d.get("code") == "unsupported_type"
+                            and d.get("message") == message for d in diags)
+                    if not ok:
+                        return False, "%s: exit %d %s" % (backend, c.returncode, (c.stdout + c.stderr)[-600:])
+                return True, ""
+            jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None,
+                                       "flags": list(flags), "mode": mode, "group": group}))
+    return jobs
+
+
 def g5_reject_jobs(group="g5_reject", modes=(("no-verify", ["--no-verify"]), ("trust-callers", ["--trust-callers"]))):
     """G5 A0: every G5 rejection root (tests/g5/fixtures.json) is static: it must be rejected with the recorded stage/code
     also with --no-verify and --trust-callers (the default-mode rows are the ordinary must_reject rows)."""
@@ -914,7 +962,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -1002,7 +1050,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -1033,6 +1081,10 @@ def main():
             jobs += g4_frontend_jobs()
         if only in (None, "g4_proof"):
             jobs += g4_proof_jobs()
+        if only in (None, "g10_frontend"):
+            jobs += g10_frontend_jobs()
+        if only in (None, "g10_proof"):
+            jobs += g10_frontend_jobs("g10_proof", "proof", (("default", []), ("infer", ["--infer"])))
         if only in (None, "g5_frontend"):
             jobs += g5_frontend_jobs()
         if only in (None, "g5_reject"):
@@ -1082,7 +1134,7 @@ def main():
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
-                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof")
+                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

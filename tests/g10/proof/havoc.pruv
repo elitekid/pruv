@@ -1,0 +1,18 @@
+pub fn reopen(path: str, count: i64) -> bool ! fs
+  requires 0 <= count && count <= 100
+{
+  let mut f: File = file_open_read(path);
+  let mut i: i64 = 0;
+  while i < count
+    invariant 0 <= i && i <= count
+    invariant file_size(f) == 0
+    invariant file_readable(f) == file_ok(f)
+    invariant !file_writable(f)
+    decreases count - i
+  {
+    let closed: bool = file_close(move f);
+    f = file_open_read(path);
+    i = i + 1;
+  }
+  return file_close(move f);
+}

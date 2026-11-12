@@ -6,15 +6,15 @@ from typing import Dict, List, Optional
 from vast import *
 
 BUILTIN_TYPE_NAMES = frozenset(["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str",
-                                "vec", "hashmap", "string"])
+                                "vec", "hashmap", "string", "file"])
 _BUILTIN_PRINT = {"i64": "i64", "bool": "bool", "unit": "()", "array": "[i64]", "option": "Option<i64>",
                   "result": "Result<i64>", "array_u8": "[u8]", "array_bool": "[bool]", "str": "str",
-                  "string": "String"}
+                  "string": "String", "file": "File"}
 
 # G6 A0: the fixed owned collection types (G6_SPEC 10.1): internal name -> number of type arguments / source spelling.
 # They are never G3 values or elements.
-COLLECTION_ARITY = {"vec": 1, "hashmap": 2, "string": 0}
-COLLECTION_SPELLING = {"vec": "Vec", "hashmap": "HashMap", "string": "String"}
+COLLECTION_ARITY = {"vec": 1, "hashmap": 2, "string": 0, "file": 0}
+COLLECTION_SPELLING = {"vec": "Vec", "hashmap": "HashMap", "string": "String", "file": "File"}
 
 
 def is_collection(ty: Type) -> bool:

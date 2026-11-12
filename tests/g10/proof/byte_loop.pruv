@@ -1,0 +1,15 @@
+fn inspect(f: File) -> i64
+  requires file_size(f) <= 1000000
+  ensures result == file_size(f)
+{
+  let mut i: i64 = 0;
+  while i < file_size(f)
+    invariant 0 <= i && i <= file_size(f)
+    decreases file_size(f) - i
+  {
+    let b: i64 = file_byte(f, i);
+    assert 0 <= b && b <= 255;
+    i = i + 1;
+  }
+  return i;
+}

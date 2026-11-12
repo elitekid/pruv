@@ -156,6 +156,7 @@ pub fn collection_arity(name: &str) -> Option<usize> {
         "vec" => Some(1),
         "hashmap" => Some(2),
         "string" => Some(0),
+        "file" => Some(0), // G10 A0
         _ => None,
     }
 }
@@ -166,6 +167,7 @@ pub fn collection_spelling(name: &str) -> Option<&'static str> {
         "vec" => Some("Vec"),
         "hashmap" => Some("HashMap"),
         "string" => Some("String"),
+        "file" => Some("File"), // G10 A0
         _ => None,
     }
 }
@@ -368,6 +370,7 @@ fn builtin_print(name: &str) -> &str {
         "array_bool" => "[bool]",
         "str" => "str",
         "string" => "String", // G6 A0
+        "file" => "File",     // G10 A0
         other => other,
     }
 }

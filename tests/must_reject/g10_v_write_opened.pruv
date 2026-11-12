@@ -1,0 +1,5 @@
+pub fn bad(path: str, text: str) -> bool ! fs {
+  let f: File = file_open_read(path);
+  let g: File = file_write_str(move f, text);
+  return file_close(move g);
+}

@@ -8,7 +8,8 @@
 use crate::ast::*;
 use crate::diagnostic::PruvError;
 use crate::foreign::{
-    catalog_fn, check_foreign_decl, check_ownership, is_catalog, is_catalog_contract_only, CatFn, Takes,
+    catalog_fn, check_foreign_decl, check_ownership, is_catalog, is_catalog_contract_only, is_file_observer, CatFn,
+    Takes,
 };
 use crate::gtype::{
     bind_args, check_arity, collection_arity, decl_owner, dependencies, fn_owner, format_type, is_element, is_value,
@@ -621,6 +622,7 @@ impl Checker {
                 "Vec" => "vec".to_string(),
                 "HashMap" => "hashmap".to_string(),
                 "String" => "string".to_string(),
+                "File" => "file".to_string(), // G10 A0
                 _ => name.clone(),
             };
         }
@@ -643,7 +645,7 @@ impl Checker {
 
     /// `norm_type` on an AST type key; a key without any of the three spellings is returned unchanged.
     fn norm_key(&self, key: &str) -> String {
-        if !(key.contains("Vec") || key.contains("HashMap") || key.contains("String")) {
+        if !(key.contains("Vec") || key.contains("HashMap") || key.contains("String") || key.contains("File")) {
             return key.to_string();
         }
         self.norm_type(&GType::from_key(key)).to_key()
@@ -3045,7 +3047,7 @@ impl Checker {
                         if n == "map_lookup" { "use map_get in code" } else { "state the update in ensures" },
                     ));
                 }
-            } else if c {
+            } else if c && !is_file_observer(&n) {
                 return Err(terr(
                     line,
                     col,

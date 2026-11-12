@@ -6,8 +6,9 @@ use crate::gtype::{dependencies, format_type, is_g3_key, GType};
 use std::collections::{HashMap, HashSet};
 
 /// G6 A0: also the internal names of the owned collection types (vec / hashmap / string).
-pub const BUILTIN_TYPE_NAMES: [&str; 12] =
-    ["i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str", "vec", "hashmap", "string"];
+pub const BUILTIN_TYPE_NAMES: [&str; 13] = [
+    "i64", "bool", "unit", "array", "option", "result", "array_u8", "array_bool", "str", "vec", "hashmap", "string", "file",
+];
 
 /// A name that is not built in is a user type (whether or not it is declared).
 pub fn is_user_type(ty: &str) -> bool {
@@ -52,6 +53,7 @@ pub fn type_name(ty: &str) -> String {
         "option" => "Option<i64>".to_string(),
         "result" => "Result<i64>".to_string(),
         "string" => "String".to_string(), // G6 A0
+        "file" => "File".to_string(),     // G10 A0
         other => other.to_string(),
     }
 }
@@ -929,7 +931,7 @@ mod tests {
         assert_eq!(type_name("array_bool"), "[bool]");
         assert!(!is_user_type("array_u8"));
         assert!(!is_user_type("array_bool"));
-        assert_eq!(BUILTIN_TYPE_NAMES.len(), 12);
+        assert_eq!(BUILTIN_TYPE_NAMES.len(), 13);
         assert_eq!(type_name("string"), "String");
     }
 }

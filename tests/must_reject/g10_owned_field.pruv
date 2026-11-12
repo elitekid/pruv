@@ -1,0 +1,2 @@
+struct Holder { f: File }
+fn f() -> i64 { return 0; }

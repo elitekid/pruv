@@ -1,0 +1,1 @@
+fn f(path: str) -> bool ! fs { let f: File = file_open_read(path); let ok: bool = file_close(move f); return file_close(move f); }

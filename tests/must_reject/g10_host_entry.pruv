@@ -1,0 +1,1 @@
+pub fn inspect(f: File) -> bool { return file_ok(f); }

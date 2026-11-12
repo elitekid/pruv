@@ -1,0 +1,7 @@
+fn first(f: File) -> i64
+  requires file_size(f) > 0
+  ensures result == file_byte(f, 0)
+  ensures 0 <= result && result <= 255
+{
+  return file_byte(f, 0);
+}

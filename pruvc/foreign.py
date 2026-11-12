@@ -33,6 +33,7 @@ def _map(k, v):
 
 
 STRING = Type("string")
+FILE = Type("file")
 CATALOG = {}
 
 
@@ -57,12 +58,69 @@ _add("string_new", [], lambda: ([], STRING), ["alloc"])
 _add("string_push_str", [], lambda: ([_p("s", STRING, True), _p("text", STR)], STRING), ["alloc"])
 _add("string_byte", [], lambda: ([_p("s", STRING), _p("i", I64)], I64))
 _add("string_to_str", [], lambda: ([_p("s", STRING)], STR), ["alloc"])
+# G10: signatures/effects; section 2.3 contracts are installed below.
+_add("file_open_read", [], lambda: ([_p("path", STR)], FILE), ["fs"])
+_add("file_create", [], lambda: ([_p("path", STR)], FILE), ["fs"])
+_add("file_read_all", [], lambda: ([_p("f", FILE, True)], FILE), ["fs", "alloc"])
+_add("file_write_str", [], lambda: ([_p("f", FILE, True), _p("text", STR)], FILE), ["fs"])
+_add("file_write_bytes", [], lambda: ([_p("f", FILE, True), _p("data", ARRAY_U8)], FILE), ["fs"])
+_add("file_close", [], lambda: ([_p("f", FILE, True)], BOOL), ["fs"])
+_add("file_ok", [], lambda: ([_p("f", FILE)], BOOL))
+_add("file_readable", [], lambda: ([_p("f", FILE)], BOOL))
+_add("file_writable", [], lambda: ([_p("f", FILE)], BOOL))
+_add("file_size", [], lambda: ([_p("f", FILE)], I64))
+_add("file_byte", [], lambda: ([_p("f", FILE), _p("i", I64)], I64))
 # contract-only observers
 _add("map_lookup", _KV, lambda K, V: ([_p("m", _map(K, V)), _p("k", K)], mk_option(V)))
 _add("map_updated", _KV, lambda K, V: ([_p("after", _map(K, V)), _p("before", _map(K, V)), _p("k", K), _p("v", V)],
                                        BOOL))
 CATALOG_NAMES = tuple(CATALOG)
 CATALOG_CONTRACT_ONLY = ("map_lookup", "map_updated")
+FILE_OBSERVERS = ("file_ok", "file_readable", "file_writable", "file_size", "file_byte")
+
+
+# G10 A1: typed contract ASTs, evaluated by the catalog-call verifier.
+def _file_contracts():
+    def var(name, ty=FILE):
+        return Var(0, 0, name, ty)
+
+    def obs(name, value):
+        return Call(0, 0, "file_" + name, [value], I64 if name == "size" else BOOL)
+
+    def binary(op, a, b):
+        return Binary(0, 0, op, a, b, BOOL)
+
+    def neg(a):
+        return Unary(0, 0, "!", a, BOOL)
+
+    zero = IntLit(0, 0, 0, I64)
+    result, f = var("result"), var("f")
+    ok = obs("ok", result)
+    size = obs("size", result)
+    read = [binary("==", obs("readable", result), ok), neg(obs("writable", result)),
+            binary("==", size, zero)]
+    write = [binary("==", obs("writable", result), ok), neg(obs("readable", result)),
+             binary("==", size, zero)]
+    CATALOG["file_open_read"].ensures = read
+    CATALOG["file_create"].ensures = write
+    CATALOG["file_read_all"].requires = [obs("readable", f)]
+    CATALOG["file_read_all"].ensures = [
+        neg(obs("writable", result)), binary("==", obs("readable", result), ok),
+        binary("==>", ok, binary(">=", size, zero)),
+        binary("==>", neg(ok), binary("==", size, zero))]
+    for name in ("file_write_str", "file_write_bytes"):
+        CATALOG[name].requires = [obs("writable", f)]
+        CATALOG[name].ensures = [neg(obs("readable", result)), write[0], write[2]]
+    CATALOG["file_close"].ensures = [binary("==>", var("result", BOOL), obs("ok", f))]
+    r, i = var("result", I64), var("i", I64)
+    CATALOG["file_size"].ensures = [binary(">=", r, zero)]
+    CATALOG["file_byte"].requires = [
+        binary("&&", binary("<=", zero, i), binary("<", i, obs("size", f)))]
+    CATALOG["file_byte"].ensures = [
+        binary("&&", binary("<=", zero, r), binary("<=", r, IntLit(0, 0, 255, I64)))]
+
+
+_file_contracts()
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +298,8 @@ class _Ownership:
             _err(e, "foreign_move", "move only where ownership is consumed",
                  "use move for a take argument, a let initializer, an assignment or return")
         if n in s.bor:
-            _err(e, "foreign_move", "moving a borrowed parameter",
+            # G10 specifies foreign_borrow; preserve the established G6 diagnostic for other types.
+            _err(e, "foreign_borrow" if e.ty == FILE else "foreign_move", "moving a borrowed parameter",
                  "%s is a read parameter; declare it `take %s: ...` to consume it" % (n, n))
         st[n] = "dead"
         if track is not None:
@@ -371,3 +430,24 @@ def g6_unimplemented_error(prog, stage="codegen"):
     return PruvError(stage, line, col, "unsupported_type",
                      "G6 foreign calls and collections are not implemented by the llvm codegen layer yet",
                      "avoid trusted rust fn, Vec, HashMap, String, take and move for now")
+
+
+def g10_unimplemented_error(prog):
+    """G10 A1 guard, after verification (or its bypass) in every mode."""
+    def uses_file(node):
+        if isinstance(node, (list, tuple)):
+            return any(uses_file(x) for x in node)
+        if isinstance(node, Type):
+            return node == FILE or any(uses_file(a) for a in node.args)
+        if isinstance(node, Call) and node.name in CATALOG and node.name.startswith("file_"):
+            return True
+        if not hasattr(node, "__dataclass_fields__"):
+            return False
+        return any(uses_file(getattr(node, name)) for name in node.__dataclass_fields__)
+
+    for f in prog.functions:
+        if uses_file(f):
+            return PruvError("codegen", f.line, f.col, "unsupported_type",
+                             "files (G10) are not implemented by the code generation layers yet",
+                             "avoid File and file_* operations for now", file=getattr(f, "file", None))
+    return None

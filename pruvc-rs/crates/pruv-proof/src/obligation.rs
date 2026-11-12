@@ -447,6 +447,12 @@ impl<'a> FnVerifier<'a> {
 
     fn cex_one(&self, m: &ZModel, v: &Val) -> Option<Json> {
         match v {
+            Val::File(f) => Some(Json::Obj(vec![
+                ("ok".into(), Json::Bool(m.eval(&f.ok)?.is_true())),
+                ("readable".into(), Json::Bool(m.eval(&f.readable)?.is_true())),
+                ("writable".into(), Json::Bool(m.eval(&f.writable)?.is_true())),
+                ("size".into(), Json::Num(m.eval(&f.buf.n)?.numeral_string()?)),
+            ])),
             Val::Arr(a) => {
                 let n = m.eval(&a.n)?.numeral_string()?;
                 let cnt = clamp8(&n);

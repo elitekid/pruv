@@ -1,0 +1,7 @@
+pub fn bad(path: str) -> bool ! fs {
+  let f: File = file_open_read(path);
+  let g: File = file_open_read(path);
+  let closed: bool = file_close(move f);
+  assert closed ==> file_ok(g);
+  return file_close(move g);
+}

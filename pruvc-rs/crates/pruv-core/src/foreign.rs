@@ -31,6 +31,8 @@ pub struct CatParam {
 /// A catalog function: generic (explicit type arguments are required), effects as declared.
 #[derive(Debug, Clone)]
 pub struct CatFn {
+    pub requires: Vec<Expr>,
+    pub ensures: Vec<Expr>,
     pub params: Vec<CatParam>,
     pub ret: GType,
     pub effects: Vec<String>,
@@ -38,7 +40,7 @@ pub struct CatFn {
 }
 
 /// CATALOG_NAMES of foreign.py (insertion order).
-pub const CATALOG_NAMES: [&str; 12] = [
+pub const CATALOG_NAMES: [&str; 23] = [
     "vec_new",
     "vec_push",
     "vec_get",
@@ -49,12 +51,30 @@ pub const CATALOG_NAMES: [&str; 12] = [
     "string_push_str",
     "string_byte",
     "string_to_str",
+    "file_open_read",
+    "file_create",
+    "file_read_all",
+    "file_write_str",
+    "file_write_bytes",
+    "file_close",
+    "file_ok",
+    "file_readable",
+    "file_writable",
+    "file_size",
+    "file_byte",
     "map_lookup",
     "map_updated",
 ];
 
 /// CATALOG_CONTRACT_ONLY of foreign.py.
 pub const CATALOG_CONTRACT_ONLY: [&str; 2] = ["map_lookup", "map_updated"];
+
+/// FILE_OBSERVERS of foreign.py (G10 A0): catalog reads that are also allowed in contracts.
+pub const FILE_OBSERVERS: [&str; 5] = ["file_ok", "file_readable", "file_writable", "file_size", "file_byte"];
+
+pub fn is_file_observer(name: &str) -> bool {
+    FILE_OBSERVERS.contains(&name)
+}
 
 pub fn is_catalog(name: &str) -> bool {
     CATALOG_NAMES.contains(&name)
@@ -80,6 +100,10 @@ fn string_t() -> GType {
     GType::new("string", Vec::new())
 }
 
+fn file_t() -> GType {
+    GType::new("file", Vec::new())
+}
+
 fn tp(name: &str, bound: Option<&str>) -> TParam {
     TParam { line: 0, col: 0, name: name.to_string(), bound: bound.map(|b| b.to_string()) }
 }
@@ -92,62 +116,99 @@ pub fn catalog_fn(name: &str) -> Option<CatFn> {
     let k = || mk_param(&owner, 0, "K");
     let v = || mk_param(&owner, 1, "V");
     let alloc = || vec!["alloc".to_string()];
+    let fs = || vec!["fs".to_string()];
     let tp_t = || vec![tp("T", None)];
     let tp_kv = || vec![tp("K", Some("Element")), tp("V", None)];
-    let f = match name {
-        "vec_new" => CatFn { params: vec![], ret: vec_of(t()), effects: alloc(), tparams: tp_t() },
-        "vec_push" => CatFn {
+    let mut f = match name {
+        "vec_new" => CatFn { requires: vec![], ensures: vec![], params: vec![], ret: vec_of(t()), effects: alloc(), tparams: tp_t() },
+        "vec_push" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("v", vec_of(t()), true), p("x", t(), false)],
             ret: vec_of(t()),
             effects: alloc(),
             tparams: tp_t(),
         },
-        "vec_get" => CatFn {
+        "vec_get" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("v", vec_of(t()), false), p("i", GType::i64(), false)],
             ret: t(),
             effects: vec![],
             tparams: tp_t(),
         },
-        "map_new" => CatFn { params: vec![], ret: map_of(k(), v()), effects: alloc(), tparams: tp_kv() },
-        "map_get" => CatFn {
+        "map_new" => CatFn { requires: vec![], ensures: vec![], params: vec![], ret: map_of(k(), v()), effects: alloc(), tparams: tp_kv() },
+        "map_get" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("m", map_of(k(), v()), false), p("k", k(), false)],
             ret: mk_option(v()),
             effects: vec![],
             tparams: tp_kv(),
         },
-        "map_insert" => CatFn {
+        "map_insert" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("m", map_of(k(), v()), true), p("k", k(), false), p("v", v(), false)],
             ret: map_of(k(), v()),
             effects: alloc(),
             tparams: tp_kv(),
         },
-        "string_new" => CatFn { params: vec![], ret: string_t(), effects: alloc(), tparams: vec![] },
-        "string_push_str" => CatFn {
+        "string_new" => CatFn { requires: vec![], ensures: vec![], params: vec![], ret: string_t(), effects: alloc(), tparams: vec![] },
+        "string_push_str" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("s", string_t(), true), p("text", GType::str(), false)],
             ret: string_t(),
             effects: alloc(),
             tparams: vec![],
         },
-        "string_byte" => CatFn {
+        "string_byte" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("s", string_t(), false), p("i", GType::i64(), false)],
             ret: GType::i64(),
             effects: vec![],
             tparams: vec![],
         },
-        "string_to_str" => CatFn {
+        "string_to_str" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("s", string_t(), false)],
             ret: GType::str(),
             effects: alloc(),
             tparams: vec![],
         },
+        // G10 A0: signatures/effects; typed A1 contracts are defined below.
+        "file_open_read" | "file_create" => CatFn { requires: vec![], ensures: vec![],
+            params: vec![p("path", GType::str(), false)],
+            ret: file_t(),
+            effects: fs(),
+            tparams: vec![],
+        },
+        "file_read_all" => CatFn { requires: vec![], ensures: vec![],
+            params: vec![p("f", file_t(), true)],
+            ret: file_t(),
+            effects: vec!["fs".to_string(), "alloc".to_string()],
+            tparams: vec![],
+        },
+        "file_write_str" => CatFn { requires: vec![], ensures: vec![],
+            params: vec![p("f", file_t(), true), p("text", GType::str(), false)],
+            ret: file_t(),
+            effects: fs(),
+            tparams: vec![],
+        },
+        "file_write_bytes" => CatFn { requires: vec![], ensures: vec![],
+            params: vec![p("f", file_t(), true), p("data", GType::array_u8(), false)],
+            ret: file_t(),
+            effects: fs(),
+            tparams: vec![],
+        },
+        "file_close" => CatFn { requires: vec![], ensures: vec![], params: vec![p("f", file_t(), true)], ret: GType::bool(), effects: fs(), tparams: vec![] },
+        "file_ok" | "file_readable" | "file_writable" => {
+            CatFn { requires: vec![], ensures: vec![], params: vec![p("f", file_t(), false)], ret: GType::bool(), effects: vec![], tparams: vec![] }
+        }
+        "file_size" => CatFn { requires: vec![], ensures: vec![], params: vec![p("f", file_t(), false)], ret: GType::i64(), effects: vec![], tparams: vec![] },
+        "file_byte" => CatFn { requires: vec![], ensures: vec![],
+            params: vec![p("f", file_t(), false), p("i", GType::i64(), false)],
+            ret: GType::i64(),
+            effects: vec![],
+            tparams: vec![],
+        },
         // contract-only observers
-        "map_lookup" => CatFn {
+        "map_lookup" => CatFn { requires: vec![], ensures: vec![],
             params: vec![p("m", map_of(k(), v()), false), p("k", k(), false)],
             ret: mk_option(v()),
             effects: vec![],
             tparams: tp_kv(),
         },
-        "map_updated" => CatFn {
+        "map_updated" => CatFn { requires: vec![], ensures: vec![],
             params: vec![
                 p("after", map_of(k(), v()), false),
                 p("before", map_of(k(), v()), false),
@@ -160,7 +221,38 @@ pub fn catalog_fn(name: &str) -> Option<CatFn> {
         },
         _ => return None,
     };
+    (f.requires, f.ensures) = file_contracts(name);
     Some(f)
+}
+
+/// G10 A1: Python _file_contracts, preserving typed AST shapes, positions and order.
+fn file_contracts(name: &str) -> (Vec<Expr>, Vec<Expr>) {
+    fn var(n: &str, t: &str) -> Expr { Expr::Var(Var { line: 0, col: 0, name: n.into(), ty: Some(t.into()) }) }
+    fn obs(n: &str, v: Expr) -> Expr {
+        Expr::Call(Call { line: 0, col: 0, name: format!("file_{}", n), args: vec![v],
+            ty: Some(if n == "size" { "i64" } else { "bool" }.into()), targs: None, inst: None, old: None })
+    }
+    fn bin(op: &str, a: Expr, b: Expr) -> Expr {
+        Expr::Binary(Binary { line: 0, col: 0, op: op.into(), left: Box::new(a), right: Box::new(b), ty: Some("bool".into()) })
+    }
+    fn neg(a: Expr) -> Expr { Expr::Unary(Unary { line: 0, col: 0, op: "!".into(), operand: Box::new(a), ty: Some("bool".into()) }) }
+    fn int(n: &str) -> Expr { Expr::IntLit(IntLit { line: 0, col: 0, value: n.into(), ty: Some("i64".into()) }) }
+    let result = var("result", "file");
+    let f = var("f", "file");
+    let ok = obs("ok", result.clone());
+    let size = obs("size", result.clone());
+    let read = vec![bin("==", obs("readable", result.clone()), ok.clone()), neg(obs("writable", result.clone())), bin("==", size.clone(), int("0"))];
+    let write = vec![bin("==", obs("writable", result.clone()), ok.clone()), neg(obs("readable", result.clone())), bin("==", size.clone(), int("0"))];
+    match name {
+        "file_open_read" => (vec![], read),
+        "file_create" => (vec![], write),
+        "file_read_all" => (vec![obs("readable", f)], vec![neg(obs("writable", result)), read[0].clone(), bin("==>", ok.clone(), bin(">=", size.clone(), int("0"))), bin("==>", neg(ok), bin("==", size, int("0")))]),
+        "file_write_str" | "file_write_bytes" => (vec![obs("writable", f)], vec![neg(obs("readable", result)), write[0].clone(), write[2].clone()]),
+        "file_close" => (vec![], vec![bin("==>", var("result", "bool"), obs("ok", f))]),
+        "file_size" => (vec![], vec![bin(">=", var("result", "i64"), int("0"))]),
+        "file_byte" => (vec![bin("&&", bin("<=", int("0"), var("i", "i64")), bin("<", var("i", "i64"), obs("size", f)))], vec![bin("&&", bin("<=", int("0"), var("result", "i64")), bin("<=", var("result", "i64"), int("255")))]),
+        _ => (vec![], vec![]),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -574,10 +666,12 @@ impl<'a> Ownership<'a> {
             ));
         }
         if self.bor.contains(n) {
+            // G10 specifies foreign_borrow; the established G6 diagnostic stays for the other types.
+            let code = if e.ty.as_deref() == Some("file") { "foreign_borrow" } else { "foreign_move" };
             return Err(err(
                 line,
                 col,
-                "foreign_move",
+                code,
                 "moving a borrowed parameter",
                 format!("{} is a read parameter; declare it `take {}: ...` to consume it", n, n),
             ));
@@ -893,6 +987,75 @@ pub fn g6_unimplemented_error(prog: &Program, stage: &str) -> Option<PruvError> 
     ))
 }
 
+// ---------------------------------------------------------------------------
+// G10 A0 guard (counterpart of foreign.py g10_unimplemented_error)
+// ---------------------------------------------------------------------------
+
+fn key_has_file(key: &str) -> bool {
+    fn has(t: &GType) -> bool {
+        (t.owner.is_none() && t.name == "file") || t.args.iter().any(has)
+    }
+    match GType::try_from_key(key) {
+        Ok(t) => has(&t),
+        Err(_) => false,
+    }
+}
+
+fn ty_has_file(t: &Option<String>) -> bool {
+    t.as_deref().map_or(false, key_has_file)
+}
+
+fn g10_expr(e: &Expr) -> bool {
+    let own = match e {
+        Expr::Call(c) => (is_catalog(&c.name) && c.name.starts_with("file_")) || ty_has_file(&c.ty),
+        Expr::Var(v) => ty_has_file(&v.ty),
+        Expr::Move(m) => ty_has_file(&m.ty),
+        _ => false,
+    };
+    own || expr_kids(e).into_iter().any(g10_expr)
+}
+
+fn g10_stmts(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|s| match s {
+        Stmt::Let(l) => key_has_file(&l.ty) || g10_expr(&l.value),
+        Stmt::Assign(a) => g10_expr(&a.value),
+        Stmt::IndexAssign(a) => g10_expr(&a.index) || g10_expr(&a.value),
+        Stmt::If(i) => g10_expr(&i.cond) || g10_stmts(&i.then) || g10_stmts(&i.els),
+        Stmt::While(w) => {
+            g10_expr(&w.cond) || w.invariants.iter().any(g10_expr) || g10_expr(&w.decreases) || g10_stmts(&w.body)
+        }
+        Stmt::Return(r) => r.value.as_ref().map_or(false, g10_expr),
+        Stmt::Assert(a) => g10_expr(&a.cond),
+        Stmt::ExprStmt(e) => g10_expr(&e.expr),
+        Stmt::FieldAssign(f) => g10_expr(&f.value),
+        Stmt::Match(m) => g10_expr(&m.scrutinee) || m.arms.iter().any(|a| g10_stmts(&a.body)),
+    })
+}
+
+/// G10 A0 guard: the first function that uses `File` or a `file_*` operation -> codegen/unsupported_type.
+/// Runs after type and ownership checking and before verification, in every mode.
+pub fn g10_unimplemented_error(prog: &Program) -> Option<PruvError> {
+    for f in &prog.functions {
+        let uses = f.params.iter().any(|p| key_has_file(&p.ty))
+            || key_has_file(&f.ret)
+            || f.requires.iter().any(g10_expr)
+            || f.ensures.iter().any(g10_expr)
+            || f.decreases.as_ref().map_or(false, g10_expr)
+            || g10_stmts(&f.body);
+        if uses {
+            return Some(PruvError::new(
+                "codegen",
+                f.line,
+                f.col,
+                "unsupported_type",
+                "files (G10) are not implemented by the code generation layers yet",
+                "avoid File and file_* operations for now",
+            ));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -911,7 +1074,7 @@ mod tests {
 
     #[test]
     fn catalog_shapes() {
-        assert_eq!(CATALOG_NAMES.len(), 12);
+        assert_eq!(CATALOG_NAMES.len(), 23);
         for n in CATALOG_NAMES.iter() {
             assert!(catalog_fn(n).is_some());
         }

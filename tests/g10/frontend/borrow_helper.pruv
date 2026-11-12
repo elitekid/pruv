@@ -1,0 +1,7 @@
+fn inspect(f: File) -> bool { return file_ok(f); }
+pub fn check(path: str) -> bool ! fs {
+  let f: File = file_open_read(path);
+  let ok: bool = inspect(f);
+  let closed: bool = file_close(move f);
+  return ok && closed;
+}

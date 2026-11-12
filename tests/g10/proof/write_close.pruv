@@ -1,0 +1,11 @@
+pub fn write(path: str, text: str) -> bool ! fs {
+  let f: File = file_create(path);
+  assert file_size(f) == 0 && !file_readable(f);
+  if !file_ok(f) { return false; }
+  let g: File = file_write_str(move f, text);
+  assert file_size(g) == 0 && !file_readable(g);
+  let before: bool = file_ok(g);
+  let closed: bool = file_close(move g);
+  assert closed ==> before;
+  return closed;
+}

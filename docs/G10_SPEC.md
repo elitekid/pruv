@@ -51,8 +51,10 @@ Read on 2026-11-12 in the working tree at commit `cbe33cc`:
 - Run-time checking of catalog `requires` already exists (`--foreign-checks requires|all|off`, SPEC.md 6d) with
   exit code 101 and the message prefix `pruv: foreign requires violated:`.
 
-To confirm in A0 (not read yet, do not assume): how `verify.py` encodes `String` (length plus byte map) and whether
-that encoding can be reused for the `File` buffer unchanged.
+Confirmed in A0: `verify.py` `FnVerifier.fresh` represents `String` with `mk_arr`: an Int length and an
+Int -> Int byte map; `_wf_of` / `u8_dom` constrain length and bytes, and `FnVerifier.catalog_call` reads bytes.
+The File buffer can reuse this encoding unchanged, but the whole File cannot: its `ok`, `readable` and `writable`
+Bool fields need a new record/datatype alongside the size and byte map (section 4).
 
 ### 1.2 Non-goals of this slice
 
@@ -113,6 +115,7 @@ Example (the only way to write it):
 ```
 fn sum_bytes(f: File) -> i64
   requires file_size(f) <= 1000000
+  ensures result >= 0
 {
   let mut s: i64 = 0;
   let mut i: i64 = 0;
@@ -224,7 +227,8 @@ rows; `cargo test` for `pruvc-rs` passes; CI is green after the push.
   each item in section 3.2 and for a missing `fs` (at least 8 roots, each with a json naming the expected code).
   A checked program that uses `File` or a `file_*` operation stops with a staging guard
   (`codegen/unsupported_type`, "files (G10) are not implemented by the verifier yet") in every mode until A1 moves
-  the guard after verification and A2/A3 remove it per backend, like the G5 guard. Programs that only declare `! fs`
+  the guard after verification (message "files (G10) are not implemented by the code generation layers yet") and
+  A2/A3 remove it per backend, like the G5 guard. Programs that only declare `! fs`
   are not guarded. Confirm the section 1.1 open question in a short note in this document.
 - **A1 verification.** Section 4. Proof rows: the example of section 2.3 verifies; a read of a handle from
   `file_create`, a write to a handle from `file_open_read`, `file_byte` past `file_size`, and a missing

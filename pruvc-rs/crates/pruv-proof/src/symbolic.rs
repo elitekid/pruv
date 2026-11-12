@@ -217,7 +217,7 @@ fn partial_here(e: &Expr, kind: PKind) -> bool {
         _ if kind == PKind::Variant => false,
         Expr::Index(_) => true,
         Expr::Binary(b) => b.op == "/" || b.op == "%",
-        Expr::Call(c) => is_tag_fn(&c.name),
+        Expr::Call(c) => is_tag_fn(&c.name) || c.name == "file_byte",
         Expr::Quant(q) => q.kind == "max" || q.kind == "min",
         _ => false,
     }
@@ -455,9 +455,19 @@ fn coll_arr(a: Ast, n: Ast, base: &str, e: &GType) -> Arr {
     }
 }
 
+/// G10: independent status fields and a String-shaped byte buffer.
+#[derive(Clone)]
+pub struct FileV {
+    pub ok: Ast,
+    pub readable: Ast,
+    pub writable: Ast,
+    pub buf: Arr,
+}
+
 /// Environment value. verify.py distinguishes Int/Bool/Datatype by the z3 expression's sort, but here they are carried as tags.
 #[derive(Clone)]
 pub enum Val {
+    File(FileV),
     Int(Ast),
     Bool(Ast),
     /// An Opt/Res/user struct/enum value and its Pruv type (= `Model.type_of`).
@@ -473,7 +483,7 @@ impl Val {
     pub fn ast(&self) -> &Ast {
         match self {
             Val::Int(a) | Val::Bool(a) | Val::Dt(a, _) => a,
-            Val::Arr(_) | Val::Map(_) | Val::Unit => panic!("value has no single ast"),
+            Val::Arr(_) | Val::Map(_) | Val::File(_) | Val::Unit => panic!("value has no single ast"),
         }
     }
     pub fn arr(&self) -> &Arr {
@@ -486,9 +496,13 @@ impl Val {
         match self {
             Val::Int(a) | Val::Bool(a) | Val::Dt(a, _) => Ok(a),
             Val::Arr(_) => Err("expected a z3 value, got an array".to_string()),
+            Val::File(_) => Err("expected a z3 value, got a file".to_string()),
             Val::Map(_) => Err("expected a z3 value, got a map".to_string()),
             Val::Unit => Err("expected a z3 value, got None".to_string()),
         }
+    }
+    pub fn try_file(&self) -> R<&FileV> {
+        match self { Val::File(f) => Ok(f), _ => Err("expected a file".into()) }
     }
     pub fn try_map(&self) -> R<&MapV> {
         match self {
@@ -787,6 +801,13 @@ impl<'a> FnVerifier<'a> {
         self.k += 1;
         let n = format!("{}!{}", base, self.k);
         let z = &self.z;
+        if *ty == Ty::User("file".into()) {
+            let buf = Arr::new(z.constant(&n, &z.array_sort(&z.int_sort(), &z.int_sort())),
+                z.int_const(&format!("{}.size", n)), base.into(), Elem::U8);
+            return Ok(Val::File(FileV { ok: z.bool_const(&format!("{}.ok", n)),
+                readable: z.bool_const(&format!("{}.readable", n)),
+                writable: z.bool_const(&format!("{}.writable", n)), buf }));
+        }
         // G6 A1: Vec = [T] array, String = u8 array, HashMap = (d, a, n). Python checks this after the legacy array
         // cases, but a collection type is never one of them, so the order is not observable.
         if let Some(c) = ty.coll() {
@@ -893,6 +914,8 @@ impl<'a> FnVerifier<'a> {
     }
 
     // ---------- value domain (line 219) ----------
+    fn wf_file(&self, f: &FileV) -> Ast { self.z.and(&[f.buf.n.ge_i(0), self.u8_dom(&f.buf)]) }
+
     /// `wf(ty, v)`: all active leaves are i64. None if trivial.
     pub fn wf(&self, ty: &Ty, v: &Ast) -> Option<Ast> {
         self.try_wf(ty, v).ok().flatten()
@@ -1010,6 +1033,7 @@ impl<'a> FnVerifier<'a> {
 
     /// `wf(ty, v)` of an environment value: an Arr view of a buffer field (G9) uses the buffer branch, anything else `try_wf`.
     fn wf_of_val(&self, ty: &Ty, v: &Val) -> R<Option<Ast>> {
+        if let Val::File(f) = v { return Ok(Some(self.wf_file(f))); }
         if let Val::Arr(a) = v {
             if Model::is_buf(ty) {
                 return Ok(Some(self.wf_buf(ty, &a.n, &a.a)));
@@ -1146,6 +1170,7 @@ impl<'a> FnVerifier<'a> {
             let v = self.fresh(name, ty);
             match &v {
                 Val::Arr(a) => pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)])),
+                Val::File(f) => pc.push(self.wf_file(f)),
                 Val::Map(m) => pc.push(self.z.and(&[m.n.ge_i(0), m.n.le_i(MAX_LEN)])),
                 Val::Unit => {}
                 other => {
@@ -1266,6 +1291,11 @@ impl<'a> FnVerifier<'a> {
         for n in names {
             let Some(old) = h.env.try_get(n).cloned() else { continue };
             match old {
+                Val::File(_) => {
+                    let nv = self.try_fresh(n, &Ty::User("file".into()))?;
+                    h.pc.push(self.wf_file(nv.try_file()?));
+                    h.env.set(n, nv);
+                }
                 Val::Arr(old_arr) => {
                     // G6 A1: an element type without a legacy array type (a Vec<X>, X not a parameter) is re-created as a Vec
                     let fty = match (&old_arr.elem, &old_arr.ety) {
@@ -1996,6 +2026,8 @@ impl<'a> FnVerifier<'a> {
                 let d = self.u8_dom(ra);
                 self.assume(st, g, d);
             }
+        } else if let Val::File(f) = &res {
+            self.assume(st, g, self.wf_file(f));
         } else if let Val::Map(rm) = &res {
             // G6 A1
             let w = self.z.and(&[rm.n.ge_i(0), rm.n.le_i(MAX_LEN)]);
@@ -2160,6 +2192,41 @@ impl<'a> FnVerifier<'a> {
         let argv = move |i: usize| av(args, i);
         // need(ob): `precondition of NAME (catalog)`, in code only
         let what = format!("precondition of {} (catalog)", n);
+        if pruv_core::foreign::is_file_observer(n) {
+            let f = argv(0)?.try_file()?;
+            return Ok(match n {
+                "file_size" => Val::Int(f.buf.n.clone()),
+                "file_byte" => {
+                    let i = argv(1)?.try_ast()?;
+                    if code { self.prove_core(&st.env, &st.pc, g, &z.and(&[i.ge_i(0), i.lt(&f.buf.n)]), pos(e), "call_requires", &what, None); }
+                    let r = f.buf.a.select(i);
+                    if code { self.assume(st, g, z.and(&[r.ge_i(0), r.le_i(255)])); }
+                    Val::Int(r)
+                }
+                "file_ok" => Val::Bool(f.ok.clone()),
+                "file_readable" => Val::Bool(f.readable.clone()),
+                _ => Val::Bool(f.writable.clone()),
+            });
+        }
+        if n.starts_with("file_") {
+            let f = pruv_core::foreign::catalog_fn(n).ok_or_else(|| "unknown file operation".to_string())?;
+
+            let mut cenv = Env::default();
+            for (p, a) in f.params.iter().zip(args) { cenv.set(p.name, a.clone()); }
+            for req in &f.requires {
+                let ob = self.ev_ast(req, st, g, false, &cenv)?;
+                if code { self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "call_requires", &what, None); }
+            }
+            let rt = rty.ok_or_else(|| "fresh: None".to_string())?;
+            let res = self.try_fresh(n, &rt)?;
+            if let Some(w) = self.wf_of_val(&rt, &res)? { self.assume(st, g, w); }
+            cenv.set("result", res.clone());
+            for en in &f.ensures {
+                let v = self.ev_ast(en, st, g, false, &cenv)?;
+                self.assume(st, g, v);
+            }
+            return Ok(res);
+        }
         match n {
             "vec_new" | "string_new" | "map_new" => {
                 let rt = rty.clone().ok_or_else(|| "fresh: None".to_string())?;
@@ -2327,6 +2394,11 @@ impl<'a> FnVerifier<'a> {
                 let mut parts: Vec<Option<Ast>> = Vec::new();
                 for a in &x.args {
                     parts.push(self.dom(a, st, g, env, kind)?);
+                }
+                if wo && x.name == "file_byte" {
+                    let f = self.ev(&x.args[0], st, g, false, env)?;
+                    let i = self.ev_ast(&x.args[1], st, g, false, env)?;
+                    parts.push(Some(self.z.and(&[i.ge_i(0), i.lt(&f.try_file()?.buf.n)])));
                 }
                 if wo && is_tag_fn(&x.name) {
                     let a0 = x.args.first().ok_or_else(|| "tuple index out of range".to_string())?;
@@ -2850,6 +2922,7 @@ impl<'a> FnVerifier<'a> {
                         st.pc.push(d);
                     }
                 }
+                Val::File(f) => st.pc.push(self.wf_file(f)),
                 Val::Map(m) => st.pc.push(self.z.and(&[m.n.ge_i(0), m.n.le_i(MAX_LEN)])),
                 other => {
                     if let Some(w) = self.try_wf(&rty, other.try_ast()?)? {
@@ -2888,6 +2961,7 @@ impl<'a> FnVerifier<'a> {
                         pc.push(self.u8_dom(a));
                     }
                 }
+                Val::File(f) => pc.push(self.wf_file(f)),
                 Val::Map(m) => pc.push(self.z.and(&[m.n.ge_i(0), m.n.le_i(MAX_LEN)])), // G6 A1
                 other => {
                     if let Some(w) = self.try_wf(&pty, other.try_ast()?)? {

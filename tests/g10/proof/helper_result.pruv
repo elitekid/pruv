@@ -1,0 +1,13 @@
+fn open(path: str) -> File ! fs
+  ensures file_size(result) == 0
+  ensures file_readable(result) == file_ok(result)
+  ensures !file_writable(result)
+{
+  return file_open_read(path);
+}
+pub fn check(path: str) -> i64 ! fs {
+  let f: File = open(path);
+  assert file_size(f) == 0;
+  assert file_readable(f) == file_ok(f);
+  return file_size(f);
+}

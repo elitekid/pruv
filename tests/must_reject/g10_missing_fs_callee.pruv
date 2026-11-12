@@ -1,0 +1,2 @@
+fn open(path: str) -> bool ! fs { let f: File = file_open_read(path); return file_ok(f); }
+fn caller(path: str) -> bool { return open(path); }

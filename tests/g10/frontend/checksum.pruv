@@ -1,0 +1,29 @@
+fn sum_bytes(f: File) -> i64
+  requires file_size(f) <= 1000000
+  ensures result >= 0
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < file_size(f)
+    invariant 0 <= i && i <= file_size(f) && 0 <= s && s <= 255 * i
+    decreases file_size(f) - i
+  {
+    s = s + file_byte(f, i);
+    i = i + 1;
+  }
+  return s;
+}
+
+pub fn checksum(path: str) -> i64 ! fs, alloc
+  ensures result >= -1
+{
+  let f: File = file_open_read(path);
+  if !file_readable(f) {
+    return -1;                       // f is dropped (closed) here
+  }
+  let g: File = file_read_all(move f);
+  if !file_ok(g) || file_size(g) > 1000000 {
+    return -1;
+  }
+  return sum_bytes(g);               // g is borrowed by the call, dropped after it
+}

@@ -229,14 +229,9 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm) lowers
     // the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type inside the LLVM generator
     // (after verification, so verification errors win; same as Python compile_file). The native paths (--emit obj|exe),
-    // which Python does not have, cannot link the Rust shim: codegen/foreign_target (G6_SPEC 13.1). With --no-verify
-    // that check fires right after the check; otherwise after verification.
+    // which Python does not have, cannot link the Rust shim: codegen/foreign_target (G6_SPEC 13.1). That check fires
+    // after verification (or after the --no-verify notice) and after the G10 guard.
     let g6_native = matches!(a.kind, Kind::Obj | Kind::Exe);
-    if !a.verify && g6_native {
-        if let Some(e) = foreign_target_error(&prog) {
-            return Err(Fail::Lang(vec![e]));
-        }
-    }
     if a.verify {
         let errs = if a.infer {
             let opts = pruv_proof::VerifyOptions { infer: true };
@@ -260,13 +255,17 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
-        if g6_native {
-            if let Some(e) = foreign_target_error(&prog) {
-                return Err(Fail::Lang(vec![e]));
-            }
-        }
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
+    }
+    // G10 A1: verification errors precede the guard, including the bypass path.
+    if let Some(e) = pruv_core::foreign::g10_unimplemented_error(&prog) {
+        return Err(Fail::Lang(vec![e]));
+    }
+    if g6_native {
+        if let Some(e) = foreign_target_error(&prog) {
+            return Err(Fail::Lang(vec![e]));
+        }
     }
     // G3 A3/A4 (same place as in Python compile_file): every backend (rust, llvm, also --also-llvm) specializes generic
     // programs through the shared plan (mono.rs) and generates from the concrete program. G4 A2: explicit mode always goes
