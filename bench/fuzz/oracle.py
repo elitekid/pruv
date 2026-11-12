@@ -518,6 +518,20 @@ class _Parser(object):
     def stmt(self):
         t = self.peek()
         line = t[2]
+        if self.is_("par") and self.is_("{", 1):
+            self.next()
+            self.eat("{")
+            calls = []
+            while not self.is_("}"):
+                e = self.imp()
+                if e[0] != "call":
+                    raise OracleUnsupported("par branch must be a call")
+                calls.append(e)
+                self.eat(";")
+            self.eat("}")
+            if len(calls) < 2:
+                raise OracleUnsupported("par needs two branches")
+            return ("par", line, calls)
         if self.is_("match"):
             return self.match_stmt()
         if self.is_("let"):
@@ -1409,7 +1423,8 @@ class _Interp(object):
                 raise OracleUnsupported("inout marker mismatch calling %s" % name)
         penv = {}
         for (pn, _pt), a in zip(fn.params, args):
-            penv[pn] = a if pn in fn.inout else _cp(a)      # an inout parameter IS the caller's array (no copy)
+            # Array parameters are views of the owner; only inout permits stores.
+            penv[pn] = a if pn in fn.inout or isinstance(a, list) else _cp(a)
         if fn.foreign is not None:
             return self.foreign_call(fn, penv)
         if top or self.mode != "proof":
@@ -1483,7 +1498,13 @@ class _Interp(object):
     def stmt(self, fn, s, env):
         self.tick()
         k, line = s[0], s[1]
-        if k == "let" or k == "assign":
+        if k == "par":
+            # Capture once at group entry, then interpret branches in source order.
+            captured = [(e[1], [self.ev(a, env) for a in e[2]],
+                         [a[0] == "inout" for a in e[2]]) for e in s[2]]
+            for name, values, marks in captured:
+                self.call(name, values, top=False, marks=marks)
+        elif k == "let" or k == "assign":
             if k == "assign" and s[2] not in env:
                 raise OracleUnsupported("assignment to unbound %s" % s[2])
             e = s[3]
@@ -1493,6 +1514,8 @@ class _Interp(object):
             fresh = e[0] == "call" and e[1] in _FRESH_CATALOG and e[1] not in self.prog.fns
             env[s[2]] = v if fresh else _cp(v)
         elif k == "aassign":
+            if s[2] in dict(fn.params) and s[2] not in fn.inout:
+                raise OracleUnsupported("store through immutable array view")
             a = env.get(s[2])
             if not isinstance(a, list):
                 raise OracleUnsupported("indexed assignment to non-array %s" % s[2])
@@ -2679,6 +2702,29 @@ def _selftest_g5():
     assert r["kind"] == "requires_violated", r
 
 
+def _selftest_g7():
+    src = """fn put(inout a: [i64], src: [i64]) -> ()
+      requires len(a) > 0 && len(src) > 0
+      ensures a[0] == src[0]
+      ensures forall k in 1..len(a): a[k] == old(a)[k]
+    { a[0] = src[0]; }
+    fn f(inout a: [i64], inout b: [i64], src: [i64]) -> () {
+      par { put(inout a, src); put(inout b, src); }
+    }"""
+    for mode in ("safe", "proof"):
+        r = run(parse_program(src), "f", [[1, 2], [3, 4], [9]], mode=mode)
+        assert r["kind"] == "ok" and r["inout_final"] == {"a": [9, 2], "b": [9, 4]}, r
+    import generate
+    import random
+    for i in range(30):
+        case = generate.generate_g7_case(71, i)
+        for a in generate.candidate_inputs(case, random.Random(i), 8):
+            for mode in ("safe", "proof"):
+                r = run(parse_modules(case["files"]), "f", a, mode=mode)
+                assert r["kind"] == "ok" and not r.get("contract_failures"), (i, a, r)
+    print("G7 oracle self-test passed")
+
+
 if __name__ == "__main__":
     _selftest()
     _selftest_g3()
@@ -2686,3 +2732,4 @@ if __name__ == "__main__":
     _selftest_g9()
     _selftest_g4()
     _selftest_g5()
+    _selftest_g7()

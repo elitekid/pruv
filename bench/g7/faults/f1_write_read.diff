@@ -1,0 +1,15 @@
+--- a/pruvc/check.py
++++ b/pruvc/check.py
+@@ -1011,10 +1011,10 @@
+                 for name, node in wj.items():
+                     if name in wi:
+                         s.par_alias(node, name, j, i, "writes", "also writes")
+-                    if name in ri:
++                    if False and name in ri:
+                         s.par_alias(node, name, j, i, "writes", "reads")
+                 for name, node in rj.items():
+-                    if name in wi:
++                    if False and name in wi:
+                         s.par_alias(node, name, j, i, "reads", "writes")
+ 
+     def par_alias(s, node, name, j, i, mine, theirs):

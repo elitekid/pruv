@@ -1,0 +1,50 @@
+fn scale(inout dst: [i64], src: [i64]) -> ()
+  requires len(dst) == len(src)
+  requires forall k in 0..len(src): -1000 <= src[k] && src[k] <= 1000
+  ensures forall k in 0..len(dst): dst[k] == src[k] * 2
+{
+  let n: i64 = len(src);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n && len(dst) == n
+    invariant forall k in 0..i: dst[k] == src[k] * 2
+    decreases n - i
+  {
+    dst[i] = src[i] * 2;
+    i = i + 1;
+  }
+}
+
+fn difference(inout dst: [i64], src: [i64]) -> ()
+  requires len(dst) == len(src)
+  requires forall k in 0..len(src): -1000 <= src[k] && src[k] <= 1000
+  ensures forall k in 0..len(dst): dst[k] == src[k] - src[0]
+{
+  let n: i64 = len(src);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n && len(dst) == n
+    invariant forall k in 0..i: dst[k] == src[k] - src[0]
+    decreases n - i
+  {
+    dst[i] = src[i] - src[0];
+    i = i + 1;
+  }
+}
+
+pub fn compute(src: [i64], pick: i64) -> [i64] ! alloc
+  requires len(src) <= 4096 && (pick == 0 || pick == 1)
+  requires forall k in 0..len(src): -1000 <= src[k] && src[k] <= 1000
+  ensures len(result) == len(src)
+  ensures forall k in 0..len(src): pick == 0 ==> result[k] == src[k] * 2
+  ensures forall k in 0..len(src): pick == 1 ==> result[k] == src[k] - src[0]
+{
+  let mut left: [i64] = alloc(len(src), 0);
+  let mut right: [i64] = alloc(len(src), 0);
+  par {
+    scale(inout left, src);
+    difference(inout right, src);
+  }
+  if pick == 0 { return left; }
+  return right;
+}

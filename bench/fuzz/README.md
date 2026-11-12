@@ -591,3 +591,46 @@ and supplies the prefix of the `pruv: ...` message. The oracle itself may be wro
   requires undefined 36.
 - Detection check: when the oracle's output format is deliberately changed to a wrong one, 8 `oracle_mismatch` cases are caught and reproduced with `--replay`.
 - If rustc is not on PATH, run with `PATH=$HOME/.cargo/bin:$PATH` (run.py also looks for `~/.cargo/bin/rustc`).
+# G7 scoped parallel differential fuzzing
+
+`--g7` is a separate mode (cannot be combined with the other `--gN` flags):
+
+```sh
+.venv/bin/python bench/fuzz/generate.py --g7 --seed 71 --count 30 --out bench/fuzz/out/g7_generated
+.venv/bin/python bench/fuzz/oracle.py
+.venv/bin/python bench/fuzz/run.py --g7 --seed 71 --programs 30 --inputs 8 --compiler py --jobs 12
+.venv/bin/python bench/fuzz/run.py --g7 --seed 71 --programs 30 --inputs 8 --compiler rs --jobs 12
+```
+
+Repeat for seeds 72 and 73. Generation stops at the requested number of candidates;
+rejections and oracle gaps are reported instead of replacing them with extra candidates.
+The six families cover two/three branches, loop groups, multi-array branches, shared
+immutable inputs, two generic specializations, i64/u8/bool elements, exact write/frame
+contracts, and sequential helper calls inside workers. All selected inputs satisfy the
+entry preconditions. Each program prints lengths and every element of its final owners
+and shared input, including untouched tails, before returning.
+
+The independent oracle captures branch arguments at group entry and executes calls in
+source order. Inout views preserve owner identity; immutable array views forbid direct
+stores. The compiler remains responsible for rejecting illegal source programs. The
+oracle is a sequential reference, not a race detector or a model of allocation/spawn
+failure. Its G7 self-test includes all generator families and explicit owner/frame checks.
+
+Each rust-proof, rust-safe, llvm-proof, and llvm-safe binary runs twice per input in fresh
+processes, concurrently with other jobs so OS scheduling can vary. `repeat_mismatch` is
+reported separately from oracle and backend/mode mismatches. Repetition does not double
+the comparison denominator: 30 programs × 8 inputs × 4 modes = 960 per run, or 5,760 for
+three seeds and two compilers. Limits, missing builds and timeouts are not completed
+comparisons. This sampling cannot establish correctness for every possible schedule.
+
+Default output is `out/g7_<seed>[_rs]/summary.json`. G7 summary fields record generated,
+verified/rejected counts, completed/target/incomplete comparisons, feature coverage,
+oracle gaps, repeat counts and mismatches; common fields retain build/runtime failures.
+Failures preserve source, inputs, diagnostics, first results and repeat results. Replay:
+
+```sh
+.venv/bin/python bench/fuzz/run.py --g7 --compiler py --replay PATH_TO_FAILURE
+```
+
+The recorded seed summaries live in `results_g7/<seed>_<compiler>.json`; only summaries
+and any necessary reproducers belong there, not generated build trees.

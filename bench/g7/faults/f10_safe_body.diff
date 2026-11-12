@@ -1,0 +1,11 @@
+--- a/pruvc/llvmgen.py
++++ b/pruvc/llvmgen.py
+@@ -1204,7 +1204,7 @@
+                     args.append("i1 %%b%d" % j)
+                 else:
+                     args.append("%s %%v%d" % (ty, j))
+-            target = "par_chk" if not s.verified and f.requires else "body"
++            target = "body"  # FAULT: bypass safe requires checks
+             tr += ["  call void @%s__pruv_%s(%s)" % (mangle(f.name), target, ", ".join(args)),
+                    "  ret void", "}"]
+             s.m.par_trampolines.append("\n".join(tr) + "\n")

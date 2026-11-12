@@ -1,0 +1,161 @@
+{
+  "tools": {
+    "py": [
+      ".venv/bin/python",
+      "pruvc/pruvc.py"
+    ],
+    "rs": [
+      "pruvc-rs/target/release/pruvc"
+    ]
+  },
+  "solutions": "bench/g7/solutions",
+  "flags": [],
+  "results": {
+    "py-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    },
+    "py-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    },
+    "rs-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    },
+    "rs-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    }
+  },
+  "safe_results": {
+    "py-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    },
+    "py-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    },
+    "rs-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    },
+    "rs-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 744 744\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 744,
+        "tests_total": 744
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 52 52\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 52,
+        "tests_total": 52
+      }
+    }
+  }
+}

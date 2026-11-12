@@ -1,0 +1,36 @@
+--- a/pruvc/parallel_shim.py
++++ b/pruvc/parallel_shim.py
+@@ -34,13 +34,13 @@
+     unsafe extern "C" fn pruv_g7_v1_run(jobs: *const Job, count: i64) {
+         let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+             GATE
+-            ::std::thread::scope(|scope| {
++            (|| {
+                 let mut handles = ::std::vec::Vec::with_capacity(count as usize);
+                 let mut spawn_failed = false;
+                 for i in 0..count as usize {
+                     SPAWN
+                     let job = SendJob(*jobs.add(i));
+-                    match ::std::thread::Builder::new().spawn_scoped(scope, move || {
++                    match ::std::thread::Builder::new().spawn(move || {
+                         WAIT
+                         PANIC
+                         job.run();
+@@ -52,7 +52,7 @@
+                 RELEASE
+                 let mut panicked = false;
+                 for h in handles {
+-                    if h.join().is_err() { panicked = true; }
++                    ::std::mem::drop(h); // FAULT: detach; stack contexts can expire
+                     JOINED
+                 }
+                 if spawn_failed {
+@@ -60,7 +60,7 @@
+                     ::std::process::exit(101);
+                 }
+                 if panicked { ::std::process::exit(101); }
+-            });
++            })();
+         }));
+         if result.is_err() { ::std::process::exit(101); }
+     }

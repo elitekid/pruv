@@ -1,0 +1,365 @@
+{
+  "compiler": "rs",
+  "backend": "llvm",
+  "machine": {
+    "os": "macOS-26.5-arm64-arm-64bit",
+    "cpu": {
+      "command": [
+        "sysctl",
+        "-n",
+        "machdep.cpu.brand_string"
+      ],
+      "rc": 1,
+      "stdout": "",
+      "stderr": "sysctl: sysctl fmt -1 1024 1: Operation not permitted\n"
+    },
+    "cores": 10,
+    "rustc": {
+      "command": [
+        "~/.cargo/bin/rustc",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+      "stderr": ""
+    },
+    "clang": {
+      "command": [
+        "/usr/bin/clang",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+      "stderr": ""
+    }
+  },
+  "repeat": 10,
+  "warmup": 2,
+  "source_sha256": "8e93938b526c2c86e24a46fcca9ceabf86301db88abbad9795658722b0494ef9",
+  "flags": [
+    "--no-verify",
+    "rustc -C opt-level=3 -C overflow-checks=yes",
+    "clang -O3"
+  ],
+  "rows": [
+    {
+      "size": 1000,
+      "variant": "pruv_par",
+      "raw": [
+        {
+          "kernel_ns": 168708,
+          "inclusive_ns": 170125,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 84292,
+          "inclusive_ns": 84709,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 187458,
+          "inclusive_ns": 188750,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 130166,
+          "inclusive_ns": 131458,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 140875,
+          "inclusive_ns": 141459,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 178000,
+          "inclusive_ns": 179458,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 92292,
+          "inclusive_ns": 92875,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 148333,
+          "inclusive_ns": 148750,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 167084,
+          "inclusive_ns": 168375,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 145417,
+          "inclusive_ns": 146292,
+          "checksum": 65509420
+        }
+      ],
+      "bytes_per_array": 8000,
+      "setup_copy_bytes": 16000,
+      "minimum_kernel_read_write_bytes": 32000,
+      "setup_allocations": 2,
+      "kernel": {
+        "median_ms": 0.14687499999999998,
+        "min_ms": 0.084292,
+        "max_ms": 0.187458,
+        "stdev_ms": 0.034396310377874995
+      },
+      "inclusive": {
+        "median_ms": 0.147521,
+        "min_ms": 0.084709,
+        "max_ms": 0.18875,
+        "stdev_ms": 0.034708696202825025
+      }
+    },
+    {
+      "size": 1000,
+      "variant": "pruv_seq",
+      "raw": [
+        {
+          "kernel_ns": 234166,
+          "inclusive_ns": 235625,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110083,
+          "inclusive_ns": 110417,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110250,
+          "inclusive_ns": 110959,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 221833,
+          "inclusive_ns": 223125,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 124542,
+          "inclusive_ns": 124959,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110125,
+          "inclusive_ns": 110833,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110167,
+          "inclusive_ns": 110500,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110209,
+          "inclusive_ns": 110542,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 217875,
+          "inclusive_ns": 219083,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 127334,
+          "inclusive_ns": 127625,
+          "checksum": 65509420
+        }
+      ],
+      "bytes_per_array": 8000,
+      "setup_copy_bytes": 16000,
+      "minimum_kernel_read_write_bytes": 32000,
+      "setup_allocations": 2,
+      "kernel": {
+        "median_ms": 0.117396,
+        "min_ms": 0.110083,
+        "max_ms": 0.234166,
+        "stdev_ms": 0.053635989232355304
+      },
+      "inclusive": {
+        "median_ms": 0.11795900000000001,
+        "min_ms": 0.110417,
+        "max_ms": 0.235625,
+        "stdev_ms": 0.05405207082640055
+      }
+    },
+    {
+      "size": 1000,
+      "variant": "rust_seq",
+      "raw": [
+        {
+          "kernel_ns": 110375,
+          "inclusive_ns": 111125,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 232042,
+          "inclusive_ns": 232292,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110084,
+          "inclusive_ns": 110250,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 217792,
+          "inclusive_ns": 218500,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 151416,
+          "inclusive_ns": 152041,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 114334,
+          "inclusive_ns": 114541,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 139750,
+          "inclusive_ns": 139958,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110167,
+          "inclusive_ns": 110375,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 140250,
+          "inclusive_ns": 140750,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 110041,
+          "inclusive_ns": 110333,
+          "checksum": 65509420
+        }
+      ],
+      "bytes_per_array": 8000,
+      "setup_copy_bytes": 16000,
+      "minimum_kernel_read_write_bytes": 32000,
+      "setup_allocations": 2,
+      "kernel": {
+        "median_ms": 0.12704200000000002,
+        "min_ms": 0.110041,
+        "max_ms": 0.232042,
+        "stdev_ms": 0.0456329101403557
+      },
+      "inclusive": {
+        "median_ms": 0.12724950000000002,
+        "min_ms": 0.11025,
+        "max_ms": 0.232292,
+        "stdev_ms": 0.04569105286413669
+      }
+    },
+    {
+      "size": 1000,
+      "variant": "rust_par",
+      "raw": [
+        {
+          "kernel_ns": 169125,
+          "inclusive_ns": 169584,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 148083,
+          "inclusive_ns": 148625,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 160542,
+          "inclusive_ns": 160750,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 164958,
+          "inclusive_ns": 165500,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 171584,
+          "inclusive_ns": 172042,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 205542,
+          "inclusive_ns": 205791,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 149292,
+          "inclusive_ns": 149584,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 137375,
+          "inclusive_ns": 137584,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 193875,
+          "inclusive_ns": 194125,
+          "checksum": 65509420
+        },
+        {
+          "kernel_ns": 254042,
+          "inclusive_ns": 254542,
+          "checksum": 65509420
+        }
+      ],
+      "bytes_per_array": 8000,
+      "setup_copy_bytes": 16000,
+      "minimum_kernel_read_write_bytes": 32000,
+      "setup_allocations": 2,
+      "kernel": {
+        "median_ms": 0.1670415,
+        "min_ms": 0.137375,
+        "max_ms": 0.254042,
+        "stdev_ms": 0.034467202232460546
+      },
+      "inclusive": {
+        "median_ms": 0.16754200000000002,
+        "min_ms": 0.137584,
+        "max_ms": 0.254542,
+        "stdev_ms": 0.03449177408230032
+      }
+    }
+  ],
+  "byte_identical_to_python": true,
+  "status": "ok",
+  "comparisons": [
+    {
+      "size": 1000,
+      "timing": "kernel",
+      "pruv_to_native_parallel": 0.8792725161112656,
+      "speedup_over_pruv_sequential": 0.7992919148936172,
+      "within_1_5x": true
+    },
+    {
+      "size": 1000,
+      "timing": "inclusive",
+      "pruv_to_native_parallel": 0.8805016055675591,
+      "speedup_over_pruv_sequential": 0.799608191376143,
+      "within_1_5x": true
+    }
+  ],
+  "method": {
+    "warmup": 2,
+    "order": "rotating",
+    "mode": "safe",
+    "setup": "two clones of same input",
+    "inclusive_excludes": [
+      "checksum",
+      "comparison",
+      "deallocation"
+    ],
+    "scheduler_allocations": "not instrumented",
+    "caveat": "Large timing spread; no affinity/frequency control or host-load isolation. Medians are descriptive, not a stable speedup guarantee."
+  }
+}

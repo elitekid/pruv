@@ -122,8 +122,8 @@ def read_tree(base):
 
 
 def is_tree(case):
-    """G4 and G5 programs are directories (root.pruv + module files); every other program is one source string."""
-    return bool(case.get("g4") or case.get("g5"))
+    """G4/G5/G7 programs are directories (root.pruv + module files)."""
+    return bool(case.get("g4") or case.get("g5") or case.get("g7"))
 
 
 def save_program(dir_, rec, name=None):
@@ -516,6 +516,9 @@ def prep_llvm(rec, mode, rt_o):
         ll_new, rs_new, n_g6 = g6_rename(ll_new, rs_new, tag)
         if n_g6 and rs_new.count("pruv_g6_v1_%s_" % tag) + rs_new.count("pruv_g6_bridge_v1_%s" % tag) < 1:
             return None, "harness_error", "%s: G6 shim symbols not found in the bindings (.ll references %d)" % (name, n_g6)
+    if (rec.get("case") or {}).get("g7"):
+        ll_new = ll_new.replace("pruv_g7_v1_run", "pruv_g7_v1_run_" + tag)
+        rs_new = rs_new.replace("pruv_g7_v1_run", "pruv_g7_v1_run_" + tag)
     write(rw_ll, ll_new)
     gen_o = os.path.join(d, name + "_gen.o")
     rc, so, se = run_cmd([CLANG, "-O2", CPU_FLAG, "-Wno-override-module", "-c", rw_ll, "-o", gen_o], 300)
@@ -564,7 +567,7 @@ def build_binary(recs, backend, label, work, rt_o, only_mode=None):
                 modname = "p%d_l%s" % (rec["idx"], "safe" if safe else "proof")
                 gen = os.path.join(rec["dir"], "%s_%s_bind.rs" % (name, label))
                 # the #[no_mangle] of pruv_host_* stays only on the first LLVM module of the binary
-                strip = NO_MANGLE_HOST_RE if (rec.get("case") or {}).get("g6") else NO_MANGLE_RE
+                strip = NO_MANGLE_HOST_RE if any((rec.get("case") or {}).get(k) for k in ("g6", "g7")) else NO_MANGLE_RE
                 write(gen, art["rs"] if not entries else strip.sub("", art["rs"]))
                 links.append(art["o"])
             entries.append((rec, name, modname, os.path.abspath(gen)))
@@ -656,8 +659,14 @@ def run_one(exe, rid):
     return {"exit": rc, "stdout": so, "pruv": pruv_line}
 
 
+def run_repeated(exe, rid):
+    first = run_one(exe, rid)
+    second = run_one(exe, rid)
+    return first, second
+
+
 def run_all(progs, jobs):
-    """Run every (program, mode, input) once by id in parallel and fill rec['runs'][mode][k]."""
+    """Run every (program, mode, input) by id; G7 also records a second execution."""
     tasks = []
     for rec in progs:
         rec["runs"] = {}
@@ -669,11 +678,18 @@ def run_all(progs, jobs):
                     tasks.append((rec, name, k, rec["bins"][name], rid))
     done = 0
     with cf.ThreadPoolExecutor(jobs) as ex:
-        futs = {ex.submit(run_one, exe, rid): (rec, name, k) for rec, name, k, exe, rid in tasks}
+        futs = {ex.submit(run_repeated if rec.get("case", {}).get("g7") else run_one, exe, rid): (rec, name, k) for rec, name, k, exe, rid in tasks}
         for f in cf.as_completed(futs):
             rec, name, k = futs[f]
             try:
-                rec["runs"][name][k] = f.result()
+                result = f.result()
+                if rec.get("case", {}).get("g7"):
+                    result, repeat = result
+                    rec.setdefault("repeats", {}).setdefault(name, {})[k] = repeat
+                    if repeat != result:
+                        rec["failures"].append({"kind": "repeat_mismatch", "input": k, "mode": name,
+                                                "first": result, "repeat": repeat})
+                rec["runs"][name][k] = result
             except Exception:
                 rec["failures"].append({"kind": "harness_error", "detail": traceback.format_exc()[-1500:]})
                 rec["runs"][name][k] = {"exit": -998, "stdout": "", "pruv": ""}
@@ -837,6 +853,10 @@ def save_failure(out_dir, rec, kind, items):
     write(os.path.join(d, "inputs.json"), json.dumps(rec.get("inputs", []), indent=1))
     res = {"name": rec["name"], "status": rec["status"], "params": rec["params"], "ret": rec["ret"],
            "failures": items, "build_errors": rec.get("build_errors", {}), "inputs": rec_results(rec)}
+    if (rec.get("case") or {}).get("g7"):
+        res["g7"] = True
+        res["g7_features"] = rec["case"]["g7_features"] if "g7_features" in rec["case"] else []
+        res["repeats"] = rec.get("repeats", {})
     if (rec.get("case") or {}).get("g2"):   # g2 cases only (results.json of existing cases is unchanged)
         res["g2"] = True
         res["g2_features"] = rec["case"].get("g2_features", [])
@@ -941,6 +961,9 @@ def replay(path, args):
         case["files"] = read_tree(base)
         if any(re.search(r"\binout\s+\w+\s*:", t) for t in case["files"].values()):
             case["g5"] = True   # G5 program (saved by --g5): inout parameters, same program-directory handling as G4
+    if src.startswith("// g7 fuzz case") or args.g7:
+        case["g7"] = True
+        case.setdefault("files", {"root.pruv": src})
     if "::<" in src:
         case["g3"] = True   # generic program: the run-time callee name of a generic instance is not compared strictly
     if re.search(r"\b(vec_new|map_new|string_new)\b|\btrusted\s+rust\s+fn\b", src):
@@ -1240,7 +1263,10 @@ def main():
                     help="comma-separated seeds (e.g. 41,56,57): one run per seed with the other options unchanged; "
                          "with --out each seed gets the subfolder OUT/<seed>")
     CD.add_args(ap)
+    ap.add_argument("--g7", action="store_true", help="G7 parallel calls; twice per input, four modes")
     args = ap.parse_args()
+    if args.g7 and any((args.g2, args.g3, args.g4, args.g5, args.g6, args.g9)):
+        ap.error("--g7 is a separate mode")
     if args.seeds:
         return run_seeds(args)
     global DRIVER
@@ -1257,7 +1283,7 @@ def main():
     if args.g5 and (args.g2 or args.g3 or args.g6 or args.g9 or args.g4):
         ap.error("--g5 is a separate mode (not combinable with --g2/--g3/--g6/--g9/--g4)")
     if args.programs is None:
-        args.programs = 30 if (args.g4 or args.g5) else 100
+        args.programs = 30 if (args.g4 or args.g5 or args.g7) else 100
     if args.g3 or args.g6 or args.g9 or args.g4 or args.g5:
         args.inputs = max(args.inputs, 8)    # exit criterion: at least eight concrete inputs per accepted program
     if args.g9:
@@ -1266,7 +1292,9 @@ def main():
         return replay(args.replay, args)
     # per-compiler result/work folders: the py default path (out/<seed>) is unchanged, rs uses out/<seed>_rs;
     # G6: out/g6_<seed> (py), out/g6_<seed>_rs (rs); G9: out/g9_<seed>[_rs]
-    out_dir = args.out or os.path.join(HERE, "out", ("g5_" if args.g5 else "g4_" if args.g4 else "g9_" if args.g9
+    if args.g7:
+        args.max_candidates = args.programs
+    out_dir = args.out or os.path.join(HERE, "out", ("g7_" if args.g7 else "g5_" if args.g5 else "g4_" if args.g4 else "g9_" if args.g9
                                                      else "g6_" if args.g6 else "")
                                        + str(args.seed)
                                        + ("" if DRIVER.name == "py" else "_" + DRIVER.name)
@@ -1289,7 +1317,9 @@ def main():
             """Generate candidate i and run it through phase_a. Exceptions are recorded as harness failures."""
             case = None
             try:
-                if args.g5:
+                if args.g7:
+                    case = generate.generate_case(args.seed, i, g7=True)
+                elif args.g5:
                     case = generate.generate_case(args.seed, i, g5=True)
                 elif args.g4:
                     case = generate.generate_case(args.seed, i, g4=True)
@@ -1314,6 +1344,9 @@ def main():
             nonlocal invalid_saved
             counts["candidates"] += 1
             st = rec["status"]
+            if args.g7 and st in ("rejected", "oracle_unsupported", "oracle_parse_error", "generator_invalid"):
+                save_failure(out_dir, rec, st, [{"kind": st, "detail": rec.get("detail", ""),
+                                               "codes": rec.get("codes", [])}])
             if st in ("oracle_unsupported", "oracle_parse_error", "generator_invalid"):
                 counts[st] += 1
                 if (args.g3 or args.g6 or args.g9 or args.g4 or args.g5) and st != "generator_invalid" and oracle_gap_saved[0] < 10:
@@ -1397,7 +1430,7 @@ def main():
             unproved = [r for r in rejected_all if g3_unproved(r)]
             unexpected = [r for r in rejected_all if not g3_unproved(r)]
             sample = unproved[:want_rejected] + unexpected[:10]
-        elif args.g4 or args.g5:
+        elif args.g4 or args.g5 or args.g7:
             # every G4/G5 program is meant to verify: a few rejected ones ride along (safe modes only) so the oracle and the
             # compilers are still compared on them; they are reported as unexpected rejects (G5: never counted as completed)
             sample = rejected_all[:10]
@@ -1477,6 +1510,31 @@ def main():
                           "run": round(t3 - t2, 2), "check_save": round(t4 - t3, 2),
                           "total": round(t4 - t0, 2), "wall": round(time.time() - t0, 2)},
         }
+        if args.g7:
+            completed, skipped = g3_comparisons(verified)
+            target = args.programs * args.inputs * 4
+            feats = {}
+            for r in verified:
+                for feature in r["case"]["g7_features"]:
+                    feats[feature] = feats.get(feature, 0) + 1
+            summary.update({
+                "g7": True, "compiler": DRIVER.name, "g7_generated": counts["candidates"],
+                "g7_verified": counts["verified"], "g7_rejected": counts["rejected"],
+                "g7_comparisons_completed": completed, "g7_comparisons_target": target,
+                "g7_incomplete": target - completed, "g7_executions_not_compared": skipped,
+                "g7_features_verified": feats,
+                "g7_mismatches": {k: fail_kinds.get(k, 0) for k in
+                                  ("oracle_mismatch", "mode_mismatch", "repeat_mismatch")},
+                "g7_oracle_gaps": counts["oracle_unsupported"] + counts["oracle_parse_error"],
+                "g7_repeats": sum(len(v) for r in progs for v in r.get("repeats", {}).values()),
+            })
+            if completed < target:
+                fail_kinds["g7_comparison_shortfall"] = target - completed
+            if counts["rejected"]:
+                fail_kinds["g7_unexpected_reject"] = counts["rejected"]
+            for kind in ("generator_invalid", "oracle_unsupported", "oracle_parse_error"):
+                if counts[kind]:
+                    fail_kinds["g7_" + kind] = counts[kind]
         if args.g2:
             # Keys are added only in G2 mode. The pass count includes only verified programs (verified_used) and rejected ones built and run in safe modes.
             # Counting condition (decision 11, G2_SPEC 8.3): a g2 case, at least --inputs inputs, all safe-mode run results present,
@@ -1956,6 +2014,10 @@ def main():
                 print("G5 replay: " + s["replay"])
             print("G5 digest %s (exit+stdout only %s), program digest %s"
                   % (summary["g5_digest"][:16], summary["g5_digest_exit_stdout"][:16], summary["g5_program_digest"][:16]))
+        if args.g7:
+            print("G7 comparisons %d/%d, repeats %d, mismatches %s, oracle gaps %d"
+                  % (summary["g7_comparisons_completed"], summary["g7_comparisons_target"],
+                     summary["g7_repeats"], json.dumps(summary["g7_mismatches"]), summary["g7_oracle_gaps"]))
         print("failures: %s" % (json.dumps(fail_kinds) if fail_kinds else "none"))
         print("results: " + out_dir)
         return 1 if fail_kinds else 0

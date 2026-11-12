@@ -1,0 +1,24 @@
+// G7 A1 reject: an earlier branch's ensures must not be assumed before a later branch's requires is proved.
+// Read in the pre-group state, bump's ensures (a[0] == old(a)[0] + 1) is contradictory and would discharge
+// need's requires, which is unknown at group entry.
+fn bump(inout a: [i64]) -> ()
+  requires len(a) > 0 && a[0] < 1000
+  ensures a[0] == old(a)[0] + 1
+  ensures forall k in 1..len(a): a[k] == old(a)[k]
+{
+  a[0] = a[0] + 1;
+}
+
+fn need(inout b: [i64], x: i64) -> ()
+  requires x > 0
+{
+}
+
+fn demo(inout a: [i64], inout b: [i64], x: i64) -> ()
+  requires len(a) > 0 && a[0] < 1000
+{
+  par {
+    bump(inout a);
+    need(inout b, x);
+  }
+}

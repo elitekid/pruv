@@ -1,0 +1,19 @@
+fn mix(inout a: [i64]) -> () {
+ let mut i: i64 = 0;
+ while i < len(a) decreases len(a) - i {
+  let mut x: i64 = a[i] % 65521;
+  let mut r: i64 = 0;
+  while r < 32 decreases 32 - r {
+   x = (x * 251 + 17) % 65521;
+   r = r + 1;
+  }
+  a[i] = x;
+  i = i + 1;
+ }
+}
+fn parallel(inout a: [i64], inout b: [i64]) -> () {
+ par { mix(inout a); mix(inout b); }
+}
+fn sequential(inout a: [i64], inout b: [i64]) -> () {
+ mix(inout a); mix(inout b);
+}

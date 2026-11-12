@@ -1,0 +1,88 @@
+fn bump_sat(inout b: [u8], i: i64, c: i64) -> ()
+  requires 0 <= i && i < len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures old(b)[i] + c <= 255 ==> b[i] == old(b)[i] + c
+  ensures old(b)[i] + c > 255 ==> b[i] == 255
+  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]
+{
+  let x: i64 = b[i] + c;
+  if x > 255 {
+    b[i] = 255;
+  } else {
+    b[i] = x;
+  }
+}
+
+// wrapping add of one element
+fn bump_wrap(inout b: [u8], i: i64, c: i64) -> ()
+  requires 0 <= i && i < len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures b[i] == (old(b)[i] + c) % 256
+  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]
+{
+  let x: i64 = (b[i] + c) % 256;
+  b[i] = x;
+}
+
+fn add_range_sat(inout b: [u8], lo: i64, hi: i64, c: i64) -> ()
+  requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures forall k in 0..len(b): (lo <= k && k < hi && old(b)[k] + c <= 255) ==> b[k] == old(b)[k] + c
+  ensures forall k in 0..len(b): (lo <= k && k < hi && old(b)[k] + c > 255) ==> b[k] == 255
+  ensures forall k in 0..len(b): (k < lo || k >= hi) ==> b[k] == old(b)[k]
+{
+  let n: i64 = len(b);
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant len(b) == n && n == len(old(b)) && hi <= n
+    invariant forall k in 0..n: (lo <= k && k < i && old(b)[k] + c <= 255) ==> b[k] == old(b)[k] + c
+    invariant forall k in 0..n: (lo <= k && k < i && old(b)[k] + c > 255) ==> b[k] == 255
+    invariant forall k in 0..n: (k < lo || k >= i) ==> b[k] == old(b)[k]
+    decreases hi - i
+  {
+    bump_sat(inout b, i, c);
+    i = i + 1;
+  }
+}
+
+fn add_range_wrap(inout b: [u8], lo: i64, hi: i64, c: i64) -> ()
+  requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures forall k in 0..len(b): (lo <= k && k < hi) ==> b[k] == (old(b)[k] + c) % 256
+  ensures forall k in 0..len(b): (k < lo || k >= hi) ==> b[k] == old(b)[k]
+{
+  let n: i64 = len(b);
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant len(b) == n && n == len(old(b)) && hi <= n
+    invariant forall k in 0..n: (lo <= k && k < i) ==> b[k] == (old(b)[k] + c) % 256
+    invariant forall k in 0..n: (k < lo || k >= i) ==> b[k] == old(b)[k]
+    decreases hi - i
+  {
+    bump_wrap(inout b, i, c);
+    i = i + 1;
+  }
+}
+
+pub fn transform(a: [u8], b: [u8], lo: i64, hi: i64, c: i64, pick: i64) -> [u8] ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(a) && hi <= len(b) && 0 <= c && c <= 255
+  requires pick == 0 || pick == 1
+  ensures pick == 0 ==> len(result) == len(a)
+  ensures pick == 1 ==> len(result) == len(b)
+  ensures forall k in 0..len(result): (pick == 0 && lo <= k && k < hi && a[k] + c <= 255) ==> result[k] == a[k] + c
+  ensures forall k in 0..len(result): (pick == 0 && lo <= k && k < hi && a[k] + c > 255) ==> result[k] == 255
+  ensures forall k in 0..len(result): (pick == 1 && lo <= k && k < hi) ==> result[k] == (b[k] + c) % 256
+  ensures forall k in 0..len(result): (pick == 0 && (k < lo || k >= hi)) ==> result[k] == a[k]
+  ensures forall k in 0..len(result): (pick == 1 && (k < lo || k >= hi)) ==> result[k] == b[k]
+{
+  let mut left: [u8] = copy(a);
+  let mut right: [u8] = copy(b);
+  par {
+    add_range_sat(inout left, lo, hi, c);
+    add_range_wrap(inout right, lo, hi, c);
+  }
+  if pick == 0 { return left; }
+  return right;
+}

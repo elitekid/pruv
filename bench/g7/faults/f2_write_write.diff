@@ -1,0 +1,11 @@
+--- a/pruvc/check.py
++++ b/pruvc/check.py
+@@ -1009,7 +1009,7 @@
+             for i in range(j):
+                 wi, ri = sets[i]
+                 for name, node in wj.items():
+-                    if name in wi:
++                    if False and name in wi:
+                         s.par_alias(node, name, j, i, "writes", "also writes")
+                     if name in ri:
+                         s.par_alias(node, name, j, i, "writes", "reads")

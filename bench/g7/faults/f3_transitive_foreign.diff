@@ -1,0 +1,11 @@
+--- a/pruvc/check.py
++++ b/pruvc/check.py
+@@ -1108,7 +1108,7 @@
+                     terr(c, "parallel_effect", "par branch %s reaches %s, which declares the `%s` effect (%s)" % (
+                         n, path[-1], eff, " -> ".join(path)),
+                          "move the %s work outside the par group" % ("I/O" if eff == "io" else "file"), stage="effect")
+-                path = s.par_witness(n, lambda i: i["foreign"] is not None, cache)
++                path = None  # FAULT: omit transitive foreign eligibility
+                 if path is not None:
+                     leaf = s.par_info(s.funcs[path[-1]], cache)["foreign"]
+                     chain = path if leaf == path[-1] else path + [leaf]

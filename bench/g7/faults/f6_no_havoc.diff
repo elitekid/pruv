@@ -1,0 +1,11 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1678,7 +1678,7 @@
+             finally:
+                 s.theta = saved
+         for c, f, args, cenv, ios, theta in brs:
+-            if ios:
++            if False and ios:
+                 s.inout_finals(c, f, ios, args, cenv, st, [])
+         base = st.fork()        # all finals exist, no ensures assumed yet
+         for c, f, args, cenv, ios, theta in brs:

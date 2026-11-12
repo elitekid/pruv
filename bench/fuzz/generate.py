@@ -6468,7 +6468,72 @@ def render(ctx, body):
     return fsrc + "\n"
 
 
-def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False, g5=False):
+def generate_g7_case(seed, index):
+    """Scoped groups with exact frames and complete post-join array observations."""
+    rng = random.Random("g7:%s:%s" % (seed, index))
+    kind = (seed + index) % 6
+    T = ("i64", "u8", "bool")[(seed + index // 6) % 3] if kind != 5 else "i64"
+    t = G5_T[T]
+    ty, vt = t["ty"], t["vty"]
+    req = [g5_join("0 <= i && i < len(a)", *g5_vreq(T, ["v"]))]
+    ens = ["a[i] == v", G5_FRAME]
+    helpers = [g5_set_at("put", T, rng.randrange(2))]
+    helpers.append(g5_fn("forward", "inout a: %s, i: i64, v: %s" % (ty, vt), "()",
+                         req, ens, ["put(inout a, i, v);"]))
+    helpers.append(g5_fn("pair", "inout a: %s, inout b: %s, i: i64, v: %s" % (ty, ty, vt), "()",
+                         req + ["i < len(b)"], ens + ["b[i] == v",
+                         "forall k in 0..len(b): k != i ==> b[k] == old(b)[k]"],
+                         ["forward(inout a, i, v);", "put(inout b, i, v);"]))
+    helpers.append(g5_fn("read", "inout a: %s, src: %s, i: i64" % (ty, ty), "()",
+                         ["0 <= i && i < len(a) && i < len(src)"],
+                         ["a[i] == src[i]", G5_FRAME], ["a[i] = src[i];"]))
+    helpers.append(g5_fn("generic<T: Element>", "inout a: [T], i: i64, v: T", "()",
+                         ["0 <= i && i < len(a)"], ens, ["a[i] = v;"]))
+    body = ["let mut %s: %s = copy(src);" % (n, ty) for n in ("a", "b", "c")]
+    calls = ["forward(inout a, i, v);", "put(inout b, i, v);"]
+    features = ["type_" + T, "exact_frames", "nested_helpers"]
+    if kind == 1:
+        calls.append("put(inout c, i, v);")
+    elif kind == 2:
+        calls = ["pair(inout a, inout b, i, v);", "put(inout c, i, v);"]
+        features.append("multi_array_branch")
+    elif kind == 3:
+        calls = ["read(inout a, src, i);", "read(inout b, src, i);"]
+        features.append("shared_immutable_reads")
+    elif kind == 5:
+        body.append("let mut bits: [bool] = alloc(len(src), false);")
+        calls = ["generic::<i64>(inout a, i, v);", "generic::<bool>(inout bits, i, true);"]
+        features += ["generic_two_specializations", "type_bool"]
+    features.append("three_branches" if len(calls) == 3 else "two_branches")
+    group = "par { " + " ".join(calls) + " }"
+    if kind == 4:
+        body += ["let mut round: i64 = 0;", "while round < rounds",
+                 " invariant 0 <= round && round <= rounds", " decreases rounds - round",
+                 "{", group, "round = round + 1;", "}"]
+        features.append("loop_groups")
+    else:
+        body.append(group)
+    for n in ["a", "b", "c", "src"] + (["bits"] if kind == 5 else []):
+        body += ["print(len(%s));" % n, "let mut j_%s: i64 = 0;" % n,
+                 "while j_%s < len(%s)" % (n, n),
+                 " invariant 0 <= j_%s && j_%s <= len(%s)" % (n, n, n),
+                 " decreases len(%s) - j_%s" % (n, n), "{", "print(%s[j_%s]);" % (n, n),
+                 "j_%s = j_%s + 1;" % (n, n), "}"]
+    body.append("return 0;")
+    helpers.append(g5_host("src: %s, i: i64, v: %s, rounds: i64" % (ty, vt), "i64",
+                          [g5_join("0 <= i && i < len(src)", "0 <= rounds && rounds <= 4",
+                                   *g5_vreq(T, ["v"]))], [], body, effects="alloc, io"))
+    src = "// g7 fuzz case\n" + "\n".join(helpers)
+    return {"name": "g7c%s_%s" % (seed, index), "src": src, "files": {"root.pruv": src},
+            "entry": "f", "params": [["src", t["pt"]], ["i", "i64"], ["v", t["pv"]], ["rounds", "i64"]],
+            "ret": "i64", "kind": "g7_%d_%s" % (kind, T), "g7": True,
+            "g7_features": sorted(set(features)), "input_hints": g5_hints(
+                {"src": g5_ah(T, 1)}, {"v": g5_vh(T), "rounds": (1, 4)}, {"i": ("src", 1)})}
+
+
+def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False, g5=False, g7=False):
+    if g7:
+        return generate_g7_case(seed, index)
     if g5:
         return generate_g5_case(seed, index)
     if g4:
@@ -6695,6 +6760,17 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g7"):
+        vals = g5_candidate_inputs(case, rng, n)
+        for a in vals:
+            if not a[0]:
+                a[0] = [False if case["params"][0][1] == "array_bool" else 0]
+            a[1] %= len(a[0])
+            if case["params"][2][1] != "bool":
+                lo, hi = case["input_hints"]["ints"]["v"]
+                a[2] = max(lo, min(hi, a[2]))
+            a[3] = max(1, min(4, a[3]))
+        return vals
     if case.get("g5"):
         return g5_candidate_inputs(case, rng, n)
     if case.get("g4"):
@@ -6763,7 +6839,10 @@ def main(argv=None):
                     help="G4 mode: multi-module programs, one directory per program (root.pruv + module files)")
     ap.add_argument("--g5", action="store_true",
                     help="G5 mode: inout-parameter programs, one directory per program (root.pruv + module files)")
+    ap.add_argument("--g7", action="store_true", help="G7 scoped parallel calls")
     a = ap.parse_args(argv)
+    if a.g7 and any((a.g2, a.g3, a.g4, a.g5, a.g6, a.g9)):
+        ap.error("--g7 is a separate mode")
     if a.g9 and (a.g2 or a.g3 or a.g6):
         ap.error("--g9 is a separate mode (not combinable with --g2/--g3/--g6)")
     if a.g4 and (a.g2 or a.g3 or a.g6 or a.g9):
@@ -6772,8 +6851,8 @@ def main(argv=None):
         ap.error("--g5 is a separate mode (not combinable with --g2/--g3/--g6/--g9/--g4)")
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4, g5=a.g5)
-        if a.g4 or a.g5:
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4, g5=a.g5, g7=a.g7)
+        if a.g4 or a.g5 or a.g7:
             for rel, text in case["files"].items():
                 path = os.path.join(a.out, case["name"], *rel.split("/"))
                 os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -1,0 +1,57 @@
+fn double_values(src: [i64], inout dst: [i64]) -> ()
+  requires len(src) <= 4096 && len(dst) == len(src)
+  requires forall k in 0..len(src): -1000 <= src[k] && src[k] <= 1000
+  ensures forall k in 0..len(src): dst[k] == src[k] * 2
+{
+  let mut i: i64 = 0;
+  while i < len(src)
+    invariant 0 <= i && i <= len(src)
+    invariant forall k in 0..i: dst[k] == src[k] * 2
+    decreases len(src) - i
+  {
+    dst[i] = src[i] * 2;
+    i = i + 1;
+  }
+  return;
+}
+
+fn relative_values(src: [i64], inout dst: [i64]) -> ()
+  requires len(src) <= 4096 && len(dst) == len(src)
+  requires forall k in 0..len(src): -1000 <= src[k] && src[k] <= 1000
+  ensures forall k in 0..len(src): dst[k] == src[k] - src[0]
+{
+  if len(src) == 0 {
+    return;
+  }
+  let base: i64 = src[0];
+  let mut i: i64 = 0;
+  while i < len(src)
+    invariant 0 <= i && i <= len(src)
+    invariant forall k in 0..i: dst[k] == src[k] - src[0]
+    decreases len(src) - i
+  {
+    dst[i] = src[i] - base;
+    i = i + 1;
+  }
+  return;
+}
+
+pub fn compute(src: [i64], pick: i64) -> [i64] ! alloc
+  requires len(src) <= 4096 && (pick == 0 || pick == 1)
+  requires forall k in 0..len(src): -1000 <= src[k] && src[k] <= 1000
+  ensures len(result) == len(src)
+  ensures forall k in 0..len(src): pick == 0 ==> result[k] == src[k] * 2
+  ensures forall k in 0..len(src): pick == 1 ==> result[k] == src[k] - src[0]
+{
+  let mut doubled: [i64] = alloc(len(src), 0);
+  let mut relative: [i64] = alloc(len(src), 0);
+  par {
+    double_values(src, inout doubled);
+    relative_values(src, inout relative);
+  }
+  if pick == 0 {
+    return doubled;
+  } else {
+    return relative;
+  }
+}

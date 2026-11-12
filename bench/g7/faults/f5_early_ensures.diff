@@ -1,0 +1,12 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1675,6 +1675,9 @@
+                     ob = s.ev(r, st, [], False, cenv)
+                     s.prove(st, [], ob, c, "call_requires", "precondition of %s (line %d)" % (c.name, r.line))
+                 s.termination(c, f, st, [], cenv)
++                # FAULT: expose ensures to later sibling requires.
++                for en in f.ensures:
++                    s.assume(st, [], s.ev(en, st, [], False, cenv))
+             finally:
+                 s.theta = saved
+         for c, f, args, cenv, ios, theta in brs:

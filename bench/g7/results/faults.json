@@ -1,0 +1,1270 @@
+{
+  "rows": [
+    {
+      "fault": "f1_write_read",
+      "patch": "f1_write_read.diff",
+      "sha256": "6f7858ae1c81ed99560ae069fb899e8af5affac3879952dee68c4e33b9ccd686",
+      "source_sha256": "05cbe53dd0bb530ae7928160784b418812d164f500747445367a118b8d8b2fb0",
+      "tests": {
+        "g7_alias_write_read:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_read.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 13, \"col\": 11, \"code\": \"parallel_alias\", \"message\": \"branch 2 reads `a`, which branch 1 writes\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_read.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 12, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_alias_write_read:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_read.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 13, \"col\": 11, \"code\": \"parallel_alias\", \"message\": \"branch 2 reads `a`, which branch 1 writes\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_read.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 12, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_alias_read_write:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_read_write.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 13, \"col\": 15, \"code\": \"parallel_alias\", \"message\": \"branch 2 writes `a`, which branch 1 reads\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_read_write.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 13, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_alias_read_write:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_read_write.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 13, \"col\": 15, \"code\": \"parallel_alias\", \"message\": \"branch 2 writes `a`, which branch 1 reads\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f1_write_read_1bx36xo8/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_read_write.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f1_write_read_1bx36xo8/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 13, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f1_write_read_1bx36xo8",
+          "-i",
+          "bench/g7/faults/f1_write_read.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/check.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f2_write_write",
+      "patch": "f2_write_write.diff",
+      "sha256": "66214bfad50ca720f51506fec9fbc21d68b92ef11ef5b738eadf82143b0fc56b",
+      "source_sha256": "05cbe53dd0bb530ae7928160784b418812d164f500747445367a118b8d8b2fb0",
+      "tests": {
+        "g7_alias_write_write:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 10, \"col\": 15, \"code\": \"parallel_alias\", \"message\": \"branch 2 writes `a`, which branch 1 also writes\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 9, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n{\"stage\": \"verify\", \"line\": 10, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_alias_write_write:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 10, \"col\": 15, \"code\": \"parallel_alias\", \"message\": \"branch 2 writes `a`, which branch 1 also writes\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 9, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n{\"stage\": \"verify\", \"line\": 10, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_alias_write_write_noverify:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write_noverify.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out",
+              "--no-verify"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 10, \"col\": 15, \"code\": \"parallel_alias\", \"message\": \"branch 2 writes `a`, which branch 1 also writes\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write_noverify.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out",
+              "--no-verify"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_alias_write_write_noverify:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write_noverify.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out",
+              "--no-verify"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 10, \"col\": 15, \"code\": \"parallel_alias\", \"message\": \"branch 2 writes `a`, which branch 1 also writes\", \"fix\": \"use separate arrays for the two branches, or call the helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/pruvc/pruvc.py",
+              "tests/must_reject/g7_alias_write_write_noverify.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f2_write_write_8w3uqvlz/out",
+              "--no-verify"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f2_write_write_8w3uqvlz",
+          "-i",
+          "bench/g7/faults/f2_write_write.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/check.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f3_transitive_foreign",
+      "patch": "f3_transitive_foreign.diff",
+      "sha256": "a2ec7eda2c0e22af71ed8355c5c58add4424bead84570465cb3b5a55c09d3ab1",
+      "source_sha256": "05cbe53dd0bb530ae7928160784b418812d164f500747445367a118b8d8b2fb0",
+      "tests": {
+        "g7_foreign_deep:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/pruvc/pruvc.py",
+              "tests/must_reject/g7_foreign_deep.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 26, \"col\": 5, \"code\": \"parallel_foreign\", \"message\": \"par branch clamp_wrapper reaches the trusted rust fn or catalog operation rust_min (clamp_wrapper -> clamp_first -> rust_min)\", \"fix\": \"use Pruv computation below the par group, and keep foreign calls outside it\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/pruvc/pruvc.py",
+              "tests/must_reject/g7_foreign_deep.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 26, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of clamp_wrapper (line 19) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}, \"b\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}}}\n{\"stage\": \"verify\", \"line\": 27, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 8) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}, \"b\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_foreign_deep:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/pruvc/pruvc.py",
+              "tests/must_reject/g7_foreign_deep.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 26, \"col\": 5, \"code\": \"parallel_foreign\", \"message\": \"par branch clamp_wrapper reaches the trusted rust fn or catalog operation rust_min (clamp_wrapper -> clamp_first -> rust_min)\", \"fix\": \"use Pruv computation below the par group, and keep foreign calls outside it\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/pruvc/pruvc.py",
+              "tests/must_reject/g7_foreign_deep.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f3_transitive_foreign_pfokdxez/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 26, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of clamp_wrapper (line 19) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}, \"b\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}}}\n{\"stage\": \"verify\", \"line\": 27, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 8) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}, \"b\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f3_transitive_foreign_pfokdxez",
+          "-i",
+          "bench/g7/faults/f3_transitive_foreign.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/check.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f4_nested",
+      "patch": "f4_nested.diff",
+      "sha256": "5c716c180a80dbe58a0a8cc3185776c766dbcddd4327864ccea8ed0b93328b52",
+      "source_sha256": "05cbe53dd0bb530ae7928160784b418812d164f500747445367a118b8d8b2fb0",
+      "tests": {
+        "g7_nested_indirect:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f4_nested_ski319kq/pruvc/pruvc.py",
+              "tests/must_reject/g7_nested_indirect.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f4_nested_ski319kq/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 20, \"col\": 5, \"code\": \"parallel_nested\", \"message\": \"par branch wrap reaches inner, which contains a par group (wrap -> inner)\", \"fix\": \"keep only the outer par group; call the inner helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f4_nested_ski319kq/pruvc/pruvc.py",
+              "tests/must_reject/g7_nested_indirect.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f4_nested_ski319kq/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 9, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in inner\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}, \"b\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}}}\n{\"stage\": \"verify\", \"line\": 10, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in inner\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}, \"b\": {\"len\": 0, \"first\": []}}}\n{\"stage\": \"verify\", \"line\": 21, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}, \"b\": {\"len\": 0, \"first\": []}, \"c\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_nested_indirect:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f4_nested_ski319kq/pruvc/pruvc.py",
+              "tests/must_reject/g7_nested_indirect.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f4_nested_ski319kq/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 20, \"col\": 5, \"code\": \"parallel_nested\", \"message\": \"par branch wrap reaches inner, which contains a par group (wrap -> inner)\", \"fix\": \"keep only the outer par group; call the inner helpers one after another\"}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f4_nested_ski319kq/pruvc/pruvc.py",
+              "tests/must_reject/g7_nested_indirect.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f4_nested_ski319kq/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 9, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in inner\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}, \"b\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}}}\n{\"stage\": \"verify\", \"line\": 10, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in inner\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 1099511627776, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}, \"b\": {\"len\": 0, \"first\": []}}}\n{\"stage\": \"verify\", \"line\": 21, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of set_first (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 0, \"first\": []}, \"b\": {\"len\": 0, \"first\": []}, \"c\": {\"len\": 0, \"first\": []}}}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "diagnostic_regression"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f4_nested_ski319kq",
+          "-i",
+          "bench/g7/faults/f4_nested.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/check.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f5_early_ensures",
+      "patch": "f5_early_ensures.diff",
+      "sha256": "9d3dd86e8811ed4c7a5777bc9234bf821b520fef7202dcd9ee3e8e5de247f83b",
+      "source_sha256": "8d8c044e5802cf203208a87d1ae8044dc96a39ce021b2871c58f896c149464d7",
+      "tests": {
+        "g7_v_sibling_ensures:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 17, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of pos (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": -6882980853002207233}}\n{\"stage\": \"verify\", \"line\": 18, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of need (line 10) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": -2305847664669447169}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 17, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of pos (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": -6882980853002207233}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "detected": false,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_v_sibling_ensures:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 17, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of pos (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": -6882980853002207233}}\n{\"stage\": \"verify\", \"line\": 18, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of need (line 10) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": -2305847664669447169}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 17, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of pos (line 3) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": -6882980853002207233}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "detected": false,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_v_second_requires:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_second_requires.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 19, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of big (line 9) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": 1}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_second_requires.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 19, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of big (line 9) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": 1}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "detected": false,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_v_second_requires:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_second_requires.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 19, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of big (line 9) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": 1}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_second_requires.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 19, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of big (line 9) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"x\": 1}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "detected": false,
+          "detection_kind": "diagnostic_regression"
+        },
+        "g7_v_sibling_ensures_order:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures_order.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 22, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of need (line 13) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [999]}, \"b\": {\"len\": 0, \"first\": []}, \"x\": 0}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures_order.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_v_sibling_ensures_order:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures_order.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 22, \"col\": 5, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of need (line 13) in demo\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [999]}, \"b\": {\"len\": 0, \"first\": []}, \"x\": 0}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_sibling_ensures_order.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f5_early_ensures_3m_xvptg/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f5_early_ensures_3m_xvptg",
+          "-i",
+          "bench/g7/faults/f5_early_ensures.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f6_no_havoc",
+      "patch": "f6_no_havoc.diff",
+      "sha256": "21e247c855c932a5763a9a0a98e3046816843f65058d4e5863d21f54a8250292",
+      "source_sha256": "8d8c044e5802cf203208a87d1ae8044dc96a39ce021b2871c58f896c149464d7",
+      "tests": {
+        "g7_v_stale_contents:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_stale_contents.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 17, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"p\": {\"len\": 2, \"first\": [6, 6]}, \"q\": {\"len\": 2, \"first\": [0, 0]}}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_stale_contents.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_v_stale_contents:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_stale_contents.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 17, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"p\": {\"len\": 2, \"first\": [6, 6]}, \"q\": {\"len\": 2, \"first\": [0, 0]}}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_stale_contents.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_v_partial_frame:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_partial_frame.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 16, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"p\": {\"len\": 3, \"first\": [1, 2, 2]}, \"q\": {\"len\": 3, \"first\": [2, 2, 2]}}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_partial_frame.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_v_partial_frame:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_partial_frame.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 16, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"p\": {\"len\": 3, \"first\": [1, 2, 2]}, \"q\": {\"len\": 3, \"first\": [2, 2, 2]}}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_partial_frame.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f6_no_havoc_l9_w76kh/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f6_no_havoc_l9_w76kh",
+          "-i",
+          "bench/g7/faults/f6_no_havoc.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f7_loop_writes",
+      "patch": "f7_loop_writes.diff",
+      "sha256": "1cbc0b86d76b30d43605328d072e5991ca569a6435881482d5f202afa654dd54",
+      "source_sha256": "8d8c044e5802cf203208a87d1ae8044dc96a39ce021b2871c58f896c149464d7",
+      "tests": {
+        "g7_v_loop_stale:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 27, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"n\": 0, \"a\": {\"len\": 4, \"first\": [8, 8, 8, 8]}, \"b\": {\"len\": 4, \"first\": [0, 0, 0, 0]}, \"i\": 0}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_v_loop_stale:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 27, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"n\": 0, \"a\": {\"len\": 4, \"first\": [8, 8, 8, 8]}, \"b\": {\"len\": 4, \"first\": [0, 0, 0, 0]}, \"i\": 0}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_v_loop_stale_infer:rust": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale_infer.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out",
+              "--infer"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 27, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"n\": 0, \"a\": {\"len\": 4, \"first\": [0, 0, 0, 0]}, \"b\": {\"len\": 4, \"first\": [8, 8, 8, 8]}, \"i\": 0}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale_infer.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out",
+              "--infer"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g7_v_loop_stale_infer:llvm": {
+          "baseline": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale_infer.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out",
+              "--infer"
+            ],
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 27, \"col\": 3, \"code\": \"assert\", \"message\": \"cannot prove assertion in demo\", \"fix\": \"strengthen invariants or fix the code\", \"counterexample\": {\"n\": 0, \"a\": {\"len\": 4, \"first\": [0, 0, 0, 0]}, \"b\": {\"len\": 4, \"first\": [8, 8, 8, 8]}, \"i\": 0}}\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true
+          },
+          "faulty": {
+            "command": [
+              ".venv/bin/python",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/pruvc/pruvc.py",
+              "tests/must_reject/g7_v_loop_stale_infer.pruv",
+              "--backend",
+              "llvm",
+              "-o",
+              "bench/g7/faults/f7_loop_writes_q2nzw1wf/out",
+              "--infer"
+            ],
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "passed": false,
+            "valid": true
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f7_loop_writes_q2nzw1wf",
+          "-i",
+          "bench/g7/faults/f7_loop_writes.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f8_detached_bridge",
+      "patch": "f8_detached_bridge.diff",
+      "sha256": "dd131029a26e34973261247a995fc5aae486d0b0dea630ac5598a97d1c7089d9",
+      "source_sha256": "9dc7fd46c00d45f9b233f7b763379683c261d6c336c43e068e51ea29d6e5da72",
+      "tests": {
+        "runtime:g7_r10_join_return:llvm": {
+          "baseline": {
+            "command": [
+              "bench/g7/faults/f8_detached_bridge_ln529b39/program"
+            ],
+            "rc": 0,
+            "stdout": "[42, 0, 0]\n[42, 0, 0]\n[42, 0, 0]\n",
+            "stderr": "",
+            "passed": true,
+            "valid": true,
+            "expected": [
+              "[42, 0, 0]",
+              "[42, 0, 0]",
+              "[42, 0, 0]"
+            ]
+          },
+          "faulty": {
+            "command": [
+              "bench/g7/faults/f8_detached_bridge_ln529b39/program"
+            ],
+            "rc": -10,
+            "stdout": "",
+            "stderr": "\nthread 'main' (65858130) panicked at bench/g7/faults/f8_detached_bridge_ln529b39/main.rs:6:3:\nassertion `left == right` failed\n  left: [0, 0, 0]\n right: [42, 0, 0]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+            "passed": false,
+            "valid": true,
+            "expected": [
+              "[42, 0, 0]",
+              "[42, 0, 0]",
+              "[42, 0, 0]"
+            ]
+          },
+          "detected": true,
+          "detection_kind": "runtime_signal_or_wrong_output"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f8_detached_bridge_ln529b39",
+          "-i",
+          "bench/g7/faults/f8_detached_bridge.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/parallel_shim.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f9_mutable_readonly",
+      "patch": "f9_mutable_readonly.diff",
+      "sha256": "6256d0a6f4c79e8606c0502da43d22a34007dd264623a3f650bc0b922ba45711",
+      "source_sha256": "d0d3ad0cdf2409b3ff26ae6019358c7274f2e3f06c2181062c965be73e64d167",
+      "tests": {
+        "artifact:mutable_attributes:llvm": {
+          "baseline": {
+            "passed": true,
+            "valid": true,
+            "evidence": [
+              "define internal void @read__pruv_body(ptr noalias nocapture %p.a.a, i64 %p.a.n, ptr noalias nocapture readonly %p.src.a, i64 %p.src.n, i64 %p.x) {",
+              "ptr %ctx",
+              "ptr %ctx"
+            ],
+            "fixture": "g7_l02_optimized",
+            "flags": [
+              "--no-verify"
+            ]
+          },
+          "faulty": {
+            "passed": false,
+            "valid": true,
+            "evidence": [
+              "define internal void @read__pruv_body(ptr noalias nocapture readonly %p.a.a, i64 %p.a.n, ptr noalias nocapture readonly %p.src.a, i64 %p.src.n, i64 %p.x) {",
+              "ptr %ctx",
+              "ptr %ctx"
+            ],
+            "fixture": "g7_l02_optimized",
+            "flags": [
+              "--no-verify"
+            ]
+          },
+          "detected": true,
+          "detection_kind": "artifact_assertion"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f9_mutable_readonly_prod81te",
+          "-i",
+          "bench/g7/faults/f9_mutable_readonly.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/llvmgen.py'\n",
+        "stderr": ""
+      }
+    },
+    {
+      "fault": "f10_safe_body",
+      "patch": "f10_safe_body.diff",
+      "sha256": "daf474b93220ad06ee8621490bd7e79119a18a387923cc675a223d6a87557358",
+      "source_sha256": "d0d3ad0cdf2409b3ff26ae6019358c7274f2e3f06c2181062c965be73e64d167",
+      "tests": {
+        "artifact:safe_routing:llvm": {
+          "baseline": {
+            "passed": true,
+            "valid": true,
+            "evidence": [
+              "define private void @pruv_g7_cb_0(ptr %ctx) {\nentry:\n  %p0 = getelementptr inbounds %pruv_g7_ctx_0, ptr %ctx, i32 0, i32 0\n  %v0 = load ptr, ptr %p0\n  %p1 = getelementptr inbounds %pruv_g7_ctx_0, ptr %ctx, i32 0, i32 1\n  %v1 = load i64, ptr %p1\n  %p2 = getelementptr inbounds %pruv_g7_ctx_0, ptr %ctx, i32 0, i32 2\n  %v2 = load i64, ptr %p2\n  call void @set__pruv_par_chk(ptr %v0, i64 %v1, i64 %v2)\n  ret void\n}",
+              "define private void @pruv_g7_cb_1(ptr %ctx) {\nentry:\n  %p0 = getelementptr inbounds %pruv_g7_ctx_1, ptr %ctx, i32 0, i32 0\n  %v0 = load ptr, ptr %p0\n  %p1 = getelementptr inbounds %pruv_g7_ctx_1, ptr %ctx, i32 0, i32 1\n  %v1 = load i64, ptr %p1\n  %p2 = getelementptr inbounds %pruv_g7_ctx_1, ptr %ctx, i32 0, i32 2\n  %v2 = load i64, ptr %p2\n  call void @set__pruv_par_chk(ptr %v0, i64 %v1, i64 %v2)\n  ret void\n}"
+            ],
+            "fixture": "g7_safe_requires",
+            "flags": [
+              "--no-verify"
+            ]
+          },
+          "faulty": {
+            "passed": false,
+            "valid": true,
+            "evidence": [
+              "define private void @pruv_g7_cb_0(ptr %ctx) {\nentry:\n  %p0 = getelementptr inbounds %pruv_g7_ctx_0, ptr %ctx, i32 0, i32 0\n  %v0 = load ptr, ptr %p0\n  %p1 = getelementptr inbounds %pruv_g7_ctx_0, ptr %ctx, i32 0, i32 1\n  %v1 = load i64, ptr %p1\n  %p2 = getelementptr inbounds %pruv_g7_ctx_0, ptr %ctx, i32 0, i32 2\n  %v2 = load i64, ptr %p2\n  call void @set__pruv_body(ptr %v0, i64 %v1, i64 %v2)\n  ret void\n}",
+              "define private void @pruv_g7_cb_1(ptr %ctx) {\nentry:\n  %p0 = getelementptr inbounds %pruv_g7_ctx_1, ptr %ctx, i32 0, i32 0\n  %v0 = load ptr, ptr %p0\n  %p1 = getelementptr inbounds %pruv_g7_ctx_1, ptr %ctx, i32 0, i32 1\n  %v1 = load i64, ptr %p1\n  %p2 = getelementptr inbounds %pruv_g7_ctx_1, ptr %ctx, i32 0, i32 2\n  %v2 = load i64, ptr %p2\n  call void @set__pruv_body(ptr %v0, i64 %v1, i64 %v2)\n  ret void\n}"
+            ],
+            "fixture": "g7_safe_requires",
+            "flags": [
+              "--no-verify"
+            ]
+          },
+          "detected": true,
+          "detection_kind": "artifact_assertion"
+        }
+      },
+      "status": "detected",
+      "patch_apply": {
+        "command": [
+          "patch",
+          "--batch",
+          "-p1",
+          "-d",
+          "bench/g7/faults/f10_safe_body_1jhmbx37",
+          "-i",
+          "bench/g7/faults/f10_safe_body.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/llvmgen.py'\n",
+        "stderr": ""
+      }
+    }
+  ]
+}

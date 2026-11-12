@@ -1,0 +1,11 @@
+--- a/pruvc/check.py
++++ b/pruvc/check.py
+@@ -1115,7 +1115,7 @@
+                     terr(c, "parallel_foreign", "par branch %s reaches the trusted rust fn or catalog operation %s (%s)" % (
+                         n, leaf, " -> ".join(chain)),
+                          "use Pruv computation below the par group, and keep foreign calls outside it")
+-                path = s.par_witness(n, lambda i: i["par"], cache)
++                path = None  # FAULT: admit nested parallelism
+                 if path is not None:
+                     terr(c, "parallel_nested", "par branch %s reaches %s, which contains a par group (%s)" % (
+                         n, path[-1], " -> ".join(path)),
