@@ -493,9 +493,15 @@ class TypeTable:
                 self.decls[d.name] = d
         self.order: List[TypeDecl] = []
         self._build_order()
+        self._buffer_memo: Dict[str, bool] = {}
 
     def holds_buffer(self, name: str) -> bool:
         """G9: a value of the declared type `name` can hold an array or str field, directly or through a field type"""
+        if name not in self._buffer_memo:
+            self._buffer_memo[name] = self._holds_buffer_walk(name)
+        return self._buffer_memo[name]
+
+    def _holds_buffer_walk(self, name: str) -> bool:
         seen, todo = set(), [name]
         while todo:
             n = todo.pop()

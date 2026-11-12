@@ -455,7 +455,7 @@ def _oracle_contract_failures(text, pid):
         try:
             prog = O.parse_program(text)
             for fn, args, _exp in G.tests()[pid]:
-                r = O.run(prog, fn, [v for _k, v in args])
+                r = O.run(prog, fn, [v for _k, v in args], fn_decreases=True, max_steps=100_000_000)
                 out.update(r["contract_failures"])
                 if r["kind"] != "ok":
                     out.add("fault %s in %s" % (r["kind"], fn))

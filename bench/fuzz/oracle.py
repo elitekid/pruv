@@ -176,7 +176,7 @@ def _lex(src):
 # ---------------------------------------------------------------- parser
 class _Fn(object):
     foreign = None      # G6: the Rust path string of a `trusted rust fn` (body is empty), else None
-    decreases = None    # G9: the (parsed, never evaluated) function-level `decreases e` of a recursive function
+    decreases = None    # G9: function-level `decreases e`; evaluated only with run(..., fn_decreases=True)
 
     def __init__(self, name, params, ret, requires, ensures, body, line):
         self.name, self.params, self.ret = name, params, ret
@@ -930,6 +930,32 @@ class _Interp(object):
             raise ValueError("mode must be 'safe' or 'proof'")
         self.prog, self.max_steps, self.steps, self.mode = prog, max_steps, 0, mode
         self.output, self.failures = [], []
+        # Opt-in (G9 mutation grading): check function-level `decreases` at every call inside a recursive
+        # SCC: callee measure defined, >= 0 and < the caller's frozen entry measure ("decreases <fn> line N").
+        self.fn_decreases, self._frames, self._scc = False, [], None
+
+    def scc_of(self, name):
+        if self._scc is None:
+            fns = self.prog.fns
+            def calls(x, out):
+                if isinstance(x, (tuple, list)):
+                    if len(x) >= 2 and x[0] == "call" and isinstance(x[1], str) and x[1] in fns:
+                        out.add(x[1])
+                    for y in x:
+                        calls(y, out)
+                return out
+            edges = dict((n, calls(f.body, set())) for n, f in fns.items())
+            def reach(a):
+                seen, todo = set(), [a]
+                while todo:
+                    for b in edges[todo.pop()]:
+                        if b not in seen:
+                            seen.add(b)
+                            todo.append(b)
+                return seen
+            r = dict((n, reach(n)) for n in fns)
+            self._scc = dict((n, frozenset(m for m in fns if m in r[n] and n in r[m])) for n in fns)
+        return self._scc.get(name, frozenset())
 
     # ---- struct / enum / Option / Result values (shared by code and contracts; operands computed via evalf)
     def build(self, e, evalf):
@@ -1351,12 +1377,28 @@ class _Interp(object):
                 st, v = self.cbool(ce, penv, False)
                 if st == "undef" or not v:
                     self.fail("call_requires %s clause %d" % (name, idx))
+        measure = None
+        if self.fn_decreases and fn.decreases is not None:
+            dexp, dln = fn.decreases
+            st, m = self.cbool(dexp, penv, False)
+            ok = st != "undef" and m >= 0
+            if ok:
+                measure = m
+            caller = self._frames[-1] if self._frames else None
+            if caller is not None and caller[0] in self.scc_of(name):
+                if not ok or caller[1] is None or not m < caller[1]:
+                    ok = False
+            if not ok:
+                self.fail("decreases %s line %d" % (name, dln))
         env = dict(penv)
         ret, returned = None, False
+        self._frames.append((name, measure))
         try:
             self.block(fn, fn.body, env)
         except _Return as r:
             ret, returned = r.v, True
+        finally:
+            self._frames.pop()
         if fn.ret != "unit" and not returned:
             raise OracleUnsupported("function %s falls off the end" % name)
         ret = _cp(ret)
@@ -1571,12 +1613,13 @@ def _check_args(prog, fn, args):
         _check_arg(prog, pt, a)
 
 
-def run(prog, fn_name, args, max_steps=2_000_000, mode="safe"):
+def run(prog, fn_name, args, max_steps=2_000_000, mode="safe", fn_decreases=False):
     fn0 = prog.fns.get(fn_name)
     if fn0 is not None and len(args) == len(fn0.params):
         _check_args(prog, fn0, args)
         args = _prep_args(fn0, args)
     it = _Interp(prog, max_steps, mode)
+    it.fn_decreases = fn_decreases
     kind, value, detail = "ok", None, ""
     try:
         value = it.call(fn_name, [_cp(a) for a in args], top=True)

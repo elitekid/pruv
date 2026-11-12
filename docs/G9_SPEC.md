@@ -604,8 +604,9 @@ No new diagnostic codes; use existing G9 and soundness-failure classifications.
 Ground truth is graded against the problem's stated contracts: a mutant that fails
 the full functional tests but satisfies every stated requires/ensures on every test
 input (checked by executing those clauses as Rust assertions), changes no signature or
-contract line, and keeps every helper contract on those inputs (checked by the reference
-interpreter `bench/fuzz/oracle.py`) is classified `contract_weak`. It is not an incorrect mutant and does not count toward the 80; it
+contract line, and keeps every helper contract on those inputs, including each function
+`decreases` at every call inside a recursive SCC (checked by the reference interpreter
+`bench/fuzz/oracle.py` with `fn_decreases=True`), is classified `contract_weak`. It is not an incorrect mutant and does not count toward the 80; it
 measures a weakness of the problem statement, not of the verifier.
 
 ### 15.2 Independent use and exit criteria

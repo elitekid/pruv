@@ -200,10 +200,10 @@
    }
   },
   "versions": {
-   "git_head": "6f760b4bbf8888883577f57c0d6059f373d8646d",
+   "git_head": "e914cbf94cbcbc042ca618ec9de938974b495015",
    "z3_python": "5.3.3",
    "z3_src_crate": "503.3.0",
-   "compiler_sources_dirty": true,
+   "compiler_sources_dirty": false,
    "rs_binary_sha256": "93f50469d4c44b618409de42a1b806b64efab2b4c78a049ad22195fe9ed42b5e",
    "rs_binary_mtime": "2026-11-12T12:56:22"
   }

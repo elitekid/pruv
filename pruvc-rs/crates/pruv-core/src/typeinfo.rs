@@ -686,6 +686,8 @@ pub struct TypeTable {
     pub order: Vec<usize>,
     /// Memo of llvmgen::words (word count of the external form) per type key.
     pub words_memo: std::cell::RefCell<HashMap<String, usize>>,
+    /// Memo of `holds_buffer` per declared type name.
+    pub buffer_memo: std::cell::RefCell<HashMap<String, bool>>,
     /// G9 A0: checker metadata (type_sccs, boxed, extended, fn_sccs), only when the program has a G9 feature.
     pub g9: Option<G9Meta>,
     /// G9 A3 (Python `tt.g9_ext`): names of the extended declarations; set by `llvmgen::new_tt`, empty otherwise.
@@ -716,6 +718,15 @@ impl TypeTable {
     /// G9 (Python `TypeTable.holds_buffer`): a value of the declared type `name` can hold an array or str field,
     /// directly or through a field type.
     pub fn holds_buffer(&self, name: &str) -> bool {
+        if let Some(&b) = self.buffer_memo.borrow().get(name) {
+            return b;
+        }
+        let b = self.holds_buffer_walk(name);
+        self.buffer_memo.borrow_mut().insert(name.to_string(), b);
+        b
+    }
+
+    fn holds_buffer_walk(&self, name: &str) -> bool {
         let mut seen: HashSet<String> = HashSet::new();
         let mut todo: Vec<String> = vec![name.to_string()];
         while let Some(n) = todo.pop() {
