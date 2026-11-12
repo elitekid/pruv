@@ -1,7 +1,4 @@
 {
-  "backends": [
-    "rust"
-  ],
   "flags_matrix": [
     [
       "--no-verify"

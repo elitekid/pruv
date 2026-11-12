@@ -174,8 +174,29 @@ fn g2_cand_expr(e: &Expr, lits: bool, best: &mut Option<(i64, i64, String)>) {
     }
 }
 
+/// Whether an expression contains `spent` (S5).
+fn has_spent(e: &Expr) -> bool {
+    match e {
+        Expr::Spent(_) => true,
+        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => false,
+        Expr::InoutArg(x) => has_spent(&x.expr),
+        Expr::Unary(x) => has_spent(&x.operand),
+        Expr::Binary(x) => has_spent(&x.left) || has_spent(&x.right),
+        Expr::Call(x) => x.args.iter().any(has_spent),
+        Expr::Index(x) => has_spent(&x.array) || has_spent(&x.index),
+        Expr::Ctor(x) => x.arg.as_ref().is_some_and(|a| has_spent(a)),
+        Expr::Quant(x) => has_spent(&x.lo) || has_spent(&x.hi) || has_spent(&x.body),
+        Expr::StructLit(x) => x.fields.iter().any(|f| has_spent(&f.value)),
+        Expr::EnumCtor(x) => x.args.iter().any(has_spent),
+        Expr::FieldAccess(x) => has_spent(&x.base),
+        Expr::IsVariant(x) => has_spent(&x.value),
+        Expr::VariantField(x) => has_spent(&x.value),
+    }
+}
+
 /// Takes the Let types (pick) in a statement and the StrLit of every expression as candidates (listing all variants, with no wildcard).
-fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, best: &mut Option<(i64, i64, String)>) {
+/// `ghost` false skips asserts and loop invariants that mention `spent` (S5: erased in verified mode).
+fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, ghost: bool, best: &mut Option<(i64, i64, String)>) {
     for s in stmts {
         match s {
             Stmt::Let(l) => {
@@ -191,23 +212,27 @@ fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, best: 
             }
             Stmt::If(i) => {
                 g2_cand_expr(&i.cond, lits, best);
-                g2_cand_stmts(&i.then, pick, lits, best);
-                g2_cand_stmts(&i.els, pick, lits, best);
+                g2_cand_stmts(&i.then, pick, lits, ghost, best);
+                g2_cand_stmts(&i.els, pick, lits, ghost, best);
             }
             Stmt::While(w) => {
                 g2_cand_expr(&w.cond, lits, best);
-                for inv in &w.invariants {
+                for inv in w.invariants.iter().filter(|i| ghost || !has_spent(i)) {
                     g2_cand_expr(inv, lits, best);
                 }
                 g2_cand_expr(&w.decreases, lits, best);
-                g2_cand_stmts(&w.body, pick, lits, best);
+                g2_cand_stmts(&w.body, pick, lits, ghost, best);
             }
             Stmt::Return(r) => {
                 if let Some(v) = &r.value {
                     g2_cand_expr(v, lits, best);
                 }
             }
-            Stmt::Assert(a) => g2_cand_expr(&a.cond, lits, best),
+            Stmt::Assert(a) => {
+                if ghost || !has_spent(&a.cond) {
+                    g2_cand_expr(&a.cond, lits, best);
+                }
+            }
             Stmt::Par(e) => {
                 for c in &e.calls {
                     g2_cand_expr(c, lits, best);
@@ -218,7 +243,7 @@ fn g2_cand_stmts(stmts: &[Stmt], pick: &dyn Fn(&str) -> bool, lits: bool, best: 
             Stmt::Match(m) => {
                 g2_cand_expr(&m.scrutinee, lits, best);
                 for arm in &m.arms {
-                    g2_cand_stmts(&arm.body, pick, lits, best);
+                    g2_cand_stmts(&arm.body, pick, lits, ghost, best);
                 }
             }
         }
@@ -248,7 +273,7 @@ pub fn first_g2_unimplemented(prog: &Program, skip: &[&str]) -> Option<(i64, i64
         for e in &f.ensures {
             g2_cand_expr(e, lits, &mut best);
         }
-        g2_cand_stmts(&f.body, &pick, lits, &mut best);
+        g2_cand_stmts(&f.body, &pick, lits, true, &mut best);
         if best.is_some() {
             return best;
         }
@@ -276,7 +301,7 @@ pub fn uses_str(prog: &Program, cost: bool) -> bool {
         for e in &f.ensures {
             g2_cand_expr(e, true, &mut best);
         }
-        g2_cand_stmts(&f.body, &pick, true, &mut best);
+        g2_cand_stmts(&f.body, &pick, true, cost, &mut best);
         if best.is_some() {
             return true;
         }
@@ -956,24 +981,4 @@ mod tests {
         assert_eq!(BUILTIN_TYPE_NAMES.len(), 13);
         assert_eq!(type_name("string"), "String");
     }
-}
-
-/// Stage 5: code generation guard, applied after successful verification.
-pub fn s5_unimplemented_error(prog: &Program) -> Option<crate::diagnostic::PruvError> {
-    for fun in &prog.functions {
-        let mut pos = fun.cost.as_ref().map(|e| (e.line(), e.col()));
-        if pos.is_none() {
-            let mut visit = |e: &Expr| {
-                if pos.is_none() && matches!(e, Expr::Spent(_)) { pos = Some((e.line(), e.col())); }
-            };
-            for e in fun.requires.iter().chain(fun.ensures.iter()).chain(fun.decreases.iter()) { g5_walk_expr(e, &mut visit); }
-            g5_walk_stmts(&fun.body, &mut visit);
-        }
-        if let Some((line, col)) = pos {
-            return Some(crate::diagnostic::PruvError::new("codegen", line, col, "cost_unavailable",
-                "Stage 5 cost code generation is not implemented yet",
-                "remove cost/spent until Stage 5 code generation is available"));
-        }
-    }
-    None
 }

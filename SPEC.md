@@ -549,6 +549,57 @@ contains the synchronous Rust thread bridge. Emit IR and bindings, compile the
 IR with the usual Pruv runtime, and link with a Rust host. Native `--emit exe` and
 `--emit obj` reject `par` with `codegen/parallel_target`.
 
+## 6j. Cost bounds: cost and spent (Stage 5)
+
+A function may state an upper bound on the work it performs. The verifier proves
+that every execution stays within it.
+
+```pruv
+fn sum(a: [i64]) -> i64
+  requires len(a) <= 1_000_000
+  cost len(a)
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant spent == i
+    decreases len(a) - i
+  { s = s + a[i]; i = i + 1; }
+  return s;
+}
+```
+
+The header clause `cost <i64 expr>` comes last (`requires* ensures* decreases?
+cost?`), at most once. It is a contract expression over the parameters, evaluated
+in the entry state, and must be defined there; `result`, `old` and `spent` are not
+allowed in it. `spent` is the number of units this call has spent so far. It may
+appear only in `invariant` and `assert` of a function with `cost`. `cost` and
+`spent` are keywords.
+
+Units: each `while` iteration adds 1 before the body; a call `f(args)` adds
+`1 + C_f` evaluated on the actual arguments (the callee's stated bound, not its
+real spending); `alloc(n, v)` adds `1 + n`; `copy(a)` adds `1 + len(a)`; `par`
+adds every branch's call units once at group entry from the captured arguments.
+Everything else costs 0. Every return must satisfy `spent <= C`, where `C` is the
+bound at entry. A function without `cost` is unchanged.
+
+A function with `cost` may call only functions with `cost`
+(`effect/cost_callee`), and may not use foreign, catalog or file operations
+(`effect/cost_unsupported`). Loops forget `spent` like any assigned variable, so
+a loop needs a `spent` invariant. A failed return check is `verify/cost_bound`
+with a counterexample; an undefined bound is `verify/contract_domain`. Generic
+functions may have `cost`, and a `pub` function's bound is part of its interface.
+
+Verified mode erases `cost` and `spent`: Rust source, LLVM IR and bindings are
+byte-identical to the program without them. Safe mode (`--no-verify`) keeps a
+checked counter per cost function on both backends. It evaluates `C` at entry
+with the run-time contract evaluator (after the function's own `requires` checks
+unless `--trust-callers`; outside its domain `pruv: requires undefined`). A
+return with `spent > C` or a negative `C`, a call whose evaluated callee bound
+is negative, or counter overflow panics `pruv: cost exceeded` (exit 101). `--trust-callers` does not disable these
+checks; `assert` stays erased.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.

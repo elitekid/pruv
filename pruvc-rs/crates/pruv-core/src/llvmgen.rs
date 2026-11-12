@@ -657,6 +657,7 @@ pub fn sig_text(params: &[(String, String)], f: Option<&Function>) -> String {
 
 /// The noreturn call made from a guard's failure block (counterpart of a Python lambda). String constants are registered at call time.
 pub enum Fail {
+    Cost,
     Panic1(&'static str, String),
     Oob(String, String),
     Requires(String, String),
@@ -701,6 +702,8 @@ pub struct FnGen<'a> {
     funcs: &'a HashMap<String, &'a Function>,
     f: &'a Function,
     verified: bool,
+    cost: bool,
+    cost_bound: String,
     lines: Vec<String>,
     allocas: Vec<String>,
     nt: usize,
@@ -735,6 +738,8 @@ impl<'a> FnGen<'a> {
             funcs,
             f,
             verified,
+            cost: !verified && f.cost.is_some(),
+            cost_bound: String::new(),
             lines: Vec::new(),
             allocas: Vec::new(),
             nt: 0,
@@ -768,6 +773,36 @@ impl<'a> FnGen<'a> {
         Ok(())
     }
 
+    fn cost_fail(&mut self) -> R<()> {
+        self.ins("call void @pruv_panic_cost()".into())
+    }
+
+    fn cost_add(&mut self, units: &str) -> R<()> {
+        let old = self.op("load i128, ptr %cost.spent".into())?;
+        let pair = self.op(format!("call {{ i128, i1 }} @llvm.uadd.with.overflow.i128(i128 {}, i128 {})", old, units))?;
+        let value = self.op(format!("extractvalue {{ i128, i1 }} {}, 0", pair))?;
+        let overflow = self.op(format!("extractvalue {{ i128, i1 }} {}, 1", pair))?;
+        self.guard(&overflow, Fail::Cost, true)?;
+        self.ins(format!("store i128 {}, ptr %cost.spent", value))
+    }
+
+    fn cost_call(&mut self, name: &str, args: &[String]) -> R<()> {
+        let bound = self.op(format!("call i128 @{}__pruv_cost({})", mangle(name), args.join(", ")))?;
+        let negative = self.op(format!("icmp slt i128 {}, 0", bound))?;
+        self.guard(&negative, Fail::Cost, true)?;
+        // Nonnegative i128 bound plus one always fits u128.
+        let units = self.op(format!("add i128 {}, 1", bound))?;
+        self.cost_add(&units)
+    }
+
+    fn cost_check(&mut self) -> R<()> {
+        let negative = self.op(format!("icmp slt i128 {}, 0", self.cost_bound))?;
+        let spent = self.op("load i128, ptr %cost.spent".into())?;
+        let exceeded = self.op(format!("icmp ugt i128 {}, {}", spent, self.cost_bound))?;
+        let bad = self.op(format!("or i1 {}, {}", negative, exceeded))?;
+        self.guard(&bad, Fail::Cost, true)
+    }
+
     fn parallel(&mut self, st: &Par) -> R<()> {
         // Entry storage can be reused after the synchronous bridge joins.
         let jobs = self.tmp();
@@ -777,9 +812,17 @@ impl<'a> FnGen<'a> {
             let Expr::Call(call) = call else { return Err("invalid par call".into()); };
             let f = self.funcs[&call.name];
             let mut fields = Vec::new();
+            let mut cost_args = Vec::new();
             for x in &call.args {
                 let x = if let Expr::InoutArg(x) = x { &*x.expr } else { x };
                 let v = self.ev(x, false)?;
+                if self.cost {
+                    if v.k == Kind::Arr {
+                        cost_args.extend([format!("ptr {}", v.a), format!("i64 {}", v.b)]);
+                    } else {
+                        cost_args.push(format!("{} {}", v.k.name(), v.a));
+                    }
+                }
                 if v.k == Kind::Arr {
                     fields.push(("ptr", v.a));
                     fields.push(("i64", v.b));
@@ -789,6 +832,7 @@ impl<'a> FnGen<'a> {
                     fields.push((v.k.name(), v.a));
                 }
             }
+            if self.cost { self.cost_call(&call.name, &cost_args)?; }
             let n = self.m.par_types.len();
             let ct = format!("%pruv_g7_ctx_{}", n);
             let cb = format!("@pruv_g7_cb_{}", n);
@@ -854,6 +898,7 @@ impl<'a> FnGen<'a> {
 
     fn run_fail(&mut self, f: &Fail) -> R<()> {
         match f {
+            Fail::Cost => self.cost_fail(),
             Fail::Panic1(func, msg) => {
                 let s = self.m.string(msg);
                 self.ins(format!("call void @{}(ptr {})", func, s))
@@ -1698,6 +1743,7 @@ impl<'a> FnGen<'a> {
     }
 
     pub fn emit_ret(&mut self, v: &V) -> R<()> {
+        if self.cost { self.cost_check()?; }
         let f = self.f;
         let rt = f.ret.as_str();
         if self.is_ext(rt) {
@@ -1737,13 +1783,20 @@ impl<'a> FnGen<'a> {
     pub fn body(&mut self) -> R<()> {
         self.bind_params()?;
         let f = self.f;
+        if self.cost {
+            let args = ir_params(f, self.tt).iter().filter(|(_, n)| n != "%out")
+                .map(|(t, n)| format!("{} {}", t, n)).collect::<Vec<_>>().join(", ");
+            self.cost_bound = self.op(format!("call i128 @{}__pruv_cost({})", mangle(&f.name), args))?;
+            self.allocas.push("%cost.spent = alloca i128".into());
+            self.ins("store i128 0, ptr %cost.spent".into())?;
+        }
         let falls = self.run_block(&f.body, Vec::new())?;
         if falls {
             if f.ret == "unit" {
                 // G6 A3: owned (take) parameters; empty for every other program
                 let arrays = self.scopes.first().map(|s| s.arrays.clone()).ok_or_else(|| IDX_ERR.to_string())?;
                 self.free_scope(&arrays)?;
-                self.term("ret void".to_string())?;
+                self.emit_ret(&V::unit())?;
             } else {
                 self.term("unreachable".to_string())?;
             }
@@ -1874,6 +1927,7 @@ impl<'a> FnGen<'a> {
                 self.end_temps()?;
                 self.condbr(&c.a, &bl, &el)?;
                 self.place(&bl);
+                if self.cost { self.cost_add("1")?; }
                 if self.run_block(&x.body, Vec::new())? {
                     self.br(&cl)?;
                 }
@@ -2228,6 +2282,16 @@ impl<'a> FnGen<'a> {
     }
 
     pub fn ev_call(&mut self, e: &Call, owned: bool) -> R<V> {
+        let result = self.ev_call_inner(e, owned)?;
+        if self.cost && matches!(e.name.as_str(), "alloc" | "copy") {
+            let length = self.op(format!("zext i64 {} to i128", result.b))?;
+            let units = self.op(format!("add i128 {}, 1", length))?;
+            self.cost_add(&units)?;
+        }
+        Ok(result)
+    }
+
+    fn ev_call_inner(&mut self, e: &Call, owned: bool) -> R<V> {
         let n = e.name.as_str();
         let a = &e.args;
         if n == "len" {
@@ -2365,6 +2429,7 @@ impl<'a> FnGen<'a> {
                 k => args.push(format!("{} {}", k.name(), v.a)),
             }
         }
+        if self.cost { self.cost_call(&f.name, &args)?; }
         let callee = if self.m.explicit {
             // G4 A3 (docs/G4_SPEC.md 4): verified calls go to the body (requires proved); safe-mode calls go through the
             // checked wrapper only when the callee has a requires (no wrapper exists otherwise)
@@ -3307,11 +3372,12 @@ pub fn entry_of(
     f: &Function,
     trust: bool,
     budget: u64,
+    cost: bool,
 ) -> R<String> {
     let mut g = FnGen::new(m, tt, funcs, f, true);
-    let params = ir_params(f, tt);
+    let mut params = ir_params(f, tt);
     let rt = ir_ret(tt, f); // G9 A3: "void" for an extended result (output storage is the leading `ptr %out`)
-    if trust {
+    if trust && !cost {
         g.place("start");
     } else {
         g.bind_contract_params()?;
@@ -3319,7 +3385,7 @@ pub fn entry_of(
         g.budget = Some(bname.clone());
         g.allocas.push(format!("{} = alloca i64", bname));
         g.ins(format!("store i64 {}, ptr {}", budget, bname))?;
-        for r in &f.requires {
+        for r in f.requires.iter().filter(|_| !trust) {
             let c = g.cregion(&|g2| g2.cev(r))?;
             // G4: the source-qualified identity, not the stem
             let disp = g.m.fn_disp.get(&f.name).cloned().unwrap_or_else(|| f.name.clone());
@@ -3327,6 +3393,13 @@ pub fn entry_of(
             let msg_ex = g.m.string(&crate::emit_common::show(r));
             g.guard(&c.a, Fail::Requires(msg_fn, msg_ex), false)?;
         }
+    }
+    if cost {
+        let expr = f.cost.as_ref().ok_or_else(|| "missing cost bound".to_string())?;
+        let value = g.cregion(&|g2| g2.cev(expr))?;
+        g.term(format!("ret i128 {}", value.a))?;
+        params.retain(|(_, n)| n != "%out");
+        return Ok(g.render(&format!("define internal i128 @{}__pruv_cost({})", mangle(&f.name), sig_text(&params, None))));
     }
     let args = params.iter().map(|(t, n)| format!("{} {}", t, n)).collect::<Vec<_>>().join(", ");
     let callee = format!("@{}__pruv_body", mangle(&f.name));
@@ -4065,7 +4138,6 @@ pub fn gen_llvm_any_ex_g4(
     foreign_checks: &str,
 ) -> Result<(String, String), crate::codegen::GenError> {
     use crate::codegen::GenError;
-    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
@@ -4098,7 +4170,6 @@ pub fn gen_llvm_concrete_ex(
     foreign_checks: &str,
 ) -> Result<(String, String), crate::codegen::GenError> {
     use crate::codegen::GenError;
-    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
@@ -4212,7 +4283,8 @@ fn gen_llvm_body(
         })
     };
     let need_cdiv = need_cdiv || (!verified && prog.functions.iter().any(|f| !f.requires.is_empty() && par_targets.contains(&f.name)));
-    if need_cdiv {
+    let cost_used = !verified && prog.functions.iter().any(|f| f.cost.is_some());
+    if need_cdiv || cost_used {
         chunks.push(cdivrem(&mut m, true));
         chunks.push(cdivrem(&mut m, false));
     }
@@ -4227,14 +4299,17 @@ fn gen_llvm_body(
         let mut g = FnGen::new(&mut m, &tt, &funcs, f, verified);
         g.body()?;
         let params = ir_params(f, &tt);
-        chunks.push(g.render(&format!(
+        let cost = g.cost;
+        let body = g.render(&format!(
             "define internal {} @{}__pruv_body({})",
             ir_ret(&tt, f),
             mangle(&f.name),
             sig_text(&params, Some(f))
-        )));
+        ));
+        if cost { chunks.push(entry_of(&mut m, &tt, &funcs, f, trust_callers, budget, true)?); }
+        chunks.push(body);
         if !verified && !f.requires.is_empty() && par_targets.contains(&f.name) {
-            chunks.push(entry_of(&mut m, &tt, &funcs, f, false, budget)?.replace(
+            chunks.push(entry_of(&mut m, &tt, &funcs, f, false, budget, false)?.replace(
                 &format!("@{}__pruv_entry(", mangle(&f.name)),
                 &format!("@{}__pruv_par_chk(", mangle(&f.name))));
         }
@@ -4244,7 +4319,7 @@ fn gen_llvm_body(
             let host = hosts.get(fi).copied().unwrap_or(false);
             let checked = checked_entry(f, host);
             if checked {
-                chunks.push(entry_of(&mut m, &tt, &funcs, f, false, budget)?);
+                chunks.push(entry_of(&mut m, &tt, &funcs, f, false, budget, false)?);
             }
             if is_host_abi_fn(f, &tt, true, host) {
                 chunks.push(crate::abi::abi_of_target(
@@ -4267,6 +4342,7 @@ fn gen_llvm_body(
                 f,
                 (trust_callers && !has_inout(f)) || f.requires.is_empty(),
                 budget,
+                false,
             )?);
         }
         if !crate::emit_common::is_spec_fn(&f.name) && !coll {
@@ -4279,7 +4355,7 @@ fn gen_llvm_body(
         chunks.extend(g9_helper_chunks(&mut m, &tt)?);
     }
     // G9 A3: buffer fields count as uses of the buffer runtime declarations
-    let has_str = crate::typeinfo::uses_str(prog, true) || type_has_field(prog, "str"); // G2 B2
+    let has_str = crate::typeinfo::uses_str(prog, !verified) || type_has_field(prog, "str"); // G2 B2
     let g9_u8 = type_has_field(prog, "array_u8") || type_has_field(prog, "array_bool");
     // G6 A3: bridge marker and the shim symbols used, sorted by symbol
     let mut g6decls = String::new();
@@ -4326,7 +4402,18 @@ fn gen_llvm_body(
     if prog.functions.iter().any(|f| crate::foreign::first_par(&f.body).is_some()) {
         shim.get_or_insert_with(String::new).push_str(&crate::parallel_shim::build_shim());
     }
-    let bindings = crate::bindings::gen_bindings_with(prog, shim.as_deref())?;
+    if cost_used {
+        ir.push_str("declare void @pruv_panic_cost() noreturn cold nounwind\n");
+        ir.push_str("declare { i128, i1 } @llvm.uadd.with.overflow.i128(i128, i128)\n");
+        shim.get_or_insert_with(String::new).push_str(r#"
+#[no_mangle]
+pub extern "C" fn pruv_panic_cost() -> ! {
+    eprintln!("pruv: cost exceeded");
+    ::std::process::exit(101);
+}
+"#);
+    }
+    let bindings = crate::bindings::gen_bindings_with(prog, shim.as_deref(), verified)?;
     Ok((ir, bindings))
 }
 

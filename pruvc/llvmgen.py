@@ -404,6 +404,7 @@ def sig_text(params, f=None):
 class FnGen:
     def __init__(s, m, funcs, f, verified):
         s.m, s.funcs, s.f, s.verified = m, funcs, f, verified
+        s.cost = not verified and f.cost is not None
         s.lines = []
         s.allocas = []
         s.nt = s.nl = s.nslot = s.nq = 0
@@ -980,6 +981,8 @@ class FnGen:
         s.scopes.append({"names": names, "arrays": owned})
 
     def emit_ret(s, v):
+        if s.cost:
+            s.cost_check()
         rt = s.f.ret
         if s.is_ext(rt):    # G9 A3: explicit output storage; v is an owned value
             s.ins("store %s %s, ptr %%out" % (lty(rt), v.a))
@@ -1007,11 +1010,16 @@ class FnGen:
 
     def body(s):
         s.bind_params()
+        if s.cost:
+            args = ["%s %s" % (t, n) for t, n in ir_params(s.f, s.tt) if n != "%out"]
+            s.cost_bound = s.op("call i128 @%s__pruv_cost(%s)" % (mangle(s.f.name), ", ".join(args)))
+            s.allocas.append("%cost.spent = alloca i128")
+            s.ins("store i128 0, ptr %cost.spent")
         falls = s.run_block(s.f.body)
         if falls:
             if s.f.ret == UNIT:
                 s.free_scope(s.scopes[0])   # G6 A3: owned (take) parameters; empty for every other program
-                s.term("ret void")
+                s.emit_ret(V("unit"))
             else:
                 s.term("unreachable")
 
@@ -1103,6 +1111,8 @@ class FnGen:
             s.end_temps()
             s.condbr(c.a, bl, el)
             s.place(bl)
+            if s.cost:
+                s.cost_add("1")
             if s.run_block(st.body):
                 s.br(cl)
             s.place(el)
@@ -1170,6 +1180,32 @@ class FnGen:
         else:
             raise Exception("llvmgen: unsupported statement %r" % st)
 
+    def cost_fail(s):
+        s.ins("call void @pruv_panic_cost()")
+
+    def cost_add(s, units):
+        old = s.op("load i128, ptr %cost.spent")
+        pair = s.op("call { i128, i1 } @llvm.uadd.with.overflow.i128(i128 %s, i128 %s)" % (old, units))
+        value = s.op("extractvalue { i128, i1 } %s, 0" % pair)
+        overflow = s.op("extractvalue { i128, i1 } %s, 1" % pair)
+        s.guard(overflow, s.cost_fail, True)
+        s.ins("store i128 %s, ptr %%cost.spent" % value)
+
+    def cost_call(s, name, args):
+        bound = s.op("call i128 @%s__pruv_cost(%s)" % (mangle(name), ", ".join(args)))
+        negative = s.op("icmp slt i128 %s, 0" % bound)
+        s.guard(negative, s.cost_fail, True)
+        # Nonnegative i128 bound plus one always fits u128.
+        units = s.op("add i128 %s, 1" % bound)
+        s.cost_add(units)
+
+    def cost_check(s):
+        negative = s.op("icmp slt i128 %s, 0" % s.cost_bound)
+        spent = s.op("load i128, ptr %cost.spent")
+        exceeded = s.op("icmp ugt i128 %s, %s" % (spent, s.cost_bound))
+        bad = s.op("or i1 %s, %s" % (negative, exceeded))
+        s.guard(bad, s.cost_fail, True)
+
     def parallel(s, st):
         # Entry-block storage is reused only after the synchronous bridge has joined.
         jobs = s.tmp()
@@ -1178,14 +1214,20 @@ class FnGen:
         for i, call in enumerate(st.calls):
             f = s.funcs[call.name]
             fields = []
+            cost_args = []
             for x in call.args:
                 v = s.ev(x.expr if isinstance(x, InoutArg) else x)
+                if s.cost:
+                    cost_args.extend(["ptr %s" % v.a, "i64 %s" % v.b] if v.k == "arr" else
+                                     ["%s %s" % (v.k, v.a)])
                 if v.k == "arr":
                     fields.extend([("ptr", v.a), ("i64", v.b)])
                 elif v.k == "i1":
                     fields.append(("i8", s.op("zext i1 %s to i8" % v.a)))
                 else:
                     fields.append((v.k, v.a))
+            if s.cost:
+                s.cost_call(call.name, cost_args)
             n = len(s.m.par_types)
             ct = "%%pruv_g7_ctx_%d" % n
             cb = "@pruv_g7_cb_%d" % n
@@ -1374,6 +1416,15 @@ class FnGen:
 
     def ev_call(s, e, owned):
         n, a = e.name, e.args
+        if s.cost and n in ("alloc", "copy") and not getattr(e, "pruv_cost_wrapped", False):
+            import copy
+            plain = copy.copy(e)
+            plain.pruv_cost_wrapped = True
+            result = s.ev_call(plain, owned)
+            length = s.op("zext i64 %s to i128" % result.b)
+            units = s.op("add i128 %s, 1" % length)
+            s.cost_add(units)
+            return result
         if n == "len":
             x = s.ev(a[0])
             if x.k == "coll":   # G6 A3
@@ -1458,6 +1509,8 @@ class FnGen:
                 args.append("%s %s" % (lty(v.ty), v.a))
             else:
                 args.append("%s %s" % (v.k, v.a))
+        if s.cost:
+            s.cost_call(f.name, args)
         if s.m.explicit:
             # G4 A3 (docs/G4_SPEC.md 4): verified calls go to the body (requires proved); safe-mode calls go through the
             # checked wrapper only when the callee has a requires (no wrapper exists otherwise)
@@ -2055,23 +2108,28 @@ class FnGen:
         return V(rty, res)
 
 
-def entry_of(m, funcs, f, trust, budget=1 << 30):
+def entry_of(m, funcs, f, trust, budget=1 << 30, cost=False):
     g = FnGen(m, funcs, f, True)
     params = ir_params(f, m.tt)
     rt = ir_ret(m.tt, f)    # G9 A3: "void" for an extended result (output storage is the leading `ptr %out`)
-    if trust:
+    if trust and not cost:
         g.place("start")
     else:
         g.bind_contract_params()
         g.budget = "%req.budget"
         g.allocas.append("%s = alloca i64" % g.budget)
         g.ins("store i64 %d, ptr %s" % (budget, g.budget))
-        for r in f.requires:
+        for r in ([] if trust else f.requires):
             c = g.cregion(lambda r=r: g.cev(r))
             msg_fn = m.string(getattr(f, "disp", f.name))   # G4: the source-qualified identity, not the stem
             msg_ex = m.string(show(r))
             g.guard(c.a, lambda a=msg_fn, b=msg_ex: g.ins("call void @pruv_panic_requires(ptr %s, ptr %s)" % (a, b)),
                     False)
+    if cost:
+        value = g.cregion(lambda: g.cev(f.cost))
+        g.term("ret i128 %s" % value.a)
+        params = [(t, n) for t, n in params if n != "%out"]
+        return g.render("define internal i128 @%s__pruv_cost(%s)" % (mangle(f.name), sig_text(params)))
     args = ", ".join("%s %s" % (t, n) for t, n in params)
     callee = "@%s__pruv_body" % mangle(f.name)
     if f.ret == UNIT or rt == "void":
@@ -2987,7 +3045,7 @@ def entry_type_closure(prog, tt):
     return seen
 
 
-def gen_bindings(prog, shim=None):
+def gen_bindings(prog, shim=None, verified=True):
     """shim: the `mod pruv_g6_shim` text of a G6 program (foreign_shim.build_shim); None for every other program"""
     tt = new_tt(prog)
     explicit = bool(getattr(prog, "explicit", False))
@@ -3011,7 +3069,7 @@ def gen_bindings(prog, shim=None):
     if uses_array_type(prog, "array_bool"):  # G2 A5
         o.append(ALLOW)
         o.append("#[repr(C)]\npub struct Pruv__ArrayBool { pub data: *mut u8, pub len: i64 }")
-    if uses_str(prog):  # G2 B2
+    if uses_str(prog, cost=not verified):  # G2 B2
         o.append(ALLOW)
         o.append("#[repr(C)]\npub struct Pruv__Str { pub data: *mut u8, pub len: i64 }")
     o.append(ALLOW)
@@ -3278,10 +3336,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     propagates).  The generator works on the concrete plan.program only: no type parameter reaches LLVM.
     foreign_checks: G6 boundary check mode of the shim helpers (requires|all|off, docs/G6_SPEC.md 12.3).
     A G6 program outside the supported subset (G6_SPEC 13.1) raises PruvError codegen/unsupported_type."""
-    from typeinfo import g2_unimplemented_error, first_g3_use, s5_unimplemented_error
-    s5err = s5_unimplemented_error(prog)
-    if s5err is not None:
-        raise s5err
+    from typeinfo import g2_unimplemented_error, first_g3_use
     if foreign_checks not in ("requires", "all", "off"):
         raise ValueError("foreign_checks must be requires, all or off")
     if plan is None and (first_g3_use(prog) is not None or prog.explicit):   # G4 A3: explicit mode names via mono
@@ -3306,6 +3361,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     tt = new_tt(prog)   # G9: SCC-condensed order and the extended / boxed metadata (identical to TypeTable otherwise)
     m = Mod(tt)
     m.explicit = explicit
+    cost_used = not verified and any(f.cost is not None for f in prog.functions)
     funcs = {f.name: f for f in prog.functions}
     chunks = []
 
@@ -3321,7 +3377,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         need_cdiv = any(f.requires and f.foreign is None and (not trust_callers or (not verified and has_inout(f)))
                         for f in prog.functions)    # G5 A3: an inout entry checks also under trust_callers
     need_cdiv = need_cdiv or (not verified and any(f.requires and f.name in par_targets for f in prog.functions))
-    if need_cdiv:
+    if need_cdiv or cost_used:
         chunks.append(cdivrem(m, True))
         chunks.append(cdivrem(m, False))
     for f in prog.functions:
@@ -3332,6 +3388,8 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         coll = _is_coll_fn(f) or is_internal_fn(f, tt)
         g = FnGen(m, funcs, f, verified)
         g.body()
+        if g.cost:
+            chunks.append(entry_of(m, funcs, f, trust_callers, budget, cost=True))
         params = ir_params(f, tt)
         chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (ir_ret(tt, f), mangle(f.name), sig_text(params, f))))
         if not verified and f.requires and f.name in par_targets:
@@ -3353,7 +3411,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     if tt.g9_ext or m.need_size or m.need_eq:   # G9 A3: clone / drop / node helpers, then the contract helpers above
         chunks.extend(g9_helper_chunks(m, tt))
     # G9 A3: buffer fields count as uses of the buffer runtime declarations
-    has_str = uses_str(prog) or type_has_field(prog, "str")  # G2 B2: walk the AST once
+    has_str = uses_str(prog, cost=not verified) or type_has_field(prog, "str")  # G2 B2: walk the AST once
     g6decls = ""
     if m.g6_bridge or m.g6_decls:   # G6 A3: bridge marker and the shim symbols used, sorted by symbol
         g6decls = G6_BRIDGE_DECL + "".join(m.g6_decls[k] + "\n" for k in sorted(m.g6_decls))
@@ -3375,4 +3433,14 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         shim = foreign_shim.build_shim(prog, verified, trust_callers, budget, foreign_checks)
     if first_par(prog) is not None:
         shim = (shim or "") + parallel_shim.build_shim()
-    return ir, gen_bindings(prog, shim)
+    if cost_used:
+        ir += "declare void @pruv_panic_cost() noreturn cold nounwind\n"
+        ir += "declare { i128, i1 } @llvm.uadd.with.overflow.i128(i128, i128)\n"
+        shim = (shim or "") + """
+#[no_mangle]
+pub extern "C" fn pruv_panic_cost() -> ! {
+    eprintln!("pruv: cost exceeded");
+    ::std::process::exit(101);
+}
+"""
+    return ir, gen_bindings(prog, shim, verified)

@@ -3,7 +3,7 @@ python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_fronten
                         [--backend rust|llvm|both]
 
 group s5_proof: tests/s5/proof/*.pruv verifies in default, trust-callers and infer modes
-with Rust erasure checks; LLVM retains codegen/cost_unavailable (one row checks both backends).
+with byte-identical Rust, LLVM IR and bindings erasure checks (one row checks both backends).
 
 group g7_frontend / g7_proof: Rust rows generate and compile (run if main exists);
 LLVM and dual-emission rows produce IR and Rust bindings after successful verification.
@@ -647,25 +647,14 @@ def s5_frontend_jobs(group="s5_frontend", folder="frontend", modes=None):
     jobs = []
     for f in sorted(glob.glob(os.path.join(ROOT, "tests", "s5", folder, "*.pruv"))):
         stem = os.path.splitext(os.path.basename(f))[0]
-        source = open(f, encoding="utf-8").read()
-        guarded = re.search(r"\b(cost|spent)\b", source) is not None
         for mode, flags in (modes or (("default", []), ("no-verify", ["--no-verify"]),
                             ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"]))):
-            def fn(f=f, stem=stem, mode=mode, flags=flags, guarded=guarded):
+            def fn(f=f, stem=stem, mode=mode, flags=flags):
                 out = os.path.join(WORK, "%s_%s_%s" % (group, stem, mode))
                 for backend in ("rust", "llvm"):
                     c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
                          pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
-                    if guarded and backend == "llvm":
-                        try:
-                            ds = [json.loads(line) for line in c.stdout.splitlines()]
-                        except ValueError:
-                            ds = []
-                        ok = c.returncode == 1 and any(
-                            d.get("stage") == "codegen" and d.get("code") == "cost_unavailable"
-                            and d.get("message") == "Stage 5 cost code generation is not implemented yet" for d in ds)
-                    else:
-                        ok = c.returncode == 0
+                    ok = c.returncode == 0
                     if not ok:
                         return False, backend + ": " + c.stdout + c.stderr
                 if folder == "proof" and mode in ("default", "trust-callers"):
@@ -677,6 +666,12 @@ def s5_frontend_jobs(group="s5_frontend", folder="frontend", modes=None):
                         return False, "erased twin: " + c.stdout + c.stderr
                     if open(out + ".rs", "rb").read() != open(out + "_erased.rs", "rb").read():
                         return False, "cost erasure changed generated Rust"
+                    c = pruvc_llvm(twin, out + "_erased.ll", out + "_erased_llvm.rs", flags)
+                    if c.returncode != 0:
+                        return False, "erased LLVM twin: " + c.stdout + c.stderr
+                    for suffix in (".ll", "_llvm.rs"):
+                        if open(out + suffix, "rb").read() != open(out + "_erased" + suffix, "rb").read():
+                            return False, "cost erasure changed generated " + suffix
                 return True, ""
             jobs.append(safe("%s/%s [%s]" % (group, stem, mode), fn,
                              {"sample": rel_sample(f), "backend": None, "flags": list(flags),

@@ -319,29 +319,46 @@ def uses_array_type(prog, name):
     return False
 
 
-def _has_str_node(node):
-    """True if a StrLit or a Let of type str occurs under node (generic dataclass walk; Types are skipped)."""
+def _has_spent(node):
+    """True if a Spent expression occurs under node (S5 ghost clause)."""
     if isinstance(node, list):
-        return any(_has_str_node(x) for x in node)
+        return any(_has_spent(x) for x in node)
+    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
+        return False
+    if isinstance(node, Spent):
+        return True
+    return any(_has_spent(getattr(node, k)) for k in node.__dataclass_fields__)
+
+
+def _has_str_node(node, ghost=True):
+    """True if a StrLit or a Let of type str occurs under node (generic dataclass walk; Types are skipped).
+    ghost=False skips the S5 ghost clauses erased in verified mode: asserts and invariants that mention spent."""
+    if isinstance(node, list):
+        return any(_has_str_node(x, ghost) for x in node)
     if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
         return False
     if isinstance(node, StrLit):
         return True
     if isinstance(node, Let) and node.type.name == "str":
         return True
+    if not ghost and isinstance(node, Assert) and _has_spent(node.cond):
+        return False
+    if not ghost and isinstance(node, While):
+        return any(_has_str_node(x, ghost) for x in [node.cond, node.decreases, node.body] +
+                   [i for i in node.invariants if not _has_spent(i)])
     for fname in node.__dataclass_fields__:
-        if _has_str_node(getattr(node, fname)):
+        if _has_str_node(getattr(node, fname), ghost):
             return True
     return False
 
 
 def uses_str(prog, cost=True):
     """G2 B2: True if some param/return/let type is str or any requires/ensures/body expression has a string literal.
-    cost=False ignores cost bounds (S5: erased in verified mode)."""
+    cost=False ignores cost bounds and spent asserts/invariants (S5: erased in verified mode)."""
     if uses_array_type(prog, "str"):
         return True
     for fn in prog.functions:
-        if (cost and _has_str_node(fn.cost)) or _has_str_node(fn.requires) or _has_str_node(fn.ensures) or _has_str_node(fn.body):
+        if (cost and _has_str_node(fn.cost)) or _has_str_node(fn.requires) or _has_str_node(fn.ensures) or _has_str_node(fn.body, cost):
             return True
     return False
 
@@ -613,31 +630,3 @@ class TypeTable:
             if v.name == variant:
                 return i
         raise KeyError("%s::%s" % (ty.name, variant))
-
-
-def s5_unimplemented_error(prog, stage="codegen"):
-    """Code generation guard; verified callers invoke this after successful verification."""
-    def spent(node):
-        if isinstance(node, Spent):
-            return node
-        if isinstance(node, (list, tuple)):
-            children = node
-        elif hasattr(node, "__dataclass_fields__") and not isinstance(node, Type):
-            children = [getattr(node, k) for k in node.__dataclass_fields__]
-        else:
-            return None
-        for child in children:
-            found = spent(child)
-            if found is not None:
-                return found
-        return None
-    for f in prog.functions:
-        e = f.cost
-        if e is None:
-            e = spent([f.requires, f.ensures, f.decreases, f.body])
-        if e is not None:
-            return PruvError(stage, e.line, e.col, "cost_unavailable",
-                             "Stage 5 cost code generation is not implemented yet",
-                             "remove cost/spent until Stage 5 code generation is available",
-                             file=getattr(e, "file", None))
-    return None

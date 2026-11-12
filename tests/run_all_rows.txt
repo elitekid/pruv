@@ -189,6 +189,22 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g7_safe_requires/root.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g7_safe_unit_requires/root.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/r11.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_alloc_copy.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_alloc_copy_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_call.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_call_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_frozen.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_generic.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_loop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_loop_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_negative.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_nested.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_overflow.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_par.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_par_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_recursive.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_unbounded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_undefined.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/bsearch.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g1_counter.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "examples", "mode": "no-verify", "sample": "examples/g1_event.pruv"}
@@ -505,6 +521,23 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/refine_name_k.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/refine_narrowed.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/refine_out_of_range.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_alloc_copy.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_alloc_copy_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_call.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_call_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_callee_requires.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_frozen.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_generic.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_loop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_loop_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_negative.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_nested.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_overflow.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_par.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_par_exceeded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_recursive.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_unbounded.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_undefined.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_inversion.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_inversion_first.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_inversion_last.pruv"}
@@ -982,6 +1015,15 @@
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/refine_name_k.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/refine_narrowed.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/refine_out_of_range.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_alloc_copy.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_call.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_frozen.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_generic.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_loop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_nested.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_par.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_recursive.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/s5_unbounded.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_inversion.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_inversion_first.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_inversion_last.pruv"}
@@ -2089,6 +2131,7 @@
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "s5_proof", "mode": "infer", "sample": "tests/s5/proof/parameters.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "s5_proof", "mode": "infer", "sample": "tests/s5/proof/recursive.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "s5_proof", "mode": "infer", "sample": "tests/s5/proof/str_bound.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "s5_proof", "mode": "infer", "sample": "tests/s5/proof/str_spent.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "s5_proof", "mode": "infer", "sample": "tests/s5/proof/sum.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "s5_proof", "mode": "infer", "sample": "tests/s5/proof/unbounded.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "s5_proof", "mode": "infer", "sample": "tests/s5/proof/zero.pruv"}
@@ -2306,6 +2349,7 @@
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_proof", "mode": "trust-callers", "sample": "tests/s5/proof/parameters.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_proof", "mode": "trust-callers", "sample": "tests/s5/proof/recursive.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_proof", "mode": "trust-callers", "sample": "tests/s5/proof/str_bound.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_proof", "mode": "trust-callers", "sample": "tests/s5/proof/str_spent.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_proof", "mode": "trust-callers", "sample": "tests/s5/proof/sum.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_proof", "mode": "trust-callers", "sample": "tests/s5/proof/unbounded.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_proof", "mode": "trust-callers", "sample": "tests/s5/proof/zero.pruv"}
@@ -3045,6 +3089,7 @@
 {"backend": null, "compiler": "rs", "flags": [], "group": "s5_proof", "mode": "default", "sample": "tests/s5/proof/parameters.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "s5_proof", "mode": "default", "sample": "tests/s5/proof/recursive.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "s5_proof", "mode": "default", "sample": "tests/s5/proof/str_bound.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "s5_proof", "mode": "default", "sample": "tests/s5/proof/str_spent.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "s5_proof", "mode": "default", "sample": "tests/s5/proof/sum.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "s5_proof", "mode": "default", "sample": "tests/s5/proof/unbounded.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "s5_proof", "mode": "default", "sample": "tests/s5/proof/zero.pruv"}

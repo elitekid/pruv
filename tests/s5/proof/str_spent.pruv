@@ -1,0 +1,14 @@
+// Ghost clauses with string literals are erased together with spent.
+fn f(a: [i64]) -> i64
+  requires len(a) <= 100
+  cost len(a)
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant spent == i + len("")
+    decreases len(a) - i
+  { i = i + 1; }
+  assert spent == len(a) + len("");
+  return i;
+}
