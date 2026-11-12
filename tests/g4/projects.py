@@ -110,7 +110,7 @@ def is_companion(rel):
     if rel.startswith("tests/g4/") and rel.endswith(".pruv"):
         return True
     parts = rel.split("/")
-    if len(parts) >= 3 and parts[0] == "examples" and parts[1].startswith("g4_"):   # G4 A2 project examples
+    if len(parts) >= 3 and parts[0] == "examples" and parts[1].startswith(("g4_", "g5_")):   # G4 A2 / G5 A3 project examples
         return rel != "examples/%s/root.pruv" % parts[1]
     return len(parts) >= 4 and parts[:2] == ["tests", "must_reject"] and parts[2].startswith("g4_")
 
@@ -120,7 +120,7 @@ def example_roots():
     out = []
     for name in sorted(os.listdir(os.path.join(ROOT, "examples"))):
         p = os.path.join(ROOT, "examples", name, "root.pruv")
-        if name.startswith("g4_") and os.path.isfile(p):
+        if name.startswith(("g4_", "g5_")) and os.path.isfile(p):   # G5 A3: examples/g5_*/ project examples too
             out.append("examples/%s/root.pruv" % name)
     return out
 

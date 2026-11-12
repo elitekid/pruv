@@ -1,0 +1,13 @@
+// companion module of g5_r18_cross_module_generic: a public generic Pruv API with an inout parameter
+pub fn exchange<T: Element>(inout buf: [T], i: i64, j: i64) -> ()
+  requires 0 <= i && i < len(buf) && 0 <= j && j < len(buf)
+  ensures len(buf) == len(old(buf))
+  ensures buf[i] == old(buf)[j]
+  ensures buf[j] == old(buf)[i]
+  ensures forall k in 0..len(buf): k != i && k != j ==> buf[k] == old(buf)[k]
+{
+  let x: T = buf[i];
+  let y: T = buf[j];
+  buf[i] = y;
+  buf[j] = x;
+}

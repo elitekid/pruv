@@ -1,0 +1,12 @@
+// companion module of g5_module_helper: a public Pruv-only helper that updates the caller's array in place.
+// It is callable from other Pruv modules, but it is never a host entry (an inout parameter is not host-visible).
+pub fn set_ends(inout a: [i64], lo: i64, hi: i64) -> ()
+  requires len(a) >= 2
+  ensures len(a) == len(old(a))
+  ensures a[0] == lo
+  ensures a[len(a) - 1] == hi
+  ensures forall k in 0..len(a): k != 0 && k != len(a) - 1 ==> a[k] == old(a)[k]
+{
+  a[0] = lo;
+  a[len(a) - 1] = hi;
+}

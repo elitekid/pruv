@@ -53,7 +53,9 @@
     {"name": "g5_syntax_repeated_mode", "root": "tests/must_reject/g5_syntax_repeated_mode.pruv", "stage": "parse", "code": "inout_syntax", "mode": "static"},
     {"name": "g5_syntax_missing_name", "root": "tests/must_reject/g5_syntax_missing_name.pruv", "stage": "parse", "code": "inout_syntax", "mode": "static"},
     {"name": "g5_old_decl_reserved", "root": "tests/must_reject/g5_old_decl_reserved.pruv", "stage": "type", "code": "reserved", "mode": "static"},
-    {"name": "g5_host_entry", "root": "tests/must_reject/g5_host_entry/root.pruv", "project": true, "stage": "type", "code": "entry_signature", "mode": "static"}
+    {"name": "g5_host_entry", "root": "tests/must_reject/g5_host_entry/root.pruv", "project": true, "stage": "type", "code": "entry_signature", "mode": "static"},
+    {"name": "g5_context_while_cond", "root": "tests/must_reject/g5_context_while_cond.pruv", "stage": "type", "code": "inout_context", "mode": "static"},
+    {"name": "g5_context_index_target", "root": "tests/must_reject/g5_context_index_target.pruv", "stage": "type", "code": "inout_context", "mode": "static"}
   ],
   "proof": [
     {"name": "p01_i64_store_frame", "root": "tests/g5/proof/p01_i64_store_frame.pruv"},
@@ -91,9 +93,12 @@
     {"name": "g5p_refine_not_preserved", "root": "tests/must_reject/g5p_refine_not_preserved.pruv", "stage": "verify", "code": "refinement_assign", "infer": true},
     {"name": "g5p_return_call_refine", "root": "tests/must_reject/g5p_return_call_refine.pruv", "stage": "verify", "code": "refinement_assign", "infer": true},
     {"name": "g5p_loop_call_replace", "root": "tests/must_reject/g5p_loop_call_replace.pruv", "stage": "verify", "code": "index_oob", "infer": true},
-    {"name": "g5p_recursive_decrease", "root": "tests/must_reject/g5p_recursive_decrease.pruv", "stage": "verify", "code": "recursive_decrease"}
+    {"name": "g5p_recursive_decrease", "root": "tests/must_reject/g5p_recursive_decrease.pruv", "stage": "verify", "code": "recursive_decrease"},
+    {"name": "g5p_loop_helper_no_frame", "root": "tests/must_reject/g5p_loop_helper_no_frame.pruv", "stage": "verify", "code": "invariant_preserved", "infer": true},
+    {"name": "g5p_rotate_wrong_range", "root": "tests/must_reject/g5p_rotate_wrong_range.pruv", "stage": "verify", "code": "ensures"}
   ],
   "runtime": [
-    {"name": "g5_r08_module_call", "root": "tests/runtime/g5_r08_module_call/root.pruv", "project": true}
+    {"name": "g5_r08_module_call", "root": "tests/runtime/g5_r08_module_call/root.pruv", "project": true},
+    {"name": "g5_r18_cross_module_generic", "root": "tests/runtime/g5_r18_cross_module_generic/root.pruv", "project": true}
   ]
 }

@@ -1,0 +1,28 @@
+// G5 Q: a loop calls an inout helper whose contract has no frame clause, so the caller cannot keep the untouched
+// suffix in its invariant
+fn zero_at(inout a: [i64], i: i64) -> ()
+  requires 0 <= i && i < len(a)
+  ensures len(a) == len(old(a))
+  ensures a[i] == 0
+{
+  a[i] = 0;
+}
+
+fn zero_prefix(inout a: [i64], m: i64) -> ()
+  requires 0 <= m && m <= len(a)
+  ensures len(a) == len(old(a))
+  ensures forall k in 0..len(a): k < m ==> a[k] == 0
+  ensures forall k in 0..len(a): k >= m ==> a[k] == old(a)[k]
+{
+  let mut i: i64 = 0;
+  while i < m
+    invariant 0 <= i && i <= m
+    invariant len(a) == len(old(a))
+    invariant forall k in 0..len(a): k < i ==> a[k] == 0
+    invariant forall k in 0..len(a): k >= m ==> a[k] == old(a)[k]
+    decreases m - i
+  {
+    zero_at(inout a, i);
+    i = i + 1;
+  }
+}

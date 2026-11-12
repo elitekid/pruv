@@ -363,6 +363,7 @@ pub fn gen_bindings_with(prog: &Program, shim: Option<&str>) -> Result<String, S
                 && !is_spec_fn(&f.name)
                 && f.foreign.is_none()
                 && !(f.params.iter().any(|p| crate::llvmgen::is_collection(&p.ty)) || crate::llvmgen::is_collection(&f.ret))
+                && !crate::llvmgen::has_inout(f)
                 && !crate::llvmgen::is_internal_fn(f, &tt)
         })
         .map(|(_, f)| f)

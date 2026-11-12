@@ -1,0 +1,55 @@
+// G5 A3 runtime (legacy mode, no `pub`): host entries copy their input into a local and call inout helpers. The entries
+// get raw `pruv_abi_*` wrappers (and `__typed` for the [bool] parameter) and Rust bindings; the inout helpers get none.
+fn flip_at(inout flags: [bool], i: i64) -> ()
+  requires 0 <= i && i < len(flags)
+  ensures len(flags) == len(old(flags))
+  ensures flags[i] == !old(flags)[i]
+  ensures forall k in 0..len(flags): k != i ==> flags[k] == old(flags)[k]
+{
+  flags[i] = !flags[i];
+}
+
+fn bump_at(inout buf: [i64], i: i64) -> ()
+  requires 0 <= i && i < len(buf) && buf[i] < 1000
+  ensures len(buf) == len(old(buf))
+  ensures buf[i] == old(buf)[i] + 1
+  ensures forall k in 0..len(buf): k != i ==> buf[k] == old(buf)[k]
+{
+  buf[i] = buf[i] + 1;
+}
+
+fn put_at(inout b: [u8], i: i64, v: i64) -> ()
+  requires 0 <= i && i < len(b) && 0 <= v && v <= 255
+  ensures len(b) == len(old(b))
+  ensures b[i] == v
+  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]
+{
+  b[i] = v;
+}
+
+fn flip_two(a: [bool]) -> [bool] ! alloc
+  requires len(a) >= 2
+{
+  let mut w: [bool] = copy(a);
+  flip_at(inout w, 0);
+  flip_at(inout w, 1);
+  return w;
+}
+
+fn bump_two(a: [i64]) -> [i64] ! alloc
+  requires len(a) >= 2 && a[0] < 1000 && a[1] < 1000
+{
+  let mut w: [i64] = copy(a);
+  bump_at(inout w, 0);
+  bump_at(inout w, 1);
+  return w;
+}
+
+fn put_two(a: [u8], v: i64) -> [u8] ! alloc
+  requires len(a) >= 2 && 0 <= v && v <= 255
+{
+  let mut w: [u8] = copy(a);
+  put_at(inout w, 0, v);
+  put_at(inout w, 1, 255);
+  return w;
+}

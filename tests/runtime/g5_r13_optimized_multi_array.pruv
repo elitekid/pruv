@@ -1,0 +1,36 @@
+// G5 A3 runtime: two inout arrays per call, called twice with the roles swapped. The llvm rows are compiled with -O2,
+// so the noalias pointers of the two mutable arrays are optimized for real; the stores must still land in the right array.
+fn fill_pair(inout lo: [i64], inout hi: [i64], v: i64) -> ()
+  requires len(lo) >= 2 && len(hi) >= 2 && -1000 < v && v < 1000
+  ensures len(lo) == len(old(lo))
+  ensures len(hi) == len(old(hi))
+  ensures lo[0] == v
+  ensures lo[1] == v + 1
+  ensures hi[0] == v + 2
+  ensures hi[1] == v + 3
+{
+  lo[0] = v;
+  hi[0] = lo[0] + 2;
+  lo[1] = lo[0] + 1;
+  hi[1] = hi[0] + 1;
+}
+
+pub fn fill_x(a: [i64], b: [i64], v: i64) -> [i64] ! alloc
+  requires len(a) >= 2 && len(b) >= 2 && -1000 < v && v < 900
+{
+  let mut x: [i64] = copy(a);
+  let mut y: [i64] = copy(b);
+  fill_pair(inout x, inout y, v);
+  fill_pair(inout y, inout x, v + 10);
+  return x;
+}
+
+pub fn fill_y(a: [i64], b: [i64], v: i64) -> [i64] ! alloc
+  requires len(a) >= 2 && len(b) >= 2 && -1000 < v && v < 900
+{
+  let mut x: [i64] = copy(a);
+  let mut y: [i64] = copy(b);
+  fill_pair(inout x, inout y, v);
+  fill_pair(inout y, inout x, v + 10);
+  return y;
+}

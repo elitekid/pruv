@@ -1,0 +1,39 @@
+// G5: left rotation in place by three recursive inout reversals; the exact rotation contract follows from the
+// pointwise reversal contracts alone. The host entry owns a copy of its input.
+fn rev(inout a: [i64], lo: i64, hi: i64) -> ()
+  requires 0 <= lo && lo <= hi + 1 && hi < len(a)
+  ensures len(a) == len(old(a))
+  ensures forall k in 0..len(a): (lo <= k && k <= hi) ==> a[k] == old(a)[lo + hi - k]
+  ensures forall k in 0..len(a): (k < lo || k > hi) ==> a[k] == old(a)[k]
+  decreases hi - lo + 1
+{
+  if lo < hi {
+    let x: i64 = a[lo];
+    a[lo] = a[hi];
+    a[hi] = x;
+    rev(inout a, lo + 1, hi - 1);
+  }
+}
+
+fn rotate(inout a: [i64], r: i64) -> ()
+  requires 0 < r && r < len(a)
+  ensures len(a) == len(old(a))
+  ensures forall k in 0..len(a): k < len(a) - r ==> a[k] == old(a)[k + r]
+  ensures forall k in 0..len(a): k >= len(a) - r ==> a[k] == old(a)[k - (len(a) - r)]
+{
+  let n: i64 = len(a);
+  rev(inout a, 0, r - 1);
+  rev(inout a, r, n - 1);
+  rev(inout a, 0, n - 1);
+}
+
+pub fn rotated(a: [i64], r: i64) -> [i64] ! alloc
+  requires 0 < r && r < len(a)
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): k < len(a) - r ==> result[k] == a[k + r]
+  ensures forall k in 0..len(a): k >= len(a) - r ==> result[k] == a[k - (len(a) - r)]
+{
+  let mut w: [i64] = copy(a);
+  rotate(inout w, r);
+  return w;
+}

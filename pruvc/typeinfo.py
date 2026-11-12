@@ -483,8 +483,8 @@ def g9_unimplemented_error(prog, stage, layer):
 
 
 # ---------------------------------------------------------------------------
-# G5 A0: inout parameters. `program_uses_inout` (parse level) drives the contextual `old` builtin; the staging guard
-# stops every checked program that uses inout before verification and emission (G5_SPEC 9, batches A0-A3).
+# G5 A0: inout parameters. `program_uses_inout` (parse level) drives the contextual `old` builtin (G5_SPEC 9; the A0-A2 staging
+# guard is gone since A3: both back ends lower inout parameters).
 # ---------------------------------------------------------------------------
 def _has_inout_node(node) -> bool:
     if isinstance(node, list):
@@ -507,47 +507,6 @@ def program_uses_inout(prog) -> bool:
                 or (fn.decreases is not None and _has_inout_node(fn.decreases))):
             return True
     return False
-
-
-def _g5_candidates(node, out):
-    if isinstance(node, list):
-        for x in node:
-            _g5_candidates(x, out)
-        return
-    if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
-        return
-    if isinstance(node, InoutArg) or (isinstance(node, Call) and node.old is not None):
-        out.append((node.line, node.col, getattr(node, "file", None)))
-    for fname in node.__dataclass_fields__:
-        _g5_candidates(getattr(node, fname), out)
-
-
-def first_g5_use(prog):
-    """first G5 construct of a checked program -> (line, col, file) or None: an inout parameter, an inout call
-    argument or a resolved old(..) expression (smallest line/col, first seen on a tie)"""
-    if getattr(prog, "uses_inout", None) is False:
-        return None     # the checker already knows there is no inout: skip the whole-program walk
-    cands = []
-    for fn in prog.functions:
-        for p in fn.params:
-            if p.mode is not None and p.mode_pos is not None:
-                cands.append((p.mode_pos[0], p.mode_pos[1], getattr(p, "file", None)))
-        _g5_candidates(fn.requires, cands)
-        _g5_candidates(fn.ensures, cands)
-        _g5_candidates(fn.body, cands)
-        if fn.decreases is not None:
-            _g5_candidates(fn.decreases, cands)
-    return min(cands, key=lambda c: (c[0], c[1])) if cands else None
-
-
-def g5_unimplemented_error(prog, stage="codegen"):
-    """PruvError (unsupported_type) for the first G5 construct, or None. Run right after type checking."""
-    hit = first_g5_use(prog)
-    if hit is None:
-        return None
-    return PruvError(stage, hit[0], hit[1], "unsupported_type",
-                     "G5 inout parameters are not implemented by the llvm codegen layer yet",
-                     "pass and return arrays by value for now", file=hit[2])
 
 
 class TypeTable:

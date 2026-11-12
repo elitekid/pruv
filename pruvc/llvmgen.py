@@ -349,9 +349,15 @@ def ir_ret(tt, f):
     return "void" if is_ext_t(tt, f.ret) else lty(f.ret)
 
 
+def has_inout(f):
+    """G5 A3: some parameter has the inout mode (a mutable borrow of caller storage)"""
+    return any(p.mode == "inout" for p in f.params)
+
+
 def is_internal_fn(f, tt):
-    """G9: a function with an extended type in its signature has no raw ABI wrapper and no binding"""
-    return any(is_ext_t(tt, p.type) for p in f.params) or is_ext_t(tt, f.ret)
+    """G9: a function with an extended type in its signature has no raw ABI wrapper and no binding;
+    G5 A3: neither has a function with an inout parameter (one host-eligibility rule)"""
+    return any(is_ext_t(tt, p.type) for p in f.params) or is_ext_t(tt, f.ret) or has_inout(f)
 
 
 def ir_params(f, tt=None):
@@ -381,10 +387,13 @@ def ir_params(f, tt=None):
     return out
 
 
-def sig_text(params):
+def sig_text(params, f=None):
     """definition parameter list of an internal function: array pointers are read-only borrows (their IR names
-    end in .a; a G6 collection handle %p.NAME.h is a plain ptr)"""
-    return ", ".join("%s %s" % ("ptr noalias nocapture readonly" if t == "ptr" and n.endswith(".a") else t, n)
+    end in .a; a G6 collection handle %p.NAME.h is a plain ptr).  G5 A3: with the function `f`, the pointer of an
+    inout parameter is a mutable borrow: `ptr noalias nocapture` (no readonly)"""
+    mut = set("%%p.%s.a" % mangle(p.name) for p in f.params if p.mode == "inout") if f is not None else ()
+    return ", ".join("%s %s" % (("ptr noalias nocapture" if n in mut else "ptr noalias nocapture readonly")
+                                if t == "ptr" and n.endswith(".a") else t, n)
                      for t, n in params)
 
 
@@ -1041,10 +1050,10 @@ class FnGen:
             s.end_temps()
         elif isinstance(st, IndexAssign):
             s.begin_temps()
-            sl = s.lookup(st.name)[1]
+            kind, sl = s.lookup(st.name)
             i = s.ev(st.index)      # index first, then value, in every mode
             v = s.ev(st.value)
-            a = s.load(sl)
+            a = sl if kind == "ssa" else s.load(sl)     # G5 A3: an inout parameter is a pointer view, stored through
             g = s.index_ptr(a, i)
             if is_boolarr(a):  # G2 A5
                 z = s.op("zext i1 %s to i8" % v.a)
@@ -1384,6 +1393,10 @@ class FnGen:
         for i, x in enumerate(a):
             if s.is_ext(f.params[i].type):   # G9 A3: a read argument is a pointer to valid caller-owned storage
                 args.append("ptr %s" % s.view_ptr(x))
+                continue
+            if isinstance(x, InoutArg):   # G5 A3: the caller's own pointer and length; no copy, ownership stays put
+                v = s.ev(x.expr)
+                args += ["ptr %s" % v.a, "i64 %s" % v.b]
                 continue
             v = s.ev(x, f.params[i].take)
             if v.k == "coll":   # G6 A3: opaque handle
@@ -2002,7 +2015,7 @@ def entry_of(m, funcs, f, trust, budget=1 << 30):
     else:
         r = g.op("call %s %s(%s)" % (rt, callee, args))
         g.term("ret %s %s" % (rt, r))
-    return g.render("define internal %s @%s__pruv_entry(%s)" % (rt, mangle(f.name), sig_text(params)))
+    return g.render("define internal %s @%s__pruv_entry(%s)" % (rt, mangle(f.name), sig_text(params, f)))
 
 
 # ======================================================================================================================
@@ -2644,6 +2657,8 @@ class Words:
 def abi_of(f, tt, m=None, target="entry"):
     """target: which internal function the wrapper calls, `entry` (checked, legacy) or `body` (G4 explicit mode when the
     host boundary needs no requires check). The representation checks below run in every mode."""
+    if has_inout(f) or is_internal_fn(f, tt):   # G5 A3: defensive, an inout function is never host-visible
+        raise Exception("llvmgen: %s has no host ABI wrapper (inout or extended signature)" % f.name)
     n = mangle(f.name)
     ext, pre, args = [], [], []
     w = Words(tt)
@@ -2884,7 +2899,7 @@ def is_host_abi_fn(f, tt, explicit):
     collection/extended-bearing; G4 explicit mode = additionally only the host entries (a child-public function is
     never exported just because Pruv callers can name it)"""
     return (f.foreign is None and not getattr(f, "private", False) and not _is_coll_fn(f)
-            and not is_internal_fn(f, tt) and (f.host_entry or not explicit))
+            and not has_inout(f) and not is_internal_fn(f, tt) and (f.host_entry or not explicit))
 
 
 def entry_type_closure(prog, tt):
@@ -3012,7 +3027,8 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
     # G6 A3: trusted declarations and collection-bearing functions have no binding
     # G9 A3: a function with an extended type in its signature has no binding either
     pubs = [f for f in prog.functions if not getattr(f, "private", False) and f.foreign is None
-            and not _is_coll_fn(f) and not is_internal_fn(f, tt) and (f.host_entry or not explicit)]   # G4: entries only
+            and not _is_coll_fn(f) and not has_inout(f) and not is_internal_fn(f, tt)
+            and (f.host_entry or not explicit)]   # G4: entries only; G5 A3: never an inout function
     returns_array = any(is_arr(f.ret) for f in pubs)  # G2 B2: str counts
     decls = []
     for f in pubs:
@@ -3226,7 +3242,8 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     if explicit:
         need_cdiv = any(checked_entry(f) for f in prog.functions)
     else:
-        need_cdiv = not trust_callers and any(f.requires and f.foreign is None for f in prog.functions)
+        need_cdiv = any(f.requires and f.foreign is None and (not trust_callers or (not verified and has_inout(f)))
+                        for f in prog.functions)    # G5 A3: an inout entry checks also under trust_callers
     if need_cdiv:
         chunks.append(cdivrem(m, True))
         chunks.append(cdivrem(m, False))
@@ -3239,7 +3256,7 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         g = FnGen(m, funcs, f, verified)
         g.body()
         params = ir_params(f, tt)
-        chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (ir_ret(tt, f), mangle(f.name), sig_text(params))))
+        chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (ir_ret(tt, f), mangle(f.name), sig_text(params, f))))
         if explicit:
             # G4 A3: bodies and checked wrappers are internal; only a host entry gets pruv_abi_* (and its typed variant).
             # The host boundary calls the checked wrapper unless trust_callers skips the check (or there is no requires).
@@ -3249,7 +3266,8 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
                 chunks.append(abi_of(f, tt, m, "entry" if (checked_entry(f) and not trust_callers) else "body"))
             continue
         if not (coll and verified):   # verified callers call the body; the entry only serves safe-mode callers
-            chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
+            # G5 A3: the entry of an inout function is internal and always checked (trust_callers does not waive it)
+            chunks.append(entry_of(m, funcs, f, (trust_callers and not has_inout(f)) or not f.requires, budget))
         if not getattr(f, "private", False) and not coll:  # G3: a generic specialization has no ABI symbol
             chunks.append(abi_of(f, tt, m))
     if tt.g9_ext or m.need_size or m.need_eq:   # G9 A3: clone / drop / node helpers, then the contract helpers above

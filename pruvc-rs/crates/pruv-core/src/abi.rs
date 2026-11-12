@@ -487,6 +487,10 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget, m: &mut Mod) -> R
 /// Python `abi_of(f, tt, m, target)`: `callee` is the internal function the wrapper calls, `entry` (checked, legacy) or
 /// `body` (G4 explicit mode when the host boundary needs no requires check). The representation checks run in every mode.
 pub fn abi_of_target(f: &Function, tt: &TypeTable, target: AbiTarget, m: &mut Mod, callee: &str) -> R<String> {
+    // G5 A3: defensive, an inout function is never host-visible
+    if crate::llvmgen::has_inout(f) || crate::llvmgen::is_internal_fn(f, tt) {
+        return Err(format!("llvmgen: {} has no host ABI wrapper (inout or extended signature)", f.name));
+    }
     let n = mangle(&f.name);
     let mut ext: Vec<String> = Vec::new();
     let mut pre: Vec<String> = Vec::new();

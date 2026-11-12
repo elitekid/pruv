@@ -4,17 +4,14 @@ python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_fronten
 
 groups g5_frontend / g5_reject (G5 A0, inventory tests/g5/fixtures.json; rows have backend null): g5_frontend runs the roots of
 tests/g5/frontend (flat files and <name>/root.pruv projects, copied to a new directory first) in modes no-verify and default.
-Since A2 (G5_GUARD False) every fixture ("guard" and the G5-free compatibility fixture "ok") passes when pruvc exits 0 on the
-Rust backend (in default mode the program must also verify); with G5_GUARD True a "guard" fixture expected exit 1 with the
-staging guard codegen/unsupported_type instead (the guard now applies only to the llvm backend / --also-llvm until A3,
-and the llvm rows of the G5 runtime samples and examples are listed in tests/llvm_pending.txt). The G5 rejection roots tests/must_reject/g5_*.pruv
+Since A3 (no staging guard) every fixture ("guard" and the G5-free compatibility fixture "ok") passes when pruvc exits 0 on the
+Rust backend and then also on the llvm backend (in default mode the program must also verify). The G5 rejection roots tests/must_reject/g5_*.pruv
 (sibling .json = stage/code) and tests/must_reject/g5_*/root.pruv are ordinary must_reject rows (default mode); group
 g5_reject repeats every G5 rejection with --no-verify and --trust-callers (exclusivity is static in all modes).
 
 group g5_proof (G5 A1; backend null rows): the "proof" roots of tests/g5/fixtures.json (tests/g5/proof/*.pruv and
 <name>/root.pruv projects, copied first) in default mode, and with --infer where the entry says "infer": true; a row passes
-when verification succeeds completely and pruvc then generates the Rust source (exit 0, no verify diagnostic; before A2 it
-stopped at the G5 staging guard). The verification rejections tests/must_reject/g5p_*.pruv ("proof_reject", sibling .json = stage/code)
+when verification succeeds completely and pruvc then generates the Rust source and the llvm IR (exit 0, no verify diagnostic). The verification rejections tests/must_reject/g5p_*.pruv ("proof_reject", sibling .json = stage/code)
 are ordinary must_reject rows (default mode); g5_proof adds a --infer row for each one marked "infer": true.
 
 group g4_proof (G4 A1): tests/g4/proof/*/root.pruv from tests/g4/fixtures.json (default mode, backend null rows, each project
@@ -70,10 +67,10 @@ variant and reused; every job uses its own work file names.
 Optional runtime json field "contract_budget": N appends
 ["--contract-budget", str(N)] to the pruvc flags of every matrix row (labels unchanged).
 Optional runtime json field "ll_contains": [strings] (llvm backend only) must each occur in
-the WHOLE generated .ll text (not just __pruv_body functions).
+the WHOLE generated .ll text (not just __pruv_body functions); "ll_absent" [strings] (G5 A3) must each be absent from it.
 G4 A3 spec.json fields (llvm backend only unless stated): "llvm_exports" [symbols] (required for every G4 project: the exact
 defined external symbols of the .ll), "bindings_contains" / "bindings_absent" [strings] (the generated Rust bindings), "llvm"
-{fields} (overrides top-level fields of the llvm rows), and an optional main_llvm.rs next to main.rs (the llvm host driver).
+{fields} (overrides top-level fields of the llvm rows), and an optional main_llvm.rs next to main.rs (the llvm host driver; flat samples: T_llvm.rs next to T.rs).
 tests/llvm_pending.txt (one repo-relative sample path per line, # comments): the llvm rows of the listed examples and
 runtime samples expect pruvc exit 1 with a codegen/unsupported_type diagnostic (nothing is linked or run)."""
 import concurrent.futures, glob, json, os, platform, re, shutil, subprocess, sys, tempfile, threading
@@ -518,15 +515,10 @@ def g9_proof_jobs(group="g9_proof", sub="proof", modes=(("default", []),)):
     return jobs
 
 
-# G5 (docs/G5_SPEC.md 9, 10, 11, 12): since A2 the Rust source backend lowers inout programs, so on the Rust backend
-# every g5_frontend fixture ("guard" and "ok") and every g5_proof root must make pruvc exit 0 (a proof root must also
-# have no verify diagnostic). The staging guard (codegen/unsupported_type, "G5 inout parameters are not implemented by
-# the llvm codegen layer yet") now applies only to the llvm backend / --also-llvm until A3; the llvm rows of the G5
-# runtime samples and examples are listed in tests/llvm_pending.txt. The static rejections hold in every mode (group
+# G5 (docs/G5_SPEC.md 9, 10, 11, 12, 13): both backends lower inout programs (A3 removed the staging guard), so every
+# g5_frontend fixture ("guard" and "ok") and every g5_proof root must make pruvc exit 0 on the Rust AND on the llvm
+# backend (a proof root must also have no verify diagnostic). The static rejections hold in every mode (group
 # g5_reject rows).
-G5_GUARD = False
-G5_GUARD_CODE = "unsupported_type"
-G5_GUARD_LAYER = "G5 inout parameters are not implemented"
 
 
 def _g5_rows(group):
@@ -549,11 +541,12 @@ def g5_frontend_jobs(group="g5_frontend", modes=(("no-verify", ["--no-verify"]),
                 src = P.copy_project(f, os.path.join(WORK, stem)) if proj else f
                 c = pruvc(src, os.path.join(WORK, stem + ".rs"), flags)
                 text = c.stdout + c.stderr
-                if G5_GUARD and e.get("expect") == "guard":
-                    ok = c.returncode == 1 and G5_GUARD_CODE in text and G5_GUARD_LAYER in text
-                    return ok, "pruvc exit %d (expected 1 with the G5 guard %s / %r) %s" % (
-                        c.returncode, G5_GUARD_CODE, G5_GUARD_LAYER, text[-400:])
-                return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, text[-400:])
+                if c.returncode != 0:
+                    return False, "pruvc exit %d (expected 0) %s" % (c.returncode, text[-400:])
+                # G5 A3: the llvm backend generates the same program (no staging guard any more)
+                cl = pruvc_llvm(src, os.path.join(WORK, stem + ".ll"), os.path.join(WORK, stem + "_llvm.rs"), flags)
+                return cl.returncode == 0, "llvm: pruvc exit %d (expected 0) %s" % (
+                    cl.returncode, (cl.stdout + cl.stderr)[-400:])
             jobs.append(safe(name, fn, {"sample": e["root"], "backend": None, "flags": list(flags), "mode": mode,
                                          "group": group}))
     return jobs
@@ -619,8 +612,13 @@ def g5_proof_jobs(group="g5_proof"):
                         diags.append(d)
                 verify_errs = [(d.get("stage"), d.get("code")) for d in diags if d.get("stage") == "verify"]
                 ok = c.returncode == 0 and not verify_errs
-                return ok, "pruvc exit %d (expected 0 after a complete proof); verify errors %s: %s" % (
-                    c.returncode, verify_errs, text[-400:])
+                if not ok:
+                    return False, "pruvc exit %d (expected 0 after a complete proof); verify errors %s: %s" % (
+                        c.returncode, verify_errs, text[-400:])
+                # G5 A3: the llvm backend generates the proved program too
+                cl = pruvc_llvm(src, os.path.join(WORK, stem + ".ll"), os.path.join(WORK, stem + "_llvm.rs"), flags)
+                return cl.returncode == 0, "llvm: pruvc exit %d (expected 0) %s" % (
+                    cl.returncode, (cl.stdout + cl.stderr)[-400:])
             jobs.append(safe(name, fn, {"sample": e["root"], "backend": None, "flags": list(flags), "mode": mode,
                                          "group": group}))
     for e, f, proj in _g5_rows("proof_reject"):
@@ -734,7 +732,8 @@ def examples_jobs(backend):
         for mode, flags in EXAMPLE_MODES:
             jobs.append(example_job(f, mode, flags, llvm, "examples/%s [%s]%s" % (base, mode, tag)))
     # G4 A2: project examples; the root is the only input, the companion modules are loaded by the compiler
-    for f in sorted(glob.glob(os.path.join(ROOT, "examples/g4_*/root.pruv"))):
+    # G5 A3: examples/g5_*/root.pruv project examples follow the same convention
+    for f in sorted(glob.glob(os.path.join(ROOT, "examples/g[45]_*/root.pruv"))):
         proj = os.path.basename(os.path.dirname(f))
         for mode, flags in EXAMPLE_MODES:
             jobs.append(example_job(f, mode, flags, llvm, "examples/%s/root.pruv [%s]%s" % (proj, mode, tag)))
@@ -758,6 +757,10 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
         if llvm and proj and os.path.exists(os.path.join(d, "main_llvm.rs")):
             # G4 A3: a project may need a llvm-only host driver (raw `pruv_abi_*` calls with invalid representations)
             drv = os.path.join(d, "main_llvm.rs")
+        elif llvm and not proj and os.path.exists(os.path.join(d, t + "_llvm.rs")):
+            # G5 A3: a flat sample may have a llvm-only host driver T_llvm.rs (a llvm panic exits the process, so a
+            # driver that catch_unwind()s the Rust panics re-runs itself per failing case instead)
+            drv = os.path.join(d, t + "_llvm.rs")
         link = []
         # G6 A2 (G6_SPEC 12.5): "rust_externs": {"NAME": "tests/runtime/FILE.rs"} -> an rlib per job, passed to
         # pruvc as --rust-extern NAME=RLIB and to the final rustc as --extern NAME=RLIB
@@ -837,6 +840,9 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             for s in spec.get("ll_contains") or []:
                 if s not in ll_text:
                     problems.append("ll lacks %r" % s)
+            for s in spec.get("ll_absent") or []:   # G5 A3: strings that must not occur anywhere in the .ll
+                if s in ll_text:
+                    problems.append("ll contains forbidden %r" % s)
             if spec.get("bindings_contains") or spec.get("bindings_absent"):   # G4 A3: the generated Rust bindings (gen)
                 bind_text = open(gen).read()
                 for s in spec.get("bindings_contains") or []:

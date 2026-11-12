@@ -42,10 +42,6 @@ fn line_for(path: &std::ffi::OsStr, o: &Opts) -> String {
             None
         }
     };
-    // G5 guard (removed in G5 A3): inout programs stop before emission, like the drivers
-    if let Some(e) = pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen") {
-        return obj1("error", e.to_json_value());
-    }
     // G9 A3: the LLVM backend lowers G9 programs; the G9 guard is gone.
     // like Python gen_llvm: a generic (or explicit-mode) program is specialized first (a specialization limit is a diagnostic)
     match pruv_core::llvmgen::gen_llvm_any_g4(&prog, g4.as_ref(), o.verified, o.trust_callers, o.budget, o.target) {

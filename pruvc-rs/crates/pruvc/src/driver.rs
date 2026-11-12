@@ -268,13 +268,6 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    // G5 A2 staging guard (Python compile_file): the Rust source backend lowers inout parameters; the LLVM backend (and
-    // --also-llvm) does not until A3. Verification errors win; the guard also applies with --no-verify, before any output.
-    if !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some() {
-        if let Some(e) = pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen") {
-            return Err(Fail::Lang(vec![e]));
-        }
-    }
     // G3 A3/A4 (same place as in Python compile_file): every backend (rust, llvm, also --also-llvm) specializes generic
     // programs through the shared plan (mono.rs) and generates from the concrete program. G4 A2: explicit mode always goes
     // through the plan (it names every function and type by its Rust stem). G4 A3: the LLVM backend generates explicit

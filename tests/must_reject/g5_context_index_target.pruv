@@ -1,0 +1,13 @@
+// G5 Q: an inout call as the value of an element assignment (only a whole-name target is a statement boundary)
+fn take(inout a: [i64]) -> i64
+  requires len(a) > 0
+  ensures len(a) == len(old(a))
+{
+  a[0] = 0;
+  return 1;
+}
+
+fn demo() -> () ! alloc {
+  let mut a: [i64] = alloc(2, 5);
+  a[0] = take(inout a);
+}

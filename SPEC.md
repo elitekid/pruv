@@ -23,13 +23,15 @@ signature; no null, no exceptions, no implicit conversions, no globals, no overl
 | `()` | unit | `()` |
 | `[i64]` | array of i64 | param: `&[i64]`, local/return: `Vec<i64>` |
 | `[u8]`, `[bool]` | array of bytes 0..=255 / of bools (section 6b) | `&[u8]`/`Vec<u8>`, `&[bool]`/`Vec<bool>` |
+| `inout a: [i64]` (also `[u8]`, `[bool]`, `[T]`) | parameter mode, not a type (section 6g) | `&mut [i64]` (`&mut [u8]`, `&mut [bool]`) |
 | `str` | read-only UTF-8 text, indexed by byte (section 6b) | param: `&str`, local/return: `String` |
 | `Option<i64>` | `Some(v)` or `None` | `Option<i64>` |
 | `Result<i64>` | `Ok(v)` or `Err(code)`, code is i64 | `Result<i64, i64>` |
 | `Point`, `Event` | user struct / enum (section 6a) | `pub struct` / `pub enum` (Copy) |
 
-Parameters are immutable. Array parameters are read-only views. Only `let mut` locals can be reassigned
-or have elements assigned.
+Parameters cannot be reassigned. Array parameters are read-only views, except an `inout` array parameter (section 6g),
+which is an exclusive mutable view: its elements can be assigned, but the parameter itself never can. Otherwise only
+`let mut` locals can be reassigned or have elements assigned.
 
 ## 3. Functions
 ```
@@ -45,6 +47,8 @@ fn name(p1: T1, p2: T2) -> R ! effect1, effect2
 - Any number of `requires` and `ensures` lines, combined with `&&`.
 - Every path must end with `return e;` (for `()` functions `return;` may be omitted at the end).
 - Program entry, if present, is `fn main() -> () ! io ...`.
+- A parameter may be written `inout name: [T]` for an array the function updates in place; the call must repeat
+  the mark (`f(inout a)`). See section 6g.
 - Calls are checked modularly: the caller must prove the callee's `requires`, and then may assume its `ensures`.
 - Recursion (direct or mutual) is allowed when every function in the cycle has a `decreases` clause (section 6e).
 
@@ -53,7 +57,7 @@ fn name(p1: T1, p2: T2) -> R ! effect1, effect2
 let x: T = e;            // type annotation required
 let mut x: T = e;
 x = e;                   // only mut locals
-a[i] = e;                // only mut local arrays
+a[i] = e;                // only mut local arrays and inout array parameters
 if c { ... } else { ... }        // else optional; `else if` allowed
 while c
   invariant <bool expr>          // zero or more
@@ -68,6 +72,7 @@ match e {                        // e: Option<i64>, Result<i64> or a user enum (
 }
 match r { Ok(v) => { ... } Err(c) => { ... } }
 f(args);                 // call as statement only if f returns ()
+f(inout a, args);        // mutating call: only in the statement positions of section 6g
 ```
 `while` is the only loop. A value of type `Result<i64>` or `Option<i64>` must be used (let-bound, returned, matched);
 it can never be silently dropped.
@@ -88,6 +93,7 @@ it can never be silently dropped.
 ## 6. Contract-only expressions
 Allowed only in `requires`, `ensures`, `invariant`, `assert`:
 - `result` (in ensures): the return value.
+- `old(a)` (in ensures, invariant, assert): the entry contents of an `inout` parameter `a` of the enclosing function (section 6g).
 - `forall i in lo..hi: e` / `exists i in lo..hi: e` (i ranges over lo <= i < hi).
 - `a ==> b` (implication).
 - `is_some(o)`, `some_val(o)`, `is_ok(r)`, `ok_val(r)`, `err_val(r)`.
@@ -369,6 +375,69 @@ pub fn bounded(x: i64) -> i64                requires 0 <= x && x <= 10
   `parse/module_syntax`, `parse/visibility_syntax`, `parse/module_file`, `type/private_item`, `type/public_interface`,
   `type/entry_signature`, `type/entry_main` (see `docs/G4_SPEC.md` §8 for the full table).
 
+## 6g. In-place array parameters: `inout` (G5)
+Full contract: `docs/G5_SPEC.md` (§2–§8 and §15 for deferred limits). Examples: `examples/g5_*.pruv`, `tests/runtime/g5_r*`.
+```
+fn set_at(inout a: [i64], i: i64, v: i64) -> ()
+  requires 0 <= i && i < len(a)
+  ensures a[i] == v
+  ensures forall k in 0..len(a): k != i ==> a[k] == old(a)[k]
+{ a[i] = v; }
+
+let mut w: [i64] = copy(a);
+set_at(inout w, 0, 7);
+```
+- **Syntax and types.** `inout name: T` on a parameter, `T` one of `[i64]`, `[u8]`, `[bool]` or `[T]` with `T: Element`
+  (section 6c); any other type is `type/inout_type`. The mode is not part of the type. The caller must write `inout`
+  at the call (`type/inout_argument` if missing or extra). The marked argument must be a whole `let mut` array local
+  or an `inout` parameter of the caller, with exactly the parameter's element type; immutable locals, ordinary
+  parameters, `match` binders, fields, elements and calls are rejected. `inout` is contextual, not a keyword;
+  malformed or combined modes (e.g. with `take`) are `parse/inout_syntax`.
+- **What the callee may do.** Read, index, `len`, `copy`, and assign elements (`a[i] = e`, with the usual bounds,
+  `u8` range and refinement proofs). Never `a = ...` (`type/immutable`), resize, move, store or return the view
+  itself (`type/array_alias`; return `copy(a)` instead). It may pass `a` unmarked to a read-only parameter or
+  forward it as `inout a`. No `alloc` effect is needed for mutation.
+- **Exclusivity.** A marked binding may occur nowhere else in the same call's arguments, not even inside nested calls
+  or `len(a)`: `f(inout a, a)`, `f(inout a, len(a))` and `f(inout a, inout a)` are `type/inout_alias`. Compute
+  `let n: i64 = len(a);` first. Read-only arguments may alias each other. Holds in every mode, also under
+  `--no-verify` and `--trust-callers`. Mutable access while a `match` arm views the same root is `type/recursive_borrow`.
+- **`old`.** `old(a)` names the entry contents of an `inout` parameter `a` of the enclosing function; legal only in
+  that function's `ensures`, `invariant` and `assert` (`type/old_context`, `type/old_argument` otherwise: locals,
+  ordinary parameters, fields, elements and nested `old` are rejected). It always means function entry. In `requires`
+  a parameter is its entry value; in `ensures` an `inout` parameter is its final value. `len(a) == len(old(a))` is
+  always known. `old` is a proof object: no copy, no run-time check. Arrays still cannot be compared with `==`.
+- **Frame.** After `f(inout a, ...)` the caller knows only what `f`'s `ensures` says about `a`: fresh contents, same
+  length. An unconstrained element is arbitrary, even if the body never writes it, so state the frame
+  (`k != i ==> a[k] == old(a)[k]`). Other variables keep their values. The `requires` are proved on the pre-call
+  arrays and `old` refers to them. `ensures` of an `inout` function are always applied at the call.
+- **Statement boundaries.** A call with `inout` may only be the whole expression of an expression statement, a `let`
+  initializer, the right side of a whole-variable assignment, or a `return` (parentheses do not matter); anywhere
+  else (argument, operator, condition, index, field or element assignment) it is `type/inout_context`. Its result may
+  have any supported type. Use a temporary: `let changed: bool = update(inout data);`. Arguments are evaluated left
+  to right and the mutation completes before the `let`/assignment/return.
+- **Generics.** `fn swap<T: Element>(inout a: [T], ...)` works like any G3 function; `swap::<i64>(inout w, i, j)`
+  (`examples/g5_generic_swap.pruv`). It is specialized per element type, also across modules.
+- **Loops.** A loop that passes an array as `inout` treats it as changed: an `inout` parameter keeps its length, a
+  local keeps its length unless the loop can also reassign it. State what the loop preserves in `invariant`s
+  (`old` may be used there); `--infer` may miss such invariants but never keeps a false one.
+- **Refinements.** An annotation on an `inout` parameter is an entry `requires` only, not an output guarantee; state
+  that in `ensures`. A refined local passed `inout` must satisfy its refinement again right after the call
+  (`verify/refinement_assign`), proved from `ensures` (a length-only refinement follows from the preserved length).
+- **Modes and back ends.** Verified and safe (`--no-verify`) modes both work. Safe mode checks the callee's `requires`
+  on every internal call, including under `--trust-callers`, which only skips checks at host entries. Rust emits
+  `&mut [T]`; LLVM passes the existing pointer and length with `noalias nocapture` and no `readonly`, and never frees
+  it. Neither allocates or copies for the parameter. Programs without `inout` compile exactly as before.
+- **Host limits.** An `inout` function is never host-visible: no exported ABI entry, no typed variant, no
+  `--rust-bindings` entry. In explicit mode a root `pub` non-generic function with `inout` is `type/entry_signature`
+  (private, child-`pub` and generic functions may use it; in legacy mode it is automatically internal); a
+  `trusted rust fn` with `inout` is `type/foreign_signature`. Give the host an ordinary function that owns a
+  `copy` of its input, calls the `inout` helpers on it and returns it.
+- **Not supported.** `inout` calls nested in expressions or conditions, fields or elements as `inout` places, scalar,
+  `str`, aggregate or collection `inout` parameters, `old` of anything but an `inout` parameter, mutable host entries.
+- **New error codes:** `inout_syntax`, `inout_type`, `inout_argument`, `inout_alias`, `inout_context`, `old_context`,
+  `old_argument`; reused: `immutable`, `array_alias`, `recursive_borrow`, `entry_signature`, `foreign_signature`,
+  `reserved`, `refinement_assign`.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.
@@ -379,6 +448,8 @@ pub fn bounded(x: i64) -> i64                requires 0 <= x && x <= 10
    value at entry (section 6e).
 6. Array parameters have `0 <= len(a) <= 2^40` and elements in i64 range (assumed; guaranteed for Pruv callers because every alloc is proven <= 2^40).
 Variables not assigned in a loop keep their values across it; assigned ones are only known through invariants.
+A variable counts as assigned if the loop body assigns it, stores into its elements, or passes it as an `inout`
+argument (section 6g); an `inout` array keeps only its length across the loop.
 
 ### Run-time `requires` and modes
 A public function's `requires` are checked at run time, left to right with short-circuit evaluation; a violation
@@ -431,7 +502,8 @@ annotation and are type-checked like user code):
 | `let x: T\|R = e;` | an `assert` of the condition right after the binding (`verify/refinement_init`) |
 | `x = e;` on a refined local | an `assert` right after (`verify/refinement_assign`) |
 | `x[i] = e;` on an element-refined array | no assert: the store node carries `elem_refine = [L, U, origin]`, and the verifier proves `L <= v && v <= U` for the already evaluated stored value `v` right after the `index_oob` obligation (`verify/refinement_assign`; one query, no re-evaluation of `i`, no `forall`) |
-| a `while` that assigns a refined local alive at the loop head | that local's conditions are put first in the loop's `invariant` list |
+| a `while` that assigns a refined local alive at the loop head, or passes it as an `inout` argument | that local's conditions are put first in the loop's `invariant` list |
+| an `inout` call on a refined local | an `assert` of the local's condition right after the call (`verify/refinement_assign`), proved from the callee's `ensures`; an `inout` parameter's annotation is only an entry `requires` |
 `K` is the first of `k`, `k_1`, `k_2`, ... that occurs nowhere in the function, so a user variable named `k` is never
 captured. Obligations are also checked on the path where the function returns right after the statement.
 

@@ -1,0 +1,29 @@
+// G5 Q runtime: in-place prefix sums through an inout loop helper; the bounds requires keep every partial sum in range
+fn prefix_sums(inout a: [i64]) -> ()
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000
+  ensures len(a) == len(old(a))
+  ensures forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000 * (k + 1)
+{
+  let n: i64 = len(a);
+  let mut i: i64 = 1;
+  while i < n
+    invariant 1 <= i && (i <= n || n == 0)
+    invariant len(a) == n
+    invariant forall k in 0..n: k < i ==> 0 <= a[k] && a[k] <= 1000 * (k + 1)
+    invariant forall k in 0..n: k >= i ==> 0 <= a[k] && a[k] <= 1000
+    decreases n - i
+  {
+    a[i] = a[i] + a[i - 1];
+    i = i + 1;
+  }
+}
+
+fn running(a: [i64]) -> [i64] ! alloc
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): 0 <= a[k] && a[k] <= 1000
+{
+  let mut w: [i64] = copy(a);
+  prefix_sums(inout w);
+  return w;
+}

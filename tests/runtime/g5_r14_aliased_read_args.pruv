@@ -1,0 +1,31 @@
+// G5 A3 runtime: the same array passed twice to read-only parameters stays legal (also an inout parameter forwarded
+// twice as a shared reborrow); G5 only guarantees that a mutably borrowed array is not reached through another argument
+fn add_first(a: [i64], b: [i64]) -> i64
+  requires len(a) >= 1 && len(b) >= 1 && -1000 < a[0] && a[0] < 1000 && -1000 < b[0] && b[0] < 1000
+  ensures result == a[0] + b[0]
+{
+  return a[0] + b[0];
+}
+
+fn double_first(inout buf: [i64]) -> ()
+  requires len(buf) >= 1 && -1000 < buf[0] && buf[0] < 1000
+  ensures len(buf) == len(old(buf))
+  ensures buf[0] == old(buf)[0] + old(buf)[0]
+{
+  let s: i64 = add_first(buf, buf);
+  buf[0] = s;
+}
+
+pub fn doubled(a: [i64]) -> [i64] ! alloc
+  requires len(a) >= 1 && -1000 < a[0] && a[0] < 1000
+{
+  let mut w: [i64] = copy(a);
+  double_first(inout w);
+  return w;
+}
+
+pub fn same_sum(a: [i64]) -> i64
+  requires len(a) >= 1 && -1000 < a[0] && a[0] < 1000
+{
+  return add_first(a, a);
+}

@@ -645,8 +645,8 @@ pub fn g9_unimplemented_error(prog: &Program, stage: &str, layer: &str) -> Optio
 }
 
 // ---------------------------------------------------------------------------
-// G5 A0: inout parameters. `program_uses_inout` (parse level) drives the contextual `old` builtin; the staging guard
-// stops every checked program that uses inout before verification and emission (G5_SPEC 9, batches A0-A3).
+// G5 A0: inout parameters. `program_uses_inout` (parse level) drives the contextual `old` builtin (G5_SPEC 9; the A0-A2
+// staging guard is gone since A3: both back ends lower inout parameters).
 // ---------------------------------------------------------------------------
 
 /// Calls `f` on every expression node under `e` (pre-order), operands included (Python generic dataclass walk).
@@ -730,53 +730,6 @@ pub fn program_uses_inout(prog: &Program) -> bool {
         }
     }
     false
-}
-
-/// First G5 construct of a checked program -> (line, col) or None: an inout parameter, an inout call argument or a
-/// resolved old(..) expression (smallest line/col; the first one seen on a tie, like Python `min`).
-pub fn first_g5_use(prog: &Program) -> Option<(i64, i64)> {
-    if prog.uses_inout == Some(false) {
-        return None; // the checker already knows there is no inout: skip the whole-program walk
-    }
-    let mut cands: Vec<(i64, i64)> = Vec::new();
-    for fun in &prog.functions {
-        for p in &fun.params {
-            if let Some(pos) = p.mode_pos {
-                cands.push(pos);
-            }
-        }
-        g5_walk_fn(fun, &mut |e| match e {
-            Expr::InoutArg(x) => cands.push((x.line, x.col)),
-            Expr::Call(c) if c.old.is_some() => cands.push((c.line, c.col)),
-            _ => {}
-        });
-    }
-    let mut best: Option<(i64, i64)> = None;
-    for c in cands {
-        let better = match best {
-            None => true,
-            // the file tag in the line number is not part of the ordering (Python compares file-local lines)
-            Some(b) => (crate::diagnostic::plain_line(c.0), c.1) < (crate::diagnostic::plain_line(b.0), b.1),
-        };
-        if better {
-            best = Some(c);
-        }
-    }
-    best
-}
-
-/// PruvError (unsupported_type) for the first G5 construct, or None. Run right after type checking.
-pub fn g5_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diagnostic::PruvError> {
-    let (line, col) = first_g5_use(prog)?;
-    // the tagged line keeps the module file (Python passes the node's `.file`)
-    Some(crate::diagnostic::PruvError::new(
-        stage,
-        line,
-        col,
-        "unsupported_type",
-        "G5 inout parameters are not implemented by the llvm codegen layer yet",
-        "pass and return arrays by value for now",
-    ))
 }
 
 impl TypeDecl {

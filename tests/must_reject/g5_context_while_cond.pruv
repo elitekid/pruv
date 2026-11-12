@@ -1,0 +1,16 @@
+// G5 Q: an inout call in a while condition is not a whole statement
+fn step(inout a: [i64]) -> bool
+  requires len(a) > 0
+  ensures len(a) == len(old(a))
+{
+  a[0] = a[0] / 2;
+  return a[0] > 0;
+}
+
+fn demo() -> () ! alloc {
+  let mut a: [i64] = alloc(1, 100);
+  let mut i: i64 = 0;
+  while step(inout a) && i < 10 decreases 10 - i {
+    i = i + 1;
+  }
+}

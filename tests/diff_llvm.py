@@ -43,7 +43,6 @@ from vast import PruvError  # noqa: E402
 from modules import load_program  # noqa: E402
 from check import check  # noqa: E402
 from llvmgen import gen_llvm  # noqa: E402
-from typeinfo import g5_unimplemented_error  # noqa: E402
 
 BATCH = 200
 RS_TIMEOUT = 300
@@ -279,10 +278,6 @@ def eval_python(c):
         # `pub` or `mod` is an explicit-mode program, e.g. the G5 runtime roots and examples)
         prog = load_program(c.path)
         check(prog)
-        # G5 guard (removed in G5 A3): inout programs stop before emission, like the drivers
-        g5err = g5_unimplemented_error(prog)
-        if g5err is not None:
-            raise g5err
         ir, bindings = gen_llvm(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)
         obj = {"bindings": bindings, "ir": ir}
     except UnicodeDecodeError:

@@ -1,0 +1,33 @@
+// G5 Q runtime: one call borrows two distinct arrays inout (two mutable noalias pointers) and exchanges a range
+fn swap_ranges(inout a: [i64], inout b: [i64], lo: i64, hi: i64) -> ()
+  requires len(a) == len(b) && 0 <= lo && lo <= hi && hi <= len(a)
+  ensures len(a) == len(old(a)) && len(b) == len(old(b))
+  ensures forall k in 0..len(a): (lo <= k && k < hi) ==> a[k] == old(b)[k] && b[k] == old(a)[k]
+  ensures forall k in 0..len(a): (k < lo || k >= hi) ==> a[k] == old(a)[k] && b[k] == old(b)[k]
+{
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant len(a) == len(old(a)) && len(b) == len(old(b))
+    invariant forall k in 0..len(a): (lo <= k && k < i) ==> a[k] == old(b)[k] && b[k] == old(a)[k]
+    invariant forall k in 0..len(a): (k < lo || k >= i) ==> a[k] == old(a)[k] && b[k] == old(b)[k]
+    decreases hi - i
+  {
+    let x: i64 = a[i];
+    a[i] = b[i];
+    b[i] = x;
+    i = i + 1;
+  }
+}
+
+fn mixed(a: [i64], b: [i64], lo: i64, hi: i64) -> [i64] ! alloc
+  requires len(a) == len(b) && 0 <= lo && lo <= hi && hi <= len(a)
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): (lo <= k && k < hi) ==> result[k] == b[k]
+  ensures forall k in 0..len(a): (k < lo || k >= hi) ==> result[k] == a[k]
+{
+  let mut x: [i64] = copy(a);
+  let mut y: [i64] = copy(b);
+  swap_ranges(inout x, inout y, lo, hi);
+  return x;
+}

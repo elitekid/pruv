@@ -1,0 +1,28 @@
+// G5 A3 runtime: a generic inout function of a child module, specialized for i64 and bool (two instances, one of them
+// used twice); the specializations are private Pruv functions, only the root entries are host-visible
+mod swaps;
+
+pub fn swap_ints(a: [i64], i: i64, j: i64) -> [i64] ! alloc
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+{
+  let mut w: [i64] = copy(a);
+  crate::swaps::exchange::<i64>(inout w, i, j);
+  return w;
+}
+
+pub fn rotate_ints(a: [i64]) -> [i64] ! alloc
+  requires len(a) >= 3
+{
+  let mut w: [i64] = copy(a);
+  crate::swaps::exchange::<i64>(inout w, 0, 1);
+  crate::swaps::exchange::<i64>(inout w, 1, 2);
+  return w;
+}
+
+pub fn swap_flags(a: [bool], i: i64, j: i64) -> [bool] ! alloc
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+{
+  let mut w: [bool] = copy(a);
+  crate::swaps::exchange::<bool>(inout w, i, j);
+  return w;
+}

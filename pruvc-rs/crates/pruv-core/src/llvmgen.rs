@@ -308,9 +308,15 @@ pub fn is_ext_t(tt: &TypeTable, t: &str) -> bool {
     !tt.g9_ext.is_empty() && tt.g9_ext.contains(t)
 }
 
-/// G9: a function with an extended type in its signature has no raw ABI wrapper and no binding
+/// G5 A3: some parameter has the inout mode (a mutable borrow of caller storage)
+pub fn has_inout(f: &Function) -> bool {
+    f.params.iter().any(|p| p.mode_pos.is_some())
+}
+
+/// G9: a function with an extended type in its signature has no raw ABI wrapper and no binding;
+/// G5 A3: neither has a function with an inout parameter (one host-eligibility rule)
 pub fn is_internal_fn(f: &Function, tt: &TypeTable) -> bool {
-    f.params.iter().any(|p| is_ext_t(tt, &p.ty)) || is_ext_t(tt, &f.ret)
+    f.params.iter().any(|p| is_ext_t(tt, &p.ty)) || is_ext_t(tt, &f.ret) || has_inout(f)
 }
 
 /// internal LLVM result type: an extended (G9) aggregate result goes through explicit output storage
@@ -616,14 +622,28 @@ pub fn ir_params(f: &Function, tt: &TypeTable) -> Vec<(String, String)> {
 }
 
 /// Parameter list of an internal function definition: array pointers (names ending in `.a`) are read-only borrows;
-/// a G6 collection handle `%p.NAME.h` is a plain ptr
-pub fn sig_text(params: &[(String, String)]) -> String {
+/// a G6 collection handle `%p.NAME.h` is a plain ptr. G5 A3: with the function `f`, the pointer of an inout parameter
+/// is a mutable borrow: `ptr noalias nocapture` (no readonly)
+pub fn sig_text(params: &[(String, String)], f: Option<&Function>) -> String {
+    let mut_names: Vec<String> = match f {
+        Some(f) => f
+            .params
+            .iter()
+            .filter(|p| p.mode_pos.is_some())
+            .map(|p| format!("%p.{}.a", mangle(&p.name)))
+            .collect(),
+        None => Vec::new(),
+    };
     params
         .iter()
         .map(|(t, n)| {
             format!(
                 "{} {}",
-                if t == "ptr" && n.ends_with(".a") { "ptr noalias nocapture readonly" } else { t.as_str() },
+                if t == "ptr" && n.ends_with(".a") {
+                    if mut_names.contains(n) { "ptr noalias nocapture" } else { "ptr noalias nocapture readonly" }
+                } else {
+                    t.as_str()
+                },
                 n
             )
         })
@@ -1728,10 +1748,14 @@ impl<'a> FnGen<'a> {
             }
             Stmt::IndexAssign(x) => {
                 self.begin_temps();
-                let sl = self.lookup(&x.name)?.val().clone();
+                let bind = self.lookup(&x.name)?;
                 let i = self.ev(&x.index, false)?; // index first, then the value (all modes)
                 let v = self.ev(&x.value, false)?;
-                let a = self.load(&sl)?;
+                // G5 A3: an inout parameter is a pointer view (ssa), stored through
+                let a = match bind {
+                    Bind::Ssa(sv) => sv,
+                    Bind::Slot(sl) => self.load(&sl)?,
+                };
                 let g = self.index_ptr(&a, &i)?;
                 if a.ty.as_deref() == Some(ARRAY_BOOL) {
                     // G2 A5: no value range check
@@ -2252,6 +2276,13 @@ impl<'a> FnGen<'a> {
                 // G9 A3: a read argument is a pointer to valid caller-owned storage
                 let vp = self.view_ptr(x)?;
                 args.push(format!("ptr {}", vp));
+                continue;
+            }
+            if let Expr::InoutArg(ix) = x {
+                // G5 A3: the caller's own pointer and length; no copy, ownership stays put
+                let v = self.ev(&ix.expr, false)?;
+                args.push(format!("ptr {}", v.a));
+                args.push(format!("i64 {}", v.b));
                 continue;
             }
             let take = prm.take;
@@ -3220,7 +3251,7 @@ pub fn entry_of(
         let r = g.op(format!("call {} {}({})", rt, callee, args))?;
         g.term(format!("ret {} {}", rt, r))?;
     }
-    Ok(g.render(&format!("define internal {} @{}__pruv_entry({})", rt, mangle(&f.name), sig_text(&params))))
+    Ok(g.render(&format!("define internal {} @{}__pruv_entry({})", rt, mangle(&f.name), sig_text(&params, Some(f)))))
 }
 
 // ======================================================================================================================
@@ -3886,6 +3917,7 @@ pub fn is_host_abi_fn(f: &Function, tt: &TypeTable, explicit: bool, host: bool) 
     f.foreign.is_none()
         && !crate::emit_common::is_spec_fn(&f.name)
         && !is_coll_fn(f)
+        && !has_inout(f)
         && !is_internal_fn(f, tt)
         && (host || !explicit)
 }
@@ -4071,7 +4103,10 @@ fn gen_llvm_body(
     let need_cdiv = if explicit {
         prog.functions.iter().enumerate().any(|(i, f)| checked_entry(f, hosts.get(i).copied().unwrap_or(false)))
     } else {
-        !trust_callers && prog.functions.iter().any(|f| !f.requires.is_empty() && f.foreign.is_none())
+        // G5 A3: an inout entry checks also under trust_callers
+        prog.functions.iter().any(|f| {
+            !f.requires.is_empty() && f.foreign.is_none() && (!trust_callers || (!verified && has_inout(f)))
+        })
     };
     if need_cdiv {
         chunks.push(cdivrem(&mut m, true));
@@ -4092,7 +4127,7 @@ fn gen_llvm_body(
             "define internal {} @{}__pruv_body({})",
             ir_ret(&tt, f),
             mangle(&f.name),
-            sig_text(&params)
+            sig_text(&params, Some(f))
         )));
         if explicit {
             // G4 A3: bodies and checked wrappers are internal; only a host entry gets pruv_abi_* (and its typed variant).
@@ -4115,7 +4150,15 @@ fn gen_llvm_body(
         }
         if !(coll && verified) {
             // verified callers call the body; the entry only serves safe-mode callers
-            chunks.push(entry_of(&mut m, &tt, &funcs, f, trust_callers || f.requires.is_empty(), budget)?);
+            // G5 A3: the entry of an inout function is internal and always checked (trust_callers does not waive it)
+            chunks.push(entry_of(
+                &mut m,
+                &tt,
+                &funcs,
+                f,
+                (trust_callers && !has_inout(f)) || f.requires.is_empty(),
+                budget,
+            )?);
         }
         if !crate::emit_common::is_spec_fn(&f.name) && !coll {
             // G3: a generic specialization has no ABI symbol

@@ -1,0 +1,11 @@
+// G5: a module with a public Pruv-only inout helper (rows::set_ends) and a root wrapper that owns a copy;
+// the root `pub fn` is the only host entry
+mod rows;
+
+pub fn framed(a: [i64], lo: i64, hi: i64) -> [i64] ! alloc
+  requires len(a) >= 2
+{
+  let mut w: [i64] = copy(a);
+  crate::rows::set_ends(inout w, lo, hi);
+  return w;
+}

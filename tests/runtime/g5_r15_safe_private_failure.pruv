@@ -1,0 +1,18 @@
+// G5 A3 runtime (safe mode only: the program does not verify): a requires violation of a private inout helper is
+// reported by its checked internal wrapper, with the same message on both backends, also under --trust-callers
+fn bump_slot(inout buf: [i64], i: i64) -> ()
+  requires 0 <= i && i < len(buf)
+{
+  buf[i] = buf[i] + 1;
+}
+
+fn bump_twice(inout buf: [i64], i: i64) -> () {
+  bump_slot(inout buf, i);
+  bump_slot(inout buf, i);
+}
+
+pub fn run(a: [i64], i: i64) -> [i64] ! alloc {
+  let mut w: [i64] = copy(a);
+  bump_twice(inout w, i);
+  return w;
+}
