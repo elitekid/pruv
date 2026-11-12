@@ -1,0 +1,27 @@
+// ASCII-fold host bytes; sites are already lowercase.
+fn host_within(host: str, site: str) -> bool
+  requires len(host) <= 4096 && len(site) <= 4096
+  ensures result == (len(host) >= len(site) &&
+    (len(host) == len(site) || host[len(host)-len(site)-1] == 46) &&
+    (forall t in 0..len(site):
+      (65 <= host[len(host)-len(site)+t] && host[len(host)-len(site)+t] <= 90 && site[t] == host[len(host)-len(site)+t] + 32) ||
+      ((host[len(host)-len(site)+t] < 65 || host[len(host)-len(site)+t] > 90) && site[t] == host[len(host)-len(site)+t])))
+{
+  if len(host) < len(site) { return false; }
+  let offset: i64 = len(host) - len(site);
+  if offset > 0 && host[offset-1] != 46 { return false; }
+  let mut i: i64 = 0;
+  while i < len(site)
+    invariant 0 <= i && i <= len(site)
+    invariant forall t in 0..i:
+      (65 <= host[offset+t] && host[offset+t] <= 90 && site[t] == host[offset+t] + 32) ||
+      ((host[offset+t] < 65 || host[offset+t] > 90) && site[t] == host[offset+t])
+    decreases len(site) - i
+  {
+    let mut b: i64 = host[offset+i];
+    if 65 <= b && b <= 90 { b = b + 32; }
+    if b != site[i] { return false; }
+    i = i + 1;
+  }
+  return true;
+}

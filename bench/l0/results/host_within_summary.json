@@ -1,0 +1,177 @@
+{
+  "seed": 12345,
+  "random_cases_per_mode": 20000,
+  "runs": {
+    "py/rust": {
+      "status": "ok",
+      "modes": {
+        "direct": {
+          "total": 20020,
+          "tested": 20020,
+          "skipped": 0,
+          "equal": 19469,
+          "ts_true_pruv_false": 551,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 20020,
+          "ts_oracle_pass": 19469
+        },
+        "real_path": {
+          "total": 20018,
+          "tested": 12147,
+          "skipped": 7871,
+          "equal": 12147,
+          "ts_true_pruv_false": 0,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 12147,
+          "ts_oracle_pass": 12147
+        }
+      },
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/host_within_py_rust/host_within_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "verified": true
+    },
+    "py/llvm": {
+      "status": "ok",
+      "modes": {
+        "direct": {
+          "total": 20020,
+          "tested": 20020,
+          "skipped": 0,
+          "equal": 19469,
+          "ts_true_pruv_false": 551,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 20020,
+          "ts_oracle_pass": 19469
+        },
+        "real_path": {
+          "total": 20018,
+          "tested": 12147,
+          "skipped": 7871,
+          "equal": 12147,
+          "ts_true_pruv_false": 0,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 12147,
+          "ts_oracle_pass": 12147
+        }
+      },
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/host_within_py_llvm/host_within_gen.rs",
+        "ll": "bench/l0/work/host_within_py_llvm/host_within_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "verified": true
+    },
+    "rs/rust": {
+      "status": "ok",
+      "modes": {
+        "direct": {
+          "total": 20020,
+          "tested": 20020,
+          "skipped": 0,
+          "equal": 19469,
+          "ts_true_pruv_false": 551,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 20020,
+          "ts_oracle_pass": 19469
+        },
+        "real_path": {
+          "total": 20018,
+          "tested": 12147,
+          "skipped": 7871,
+          "equal": 12147,
+          "ts_true_pruv_false": 0,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 12147,
+          "ts_oracle_pass": 12147
+        }
+      },
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/host_within_rs_rust/host_within_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "verified": true
+    },
+    "rs/llvm": {
+      "status": "ok",
+      "modes": {
+        "direct": {
+          "total": 20020,
+          "tested": 20020,
+          "skipped": 0,
+          "equal": 19469,
+          "ts_true_pruv_false": 551,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 20020,
+          "ts_oracle_pass": 19469
+        },
+        "real_path": {
+          "total": 20018,
+          "tested": 12147,
+          "skipped": 7871,
+          "equal": 12147,
+          "ts_true_pruv_false": 0,
+          "ts_false_pruv_true": 0,
+          "pruv_oracle_pass": 12147,
+          "ts_oracle_pass": 12147
+        }
+      },
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/host_within_rs_llvm/host_within_gen.rs",
+        "ll": "bench/l0/work/host_within_rs_llvm/host_within_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "verified": true
+    }
+  },
+  "tools": {
+    "commands": {
+      "py": [
+        "python",
+        "pruvc.py"
+      ],
+      "rs": [
+        "pruvc"
+      ]
+    },
+    "rust_source_sha256": "f35d77adb6a2c267a8123df8809f21a7bb46e8d550c5553c9ecdec81fb2da819",
+    "rust_binary_sha256": "0c6a873fafff14f8770fecbb1084c307e62d7f125b8507d31cd708f016a4d7d2",
+    "node": "v26.4.0"
+  },
+  "edge_cases": {
+    "direct": 20,
+    "real_path": 18
+  },
+  "status": "ok",
+  "difference_records_total": 2204,
+  "difference_records_saved": 50,
+  "difference_order": "input bytes, site bytes, host hex, sites, compiler/backend",
+  "real_path_differences": 0
+}

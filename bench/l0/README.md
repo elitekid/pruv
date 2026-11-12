@@ -13,3 +13,15 @@ The trailing replacement-character regex removes genuine U+FFFD as well as trunc
 Thus TS remains a valid bounded prefix here but violates maximality; whole-string fast paths preserve U+FFFD.
 `results/summary.json` records tools/counts; `differences.jsonl` holds the smallest 50 case/build differences.
 Scope: valid UTF-8, nonnegative budgets and byte lengths up to 1,000,000; no full-suite tests were run.
+
+## hostWithin
+Compare Lair's TS with proved ASCII-folded host equality/subdomain matching (UTF-8 lengths <= 4096).
+Run: `python3 bench/l0/run_host_within.py` (`--seed 12345 --n 20000`, random cases per mode).
+Seed 12345: direct 20,020 cases; real path 20,018 URLs, 12,147 tested and 7,871 undefined hosts skipped.
+Python/Rust compilers × Rust/LLVM backends all proved the contracts and exited successfully.
+Each combination: direct equal 19,469, TS true/Pruv false 551, TS false/Pruv true 0.
+Minimal difference: host `K` (hex `e284aa`), site `k` (hex `6b`): TS true, Pruv/oracle false.
+JS Unicode lowercase maps Kelvin sign to ASCII k; the intended ASCII-only fold preserves it. No reverse-class example occurred.
+Real path: all 12,147 equal, both difference classes zero; `https://K/` normalizes to host `k` and both return true.
+Pruv matched the independent oracle in all 32,167 tested cases per combination; no difference reached the tested real path.
+`results/host_within_summary.json` records counts; `host_within_differences.jsonl` stores the shortest 50 differences, without absolute paths.
