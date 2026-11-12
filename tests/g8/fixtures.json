@@ -212,5 +212,26 @@
   ],
   "proof_checks": [
     "tests/g8/check_proof.py"
+  ],
+  "runtime": [
+    "tests/runtime/g8_r01_min_i64/root.pruv",
+    "tests/runtime/g8_r02_max_i64/root.pruv",
+    "tests/runtime/g8_r03_clamp_i64/root.pruv",
+    "tests/runtime/g8_r04_abs_i64/root.pruv",
+    "tests/runtime/g8_r05_checked_add_i64/root.pruv",
+    "tests/runtime/g8_r06_checked_sub_i64/root.pruv",
+    "tests/runtime/g8_r07_sum_i64/root.pruv",
+    "tests/runtime/g8_r08_contains_i64/root.pruv",
+    "tests/runtime/g8_r09_index_of_i64/root.pruv",
+    "tests/runtime/g8_r10_is_sorted_i64/root.pruv",
+    "tests/runtime/g8_r11_array_max_i64/root.pruv",
+    "tests/runtime/g8_r12_reverse_i64/root.pruv"
+  ],
+  "examples": [
+    "examples/g8_std_clamp.pruv",
+    "examples/g8_std_index.pruv"
+  ],
+  "codegen_checks": [
+    "tests/g8/check_codegen.py"
   ]
 }

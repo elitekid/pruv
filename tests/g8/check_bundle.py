@@ -57,7 +57,7 @@ def main(work):
                               capture_output=True, timeout=60)
 
     def expect(stage, code, file, message=None):
-        for backend in ("rust", "llvm"):
+        for backend in (("llvm",) if stage == "codegen" else ("rust", "llvm")):
             c = compile_with(package / "pruvc/pruvc.py", backend=backend)
             ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
             assert c.returncode == 1 and len(ds) == 1, c.stdout + c.stderr
@@ -68,6 +68,9 @@ def main(work):
             assert str(package) not in c.stdout
             assert not (work / "out").exists()
 
+    c = compile_with(package / "pruvc/pruvc.py")
+    assert c.returncode == 0 and (work / "out").exists(), c.stdout + c.stderr
+    (work / "out").unlink()
     expect("codegen", "unsupported_type", "root.pruv", "G8 std code generation is not implemented yet")
     root.write_text("mod child;\nmod std;\nmod after;\n")
     (app / "child.pruv").write_text("pub fn f() -> () {}")

@@ -648,7 +648,7 @@ def s5_erase(source):
 
 
 def g8_proof_jobs():
-    """A1: all client and bundle proofs must finish before the emission guard."""
+    """Std proofs precede Rust emission or the LLVM staging guard."""
     inventory = json.load(open(os.path.join(ROOT, "tests/g8/fixtures.json")))
     jobs = []
     for entry in inventory["proof"]:
@@ -665,6 +665,8 @@ def g8_proof_jobs():
                           ds[0].get("stage") == "codegen" and ds[0].get("code") == "unsupported_type" and
                           ds[0].get("message") == "G8 std code generation is not implemented yet" and
                           not os.path.exists(out))
+                    if backend == "rust":
+                        ok = c.returncode == 0 and os.path.exists(out)
                     return ok, c.stdout + c.stderr
                 jobs.append(safe("g8_proof/%s [%s/%s]" % (entry["name"], mode, backend), fn,
                                  {"sample": entry["root"], "backend": backend, "flags": flags,
@@ -702,6 +704,11 @@ def g8_frontend_jobs():
                          pruvc(root, out + ".bin", flags, "llvm") if mode in ("exe", "obj") else
                          pruvc_llvm(root, out + ".ll", out + "_llvm.rs", flags))
                     ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
+                    if backend == "rust":
+                        if c.returncode != 0 or not os.path.exists(out + ".rs"):
+                            return False, c.stdout + c.stderr
+                        os.unlink(out + ".rs")
+                        continue
                     if c.returncode != 1 or not any(d.get("stage") == "codegen" and
                             d.get("code") == "unsupported_type" and
                             d.get("message") == "G8 std code generation is not implemented yet" for d in ds):
@@ -719,6 +726,13 @@ def g8_frontend_jobs():
     jobs.append(safe("g8_frontend/bundle", resources,
                      {"sample": "tests/g8/check_bundle.py", "backend": None, "flags": [],
                       "mode": "resources", "group": "g8_frontend"}))
+    def codegen_checks():
+        c = subprocess.run([CD.pinned_python(), os.path.join(ROOT, "tests/g8/check_codegen.py"), WORK],
+                           capture_output=True, text=True, timeout=120)
+        return c.returncode == 0, c.stdout + c.stderr
+    jobs.append(safe("g8_frontend/codegen", codegen_checks,
+                     {"sample": "tests/g8/check_codegen.py", "backend": None, "flags": [],
+                      "mode": "codegen", "group": "g8_frontend"}))
     return jobs
 
 
@@ -941,6 +955,8 @@ def examples_jobs(backend):
     jobs = []
     for f in sorted(glob.glob(os.path.join(ROOT, "examples/*.pruv"))):   # top level only: project companions are not examples
         base = os.path.basename(f)
+        if llvm and base in ("g8_std_clamp.pruv", "g8_std_index.pruv"):
+            continue
         if base == "bad_index.pruv":
             jobs.append(example_job(f, "bad", [], llvm, "examples/" + base + tag))
             continue
@@ -969,6 +985,8 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
         proj = os.path.basename(j) == "spec.json"      # G4 A2 project: root.pruv + modules + main.rs + spec.json
         pruv, drv = (os.path.join(d, "root.pruv"), os.path.join(d, "main.rs")) if proj else \
             (os.path.join(d, t + ".pruv"), os.path.join(d, t + ".rs"))
+        if not llvm and "--no-verify" in flags and "--trust-callers" in flags and spec.get("trust_driver"):
+            drv = os.path.join(d, spec["trust_driver"])
         if llvm and proj and os.path.exists(os.path.join(d, "main_llvm.rs")):
             # G4 A3: a project may need a llvm-only host driver (raw `pruv_abi_*` calls with invalid representations)
             drv = os.path.join(d, "main_llvm.rs")
@@ -1125,6 +1143,8 @@ def runtime_jobs(backend):
               for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/g5_*/spec.json")))]
     specs += [(j, os.path.basename(os.path.dirname(j)))
               for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/g7_*/spec.json")))]
+    specs += [(j, os.path.basename(os.path.dirname(j)))
+              for j in sorted(glob.glob(os.path.join(ROOT, "tests/runtime/g8_*/spec.json")))]
     for j, t in specs:
         try:
             spec = json.load(open(j))

@@ -1,0 +1,5 @@
+mod std;
+
+pub fn run(x: i64) -> i64
+ requires x > -9223372036854775808
+{ return crate::std::abs_i64(x); }

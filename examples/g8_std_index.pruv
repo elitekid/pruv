@@ -1,0 +1,12 @@
+mod std;
+
+pub fn first_position(a: [i64], x: i64) -> Option<i64>
+ ensures is_some(result) == (exists k in 0..len(a): a[k] == x)
+ ensures is_some(result) ==> (1 <= some_val(result) && some_val(result) <= len(a))
+{
+ let index: Option<i64> = crate::std::index_of_i64(a, x);
+ match index {
+  Some(i) => { return crate::std::checked_add_i64(i, 1); }
+  None => { return None; }
+ }
+}

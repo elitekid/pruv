@@ -1,0 +1,5 @@
+mod std;
+
+pub fn run(a: [i64]) -> i64
+ requires len(a) > 0
+{ return crate::std::array_max_i64(a); }

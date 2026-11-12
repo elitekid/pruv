@@ -1,0 +1,5 @@
+mod std;
+
+pub fn run(a: [i64], x: i64) -> bool
+
+{ return crate::std::contains_i64(a, x); }

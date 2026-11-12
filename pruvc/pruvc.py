@@ -88,7 +88,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    g8err = g8_unimplemented_error(prog)
+    g8err = g8_unimplemented_error(prog) if backend == "llvm" or also_llvm else None
     if g8err is not None:
         return [g8err]
     g7err = g7_target_error(prog) if emit in ("exe", "obj") else None

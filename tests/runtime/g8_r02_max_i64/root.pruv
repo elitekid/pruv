@@ -1,0 +1,5 @@
+mod std;
+
+pub fn run(a: i64, b: i64) -> i64
+
+{ return crate::std::max_i64(a, b); }

@@ -1,0 +1,5 @@
+mod std;
+
+pub fn run(a: [i64], x: i64) -> Option<i64>
+
+{ return crate::std::index_of_i64(a, x); }

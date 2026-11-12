@@ -1,0 +1,5 @@
+mod std;
+
+pub fn run(x: i64, lo: i64, hi: i64) -> i64
+ requires lo <= hi
+{ return crate::std::clamp_i64(x, lo, hi); }

@@ -268,9 +268,10 @@ fn compile(a: &Args) -> Result<(), Fail> {
             eprintln!("{{\"status\": \"skipped_no_verify\"}}");
         }
     }
-    // G8 A1: stop at the emission guard after verification (or its explicit skip),
-    // like Python compile_file. Normal verification visits every bundled definition.
-    if let Some(md) = g4.as_ref().and_then(|g| g.modules[0].mods.iter().find(|md| md.name == "std")) {
+    // G8 A1/A2: LLVM paths (llvm, obj, exe, --also-llvm) stop at the emission guard after verification
+    // (or its explicit skip), like Python compile_file; the Rust source backend emits std (A2).
+    let g8_llvm = !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some();
+    if let Some(md) = g4.as_ref().filter(|_| g8_llvm).and_then(|g| g.modules[0].mods.iter().find(|md| md.name == "std")) {
         return Err(Fail::Lang(vec![PruvError::new(
             "codegen", md.line, md.col, "unsupported_type",
             "G8 std code generation is not implemented yet",

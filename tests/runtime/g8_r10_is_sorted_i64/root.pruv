@@ -1,0 +1,5 @@
+mod std;
+
+pub fn run(a: [i64]) -> bool
+
+{ return crate::std::is_sorted_i64(a); }

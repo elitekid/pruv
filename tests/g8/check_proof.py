@@ -43,10 +43,15 @@ def main(work):
 
     def compile(backend="rust", verified=True):
         errors = compile_file(str(root), str(out), verify=verified, backend=backend)
-        assert not out.exists(), "proof/guard failure emitted an artifact"
+        assert out.exists() == (not errors), "artifact disagrees with compile result"
+        if out.exists():
+            out.unlink()
         return errors
 
-    def guard(errors):
+    def guard(errors, backend="rust"):
+        if backend == "rust":
+            assert not errors, [vars(e) for e in errors]
+            return
         assert len(errors) == 1, errors
         e = errors[0]
         assert (e.stage, e.code, e.message) == ("codegen", "unsupported_type", GUARD), vars(e)
@@ -91,7 +96,7 @@ def main(work):
     verify.verify_program = forbidden
     try:
         for backend in ("rust", "llvm"):
-            guard(compile(backend, verified=False))
+            guard(compile(backend, verified=False), backend)
     finally:
         verify.verify_program = ordinary_verify
 
@@ -102,9 +107,10 @@ def main(work):
                           file="@std/std.pruv")]
     verify.verify_program = unknown
     try:
-        errors = compile()
-        assert [(e.stage, e.code, e.file) for e in errors] == [
-            ("verify", "verify_unknown", "@std/std.pruv")]
+        for backend in ("rust", "llvm"):
+            errors = compile(backend)
+            assert [(e.stage, e.code, e.file) for e in errors] == [
+                ("verify", "verify_unknown", "@std/std.pruv")]
     finally:
         verify.verify_program = ordinary_verify
 
@@ -120,7 +126,7 @@ def main(work):
         bundle.write_text(implementation)
         root.write_text("mod std;\n")
         for backend in ("rust", "llvm"):
-            guard(compile(backend))
+            guard(compile(backend), backend)
         root.write_text(CLIENT)
         program = load_program(str(root))
         check(program)
@@ -139,8 +145,12 @@ def main(work):
             verify.FnVerifier.prove = original_prove
         assert errors and all(e.file == "root.pruv" and e.code == "assert" for e in errors), [vars(e) for e in errors]
         observations.append(facts)
+        for backend in ("rust", "llvm"):
+            errors = compile(backend)
+            assert errors and all(e.stage == "verify" and e.file == "root.pruv" and e.code == "assert"
+                                  for e in errors), [vars(e) for e in errors]
     assert observations[0] and observations[0] == observations[1], "body leaked into caller obligations/facts"
-    print("unused false ensures: 4 rejections; no-verify: 2; unknown: 1; alternative bodies: 4 proofs; isolated callers: 2 rejections")
+    print("unused false ensures: 4 rejections; no-verify: 2; unknown: 2; alternative bodies: 4 proofs; isolated callers: 4 backend rejections, 2 trace captures")
 
 
 def alias_roots(app, target):
@@ -186,22 +196,28 @@ def rs_main(work, binary):
     def compile(exe, backend="rust", verified=True):
         argv = [str(exe), str(root), "-o", str(out), "--backend", backend] + ([] if verified else ["--no-verify"])
         c = subprocess.run(argv, capture_output=True, text=True, timeout=300)
-        assert c.returncode != 0 and not out.exists(), (c.returncode, c.stdout, c.stderr)
+        assert out.exists() == (c.returncode == 0), (c.returncode, c.stdout, c.stderr)
+        if c.returncode == 0:
+            out.unlink()
+            return None
         ds = [json.loads(l) for l in (c.stdout + c.stderr).splitlines() if l.startswith("{")]
         assert ds, (c.stdout, c.stderr)
         return ds
 
-    def guard(ds):
-        assert len(ds) == 1, ds
+    def guard(ds, backend="llvm"):
+        if backend == "rust":
+            assert ds is None, ds
+            return
+        assert ds and len(ds) == 1, ds
         assert (ds[0]["stage"], ds[0]["code"], ds[0]["message"]) == ("codegen", "unsupported_type", GUARD), ds
 
     root.write_text("mod std;\n")
     for backend in ("rust", "llvm"):
-        guard(compile(exe, backend))
+        guard(compile(exe, backend), backend)
     aliases = 0
     for text in alias_roots(app, ROOT / "stdlib/std.pruv"):
         root.write_text(text)
-        guard(compile(exe))
+        guard(compile(exe), "rust")
         aliases += 1
 
     broken = variant("pruvc_broken", source.replace(b"ensures len(result) == len(a)",
@@ -214,7 +230,7 @@ def rs_main(work, binary):
             assert any(d["code"] == "ensures" and d["file"] == "@std/std.pruv" for d in ds), ds
     root.write_text("mod std;\npub fn f() -> () { assert false; }\n")
     for backend in ("rust", "llvm"):
-        guard(compile(broken, backend, verified=False))
+        guard(compile(broken, backend, verified=False), backend)
 
     # Same distinct sum body as the Python check, with the indentation trimmed to keep the length.
     alternative = variant("pruvc_alternative", source.replace(b"s = s + a[i];\n    i = i + 1;",
@@ -223,7 +239,7 @@ def rs_main(work, binary):
     for implementation in (exe, alternative):
         root.write_text("mod std;\n")
         for backend in ("rust", "llvm"):
-            guard(compile(implementation, backend))
+            guard(compile(implementation, backend), backend)
         root.write_text(CLIENT)
         ds = compile(implementation)
         assert all(d["file"] == "root.pruv" and d["code"] == "assert" for d in ds), ds

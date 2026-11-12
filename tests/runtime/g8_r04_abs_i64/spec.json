@@ -1,0 +1,17 @@
+{
+  "backends": [
+    "rust"
+  ],
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--trust-callers"
+    ]
+  ],
+  "exit": 0,
+  "trust_driver": "trust.rs"
+}

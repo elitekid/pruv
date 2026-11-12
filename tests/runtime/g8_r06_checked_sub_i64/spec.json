@@ -1,0 +1,12 @@
+{
+  "backends": [
+    "rust"
+  ],
+  "flags_matrix": [
+    [],
+    [
+      "--no-verify"
+    ]
+  ],
+  "exit": 0
+}
