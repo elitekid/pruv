@@ -1,0 +1,161 @@
+{
+  "tools": {
+    "py": [
+      "/Library/Developer/CommandLineTools/usr/bin/python3",
+      "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/87e68633-29b1-493e-912d-7718f55beed6/16dba5ba-9d72-4046-bdb8-d74e9df1b6e6/pruvc/pruvc.py"
+    ],
+    "rs": [
+      "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/87e68633-29b1-493e-912d-7718f55beed6/16dba5ba-9d72-4046-bdb8-d74e9df1b6e6/bench/s5/solutions/.work/target/release/pruvc"
+    ]
+  },
+  "solutions": "bench/s5/solutions",
+  "flags": [],
+  "results": {
+    "py-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    },
+    "py-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    },
+    "rs-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    },
+    "rs-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    }
+  },
+  "safe_results": {
+    "py-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    },
+    "py-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    },
+    "rs-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    },
+    "rs-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 76 76\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 76,
+        "tests_total": 76
+      }
+    }
+  }
+}

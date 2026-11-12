@@ -1,0 +1,617 @@
+{
+  "rows": [
+    {
+      "id": "f1_loop",
+      "patch_sha256": "d5bcb65c08b046068c5864a186451296bdc50dcc69ce02e080b9b2ff29dbfdc7",
+      "baselines": {
+        "s5_proof": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "s5_proof"
+          ],
+          "rc": 0,
+          "stdout": "PASS s5_proof/alloc_copy [default]\nPASS s5_proof/alloc_copy [trust-callers]\nPASS s5_proof/alloc_copy [infer]\nPASS s5_proof/calls [default]\nPASS s5_proof/calls [trust-callers]\nPASS s5_proof/calls [infer]\nPASS s5_proof/early [default]\nPASS s5_proof/early [trust-callers]\nPASS s5_proof/early [infer]\nPASS s5_proof/frozen [default]\nPASS s5_proof/frozen [trust-callers]\nPASS s5_proof/frozen [infer]\nPASS s5_proof/generic [default]\nPASS s5_proof/generic [trust-callers]\nPASS s5_proof/generic [infer]\nPASS s5_proof/loop_calls [default]\nPASS s5_proof/loop_calls [trust-callers]\nPASS s5_proof/loop_calls [infer]\nPASS s5_proof/nested [default]\nPASS s5_proof/nested [trust-callers]\nPASS s5_proof/nested [infer]\nPASS s5_proof/par [default]\nPASS s5_proof/par [trust-callers]\nPASS s5_proof/par [infer]\nPASS s5_proof/parameters [default]\nPASS s5_proof/parameters [trust-callers]\nPASS s5_proof/parameters [infer]\nPASS s5_proof/recursive [default]\nPASS s5_proof/recursive [trust-callers]\nPASS s5_proof/recursive [infer]\nPASS s5_proof/str_bound [default]\nPASS s5_proof/str_bound [trust-callers]\nPASS s5_proof/str_bound [infer]\nPASS s5_proof/str_spent [default]\nPASS s5_proof/str_spent [trust-callers]\nPASS s5_proof/str_spent [infer]\nPASS s5_proof/sum [default]\nPASS s5_proof/sum [trust-callers]\nPASS s5_proof/sum [infer]\nPASS s5_proof/unbounded [default]\nPASS s5_proof/unbounded [trust-callers]\nPASS s5_proof/unbounded [infer]\nPASS s5_proof/zero [default]\nPASS s5_proof/zero [trust-callers]\nPASS s5_proof/zero [infer]\ncompiler: py\nobject path: clang\nTOTAL 45/45\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f1_loop_tsv7upks/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "s5_proof"
+          ],
+          "rc": 1,
+          "stdout": "PASS s5_proof/alloc_copy [default]\nPASS s5_proof/alloc_copy [trust-callers]\nPASS s5_proof/alloc_copy [infer]\nPASS s5_proof/calls [default]\nPASS s5_proof/calls [trust-callers]\nPASS s5_proof/calls [infer]\nPASS s5_proof/early [default]\nPASS s5_proof/early [trust-callers]\nPASS s5_proof/early [infer]\nPASS s5_proof/frozen [default]\nPASS s5_proof/frozen [trust-callers]\nPASS s5_proof/frozen [infer]\nPASS s5_proof/generic [default]\nPASS s5_proof/generic [trust-callers]\nPASS s5_proof/generic [infer]\nFAIL s5_proof/loop_calls [default]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}\nFAIL s5_proof/loop_calls [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}\nFAIL s5_proof/loop_calls [infer]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}\nFAIL s5_proof/nested [default]  -- rust: {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"invariant_entry\", \"message\": \"cannot prove loop invariant on entry in nested\", \"fix\": \"the invariant must hold before the first iteration; check initial values\", \"counterexample\": {\"n\": 9223371898152446854, \"m\": 0, \"spent\": 1230968894, \"i\": 1230968894, \"j\": 0, \"C\": 9223371898152446854}} {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"inva\nFAIL s5_proof/nested [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"invariant_entry\", \"message\": \"cannot prove loop invariant on entry in nested\", \"fix\": \"the invariant must hold before the first iteration; check initial values\", \"counterexample\": {\"n\": 9223371898152446854, \"m\": 0, \"spent\": 1230968894, \"i\": 1230968894, \"j\": 0, \"C\": 9223371898152446854}} {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"inva\nFAIL s5_proof/nested [infer]  -- rust: {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"invariant_entry\", \"message\": \"cannot prove loop invariant on entry in nested\", \"fix\": \"the invariant must hold before the first iteration; check initial values\", \"counterexample\": {\"n\": 9223371897886289316, \"m\": 0, \"spent\": 1247699024, \"i\": 1247699024, \"j\": 0, \"C\": 9223371897886289316}} {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"inva\nPASS s5_proof/par [default]\nPASS s5_proof/par [trust-callers]\nPASS s5_proof/par [infer]\nPASS s5_proof/parameters [default]\nPASS s5_proof/parameters [trust-callers]\nPASS s5_proof/parameters [infer]\nPASS s5_proof/recursive [default]\nPASS s5_proof/recursive [trust-callers]\nPASS s5_proof/recursive [infer]\nPASS s5_proof/str_bound [default]\nPASS s5_proof/str_bound [trust-callers]\nPASS s5_proof/str_bound [infer]\nFAIL s5_proof/str_spent [default]  -- rust: {\"stage\": \"verify\", \"line\": 9, \"col\": 21, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"i\": 1, \"C\": 1}}\nFAIL s5_proof/str_spent [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 9, \"col\": 21, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"i\": 1, \"C\": 1}}\nFAIL s5_proof/str_spent [infer]  -- rust: {\"stage\": \"verify\", \"line\": 9, \"col\": 21, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"i\": 1, \"C\": 1}}\nFAIL s5_proof/sum [default]  -- rust: {\"stage\": \"verify\", \"line\": 11, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in sum\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"s\": 0, \"i\": 1, \"C\": 1}}\nFAIL s5_proof/sum [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 11, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in sum\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"s\": 0, \"i\": 1, \"C\": 1}}\nFAIL s5_proof/sum [infer]  -- rust: {\"stage\": \"verify\", \"line\": 11, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in sum\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"s\": 0, \"i\": 1, \"C\": 1}}\nFAIL s5_proof/unbounded [default]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}\nFAIL s5_proof/unbounded [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}\nFAIL s5_proof/unbounded [infer]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}\nPASS s5_proof/zero [default]\nPASS s5_proof/zero [trust-callers]\nPASS s5_proof/zero [infer]\ncompiler: py\nobject path: clang\nTOTAL 30/45\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "s5_proof/loop_calls [default]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}",
+        "s5_proof/loop_calls [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}",
+        "s5_proof/loop_calls [infer]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}",
+        "s5_proof/nested [default]  -- rust: {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"invariant_entry\", \"message\": \"cannot prove loop invariant on entry in nested\", \"fix\": \"the invariant must hold before the first iteration; check initial values\", \"counterexample\": {\"n\": 9223371898152446854, \"m\": 0, \"spent\": 1230968894, \"i\": 1230968894, \"j\": 0, \"C\": 9223371898152446854}} {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"inva",
+        "s5_proof/nested [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"invariant_entry\", \"message\": \"cannot prove loop invariant on entry in nested\", \"fix\": \"the invariant must hold before the first iteration; check initial values\", \"counterexample\": {\"n\": 9223371898152446854, \"m\": 0, \"spent\": 1230968894, \"i\": 1230968894, \"j\": 0, \"C\": 9223371898152446854}} {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"inva",
+        "s5_proof/nested [infer]  -- rust: {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"invariant_entry\", \"message\": \"cannot prove loop invariant on entry in nested\", \"fix\": \"the invariant must hold before the first iteration; check initial values\", \"counterexample\": {\"n\": 9223371897886289316, \"m\": 0, \"spent\": 1247699024, \"i\": 1247699024, \"j\": 0, \"C\": 9223371897886289316}} {\"stage\": \"verify\", \"line\": 5, \"col\": 59, \"code\": \"inva",
+        "s5_proof/str_spent [default]  -- rust: {\"stage\": \"verify\", \"line\": 9, \"col\": 21, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"i\": 1, \"C\": 1}}",
+        "s5_proof/str_spent [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 9, \"col\": 21, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"i\": 1, \"C\": 1}}",
+        "s5_proof/str_spent [infer]  -- rust: {\"stage\": \"verify\", \"line\": 9, \"col\": 21, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"i\": 1, \"C\": 1}}",
+        "s5_proof/sum [default]  -- rust: {\"stage\": \"verify\", \"line\": 11, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in sum\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"s\": 0, \"i\": 1, \"C\": 1}}",
+        "s5_proof/sum [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 11, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in sum\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"s\": 0, \"i\": 1, \"C\": 1}}",
+        "s5_proof/sum [infer]  -- rust: {\"stage\": \"verify\", \"line\": 11, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in sum\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"a\": {\"len\": 1, \"first\": [0]}, \"spent\": 0, \"s\": 0, \"i\": 1, \"C\": 1}}",
+        "s5_proof/unbounded [default]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}",
+        "s5_proof/unbounded [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}",
+        "s5_proof/unbounded [infer]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f1_loop.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    },
+    {
+      "id": "f2_call",
+      "patch_sha256": "e3ba33fa471862c03773b1d5f7a7af24bfd45198a3a5bb8e77541aa0d285f4fc",
+      "baselines": {
+        "s5_proof": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "s5_proof"
+          ],
+          "rc": 0,
+          "stdout": "PASS s5_proof/alloc_copy [default]\nPASS s5_proof/alloc_copy [trust-callers]\nPASS s5_proof/alloc_copy [infer]\nPASS s5_proof/calls [default]\nPASS s5_proof/calls [trust-callers]\nPASS s5_proof/calls [infer]\nPASS s5_proof/early [default]\nPASS s5_proof/early [trust-callers]\nPASS s5_proof/early [infer]\nPASS s5_proof/frozen [default]\nPASS s5_proof/frozen [trust-callers]\nPASS s5_proof/frozen [infer]\nPASS s5_proof/generic [default]\nPASS s5_proof/generic [trust-callers]\nPASS s5_proof/generic [infer]\nPASS s5_proof/loop_calls [default]\nPASS s5_proof/loop_calls [trust-callers]\nPASS s5_proof/loop_calls [infer]\nPASS s5_proof/nested [default]\nPASS s5_proof/nested [trust-callers]\nPASS s5_proof/nested [infer]\nPASS s5_proof/par [default]\nPASS s5_proof/par [trust-callers]\nPASS s5_proof/par [infer]\nPASS s5_proof/parameters [default]\nPASS s5_proof/parameters [trust-callers]\nPASS s5_proof/parameters [infer]\nPASS s5_proof/recursive [default]\nPASS s5_proof/recursive [trust-callers]\nPASS s5_proof/recursive [infer]\nPASS s5_proof/str_bound [default]\nPASS s5_proof/str_bound [trust-callers]\nPASS s5_proof/str_bound [infer]\nPASS s5_proof/str_spent [default]\nPASS s5_proof/str_spent [trust-callers]\nPASS s5_proof/str_spent [infer]\nPASS s5_proof/sum [default]\nPASS s5_proof/sum [trust-callers]\nPASS s5_proof/sum [infer]\nPASS s5_proof/unbounded [default]\nPASS s5_proof/unbounded [trust-callers]\nPASS s5_proof/unbounded [infer]\nPASS s5_proof/zero [default]\nPASS s5_proof/zero [trust-callers]\nPASS s5_proof/zero [infer]\ncompiler: py\nobject path: clang\nTOTAL 45/45\n",
+          "stderr": ""
+        },
+        "must_reject": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 0,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nPASS must_reject/s5_v_alloc_size.pruv\nPASS must_reject/s5_v_call_domain.pruv\nPASS must_reject/s5_v_callee_budget.pruv\nPASS must_reject/s5_v_copy_length.pruv\nPASS must_reject/s5_v_early.pruv\nPASS must_reject/s5_v_entry_domain.pruv\nPASS must_reject/s5_v_loop_call.pruv\nPASS must_reject/s5_v_missing_invariant.pruv\nPASS must_reject/s5_v_nested_multiplier.pruv\nPASS must_reject/s5_v_off_by_one.pruv\nPASS must_reject/s5_v_par_sum.pruv\nPASS must_reject/s5_v_recursive.pruv\ncompiler: py\nobject path: clang\nTOTAL 35/35\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f2_call_n992u3_f/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "s5_proof"
+          ],
+          "rc": 1,
+          "stdout": "PASS s5_proof/alloc_copy [default]\nPASS s5_proof/alloc_copy [trust-callers]\nPASS s5_proof/alloc_copy [infer]\nPASS s5_proof/calls [default]\nPASS s5_proof/calls [trust-callers]\nPASS s5_proof/calls [infer]\nPASS s5_proof/early [default]\nPASS s5_proof/early [trust-callers]\nPASS s5_proof/early [infer]\nPASS s5_proof/frozen [default]\nPASS s5_proof/frozen [trust-callers]\nPASS s5_proof/frozen [infer]\nPASS s5_proof/generic [default]\nPASS s5_proof/generic [trust-callers]\nPASS s5_proof/generic [infer]\nFAIL s5_proof/loop_calls [default]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}\nFAIL s5_proof/loop_calls [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}\nFAIL s5_proof/loop_calls [infer]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}\nPASS s5_proof/nested [default]\nPASS s5_proof/nested [trust-callers]\nPASS s5_proof/nested [infer]\nPASS s5_proof/par [default]\nPASS s5_proof/par [trust-callers]\nPASS s5_proof/par [infer]\nPASS s5_proof/parameters [default]\nPASS s5_proof/parameters [trust-callers]\nPASS s5_proof/parameters [infer]\nPASS s5_proof/recursive [default]\nPASS s5_proof/recursive [trust-callers]\nPASS s5_proof/recursive [infer]\nPASS s5_proof/str_bound [default]\nPASS s5_proof/str_bound [trust-callers]\nPASS s5_proof/str_bound [infer]\nPASS s5_proof/str_spent [default]\nPASS s5_proof/str_spent [trust-callers]\nPASS s5_proof/str_spent [infer]\nPASS s5_proof/sum [default]\nPASS s5_proof/sum [trust-callers]\nPASS s5_proof/sum [infer]\nFAIL s5_proof/unbounded [default]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}\nFAIL s5_proof/unbounded [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}\nFAIL s5_proof/unbounded [infer]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}\nPASS s5_proof/zero [default]\nPASS s5_proof/zero [trust-callers]\nPASS s5_proof/zero [infer]\ncompiler: py\nobject path: clang\nTOTAL 39/45\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f2_call_n992u3_f/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 1,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nPASS must_reject/s5_v_alloc_size.pruv\nPASS must_reject/s5_v_call_domain.pruv\nFAIL must_reject/s5_v_callee_budget.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/s5_v_copy_length.pruv\nFAIL must_reject/s5_v_early.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/s5_v_entry_domain.pruv\nPASS must_reject/s5_v_loop_call.pruv\nPASS must_reject/s5_v_missing_invariant.pruv\nPASS must_reject/s5_v_nested_multiplier.pruv\nPASS must_reject/s5_v_off_by_one.pruv\nFAIL must_reject/s5_v_par_sum.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_recursive.pruv  -- exit 0 (expected 1) {\"ok\": true}\ncompiler: py\nobject path: clang\nTOTAL 31/35\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "s5_proof/loop_calls [default]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}",
+        "s5_proof/loop_calls [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}",
+        "s5_proof/loop_calls [infer]  -- rust: {\"stage\": \"verify\", \"line\": 4, \"col\": 57, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 3, \"i\": 1, \"C\": 4}}",
+        "s5_proof/unbounded [default]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}",
+        "s5_proof/unbounded [trust-callers]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}",
+        "s5_proof/unbounded [infer]  -- rust: {\"stage\": \"verify\", \"line\": 6, \"col\": 18, \"code\": \"invariant_preserved\", \"message\": \"cannot prove loop invariant preserved in f\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"counterexample\": {\"n\": 1, \"spent\": 9223372036854775808, \"i\": 1, \"C\": 9223372036854775809}}",
+        "must_reject/s5_v_callee_budget.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_early.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_par_sum.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_recursive.pruv  -- exit 0 (expected 1) {\"ok\": true}"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f2_call.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    },
+    {
+      "id": "f3_assume",
+      "patch_sha256": "47e3ff2a6a4020892912569db2b4775ce23b979fa9e340fc96d70442448b6278",
+      "baselines": {
+        "must_reject": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 0,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nPASS must_reject/s5_v_alloc_size.pruv\nPASS must_reject/s5_v_call_domain.pruv\nPASS must_reject/s5_v_callee_budget.pruv\nPASS must_reject/s5_v_copy_length.pruv\nPASS must_reject/s5_v_early.pruv\nPASS must_reject/s5_v_entry_domain.pruv\nPASS must_reject/s5_v_loop_call.pruv\nPASS must_reject/s5_v_missing_invariant.pruv\nPASS must_reject/s5_v_nested_multiplier.pruv\nPASS must_reject/s5_v_off_by_one.pruv\nPASS must_reject/s5_v_par_sum.pruv\nPASS must_reject/s5_v_recursive.pruv\ncompiler: py\nobject path: clang\nTOTAL 35/35\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f3_assume_4mg3d_lj/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 1,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nFAIL must_reject/s5_v_alloc_size.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/s5_v_call_domain.pruv\nFAIL must_reject/s5_v_callee_budget.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_copy_length.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_early.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/s5_v_entry_domain.pruv\nFAIL must_reject/s5_v_loop_call.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_missing_invariant.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_nested_multiplier.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_off_by_one.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_par_sum.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_recursive.pruv  -- exit 0 (expected 1) {\"ok\": true}\ncompiler: py\nobject path: clang\nTOTAL 25/35\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "must_reject/s5_v_alloc_size.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_callee_budget.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_copy_length.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_early.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_loop_call.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_missing_invariant.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_nested_multiplier.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_off_by_one.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_par_sum.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_recursive.pruv  -- exit 0 (expected 1) {\"ok\": true}"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f3_assume.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    },
+    {
+      "id": "f4_havoc",
+      "patch_sha256": "1db661df178619edffef4829071c5d68c6694f31e3c1d1d55e50080c8cc3446a",
+      "baselines": {
+        "must_reject": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 0,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nPASS must_reject/s5_v_alloc_size.pruv\nPASS must_reject/s5_v_call_domain.pruv\nPASS must_reject/s5_v_callee_budget.pruv\nPASS must_reject/s5_v_copy_length.pruv\nPASS must_reject/s5_v_early.pruv\nPASS must_reject/s5_v_entry_domain.pruv\nPASS must_reject/s5_v_loop_call.pruv\nPASS must_reject/s5_v_missing_invariant.pruv\nPASS must_reject/s5_v_nested_multiplier.pruv\nPASS must_reject/s5_v_off_by_one.pruv\nPASS must_reject/s5_v_par_sum.pruv\nPASS must_reject/s5_v_recursive.pruv\ncompiler: py\nobject path: clang\nTOTAL 35/35\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f4_havoc_ca5g1_uf/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 1,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nPASS must_reject/s5_v_alloc_size.pruv\nPASS must_reject/s5_v_call_domain.pruv\nPASS must_reject/s5_v_callee_budget.pruv\nPASS must_reject/s5_v_copy_length.pruv\nPASS must_reject/s5_v_early.pruv\nPASS must_reject/s5_v_entry_domain.pruv\nFAIL must_reject/s5_v_loop_call.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_missing_invariant.pruv  -- exit 0 (expected 1) {\"ok\": true}\nFAIL must_reject/s5_v_nested_multiplier.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/s5_v_off_by_one.pruv\nPASS must_reject/s5_v_par_sum.pruv\nPASS must_reject/s5_v_recursive.pruv\ncompiler: py\nobject path: clang\nTOTAL 32/35\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "must_reject/s5_v_loop_call.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_missing_invariant.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_nested_multiplier.pruv  -- exit 0 (expected 1) {\"ok\": true}"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f4_havoc.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    },
+    {
+      "id": "f5_rust_return",
+      "patch_sha256": "ec34102d234f22b8b07ed32594ec796bdc3ab2b8383d2cee3d7e5e4762ff39ef",
+      "baselines": {
+        "runtime": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/s5_"
+          ],
+          "rc": 0,
+          "stdout": "PASS runtime/s5_alloc_copy [default]\nPASS runtime/s5_alloc_copy [--no-verify]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_call [default]\nPASS runtime/s5_call [--no-verify]\nPASS runtime/s5_call [--no-verify --trust-callers]\nPASS runtime/s5_call_exceeded [--no-verify]\nPASS runtime/s5_call_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_callee_requires [--no-verify]\nPASS runtime/s5_frozen [default]\nPASS runtime/s5_frozen [--no-verify]\nPASS runtime/s5_frozen [--no-verify --trust-callers]\nPASS runtime/s5_generic [default]\nPASS runtime/s5_generic [--no-verify]\nPASS runtime/s5_generic [--no-verify --trust-callers]\nPASS runtime/s5_loop [default]\nPASS runtime/s5_loop [--no-verify]\nPASS runtime/s5_loop [--no-verify --trust-callers]\nPASS runtime/s5_loop_exceeded [--no-verify]\nPASS runtime/s5_loop_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_negative [--no-verify]\nPASS runtime/s5_negative [--no-verify --trust-callers]\nPASS runtime/s5_nested [default]\nPASS runtime/s5_nested [--no-verify]\nPASS runtime/s5_nested [--no-verify --trust-callers]\nPASS runtime/s5_overflow [--no-verify]\nPASS runtime/s5_overflow [--no-verify --trust-callers]\nPASS runtime/s5_par [default]\nPASS runtime/s5_par [--no-verify]\nPASS runtime/s5_par [--no-verify --trust-callers]\nPASS runtime/s5_par_exceeded [--no-verify]\nPASS runtime/s5_par_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_recursive [default]\nPASS runtime/s5_recursive [--no-verify]\nPASS runtime/s5_recursive [--no-verify --trust-callers]\nPASS runtime/s5_unbounded [default]\nPASS runtime/s5_unbounded [--no-verify]\nPASS runtime/s5_unbounded [--no-verify --trust-callers]\nPASS runtime/s5_undefined [--no-verify]\nPASS runtime/s5_undefined [--no-verify --trust-callers]\nPASS runtime/s5_alloc_copy [default] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify] [llvm]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_call [default] [llvm]\nPASS runtime/s5_call [--no-verify] [llvm]\nPASS runtime/s5_call [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_call_exceeded [--no-verify] [llvm]\nPASS runtime/s5_call_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_callee_requires [--no-verify] [llvm]\nPASS runtime/s5_frozen [default] [llvm]\nPASS runtime/s5_frozen [--no-verify] [llvm]\nPASS runtime/s5_frozen [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_generic [default] [llvm]\nPASS runtime/s5_generic [--no-verify] [llvm]\nPASS runtime/s5_generic [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_loop [default] [llvm]\nPASS runtime/s5_loop [--no-verify] [llvm]\nPASS runtime/s5_loop [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_loop_exceeded [--no-verify] [llvm]\nPASS runtime/s5_loop_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_negative [--no-verify] [llvm]\nPASS runtime/s5_negative [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_nested [default] [llvm]\nPASS runtime/s5_nested [--no-verify] [llvm]\nPASS runtime/s5_nested [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_overflow [--no-verify] [llvm]\nPASS runtime/s5_overflow [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_par [default] [llvm]\nPASS runtime/s5_par [--no-verify] [llvm]\nPASS runtime/s5_par [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_par_exceeded [--no-verify] [llvm]\nPASS runtime/s5_par_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_recursive [default] [llvm]\nPASS runtime/s5_recursive [--no-verify] [llvm]\nPASS runtime/s5_recursive [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_unbounded [default] [llvm]\nPASS runtime/s5_unbounded [--no-verify] [llvm]\nPASS runtime/s5_unbounded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_undefined [--no-verify] [llvm]\nPASS runtime/s5_undefined [--no-verify --trust-callers] [llvm]\ncompiler: py\nobject path: clang\nTOTAL 84/84\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f5_rust_return_klb4mj05/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/s5_"
+          ],
+          "rc": 1,
+          "stdout": "PASS runtime/s5_alloc_copy [default]\nPASS runtime/s5_alloc_copy [--no-verify]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers]\nFAIL runtime/s5_alloc_copy_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_call [default]\nPASS runtime/s5_call [--no-verify]\nPASS runtime/s5_call [--no-verify --trust-callers]\nFAIL runtime/s5_call_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_call_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_callee_requires [--no-verify]\nPASS runtime/s5_frozen [default]\nPASS runtime/s5_frozen [--no-verify]\nPASS runtime/s5_frozen [--no-verify --trust-callers]\nPASS runtime/s5_generic [default]\nPASS runtime/s5_generic [--no-verify]\nPASS runtime/s5_generic [--no-verify --trust-callers]\nPASS runtime/s5_loop [default]\nPASS runtime/s5_loop [--no-verify]\nPASS runtime/s5_loop [--no-verify --trust-callers]\nFAIL runtime/s5_loop_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_loop_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_negative [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_negative [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_nested [default]\nPASS runtime/s5_nested [--no-verify]\nPASS runtime/s5_nested [--no-verify --trust-callers]\nPASS runtime/s5_overflow [--no-verify]\nPASS runtime/s5_overflow [--no-verify --trust-callers]\nPASS runtime/s5_par [default]\nPASS runtime/s5_par [--no-verify]\nPASS runtime/s5_par [--no-verify --trust-callers]\nFAIL runtime/s5_par_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_par_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_recursive [default]\nPASS runtime/s5_recursive [--no-verify]\nPASS runtime/s5_recursive [--no-verify --trust-callers]\nPASS runtime/s5_unbounded [default]\nPASS runtime/s5_unbounded [--no-verify]\nPASS runtime/s5_unbounded [--no-verify --trust-callers]\nPASS runtime/s5_undefined [--no-verify]\nPASS runtime/s5_undefined [--no-verify --trust-callers]\nPASS runtime/s5_alloc_copy [default] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify] [llvm]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_call [default] [llvm]\nPASS runtime/s5_call [--no-verify] [llvm]\nPASS runtime/s5_call [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_call_exceeded [--no-verify] [llvm]\nPASS runtime/s5_call_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_callee_requires [--no-verify] [llvm]\nPASS runtime/s5_frozen [default] [llvm]\nPASS runtime/s5_frozen [--no-verify] [llvm]\nPASS runtime/s5_frozen [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_generic [default] [llvm]\nPASS runtime/s5_generic [--no-verify] [llvm]\nPASS runtime/s5_generic [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_loop [default] [llvm]\nPASS runtime/s5_loop [--no-verify] [llvm]\nPASS runtime/s5_loop [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_loop_exceeded [--no-verify] [llvm]\nPASS runtime/s5_loop_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_negative [--no-verify] [llvm]\nPASS runtime/s5_negative [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_nested [default] [llvm]\nPASS runtime/s5_nested [--no-verify] [llvm]\nPASS runtime/s5_nested [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_overflow [--no-verify] [llvm]\nPASS runtime/s5_overflow [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_par [default] [llvm]\nPASS runtime/s5_par [--no-verify] [llvm]\nPASS runtime/s5_par [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_par_exceeded [--no-verify] [llvm]\nPASS runtime/s5_par_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_recursive [default] [llvm]\nPASS runtime/s5_recursive [--no-verify] [llvm]\nPASS runtime/s5_recursive [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_unbounded [default] [llvm]\nPASS runtime/s5_unbounded [--no-verify] [llvm]\nPASS runtime/s5_unbounded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_undefined [--no-verify] [llvm]\nPASS runtime/s5_undefined [--no-verify --trust-callers] [llvm]\ncompiler: py\nobject path: clang\nTOTAL 74/84\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "runtime/s5_alloc_copy_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_call_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_call_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_loop_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_loop_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_negative [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_negative [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_par_exceeded [--no-verify]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_par_exceeded [--no-verify --trust-callers]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f5_rust_return.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/codegen.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    },
+    {
+      "id": "f6_llvm_return",
+      "patch_sha256": "a937341b03bdf6c7a8bb2673fd3a29c37b90eb57089fd318d9ab212486f3d817",
+      "baselines": {
+        "runtime": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/s5_"
+          ],
+          "rc": 0,
+          "stdout": "PASS runtime/s5_alloc_copy [default]\nPASS runtime/s5_alloc_copy [--no-verify]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_call [default]\nPASS runtime/s5_call [--no-verify]\nPASS runtime/s5_call [--no-verify --trust-callers]\nPASS runtime/s5_call_exceeded [--no-verify]\nPASS runtime/s5_call_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_callee_requires [--no-verify]\nPASS runtime/s5_frozen [default]\nPASS runtime/s5_frozen [--no-verify]\nPASS runtime/s5_frozen [--no-verify --trust-callers]\nPASS runtime/s5_generic [default]\nPASS runtime/s5_generic [--no-verify]\nPASS runtime/s5_generic [--no-verify --trust-callers]\nPASS runtime/s5_loop [default]\nPASS runtime/s5_loop [--no-verify]\nPASS runtime/s5_loop [--no-verify --trust-callers]\nPASS runtime/s5_loop_exceeded [--no-verify]\nPASS runtime/s5_loop_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_negative [--no-verify]\nPASS runtime/s5_negative [--no-verify --trust-callers]\nPASS runtime/s5_nested [default]\nPASS runtime/s5_nested [--no-verify]\nPASS runtime/s5_nested [--no-verify --trust-callers]\nPASS runtime/s5_overflow [--no-verify]\nPASS runtime/s5_overflow [--no-verify --trust-callers]\nPASS runtime/s5_par [default]\nPASS runtime/s5_par [--no-verify]\nPASS runtime/s5_par [--no-verify --trust-callers]\nPASS runtime/s5_par_exceeded [--no-verify]\nPASS runtime/s5_par_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_recursive [default]\nPASS runtime/s5_recursive [--no-verify]\nPASS runtime/s5_recursive [--no-verify --trust-callers]\nPASS runtime/s5_unbounded [default]\nPASS runtime/s5_unbounded [--no-verify]\nPASS runtime/s5_unbounded [--no-verify --trust-callers]\nPASS runtime/s5_undefined [--no-verify]\nPASS runtime/s5_undefined [--no-verify --trust-callers]\nPASS runtime/s5_alloc_copy [default] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify] [llvm]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_call [default] [llvm]\nPASS runtime/s5_call [--no-verify] [llvm]\nPASS runtime/s5_call [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_call_exceeded [--no-verify] [llvm]\nPASS runtime/s5_call_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_callee_requires [--no-verify] [llvm]\nPASS runtime/s5_frozen [default] [llvm]\nPASS runtime/s5_frozen [--no-verify] [llvm]\nPASS runtime/s5_frozen [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_generic [default] [llvm]\nPASS runtime/s5_generic [--no-verify] [llvm]\nPASS runtime/s5_generic [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_loop [default] [llvm]\nPASS runtime/s5_loop [--no-verify] [llvm]\nPASS runtime/s5_loop [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_loop_exceeded [--no-verify] [llvm]\nPASS runtime/s5_loop_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_negative [--no-verify] [llvm]\nPASS runtime/s5_negative [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_nested [default] [llvm]\nPASS runtime/s5_nested [--no-verify] [llvm]\nPASS runtime/s5_nested [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_overflow [--no-verify] [llvm]\nPASS runtime/s5_overflow [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_par [default] [llvm]\nPASS runtime/s5_par [--no-verify] [llvm]\nPASS runtime/s5_par [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_par_exceeded [--no-verify] [llvm]\nPASS runtime/s5_par_exceeded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_recursive [default] [llvm]\nPASS runtime/s5_recursive [--no-verify] [llvm]\nPASS runtime/s5_recursive [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_unbounded [default] [llvm]\nPASS runtime/s5_unbounded [--no-verify] [llvm]\nPASS runtime/s5_unbounded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_undefined [--no-verify] [llvm]\nPASS runtime/s5_undefined [--no-verify --trust-callers] [llvm]\ncompiler: py\nobject path: clang\nTOTAL 84/84\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f6_llvm_return_qm50yo4z/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "runtime",
+            "--sample-prefix",
+            "tests/runtime/s5_"
+          ],
+          "rc": 1,
+          "stdout": "PASS runtime/s5_alloc_copy [default]\nPASS runtime/s5_alloc_copy [--no-verify]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify]\nPASS runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_call [default]\nPASS runtime/s5_call [--no-verify]\nPASS runtime/s5_call [--no-verify --trust-callers]\nPASS runtime/s5_call_exceeded [--no-verify]\nPASS runtime/s5_call_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_callee_requires [--no-verify]\nPASS runtime/s5_frozen [default]\nPASS runtime/s5_frozen [--no-verify]\nPASS runtime/s5_frozen [--no-verify --trust-callers]\nPASS runtime/s5_generic [default]\nPASS runtime/s5_generic [--no-verify]\nPASS runtime/s5_generic [--no-verify --trust-callers]\nPASS runtime/s5_loop [default]\nPASS runtime/s5_loop [--no-verify]\nPASS runtime/s5_loop [--no-verify --trust-callers]\nPASS runtime/s5_loop_exceeded [--no-verify]\nPASS runtime/s5_loop_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_negative [--no-verify]\nPASS runtime/s5_negative [--no-verify --trust-callers]\nPASS runtime/s5_nested [default]\nPASS runtime/s5_nested [--no-verify]\nPASS runtime/s5_nested [--no-verify --trust-callers]\nPASS runtime/s5_overflow [--no-verify]\nPASS runtime/s5_overflow [--no-verify --trust-callers]\nPASS runtime/s5_par [default]\nPASS runtime/s5_par [--no-verify]\nPASS runtime/s5_par [--no-verify --trust-callers]\nPASS runtime/s5_par_exceeded [--no-verify]\nPASS runtime/s5_par_exceeded [--no-verify --trust-callers]\nPASS runtime/s5_recursive [default]\nPASS runtime/s5_recursive [--no-verify]\nPASS runtime/s5_recursive [--no-verify --trust-callers]\nPASS runtime/s5_unbounded [default]\nPASS runtime/s5_unbounded [--no-verify]\nPASS runtime/s5_unbounded [--no-verify --trust-callers]\nPASS runtime/s5_undefined [--no-verify]\nPASS runtime/s5_undefined [--no-verify --trust-callers]\nPASS runtime/s5_alloc_copy [default] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify] [llvm]\nPASS runtime/s5_alloc_copy [--no-verify --trust-callers] [llvm]\nFAIL runtime/s5_alloc_copy_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_call [default] [llvm]\nPASS runtime/s5_call [--no-verify] [llvm]\nPASS runtime/s5_call [--no-verify --trust-callers] [llvm]\nFAIL runtime/s5_call_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_call_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_callee_requires [--no-verify] [llvm]\nPASS runtime/s5_frozen [default] [llvm]\nPASS runtime/s5_frozen [--no-verify] [llvm]\nPASS runtime/s5_frozen [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_generic [default] [llvm]\nPASS runtime/s5_generic [--no-verify] [llvm]\nPASS runtime/s5_generic [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_loop [default] [llvm]\nPASS runtime/s5_loop [--no-verify] [llvm]\nPASS runtime/s5_loop [--no-verify --trust-callers] [llvm]\nFAIL runtime/s5_loop_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_loop_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_negative [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_negative [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_nested [default] [llvm]\nPASS runtime/s5_nested [--no-verify] [llvm]\nPASS runtime/s5_nested [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_overflow [--no-verify] [llvm]\nPASS runtime/s5_overflow [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_par [default] [llvm]\nPASS runtime/s5_par [--no-verify] [llvm]\nPASS runtime/s5_par [--no-verify --trust-callers] [llvm]\nFAIL runtime/s5_par_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nFAIL runtime/s5_par_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'\nPASS runtime/s5_recursive [default] [llvm]\nPASS runtime/s5_recursive [--no-verify] [llvm]\nPASS runtime/s5_recursive [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_unbounded [default] [llvm]\nPASS runtime/s5_unbounded [--no-verify] [llvm]\nPASS runtime/s5_unbounded [--no-verify --trust-callers] [llvm]\nPASS runtime/s5_undefined [--no-verify] [llvm]\nPASS runtime/s5_undefined [--no-verify --trust-callers] [llvm]\ncompiler: py\nobject path: clang\nTOTAL 74/84\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "runtime/s5_alloc_copy_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_alloc_copy_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_call_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_call_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_loop_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_loop_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_negative [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_negative [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_par_exceeded [--no-verify] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'",
+        "runtime/s5_par_exceeded [--no-verify --trust-callers] [llvm]  -- exit 0 (expected 101); stderr '' lacks 'pruv: cost exceeded'"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f6_llvm_return.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/llvmgen.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    },
+    {
+      "id": "f7_lengths",
+      "patch_sha256": "17493520fa2e52ebc505fecdf13266fa37d360930734a24199ef37e4eeafadff",
+      "baselines": {
+        "must_reject": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 0,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nPASS must_reject/s5_v_alloc_size.pruv\nPASS must_reject/s5_v_call_domain.pruv\nPASS must_reject/s5_v_callee_budget.pruv\nPASS must_reject/s5_v_copy_length.pruv\nPASS must_reject/s5_v_early.pruv\nPASS must_reject/s5_v_entry_domain.pruv\nPASS must_reject/s5_v_loop_call.pruv\nPASS must_reject/s5_v_missing_invariant.pruv\nPASS must_reject/s5_v_nested_multiplier.pruv\nPASS must_reject/s5_v_off_by_one.pruv\nPASS must_reject/s5_v_par_sum.pruv\nPASS must_reject/s5_v_recursive.pruv\ncompiler: py\nobject path: clang\nTOTAL 35/35\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f7_lengths_thrks6xk/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "must_reject",
+            "--sample-prefix",
+            "tests/must_reject/s5_"
+          ],
+          "rc": 1,
+          "stdout": "PASS must_reject/s5_before_decreases.pruv\nPASS must_reject/s5_before_effects.pruv\nPASS must_reject/s5_before_ensures.pruv\nPASS must_reject/s5_before_return.pruv\nPASS must_reject/s5_bool.pruv\nPASS must_reject/s5_callee.pruv\nPASS must_reject/s5_catalog.pruv\nPASS must_reject/s5_duplicate.pruv\nPASS must_reject/s5_empty.pruv\nPASS must_reject/s5_file.pruv\nPASS must_reject/s5_foreign.pruv\nPASS must_reject/s5_generic_callee.pruv\nPASS must_reject/s5_old_cost.pruv\nPASS must_reject/s5_par_callee.pruv\nPASS must_reject/s5_requires_after_ensures.pruv\nPASS must_reject/s5_result_cost.pruv\nPASS must_reject/s5_spent_cost.pruv\nPASS must_reject/s5_spent_decreases.pruv\nPASS must_reject/s5_spent_ensures.pruv\nPASS must_reject/s5_spent_let.pruv\nPASS must_reject/s5_spent_requires.pruv\nPASS must_reject/s5_spent_without_cost.pruv\nPASS must_reject/s5_type_priority.pruv\nFAIL must_reject/s5_v_alloc_size.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/s5_v_call_domain.pruv\nPASS must_reject/s5_v_callee_budget.pruv\nFAIL must_reject/s5_v_copy_length.pruv  -- exit 0 (expected 1) {\"ok\": true}\nPASS must_reject/s5_v_early.pruv\nPASS must_reject/s5_v_entry_domain.pruv\nPASS must_reject/s5_v_loop_call.pruv\nPASS must_reject/s5_v_missing_invariant.pruv\nPASS must_reject/s5_v_nested_multiplier.pruv\nPASS must_reject/s5_v_off_by_one.pruv\nPASS must_reject/s5_v_par_sum.pruv\nPASS must_reject/s5_v_recursive.pruv\ncompiler: py\nobject path: clang\nTOTAL 33/35\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "must_reject/s5_v_alloc_size.pruv  -- exit 0 (expected 1) {\"ok\": true}",
+        "must_reject/s5_v_copy_length.pruv  -- exit 0 (expected 1) {\"ok\": true}"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f7_lengths.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    },
+    {
+      "id": "f8_erasure",
+      "patch_sha256": "0f3b2191d0ff311e05aff48ddca92727d33a37ade06a1e8763b051d65aad923a",
+      "baselines": {
+        "s5_proof": {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "s5_proof"
+          ],
+          "rc": 0,
+          "stdout": "PASS s5_proof/alloc_copy [default]\nPASS s5_proof/alloc_copy [trust-callers]\nPASS s5_proof/alloc_copy [infer]\nPASS s5_proof/calls [default]\nPASS s5_proof/calls [trust-callers]\nPASS s5_proof/calls [infer]\nPASS s5_proof/early [default]\nPASS s5_proof/early [trust-callers]\nPASS s5_proof/early [infer]\nPASS s5_proof/frozen [default]\nPASS s5_proof/frozen [trust-callers]\nPASS s5_proof/frozen [infer]\nPASS s5_proof/generic [default]\nPASS s5_proof/generic [trust-callers]\nPASS s5_proof/generic [infer]\nPASS s5_proof/loop_calls [default]\nPASS s5_proof/loop_calls [trust-callers]\nPASS s5_proof/loop_calls [infer]\nPASS s5_proof/nested [default]\nPASS s5_proof/nested [trust-callers]\nPASS s5_proof/nested [infer]\nPASS s5_proof/par [default]\nPASS s5_proof/par [trust-callers]\nPASS s5_proof/par [infer]\nPASS s5_proof/parameters [default]\nPASS s5_proof/parameters [trust-callers]\nPASS s5_proof/parameters [infer]\nPASS s5_proof/recursive [default]\nPASS s5_proof/recursive [trust-callers]\nPASS s5_proof/recursive [infer]\nPASS s5_proof/str_bound [default]\nPASS s5_proof/str_bound [trust-callers]\nPASS s5_proof/str_bound [infer]\nPASS s5_proof/str_spent [default]\nPASS s5_proof/str_spent [trust-callers]\nPASS s5_proof/str_spent [infer]\nPASS s5_proof/sum [default]\nPASS s5_proof/sum [trust-callers]\nPASS s5_proof/sum [infer]\nPASS s5_proof/unbounded [default]\nPASS s5_proof/unbounded [trust-callers]\nPASS s5_proof/unbounded [infer]\nPASS s5_proof/zero [default]\nPASS s5_proof/zero [trust-callers]\nPASS s5_proof/zero [infer]\ncompiler: py\nobject path: clang\nTOTAL 45/45\n",
+          "stderr": ""
+        }
+      },
+      "runs": [
+        {
+          "command": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/tests/run_all.py",
+            "--compiler",
+            "py",
+            "--compiler-path",
+            "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/s5_f8_erasure_ist580tp/pruvc/pruvc.py",
+            "--backend",
+            "both",
+            "--only",
+            "s5_proof"
+          ],
+          "rc": 1,
+          "stdout": "FAIL s5_proof/alloc_copy [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/alloc_copy [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/alloc_copy [infer]\nFAIL s5_proof/calls [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/calls [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/calls [infer]\nFAIL s5_proof/early [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/early [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/early [infer]\nFAIL s5_proof/frozen [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/frozen [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/frozen [infer]\nFAIL s5_proof/generic [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/generic [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/generic [infer]\nFAIL s5_proof/loop_calls [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/loop_calls [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/loop_calls [infer]\nFAIL s5_proof/nested [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/nested [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/nested [infer]\nFAIL s5_proof/par [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/par [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/par [infer]\nFAIL s5_proof/parameters [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/parameters [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/parameters [infer]\nFAIL s5_proof/recursive [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/recursive [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/recursive [infer]\nFAIL s5_proof/str_bound [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/str_bound [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/str_bound [infer]\nFAIL s5_proof/str_spent [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/str_spent [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/str_spent [infer]\nFAIL s5_proof/sum [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/sum [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/sum [infer]\nFAIL s5_proof/unbounded [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/unbounded [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/unbounded [infer]\nFAIL s5_proof/zero [default]  -- cost erasure changed generated Rust\nFAIL s5_proof/zero [trust-callers]  -- cost erasure changed generated Rust\nPASS s5_proof/zero [infer]\ncompiler: py\nobject path: clang\nTOTAL 15/45\n",
+          "stderr": ""
+        }
+      ],
+      "detecting_tests": [
+        "s5_proof/alloc_copy [default]  -- cost erasure changed generated Rust",
+        "s5_proof/alloc_copy [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/calls [default]  -- cost erasure changed generated Rust",
+        "s5_proof/calls [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/early [default]  -- cost erasure changed generated Rust",
+        "s5_proof/early [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/frozen [default]  -- cost erasure changed generated Rust",
+        "s5_proof/frozen [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/generic [default]  -- cost erasure changed generated Rust",
+        "s5_proof/generic [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/loop_calls [default]  -- cost erasure changed generated Rust",
+        "s5_proof/loop_calls [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/nested [default]  -- cost erasure changed generated Rust",
+        "s5_proof/nested [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/par [default]  -- cost erasure changed generated Rust",
+        "s5_proof/par [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/parameters [default]  -- cost erasure changed generated Rust",
+        "s5_proof/parameters [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/recursive [default]  -- cost erasure changed generated Rust",
+        "s5_proof/recursive [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/str_bound [default]  -- cost erasure changed generated Rust",
+        "s5_proof/str_bound [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/str_spent [default]  -- cost erasure changed generated Rust",
+        "s5_proof/str_spent [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/sum [default]  -- cost erasure changed generated Rust",
+        "s5_proof/sum [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/unbounded [default]  -- cost erasure changed generated Rust",
+        "s5_proof/unbounded [trust-callers]  -- cost erasure changed generated Rust",
+        "s5_proof/zero [default]  -- cost erasure changed generated Rust",
+        "s5_proof/zero [trust-callers]  -- cost erasure changed generated Rust"
+      ],
+      "excluded_failures": [],
+      "patch_apply": {
+        "command": [
+          "patch",
+          "-p1",
+          "-i",
+          "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/bench/s5/faults/f8_erasure.diff"
+        ],
+        "rc": 0,
+        "stdout": "patching file 'pruvc/codegen.py'\n",
+        "stderr": ""
+      },
+      "detected": true,
+      "gap": ""
+    }
+  ],
+  "isolation": "One patch per temporary compiler snapshot inside bench/s5/faults; snapshot deleted after run. Existing named groups only; no test edits."
+}

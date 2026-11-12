@@ -183,6 +183,7 @@ def _lex(src):
 
 # ---------------------------------------------------------------- parser
 class _Fn(object):
+    cost = None
     foreign = None      # G6: the Rust path string of a `trusted rust fn` (body is empty), else None
     decreases = None    # G9: function-level `decreases e`; evaluated only with run(..., fn_decreases=True)
     inout = frozenset()  # G5: names of the `inout` (mutable array borrow) parameters
@@ -434,9 +435,12 @@ class _Parser(object):
             while self.is_(","):
                 self.next()
                 self.ident()
-        req, ens, dec = [], [], None
-        while self.is_("requires") or self.is_("ensures") or self.is_("decreases"):
+        req, ens, dec, cost = [], [], None, None
+        while self.is_("requires") or self.is_("ensures") or self.is_("decreases") or self.is_("cost"):
             kw = self.next()
+            if kw[1] == "cost":
+                cost = self.imp()
+                continue
             if kw[1] == "decreases":
                 # G9: exactly one function-level measure; the oracle is a value interpreter and does not check it
                 if dec is not None:
@@ -447,6 +451,7 @@ class _Parser(object):
         self.scopes = [dict(params)]
         self.cur_ret = ret
         fn_ = _Fn(name, params, ret, req, ens, self.block(), line)
+        fn_.cost = cost
         fn_.decreases = dec
         if inout:
             fn_.inout = frozenset(inout)
@@ -977,6 +982,7 @@ class _Interp(object):
         # Opt-in (G9 mutation grading): check function-level `decreases` at every call inside a recursive
         # SCC: callee measure defined, >= 0 and < the caller's frozen entry measure ("decreases <fn> line N").
         self.fn_decreases, self._frames, self._scc = False, [], None
+        self.cost_frames, self.cost_calls = [], []
         self.inout_calls = 0    # G5: number of calls of functions with inout parameters
 
     def scc_of(self, name):
@@ -1041,6 +1047,13 @@ class _Interp(object):
             raise OracleUnsupported("field access .%s on a non-struct" % f)
         return v["fields"][f]
 
+    def charge(self, units):
+        if self.cost_frames and self.cost_frames[-1]["bound"] is not None:
+            frame = self.cost_frames[-1]
+            frame["spent"] += units
+            if self.mode == "safe" and (units < 0 or frame["spent"] >= 2 ** 128):
+                raise _Fault("cost_exceeded", frame["function"])
+
     def tick(self):
         self.steps += 1
         if self.steps > self.max_steps:
@@ -1066,6 +1079,8 @@ class _Interp(object):
         if k == "str":
             return e[1]
         if k == "var":
+            if e[1] == "spent" and self.cost_frames:
+                return self.cost_frames[-1]["spent"]
             if e[1] not in env:
                 raise OracleUnsupported("unbound variable %s" % e[1])
             return env[e[1]]
@@ -1303,6 +1318,7 @@ class _Interp(object):
                 return len(self.ev(args[0], env))
             if name == "copy" and len(args) == 1:
                 src = self.ev(args[0], env)
+                self.charge(1 + len(src))
                 return src if isinstance(src, bytes) else list(src)
             if name == "is_char_boundary" and len(args) == 2:
                 s = self.ev(args[0], env)
@@ -1329,6 +1345,7 @@ class _Interp(object):
                     raise _Fault("elem_range", str(v))
                 if n > ALLOC_SIM_MAX:
                     raise OracleUnsupported("alloc too large to simulate")
+                self.charge(1 + n)
                 return [v] * n
             if name in _CATALOG and name not in self.prog.fns:
                 return self.catalog(name, [self.ev(a, env) for a in args])
@@ -1439,6 +1456,19 @@ class _Interp(object):
                 st, v = self.cbool(ce, penv, False)
                 if st == "undef" or not v:
                     self.fail("call_requires %s clause %d" % (name, idx))
+        bound = None
+        if fn.cost is not None:
+            try:
+                bound = self.cev(fn.cost, penv, self.mode == "safe")
+            except _Undef:
+                raise _Fault("requires_undefined", name + " cost i128")
+        if not top and self.cost_frames and self.cost_frames[-1]["bound"] is not None:
+            if bound is None:
+                raise OracleUnsupported("unbounded cost callee " + name)
+            if self.mode == "safe" and bound < 0:
+                raise _Fault("cost_exceeded", name)
+            self.charge(1 + bound)
+        frame = {"function": name, "bound": bound, "spent": 0}
         measure = None
         if self.fn_decreases and fn.decreases is not None:
             dexp, dln = fn.decreases
@@ -1459,12 +1489,20 @@ class _Interp(object):
             self.inout_calls += 1
         ret, returned = None, False
         self._frames.append((name, measure))
+        self.cost_frames.append(frame)
         try:
             self.block(fn, fn.body, env)
         except _Return as r:
             ret, returned = r.v, True
         finally:
             self._frames.pop()
+            self.cost_frames.pop()
+            if bound is not None:
+                self.cost_calls.append(dict(frame))
+        if bound is not None and frame["spent"] > bound:
+            if self.mode == "safe":
+                raise _Fault("cost_exceeded", name)
+            self.fail("cost_bound " + name)
         if fn.ret != "unit" and not returned:
             raise OracleUnsupported("function %s falls off the end" % name)
         ret = _cp(ret)
@@ -1578,6 +1616,7 @@ class _Interp(object):
                 st0, d0 = self.cbool(dec[0], env, False)
                 if st0 == "undef" or d0 < 0:
                     self.fail("decreases %s line %d" % (fn.name, dec[1]))
+                self.charge(1)
                 self.block(fn, body, env)   # a `return` propagates: no end-of-body check
                 st1, d1 = self.cbool(dec[0], env, False)
                 if st1 == "undef" or st0 == "undef" or not d1 < d0:
@@ -1704,6 +1743,8 @@ def run(prog, fn_name, args, max_steps=2_000_000, mode="safe", fn_decreases=Fals
         kind, detail, value = f.kind, f.detail, None
     res = {"kind": kind, "value": value, "detail": detail, "output": it.output,
            "contract_failures": it.failures}
+    if it.cost_calls:
+        res["cost_calls"] = it.cost_calls
     # G5 (keys only appear for programs that use inout, so other results are unchanged): the final contents of the
     # top-level function's own inout parameters (mutated in place) and the number of inout calls that ran
     if fn0 is not None and fn0.inout and len(cargs) == len(fn0.params):
@@ -1730,6 +1771,8 @@ def check_requires(prog, fn_name, args):
 
 def expected_stderr_prefix(result):
     k, d = result["kind"], result["detail"]
+    if k == "cost_exceeded":
+        return "pruv: cost exceeded"
     if k == "requires_violated":
         return "pruv: requires violated: %s:" % d.split()[0]
     if k == "requires_undefined":
@@ -2725,6 +2768,29 @@ def _selftest_g7():
     print("G7 oracle self-test passed")
 
 
+def _selftest_s5():
+    import generate
+    for i in range(len(generate.S5_FAMILIES)):
+        case = generate.generate_s5_case(81, i)
+        for values in generate.s5_inputs(81, i, 8):
+            r = run(parse_program(case["src"]), "f", values)
+            assert r["kind"] == "ok" and not r["contract_failures"], (case["kind"], values, r)
+            if case["twin_src"]:
+                twin = parse_program(case["twin_src"])
+                proof = run(twin, "f", values, mode="proof")
+                last = proof["cost_calls"][-1]
+                expected = "cost_exceeded" if last["spent"] > last["bound"] else "ok"
+                assert run(twin, "f", values)["kind"] == expected
+    # Independent constants catch wrong units, actual-vs-declared charging and frame leakage.
+    src = ("fn g() -> () cost 7 {} fn f() -> () ! alloc cost 20 "
+           "{ g(); let a: [i64] = alloc(3, 0); let b: [i64] = copy(a); }")
+    r = run(parse_program(src), "f", [])
+    assert r["cost_calls"] == [{"function": "g", "bound": 7, "spent": 0},
+                               {"function": "f", "bound": 20, "spent": 16}], r
+    assert run(parse_program("fn f() -> () cost -1 {}"), "f", [])["kind"] == "cost_exceeded"
+    print("oracle s5 self-test: OK")
+
+
 if __name__ == "__main__":
     _selftest()
     _selftest_g3()
@@ -2733,3 +2799,4 @@ if __name__ == "__main__":
     _selftest_g4()
     _selftest_g5()
     _selftest_g7()
+    _selftest_s5()

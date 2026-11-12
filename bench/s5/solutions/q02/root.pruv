@@ -1,0 +1,29 @@
+fn twice(x: i64) -> i64
+  requires -1000 <= x && x <= 1000
+  ensures result == x * 2
+  cost 0
+{
+  return x * 2;
+}
+
+pub fn compute(src: [i64]) -> [i64] ! alloc
+  requires len(src) <= 32
+  requires forall k in 0..len(src): -1000 <= src[k] && src[k] <= 1000
+  ensures len(result) == len(src)
+  ensures forall k in 0..len(src): result[k] == src[k] * 2
+  cost 3 * len(src) + 1
+{
+  let mut dst: [i64] = copy(src);
+  let mut i: i64 = 0;
+  while i < len(src)
+    invariant 0 <= i && i <= len(src)
+    invariant len(dst) == len(src)
+    invariant forall k in 0..i: dst[k] == src[k] * 2
+    invariant spent == len(src) + 1 + 2 * i
+    decreases len(src) - i
+  {
+    dst[i] = twice(src[i]);
+    i = i + 1;
+  }
+  return dst;
+}

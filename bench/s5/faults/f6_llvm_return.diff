@@ -1,0 +1,10 @@
+--- a/pruvc/llvmgen.py
++++ b/pruvc/llvmgen.py
+@@ -1200,6 +1200,7 @@
+         s.cost_add(units)
+ 
+     def cost_check(s):
++        return  # FAULT: erase safe return check
+         negative = s.op("icmp slt i128 %s, 0" % s.cost_bound)
+         spent = s.op("load i128, ptr %cost.spent")
+         exceeded = s.op("icmp ugt i128 %s, %s" % (spent, s.cost_bound))

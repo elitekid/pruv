@@ -1,0 +1,28 @@
+pub fn grid(a: [i64]) -> i64
+  requires len(a) <= 32
+  ensures result == len(a) * len(a)
+  cost len(a) * (len(a) + 1)
+{
+  let n: i64 = len(a);
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant total == i * n
+    invariant spent == i * (n + 1)
+    decreases n - i
+  {
+    let mut j: i64 = 0;
+    while j < n
+      invariant 0 <= j && j <= n
+      invariant total == i * n + j
+      invariant spent == i * (n + 1) + 1 + j
+      decreases n - j
+    {
+      total = total + 1;
+      j = j + 1;
+    }
+    i = i + 1;
+  }
+  return total;
+}

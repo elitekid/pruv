@@ -6531,7 +6531,83 @@ def generate_g7_case(seed, index):
                 {"src": g5_ah(T, 1)}, {"v": g5_vh(T), "rounds": (1, 4)}, {"i": ("src", 1)})}
 
 
-def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False, g5=False, g7=False):
+S5_FAMILIES = ("loop", "nested", "loop_call", "recursion", "generic",
+               "alloc_copy", "par", "slack", "conditional")
+
+
+def generate_s5_case(seed, index):
+    """Finite, verified-intended candidates. Twins change only f's bound by one."""
+    rng = random.Random("s5:%s:%s" % (seed, index))
+    kind = S5_FAMILIES[index % len(S5_FAMILIES)]
+    k = rng.randint(1, 5)
+    helpers, effects = "", "io"
+    loop = ("let mut i: i64 = 0; while i < n "
+            "invariant 0 <= i && i <= n invariant spent == UNIT * i "
+            "decreases n - i { BODY i = i + 1; } ")
+    if kind in ("loop", "slack"):
+        bound = "n" if kind == "loop" else "n + %d" % k
+        body = loop.replace("UNIT", "1").replace("BODY", "") + "print(i); return i;"
+    elif kind == "nested":
+        bound = "n * (m + 1)"
+        inner = ("let mut j: i64 = 0; while j < m "
+                 "invariant 0 <= j && j <= m "
+                 "invariant spent == i * (m + 1) + 1 + j "
+                 "decreases m - j { j = j + 1; }")
+        body = loop.replace("UNIT", "(m + 1)").replace("BODY", inner) + "print(i); return i;"
+    elif kind == "loop_call":
+        helpers = "fn tick() -> () cost %d {}\n" % k
+        bound = "%d * n" % (k + 2)
+        body = loop.replace("UNIT", str(k + 2)).replace("BODY", "tick();") + "print(i); return i;"
+    elif kind == "recursion":
+        helpers = ("fn down(n: i64) -> i64 requires n >= 0 decreases n cost n "
+                   "{ if n == 0 { return 0; } else { return down(n - 1); } }\n")
+        bound = "n + 1"
+        body = "let r: i64 = down(n); print(r); return r;"
+    elif kind == "generic":
+        helpers = "fn identity<T>(x: T) -> T cost %d { return x; }\n" % k
+        bound = str(2 * (k + 1))
+        body = ("let b: bool = identity::<bool>(true); let r: i64 = identity::<i64>(n); "
+                "print(b); print(r); return r;")
+    elif kind == "alloc_copy":
+        effects = "io, alloc"
+        bound = "2 * (n + 1)"
+        body = ("let a: [i64] = alloc(n, %d); let b: [i64] = copy(a); "
+                "print(len(b)); return len(b);") % k
+    elif kind == "par":
+        helpers = "fn tick() -> () cost %d {}\n" % k
+        count = rng.randint(2, 4)
+        bound = str(count * (k + 1))
+        body = "par { " + "tick(); " * count + "} print(n); return n;"
+    else:
+        helpers = "fn leaf() -> i64 cost %d { return %d; }\n" % (k, k)
+        bound = str(k + 1)
+        body = ("if n > 0 { let r: i64 = leaf(); print(r); return r; } "
+                "else { print(n); return n; }")
+    header = ("fn f(n: i64, m: i64) -> i64 ! %s "
+              "requires 0 <= n && n <= 12 requires 0 <= m && m <= 8 cost ") % effects
+    src = "// s5 fuzz case\n" + helpers + header + bound + " { " + body + " }\n"
+    twin = None if kind == "slack" else src.replace(header + bound, header + "(" + bound + ") - 1", 1)
+    return {"name": "s5c%s_%s" % (seed, index), "src": src,
+            "params": [["n", "i64"], ["m", "i64"]], "ret": "i64",
+            "kind": kind, "s5": True, "s5_twin": False, "twin_src": twin}
+
+
+def s5_inputs(seed, index, count):
+    rng = random.Random("s5-inputs:%s:%s" % (seed, index))
+    values = [[0, 0], [1, 0], [0, 8], [12, 8], [12, 0], [1, 1], [2, 3], [3, 2]]
+    while len(values) < count:
+        value = [rng.randrange(13), rng.randrange(9)]
+        if value not in values or len(values) >= 117:
+            values.append(value)
+    # Keep boundary witnesses first; vary the interior inputs with each seed.
+    if count >= 8:
+        values[6:8] = [[rng.randint(2, 11), rng.randint(1, 7)] for _ in range(2)]
+    return values[:count]
+
+
+def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False, g5=False, g7=False, s5=False):
+    if s5:
+        return generate_s5_case(seed, index)
     if g7:
         return generate_g7_case(seed, index)
     if g5:
@@ -6840,7 +6916,10 @@ def main(argv=None):
     ap.add_argument("--g5", action="store_true",
                     help="G5 mode: inout-parameter programs, one directory per program (root.pruv + module files)")
     ap.add_argument("--g7", action="store_true", help="G7 scoped parallel calls")
+    ap.add_argument("--s5", action="store_true", help="Stage 5 cost bounds and minus-one twins")
     a = ap.parse_args(argv)
+    if a.s5 and any((a.g2, a.g3, a.g4, a.g5, a.g6, a.g7, a.g9)):
+        ap.error("--s5 is a separate mode")
     if a.g7 and any((a.g2, a.g3, a.g4, a.g5, a.g6, a.g9)):
         ap.error("--g7 is a separate mode")
     if a.g9 and (a.g2 or a.g3 or a.g6):
@@ -6851,7 +6930,10 @@ def main(argv=None):
         ap.error("--g5 is a separate mode (not combinable with --g2/--g3/--g6/--g9/--g4)")
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4, g5=a.g5, g7=a.g7)
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4, g5=a.g5, g7=a.g7, s5=a.s5)
+        if a.s5 and case["twin_src"]:
+            with open(os.path.join(a.out, case["name"] + "_minus_one.pruv"), "w") as fh:
+                fh.write(case["twin_src"])
         if a.g4 or a.g5 or a.g7:
             for rel, text in case["files"].items():
                 path = os.path.join(a.out, case["name"], *rel.split("/"))

@@ -1,0 +1,11 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -2115,7 +2115,7 @@
+         s.check_dom(b, [], w.decreases, w.decreases, "variant_field lookups in decreases are defined")
+         d0 = s.ev(w.decreases, b, [], False)
+         s.prove(b, [], d0 >= 0, w.decreases, "decreases_nonneg", "decreases >= 0")
+-        s.spend(b, [], z3.IntVal(1))
++        s.spend(b, [], z3.IntVal(0))
+         for end in s.exec_block(w.body, b):
+             prev = []
+             for cid, inv, text in invs:

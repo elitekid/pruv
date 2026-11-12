@@ -1,0 +1,4 @@
+work_*/
+clang-cache/
+__pycache__/
+xcrun_db

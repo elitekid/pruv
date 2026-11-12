@@ -57,7 +57,7 @@ RUNTIME_C = os.path.join(ROOT, "pruvc/runtime.c")
 
 I64_MIN = -(1 << 63)
 TIMEOUT_RC = -999
-FAULT_KINDS = {"oob", "overflow", "div_domain", "requires_violated", "requires_undefined",
+FAULT_KINDS = {"cost_exceeded", "oob", "overflow", "div_domain", "requires_violated", "requires_undefined",
                "elem_range", "slice_range", "slice_cut",   # the last three are G2 (only the oracle emits them; existing paths unchanged)
                "foreign_requires", "foreign_undefined"}    # G6: `pruv: foreign requires violated:` / `pruv: foreign contract undefined:`
 MODES = [("rust-proof", "rust", False), ("rust-safe", "rust", True),
@@ -516,7 +516,7 @@ def prep_llvm(rec, mode, rt_o):
         ll_new, rs_new, n_g6 = g6_rename(ll_new, rs_new, tag)
         if n_g6 and rs_new.count("pruv_g6_v1_%s_" % tag) + rs_new.count("pruv_g6_bridge_v1_%s" % tag) < 1:
             return None, "harness_error", "%s: G6 shim symbols not found in the bindings (.ll references %d)" % (name, n_g6)
-    if (rec.get("case") or {}).get("g7"):
+    if (rec.get("case") or {}).get("g7") or (rec.get("case") or {}).get("s5"):
         ll_new = ll_new.replace("pruv_g7_v1_run", "pruv_g7_v1_run_" + tag)
         rs_new = rs_new.replace("pruv_g7_v1_run", "pruv_g7_v1_run_" + tag)
     write(rw_ll, ll_new)
@@ -567,7 +567,7 @@ def build_binary(recs, backend, label, work, rt_o, only_mode=None):
                 modname = "p%d_l%s" % (rec["idx"], "safe" if safe else "proof")
                 gen = os.path.join(rec["dir"], "%s_%s_bind.rs" % (name, label))
                 # the #[no_mangle] of pruv_host_* stays only on the first LLVM module of the binary
-                strip = NO_MANGLE_HOST_RE if any((rec.get("case") or {}).get(k) for k in ("g6", "g7")) else NO_MANGLE_RE
+                strip = NO_MANGLE_HOST_RE if any((rec.get("case") or {}).get(k) for k in ("g6", "g7", "s5")) else NO_MANGLE_RE
                 write(gen, art["rs"] if not entries else strip.sub("", art["rs"]))
                 links.append(art["o"])
             entries.append((rec, name, modname, os.path.abspath(gen)))
@@ -1216,6 +1216,130 @@ def run_seeds(args):
 
 # ---------------------------------------------------------------- main run
 
+def run_s5(args):
+    """Stage 5 gate: finite candidates, no replacement/padding, persisted replay inputs."""
+    start = time.time()
+    out = args.out or os.path.join(HERE, "results_s5")
+    os.makedirs(out, exist_ok=True)
+    cases = []
+    if args.replay:
+        with open(os.path.join(args.replay, "case.json")) as fh:
+            cases = [json.load(fh)]
+    else:
+        for i in range(args.programs or 30):
+            case = generate.generate_s5_case(args.seed, i)
+            case["fixed_inputs"] = generate.s5_inputs(args.seed, i, args.inputs)
+            cases.append(case)
+            if case["twin_src"]:
+                twin = dict(case, name=case["name"] + "_minus_one",
+                            src=case["twin_src"], s5_twin=True, twin_src=None)
+                cases.append(twin)
+    originals = [c for c in cases if not c["s5_twin"]]
+    twins = [c for c in cases if c["s5_twin"]]
+    summary = {"s5": True, "seed": args.seed, "compiler": DRIVER.name,
+               "programs_generated": len(originals), "programs_verified": 0,
+               "programs_rejected": 0, "twins_generated": len(twins),
+               "twins_rejected": 0, "twins_accepted": 0,
+               "comparisons_target": sum(len(c["fixed_inputs"]) * (2 if c["s5_twin"] else 4) for c in cases),
+               "comparisons_completed": 0, "mismatches": 0, "oracle_gaps": 0,
+               "safe_panics_expected": 0, "safe_panics_observed": 0,
+               "original_safe_panics": 0, "failures": [], "programs": []}
+    # All transient sources, compiler outputs and temp files stay in the work folder.
+    with tempfile.TemporaryDirectory(prefix=".s5-work-", dir=HERE) as work:
+        old_tmp = os.environ.get("TMPDIR")
+        os.environ["TMPDIR"] = work
+        try:
+            with cf.ThreadPoolExecutor(max(1, args.jobs)) as ex:
+                records = list(ex.map(lambda c: phase_a(c, work), cases))
+            try:
+                rt_o = build_runtime(work)
+            except Exception as exc:
+                rt_o = None
+                summary["failures"].append({"kind": "runtime_build", "detail": str(exc)})
+            for i, rec in enumerate(records):
+                rec["idx"] = i
+                twin = rec["case"]["s5_twin"]
+                status = rec["status"]
+                if twin:
+                    if status == "verified":
+                        summary["twins_accepted"] += 1
+                        rec["failures"].append({"kind": "twin_wrongly_verified"})
+                    elif status == "rejected" and "verify:cost_bound" in rec["codes"]:
+                        summary["twins_rejected"] += 1
+                    else:
+                        rec["failures"].append({"kind": "twin_wrong_rejection", "codes": rec["codes"]})
+                elif status == "verified":
+                    summary["programs_verified"] += 1
+                else:
+                    summary["programs_rejected"] += int(status == "rejected")
+                    rec["failures"].append({"kind": "original_not_verified", "status": status})
+                if status in ("verified", "rejected"):
+                    choose_inputs(rec, args, rec["case"]["fixed_inputs"])
+                    if twin:
+                        # Even a wrongly verified twin is run only with runtime checks.
+                        rec["status"] = "rejected"
+                    if rt_o:
+                        phase_b(rec, args, rt_o, rec["case"]["fixed_inputs"])
+                    rec["status"] = status
+                else:
+                    summary["oracle_gaps"] += int(status.startswith("oracle_"))
+            if rt_o:
+                build_all(records, args, work, rt_o)
+                run_all(records, args.jobs)
+            for rec in records:
+                for mode, rows in rec.get("runs", {}).items():
+                    for k, actual in enumerate(rows):
+                        expected = mode_oracle(rec, mode, k)
+                        if expected["kind"] not in ("ok", "cost_exceeded"):
+                            summary["oracle_gaps"] += 1
+                            rec["failures"].append({"kind": "oracle_gap", "mode": mode, "input": k,
+                                                    "detail": expected})
+                            continue
+                        safe = mode.endswith("-safe")
+                        panic = actual["exit"] == 101 and actual["pruv"].startswith("pruv: cost exceeded")
+                        summary["safe_panics_observed"] += int(safe and panic)
+                        summary["original_safe_panics"] += int(safe and panic and not rec["case"]["s5_twin"])
+                        if actual["exit"] in (TIMEOUT_RC, -998):
+                            rec["failures"].append({"kind": "run_incomplete", "mode": mode, "input": k})
+                            continue
+                        summary["comparisons_completed"] += 1
+                        ok = expected["kind"] == "ok"
+                        matches = (actual["exit"] == (0 if ok else 101)
+                                   and actual["stdout"] == (expected_stdout(expected) if ok else fault_stdout(expected))
+                                   and (not actual["pruv"] if ok else panic))
+                        if not matches:
+                            summary["mismatches"] += 1
+                            rec["failures"].append({"kind": "oracle_mismatch", "mode": mode, "input": k,
+                                                    "expected": expected, "actual": actual})
+                for expected in rec.get("oracle_safe", []):
+                    summary["safe_panics_expected"] += 2 * int(expected["kind"] == "cost_exceeded")
+                    if not rec["case"]["s5_twin"] and (expected["kind"] != "ok" or expected["contract_failures"]):
+                        rec["failures"].append({"kind": "generator_or_oracle_invalid", "detail": expected})
+                row = {"name": rec["name"], "family": rec["case"]["kind"], "twin": rec["case"]["s5_twin"],
+                       "status": rec["status"], "codes": rec["codes"]}
+                summary["programs"].append(row)
+                if rec["failures"]:
+                    dest = os.path.join(out, "repro", DRIVER.name + "_" + rec["name"])
+                    os.makedirs(dest, exist_ok=True)
+                    write(os.path.join(dest, "case.pruv"), rec["src"])
+                    write(os.path.join(dest, "case.json"), json.dumps(rec["case"], indent=2))
+                    write(os.path.join(dest, "results.json"), json.dumps(
+                        {"failures": rec["failures"], "inputs": rec_results(rec), "logs": rec["logs"]}, indent=2))
+                    summary["failures"].append({"program": rec["name"], "reproducer": os.path.relpath(dest, ROOT),
+                                                "kinds": [f["kind"] for f in rec["failures"]]})
+        finally:
+            if old_tmp is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = old_tmp
+    summary["incomplete"] = summary["comparisons_target"] - summary["comparisons_completed"]
+    summary["elapsed_seconds"] = round(time.time() - start, 3)
+    path = os.path.join(out, ("replay_" if args.replay else "") + "%s_%s.json" % (args.seed, DRIVER.name))
+    write(path, json.dumps(summary, indent=2) + "\n")
+    print(json.dumps({k: v for k, v in summary.items() if k != "programs"}, indent=2))
+    return int(bool(summary["failures"] or summary["incomplete"]))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Pruv differential fuzzing")
     ap.add_argument("--seed", type=int, default=1)
@@ -1264,13 +1388,20 @@ def main():
                          "with --out each seed gets the subfolder OUT/<seed>")
     CD.add_args(ap)
     ap.add_argument("--g7", action="store_true", help="G7 parallel calls; twice per input, four modes")
+    ap.add_argument("--s5", action="store_true", help="Stage 5 cost differential gate")
     args = ap.parse_args()
+    if args.s5 and any((args.g2, args.g3, args.g4, args.g5, args.g6, args.g7, args.g9)):
+        ap.error("--s5 is a separate mode")
+    if args.s5 and (args.inputs < 1 or args.jobs < 1 or (args.programs is not None and args.programs < 1)):
+        ap.error("--s5 requires positive --programs, --inputs and --jobs")
     if args.g7 and any((args.g2, args.g3, args.g4, args.g5, args.g6, args.g9)):
         ap.error("--g7 is a separate mode")
     if args.seeds:
         return run_seeds(args)
     global DRIVER
     DRIVER = CD.from_args(args)
+    if args.s5:
+        return run_s5(args)
     generate.AVOID.update(x.strip() for x in args.avoid_known.split(",") if x.strip())
     if args.g3 and args.g2:
         ap.error("--g2 and --g3 are separate modes")

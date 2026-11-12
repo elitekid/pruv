@@ -1,0 +1,11 @@
+--- a/pruvc/codegen.py
++++ b/pruvc/codegen.py
+@@ -850,7 +850,7 @@
+ 
+     @staticmethod
+     def cost_check():
+-        return 'if pruv_cost < 0 || pruv_spent > pruv_cost as u128 { panic!("pruv: cost exceeded"); }'
++        return ""  # FAULT: erase safe return check
+ 
+     def cost_call(s, name, args):
+         # A negative modular bound cannot be met by a nonnegative callee counter.

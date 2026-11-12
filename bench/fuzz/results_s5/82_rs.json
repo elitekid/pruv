@@ -1,0 +1,476 @@
+{
+  "s5": true,
+  "seed": 82,
+  "compiler": "rs",
+  "programs_generated": 30,
+  "programs_verified": 30,
+  "programs_rejected": 0,
+  "twins_generated": 27,
+  "twins_rejected": 27,
+  "twins_accepted": 0,
+  "comparisons_target": 1392,
+  "comparisons_completed": 1392,
+  "mismatches": 0,
+  "oracle_gaps": 0,
+  "safe_panics_expected": 420,
+  "safe_panics_observed": 420,
+  "original_safe_panics": 0,
+  "failures": [],
+  "programs": [
+    {
+      "name": "s5c82_0",
+      "family": "loop",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_0_minus_one",
+      "family": "loop",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_1",
+      "family": "nested",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_1_minus_one",
+      "family": "nested",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_2",
+      "family": "loop_call",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_2_minus_one",
+      "family": "loop_call",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_3",
+      "family": "recursion",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_3_minus_one",
+      "family": "recursion",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_4",
+      "family": "generic",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_4_minus_one",
+      "family": "generic",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_5",
+      "family": "alloc_copy",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_5_minus_one",
+      "family": "alloc_copy",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_6",
+      "family": "par",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_6_minus_one",
+      "family": "par",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_7",
+      "family": "slack",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_8",
+      "family": "conditional",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_8_minus_one",
+      "family": "conditional",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_9",
+      "family": "loop",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_9_minus_one",
+      "family": "loop",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_10",
+      "family": "nested",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_10_minus_one",
+      "family": "nested",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_11",
+      "family": "loop_call",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_11_minus_one",
+      "family": "loop_call",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_12",
+      "family": "recursion",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_12_minus_one",
+      "family": "recursion",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_13",
+      "family": "generic",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_13_minus_one",
+      "family": "generic",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_14",
+      "family": "alloc_copy",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_14_minus_one",
+      "family": "alloc_copy",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_15",
+      "family": "par",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_15_minus_one",
+      "family": "par",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_16",
+      "family": "slack",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_17",
+      "family": "conditional",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_17_minus_one",
+      "family": "conditional",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_18",
+      "family": "loop",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_18_minus_one",
+      "family": "loop",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_19",
+      "family": "nested",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_19_minus_one",
+      "family": "nested",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_20",
+      "family": "loop_call",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_20_minus_one",
+      "family": "loop_call",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_21",
+      "family": "recursion",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_21_minus_one",
+      "family": "recursion",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_22",
+      "family": "generic",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_22_minus_one",
+      "family": "generic",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_23",
+      "family": "alloc_copy",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_23_minus_one",
+      "family": "alloc_copy",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_24",
+      "family": "par",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_24_minus_one",
+      "family": "par",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_25",
+      "family": "slack",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_26",
+      "family": "conditional",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_26_minus_one",
+      "family": "conditional",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_27",
+      "family": "loop",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_27_minus_one",
+      "family": "loop",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_28",
+      "family": "nested",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_28_minus_one",
+      "family": "nested",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    },
+    {
+      "name": "s5c82_29",
+      "family": "loop_call",
+      "twin": false,
+      "status": "verified",
+      "codes": []
+    },
+    {
+      "name": "s5c82_29_minus_one",
+      "family": "loop_call",
+      "twin": true,
+      "status": "rejected",
+      "codes": [
+        "verify:cost_bound"
+      ]
+    }
+  ],
+  "incomplete": 0,
+  "elapsed_seconds": 68.195
+}

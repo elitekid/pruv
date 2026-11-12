@@ -1,0 +1,11 @@
+--- a/pruvc/codegen.py
++++ b/pruvc/codegen.py
+@@ -804,6 +804,8 @@
+             vis = "" if (f.requires or s.private(f)) else "pub "   # G3: specializations are private
+         s.emit(0, s.allow)
+         s.emit(0, "%sfn %s(%s)%s {" % (vis, body_name, ps, ret))
++        if s.verified and f.cost is not None:
++            s.emit(1, "let mut pruv_spent: u128 = 0;")
+         s.cost = not s.verified and f.cost is not None
+         if s.cost:
+             s.emit(1, "let pruv_cost: i128 = %s__pruv_cost(%s);" % (f.name, ", ".join(p.name for p in f.params)))

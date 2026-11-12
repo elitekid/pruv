@@ -1,0 +1,11 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1726,7 +1726,7 @@
+     def call_cost(s, e, f, st, g, cenv):
+         if s.f.cost is not None:
+             bound = s.cost_value(f.cost, st, g, e, cenv)
+-            s.spend(st, g, 1 + bound)
++            s.spend(st, g, bound)
+ 
+     def termination(s, e, f, st, g, cenv):
+         """G9 A1 (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:

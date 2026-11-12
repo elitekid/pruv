@@ -1,0 +1,281 @@
+{
+  "compiler": "rs",
+  "backend": "rust",
+  "machine": {
+    "os": "macOS-26.5-arm64-arm-64bit",
+    "architecture": "arm64",
+    "cores": 10,
+    "cpu": {
+      "command": [
+        "sysctl",
+        "-n",
+        "machdep.cpu.brand_string"
+      ],
+      "rc": 1,
+      "stdout": "",
+      "stderr": "sysctl: sysctl fmt -1 1024 1: Operation not permitted\n"
+    },
+    "rustc": {
+      "command": [
+        "/Users/spica4345/.cargo/bin/rustc",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+      "stderr": ""
+    },
+    "clang": {
+      "command": [
+        "/usr/bin/clang",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+      "stderr": ""
+    }
+  },
+  "repeat": 10,
+  "warmup": 2,
+  "flags": [
+    "rustc -C opt-level=3 -C overflow-checks=yes",
+    "clang -O3"
+  ],
+  "source_sha256": "47e84823cc99c6ccc31c963837c5f6259706268299c2cb44cdcb568226b8fde1",
+  "rows": [
+    {
+      "mode": "verified",
+      "size": 100,
+      "costed": {
+        "raw": [
+          [
+            9792,
+            39111
+          ],
+          [
+            9834,
+            39111
+          ],
+          [
+            11083,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9834,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9875,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ]
+        ],
+        "median_ms": 0.009833,
+        "min_ms": 0.009792,
+        "max_ms": 0.011083,
+        "stdev_ms": 0.0003956634512646662
+      },
+      "twin": {
+        "raw": [
+          [
+            11541,
+            39111
+          ],
+          [
+            11625,
+            39111
+          ],
+          [
+            11541,
+            39111
+          ],
+          [
+            11625,
+            39111
+          ],
+          [
+            11584,
+            39111
+          ],
+          [
+            11666,
+            39111
+          ],
+          [
+            11666,
+            39111
+          ],
+          [
+            11625,
+            39111
+          ],
+          [
+            11625,
+            39111
+          ],
+          [
+            11583,
+            39111
+          ]
+        ],
+        "median_ms": 0.011625,
+        "min_ms": 0.011541,
+        "max_ms": 0.011666,
+        "stdev_ms": 4.4799429559860395e-05
+      },
+      "overhead_ratio": 0.8458494623655913
+    },
+    {
+      "mode": "safe",
+      "size": 100,
+      "costed": {
+        "raw": [
+          [
+            11458,
+            39111
+          ],
+          [
+            11583,
+            39111
+          ],
+          [
+            11542,
+            39111
+          ],
+          [
+            11541,
+            39111
+          ],
+          [
+            11458,
+            39111
+          ],
+          [
+            11500,
+            39111
+          ],
+          [
+            11583,
+            39111
+          ],
+          [
+            11500,
+            39111
+          ],
+          [
+            11458,
+            39111
+          ],
+          [
+            11416,
+            39111
+          ]
+        ],
+        "median_ms": 0.0115,
+        "min_ms": 0.011416,
+        "max_ms": 0.011583,
+        "stdev_ms": 5.717312888645021e-05
+      },
+      "twin": {
+        "raw": [
+          [
+            9708,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9708,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9792,
+            39111
+          ],
+          [
+            9791,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ]
+        ],
+        "median_ms": 0.00975,
+        "min_ms": 0.009708,
+        "max_ms": 0.009792,
+        "stdev_ms": 2.7834630708286238e-05
+      },
+      "overhead_ratio": 1.1794871794871795
+    }
+  ],
+  "artifacts": [
+    {
+      "mode": "verified",
+      "variant": "costed",
+      "byte_identical_to_python": true
+    },
+    {
+      "mode": "verified",
+      "variant": "twin",
+      "byte_identical_to_python": true
+    },
+    {
+      "mode": "safe",
+      "variant": "costed",
+      "byte_identical_to_python": true
+    },
+    {
+      "mode": "safe",
+      "variant": "twin",
+      "byte_identical_to_python": true
+    }
+  ],
+  "verified_byte_identical": true,
+  "status": "ok",
+  "method": "Two in-process warmups, ten timed calls per executable; costed then twin; scalar checksum checked against independent Rust recurrence. No affinity/frequency control. Timings exclude process startup, reference computation and checksum checks.",
+  "compiler_path": "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc",
+  "compiler_sha256": "3715fde395fff643163ddc8577789d26b23d2b4f24c6be4d7f52e99abe84ae62",
+  "artifact_hashes": {
+    "rs_rust_verified_twin.rs": "b29420ff4eb80550ed196bba661fcc493035f50265a8813d15651b7d3b4c6f6b",
+    "rs_rust_safe_costed.rs": "fa29ac47ce205e3d8a1ae4bd06272f3de8aeb4fc03c4b38358644d46cb64aeca",
+    "rs_rust_verified_costed.rs": "b29420ff4eb80550ed196bba661fcc493035f50265a8813d15651b7d3b4c6f6b",
+    "rs_rust_safe_twin.rs": "f4d5301c4618c0a23da3525a28b43d0266a291b52098114daa35a20044deee33"
+  }
+}

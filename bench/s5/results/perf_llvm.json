@@ -1,0 +1,466 @@
+{
+  "compiler": "py",
+  "backend": "llvm",
+  "machine": {
+    "os": "macOS-26.5-arm64-arm-64bit",
+    "architecture": "arm64",
+    "cores": 10,
+    "cpu": {
+      "command": [
+        "sysctl",
+        "-n",
+        "machdep.cpu.brand_string"
+      ],
+      "rc": 1,
+      "stdout": "",
+      "stderr": "sysctl: sysctl fmt -1 1024 1: Operation not permitted\n"
+    },
+    "rustc": {
+      "command": [
+        "/Users/spica4345/.cargo/bin/rustc",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+      "stderr": ""
+    },
+    "clang": {
+      "command": [
+        "/usr/bin/clang",
+        "--version"
+      ],
+      "rc": 0,
+      "stdout": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+      "stderr": ""
+    }
+  },
+  "repeat": 10,
+  "warmup": 2,
+  "flags": [
+    "rustc -C opt-level=3 -C overflow-checks=yes",
+    "clang -O3"
+  ],
+  "source_sha256": "47e84823cc99c6ccc31c963837c5f6259706268299c2cb44cdcb568226b8fde1",
+  "rows": [
+    {
+      "mode": "verified",
+      "size": 100,
+      "costed": {
+        "raw": [
+          [
+            9792,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9875,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9875,
+            39111
+          ],
+          [
+            9834,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9917,
+            39111
+          ]
+        ],
+        "median_ms": 0.009833,
+        "min_ms": 0.009792,
+        "max_ms": 0.009917,
+        "stdev_ms": 3.436341724049648e-05
+      },
+      "twin": {
+        "raw": [
+          [
+            9875,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9875,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9834,
+            39111
+          ],
+          [
+            9834,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ],
+          [
+            9833,
+            39111
+          ]
+        ],
+        "median_ms": 0.009833,
+        "min_ms": 0.009833,
+        "max_ms": 0.009875,
+        "stdev_ms": 1.760807895383385e-05
+      },
+      "overhead_ratio": 1.0
+    },
+    {
+      "mode": "verified",
+      "size": 20000,
+      "costed": {
+        "raw": [
+          [
+            1987208,
+            29072
+          ],
+          [
+            1973416,
+            29072
+          ],
+          [
+            1967167,
+            29072
+          ],
+          [
+            2106792,
+            29072
+          ],
+          [
+            2308167,
+            29072
+          ],
+          [
+            2306000,
+            29072
+          ],
+          [
+            2305750,
+            29072
+          ],
+          [
+            2310666,
+            29072
+          ],
+          [
+            2305125,
+            29072
+          ],
+          [
+            2306458,
+            29072
+          ]
+        ],
+        "median_ms": 2.3054375,
+        "min_ms": 1.967167,
+        "max_ms": 2.310666,
+        "stdev_ms": 0.15872803361826862
+      },
+      "twin": {
+        "raw": [
+          [
+            2381792,
+            29072
+          ],
+          [
+            2372750,
+            29072
+          ],
+          [
+            2390875,
+            29072
+          ],
+          [
+            2377500,
+            29072
+          ],
+          [
+            2395583,
+            29072
+          ],
+          [
+            2387875,
+            29072
+          ],
+          [
+            2378042,
+            29072
+          ],
+          [
+            2385792,
+            29072
+          ],
+          [
+            2640542,
+            29072
+          ],
+          [
+            2319667,
+            29072
+          ]
+        ],
+        "median_ms": 2.3837919999999997,
+        "min_ms": 2.319667,
+        "max_ms": 2.640542,
+        "stdev_ms": 0.08611070078786827
+      },
+      "overhead_ratio": 0.9671303117050483
+    },
+    {
+      "mode": "safe",
+      "size": 100,
+      "costed": {
+        "raw": [
+          [
+            9750,
+            39111
+          ],
+          [
+            9708,
+            39111
+          ],
+          [
+            9791,
+            39111
+          ],
+          [
+            9792,
+            39111
+          ],
+          [
+            9791,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9708,
+            39111
+          ],
+          [
+            9792,
+            39111
+          ],
+          [
+            9792,
+            39111
+          ]
+        ],
+        "median_ms": 0.0097705,
+        "min_ms": 0.009708,
+        "max_ms": 0.009792,
+        "stdev_ms": 3.439056718216667e-05
+      },
+      "twin": {
+        "raw": [
+          [
+            9750,
+            39111
+          ],
+          [
+            9791,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9791,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ],
+          [
+            9750,
+            39111
+          ]
+        ],
+        "median_ms": 0.00975,
+        "min_ms": 0.00975,
+        "max_ms": 0.009791,
+        "stdev_ms": 1.7287117875586874e-05
+      },
+      "overhead_ratio": 1.002102564102564
+    },
+    {
+      "mode": "safe",
+      "size": 20000,
+      "costed": {
+        "raw": [
+          [
+            2286458,
+            29072
+          ],
+          [
+            2290417,
+            29072
+          ],
+          [
+            2285458,
+            29072
+          ],
+          [
+            2285708,
+            29072
+          ],
+          [
+            2282334,
+            29072
+          ],
+          [
+            2283459,
+            29072
+          ],
+          [
+            2280375,
+            29072
+          ],
+          [
+            2280459,
+            29072
+          ],
+          [
+            2280459,
+            29072
+          ],
+          [
+            2283500,
+            29072
+          ]
+        ],
+        "median_ms": 2.2834795000000003,
+        "min_ms": 2.280375,
+        "max_ms": 2.290417,
+        "stdev_ms": 0.0032250821195402494
+      },
+      "twin": {
+        "raw": [
+          [
+            1951208,
+            29072
+          ],
+          [
+            1955292,
+            29072
+          ],
+          [
+            1951291,
+            29072
+          ],
+          [
+            1951292,
+            29072
+          ],
+          [
+            1951250,
+            29072
+          ],
+          [
+            1951250,
+            29072
+          ],
+          [
+            1952250,
+            29072
+          ],
+          [
+            1951209,
+            29072
+          ],
+          [
+            1951250,
+            29072
+          ],
+          [
+            1951250,
+            29072
+          ]
+        ],
+        "median_ms": 1.95125,
+        "min_ms": 1.951208,
+        "max_ms": 1.955292,
+        "stdev_ms": 0.0012824662698618535
+      },
+      "overhead_ratio": 1.1702649583600258
+    }
+  ],
+  "artifacts": [],
+  "verified_byte_identical": true,
+  "status": "ok",
+  "method": "Two in-process warmups, ten timed calls per executable; costed then twin; scalar checksum checked against independent Rust recurrence. No affinity/frequency control. Timings exclude process startup, reference computation and checksum checks.",
+  "compiler_path": "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/ce7c555f-36b6-4f78-b1cf-bce4ff81ec2d/b24257f3-8bd0-4856-b772-d26570c6bbf2/pruvc/pruvc.py",
+  "compiler_sha256": "cb03e71df2cc8bf29848e1739726b53564cb66646e722e56cced1aef602f6a9b",
+  "artifact_hashes": {
+    "py_llvm_verified_costed.rs": "9dbba46330e20947da6c22ddf0e965e233a5ed938bd9208c3cb1b859cce1d50f",
+    "py_llvm_safe_twin.ll": "81f8eccbb9ce084809cb34c9ae898d1c470595ff484841f5d42e49aef6546881",
+    "py_llvm_safe_costed.rs": "ae2936ac7f2b29aa5620dd69a7498714e20b21a338d5520ff57c51fd3ebf4e25",
+    "py_llvm_verified_costed.ll": "41bf47be023fc3c85b0565d654220914b685ac3a92541f619ba9832c1fe51f6a",
+    "py_llvm_safe_twin.rs": "9dbba46330e20947da6c22ddf0e965e233a5ed938bd9208c3cb1b859cce1d50f",
+    "py_llvm_safe_costed.ll": "46237577fc383412129cb7fc2eeb189ee06efc1b93f83a9de15e45c2767fffa9",
+    "py_llvm_verified_twin.rs": "9dbba46330e20947da6c22ddf0e965e233a5ed938bd9208c3cb1b859cce1d50f",
+    "py_llvm_verified_twin.ll": "41bf47be023fc3c85b0565d654220914b685ac3a92541f619ba9832c1fe51f6a"
+  }
+}

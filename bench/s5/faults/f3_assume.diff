@@ -1,0 +1,12 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1838,8 +1838,7 @@
+     # ---------- statements ----------
+     def ensures_ok(s, st, val, node):
+         if s.f.cost is not None:
+-            s.prove(st, [], st.env["spent"] <= s.cost0, node, "cost_bound",
+-                    "spent <= cost `%s` (C at entry)" % _expr_text(s.f.cost))
++            s.assume(st, [], st.env["spent"] <= s.cost0)
+         env = dict(st.env)
+         for p in s.f.params:
+             if p.mode is None:      # G5 A1: ordinary parameters denote their entry values; an inout parameter keeps its

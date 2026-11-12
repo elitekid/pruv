@@ -1,0 +1,16 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1549,11 +1549,11 @@
+             if aelem == U8:
+                 s.prove(st, g, z3.And(args[1] >= 0, args[1] <= 255), e, "elem_range",
+                         "u8 element range 0..=255 for the alloc fill value")
+-            s.spend(st, g, 1 + args[0])
++            s.spend(st, g, z3.IntVal(1))
+             s.k += 1
+             return mk_arr(z3.K(z3.IntSort(), args[1]), args[0], "alloc", aelem)
+         if n == "copy":
+-            s.spend(st, g, 1 + args[0].n)
++            s.spend(st, g, z3.IntVal(1))
+             return mk_arr(args[0].a, args[0].n, "copy", args[0].elem)
+         if n == "is_char_boundary":
+             return str_boundary(args[0], args[1])

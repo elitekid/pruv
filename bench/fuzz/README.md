@@ -634,3 +634,49 @@ Failures preserve source, inputs, diagnostics, first results and repeat results.
 
 The recorded seed summaries live in `results_g7/<seed>_<compiler>.json`; only summaries
 and any necessary reproducers belong there, not generated build trees.
+
+## Stage 5 cost-bound differential fuzzing
+
+`--s5` is a separate mode. Run `python bench/fuzz/oracle.py` for all oracle self-tests,
+then (repeat for seeds 81, 82, 83 and compilers py, rs):
+
+```sh
+python bench/fuzz/generate.py --s5 --seed 81 --count 30 --out bench/fuzz/out/s5_generated
+python bench/fuzz/run.py --s5 --seed 81 --programs 30 --inputs 8 --compiler py --jobs 4
+```
+
+The nine families cover single/nested loops, calls in loops with multiplied callee
+bounds, decreasing recursion, generic calls, length-dependent alloc/copy, par groups,
+slack bounds and conditional spending. Every function under test prints observable
+values. Exact-bound cases have a twin changing only the entry function's bound by
+exactly one. Always-slack cases have no twin. Boundary inputs include zero, maxima,
+and both conditional paths; interior inputs and constants vary deterministically.
+There is no replacement of rejected candidates or padding of completed comparisons.
+
+Originals must verify and agree with the independent oracle in rust-proof,
+rust-safe, llvm-proof and llvm-safe. Twins must be rejected with `verify/cost_bound`,
+and both safe backends must panic with exit 101 and `pruv: cost exceeded` exactly
+when predicted by the oracle, preserving output before the fault. A wrongly accepted
+twin is a failure even if its runtime checks work. Thirty originals produce 27 twins:
+960 original comparisons plus 432 twin comparisons per run.
+
+The oracle records each call's frozen bound and exact modular `spent` in `cost_calls`:
+calls charge the declared callee bound, including slack, rather than its actual work.
+Loop entry, alloc/copy and sequentially interpreted par calls use the Stage 5 units.
+Safe-mode counters detect negative bounds and u128 overflow; contract bounds use the
+existing i128 evaluator. This corpus uses small i64 parameters, arrays of length at
+most 12, pure par workers, and direct recursion; it does not test scheduling,
+allocation failure, mutable par-bound capture, large-counter performance, or every
+possible contract-domain expression. The oracle is not a static legality checker.
+
+Summaries default to `results_s5/<seed>_<compiler>.json`; transient build trees are
+removed. Failures preserve source, exact inputs, diagnostics, oracle traces and
+actual outputs under `results_s5/repro/`. Replay a saved case with:
+
+```sh
+python bench/fuzz/run.py --s5 --compiler py --replay bench/fuzz/results_s5/repro/CASE
+```
+
+`--out DIR` changes the summary/reproducer destination. Summary counts distinguish
+verification outcomes, completed/target/incomplete comparisons, oracle gaps,
+mismatches, expected/observed safe panics and unexpected original-program panics.
