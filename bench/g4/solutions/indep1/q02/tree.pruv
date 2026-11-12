@@ -1,0 +1,59 @@
+mod shape;
+
+pub enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+// Balanced tree of lo..hi. size counts every constructor (Node and Empty),
+// so a tree with c nodes has size 2*c + 1.
+pub fn build(lo: i64, hi: i64) -> Tree ! alloc
+  requires 0 <= lo && lo <= hi && hi <= 1000
+  ensures size(result) == 2 * (hi - lo) + 1
+  decreases hi - lo
+{
+  if lo >= hi {
+    return Tree::Empty;
+  }
+  let m: i64 = crate::tree::shape::mid(lo, hi);
+  let l: Tree = build(lo, m);
+  let r: Tree = build(m + 1, hi);
+  return Tree::Node(m, l, r);
+}
+
+pub fn count_nodes(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures result >= 0 && size(t) == 2 * result + 1
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + count_nodes(l) + count_nodes(r); }
+  }
+}
+
+pub fn count_leaves(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures result >= 1 && size(t) == 2 * result - 1
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 1; }
+    Tree::Node(v, l, r) => { return count_leaves(l) + count_leaves(r); }
+  }
+}
+
+pub fn height(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 0 <= result && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => {
+      let hl: i64 = height(l);
+      let hr: i64 = height(r);
+      if hl >= hr {
+        return 1 + hl;
+      }
+      return 1 + hr;
+    }
+  }
+}

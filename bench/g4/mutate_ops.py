@@ -132,7 +132,8 @@ E("q01", WR, INC, "range_sum: subtracts", S, "s = s + a[i];", "s = s - a[i];")
 E("q01", WR, INC, "range_sum: loses the running sum", S, "s = s + a[i];", "s = a[i];")
 E("q01", WR, INC, "range_sum: sum starts at 1", S, "let mut s: i64 = 0;", "let mut s: i64 = 1;")
 E("q01", EQ, COR, "range_sum: commuted addition", S, "s = s + a[i];", "s = a[i] + s;")
-E("q01", DR, CON, "range_sum: requires loses the length bound (overflow no longer provable)", S,
+# redundant bound: array parameters already have len(a) <= 2^40 (SPEC §6), and 2^40 * 10^6 fits in i64
+E("q01", DR, COR, "range_sum: requires loses the length bound (redundant; arrays are at most 2^40 long)", S,
   "requires 0 <= lo && lo <= hi && hi <= len(a) && len(a) <= 1000",
   "requires 0 <= lo && lo <= hi && hi <= len(a)")
 E("q01", WE, CON, "range_sum: ensures weakened to a range (root relies on the exact sum)", S,

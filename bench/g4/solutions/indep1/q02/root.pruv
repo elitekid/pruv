@@ -1,0 +1,25 @@
+mod tree;
+
+pub fn node_total(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+  ensures result == n
+{
+  let t: crate::tree::Tree = crate::tree::build(0, n);
+  return crate::tree::count_nodes(t);
+}
+
+pub fn leaf_total(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+  ensures result == n + 1
+{
+  let t: crate::tree::Tree = crate::tree::build(0, n);
+  return crate::tree::count_leaves(t);
+}
+
+pub fn tree_height(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 1000
+  ensures 0 <= result && result <= 2 * n + 1
+{
+  let t: crate::tree::Tree = crate::tree::build(0, n);
+  return crate::tree::height(t);
+}

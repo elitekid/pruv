@@ -1,0 +1,21 @@
+// Bounds checks for the store service.
+
+pub fn in_range(lo: i64, hi: i64, n: i64) -> bool
+  ensures result ==> (0 <= lo && lo <= hi && hi <= n)
+  ensures !result ==> !(0 <= lo && lo <= hi && hi <= n)
+{
+  if 0 <= lo && lo <= hi && hi <= n {
+    return true;
+  }
+  return false;
+}
+
+pub fn valid_pos(i: i64, n: i64) -> bool
+  ensures result ==> (0 <= i && i <= n)
+  ensures !result ==> !(0 <= i && i <= n)
+{
+  if 0 <= i && i <= n {
+    return true;
+  }
+  return false;
+}

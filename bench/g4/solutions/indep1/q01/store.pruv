@@ -1,0 +1,98 @@
+mod check;
+
+// Private helper: scan a from `start`, knowing a[0..start] has no q.
+fn scan(a: [i64], q: i64, start: i64) -> i64
+  requires 0 <= start && start <= len(a)
+  requires forall k in 0..start: a[k] != q
+  ensures result == 0 - 1 || (start <= result && result < len(a))
+  ensures result >= 0 ==> a[result] == q && (forall k in 0..result: a[k] != q)
+  ensures result < 0 ==> (forall k in 0..len(a): a[k] != q)
+{
+  let mut i: i64 = start;
+  while i < len(a)
+    invariant start <= i && i <= len(a)
+    invariant forall k in 0..i: a[k] != q
+    decreases len(a) - i
+  {
+    if a[i] == q {
+      return i;
+    }
+    i = i + 1;
+  }
+  return 0 - 1;
+}
+
+pub fn find(a: [i64], q: i64) -> i64
+  requires len(a) <= 1000
+  ensures result == 0 - 1 || (0 <= result && result < len(a))
+  ensures result >= 0 ==> a[result] == q && (forall k in 0..result: a[k] != q)
+  ensures result < 0 ==> (forall k in 0..len(a): a[k] != q)
+{
+  return scan(a, q, 0);
+}
+
+pub fn sum(a: [i64], lo: i64, hi: i64) -> i64
+  requires len(a) <= 1000
+  requires forall k in 0..len(a): -1000000 <= a[k] && a[k] <= 1000000
+  requires 0 <= lo && lo <= hi && hi <= len(a)
+  ensures result == sum(k in lo..hi: a[k])
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant -1000000 * (i - lo) <= s && s <= 1000000 * (i - lo)
+    invariant s == sum(k in lo..i: a[k])
+    decreases hi - i
+  {
+    s = s + a[i];
+    i = i + 1;
+  }
+  return s;
+}
+
+// Private helper: the array a with v inserted at position i.
+fn build(a: [i64], i: i64, v: i64) -> [i64] ! alloc
+  requires len(a) <= 1000
+  requires 0 <= i && i <= len(a)
+  ensures len(result) == len(a) + 1
+  ensures result[i] == v
+  ensures forall k in 0..i: result[k] == a[k]
+  ensures forall k in i..len(a): result[k + 1] == a[k]
+{
+  let mut b: [i64] = alloc(len(a) + 1, v);
+  let mut k: i64 = 0;
+  while k < i
+    invariant 0 <= k && k <= i
+    invariant len(b) == len(a) + 1
+    invariant forall m in 0..k: b[m] == a[m]
+    decreases i - k
+  {
+    b[k] = a[k];
+    k = k + 1;
+  }
+  b[i] = v;
+  let mut p: i64 = i;
+  while p < len(a)
+    invariant i <= p && p <= len(a)
+    invariant len(b) == len(a) + 1
+    invariant b[i] == v
+    invariant forall m in 0..i: b[m] == a[m]
+    invariant forall m in i..p: b[m + 1] == a[m]
+    decreases len(a) - p
+  {
+    b[p + 1] = a[p];
+    p = p + 1;
+  }
+  return b;
+}
+
+pub fn insert_at(a: [i64], i: i64, v: i64, j: i64) -> i64 ! alloc
+  requires len(a) <= 1000
+  requires 0 <= i && i <= len(a)
+  requires 0 <= j && j <= len(a)
+  ensures (j < i ==> result == a[j]) && (j == i ==> result == v) && (j > i ==> result == a[j - 1])
+{
+  let b: [i64] = build(a, i, v);
+  return b[j];
+}

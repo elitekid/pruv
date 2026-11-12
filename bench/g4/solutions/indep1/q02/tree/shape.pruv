@@ -1,0 +1,8 @@
+// Range split used when building the balanced tree.
+pub fn mid(lo: i64, hi: i64) -> i64
+  requires 0 <= lo && lo < hi && hi <= 1000
+  ensures result == lo + (hi - lo) / 2
+  ensures lo <= result && result < hi
+{
+  return lo + (hi - lo) / 2;
+}
