@@ -1,0 +1,63 @@
+{
+  "compiler": "rs",
+  "verified": true,
+  "repeat": 10,
+  "tools": {
+    "py": [
+      "/Users/spica4345/Projects/pruv/.venv/bin/python",
+      "/Users/spica4345/Projects/pruv/pruvc/pruvc.py"
+    ],
+    "rs": [
+      "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc"
+    ]
+  },
+  "platform": "macOS-26.5-arm64-arm-64bit",
+  "rustc": {
+    "rc": 0,
+    "stdout": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+    "stderr": ""
+  },
+  "clang": {
+    "rc": 0,
+    "stdout": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+    "stderr": ""
+  },
+  "method": "In-process full open/read/sum/drop; warmup; alternating order; cached file; rustc -O, clang -O2",
+  "rows": {
+    "llvm": {
+      "status": "ok",
+      "pruv_median_ms": 26.8566875,
+      "rust_median_ms": 1.3000005,
+      "ratio": 20.65898243885291,
+      "within_1_5x": false,
+      "raw": {
+        "bytes": 10000000,
+        "checksum": 1274999872,
+        "pruv_ns": [
+          26897500,
+          26688417,
+          27061709,
+          27511916,
+          27800792,
+          26794834,
+          26871417,
+          26443917,
+          26841958,
+          26371500
+        ],
+        "rust_ns": [
+          1435583,
+          1392666,
+          1324709,
+          1740834,
+          1222917,
+          1060375,
+          1275292,
+          1046125,
+          1572042,
+          1101583
+        ]
+      }
+    }
+  }
+}

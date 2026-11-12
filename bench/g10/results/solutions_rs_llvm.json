@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "py": [
+      "/Users/spica4345/Projects/pruv/.venv/bin/python",
+      "/Users/spica4345/Projects/pruv/pruvc/pruvc.py"
+    ],
+    "rs": [
+      "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc"
+    ]
+  },
+  "results": {
+    "rs-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 40 40\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 40,
+        "tests_total": 40
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 18 18\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 18,
+        "tests_total": 18
+      }
+    }
+  }
+}

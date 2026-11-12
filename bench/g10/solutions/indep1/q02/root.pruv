@@ -1,0 +1,40 @@
+pub fn count_fields(path: str) -> i64 ! fs, alloc
+  ensures -2 <= result && result <= 4097 * 10001
+{
+  let f: File = file_open_read(path);
+  if !file_readable(f) { return -1; }
+  let g: File = file_read_all(move f);
+  if !file_ok(g) { return -1; }
+  if file_size(g) > 4096 { return -2; }
+
+  let n: i64 = file_size(g);
+  let mut lf: i64 = 0;
+  let mut commas: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant n == file_size(g)
+    invariant 0 <= lf && 0 <= commas
+    invariant lf + commas <= i
+    decreases n - i
+  {
+    let b: i64 = file_byte(g, i);
+    if b == 10 {
+      lf = lf + 1;
+    } else {
+      if b == 44 {
+        commas = commas + 1;
+      }
+    }
+    i = i + 1;
+  }
+
+  let mut lines: i64 = lf;
+  if n > 0 {
+    if file_byte(g, n - 1) != 10 {
+      lines = lines + 1;
+    }
+  }
+  let fields: i64 = lines + commas;
+  return 10000 * lines + fields;
+}

@@ -1,0 +1,49 @@
+{
+  "tools": {
+    "py": [
+      "/Users/spica4345/Projects/pruv/.venv/bin/python",
+      "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/pruvc/pruvc.py"
+    ],
+    "rs": [
+      "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc"
+    ]
+  },
+  "results": {
+    "py-rust": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 40 40\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 40,
+        "tests_total": 40
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 18 18\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 18,
+        "tests_total": 18
+      }
+    },
+    "py-llvm": {
+      "q01": {
+        "rc": 0,
+        "stdout": "TESTS 40 40\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 40,
+        "tests_total": 40
+      },
+      "q02": {
+        "rc": 0,
+        "stdout": "TESTS 18 18\n",
+        "stderr": "",
+        "status": "ok",
+        "tests_passed": 18,
+        "tests_total": 18
+      }
+    }
+  }
+}

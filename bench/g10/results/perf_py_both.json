@@ -1,0 +1,98 @@
+{
+  "compiler": "py",
+  "verified": true,
+  "repeat": 10,
+  "tools": {
+    "py": [
+      "/Users/spica4345/Projects/pruv/.venv/bin/python",
+      "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/pruvc/pruvc.py"
+    ],
+    "rs": [
+      "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/pruvc-rs/target/release/pruvc"
+    ]
+  },
+  "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+  "rustc": {
+    "rc": 0,
+    "stdout": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+    "stderr": ""
+  },
+  "clang": {
+    "rc": 0,
+    "stdout": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+    "stderr": ""
+  },
+  "method": "In-process full open/read/sum/drop; warmup; alternating order; cached file; rustc -O, clang -O2",
+  "rows": {
+    "rust": {
+      "status": "ok",
+      "pruv_median_ms": 2.612625,
+      "rust_median_ms": 1.17275,
+      "ratio": 2.2277765934768707,
+      "within_1_5x": false,
+      "raw": {
+        "bytes": 10000000,
+        "checksum": 1274999872,
+        "pruv_ns": [
+          3514042,
+          2653750,
+          2787458,
+          2725458,
+          2763000,
+          2571500,
+          2504125,
+          2469250,
+          2367375,
+          2370042
+        ],
+        "rust_ns": [
+          1520916,
+          1418917,
+          1298416,
+          1266417,
+          1179875,
+          1165250,
+          1165625,
+          1015292,
+          1010542,
+          1066542
+        ]
+      }
+    },
+    "llvm": {
+      "status": "ok",
+      "pruv_median_ms": 25.5833745,
+      "rust_median_ms": 1.1441045,
+      "ratio": 22.361047002262467,
+      "within_1_5x": false,
+      "raw": {
+        "bytes": 10000000,
+        "checksum": 1274999872,
+        "pruv_ns": [
+          28637291,
+          25671875,
+          26061542,
+          25340458,
+          25748041,
+          25629041,
+          25519042,
+          25293417,
+          25537708,
+          25520042
+        ],
+        "rust_ns": [
+          1326875,
+          1142209,
+          1290667,
+          1045292,
+          1184250,
+          1020416,
+          1314584,
+          1146000,
+          1017208,
+          881458
+        ]
+      }
+    }
+  }
+}

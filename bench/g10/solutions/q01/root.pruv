@@ -1,0 +1,36 @@
+fn invert(f: File) -> [u8] ! alloc
+  requires file_size(f) <= 10000000
+  ensures len(result) == file_size(f)
+  ensures forall k in 0..file_size(f): result[k] == 255 - file_byte(f, k)
+{
+  let n: i64 = file_size(f);
+  let mut data: [u8] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(data) == n
+    invariant forall k in 0..i: data[k] == 255 - file_byte(f, k)
+    decreases n - i
+  {
+    data[i] = 255 - file_byte(f, i);
+    i = i + 1;
+  }
+  return data;
+}
+pub fn transform(input: str, output: str) -> i64 ! fs, alloc
+  ensures -3 <= result && result <= 0
+{
+  let f: File = file_open_read(input);
+  if !file_readable(f) { return -1; }
+  let g: File = file_read_all(move f);
+  if !file_ok(g) { return -1; }
+  if file_size(g) > 10000000 { return -3; }
+  let data: [u8] = invert(g);
+  let read_closed: bool = file_close(move g);
+  let w: File = file_create(output);
+  if !file_writable(w) { return -2; }
+  let written: File = file_write_bytes(move w, data);
+  let closed: bool = file_close(move written);
+  if !closed { return -2; }
+  return 0;
+}

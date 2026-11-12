@@ -1,0 +1,32 @@
+{
+  "parsed_scripts": [
+    "bench/g10/faults/check.py",
+    "bench/g10/mutate_ops.py",
+    "bench/g10/perf.py",
+    "bench/g10/run.py"
+  ],
+  "commands": [
+    {
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-B",
+        "bench/g10/mutate_ops.py",
+        "--self-test"
+      ],
+      "exit_code": 0,
+      "stdout": "self-test: PASS; 42 explicit incorrect mutants; 2 controls\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-B",
+        "bench/g10/mutate_ops.py",
+        "--list"
+      ],
+      "exit_code": 0,
+      "stdout": "m001 q01 incorrect wrong_mode\nm002 q02 incorrect wrong_mode\nm003 q01 incorrect wrong_mode\nm004 q02 incorrect wrong_mode\nm005 q01 incorrect wrong_mode\nm006 q01 incorrect wrong_mode\nm007 q01 incorrect unchecked_read\nm008 q02 incorrect unchecked_read\nm009 q01 incorrect unchecked_read\nm010 q02 incorrect unchecked_read\nm011 q01 incorrect unchecked_read\nm012 q02 incorrect unchecked_read\nm013 q01 incorrect renamed_after_close\nm014 q02 incorrect renamed_after_close\nm015 q01 incorrect renamed_after_close\nm016 q02 incorrect renamed_after_close\nm017 q01 incorrect renamed_after_close\nm018 q01 incorrect renamed_after_close\nm019 q01 incorrect byte_oob\nm020 q01 incorrect byte_oob\nm021 q01 incorrect byte_oob\nm022 q01 incorrect byte_oob\nm023 q02 incorrect byte_oob\nm024 q02 incorrect byte_oob\nm025 q02 incorrect byte_oob\nm026 q02 incorrect byte_oob\nm027 q01 incorrect bad_transform\nm028 q01 incorrect bad_transform\nm029 q01 incorrect bad_transform\nm030 q01 incorrect bad_transform\nm031 q01 incorrect bad_transform\nm032 q01 incorrect bad_transform\nm033 q01 incorrect missing_close_reopen\nm034 q01 incorrect missing_close_reopen\nm035 q01 incorrect missing_close_reopen\nm036 q01 incorrect missing_close_reopen\nm037 q01 incorrect missing_close_reopen\nm038 q01 incorrect missing_close_reopen\nm039 q01 incorrect unchecked_write\nm040 q01 incorrect unchecked_write\nm041 q01 incorrect missing_bound\nm042 q02 incorrect missing_bound\nm043 q01 control drop_close_control\nm044 q01 control reopen_control\n",
+      "stderr": ""
+    }
+  ]
+}

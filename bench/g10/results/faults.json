@@ -1,0 +1,644 @@
+{
+  "rows": [
+    {
+      "fault": "f1_use_after_close",
+      "patch": "f1_use_after_close.diff",
+      "sha256": "bb1d3b9a9f2f111f5eb2347b4c42c2d61e30f3e11308df33acecb1379ebf4cb3",
+      "source_sha256": "796b42ba8af0143b1dc5899857140c2f81fedb4385fcf6125d824c3ff5d0249d",
+      "tests": {
+        "g10_use_after_close": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 118, \"code\": \"foreign_move\", \"message\": \"use after move\", \"fix\": \"f was moved earlier; reassign it before using it again, or avoid the move\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f1_use_after_close_3q6cyr9r/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_use_after_close.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f1_use_after_close_3q6cyr9r/g10_use_after_close.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_move"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f1_use_after_close_3q6cyr9r/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_use_after_close.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f1_use_after_close_3q6cyr9r/g10_use_after_close.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_move"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/foreign.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    },
+    {
+      "fault": "f2_double_close",
+      "patch": "f2_double_close.diff",
+      "sha256": "7a323254eccbfde5e8ef5885599eeaf80a7d81ff32f9cb52c7b94bb70d27d9b9",
+      "source_sha256": "796b42ba8af0143b1dc5899857140c2f81fedb4385fcf6125d824c3ff5d0249d",
+      "tests": {
+        "g10_double_close": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 121, \"code\": \"foreign_move\", \"message\": \"use after move\", \"fix\": \"f was moved earlier; reassign it before using it again, or avoid the move\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f2_double_close_yj43m79f/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_double_close.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f2_double_close_yj43m79f/g10_double_close.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_move"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f2_double_close_yj43m79f/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_double_close.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f2_double_close_yj43m79f/g10_double_close.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_move"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/foreign.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    },
+    {
+      "fault": "f3_branch_move",
+      "patch": "f3_branch_move.diff",
+      "sha256": "2b7c1aacf351992e7fecfdba9b5fbbf4aae3e84af380f2ea751b6ca6cc1ba815",
+      "source_sha256": "796b42ba8af0143b1dc5899857140c2f81fedb4385fcf6125d824c3ff5d0249d",
+      "tests": {
+        "g10_branch_move": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 136, \"code\": \"foreign_move\", \"message\": \"binding may have been moved\", \"fix\": \"f is moved on some paths; make every path leave it live, or do not use it afterwards\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f3_branch_move_4f5giw7z/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_branch_move.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f3_branch_move_4f5giw7z/g10_branch_move.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_move"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f3_branch_move_4f5giw7z/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_branch_move.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f3_branch_move_4f5giw7z/g10_branch_move.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_move"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/foreign.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    },
+    {
+      "fault": "f4_loop_move",
+      "patch": "f4_loop_move.diff",
+      "sha256": "6f0efb1a0fd1580fc56c652a15cf840228185d92f05690fc9c27fc2b1ca3a937",
+      "source_sha256": "796b42ba8af0143b1dc5899857140c2f81fedb4385fcf6125d824c3ff5d0249d",
+      "tests": {
+        "g10_loop_move": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 4, \"col\": 3, \"code\": \"foreign_loop_move\", \"message\": \"moved in the loop body and not restored\", \"fix\": \"f must be live again at the end of every path of the body: reassign it, e.g. f = f(move f, ..), or do not consume it inside the loop\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f4_loop_move_9mtnsnhb/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_loop_move.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f4_loop_move_9mtnsnhb/g10_loop_move.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_loop_move"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f4_loop_move_9mtnsnhb/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_loop_move.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f4_loop_move_9mtnsnhb/g10_loop_move.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_loop_move"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/foreign.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    },
+    {
+      "fault": "f5_borrow_consume",
+      "patch": "f5_borrow_consume.diff",
+      "sha256": "526e44e78b00145bbd937c3bb4d7109d56f569a93a2244ded2759ac5a9812abc",
+      "source_sha256": "796b42ba8af0143b1dc5899857140c2f81fedb4385fcf6125d824c3ff5d0249d",
+      "tests": {
+        "g10_borrow_close": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 52, \"code\": \"foreign_borrow\", \"message\": \"moving a borrowed parameter\", \"fix\": \"f is a read parameter; declare it `take f: ...` to consume it\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f5_borrow_consume_1cimv9lf/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_borrow_close.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f5_borrow_consume_1cimv9lf/g10_borrow_close.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_borrow"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f5_borrow_consume_1cimv9lf/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_borrow_close.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f5_borrow_consume_1cimv9lf/g10_borrow_close.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_borrow"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/foreign.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    },
+    {
+      "fault": "f6_owned_placement",
+      "patch": "f6_owned_placement.diff",
+      "sha256": "f64221df84189d6a313970854d2ae9eb39362445b7042acdb9d279276e44c327",
+      "source_sha256": "fdd65efecf91c9572467be7304dc50ec3dfbea3b51a214cdd1d5f0c3e1a72e1c",
+      "tests": {
+        "g10_owned_field": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 17, \"code\": \"foreign_owned_type\", \"message\": \"field f cannot have the collection type File\", \"fix\": \"collections cannot be struct fields or enum payloads; pass them as separate bindings\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f6_owned_placement_hqd91iuc/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_owned_field.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f6_owned_placement_hqd91iuc/g10_owned_field.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_owned_type"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 3,
+            "stdout": "{\"stage\": \"internal\", \"line\": 0, \"col\": 0, \"code\": \"internal_error\", \"message\": \"'file'\", \"fix\": \"\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f6_owned_placement_hqd91iuc/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_owned_field.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f6_owned_placement_hqd91iuc/g10_owned_field.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_owned_type"
+            },
+            "matched": false,
+            "internal_error": true
+          },
+          "detected": true,
+          "detection_kind": "internal_error"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/check.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    },
+    {
+      "fault": "f7_host_entry",
+      "patch": "f7_host_entry.diff",
+      "sha256": "c4aa3aabd3fe4bc49345f5039e52be612e71be4d08f985204e345ad7c5032f86",
+      "source_sha256": "fdd65efecf91c9572467be7304dc50ec3dfbea3b51a214cdd1d5f0c3e1a72e1c",
+      "tests": {
+        "g10_host_entry": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 5, \"code\": \"entry_signature\", \"message\": \"host entry crate::inspect cannot have the type File in parameter f\", \"fix\": \"keep it Pruv-callable (child `pub` or private) and expose a scalar/value wrapper at the root\", \"file\": \"g10_host_entry.pruv\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_host_entry.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/g10_host_entry.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "entry_signature"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_host_entry.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/g10_host_entry.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "entry_signature"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g10_main_signature": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 1, \"code\": \"foreign_export\", \"message\": \"main cannot have a collection parameter or result\", \"fix\": \"give main plain value parameters and result; use collections inside it\"}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_main_signature.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/g10_main_signature.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_export"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_main_signature.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f7_host_entry_1me96s2j/g10_main_signature.rs"
+            ],
+            "expected": {
+              "stage": "type",
+              "code": "foreign_export"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/check.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    },
+    {
+      "fault": "f8_catalog_requires",
+      "patch": "f8_catalog_requires.diff",
+      "sha256": "b716f81d1f328fd48348244f9dabd499433dcb49231047af8d069118e26197b3",
+      "source_sha256": "0dee68d3cf039959dab007babe0456c6d01301203b72b7d69e0238971f2ef152",
+      "tests": {
+        "g10_v_read_created": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 3, \"col\": 17, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of file_read_all (catalog) in crate::bad\", \"fix\": \"make the callee's requires hold before the call\", \"file\": \"g10_v_read_created.pruv\", \"counterexample\": {\"path\": {\"len\": 0, \"first\": []}, \"f\": {\"ok\": false, \"readable\": false, \"writable\": false, \"size\": 0}}}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_read_created.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_read_created.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_read_created.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_read_created.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g10_v_write_opened": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 3, \"col\": 17, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of file_write_str (catalog) in crate::bad\", \"fix\": \"make the callee's requires hold before the call\", \"file\": \"g10_v_write_opened.pruv\", \"counterexample\": {\"path\": {\"len\": 0, \"first\": []}, \"text\": {\"len\": 0, \"first\": []}, \"f\": {\"ok\": false, \"readable\": false, \"writable\": false, \"size\": 0}}}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_write_opened.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_write_opened.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_write_opened.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_write_opened.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g10_v_byte_at_size": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 2, \"col\": 10, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of file_byte (catalog) in bad\", \"fix\": \"make the callee's requires hold before the call\", \"counterexample\": {\"f\": {\"ok\": false, \"readable\": false, \"writable\": false, \"size\": 0}}}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_byte_at_size.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_byte_at_size.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_byte_at_size.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_byte_at_size.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        },
+        "g10_v_read_unchecked": {
+          "baseline": {
+            "rc": 1,
+            "stdout": "{\"stage\": \"verify\", \"line\": 3, \"col\": 17, \"code\": \"call_requires\", \"message\": \"cannot prove precondition of file_read_all (catalog) in crate::bad\", \"fix\": \"make the callee's requires hold before the call\", \"file\": \"g10_v_read_unchecked.pruv\", \"counterexample\": {\"path\": {\"len\": 0, \"first\": []}, \"f\": {\"ok\": false, \"readable\": false, \"writable\": false, \"size\": 0}}}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_read_unchecked.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_read_unchecked.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": true,
+            "internal_error": false
+          },
+          "faulty": {
+            "rc": 0,
+            "stdout": "{\"ok\": true}\n",
+            "stderr": "",
+            "command": [
+              "/Users/spica4345/Projects/pruv/.venv/bin/python",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/pruvc/pruvc.py",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/tests/must_reject/g10_v_read_unchecked.pruv",
+              "--backend",
+              "rust",
+              "-o",
+              "/Users/spica4345/Library/Application Support/Lair Next Development/delegation-places/82e33e7f-b074-487c-ab2a-5816ec109890/78d52094-611a-492d-9c64-03a717d4a2fb/bench/g10/.work/f8_catalog_requires_vutdyyob/g10_v_read_unchecked.rs"
+            ],
+            "expected": {
+              "stage": "verify",
+              "code": "call_requires"
+            },
+            "matched": false,
+            "internal_error": false
+          },
+          "detected": true,
+          "detection_kind": "accepted"
+        }
+      },
+      "patch_apply": {
+        "rc": 0,
+        "stdout": "patching file 'pruvc/verify.py'\n",
+        "stderr": ""
+      },
+      "status": "detected"
+    }
+  ]
+}

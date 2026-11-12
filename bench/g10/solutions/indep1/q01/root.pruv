@@ -1,0 +1,30 @@
+pub fn transform(input: str, output: str) -> i64 ! fs, alloc
+  ensures -3 <= result && result <= 0
+{
+  let f: File = file_open_read(input);
+  if !file_readable(f) { return -1; }
+  let g: File = file_read_all(move f);
+  if !file_ok(g) { return -1; }
+  if file_size(g) > 10_000_000 { return -3; }
+
+  let n: i64 = file_size(g);
+  let mut out: [u8] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant n == file_size(g)
+    invariant len(out) == n
+    decreases n - i
+  {
+    out[i] = 255 - file_byte(g, i);
+    i = i + 1;
+  }
+  let closed_in: bool = file_close(move g);
+
+  let o: File = file_create(output);
+  if !file_writable(o) { return -2; }
+  let w: File = file_write_bytes(move o, out);
+  let closed_out: bool = file_close(move w);
+  if closed_out { return 0; }
+  return -2;
+}

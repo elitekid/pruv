@@ -1,0 +1,11 @@
+--- a/pruvc/foreign.py
++++ b/pruvc/foreign.py
+@@ -297,7 +297,7 @@
+         if not consuming:
+             _err(e, "foreign_move", "move only where ownership is consumed",
+                  "use move for a take argument, a let initializer, an assignment or return")
+-        if n in s.bor:
++        if False and n in s.bor:
+             # G10 specifies foreign_borrow; preserve the established G6 diagnostic for other types.
+             _err(e, "foreign_borrow" if e.ty == FILE else "foreign_move", "moving a borrowed parameter",
+                  "%s is a read parameter; declare it `take %s: ...` to consume it" % (n, n))

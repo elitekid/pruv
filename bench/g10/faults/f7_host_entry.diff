@@ -1,0 +1,20 @@
+--- a/pruvc/check.py
++++ b/pruvc/check.py
+@@ -636,7 +636,7 @@
+                          "make %s private or child `pub` and expose a root wrapper that copies the input into a "
+                          "`let mut` local" % f.name)
+             for what, ty in [("parameter %s" % p.name, p.type) for p in f.params] + [("the result", f.ret)]:
+-                if contains_collection(ty) or any(n in s.extended for n in dependencies(ty)):
++                if False and (contains_collection(ty) or any(n in s.extended for n in dependencies(ty))):
+                     terr(f, "entry_signature", "host entry %s cannot have the type %s in %s" % (
+                         f.name, type_name(ty), what),
+                          "keep it Pruv-callable (child `pub` or private) and expose a scalar/value wrapper at the root")
+@@ -701,7 +701,7 @@
+             if f.decreases is not None:     # G9 A0: foreign termination is trusted
+                 terr(f.decreases, "recursive_decreases", "a trusted rust fn cannot have a decreases clause",
+                      "remove it; foreign termination is trusted")
+-        elif f.name == "main" and (is_collection(f.ret) or any(is_collection(p.type) for p in f.params)):
++        elif False and f.name == "main" and (is_collection(f.ret) or any(is_collection(p.type) for p in f.params)):
+             terr(f, "foreign_export", "main cannot have a collection parameter or result",
+                  "give main plain value parameters and result; use collections inside it")
+         scope = {}

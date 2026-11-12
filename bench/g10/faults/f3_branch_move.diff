@@ -1,0 +1,11 @@
+--- a/pruvc/foreign.py
++++ b/pruvc/foreign.py
+@@ -279,7 +279,7 @@
+         if v == "dead":
+             _err(e, "foreign_move", "use after move",
+                  "%s was moved earlier; reassign it before using it again, or avoid the move" % e.name)
+-        if v == "maybe":
++        if False and v == "maybe":
+             _err(e, "foreign_move", "binding may have been moved",
+                  "%s is moved on some paths; make every path leave it live, or do not use it afterwards" % e.name)
+ 

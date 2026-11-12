@@ -1,0 +1,11 @@
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1674,7 +1674,7 @@
+         rty = s.T(e.ty)
+ 
+         def need(ob):
+-            if code:
++            if code and not n.startswith("file_"):
+                 s.prove(st, g, ob, e, "call_requires", "precondition of %s (catalog)" % n)
+ 
+         if n in FILE_OBSERVERS:

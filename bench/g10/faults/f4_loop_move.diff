@@ -1,0 +1,11 @@
+--- a/pruvc/foreign.py
++++ b/pruvc/foreign.py
+@@ -250,7 +250,7 @@
+             end = s.block(x.body, dict(st))
+             if end is not None:
+                 for n, v in entry.items():
+-                    if v == "live" and end.get(n) != "live":
++                    if False and v == "live" and end.get(n) != "live":
+                         _err(x, "foreign_loop_move", "moved in the loop body and not restored",
+                              "%s must be live again at the end of every path of the body: reassign it, e.g. "
+                              "%s = f(move %s, ..), or do not consume it inside the loop" % (n, n, n))

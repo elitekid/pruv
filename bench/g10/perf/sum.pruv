@@ -1,0 +1,25 @@
+fn sum(f: File) -> i64
+  requires file_size(f) <= 10000000
+  ensures 0 <= result && result <= 255 * file_size(f)
+{
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < file_size(f)
+    invariant 0 <= i && i <= file_size(f)
+    invariant 0 <= total && total <= 255 * i
+    decreases file_size(f) - i
+  {
+    total = total + file_byte(f, i);
+    i = i + 1;
+  }
+  return total;
+}
+pub fn checksum(path: str) -> i64 ! fs, alloc
+  ensures -1 <= result && result <= 2550000000
+{
+  let f: File = file_open_read(path);
+  if !file_readable(f) { return -1; }
+  let g: File = file_read_all(move f);
+  if !file_ok(g) || file_size(g) > 10000000 { return -1; }
+  return sum(g);
+}

@@ -1,0 +1,11 @@
+--- a/pruvc/check.py
++++ b/pruvc/check.py
+@@ -435,7 +435,7 @@
+                         terr(f, "field_type", "field %s cannot have type %s" % (f.name, type_name(f.type)),
+                              "fields are i64, bool, Option<i64>, Result<i64> or a user struct/enum")
+                     s.check_type(f, f.type)
+-                    if contains_collection(f.type):
++                    if False and contains_collection(f.type):
+                         terr(f, "foreign_owned_type", "field %s cannot have the collection type %s" % (
+                             f.name, type_name(f.type)),
+                              "collections cannot be struct fields or enum payloads; pass them as separate bindings")

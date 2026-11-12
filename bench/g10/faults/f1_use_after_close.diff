@@ -1,0 +1,11 @@
+--- a/pruvc/foreign.py
++++ b/pruvc/foreign.py
+@@ -276,7 +276,7 @@
+     # ---- uses ----
+     def use(s, e, st):
+         v = st.get(e.name)
+-        if v == "dead":
++        if False and v == "dead":
+             _err(e, "foreign_move", "use after move",
+                  "%s was moved earlier; reassign it before using it again, or avoid the move" % e.name)
+         if v == "maybe":

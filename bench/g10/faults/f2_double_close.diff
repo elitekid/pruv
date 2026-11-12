@@ -1,0 +1,11 @@
+--- a/pruvc/foreign.py
++++ b/pruvc/foreign.py
+@@ -293,7 +293,7 @@
+                 _err(e, "foreign_move", "consumed twice", "consume %s at most once per call" % n)
+             _err(e, "foreign_borrow", "borrowed and moved in one call",
+                  "do not pass %s both read-only and with move in one call" % n)
+-        s.use(e, st)
++        # FAULT: do not check liveness when consuming again
+         if not consuming:
+             _err(e, "foreign_move", "move only where ownership is consumed",
+                  "use move for a take argument, a let initializer, an assignment or return")
