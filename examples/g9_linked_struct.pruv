@@ -1,0 +1,53 @@
+// G9: a recursive struct through a terminating enum (Node <-> Link); grow(k) builds k + 1 nodes, node_len/link_len count them exactly
+// size(Node with m nodes) == 2m and size(Link with m nodes) == 2m + 1
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn single(v: i64) -> Node ! alloc
+  ensures size(result) == 2 && result.value == v
+{
+  return Node { value: v, next: Link::End };
+}
+
+fn push(n: Node, v: i64) -> Node ! alloc
+  ensures size(result) == size(n) + 2 && result.value == v
+{
+  return Node { value: v, next: Link::More(n) };
+}
+
+fn grow(k: i64) -> Node ! alloc
+  requires k >= 0
+  ensures size(result) == 2 * k + 2
+  decreases k
+{
+  if k == 0 { return single(0); }
+  let r: Node = grow(k - 1);
+  return push(r, k);
+}
+
+fn node_len(n: Node) -> i64
+  requires size(n) <= 1000
+  ensures 2 * result == size(n)
+  decreases size(n)
+{
+  return 1 + link_len(n.next);
+}
+
+fn link_len(l: Link) -> i64
+  requires size(l) <= 1000
+  ensures 2 * result + 1 == size(l)
+  decreases size(l)
+{
+  match l {
+    Link::End => { return 0; }
+    Link::More(n) => { return node_len(n); }
+  }
+}
+
+fn grown_len(k: i64) -> i64 ! alloc
+  requires k >= 0 && k <= 100
+  ensures result == k + 1
+{
+  let g: Node = grow(k);
+  return node_len(g);
+}

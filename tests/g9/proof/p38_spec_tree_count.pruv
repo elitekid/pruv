@@ -1,0 +1,14 @@
+// G9 A4: SPEC §6e snippet (tree_count with decreases size(t), Packet with buffer fields)
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+struct Packet { bytes: [u8], label: str }
+
+fn tree_count(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + tree_count(l) + tree_count(r); }
+  }
+}

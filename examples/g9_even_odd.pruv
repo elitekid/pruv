@@ -1,0 +1,26 @@
+// G9: mutual recursion even/odd with a shared measure `decreases n`; each function proves its parity by induction
+fn even(n: i64) -> bool
+  requires n >= 0
+  ensures result == (n % 2 == 0)
+  decreases n
+{
+  if n == 0 { return true; }
+  return odd(n - 1);
+}
+
+fn odd(n: i64) -> bool
+  requires n >= 0
+  ensures result == (n % 2 == 1)
+  decreases n
+{
+  if n == 0 { return false; }
+  return even(n - 1);
+}
+
+// Adding 2 keeps the parity; the bound keeps n + 2 inside i64.
+fn even_after_two(n: i64) -> bool
+  requires n >= 0 && n <= 1000
+  ensures result == (n % 2 == 0)
+{
+  return even(n + 2);
+}

@@ -46,7 +46,7 @@ fn name(p1: T1, p2: T2) -> R ! effect1, effect2
 - Every path must end with `return e;` (for `()` functions `return;` may be omitted at the end).
 - Program entry, if present, is `fn main() -> () ! io ...`.
 - Calls are checked modularly: the caller must prove the callee's `requires`, and then may assume its `ensures`.
-- No recursion (v0.1).
+- Recursion (direct or mutual) is allowed when every function in the cycle has a `decreases` clause (section 6e).
 
 ## 4. Statements
 ```
@@ -131,8 +131,8 @@ match e {                                  // statement; every variant exactly o
 }
 ```
 - Declared at top level, in any order. Type and variant names start upper-case, field names lower-case.
-- Fields: `i64`, `bool`, `Option<i64>`, `Result<i64>`, or another struct/enum. No array or `()` fields, no recursive
-  types, no `[Point]`, no `Option<Point>`. Empty structs are allowed; an enum needs at least one variant.
+- Fields: `i64`, `bool`, `Option<i64>`, `Result<i64>`, or another struct/enum. No `()` fields, no `[Point]`, no
+  `Option<Point>`. Non-generic structs/enums may also have `[i64]`/`[u8]`/`[bool]`/`str` fields and be recursive (section 6e). Empty structs are allowed; an enum needs at least one variant.
 - Read struct fields with `v.field`. Enum payloads are read only with `match` in code.
 - `==` / `!=` on structs and enums: contracts only, same type. Enums compare the variant and its fields.
 - Contract-only: `is_variant(e, Event::Hit)` (bool) and `variant_field(e, Event::Hit, point)` (that field).
@@ -219,7 +219,9 @@ let o: Option<bool> = Some::<bool>(true);   // also None::<bool>, Ok::<bool>(x),
   (`o = Some::<T>(v);`).
 - **Contracts** may use abstract equality, guarded payload access (`is_some(o) ==> result == some_val(o)`) and
   `count` over abstract equality. `sum`/`max`/`min` need an `i64` body.
-- **No recursion**, direct or mutual, in generic code (a generic function's call graph is acyclic).
+- Generic recursion only with a stable type-parameter vector: inside a recursive cycle every function has the same
+  type parameters (same order and bounds) and every call in the cycle forwards them unchanged (section 6e).
+  Recursive or buffer-field types cannot be type arguments.
 - **Proof:** a generic definition is proved once, for an abstract `T`. A counterexample prints abstract values as `opaque#N`.
 - **Code generation** specializes per concrete instance (`first::<i64>`, `first::<bool>` are separate functions).
   Generic functions are **not exported** (no `--rust-bindings` entry, no raw ABI symbol): expose instances through
@@ -281,12 +283,67 @@ fn push_two(take v: Vec<i64>, x: i64) -> Vec<i64> ! alloc
 - **New error codes:** `foreign_syntax`, `foreign_path`, `foreign_signature`, `foreign_owned_type`, `foreign_move`,
   `foreign_borrow`, `foreign_loop_move`, `foreign_contract`, `foreign_export`, `foreign_target`.
 
+## 6e. Recursion, recursive types and buffer fields (G9)
+Full contract: `docs/G9_SPEC.md` (§10–§14 are the implemented decisions). Examples: `examples/g9_*.pruv`.
+```
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+struct Packet { bytes: [u8], label: str }
+
+fn tree_count(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + tree_count(l) + tree_count(r); }
+  }
+}
+```
+- **Recursion and `decreases`.** Functions may call themselves or each other, in any order. Every function in a
+  recursive cycle needs exactly one `decreases e` after its `requires`/`ensures`. `e` is a mathematical integer built
+  from parameters, constants and contract operations. The verifier proves `e >= 0` at entry and, at every call inside
+  the cycle, that the callee's `e` on the actual arguments is `>= 0` and smaller than the caller's entry value
+  (`verify` errors `recursive_nonneg`, `recursive_decrease`). Only then is the callee's `ensures` assumed, so it works
+  as an induction hypothesis. One scalar measure; for mutual phases use e.g. `2 * n + 1` versus `2 * n`.
+- **Recursive types.** Non-generic structs/enums may refer to each other directly through fields, e.g. a list as
+  `struct Node { value: i64, next: Link }` with `enum Link { End, More(node: Node) }`. Every type must have a finite
+  value (`struct Bad { next: Bad }` is rejected). The compiler adds the boxing; you never write `Box`. Recursion must
+  be a direct field, not hidden in `Option`, `Result`, arrays, generic arguments or collections.
+- **`size(x)`** (contracts only, non-generic struct/enum values): the number of struct/enum constructors in the value,
+  counting only active payloads; scalars, arrays and strings count 0 (use `len` for those). Every direct child is
+  smaller than its parent, so `decreases size(t)` works for tree walks. Bound it (`requires size(t) <= 1000`) when
+  you add up per-node values.
+- **Buffer fields.** `[i64]`, `[u8]`, `[bool]` and `str` may be fields of non-generic structs and payloads. Initialize
+  or replace them with a fresh buffer (`alloc`, a literal string) or `copy(view)`; return a field buffer with `copy`.
+  `p.bytes[i] = v` is not allowed: copy the field into a mutable local, change it, and assign the field back.
+- **Values, not pointers.** Recursive and buffer-bearing values are independent: copying one deep-copies everything,
+  and changing a copy never changes the original. Parameters, field reads and `match` bindings are read-only views
+  and do not allocate. Putting an existing value into an owning place (`let`, assignment, constructor field,
+  `return`) copies it and needs `! alloc`; a fresh constructor or call result moves without a copy. Any constructor
+  of a recursive value needs `! alloc`. While a `match` arm views part of a mutable local, that local cannot be
+  changed (`type/recursive_borrow`). Whole-value `==`/`!=` on values that contain arrays or strings is rejected
+  (`type/eq_type`); compare tags, lengths and elements instead.
+- **Limits.** Recursive and buffer-field types cannot be generic arguments, `Option`/`Result` payloads or G6
+  collection elements. Functions whose signatures use them are internal (no exported ABI or `--rust-bindings` entry);
+  expose them through functions with ordinary parameters. Contracts are not invented: a property such as "x is
+  somewhere in the tree" must be stated with the existing contract operations, and not every recursive property is
+  expressible. Proofs about deeply nested or very wide types can be slow. Native stack depth is not checked: very
+  deep recursion, copying or freeing can overflow the stack (a resource failure, never a successful result).
+  `--no-verify` does not check `decreases` and may recurse forever. Run-time `requires` that use `size`, `==` or
+  field reads of recursive values count one unit of the 2^30 contract budget per node visited.
+- **New error codes:** `decreases_syntax`, `recursive_decreases` (missing measure), `recursive_polymorphism`,
+  `recursive_generic_type`, `recursive_borrow`, `size_type`, `recursive_nonneg`, `recursive_decrease`; reused:
+  `recursive_type` (type without a finite value), `field_type`, `type_argument`, `eq_type`, `missing_effect`.
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.
 3. `/ %`: divisor > 0, dividend >= 0. `alloc(n, v)`: 0 <= n <= 2^40.
 4. Callee `requires` at each call; `ensures` at each return; `assert`s.
 5. Loop invariants hold on entry and are preserved; `decreases` is >= 0 at each iteration start and strictly decreases.
+   For a recursive call, the callee's `decreases` (evaluated on the arguments) is >= 0 and strictly below the caller's
+   value at entry (section 6e).
 6. Array parameters have `0 <= len(a) <= 2^40` and elements in i64 range (assumed; guaranteed for Pruv callers because every alloc is proven <= 2^40).
 Variables not assigned in a loop keep their values across it; assigned ones are only known through invariants.
 

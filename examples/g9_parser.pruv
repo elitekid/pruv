@@ -1,0 +1,37 @@
+// G9: restricted recursive-descent recognizer over bytes `s` with cursor `pos`
+// Grammar:   expr := digit | '(' expr '+' expr ')'     digit = '0'..'9' (48..57), '(' = 40, '+' = 43, ')' = 41
+// parse_expr returns the end position of the expression starting at pos, or -1 on error.
+// Each recursive edge advances the cursor (the callee result exceeds its start), so `decreases len(s) - pos` holds,
+// and every s[...] access is guarded by an explicit `< len(s)` check.
+fn parse_expr(s: str, pos: i64) -> i64
+  requires 0 <= pos && pos <= len(s)
+  ensures result == 0 - 1 || (pos < result && result <= len(s))
+  decreases len(s) - pos
+{
+  if pos == len(s) { return 0 - 1; }
+  if s[pos] >= 48 && s[pos] <= 57 { return pos + 1; }
+  if s[pos] != 40 { return 0 - 1; }
+  let e1: i64 = parse_expr(s, pos + 1);
+  if e1 < 0 { return 0 - 1; }
+  if e1 == len(s) { return 0 - 1; }
+  if s[e1] != 43 { return 0 - 1; }
+  let e2: i64 = parse_expr(s, e1 + 1);
+  if e2 < 0 { return 0 - 1; }
+  if e2 == len(s) { return 0 - 1; }
+  if s[e2] != 41 { return 0 - 1; }
+  return e2 + 1;
+}
+
+// Whole-input acceptance: the expression must consume every byte, so an accepted input is nonempty.
+fn accepts(s: str) -> bool
+  ensures result ==> len(s) >= 1
+{
+  return parse_expr(s, 0) == len(s);
+}
+
+fn demo_end() -> i64 ! alloc
+  ensures result == 0 - 1 || (0 < result && result <= 9)
+{
+  let s: str = "(1+(2+3))";
+  return parse_expr(s, 0);
+}

@@ -1,0 +1,25 @@
+// G9: two mutually recursive functions with explicit phase measures (2n+1 versus 2n); both count their steps exactly
+// ping(n) calls pong(n) with the same n (measure drops 2n+1 -> 2n); pong(n) calls ping(n - 1) (2n -> 2n - 1).
+fn ping(n: i64) -> i64
+  requires n >= 0
+  ensures result == n
+  decreases 2 * n + 1
+{
+  if n == 0 { return 0; }
+  return pong(n);
+}
+
+fn pong(n: i64) -> i64
+  requires n >= 1
+  ensures result == n
+  decreases 2 * n
+{
+  return 1 + ping(n - 1);
+}
+
+fn countdown(n: i64) -> i64
+  requires n >= 0
+  ensures result == n
+{
+  return ping(n);
+}

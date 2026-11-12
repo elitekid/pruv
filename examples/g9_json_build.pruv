@@ -1,0 +1,63 @@
+// G9: JSON-like document (Json / Items / Members, str payloads) built by constructors and counted by three-way mutual recursion
+// doc() is {"id": 1, "tags": [7, "x"]}: 11 constructors, 2 numbers
+enum Json {
+  Null, Boolean(value: bool), Number(value: i64), Text(value: str),
+  Array(items: Items), Object(members: Members)
+}
+enum Items { End, Next(value: Json, rest: Items) }
+enum Members { End, Next(key: str, value: Json, rest: Members) }
+
+fn json_numbers(j: Json) -> i64
+  requires size(j) <= 1000
+  ensures result >= 0 && result <= size(j)
+  decreases size(j)
+{
+  match j {
+    Json::Null => { return 0; }
+    Json::Boolean(b) => { return 0; }
+    Json::Number(n) => { return 1; }
+    Json::Text(s) => { return 0; }
+    Json::Array(items) => { return items_numbers(items); }
+    Json::Object(members) => { return members_numbers(members); }
+  }
+}
+
+fn items_numbers(it: Items) -> i64
+  requires size(it) <= 1000
+  ensures result >= 0 && result <= size(it)
+  decreases size(it)
+{
+  match it {
+    Items::End => { return 0; }
+    Items::Next(v, rest) => { return json_numbers(v) + items_numbers(rest); }
+  }
+}
+
+fn members_numbers(m: Members) -> i64
+  requires size(m) <= 1000
+  ensures result >= 0 && result <= size(m)
+  decreases size(m)
+{
+  match m {
+    Members::End => { return 0; }
+    Members::Next(k, v, rest) => { return json_numbers(v) + members_numbers(rest); }
+  }
+}
+
+fn singleton(v: i64) -> Json ! alloc
+  ensures size(result) == 4
+{
+  return Json::Array(Items::Next(Json::Number(v), Items::End));
+}
+
+fn doc() -> Json ! alloc
+  ensures size(result) == 11
+{
+  return Json::Object(Members::Next(copy("id"), Json::Number(1), Members::Next(copy("tags"), Json::Array(Items::Next(Json::Number(7), Items::Next(Json::Text(copy("x")), Items::End))), Members::End)));
+}
+
+fn doc_numbers() -> i64 ! alloc
+  ensures result >= 0 && result <= 11
+{
+  return json_numbers(doc());
+}

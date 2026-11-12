@@ -1,0 +1,38 @@
+// G9: aggregates with [u8] and str fields are independent values; a copy's buffer is changed by copy-out/replace and the original keeps its bytes
+struct Packet { bytes: [u8], label: str }
+
+fn with_first(p: Packet, v: i64) -> Packet ! alloc
+  requires len(p.bytes) >= 1 && 0 <= v && v <= 255
+  ensures len(result.bytes) == len(p.bytes)
+{
+  let mut q: Packet = p;
+  let mut ch: [u8] = copy(q.bytes);
+  ch[0] = v;
+  q.bytes = copy(ch);
+  q.label = copy("new");
+  return q;
+}
+
+fn packet_demo() -> i64 ! alloc
+  ensures result == 9
+{
+  let bytes: [u8] = alloc(2, 7);
+  let p: Packet = Packet { bytes: copy(bytes), label: "ok" };
+  let mut q: Packet = p;
+  let mut changed: [u8] = copy(q.bytes);
+  changed[0] = 9;
+  q.bytes = copy(changed);
+  assert p.bytes[0] == 7;
+  return q.bytes[0];
+}
+
+fn isolation() -> i64 ! alloc
+  ensures result == 2
+{
+  let bytes: [u8] = alloc(2, 7);
+  let p: Packet = Packet { bytes: copy(bytes), label: "ok" };
+  let q: Packet = with_first(p, 9);
+  assert p.bytes[0] == 7;
+  assert len(p.bytes) == 2;
+  return len(q.bytes);
+}

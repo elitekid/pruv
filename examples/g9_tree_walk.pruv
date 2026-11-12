@@ -1,0 +1,55 @@
+// G9: binary tree traversals (decreases size(t)): contains with two stated facts, node count and depth bounded by size
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn contains(t: Tree, x: i64) -> bool
+  ensures is_variant(t, Tree::Empty) ==> !result
+  ensures is_variant(t, Tree::Node) &&
+          variant_field(t, Tree::Node, value) == x ==> result
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return false; }
+    Tree::Node(v, l, r) => {
+      if v == x { return true; }
+      if contains(l, x) { return true; }
+      return contains(r, x);
+    }
+  }
+}
+
+fn nodes(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + nodes(l) + nodes(r); }
+  }
+}
+
+fn depth(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => {
+      let dl: i64 = depth(l);
+      let dr: i64 = depth(r);
+      if dl > dr { return 1 + dl; }
+      return 1 + dr;
+    }
+  }
+}
+
+fn sample() -> Tree ! alloc
+  ensures size(result) == 7
+{
+  return Tree::Node(4, Tree::Node(2, Tree::Empty, Tree::Empty), Tree::Node(7, Tree::Empty, Tree::Empty));
+}
+
+fn sample_has_seven() -> bool ! alloc {
+  return contains(sample(), 7);
+}
