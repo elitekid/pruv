@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> i64 { return crate::std::clamp_i64(0, 2, 1); }

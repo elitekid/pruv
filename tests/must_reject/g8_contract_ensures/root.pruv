@@ -1,0 +1,2 @@
+mod std;
+pub fn f(a: [i64]) -> bool ensures result == crate::std::is_sorted_i64(a) { return true; }

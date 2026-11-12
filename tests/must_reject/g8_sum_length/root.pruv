@@ -1,0 +1,2 @@
+mod std;
+pub fn f(a: [i64]) -> i64 requires len(a) == 1000001 requires forall k in 0..len(a): a[k] == 0 { return crate::std::sum_i64(a); }

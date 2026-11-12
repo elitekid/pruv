@@ -68,7 +68,7 @@ def main(work):
             assert str(package) not in c.stdout
             assert not (work / "out").exists()
 
-    expect("codegen", "unsupported_type", "root.pruv", "G8 std verification is not implemented yet")
+    expect("codegen", "unsupported_type", "root.pruv", "G8 std code generation is not implemented yet")
     root.write_text("mod child;\nmod std;\nmod after;\n")
     (app / "child.pruv").write_text("pub fn f() -> () {}")
     (app / "after.pruv").write_text("pub fn f() -> () {}")

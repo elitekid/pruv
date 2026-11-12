@@ -1,0 +1,11 @@
+mod std;
+pub fn f() -> () {
+ let hi: Option<i64> = crate::std::checked_add_i64(9223372036854775806, 1);
+ assert is_some(hi) && some_val(hi) == 9223372036854775807;
+ let value1: Option<i64> = crate::std::checked_add_i64(9223372036854775807, 1); assert !is_some(value1);
+ let lo: Option<i64> = crate::std::checked_add_i64(-9223372036854775807, -1);
+ assert is_some(lo) && some_val(lo) == -9223372036854775808;
+ let value2: Option<i64> = crate::std::checked_add_i64(-9223372036854775808, -1); assert !is_some(value2);
+ let opposite: Option<i64> = crate::std::checked_add_i64(-9223372036854775808, 9223372036854775807);
+ assert is_some(opposite) && some_val(opposite) == -1;
+}

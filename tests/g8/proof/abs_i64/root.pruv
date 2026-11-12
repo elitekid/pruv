@@ -1,0 +1,3 @@
+mod std;
+pub fn f(x: i64) -> i64 requires x > -9223372036854775808 ensures result >= 0 { return crate::std::abs_i64(x); }
+pub fn edges() -> () { let value1: i64 = crate::std::abs_i64(-9223372036854775807); assert value1 == 9223372036854775807; let value2: i64 = crate::std::abs_i64(0); assert value2 == 0; }

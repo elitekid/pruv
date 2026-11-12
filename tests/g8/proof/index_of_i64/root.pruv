@@ -1,0 +1,8 @@
+mod std;
+pub fn f() -> () ! alloc {
+ let duplicates: [i64] = alloc(3, 7);
+ let found: Option<i64> = crate::std::index_of_i64(duplicates, 7);
+ assert is_some(found) && some_val(found) == 0;
+ let empty: [i64] = alloc(0, 0); let value1: Option<i64> = crate::std::index_of_i64(empty, 0); assert !is_some(value1);
+ let single: [i64] = alloc(1, 9); let one: Option<i64> = crate::std::index_of_i64(single, 9); assert is_some(one) && some_val(one) == 0;
+}

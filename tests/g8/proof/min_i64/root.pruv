@@ -1,0 +1,5 @@
+mod std;
+pub fn f(a: i64, b: i64) -> i64 ensures result <= a && result <= b {
+ return crate::std::min_i64(a, b);
+}
+pub fn edges() -> () { let value1: i64 = crate::std::min_i64(-9223372036854775808, 9223372036854775807); assert value1 == -9223372036854775808; }

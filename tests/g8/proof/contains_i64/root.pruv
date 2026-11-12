@@ -1,0 +1,3 @@
+mod std;
+pub fn f(a: [i64], x: i64) -> bool ensures result == (exists k in 0..len(a): a[k] == x) { return crate::std::contains_i64(a, x); }
+pub fn edges() -> () ! alloc { let empty: [i64] = alloc(0, 0); let value1: bool = crate::std::contains_i64(empty, 0); assert !value1; let single: [i64] = alloc(1, 7); let value2: bool = crate::std::contains_i64(single, 7); assert value2; }

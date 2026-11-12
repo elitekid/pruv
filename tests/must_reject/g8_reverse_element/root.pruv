@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> () ! alloc { let mut a: [i64] = alloc(2, 0); a[0] = 1; let r: [i64] = crate::std::reverse_i64(a); assert r[0] == 1; }

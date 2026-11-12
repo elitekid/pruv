@@ -80,5 +80,137 @@
       "stage": "parse",
       "code": "std_module_conflict"
     }
+  ],
+  "proof": [
+    {
+      "name": "min_i64",
+      "root": "tests/g8/proof/min_i64/root.pruv"
+    },
+    {
+      "name": "max_i64",
+      "root": "tests/g8/proof/max_i64/root.pruv"
+    },
+    {
+      "name": "clamp_i64",
+      "root": "tests/g8/proof/clamp_i64/root.pruv"
+    },
+    {
+      "name": "abs_i64",
+      "root": "tests/g8/proof/abs_i64/root.pruv"
+    },
+    {
+      "name": "checked_add_i64",
+      "root": "tests/g8/proof/checked_add_i64/root.pruv"
+    },
+    {
+      "name": "checked_sub_i64",
+      "root": "tests/g8/proof/checked_sub_i64/root.pruv"
+    },
+    {
+      "name": "sum_i64",
+      "root": "tests/g8/proof/sum_i64/root.pruv",
+      "infer": true
+    },
+    {
+      "name": "contains_i64",
+      "root": "tests/g8/proof/contains_i64/root.pruv"
+    },
+    {
+      "name": "index_of_i64",
+      "root": "tests/g8/proof/index_of_i64/root.pruv",
+      "infer": true
+    },
+    {
+      "name": "is_sorted_i64",
+      "root": "tests/g8/proof/is_sorted_i64/root.pruv"
+    },
+    {
+      "name": "array_max_i64",
+      "root": "tests/g8/proof/array_max_i64/root.pruv"
+    },
+    {
+      "name": "reverse_i64",
+      "root": "tests/g8/proof/reverse_i64/root.pruv",
+      "infer": true
+    },
+    {
+      "name": "compose",
+      "root": "tests/g8/proof/compose/root.pruv"
+    },
+    {
+      "name": "cross_module",
+      "root": "tests/g8/proof/cross_module/root.pruv"
+    }
+  ],
+  "proof_reject": [
+    {
+      "name": "clamp_bounds",
+      "root": "tests/must_reject/g8_clamp_bounds/root.pruv",
+      "stage": "verify",
+      "code": "call_requires"
+    },
+    {
+      "name": "abs_min",
+      "root": "tests/must_reject/g8_abs_min/root.pruv",
+      "stage": "verify",
+      "code": "call_requires"
+    },
+    {
+      "name": "sum_length",
+      "root": "tests/must_reject/g8_sum_length/root.pruv",
+      "stage": "verify",
+      "code": "call_requires"
+    },
+    {
+      "name": "sum_element",
+      "root": "tests/must_reject/g8_sum_element/root.pruv",
+      "stage": "verify",
+      "code": "call_requires"
+    },
+    {
+      "name": "max_empty",
+      "root": "tests/must_reject/g8_max_empty/root.pruv",
+      "stage": "verify",
+      "code": "call_requires"
+    },
+    {
+      "name": "option_payload",
+      "root": "tests/must_reject/g8_option_payload/root.pruv",
+      "stage": "verify",
+      "code": "contract_domain"
+    },
+    {
+      "name": "first_index",
+      "root": "tests/must_reject/g8_first_index/root.pruv",
+      "stage": "verify",
+      "code": "assert"
+    },
+    {
+      "name": "membership",
+      "root": "tests/must_reject/g8_membership/root.pruv",
+      "stage": "verify",
+      "code": "assert"
+    },
+    {
+      "name": "sortedness",
+      "root": "tests/must_reject/g8_sortedness/root.pruv",
+      "stage": "verify",
+      "code": "assert"
+    },
+    {
+      "name": "reverse_element",
+      "root": "tests/must_reject/g8_reverse_element/root.pruv",
+      "stage": "verify",
+      "code": "assert"
+    },
+    {
+      "name": "contract_ensures",
+      "root": "tests/must_reject/g8_contract_ensures/root.pruv",
+      "stage": "type",
+      "code": "call_in_contract"
+    }
+  ],
+  "proof_checks": [
+    "tests/g8/check_proof.py"
   ]
 }

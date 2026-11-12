@@ -1,0 +1,4 @@
+mod std;
+pub fn f(a: [i64]) -> i64 requires len(a) > 0 ensures result == max(k in 0..len(a): a[k]) { return crate::std::array_max_i64(a); }
+// Expose the one-element prefix for ordinary aggregate unfolding.
+pub fn edges() -> () ! alloc { let mut negatives: [i64] = alloc(2, -9); negatives[1] = -2; assert max(k in 0..1: negatives[k]) == -9; let value1: i64 = crate::std::array_max_i64(negatives); assert value1 == -2; let single: [i64] = alloc(1, -9223372036854775808); let value2: i64 = crate::std::array_max_i64(single); assert value2 == -9223372036854775808; }

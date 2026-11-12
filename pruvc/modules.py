@@ -172,7 +172,8 @@ def load_program(path):
                 raise PruvError("parse", md.line, md.col, "module_file",
                                 "cannot read the file of module %s (expected %s)" % (disp(cpath), rel),
                                 "create %s next to the root file, or remove `mod %s;`" % (rel, md.name), file=m.file)
-            fid = _file_id(fpath)
+            # The bundle has a logical resource identity, not a physical one (same as pruvc-rs).
+            fid = None if md.name == "std" else _file_id(fpath)
             if fid is not None and fid in loaded:
                 raise PruvError("parse", md.line, md.col, "module_alias",
                                 "the file %s of module %s was already loaded as %s" % (rel, disp(cpath), loaded[fid]),

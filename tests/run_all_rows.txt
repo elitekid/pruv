@@ -71,6 +71,9 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v04_generic_append.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v05_option_elems.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v06_fresh_borrow.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--infer"], "group": "g8_proof", "mode": "infer", "sample": "tests/g8/proof/index_of_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--infer"], "group": "g8_proof", "mode": "infer", "sample": "tests/g8/proof/reverse_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--infer"], "group": "g8_proof", "mode": "infer", "sample": "tests/g8/proof/sum_i64/root.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--infer"], "group": "runtime", "mode": null, "sample": "tests/runtime/g2a_rt_bool_infer_sibling.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--infer"], "group": "runtime", "mode": null, "sample": "tests/runtime/g2a_rt_infer_havoc.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--infer"], "group": "runtime", "mode": null, "sample": "tests/runtime/g2b_rt_infer.pruv"}
@@ -807,6 +810,20 @@
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g9_tree_walk.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/prefix.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/sum.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/abs_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/array_max_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/checked_add_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/checked_sub_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/clamp_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/compose/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/contains_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/cross_module/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/index_of_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/is_sorted_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/max_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/min_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/reverse_i64/root.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/sum_i64/root.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_ensures_prev.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_euclid_mod.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_reach_index.pruv"}
@@ -1105,6 +1122,9 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v04_generic_append.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v05_option_elems.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v06_fresh_borrow.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--infer"], "group": "g8_proof", "mode": "infer", "sample": "tests/g8/proof/index_of_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--infer"], "group": "g8_proof", "mode": "infer", "sample": "tests/g8/proof/reverse_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--infer"], "group": "g8_proof", "mode": "infer", "sample": "tests/g8/proof/sum_i64/root.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--infer"], "group": "runtime", "mode": null, "sample": "tests/runtime/g2a_rt_bool_infer_sibling.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--infer"], "group": "runtime", "mode": null, "sample": "tests/runtime/g2a_rt_infer_havoc.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--infer"], "group": "runtime", "mode": null, "sample": "tests/runtime/g2b_rt_infer.pruv"}
@@ -1841,6 +1861,20 @@
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/g9_tree_walk.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/prefix.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "examples", "mode": "default", "sample": "examples/sum.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/abs_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/array_max_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/checked_add_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/checked_sub_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/clamp_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/compose/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/contains_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/cross_module/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/index_of_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/is_sorted_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/max_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/min_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/reverse_i64/root.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "default", "sample": "tests/g8/proof/sum_i64/root.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_ensures_prev.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_euclid_mod.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/cd_reach_index.pruv"}
@@ -2517,6 +2551,7 @@
 {"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/root_calls/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/wrappers/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "resources", "sample": "tests/g8/check_bundle.py"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_proof", "mode": "proof_checks", "sample": "tests/g8/check_proof.py"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p01_even_odd.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p02_ping_pong_phase.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p03_three_cycle_range.pruv"}
@@ -2942,12 +2977,23 @@
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g7_v_sibling_ensures_order.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g7_v_stale_contents.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g7_v_u8_requires.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_abs_min/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_absent/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_child_import/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_clamp_bounds/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_collision/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_conflict/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_contract/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_contract_ensures/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_duplicate/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_first_index/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_max_empty/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_membership/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_option_payload/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_reverse_element/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_sortedness/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_sum_element/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_sum_length/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_symlink_conflict/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_unknown/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_user_type/root.pruv"}

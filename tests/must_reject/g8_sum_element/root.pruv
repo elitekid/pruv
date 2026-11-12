@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> i64 ! alloc { let a: [i64] = alloc(1, 1000000001); return crate::std::sum_i64(a); }

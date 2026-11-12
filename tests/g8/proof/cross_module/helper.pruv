@@ -1,0 +1,1 @@
+pub fn bounded(x: i64) -> i64 ensures 0 <= result && result <= 5 { return crate::std::clamp_i64(x, 0, 5); }

@@ -1,0 +1,3 @@
+mod std;
+pub fn f(a: [i64]) -> bool ensures result == (forall k in 1..len(a): a[k - 1] <= a[k]) { return crate::std::is_sorted_i64(a); }
+pub fn edges() -> () ! alloc { let empty: [i64] = alloc(0, 0); let value1: bool = crate::std::is_sorted_i64(empty); assert value1; let single: [i64] = alloc(1, -1); let value2: bool = crate::std::is_sorted_i64(single); assert value2; let duplicates: [i64] = alloc(3, 7); let value3: bool = crate::std::is_sorted_i64(duplicates); assert value3; }

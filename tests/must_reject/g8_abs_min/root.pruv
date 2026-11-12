@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> i64 { return crate::std::abs_i64(-9223372036854775808); }

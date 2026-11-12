@@ -1,0 +1,12 @@
+mod std;
+pub fn f() -> () {
+ let hi: Option<i64> = crate::std::checked_sub_i64(9223372036854775806, -1);
+ assert is_some(hi) && some_val(hi) == 9223372036854775807;
+ let value1: Option<i64> = crate::std::checked_sub_i64(9223372036854775807, -1); assert !is_some(value1);
+ let lo: Option<i64> = crate::std::checked_sub_i64(-9223372036854775807, 1);
+ assert is_some(lo) && some_val(lo) == -9223372036854775808;
+ let value2: Option<i64> = crate::std::checked_sub_i64(-9223372036854775808, 1); assert !is_some(value2);
+ let extreme: Option<i64> = crate::std::checked_sub_i64(-1, -9223372036854775808);
+ assert is_some(extreme) && some_val(extreme) == 9223372036854775807;
+ let value3: Option<i64> = crate::std::checked_sub_i64(0, -9223372036854775808); assert !is_some(value3);
+}

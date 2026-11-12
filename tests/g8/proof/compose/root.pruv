@@ -1,0 +1,8 @@
+mod std;
+pub fn f(x: i64) -> i64 ensures 0 <= result && result <= 10 {
+ let clamped: i64 = crate::std::clamp_i64(x, -10, 10);
+ let positive: i64 = crate::std::abs_i64(clamped);
+ let added: Option<i64> = crate::std::checked_add_i64(positive, 0);
+ assert is_some(added);
+ match added { Some(value) => { return value; } None => { return 0; } }
+}

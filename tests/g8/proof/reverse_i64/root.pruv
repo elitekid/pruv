@@ -1,0 +1,3 @@
+mod std;
+pub fn f(a: [i64]) -> [i64] ! alloc ensures len(result) == len(a) ensures forall k in 0..len(a): result[k] == a[len(a) - 1 - k] { return crate::std::reverse_i64(a); }
+pub fn edges() -> () ! alloc { let empty: [i64] = alloc(0, 0); let r: [i64] = crate::std::reverse_i64(empty); assert len(r) == 0; let single: [i64] = alloc(1, -9223372036854775808); let s: [i64] = crate::std::reverse_i64(single); assert len(s) == 1 && s[0] == -9223372036854775808; }

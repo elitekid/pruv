@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> () ! alloc { let mut a: [i64] = alloc(2, 0); a[0] = 1; let value1: bool = crate::std::is_sorted_i64(a); assert value1; }

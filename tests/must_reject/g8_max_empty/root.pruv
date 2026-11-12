@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> i64 ! alloc { let a: [i64] = alloc(0, 0); return crate::std::array_max_i64(a); }

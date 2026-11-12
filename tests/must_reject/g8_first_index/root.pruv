@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> () ! alloc { let a: [i64] = alloc(2, 7); let r: Option<i64> = crate::std::index_of_i64(a, 7); assert is_some(r) && some_val(r) == 1; }

@@ -1,0 +1,2 @@
+mod std;
+pub fn f(a: i64, b: i64) -> () { let r: Option<i64> = crate::std::checked_add_i64(a, b); assert some_val(r) == a + b; }

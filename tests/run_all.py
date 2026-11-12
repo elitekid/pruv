@@ -1,5 +1,5 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof|g8_frontend]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof|g8_frontend|g8_proof]
                         [--backend rust|llvm|both]
 
 group s5_proof: tests/s5/proof/*.pruv verifies in default, trust-callers and infer modes
@@ -647,6 +647,43 @@ def s5_erase(source):
                   r"(?:(?!\binvariant\b|\bdecreases\b|[{}]).)*", "", source, flags=re.S)
 
 
+def g8_proof_jobs():
+    """A1: all client and bundle proofs must finish before the emission guard."""
+    inventory = json.load(open(os.path.join(ROOT, "tests/g8/fixtures.json")))
+    jobs = []
+    for entry in inventory["proof"]:
+        modes = [("default", [])] + ([("infer", ["--infer"])] if entry.get("infer") else [])
+        for mode, flags in modes:
+            for backend in ("rust", "llvm"):
+                def fn(entry=entry, mode=mode, flags=flags, backend=backend):
+                    stem = "g8p_%s_%s_%s" % (entry["name"], mode, backend)
+                    root = _g4().copy_project(os.path.join(ROOT, entry["root"]), os.path.join(WORK, stem))
+                    out = os.path.join(WORK, stem + ".out")
+                    c = pruvc(root, out, flags, backend)
+                    ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
+                    ok = (c.returncode == 1 and len(ds) == 1 and
+                          ds[0].get("stage") == "codegen" and ds[0].get("code") == "unsupported_type" and
+                          ds[0].get("message") == "G8 std code generation is not implemented yet" and
+                          not os.path.exists(out))
+                    return ok, c.stdout + c.stderr
+                jobs.append(safe("g8_proof/%s [%s/%s]" % (entry["name"], mode, backend), fn,
+                                 {"sample": entry["root"], "backend": backend, "flags": flags,
+                                  "mode": mode, "group": "g8_proof"}))
+    def proof_checks():
+        # The Rust compiler embeds the bundle, so its run checks patched copies of that binary.
+        d = _driver()
+        rs = ["--rs", d.path] if d.kind == "rs" else []
+        c = subprocess.run([CD.pinned_python(), os.path.join(ROOT, "tests/g8/check_proof.py"), WORK] + rs,
+                           capture_output=True, text=True, timeout=600)
+        if c.returncode == 0:
+            print(c.stdout.strip())
+        return c.returncode == 0, c.stdout + c.stderr
+    jobs.append(safe("g8_proof/bundle", proof_checks,
+                     {"sample": "tests/g8/check_proof.py", "backend": None, "flags": [],
+                      "mode": "proof_checks", "group": "g8_proof"}))
+    return jobs
+
+
 def g8_frontend_jobs():
     """A0 rows check both backends; resource checks use a disposable Python distribution."""
     inventory = json.load(open(os.path.join(ROOT, "tests/g8/fixtures.json")))
@@ -667,7 +704,7 @@ def g8_frontend_jobs():
                     ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
                     if c.returncode != 1 or not any(d.get("stage") == "codegen" and
                             d.get("code") == "unsupported_type" and
-                            d.get("message") == "G8 std verification is not implemented yet" for d in ds):
+                            d.get("message") == "G8 std code generation is not implemented yet" for d in ds):
                         return False, backend + ": " + c.stdout + c.stderr
                     if any(os.path.exists(out + suffix) for suffix in (".rs", ".ll", "_llvm.rs", ".bin")):
                         return False, "guard wrote an output artifact"
@@ -1117,7 +1154,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof|g8_frontend] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof|g8_frontend|g8_proof] [--backend rust|llvm|both] "
          "[--sample-prefix PATH] [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -1210,7 +1247,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof", "g8_frontend"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof", "g8_frontend", "g8_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -1247,6 +1284,8 @@ def main():
             jobs += g10_frontend_jobs("g10_proof", "proof", (("default", []), ("infer", ["--infer"])))
         if only in (None, "g8_frontend"):
             jobs += g8_frontend_jobs()
+        if only in (None, "g8_proof"):
+            jobs += g8_proof_jobs()
         if only in (None, "s5_frontend"):
             jobs += s5_frontend_jobs()
         if only in (None, "s5_proof"):
@@ -1307,9 +1346,10 @@ def main():
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
                         "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof", "g8_frontend")
-        for g in null_backend + ("examples", "runtime"):
+        for g in null_backend + ("examples", "runtime", "g8_proof"):
             if only in (None, g):
-                for b in ([None] if g in null_backend else backends):
+                # g8_proof mixes per-backend proof rows with one backend-free bundle row.
+                for b in ([None] if g in null_backend else list(backends) + ([None] if g == "g8_proof" else [])):
                     scope.add((g, b))
         in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope]
         outside = len(saved_rows) - len(in_scope)
