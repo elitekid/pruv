@@ -167,7 +167,7 @@ The language today has only i64, bool, integer arrays, Option, and Result, so it
 | G5 | Memory model: mutable value semantics (Hylo) | no-aliasing guarantee → array non-overlap as optimization information |
 | G6 | Calling Rust functions (foreign functions) | the boundary is marked as a "trusted contract" with optional runtime checks. Rust standard collections (growable `Vec`, `HashMap`, and creating `String`) are also used first through this path — **done (2026-11-12, RESULTS §47–§52)** |
 | G7 | Concurrency (reference permissions, Pony) | data races blocked at the root |
-| G8 | Standard library | the AI attaches contracts and the compiler proves. Humans review only the contracts |
+| G8 | Standard library | the AI attaches contracts and the compiler proves. Humans review only the contracts — **design ready (2026-11-13, `docs/G8_SPEC.md`):** one bundled `std` module of twelve verified i64/array helpers, imported by `mod std;`, reproved on every compile |
 | G9 | Recursive functions and recursive types, array and string fields inside structs (real data such as trees and JSON) | termination by `decreases`, inductive proof. The current SPEC has no recursion, recursive types, or array fields |
 | G10 | I/O and async (files, processes, network, async) | refine the `io` effect and bundle with resource lifetimes (Stage 5 item 3) |
 | (A6) | Adding element types such as `[i32]` | deferred from G2. Whether to absorb it into element-type generalization after G3 generics will be decided then |
