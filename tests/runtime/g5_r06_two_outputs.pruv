@@ -1,0 +1,29 @@
+// G5 A2 runtime: two disjoint inout outputs of one call (two independent &mut slices) related by the contract
+fn split_store(inout lo: [i64], inout hi: [i64], v: i64) -> ()
+  requires len(lo) >= 1 && len(hi) >= 1 && -1000 < v && v < 1000
+  ensures len(lo) == len(old(lo))
+  ensures len(hi) == len(old(hi))
+  ensures lo[0] == v
+  ensures hi[0] == v + 1
+{
+  lo[0] = v;
+  hi[0] = lo[0] + 1;
+}
+
+pub fn two_lo(a: [i64], b: [i64], v: i64) -> [i64] ! alloc
+  requires len(a) >= 1 && len(b) >= 1 && -1000 < v && v < 1000
+{
+  let mut x: [i64] = copy(a);
+  let mut y: [i64] = copy(b);
+  split_store(inout x, inout y, v);
+  return x;
+}
+
+pub fn two_hi(a: [i64], b: [i64], v: i64) -> [i64] ! alloc
+  requires len(a) >= 1 && len(b) >= 1 && -1000 < v && v < 1000
+{
+  let mut x: [i64] = copy(a);
+  let mut y: [i64] = copy(b);
+  split_store(inout x, inout y, v);
+  return y;
+}

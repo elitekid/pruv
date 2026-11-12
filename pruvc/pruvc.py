@@ -88,11 +88,12 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
-    # G5 A1 staging guard: inout parameters are proved (verification errors win) but not yet lowered (A2, A3);
-    # a checked program that uses them stops here, also with --no-verify, before any output is written.
-    g5err = g5_unimplemented_error(prog)
-    if g5err is not None:
-        return [g5err]
+    # G5 A2 staging guard: the Rust source backend lowers inout parameters; the LLVM backend (and --also-llvm)
+    # does not until A3. Verification errors win; the guard also applies with --no-verify, before any output.
+    if backend == "llvm" or also_llvm:
+        g5err = g5_unimplemented_error(prog)
+        if g5err is not None:
+            return [g5err]
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same
     # shared specialization plan (pruvc/mono.py), also with --no-verify. G4 A2: explicit mode always goes through the
     # plan (it names every function and type by its Rust stem). G4 A3: the LLVM backend generates explicit programs

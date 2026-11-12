@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["[1, 200, 3]", "[0, 0, 0, 255]", "[true, false, true]", "[true, false]"], "gen_contains": ["buf: &mut [u8]", "flags: &mut [bool]"], "gen_absent": ["pub fn put_byte", "pub fn set_flag"]}

@@ -419,6 +419,13 @@ struct Gen<'a> {
     tmp: u64,
     table: TypeTable,
     params: HashSet<String>,
+    /// G5 A2: inout parameters of the function being generated (`&mut [T]` bindings)
+    inouts: HashSet<String>,
+    /// G5 A2: the inout code paths only run for a program that uses inout (unchecked program: assume it may)
+    g5: bool,
+    /// G5 A2 (legacy mode): a function with an inout parameter has an always-checked private wrapper, also under
+    /// trust_callers, so its contract prelude is needed there too
+    inout_req: bool,
     /// Variable type table (parameters and let; copied and restored per block)
     vars: HashMap<String, String>,
     /// G6: the program uses G6 (a foreign declaration, a collection, take or move)
@@ -499,6 +506,13 @@ impl<'a> Gen<'a> {
             tmp: 0,
             table: make_type_table(prog),
             params: HashSet::new(),
+            inouts: HashSet::new(),
+            g5: prog.uses_inout != Some(false),
+            inout_req: prog.uses_inout != Some(false)
+                && !explicit
+                && prog.functions.iter().any(|f| {
+                    !f.requires.is_empty() && f.foreign.is_none() && f.params.iter().any(|p| p.mode_pos.is_some())
+                }),
             vars: HashMap::new(),
             g6,
             allow: if g6 { ALLOW_G6 } else { ALLOW },
@@ -593,6 +607,7 @@ impl<'a> Gen<'a> {
             || key_is_collection(&f.ret)
             || f.params.iter().any(|p| self.is_ext(Some(&p.ty)))
             || self.is_ext(Some(&f.ret))
+            || (self.g5 && f.params.iter().any(|p| p.mode_pos.is_some())) // G5: no public API for a mutable borrow
     }
 
     fn emit(&mut self, ind: usize, line: &str) {
@@ -632,7 +647,11 @@ impl<'a> Gen<'a> {
                 self.out.push(SAFE_PRELUDE_STR.to_string());
             }
         }
-        let checks = if self.explicit { self.checks_needed } else { !self.has_req.is_empty() && !self.trust };
+        let checks = if self.explicit {
+            self.checks_needed
+        } else {
+            !self.has_req.is_empty() && (!self.trust || self.inout_req)
+        };
         if checks || self.g6 {
             if self.g6 {
                 self.out.push(contract_prelude_g6());
@@ -746,11 +765,21 @@ impl<'a> Gen<'a> {
             return Ok(()); // G6: a trusted rust fn has no body; its boundary helper is emitted on first use
         }
         self.params = f.params.iter().map(|p| p.name.clone()).collect();
+        if self.g5 {
+            self.inouts = f.params.iter().filter(|p| p.mode_pos.is_some()).map(|p| p.name.clone()).collect();
+        }
         self.vars = f.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect();
         self.borrowed =
             f.params.iter().filter(|p| key_is_collection(&p.ty) && !p.take).map(|p| p.name.clone()).collect();
         self.refs = f.params.iter().filter(|p| self.is_ext(Some(&p.ty))).map(|p| p.name.clone()).collect();
-        let ps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, self.rt(&p.ty, !p.take)));
+        let ps = join_map(&f.params, ", ", |p| {
+            if p.mode_pos.is_some() {
+                // G5 A2: an inout parameter is a mutable slice borrow (`&mut [T]`)
+                format!("{}: &mut {}", p.name, &rty(&p.ty, true)[1..])
+            } else {
+                format!("{}: {}", p.name, self.rt(&p.ty, !p.take))
+            }
+        });
         let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", rty(&f.ret, false)) };
         let has = !f.requires.is_empty();
         let body_name = if has { format!("{}__pruv_body", f.name) } else { f.name.clone() };
@@ -772,7 +801,9 @@ impl<'a> Gen<'a> {
         self.emit(0, "");
         if has {
             if !self.explicit {
-                self.entry(f, &ps, &ret, &body_name, None, None, None)?;
+                // G5: a wrapper of an inout function always checks (trust_callers does not waive it)
+                let chk = if self.inouts.is_empty() { None } else { Some(true) };
+                self.entry(f, &ps, &ret, &body_name, None, None, chk)?;
             } else if self.verified {
                 if host {
                     // the checked host wrapper; no other function has a wrapper in verified mode
@@ -869,7 +900,9 @@ impl<'a> Gen<'a> {
                 self.emit(1, line);
             }
         }
-        let args = join_map(&f.params, ", ", |p| p.name.clone());
+        let args = join_map(&f.params, ", ", |p| {
+            if p.mode_pos.is_some() { format!("&mut *{}", p.name) } else { p.name.clone() }
+        });
         self.emit(1, &format!("{}({})", body_name, args));
         self.emit(0, "}");
         self.emit(0, "");
@@ -1889,8 +1922,8 @@ impl<'a> Gen<'a> {
                         self.emit(
                             ind,
                             &format!(
-                                "{{ let pruv_i: i64 = {}; let pruv_x: bool = {}; pruv_set_bool(&mut {}, pruv_i, pruv_x); }}",
-                                i, v, x.name
+                                "{{ let pruv_i: i64 = {}; let pruv_x: bool = {}; pruv_set_bool({}, pruv_i, pruv_x); }}",
+                                i, v, self.mut_ref(&x.name)
                             ),
                         );
                     }
@@ -1907,8 +1940,8 @@ impl<'a> Gen<'a> {
                         self.emit(
                             ind,
                             &format!(
-                                "{{ let pruv_i: i64 = {}; let pruv_x: i64 = {}; pruv_set_u8(&mut {}, pruv_i, pruv_x); }}",
-                                i, v, x.name
+                                "{{ let pruv_i: i64 = {}; let pruv_x: i64 = {}; pruv_set_u8({}, pruv_i, pruv_x); }}",
+                                i, v, self.mut_ref(&x.name)
                             ),
                         );
                     }
@@ -1925,8 +1958,8 @@ impl<'a> Gen<'a> {
                     self.emit(
                         ind,
                         &format!(
-                            "{{ let pruv_i: i64 = {}; let pruv_x: i64 = {}; pruv_set(&mut {}, pruv_i, pruv_x); }}",
-                            i, v, x.name
+                            "{{ let pruv_i: i64 = {}; let pruv_x: i64 = {}; pruv_set({}, pruv_i, pruv_x); }}",
+                            i, v, self.mut_ref(&x.name)
                         ),
                     );
                 }
@@ -1981,11 +2014,19 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
+    /// G5: a mutable borrow of the array `name`: a reborrow for an inout parameter (already `&mut [T]`)
+    fn mut_ref(&self, name: &str) -> String {
+        if self.inouts.contains(name) { format!("&mut *{}", name) } else { format!("&mut {}", name) }
+    }
+
     /// An array expression used as a borrowed slice
     fn arr_ref(&mut self, e: &Expr) -> R<String> {
         if let Expr::Var(x) = e {
             if self.refs.contains(&x.name) {
                 return Ok(x.name.clone()); // G9: a buffer payload view is already a reference
+            }
+            if self.inouts.contains(&x.name) {
+                return Ok(format!("&*{}", x.name)); // G5: a shared reborrow of an inout parameter
             }
             if !self.params.contains(&x.name) {
                 return Ok(format!("&{}", x.name));
@@ -2306,7 +2347,14 @@ impl<'a> Gen<'a> {
                 for (i, xa) in a.iter().enumerate() {
                     let is_move = matches!(xa, Expr::Move(_));
                     let coll = expr_ty(xa).as_deref().map_or(false, key_is_collection);
-                    if self.g6 && (is_move || coll) {
+                    if let Expr::InoutArg(ia) = xa {
+                        // G5: `inout name` -> a mutable borrow / reborrow, in source order
+                        let nm = match ia.expr.as_ref() {
+                            Expr::Var(v) => v.name.clone(),
+                            other => return Err(format!("codegen: inout operand is not a variable: {:?}", other)),
+                        };
+                        args.push(self.mut_ref(&nm));
+                    } else if self.g6 && (is_move || coll) {
                         let take = is_move || callee.map_or(false, |c| c.params.get(i).map_or(false, |p| p.take));
                         if take {
                             args.push(self.e(xa)?);

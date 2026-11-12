@@ -774,7 +774,7 @@ pub fn g5_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diag
         line,
         col,
         "unsupported_type",
-        "G5 inout parameters are not implemented by the code generation layers yet",
+        "G5 inout parameters are not implemented by the llvm codegen layer yet",
         "pass and return arrays by value for now",
     ))
 }

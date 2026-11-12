@@ -1,0 +1,14 @@
+// G5 A2 runtime (safe mode only: the call below does not verify): the inout function's requires is checked at every
+// safe call, also under --trust-callers (the checked wrapper of an inout function never trusts its callers)
+fn set_at(inout a: [i64], i: i64, v: i64) -> ()
+  requires 0 <= i && i < len(a)
+  ensures a[i] == v
+{
+  a[i] = v;
+}
+
+pub fn run(a: [i64], i: i64, v: i64) -> [i64] ! alloc {
+  let mut w: [i64] = copy(a);
+  set_at(inout w, i, v);
+  return w;
+}

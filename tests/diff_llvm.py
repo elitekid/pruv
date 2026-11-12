@@ -40,7 +40,6 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "pruvc"))
 
 from vast import PruvError  # noqa: E402
-from vparser import parse  # noqa: E402
 from modules import load_program  # noqa: E402
 from check import check  # noqa: E402
 from llvmgen import gen_llvm  # noqa: E402
@@ -276,12 +275,9 @@ def dumps(o):
 
 def eval_python(c):
     try:
-        if c.group == "g4":
-            prog = load_program(c.path)   # G4 A3: project root + its declared module files (explicit visibility mode)
-        else:
-            with open(c.path) as fh:
-                src = fh.read()
-            prog = parse(src)
+        # G4 A3 / G5 A2: through the module loader like the Rust dump (a legacy file is returned untouched; a file with
+        # `pub` or `mod` is an explicit-mode program, e.g. the G5 runtime roots and examples)
+        prog = load_program(c.path)
         check(prog)
         # G5 guard (removed in G5 A3): inout programs stop before emission, like the drivers
         g5err = g5_unimplemented_error(prog)

@@ -546,7 +546,7 @@ def g5_unimplemented_error(prog, stage="codegen"):
     if hit is None:
         return None
     return PruvError(stage, hit[0], hit[1], "unsupported_type",
-                     "G5 inout parameters are not implemented by the code generation layers yet",
+                     "G5 inout parameters are not implemented by the llvm codegen layer yet",
                      "pass and return arrays by value for now", file=hit[2])
 
 

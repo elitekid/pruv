@@ -40,11 +40,10 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "pruvc"))
 
 from vast import PruvError  # noqa: E402
-from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from modules import load_program  # noqa: E402
 from codegen import gen_rust  # noqa: E402
-from typeinfo import g9_unimplemented_error, g5_unimplemented_error  # noqa: E402
+from typeinfo import g9_unimplemented_error  # noqa: E402
 
 BATCH = 200
 RS_TIMEOUT = 300
@@ -276,17 +275,11 @@ def dumps(o):
 
 def eval_python(c):
     try:
-        if c.group == "g4":
-            prog = load_program(c.path)   # G4 A2: project root + its declared module files (explicit visibility mode)
-        else:
-            with open(c.path) as fh:
-                src = fh.read()
-            prog = parse(src)
+        # G4 A2 / G5 A2: through the module loader like the Rust dump (a legacy file is returned untouched; a file with
+        # `pub` or `mod` is an explicit-mode program, e.g. the G5 runtime roots and examples)
+        prog = load_program(c.path)
         check(prog)
-        # G5 guard (removed in G5 A3): inout programs stop before emission, like the drivers
-        g5err = g5_unimplemented_error(prog)
-        if g5err is not None:
-            raise g5err
+        # G5 A2: the Rust source backend lowers inout programs (no guard; only the llvm backend keeps it until A3)
         # G9 A2: the Rust source backend lowers G9 programs (no guard)
         rs_src = gen_rust(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)
         obj = {"rs": rs_src}

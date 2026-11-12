@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--no-verify", "--trust-callers"]], "llvm_exports": ["pruv_abi_demo"], "exit": 0, "stdout_lines": ["11", "-7", "1"], "gen_contains": ["pub fn demo(", "&mut [i64]"], "gen_absent": ["pub fn pruv_m_"]}

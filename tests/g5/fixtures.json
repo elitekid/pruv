@@ -1,6 +1,6 @@
 {
   "schema": "pruv-g5-fixtures-v1",
-  "note": "test-only inventory of the G5 (inout parameters) fixtures; not a language or package manifest. A root with \"project\": true is a directory root.pruv whose companion modules are never standalone roots (tests/g4/projects.py replays them). \"expect\": \"guard\" = a frontend root accepted by parsing and checking that stops at the A0 staging guard codegen/unsupported_type (all G5 programs until A1/A2/A3 remove it); \"ok\" = a G5-free compatibility program that compiles normally. Rejects record the diagnostic stage/code and the modes in which it must hold (all A0 rejections are static: default, --no-verify and --trust-callers). A1 (\"proof\"): positive roots that must verify completely and then stop at the staging guard (code generation is not implemented yet); \"infer\": true adds a --infer row. \"proof_reject\": verification rejections (stage verify, recorded code) run in default mode as ordinary must_reject rows, plus a --infer row where \"infer\": true; they are not static, so they are not part of the g5_reject group.",
+  "note": "test-only inventory of the G5 (inout parameters) fixtures; not a language or package manifest. A root with \"project\": true is a directory root.pruv whose companion modules are never standalone roots (tests/g4/projects.py replays them). \"expect\": \"guard\" = a frontend root accepted by parsing and checking that stops at the A0 staging guard codegen/unsupported_type (all G5 programs until A1/A2/A3 remove it); \"ok\" = a G5-free compatibility program that compiles normally. Rejects record the diagnostic stage/code and the modes in which it must hold (all A0 rejections are static: default, --no-verify and --trust-callers). A1 (\"proof\"): positive roots that must verify completely and then stop at the staging guard (code generation is not implemented yet); \"infer\": true adds a --infer row. \"proof_reject\": verification rejections (stage verify, recorded code) run in default mode as ordinary must_reject rows, plus a --infer row where \"infer\": true; they are not static, so they are not part of the g5_reject group. A2: the Rust backend generates every G5 program, so \"guard\" frontend fixtures and proof roots now expect pruvc exit 0 on the Rust backend (only the llvm backend keeps the guard until A3); \"runtime\" lists the G5 runtime projects (tests/runtime/g5_*/ with spec.json); the flat runtime roots are tests/runtime/g5_r*.pruv.",
   "frontend": [
     {"name": "f01_i64_set_at", "root": "tests/g5/frontend/f01_i64_set_at.pruv", "expect": "guard"},
     {"name": "f02_u8_store", "root": "tests/g5/frontend/f02_u8_store.pruv", "expect": "guard"},
@@ -93,5 +93,7 @@
     {"name": "g5p_loop_call_replace", "root": "tests/must_reject/g5p_loop_call_replace.pruv", "stage": "verify", "code": "index_oob", "infer": true},
     {"name": "g5p_recursive_decrease", "root": "tests/must_reject/g5p_recursive_decrease.pruv", "stage": "verify", "code": "recursive_decrease"}
   ],
-  "runtime": []
+  "runtime": [
+    {"name": "g5_r08_module_call", "root": "tests/runtime/g5_r08_module_call/root.pruv", "project": true}
+  ]
 }

@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["[4, 0, 3]", "[5, 9]", "[-7]", "[-6]"], "gen_contains": ["lo: &mut [i64], hi: &mut [i64]"], "gen_absent": ["pub fn split_store"]}

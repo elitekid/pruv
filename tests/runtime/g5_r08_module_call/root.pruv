@@ -1,0 +1,11 @@
+// G5 A2 runtime: an inout call across a module boundary (explicit visibility mode); only the root entry is pub
+mod buffers;
+
+pub fn demo(n: i64, v: i64) -> i64 ! alloc
+  requires 2 <= n && n <= 100 && -1000 < v && v < 1000
+{
+  let mut w: [i64] = alloc(n, 1);
+  crate::buffers::set_at(inout w, 0, v);
+  crate::buffers::set_at(inout w, n - 1, v + 1);
+  return w[0] + w[n - 1];
+}

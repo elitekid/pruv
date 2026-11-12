@@ -1,0 +1,29 @@
+// G5 A2 runtime: a generic in-place exchange on an inout [T: Element], instantiated for i64 and bool
+fn exchange<T: Element>(inout a: [T], i: i64, j: i64) -> ()
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+  ensures len(a) == len(old(a))
+  ensures a[i] == old(a)[j]
+  ensures a[j] == old(a)[i]
+  ensures forall k in 0..len(a): k != i && k != j ==> a[k] == old(a)[k]
+{
+  let x: T = a[i];
+  let y: T = a[j];
+  a[i] = y;
+  a[j] = x;
+}
+
+pub fn swap_ints(a: [i64], i: i64, j: i64) -> [i64] ! alloc
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+{
+  let mut w: [i64] = copy(a);
+  exchange::<i64>(inout w, i, j);
+  return w;
+}
+
+pub fn swap_flags(a: [bool], i: i64, j: i64) -> [bool] ! alloc
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+{
+  let mut w: [bool] = copy(a);
+  exchange::<bool>(inout w, i, j);
+  return w;
+}

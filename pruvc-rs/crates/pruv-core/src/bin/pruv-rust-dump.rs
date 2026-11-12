@@ -41,10 +41,7 @@ fn line_for(path: &std::ffi::OsStr, o: &Opts) -> String {
             None
         }
     };
-    // G5 guard (removed in G5 A3): inout programs stop before emission, like the drivers
-    if let Some(e) = pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen") {
-        return obj1("error", e.to_json_value());
-    }
+    // G5 A2: no guard here; the Rust source backend lowers inout parameters (only the LLVM paths keep the staging guard)
     // G9 A2: the Rust backend lowers G9 programs; no guard here (a runtime requires it cannot lower is a Diag below)
     // like Python gen_rust (default foreign checks, no externs; a G6 program is lowered, the manifest is not part of the
     // dump): a generic (or explicit-mode) program is specialized first (a specialization limit is a diagnostic)

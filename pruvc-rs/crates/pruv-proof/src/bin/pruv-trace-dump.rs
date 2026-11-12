@@ -103,13 +103,8 @@ fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
                         }
                     }
                 }
-                // G5 A1 (as tests/diff_py_adapter.py): the staging guard of pruvc.compile_file runs after verification
-                // (verification errors win), also with --no-verify
-                if errors.is_empty() {
-                    if let Some(e) = pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen") {
-                        errors.push(e.to_json_value());
-                    }
-                }
+                // G5 A2 / G4 A2 (as tests/diff_py_adapter.py): no guard here; pruvc.compile_file keeps its G5 and G4 staging
+                // guards only for the LLVM backend (--backend llvm / --also-llvm)
                 // G4 A2: no guard here (as tests/diff_py_adapter.py): the adapter's code generator is the Rust source backend,
                 // which generates explicit visibility programs; pruvc.compile_file keeps its guard only for the LLVM paths
                 let _ = internal;

@@ -1,0 +1,28 @@
+// G5 A2 runtime: copy(a) of an inout parameter is an independent owned array; later stores to the borrowed array do
+// not reach the copy, and the copy is returned as an ordinary owned value
+fn bumped_copy(inout a: [i64]) -> [i64] ! alloc
+  requires len(a) >= 1 && a[0] < 1000
+  ensures len(a) == len(old(a))
+  ensures a[0] == 0
+{
+  let mut c: [i64] = copy(a);
+  a[0] = 0;
+  c[0] = c[0] + 1;
+  return c;
+}
+
+pub fn snapshot(a: [i64]) -> [i64] ! alloc
+  requires len(a) >= 1 && a[0] < 1000
+{
+  let mut w: [i64] = copy(a);
+  let c: [i64] = bumped_copy(inout w);
+  return c;
+}
+
+pub fn after(a: [i64]) -> [i64] ! alloc
+  requires len(a) >= 1 && a[0] < 1000
+{
+  let mut w: [i64] = copy(a);
+  let c: [i64] = bumped_copy(inout w);
+  return w;
+}

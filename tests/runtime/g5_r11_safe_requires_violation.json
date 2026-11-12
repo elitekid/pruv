@@ -1,0 +1,1 @@
+{"flags_matrix": [["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 101, "stdout_lines": ["[1, 9, 3]"], "stderr_contains": "pruv: requires violated: crate::set_at", "gen_contains": ["a: &mut [i64]"], "gen_absent": ["pub fn set_at", "unsafe"]}

@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["[1, 9, 3]", "[1, 2, 3]", "[1, 2, 3]", "true", "false"], "gen_contains": ["a: &mut [i64]"], "gen_absent": ["pub fn put_if_room"]}

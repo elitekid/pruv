@@ -152,6 +152,24 @@ def build_cases(args):
             if e.get("infer"):
                 cases.append({"name": "g5/%s [infer]" % e["name"], "src": os.path.join(ROOT, *e["root"].split("/")),
                               "flags": ["--infer"], "project": False})
+        # G5 A2: runtime project roots (the flat tests/runtime/g5_r*.pruv and examples/g5_*.pruv are picked up by the
+        # runtime / examples globs); flags / budget of spec.json like the G4 runtime projects
+        for e in P.g5_entries("runtime"):
+            src = os.path.join(ROOT, *e["root"].split("/"))
+            try:
+                with open(os.path.join(os.path.dirname(src), "spec.json")) as fh:
+                    spec = json.load(fh)
+                budget = spec.get("contract_budget")
+                extra = ["--contract-budget", str(budget)] if budget is not None else []
+                matrix = spec.get("flags_matrix")
+                rows = ([(list(fl), "[%s]" % (" ".join(fl) or "default")) for fl in matrix]
+                        if matrix else [(list(spec.get("flags", [])), "")])
+            except Exception as ex:
+                errors.append("g5/%s: %r" % (e["name"], ex))
+                continue
+            for flags, label in rows:
+                cases.append({"name": "g5/" + e["name"] + (" " + label if label else ""), "src": src,
+                              "flags": flags + extra, "project": True})
     for f in args.input or []:
         if not os.path.isfile(f):
             errors.append("--input: no such file: %s" % f)

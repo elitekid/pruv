@@ -1,0 +1,34 @@
+// G5 A2 runtime: in-place stores into an inout [u8] (byte domain) and an inout [bool]; safe mode checks the u8 range
+fn put_byte(inout buf: [u8], i: i64, b: i64) -> ()
+  requires 0 <= i && i < len(buf) && 0 <= b && b <= 255
+  ensures len(buf) == len(old(buf))
+  ensures buf[i] == b
+  ensures forall k in 0..len(buf): k != i ==> buf[k] == old(buf)[k]
+{
+  buf[i] = b;
+}
+
+fn set_flag(inout flags: [bool], i: i64, v: bool) -> ()
+  requires 0 <= i && i < len(flags)
+  ensures len(flags) == len(old(flags))
+  ensures flags[i] == v
+  ensures forall k in 0..len(flags): k != i ==> flags[k] == old(flags)[k]
+{
+  flags[i] = v;
+}
+
+pub fn patch_bytes(a: [u8], i: i64, b: i64) -> [u8] ! alloc
+  requires 0 <= i && i < len(a) && 0 <= b && b <= 255
+{
+  let mut w: [u8] = copy(a);
+  put_byte(inout w, i, b);
+  return w;
+}
+
+pub fn patch_flags(a: [bool], i: i64, v: bool) -> [bool] ! alloc
+  requires 0 <= i && i < len(a)
+{
+  let mut w: [bool] = copy(a);
+  set_flag(inout w, i, v);
+  return w;
+}

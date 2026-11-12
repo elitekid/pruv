@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["[6, 6]", "[0, 6]", "[1]", "[0, 1, 2]"], "gen_contains": ["a: &mut [i64]"], "gen_absent": ["pub fn bumped_copy"]}

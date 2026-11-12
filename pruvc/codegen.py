@@ -631,6 +631,13 @@ class Gen:
         s.tmp = 0
         s.table = make_type_table(prog)
         s.params = set()
+        s.inouts = set()     # G5 A2: inout parameters of the function being generated (`&mut [T]` bindings)
+        # G5 A2: the inout code paths only run for a program that uses inout (unchecked program: assume it may)
+        s.g5 = getattr(prog, "uses_inout", None) is not False
+        # G5 A2 (legacy mode): a function with an inout parameter has an always-checked private wrapper, also under
+        # trust_callers, so its contract prelude is needed there too
+        s.inout_req = s.g5 and (not s.explicit) and any(
+            f.requires and f.foreign is None and any(p.mode == "inout" for p in f.params) for f in prog.functions)
         s.vt = {}
         s.borrowed = set()
         # G9 A2 (docs/G9_SPEC.md 6, 12): `ext` = extended declarations (Clone, never Copy), `boxed` = field labels that
@@ -690,7 +697,7 @@ class Gen:
                 s.out.append(SAFE_PRELUDE_BOOL)
             if str_used:
                 s.out.append(SAFE_PRELUDE_STR)
-        if (s.checks_needed if s.explicit else (s.has_req and not s.trust)) or s.g6:
+        if (s.checks_needed if s.explicit else (s.has_req and (not s.trust or s.inout_req))) or s.g6:
             s.out.append(CONTRACT_PRELUDE_G6 if s.g6 else CONTRACT_PRELUDE)
             if u8_used:
                 s.out.append(CONTRACT_PRELUDE_U8)
@@ -751,16 +758,23 @@ class Gen:
         """G3 specializations, G6 collection-bearing functions and (G9) functions with an extended type in their
         signature are private Rust items (no raw ABI); this includes their checked entry wrappers"""
         return (getattr(f, "private", False) or any(is_collection(p.type) for p in f.params) or is_collection(f.ret)
-                or any(s.is_ext(p.type) for p in f.params) or s.is_ext(f.ret))
+                or any(s.is_ext(p.type) for p in f.params) or s.is_ext(f.ret)
+                or (s.g5 and any(p.mode == "inout" for p in f.params)))   # G5: no public API for a mutable borrow
 
     def fn(s, f):
         if f.foreign is not None:
             return   # G6: a trusted rust fn has no body; its boundary helper is emitted on first use
         s.params = {p.name for p in f.params}
+        if s.g5:
+            s.inouts = {p.name for p in f.params if p.mode == "inout"}
         s.vt = {p.name: p.type for p in f.params}
         s.borrowed = {p.name for p in f.params if is_collection(p.type) and not p.take}
         s.refs = {p.name for p in f.params if s.is_ext(p.type)}
-        ps = ", ".join("%s: %s" % (p.name, s.rt(p.type, not p.take)) for p in f.params)
+        if s.inouts:
+            ps = ", ".join("%s: %s" % (p.name, "&mut " + rty(p.type, True)[1:] if p.mode == "inout"
+                                       else s.rt(p.type, not p.take)) for p in f.params)
+        else:
+            ps = ", ".join("%s: %s" % (p.name, s.rt(p.type, not p.take)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
         body_name = f.name + "__pruv_body" if f.requires else f.name
         if s.explicit:
@@ -774,7 +788,8 @@ class Gen:
         s.emit(0, "")
         if f.requires:
             if not s.explicit:
-                s.entry(f, ps, ret, body_name)
+                # G5: a wrapper of an inout function always checks (trust_callers does not waive it)
+                s.entry(f, ps, ret, body_name, checked=True if s.inouts else None)
             elif s.verified:
                 if f.host_entry:     # the checked host wrapper; no other function has a wrapper in verified mode
                     s.entry(f, ps, ret, body_name, f.name, True, not s.trust)
@@ -820,7 +835,11 @@ class Gen:
                 s.emit(1, "let mut pruv_budget: i64 = %s;" % format(s.budget, "_"))
             for line in checks:
                 s.emit(1, line)
-        s.emit(1, "%s(%s)" % (body_name, ", ".join(p.name for p in f.params)))
+        if s.inouts:
+            s.emit(1, "%s(%s)" % (body_name, ", ".join(("&mut *" + p.name) if p.mode == "inout" else p.name
+                                                        for p in f.params)))
+        else:
+            s.emit(1, "%s(%s)" % (body_name, ", ".join(p.name for p in f.params)))
         s.emit(0, "}")
         s.emit(0, "")
 
@@ -1390,22 +1409,22 @@ class Gen:
                     s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: bool = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x; } }" %
                            (s.e(st.index), s.e(st.value), st.name))
                 else:
-                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: bool = %s; pruv_set_bool(&mut %s, pruv_i, pruv_x); }" %
-                           (s.e(st.index), s.e(st.value), st.name))
+                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: bool = %s; pruv_set_bool(%s, pruv_i, pruv_x); }" %
+                           (s.e(st.index), s.e(st.value), s.mut_ref(st.name)))
             elif is_u8_array(s.vt.get(st.name)):
                 if s.verified:
                     s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x as u8; } }" %
                            (s.e(st.index), s.e(st.value), st.name))
                 else:
-                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; pruv_set_u8(&mut %s, pruv_i, pruv_x); }" %
-                           (s.e(st.index), s.e(st.value), st.name))
+                    s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; pruv_set_u8(%s, pruv_i, pruv_x); }" %
+                           (s.e(st.index), s.e(st.value), s.mut_ref(st.name)))
             elif s.verified:
                 s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x; } }" %
                        (s.e(st.index), s.e(st.value), st.name))
             else:
                 # temporaries first: `&mut a` must not be live while index/value read `a`
-                s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; pruv_set(&mut %s, pruv_i, pruv_x); }" %
-                       (s.e(st.index), s.e(st.value), st.name))
+                s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; pruv_set(%s, pruv_i, pruv_x); }" %
+                       (s.e(st.index), s.e(st.value), s.mut_ref(st.name)))
         elif isinstance(st, If):
             s.emit(ind, "if %s {" % s.e(st.cond))
             s.block(st.then, ind + 1)
@@ -1464,10 +1483,16 @@ class Gen:
             s.emit(ind + 1, "}")
         s.emit(ind, "}")
 
+    def mut_ref(s, name):
+        """G5: a mutable borrow of the array `name`: a reborrow for an inout parameter (already `&mut [T]`)"""
+        return "&mut *" + name if name in s.inouts else "&mut " + name
+
     def arr_ref(s, e):
         """an array expression used as a borrowed slice"""
         if isinstance(e, Var) and e.name in s.refs:
             return e.name          # G9: a buffer payload view is already a reference
+        if isinstance(e, Var) and e.name in s.inouts:
+            return "&*" + e.name   # G5: a shared reborrow of an inout parameter
         if isinstance(e, Var) and e.name not in s.params:
             return "&" + e.name
         if isinstance(e, Var):
@@ -1601,7 +1626,9 @@ class Gen:
                 s.fg.trusted_helper(callee)   # emitted on first use; the helper checks the selected requires itself
             args = []
             for i, x in enumerate(a):
-                if s.g6 and (isinstance(x, Move) or (x.ty is not None and is_collection(x.ty))):
+                if isinstance(x, InoutArg):   # G5: `inout name` -> a mutable borrow / reborrow, in source order
+                    args.append(s.mut_ref(x.expr.name))
+                elif s.g6 and (isinstance(x, Move) or (x.ty is not None and is_collection(x.ty))):
                     take = isinstance(x, Move) or (callee is not None and callee.params[i].take)
                     args.append(s.e(x) if take else s.cref(x))
                 elif s.ext and s.is_ext(x.ty):

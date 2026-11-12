@@ -1,0 +1,21 @@
+// G5 A2 runtime (safe mode only): index and u8-range failures of stores through an inout parameter use the existing
+// pruv_set / pruv_set_u8 helpers (`&mut *a` reborrow); the index is checked before the element range
+fn put(inout a: [i64], i: i64, v: i64) -> () {
+  a[i] = v;
+}
+
+fn put_byte(inout b: [u8], i: i64, v: i64) -> () {
+  b[i] = v;
+}
+
+pub fn write_i64(a: [i64], i: i64, v: i64) -> [i64] ! alloc {
+  let mut w: [i64] = copy(a);
+  put(inout w, i, v);
+  return w;
+}
+
+pub fn write_u8(a: [u8], i: i64, v: i64) -> [u8] ! alloc {
+  let mut w: [u8] = copy(a);
+  put_byte(inout w, i, v);
+  return w;
+}

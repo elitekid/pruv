@@ -54,7 +54,7 @@ from vast import PruvError  # noqa: E402
 from vparser import parse as pruv_parse  # noqa: E402
 from modules import load_program  # noqa: E402  (G4: the file-taking entry point; a legacy root is plain parse(src))
 import check as check_mod  # noqa: E402
-from typeinfo import format_type, g9_unimplemented_error, g5_unimplemented_error  # noqa: E402
+from typeinfo import format_type, g9_unimplemented_error  # noqa: E402
 from foreign import g6_unimplemented_error  # noqa: E402
 
 AST_SCHEMA = "pruv-ast-v1"
@@ -326,11 +326,8 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
             else:
                 errs = verify.verify_program(prog, rec=rec)
             errors.extend(err_dict(e) for e in errs)
-        # G5 A1: the staging guard of pruvc.compile_file runs after verification (verification errors win)
-        if not errors:
-            g5err = g5_unimplemented_error(prog)
-            if g5err is not None:
-                raise g5err
+        # G5 A2 / G4 A2: no guard here. pruvc.compile_file keeps its G5 and G4 staging guards only for the LLVM backend
+        # (--backend llvm / --also-llvm); this adapter's code generator is the Rust source backend.
         # G4 A2: no guard here. pruvc.compile_file keeps its staging guard only for the LLVM backend (--backend llvm /
         # --also-llvm); this adapter's code generator is the Rust source backend, which generates explicit programs.
     except PruvError as e:

@@ -1,0 +1,43 @@
+// G5: iterative in-place reversal of an inout array; the loop invariant tracks the reversed prefix and suffix and the
+// untouched middle against the entry contents old(a)
+fn swap_at(inout a: [i64], i: i64, j: i64) -> ()
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+  ensures len(a) == len(old(a))
+  ensures a[i] == old(a)[j]
+  ensures a[j] == old(a)[i]
+  ensures forall k in 0..len(a): k != i && k != j ==> a[k] == old(a)[k]
+{
+  let x: i64 = a[i];
+  let y: i64 = a[j];
+  a[i] = y;
+  a[j] = x;
+}
+
+fn reverse(inout a: [i64]) -> ()
+  ensures len(a) == len(old(a))
+  ensures forall k in 0..len(a): a[k] == old(a)[len(a) - 1 - k]
+{
+  let n: i64 = len(a);
+  let mut i: i64 = 0;
+  let mut j: i64 = n - 1;
+  while i < j
+    invariant 0 <= i && i <= n
+    invariant j == n - 1 - i
+    invariant len(a) == n
+    invariant n == len(old(a))
+    invariant forall k in 0..i: a[k] == old(a)[n - 1 - k]
+    invariant forall k in 0..n: j < k ==> a[k] == old(a)[n - 1 - k]
+    invariant forall k in 0..n: i <= k && k <= j ==> a[k] == old(a)[k]
+    decreases j - i
+  {
+    swap_at(inout a, i, j);
+    i = i + 1;
+    j = j - 1;
+  }
+}
+
+pub fn reversed(a: [i64]) -> [i64] ! alloc {
+  let mut w: [i64] = copy(a);
+  reverse(inout w);
+  return w;
+}

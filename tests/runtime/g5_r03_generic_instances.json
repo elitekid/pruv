@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["[3, 2, 1]", "[4, 5]", "[false, true, false]", "[true, false]"], "gen_contains": ["a: &mut [i64]", "a: &mut [bool]"]}
