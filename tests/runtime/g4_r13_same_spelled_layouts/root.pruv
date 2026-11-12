@@ -1,0 +1,30 @@
+// G4 A3 runtime: two modules each declare `struct Point` with a different field layout; both are used, also in host entry
+// signatures, and stay distinct types in the generated code
+mod a;
+mod b;
+
+pub fn sum_a(p: crate::a::Point) -> i64
+  requires 0 <= p.x && p.x <= 1000
+  requires 0 <= p.y && p.y <= 1000
+  ensures result == p.x + p.y
+{
+  return crate::a::sum(p);
+}
+
+pub fn sum_b(p: crate::b::Point) -> i64
+  requires 0 <= p.p && p.p <= 1000
+  requires 0 <= p.q && p.q <= 1000
+  requires 0 <= p.r && p.r <= 1000
+  ensures p.on ==> result == p.p + p.q + p.r
+{
+  return crate::b::sum(p);
+}
+
+pub fn mix(x: i64) -> i64
+  requires 1 <= x && x <= 100
+  ensures result == 8 * x + 1
+{
+  let p: crate::a::Point = crate::a::make(x);
+  let q: crate::b::Point = crate::b::make(x);
+  return crate::a::sum(p) + crate::b::sum(q);
+}

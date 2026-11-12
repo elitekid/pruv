@@ -1,0 +1,25 @@
+// companion module of g4_r12_raw_validation (path crate::check)
+pub fn trues(a: [bool]) -> i64
+  requires len(a) >= 1 && a[0]
+  ensures 0 <= result && result <= len(a)
+{
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant 0 <= c && c <= i
+    decreases len(a) - i
+  {
+    if a[i] {
+      c = c + 1;
+    }
+    i = i + 1;
+  }
+  return c;
+}
+
+pub fn byte_len(s: str) -> i64
+  ensures result == len(s)
+{
+  return len(s);
+}

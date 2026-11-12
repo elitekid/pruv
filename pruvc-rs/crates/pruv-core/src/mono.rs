@@ -32,6 +32,7 @@ use crate::gtype::{
 };
 use crate::modules::{encode_name, encode_stem, identity_components, safe_type, G4};
 use crate::typeinfo::first_g3_use;
+use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 
 pub const MAX_FN_SPECS: usize = 4096;
@@ -235,11 +236,12 @@ impl<'a> Mono<'a> {
 
     // ---------- G4 A2 naming (explicit mode) ----------
     /// the name token of a generic declaration inside a pruv_g3 stem / argument encoding
-    fn gname(&self, name: &str) -> String {
+    /// borrowed outside explicit mode, so legacy specialization requests copy nothing before the lookup
+    fn gname<'n>(&self, name: &'n str) -> Cow<'n, str> {
         if self.g4.is_some() {
-            encode_name(&identity_components(name))
+            Cow::Owned(encode_name(&identity_components(name)))
         } else {
-            name.to_string()
+            Cow::Borrowed(name)
         }
     }
 
@@ -251,11 +253,11 @@ impl<'a> Mono<'a> {
         }
     }
 
-    fn safe_args(&self, args: &[GType]) -> Vec<GType> {
+    fn safe_args<'n>(&self, args: &'n [GType]) -> Cow<'n, [GType]> {
         if self.g4.is_some() {
-            args.iter().map(safe_type).collect()
+            Cow::Owned(args.iter().map(safe_type).collect())
         } else {
-            args.to_vec()
+            Cow::Borrowed(args)
         }
     }
 

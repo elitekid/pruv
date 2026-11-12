@@ -23,6 +23,12 @@ pub fn set_type_disp(m: std::collections::HashMap<String, String>) {
     TYPE_DISP.with(|t| *t.borrow_mut() = m);
 }
 
+/// G4 A3 (Python `getattr(d, "disp", name)`): the registered source-qualified identity of a nominal type, or the name itself
+/// outside explicit visibility mode (unlike `src_name`, a G3 stem is NOT unwrapped here).
+pub fn type_disp(name: &str) -> String {
+    TYPE_DISP.with(|t| t.borrow().get(name).cloned()).unwrap_or_else(|| name.to_string())
+}
+
 /// G3: the declaration name a generated type stem (`pruv_g3_t_<len>_<name>_...`) was made from; any other name as is.
 /// G4 A2: in explicit mode the identity the type was declared with (`crate::m::Name`).
 /// Used where Python keeps `src_name` (panic messages of requires).

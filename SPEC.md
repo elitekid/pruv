@@ -336,6 +336,39 @@ fn tree_count(t: Tree) -> i64
   `recursive_generic_type`, `recursive_borrow`, `size_type`, `recursive_nonneg`, `recursive_decrease`; reused:
   `recursive_type` (type without a finite value), `field_type`, `type_argument`, `eq_type`, `missing_effect`.
 
+## 6f. Modules and visibility (G4)
+Full contract: `docs/G4_SPEC.md` (§10–§13 are the implemented decisions). Example: `examples/g4_backend/`.
+```
+// root.pruv                               // arithmetic.pruv
+mod arithmetic;                            pub fn increment(x: i64) -> i64
+pub fn bounded(x: i64) -> i64                requires 0 <= x && x <= 10
+  requires 0 <= x && x <= 10                 ensures result == x + 1
+  ensures result == x + 1                  { return x + 1; }
+{ return crate::arithmetic::increment(x); }
+```
+- **Files.** The command-line file is the root. `mod name;` (top level only) loads `name.pruv` next to the root;
+  inside `a.pruv`, `mod b;` loads `a/b.pruv`. Only declared files are loaded, each exactly once. No inline modules,
+  `pub mod`, path attributes or `mod.pruv`.
+- **Explicit mode.** A root that contains `mod` or a top-level `pub` switches the whole program to explicit
+  visibility. Then unmarked `fn`/`struct`/`enum` items are private to their file. A root with neither keeps the old
+  single-file rules and output unchanged.
+- **Paths.** Other modules' items are reached only by full paths from `crate`: `crate::math::clamp(x)`,
+  `crate::model::Event::Hit`, `crate::model::Pair<i64, bool>`, `crate::math::first::<i64>(a)`. Plain names look only
+  in the same file, then builtins. There is no `use`, `self`, `super` or relative path.
+- **Visibility.** `pub` makes an item usable from every module. Fields and variants of a visible type are always
+  visible. A public signature or contract may mention only public types and items (checked through field types too);
+  private helpers are fine inside bodies. `pub trusted rust fn` is rejected: wrap it in a public Pruv function.
+- **Host entries.** Only root `pub`, non-generic functions are callable from Rust/C (`--rust-bindings`, LLVM
+  `pruv_abi_<name>`). Their signatures must be plain values (no collections, recursive or buffer-field types:
+  `type/entry_signature`). Child `pub` functions are for Pruv callers only. An optional root `main` must be
+  `pub fn main() -> ()`; a child `main` is an ordinary function.
+- **Proof.** Every function is verified, including private and unused ones; a caller only sees the callee's
+  contract, never its body. Recursion and recursive types may span modules. Host entries check `requires` at run
+  time unless `--trust-callers`; `--no-verify` checks `requires` on every call.
+- **Diagnostics** in explicit mode carry a `file` field (relative to the root, `/` separators). New codes include
+  `parse/module_syntax`, `parse/visibility_syntax`, `parse/module_file`, `type/private_item`, `type/public_interface`,
+  `type/entry_signature`, `type/entry_main` (see `docs/G4_SPEC.md` §8 for the full table).
+
 ## 7. What the compiler proves (all must succeed)
 1. Every `a[i]` (read or write): `0 <= i < len(a)`.
 2. Every `+ - * unary-` in code: result within i64 range.

@@ -1,0 +1,26 @@
+// G4 A3 runtime: host entries whose signatures use nested child types; the bindings expose the entries and the nominal
+// types they depend on (Crate -> Dim, Mark), and no child function or private type
+mod outer;
+
+pub fn total_of(b: crate::outer::Crate) -> i64
+  requires 0 <= b.base.w && b.base.w <= 1000
+  requires 0 <= b.base.h && b.base.h <= 1000
+  requires 0 <= b.height && b.height <= 1000
+  ensures result == b.base.w + b.base.h + b.height
+{
+  return crate::outer::total(b);
+}
+
+pub fn make(w: i64, h: i64, height: i64, code: i64) -> crate::outer::Crate
+  ensures result.base.w == w && result.base.h == h && result.height == height
+{
+  return crate::outer::build(w, h, height, code);
+}
+
+pub fn mark_of(b: crate::outer::Crate) -> i64 {
+  let m: crate::outer::inner::Mark = b.mark;
+  match m {
+    crate::outer::inner::Mark::Plain => { return 0 - 1; }
+    crate::outer::inner::Mark::Tag(c) => { return c; }
+  }
+}

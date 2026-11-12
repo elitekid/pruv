@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "exit": 0, "stdout_lines": ["1", "41", "201"], "gen_contains": ["pub fn score(", "fn score__pruv_body("], "gen_absent": ["pub fn pruv_m_", "pub fn score__pruv_body("]}
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"], ["--no-verify", "--trust-callers"]], "llvm_exports": ["pruv_abi_score"], "exit": 0, "stdout_lines": ["1", "41", "201"], "gen_contains": ["pub fn score(", "fn score__pruv_body("], "gen_absent": ["pub fn pruv_m_", "pub fn score__pruv_body("]}

@@ -14,7 +14,7 @@
 //! are the parallel vectors `G4.fn_meta` / `ty_meta` (same indices as `Program.functions` / `types`).
 
 use crate::ast::*;
-use crate::diagnostic::{plain_line, set_files, tagged_line, PruvError};
+use crate::diagnostic::{set_files, tagged_line, PruvError};
 use crate::foreign::is_catalog;
 use crate::gtype::{decl_owner, dependencies, fn_owner, GType};
 use crate::pyio::{io_error_message, utf8_error_message};
@@ -358,24 +358,6 @@ pub fn load_source(path: &Path, src: &str) -> Result<Loaded, LoadError> {
     }
     let g4 = G4 { modules, items: all_items, fn_meta, ty_meta, entries: Vec::new(), main: None, resolved: false };
     Ok(Loaded { prog, g4: Some(g4) })
-}
-
-/// The staging guard of explicit mode (pruvc.compile_file): the LLVM codegen layer does not know modules yet (G4 A2: the Rust
-/// source backend does). Reported at the first item (1:1 without items) with `file` = the root module file.
-pub fn guard_error(prog: &Program, g4: &G4) -> PruvError {
-    let (line, col) = match g4.items.first() {
-        Some(Item::Fn(i)) => (plain_line(prog.functions[*i].line), prog.functions[*i].col),
-        Some(Item::Ty(i)) => (plain_line(prog.types[*i].line()), prog.types[*i].col()),
-        None => (1, 1),
-    };
-    PruvError::new(
-        "codegen",
-        tagged_line(line, 1),
-        col,
-        "unsupported_type",
-        "G4 modules and visibility are not implemented by the llvm codegen layer yet",
-        "use the Rust source backend for now",
-    )
 }
 
 // ---------------------------------------------------------------------------

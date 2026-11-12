@@ -94,16 +94,20 @@ def _sniff_explicit(src):
     """a root that failed to parse: does it use module syntax (a `mod` / `pub` token)?  -> its error carries `file`"""
     def has(toks):
         return any(t.kind == "kw" and t.val in ("mod", "pub") for t in toks)
-    try:
-        return has(lex(src))
-    except PruvError as e:
-        # a lex error sniffs the text before the error position, so a `pub` ahead of a bad character still counts
-        lines = src.split("\n")
-        pre = "\n".join(lines[:e.line - 1] + [lines[e.line - 1][:e.col - 1]]) if 1 <= e.line <= len(lines) else src
+    # a lex error sniffs the text before the error position, so a `pub` ahead of a bad character still counts;
+    # the cut repeats while each new error lands earlier (a cut inside a string reports its opening quote)
+    cur = src
+    while True:
         try:
-            return has(lex(pre))
-        except PruvError:
-            return False
+            return has(lex(cur))
+        except PruvError as e:
+            lines = cur.split("\n")
+            if not 1 <= e.line <= len(lines):
+                return False
+            pre = "\n".join(lines[:e.line - 1] + [lines[e.line - 1][:e.col - 1]])
+            if len(pre) >= len(cur):
+                return False
+            cur = pre
 
 
 def _file_id(p):

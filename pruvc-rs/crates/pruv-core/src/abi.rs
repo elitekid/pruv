@@ -259,7 +259,8 @@ impl<'a> Words<'a> {
                     let na = self.op(format!("xor i1 {}, true", a));
                     ok = self.op(format!("or i1 {}, {}", na, ok));
                 }
-                self.checks.push((ok, w.clone(), ty.to_string()));
+                // G4: source-qualified type identity in explicit mode (Python `getattr(d, "disp", ty.name)`)
+                self.checks.push((ok, w.clone(), crate::emit_common::type_disp(ty)));
                 let tag = match act {
                     Some(a) if on => self.op(format!("select i1 {}, i64 {}, i64 0", a, w)),
                     _ => w.clone(),
@@ -480,6 +481,12 @@ pub enum AbiTarget {
 }
 
 pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget, m: &mut Mod) -> R<String> {
+    abi_of_target(f, tt, target, m, "entry")
+}
+
+/// Python `abi_of(f, tt, m, target)`: `callee` is the internal function the wrapper calls, `entry` (checked, legacy) or
+/// `body` (G4 explicit mode when the host boundary needs no requires check). The representation checks run in every mode.
+pub fn abi_of_target(f: &Function, tt: &TypeTable, target: AbiTarget, m: &mut Mod, callee: &str) -> R<String> {
     let n = mangle(&f.name);
     let mut ext: Vec<String> = Vec::new();
     let mut pre: Vec<String> = Vec::new();
@@ -522,7 +529,7 @@ pub fn abi_of(f: &Function, tt: &TypeTable, target: AbiTarget, m: &mut Mod) -> R
         }
     }
     let rt = f.ret.as_str();
-    let entry = format!("@{}__pruv_entry", n);
+    let entry = format!("@{}__pruv_{}", n, callee);
     let argl = args.join(", ");
     let mut body: Vec<String> = pre.iter().map(|x| format!("  {}", x)).collect();
     for (k, (okv, wv, tname)) in w.checks.iter().enumerate() {

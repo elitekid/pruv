@@ -25,6 +25,12 @@ Generated names (user identifiers never start with `pruv_` nor contain `__`, so 
   @.str.N         private string constants.
   G9 A3 helpers   @pruv_drop__T / @pruv_clone__T / @pruv_box__T / @pruv_dropnode__T / @pruv_clonenode__T (extended
                   types), @pruv_csize__T / @pruv_ceq__T (runtime contracts); see the G9 A3 design note before class Words.
+G4 A3 (explicit visibility mode, docs/G4_SPEC.md 4, 7; Program.explicit): the program is the mono plan, so every function and
+type already carries its Rust stem (same stems, order and entry set as codegen.py).  Bodies and checked `__pruv_entry`
+wrappers are `internal`; `pruv_abi_<entry>` (and `__typed`) exist only for host entries (root `pub`, nongeneric).  Verified:
+only a host entry with a requires has a checked `__pruv_entry` (none under trust_callers) and every Pruv call goes to the
+body; safe mode: every function with a requires has one and Pruv calls go through it, also under trust_callers (which only
+makes the host-boundary `pruv_abi_*` call the body directly).  Representation checks in `pruv_abi_*` run in every mode.
 Local IR names: %tN temporaries, %lN.name.{a,b} local slots (entry-block alloca), %p.name parameters,
 %qN.* quantifier slots, labels `hint.N` (per-function counters).
 
@@ -321,6 +327,7 @@ class Mod:
         s.g6_bridge = False     # G6 A3: some function references @pruv_g6_bridge_v1
         s.need_size = set()     # G9 A3: types whose runtime-contract size / equality helpers are needed
         s.need_eq = set()
+        s.explicit = False      # G4 A3: explicit visibility mode (set by gen_llvm); Pruv calls use the Rust-backend routing
 
     def string(s, text):
         if text not in s.strs:
@@ -1389,7 +1396,12 @@ class FnGen:
                 args.append("%s %s" % (lty(v.ty), v.a))
             else:
                 args.append("%s %s" % (v.k, v.a))
-        callee = "@%s__pruv_%s" % (mangle(f.name), "body" if s.verified else "entry")
+        if s.m.explicit:
+            # G4 A3 (docs/G4_SPEC.md 4): verified calls go to the body (requires proved); safe-mode calls go through the
+            # checked wrapper only when the callee has a requires (no wrapper exists otherwise)
+            callee = "@%s__pruv_%s" % (mangle(f.name), "entry" if (not s.verified and f.requires) else "body")
+        else:
+            callee = "@%s__pruv_%s" % (mangle(f.name), "body" if s.verified else "entry")
         if s.is_ext(f.ret):   # G9 A3: explicit output storage; the result is a fresh owned value
             outp = s.new_out(f.ret)
             s.ins("call void %s(%s)" % (callee, ", ".join(["ptr %s" % outp] + args)))
@@ -1978,7 +1990,7 @@ def entry_of(m, funcs, f, trust, budget=1 << 30):
         g.ins("store i64 %d, ptr %s" % (budget, g.budget))
         for r in f.requires:
             c = g.cregion(lambda r=r: g.cev(r))
-            msg_fn = m.string(f.name)
+            msg_fn = m.string(getattr(f, "disp", f.name))   # G4: the source-qualified identity, not the stem
             msg_ex = m.string(show(r))
             g.guard(c.a, lambda a=msg_fn, b=msg_ex: g.ins("call void @pruv_panic_requires(ptr %s, ptr %s)" % (a, b)),
                     False)
@@ -2505,7 +2517,7 @@ class Words:
         ok = s.op("icmp ult i64 %s, %d" % (w, len(d.variants)))
         if on:
             ok = s.op("or i1 %s, %s" % (s.op("xor i1 %s, true" % act), ok))
-        s.checks.append((ok, w, ty.name))
+        s.checks.append((ok, w, getattr(d, "disp", ty.name)))   # G4: source-qualified type identity in explicit mode
         tag = s.op("select i1 %s, i64 %s, i64 0" % (act, w)) if on else w
         acc = s.op("insertvalue %s zeroinitializer, i64 %s, 0" % (T, tag))
         o, idx = off + 1, 1
@@ -2629,7 +2641,9 @@ class Words:
                     idx += 1
 
 
-def abi_of(f, tt, m=None):
+def abi_of(f, tt, m=None, target="entry"):
+    """target: which internal function the wrapper calls, `entry` (checked, legacy) or `body` (G4 explicit mode when the
+    host boundary needs no requires check). The representation checks below run in every mode."""
     n = mangle(f.name)
     ext, pre, args = [], [], []
     w = Words(tt)
@@ -2661,7 +2675,7 @@ def abi_of(f, tt, m=None):
             pre.append("%%c.%s.g = insertvalue %s %%c.%s.g1, i64 %%a.%s.v, 1" % (q, OPT, q, q))
             args.append("%s %%c.%s.g" % (OPT, q))
     rt = f.ret
-    entry = "@%s__pruv_entry" % n
+    entry = "@%s__pruv_%s" % (n, target)
     body = ["  " + x for x in pre]
     for k, (okv, wv, tname) in enumerate(w.checks):
         # G3: an invalid nominal enum ordinal is rejected here, before the entry (requires) and the body run
@@ -2865,14 +2879,50 @@ def rs_de(tt, ty, arr, off):
     return "(match %s[%d] { %s _ => ::std::unreachable!() })" % (arr, off, " ".join(arms))
 
 
+def is_host_abi_fn(f, tt, explicit):
+    """a function that gets `pruv_abi_*` wrappers: legacy = every ordinary function that is not a specialization or
+    collection/extended-bearing; G4 explicit mode = additionally only the host entries (a child-public function is
+    never exported just because Pruv callers can name it)"""
+    return (f.foreign is None and not getattr(f, "private", False) and not _is_coll_fn(f)
+            and not is_internal_fn(f, tt) and (f.host_entry or not explicit))
+
+
+def entry_type_closure(prog, tt):
+    """G4 A3: names of the nominal types reachable from the host entry signatures (parameters and results), following
+    Option/Result arguments and struct fields / enum payloads, with a visited set (cycles)"""
+    seen = set()
+    work = []
+    for f in prog.functions:
+        if is_host_abi_fn(f, tt, True):
+            work += [p.type for p in f.params] + [f.ret]
+    while work:
+        t = work.pop()
+        work += list(t.args or [])
+        if is_user_type(t) and t.name not in seen:
+            seen.add(t.name)
+            d = tt.decls.get(t.name)
+            if d is not None:
+                fields = d.fields if isinstance(d, StructDecl) else [x for v in d.variants for x in v.fields]
+                work += [x.type for x in fields]
+    return seen
+
+
 def gen_bindings(prog, shim=None):
     """shim: the `mod pruv_g6_shim` text of a G6 program (foreign_shim.build_shim); None for every other program"""
     tt = new_tt(prog)
+    explicit = bool(getattr(prog, "explicit", False))
     o = []
     o.append("// generated by pruvc llvmgen -- Rust bindings for the LLVM back end (include with #[path] mod sol;)")
     if prog.types:
-        pub = codegen.emit_public_types(prog)
-        o.append(pub.replace("#[derive", ALLOW + "\n#[derive") if "#[derive" in pub else pub)
+        if explicit:
+            # G4 A3 (docs/G4_SPEC.md 7): only the nominal types the host entry signatures depend on, transitively
+            # (declaration order of the type table is kept)
+            need = entry_type_closure(prog, tt)
+            pub = codegen.emit_public_types(prog, [d for d in tt.order if d.name in need]) if need else ""
+        else:
+            pub = codegen.emit_public_types(prog)
+        if pub:
+            o.append(pub.replace("#[derive", ALLOW + "\n#[derive") if "#[derive" in pub else pub)
     o.append(ALLOW)
     o.append("#[repr(C)]\npub struct Pruv__Array { pub data: *mut i64, pub len: i64 }")
     if uses_array_type(prog, "array_u8"):
@@ -2962,7 +3012,7 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
     # G6 A3: trusted declarations and collection-bearing functions have no binding
     # G9 A3: a function with an extended type in its signature has no binding either
     pubs = [f for f in prog.functions if not getattr(f, "private", False) and f.foreign is None
-            and not _is_coll_fn(f) and not is_internal_fn(f, tt)]
+            and not _is_coll_fn(f) and not is_internal_fn(f, tt) and (f.host_entry or not explicit)]   # G4: entries only
     returns_array = any(is_arr(f.ret) for f in pubs)  # G2 B2: str counts
     decls = []
     for f in pubs:
@@ -3148,11 +3198,12 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     from typeinfo import g2_unimplemented_error, first_g3_use
     if foreign_checks not in ("requires", "all", "off"):
         raise ValueError("foreign_checks must be requires, all or off")
-    if plan is None and first_g3_use(prog) is not None:
+    if plan is None and (first_g3_use(prog) is not None or prog.explicit):   # G4 A3: explicit mode names via mono
         from mono import specialize
         plan = specialize(prog)
     if plan is not None:
         prog = plan.program
+    explicit = bool(getattr(prog, "explicit", False))
     g6err = g6_llvm_error(prog)
     if g6err is not None:
         raise g6err
@@ -3162,9 +3213,21 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         raise RuntimeError("unsupported_type: %s" % g2err.message)
     tt = new_tt(prog)   # G9: SCC-condensed order and the extended / boxed metadata (identical to TypeTable otherwise)
     m = Mod(tt)
+    m.explicit = explicit
     funcs = {f.name: f for f in prog.functions}
     chunks = []
-    if not trust_callers and any(f.requires and f.foreign is None for f in prog.functions):
+
+    def checked_entry(f):
+        """G4 A3 (docs/G4_SPEC.md 4, same policy as codegen.Gen): the functions that get a checked `__pruv_entry`.
+        Verified: only host entries with a requires (none under trust_callers); safe mode: every function with a
+        requires, also under trust_callers (it removes only the host-boundary checks)"""
+        return bool(f.requires) and f.foreign is None and (not verified or (f.host_entry and not trust_callers))
+
+    if explicit:
+        need_cdiv = any(checked_entry(f) for f in prog.functions)
+    else:
+        need_cdiv = not trust_callers and any(f.requires and f.foreign is None for f in prog.functions)
+    if need_cdiv:
         chunks.append(cdivrem(m, True))
         chunks.append(cdivrem(m, False))
     for f in prog.functions:
@@ -3177,6 +3240,14 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         g.body()
         params = ir_params(f, tt)
         chunks.append(g.render("define internal %s @%s__pruv_body(%s)" % (ir_ret(tt, f), mangle(f.name), sig_text(params))))
+        if explicit:
+            # G4 A3: bodies and checked wrappers are internal; only a host entry gets pruv_abi_* (and its typed variant).
+            # The host boundary calls the checked wrapper unless trust_callers skips the check (or there is no requires).
+            if checked_entry(f):
+                chunks.append(entry_of(m, funcs, f, False, budget))
+            if is_host_abi_fn(f, tt, True):
+                chunks.append(abi_of(f, tt, m, "entry" if (checked_entry(f) and not trust_callers) else "body"))
+            continue
         if not (coll and verified):   # verified callers call the body; the entry only serves safe-mode callers
             chunks.append(entry_of(m, funcs, f, trust_callers or not f.requires, budget))
         if not getattr(f, "private", False) and not coll:  # G3: a generic specialization has no ABI symbol

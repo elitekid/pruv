@@ -1,0 +1,18 @@
+// G4 example: a backend component split over nested modules (crate::engine, crate::engine::rules,
+// crate::engine::rules::limits). Public functions carry requires/ensures contracts, each module keeps a private helper,
+// and the root exposes scalar host entries that call the modules by absolute paths.
+mod engine;
+
+pub fn process(base: i64, cap: i64) -> i64
+  requires 0 <= base && base <= 999999
+  requires 1 <= cap && cap <= 1000000
+  ensures 0 <= result && result <= cap
+{
+  let j: crate::engine::Job = crate::engine::make_job(base, cap);
+  return crate::engine::run(j);
+}
+
+pub fn main() -> () ! io {
+  print(process(10, 100));
+  print(process(500, 100));
+}

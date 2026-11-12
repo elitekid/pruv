@@ -1,0 +1,4 @@
+// companion module of g4_r11_entry_type_closure (path crate::outer::inner)
+pub struct Dim { w: i64, h: i64 }
+
+pub enum Mark { Plain, Tag(code: i64) }

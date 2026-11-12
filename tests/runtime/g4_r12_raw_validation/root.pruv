@@ -1,0 +1,17 @@
+// G4 A3 runtime: raw [bool] / str host entries that delegate to a child module. On the llvm backend the raw
+// `pruv_abi_*` symbols validate the representation before requires and body, also with --trust-callers
+// (main_llvm.rs feeds bad bytes through them; main.rs feeds valid values through the typed bindings)
+mod check;
+
+pub fn count_true(a: [bool]) -> i64
+  requires len(a) >= 1 && a[0]
+  ensures 0 <= result && result <= len(a)
+{
+  return crate::check::trues(a);
+}
+
+pub fn first_len(s: str) -> i64
+  ensures result == len(s)
+{
+  return crate::check::byte_len(s);
+}

@@ -39,7 +39,8 @@
     {"name": "g4_r21_generic_missing_requires", "root": "tests/must_reject/g4_r21_generic_missing_requires/root.pruv", "stage": "verify", "code": "call_requires"},
     {"name": "g4_r22_unused_generic_false_ensures", "root": "tests/must_reject/g4_r22_unused_generic_false_ensures/root.pruv", "stage": "verify", "code": "ensures"},
     {"name": "g4_r23_lex_after_pub", "root": "tests/must_reject/g4_r23_lex_after_pub/root.pruv", "stage": "parse", "code": "bad_char"},
-    {"name": "g4_r24_child_foreign_path", "root": "tests/must_reject/g4_r24_child_foreign_path/root.pruv", "stage": "type", "code": "foreign_path"}
+    {"name": "g4_r24_child_foreign_path", "root": "tests/must_reject/g4_r24_child_foreign_path/root.pruv", "stage": "type", "code": "foreign_path"},
+    {"name": "g4_r25_escape_after_pub", "root": "tests/must_reject/g4_r25_escape_after_pub/root.pruv", "stage": "parse", "code": "string_escape"}
   ],
   "proof": [
     {"name": "p01_same_spelled_types", "root": "tests/g4/proof/p01_same_spelled_types/root.pruv"},
@@ -63,6 +64,10 @@
     {"name": "g4_r07_underscore_names", "root": "tests/runtime/g4_r07_underscore_names/root.pruv"},
     {"name": "g4_r08_foreign", "root": "tests/runtime/g4_r08_foreign/root.pruv"},
     {"name": "g4_r09_cross_file_recursion", "root": "tests/runtime/g4_r09_cross_file_recursion/root.pruv"},
-    {"name": "g4_r10_visibility", "root": "tests/runtime/g4_r10_visibility/root.pruv"}
+    {"name": "g4_r10_visibility", "root": "tests/runtime/g4_r10_visibility/root.pruv"},
+    {"name": "g4_r11_entry_type_closure", "root": "tests/runtime/g4_r11_entry_type_closure/root.pruv"},
+    {"name": "g4_r12_raw_validation", "root": "tests/runtime/g4_r12_raw_validation/root.pruv"},
+    {"name": "g4_r13_same_spelled_layouts", "root": "tests/runtime/g4_r13_same_spelled_layouts/root.pruv"},
+    {"name": "g4_r14_child_main", "root": "tests/runtime/g4_r14_child_main/root.pruv"}
   ]
 }

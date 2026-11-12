@@ -1,0 +1,23 @@
+// companion module of g4_r11_entry_type_closure (path crate::outer)
+mod inner;
+
+// private type: never part of the bindings
+struct Scratch { t: i64 }
+
+pub struct Crate { base: crate::outer::inner::Dim, height: i64, mark: crate::outer::inner::Mark }
+
+pub fn build(w: i64, h: i64, height: i64, code: i64) -> Crate
+  ensures result.base.w == w && result.base.h == h && result.height == height
+{
+  return Crate { base: crate::outer::inner::Dim { w: w, h: h }, height: height, mark: crate::outer::inner::Mark::Tag(code) };
+}
+
+pub fn total(b: Crate) -> i64
+  requires 0 <= b.base.w && b.base.w <= 1000
+  requires 0 <= b.base.h && b.base.h <= 1000
+  requires 0 <= b.height && b.height <= 1000
+  ensures result == b.base.w + b.base.h + b.height
+{
+  let s: Scratch = Scratch { t: b.base.w + b.base.h + b.height };
+  return s.t;
+}

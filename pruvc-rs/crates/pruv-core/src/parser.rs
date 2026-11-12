@@ -55,25 +55,34 @@ pub fn parse_file(src: &str, tag: usize) -> R<ParsedFile> {
 pub fn sniff_explicit(src: &str) -> bool {
     let chars = normalized_chars(src);
     let has = |toks: &[Tok]| toks.iter().any(|t| t.kind == Kind::Kw && (t.val == "mod" || t.val == "pub"));
-    match lex(&chars) {
-        Ok(toks) => has(&toks),
-        Err(e) => {
-            // the prefix: whole lines before the error line, then col - 1 characters of it
-            let (mut line, mut i) = (1i64, 0usize);
-            while i < chars.len() && line < e.line {
-                if chars[i] == '\n' {
-                    line += 1;
+    // the cut repeats while each new error lands earlier (a cut inside a string reports its opening quote)
+    let mut end = chars.len();
+    loop {
+        let cur = &chars[..end];
+        match lex(cur) {
+            Ok(toks) => return has(&toks),
+            Err(e) => {
+                // the prefix: whole lines before the error line, then col - 1 characters of it
+                let lines = 1 + cur.iter().filter(|&&c| c == '\n').count() as i64;
+                if e.line < 1 || e.line > lines {
+                    return false;
                 }
-                i += 1;
-            }
-            let mut c = 1i64;
-            while i < chars.len() && c < e.col && chars[i] != '\n' {
-                c += 1;
-                i += 1;
-            }
-            match lex(&chars[..i]) {
-                Ok(toks) => has(&toks),
-                Err(_) => false,
+                let (mut line, mut i) = (1i64, 0usize);
+                while i < cur.len() && line < e.line {
+                    if cur[i] == '\n' {
+                        line += 1;
+                    }
+                    i += 1;
+                }
+                let mut c = 1i64;
+                while i < cur.len() && c < e.col && cur[i] != '\n' {
+                    c += 1;
+                    i += 1;
+                }
+                if i >= end {
+                    return false;
+                }
+                end = i;
             }
         }
     }

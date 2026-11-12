@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["true", "false", "true"], "gen_contains": ["pruv_m_f_2_4_even_7_is_even", "pruv_m_f_2_3_odd_6_is_odd", "pub fn parity("], "gen_absent": ["pub fn pruv_m_"]}
+{"flags_matrix": [[], ["--no-verify"]], "llvm_exports": ["pruv_abi_parity"], "exit": 0, "stdout_lines": ["true", "false", "true"], "gen_contains": ["pruv_m_f_2_4_even_7_is_even", "pruv_m_f_2_3_odd_6_is_odd", "pub fn parity("], "gen_absent": ["pub fn pruv_m_"]}

@@ -522,6 +522,10 @@ pub struct Mod {
     /// G9 A3: types whose runtime-contract size / equality helpers are needed
     pub need_size: BTreeSet<String>,
     pub need_eq: BTreeSet<String>,
+    /// G4 A3: explicit visibility mode (Pruv calls use the Rust-backend routing)
+    pub explicit: bool,
+    /// G4 A3: function name (stem) -> source-qualified identity (Python `f.disp`), explicit mode only
+    pub fn_disp: HashMap<String, String>,
 }
 
 impl Mod {
@@ -535,6 +539,8 @@ impl Mod {
             g6_bridge: false,
             need_size: BTreeSet::new(),
             need_eq: BTreeSet::new(),
+            explicit: false,
+            fn_disp: HashMap::new(),
         }
     }
 
@@ -2264,7 +2270,13 @@ impl<'a> FnGen<'a> {
                 k => args.push(format!("{} {}", k.name(), v.a)),
             }
         }
-        let callee = format!("@{}__pruv_{}", mangle(&f.name), if self.verified { "body" } else { "entry" });
+        let callee = if self.m.explicit {
+            // G4 A3 (docs/G4_SPEC.md 4): verified calls go to the body (requires proved); safe-mode calls go through the
+            // checked wrapper only when the callee has a requires (no wrapper exists otherwise)
+            format!("@{}__pruv_{}", mangle(&f.name), if !self.verified && !f.requires.is_empty() { "entry" } else { "body" })
+        } else {
+            format!("@{}__pruv_{}", mangle(&f.name), if self.verified { "body" } else { "entry" })
+        };
         if self.is_ext(&f.ret) {
             // G9 A3: explicit output storage; the result is a fresh owned value
             let outp = self.new_out(&f.ret);
@@ -3187,7 +3199,9 @@ pub fn entry_of(
         g.ins(format!("store i64 {}, ptr {}", budget, bname))?;
         for r in &f.requires {
             let c = g.cregion(&|g2| g2.cev(r))?;
-            let msg_fn = g.m.string(&f.name);
+            // G4: the source-qualified identity, not the stem
+            let disp = g.m.fn_disp.get(&f.name).cloned().unwrap_or_else(|| f.name.clone());
+            let msg_fn = g.m.string(&disp);
             let msg_ex = g.m.string(&crate::emit_common::show(r));
             g.guard(&c.a, Fail::Requires(msg_fn, msg_ex), false)?;
         }
@@ -3860,6 +3874,17 @@ fn is_coll_fn(f: &Function) -> bool {
     f.params.iter().any(|p| is_collection(&p.ty)) || is_collection(&f.ret)
 }
 
+/// Python `is_host_abi_fn`: a function that gets `pruv_abi_*` wrappers: legacy = every ordinary function that is not a
+/// specialization or collection/extended-bearing; G4 explicit mode = additionally only the host entries (a child-public
+/// function is never exported just because Pruv callers can name it). `host` = the function's host-entry flag.
+pub fn is_host_abi_fn(f: &Function, tt: &TypeTable, explicit: bool, host: bool) -> bool {
+    f.foreign.is_none()
+        && !crate::emit_common::is_spec_fn(&f.name)
+        && !is_coll_fn(f)
+        && !is_internal_fn(f, tt)
+        && (host || !explicit)
+}
+
 /// Generation with a chosen target ABI. SysV is byte-identical to gen_llvm.
 pub fn gen_llvm_for(prog: &Program, verified: bool, trust_callers: bool, budget: u64, target: AbiTarget) -> R<(String, String)> {
     gen_llvm_any(prog, verified, trust_callers, budget, target).map_err(|e| match e {
@@ -3890,12 +3915,38 @@ pub fn gen_llvm_any_ex(
     target: AbiTarget,
     foreign_checks: &str,
 ) -> Result<(String, String), crate::codegen::GenError> {
+    gen_llvm_any_ex_g4(prog, None, verified, trust_callers, budget, target, foreign_checks)
+}
+
+/// `gen_llvm_any` for a checked program of explicit visibility mode (G4 A3; `g4` = None is `gen_llvm_any`).
+pub fn gen_llvm_any_g4(
+    prog: &Program,
+    g4: Option<&crate::modules::G4>,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    target: AbiTarget,
+) -> Result<(String, String), crate::codegen::GenError> {
+    gen_llvm_any_ex_g4(prog, g4, verified, trust_callers, budget, target, "requires")
+}
+
+/// `gen_llvm_any_ex` with the explicit-mode data (G4 A3): explicit mode always goes through the specialization plan, which
+/// names every function and type by its Rust stem (Python `gen_llvm`: `first_g3_use(prog) is not None or prog.explicit`).
+pub fn gen_llvm_any_ex_g4(
+    prog: &Program,
+    g4: Option<&crate::modules::G4>,
+    verified: bool,
+    trust_callers: bool,
+    budget: u64,
+    target: AbiTarget,
+    foreign_checks: &str,
+) -> Result<(String, String), crate::codegen::GenError> {
     use crate::codegen::GenError;
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
-    if crate::typeinfo::first_g3_use(prog).is_some() {
-        let plan = crate::mono::specialize(prog).map_err(|e| match e {
+    if crate::typeinfo::first_g3_use(prog).is_some() || g4.is_some() {
+        let plan = crate::mono::specialize_g4(prog, g4).map_err(|e| match e {
             crate::mono::MonoError::Limit(p) => GenError::Diag(p),
             crate::mono::MonoError::Internal(m) => GenError::Msg(m),
         })?;
@@ -3977,19 +4028,51 @@ fn gen_llvm_body(
         // G2 B2: str also opens the generation layer
         return Err(format!("unsupported_type: {}", e.message));
     }
+    // G4 A3: the identities behind the Rust names (panic / enum texts); cleared again when the generator returns
+    struct DispGuard;
+    impl Drop for DispGuard {
+        fn drop(&mut self) {
+            crate::emit_common::set_type_disp(HashMap::new());
+        }
+    }
+    let _disp_guard = DispGuard;
+    crate::emit_common::set_type_disp(prog.explicit.as_ref().map(|x| x.tdisp.clone()).unwrap_or_default());
     // G9: SCC-condensed order and the extended / boxed metadata (identical to TypeTable::new otherwise)
     let tt = new_tt(prog);
     let mut m = Mod::new();
+    let explicit = prog.explicit.is_some();
+    m.explicit = explicit;
+    // G4 A3: per function (parallel to prog.functions): host entry flag; the display identity map
+    let hosts: Vec<bool> = match &prog.explicit {
+        Some(x) => x.fns.iter().map(|mk| mk.host_entry).collect(),
+        None => Vec::new(),
+    };
+    if let Some(x) = &prog.explicit {
+        for (f, mk) in prog.functions.iter().zip(x.fns.iter()) {
+            m.fn_disp.entry(f.name.clone()).or_insert_with(|| mk.disp.clone());
+        }
+    }
     let mut funcs: HashMap<String, &Function> = HashMap::new();
     for f in &prog.functions {
         funcs.insert(f.name.clone(), f);
     }
     let mut chunks: Vec<String> = Vec::new();
-    if !trust_callers && prog.functions.iter().any(|f| !f.requires.is_empty() && f.foreign.is_none()) {
+    // G4 A3 (docs/G4_SPEC.md 4, same policy as codegen.Gen): the functions that get a checked `__pruv_entry`.
+    // Verified: only host entries with a requires (none under trust_callers); safe mode: every function with a requires,
+    // also under trust_callers (it removes only the host-boundary checks)
+    let checked_entry = |f: &Function, host: bool| -> bool {
+        !f.requires.is_empty() && f.foreign.is_none() && (!verified || (host && !trust_callers))
+    };
+    let need_cdiv = if explicit {
+        prog.functions.iter().enumerate().any(|(i, f)| checked_entry(f, hosts.get(i).copied().unwrap_or(false)))
+    } else {
+        !trust_callers && prog.functions.iter().any(|f| !f.requires.is_empty() && f.foreign.is_none())
+    };
+    if need_cdiv {
         chunks.push(cdivrem(&mut m, true));
         chunks.push(cdivrem(&mut m, false));
     }
-    for f in &prog.functions {
+    for (fi, f) in prog.functions.iter().enumerate() {
         if f.foreign.is_some() {
             // G6 A3: a trusted rust fn has no body; its calls go to the shim adapter
             continue;
@@ -4006,6 +4089,25 @@ fn gen_llvm_body(
             mangle(&f.name),
             sig_text(&params)
         )));
+        if explicit {
+            // G4 A3: bodies and checked wrappers are internal; only a host entry gets pruv_abi_* (and its typed variant).
+            // The host boundary calls the checked wrapper unless trust_callers skips the check (or there is no requires).
+            let host = hosts.get(fi).copied().unwrap_or(false);
+            let checked = checked_entry(f, host);
+            if checked {
+                chunks.push(entry_of(&mut m, &tt, &funcs, f, false, budget)?);
+            }
+            if is_host_abi_fn(f, &tt, true, host) {
+                chunks.push(crate::abi::abi_of_target(
+                    f,
+                    &tt,
+                    target,
+                    &mut m,
+                    if checked && !trust_callers { "entry" } else { "body" },
+                )?);
+            }
+            continue;
+        }
         if !(coll && verified) {
             // verified callers call the body; the entry only serves safe-mode callers
             chunks.push(entry_of(&mut m, &tt, &funcs, f, trust_callers || f.requires.is_empty(), budget)?);

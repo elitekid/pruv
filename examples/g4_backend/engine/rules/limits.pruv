@@ -1,0 +1,23 @@
+// module crate::engine::rules::limits of examples/g4_backend
+// private helper: only this module can call it
+fn clamp_hi(x: i64, hi: i64) -> i64
+  requires 0 <= hi
+  ensures result <= hi && (x <= hi ==> result == x)
+{
+  if x > hi {
+    return hi;
+  }
+  return x;
+}
+
+pub fn clamp(x: i64, lo: i64, hi: i64) -> i64
+  requires -1000000 <= x && x <= 1000000
+  requires 0 <= lo && lo <= hi && hi <= 1000000
+  ensures lo <= result && result <= hi
+{
+  let t: i64 = clamp_hi(x, hi);
+  if t < lo {
+    return lo;
+  }
+  return t;
+}

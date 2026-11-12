@@ -3,7 +3,7 @@
 
     python tests/diff_compilers.py [--b-path P] (default pruvc-rs/target/release/pruvc, .exe on Windows) [--backend rust|llvm|both]
         [--a py|rs] [--a-path P] [--b py|rs] [--b-path P] [--input FILE ...] [--flag F ...]
-        [--only must_reject|examples|runtime|bench] [--jobs N] [--timeout 300] [--save-dir DIR]
+        [--only must_reject|examples|runtime|bench|g4] [--jobs N] [--timeout 300] [--save-dir DIR]
     python tests/diff_compilers.py --replay CASE_DIR
 
 Runs both compilers on the same input, flags and backend, each in a new process per input (a, then b, in order within one worker ->
@@ -11,6 +11,9 @@ the number of concurrent processes is at most --jobs (default os.cpu_count())), 
 Default inputs: tests/must_reject/*.pruv, examples/*.pruv (default/no-verify/trust-callers),
 tests/runtime/*.pruv (flags_matrix, flags and contract_budget from the .json), bench/solutions/pruv_agg/*.pruv,
 and --input FILE (repeatable; set flags with --flag).
+G4 (group g4; A3: on both backends, rust and llvm): the project roots of tests/g4/fixtures.json (frontend, reject, proof and
+runtime with the flags/budget/externs of each spec.json) plus examples/g4_*/root.pruv in the three example modes. Only the root
+is the input; the compilers read the declared module files themselves.
 
 Comparison: exit code / stdout JSON lines (count and order; stage, line, col and code must match exactly, and message and fix are compared too,
 normalizing only the work directory, input path and compiler executable name) / bytes of the generated files (.rs, .ll, bindings).
@@ -100,7 +103,7 @@ def build_cases(args):
         import importlib
         P = importlib.import_module("g4.projects")
         for e in P.all_entries():
-            if e["group"] in ("frontend", "reject", "proof"):   # G4 A1: proof projects (verify, then the staging guard)
+            if e["group"] in ("frontend", "reject", "proof"):   # G4 A1: proof projects (verify, then code generation)
                 cases.append({"name": "g4/" + e["name"], "src": os.path.join(ROOT, *e["root"].split("/")),
                               "flags": [], "project": True})
             elif e["group"] == "runtime":                        # G4 A2: flags / budget / externs of spec.json

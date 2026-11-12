@@ -1,0 +1,27 @@
+// module crate::engine of examples/g4_backend
+mod rules;
+
+pub struct Job { base: i64, cap: i64 }
+
+// private helper: only this module can call it
+fn weight(j: Job) -> i64
+  requires 0 <= j.base && j.base <= 999999
+  ensures result == j.base + 1
+{
+  return j.base + 1;
+}
+
+pub fn make_job(base: i64, cap: i64) -> Job
+  ensures result.base == base && result.cap == cap
+{
+  return Job { base: base, cap: cap };
+}
+
+pub fn run(j: Job) -> i64
+  requires 0 <= j.base && j.base <= 999999
+  requires 1 <= j.cap && j.cap <= 1000000
+  ensures 0 <= result && result <= j.cap
+{
+  let w: i64 = weight(j);
+  return crate::engine::rules::score(w, j.cap);
+}

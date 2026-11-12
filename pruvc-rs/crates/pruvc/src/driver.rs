@@ -13,6 +13,11 @@ use std::path::Path;
 /// The C entry shim of exe. `main__pruv_entry` is the `define internal void` emitted by llvmgen::entry_of (a unit main with no arguments).
 const MAIN_SHIM: &str = "define i32 @main() {\n  call void @main__pruv_entry()\n  ret i32 0\n}\n";
 
+/// G4 A3: the C entry shim of an explicit-mode program. The root `pub fn main` is a host entry, so `pruv_abi_main` (an
+/// external wrapper that calls the checked entry or the body as the build mode requires) exists for it and for no child
+/// module's `main` (those carry resolved stems and no ABI symbol).
+const MAIN_SHIM_G4: &str = "define i32 @main() {\n  call void @pruv_abi_main()\n  ret i32 0\n}\n";
+
 enum Fail {
     /// Language and proof errors (one line each, exit 1).
     Lang(Vec<PruvError>),
@@ -161,8 +166,9 @@ fn link_fail(e: pruvc::Error) -> Fail {
 }
 
 /// The exe entry point: must be `fn main() -> ()` with no parameters.
-fn check_entry(prog: &Program) -> Result<(), Fail> {
-    let m = prog.functions.iter().find(|f| f.name == "main");
+/// `name` is the program-level name of the entry: "main" for a legacy program, the root module's resolved identity (G4).
+fn check_entry(prog: &Program, name: &str) -> Result<(), Fail> {
+    let m = prog.functions.iter().find(|f| f.name == name);
     if m.map_or(false, |f| f.params.is_empty() && f.ret == "unit") {
         return Ok(());
     }
@@ -226,7 +232,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // which Python does not have, cannot link the Rust shim: codegen/foreign_target (G6_SPEC 13.1). With --no-verify
     // that check fires right after the check; otherwise after verification.
     let g6_native = matches!(a.kind, Kind::Obj | Kind::Exe);
-    if !a.verify && g6_native && g4.is_none() {
+    if !a.verify && g6_native {
         if let Some(e) = foreign_target_error(&prog) {
             return Err(Fail::Lang(vec![e]));
         }
@@ -254,7 +260,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
-        if g6_native && g4.is_none() {
+        if g6_native {
             if let Some(e) = foreign_target_error(&prog) {
                 return Err(Fail::Lang(vec![e]));
             }
@@ -262,17 +268,10 @@ fn compile(a: &Args) -> Result<(), Fail> {
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
     }
-    if let Some(g) = &g4 {
-        // G4 staging guard (until A3), after the proof and also with --no-verify, same diagnostic as Python compile_file:
-        // the Rust source backend generates explicit visibility programs (A2); every LLVM path (--emit ll|obj|exe and
-        // --also-llvm) is rejected, nothing is written
-        if !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some() {
-            return Err(Fail::Lang(vec![pruv_core::modules::guard_error(&prog, g)]));
-        }
-    }
     // G3 A3/A4 (same place as in Python compile_file): every backend (rust, llvm, also --also-llvm) specializes generic
     // programs through the shared plan (mono.rs) and generates from the concrete program. G4 A2: explicit mode always goes
-    // through the plan (it names every function and type by its Rust stem).
+    // through the plan (it names every function and type by its Rust stem). G4 A3: the LLVM backend generates explicit
+    // programs too (no staging guard); the executable shim of `--emit exe` targets only the root `main`.
     let mut plan_prog: Option<Program> = None;
     if pruv_core::typeinfo::first_g3_use(&prog).is_some() || g4.is_some() {
         match pruv_core::mono::specialize_g4(&prog, g4.as_ref()) {
@@ -344,14 +343,20 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
         Kind::Exe => {
             let target = need_target(a)?;
-            check_entry(&prog)?;
+            // G4 A3: in explicit mode the program main is the root module's `pub fn main` only (its resolved identity,
+            // `g4.main`); a child module's `pub fn main` is an ordinary function and never the entry
+            let entry_name: &str = match &g4 {
+                Some(g) => g.main.as_deref().unwrap_or(""),
+                None => "main",
+            };
+            check_entry(&prog, entry_name)?;
             check_runtime(target)?;
             let (mut ir, _) = generate(a, gprog)?;
             if !ir.ends_with('\n') {
                 ir.push('\n');
             }
             ir.push('\n');
-            ir.push_str(MAIN_SHIM);
+            ir.push_str(if g4.is_some() { MAIN_SHIM_G4 } else { MAIN_SHIM });
             let tmp = tempfile::tempdir().map_err(|e| Fail::Internal(format!("tempdir: {e}")))?;
             let obj = tmp.path().join("prog.o");
             pruvc::llvm::compile_ir_to_object(ir.as_bytes(), &a.input, target, &a.cpu, &obj).map_err(codegen_fail)?;

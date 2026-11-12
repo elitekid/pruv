@@ -1,0 +1,12 @@
+// G4 A3 runtime: the root `main` is the program main (a host entry); the child module's `pub fn main` is an ordinary
+// function with another signature and is never exported
+mod tools;
+
+pub fn answer() -> i64 {
+  return crate::tools::main() + 1;
+}
+
+pub fn main() -> () ! io {
+  print(crate::tools::main());
+  print(answer());
+}

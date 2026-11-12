@@ -19,6 +19,7 @@ import json
 from vast import *
 from typeinfo import encode, format_type
 from codegen import rty, cty, conv, show, rstr
+from modules import safe_type     # G4: nominal identities in helper names use their [0-9A-Za-z_] encoding
 
 
 def _budget_line(n):
@@ -85,7 +86,7 @@ class ForeignGen:
     def catalog_helper(s, op, low, src):
         if not src and low:
             src = low
-        name = "pruv_g6_" + op + "".join("__" + encode(t) for t in src)
+        name = "pruv_g6_" + op + "".join("__" + encode(safe_type(t)) for t in src)
         if name not in s.items:
             s.op = op
             s.items[name] = s._catalog_text(op, name, low)
@@ -201,7 +202,7 @@ class ForeignGen:
 
     # ------------------------------------------------------------------ contract-only scan (requires)
     def map_updated_helper(s, kt, vt, src):
-        name = "pruv_g6_map_updated" + "".join("__" + encode(t) for t in src)
+        name = "pruv_g6_map_updated" + "".join("__" + encode(safe_type(t)) for t in src)
         if name in s.items:
             return name
         s.op = "map_updated"

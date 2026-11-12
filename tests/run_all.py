@@ -15,8 +15,10 @@ G4 A2 projects: tests/runtime/g4_*/ (listed in tests/g4/fixtures.json group "run
 root.pruv + companion modules, main.rs (the host driver, appended after `mod sol;` like tests/runtime/X.rs) and spec.json
 (the fields of tests/runtime/X.json plus the optional "gen_absent": [strings] that must NOT occur in the generated Rust,
 rust backend only). The project is copied to a new work directory before it is compiled; the row sample is its root.pruv.
-examples/g4_*/root.pruv (+ companions) are examples rows (default / no-verify / trust-callers). The llvm rows of all of
-them are listed in tests/llvm_pending.txt and expect the G4 llvm guard ("the llvm codegen layer").
+examples/g4_*/root.pruv (+ companions) are examples rows (default / no-verify / trust-callers). G4 A3: their llvm rows run
+for real (the guard is gone); every G4 llvm row also checks the exported symbols of the .ll: the defined external symbols
+must be exactly the host-entry `pruv_abi_*` symbols (runtime projects: spec.json "llvm_exports"; project examples: the
+root `pub fn` names).
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
 
@@ -54,6 +56,9 @@ Optional runtime json field "contract_budget": N appends
 ["--contract-budget", str(N)] to the pruvc flags of every matrix row (labels unchanged).
 Optional runtime json field "ll_contains": [strings] (llvm backend only) must each occur in
 the WHOLE generated .ll text (not just __pruv_body functions).
+G4 A3 spec.json fields (llvm backend only unless stated): "llvm_exports" [symbols] (required for every G4 project: the exact
+defined external symbols of the .ll), "bindings_contains" / "bindings_absent" [strings] (the generated Rust bindings), "llvm"
+{fields} (overrides top-level fields of the llvm rows), and an optional main_llvm.rs next to main.rs (the llvm host driver).
 tests/llvm_pending.txt (one repo-relative sample path per line, # comments): the llvm rows of the listed examples and
 runtime samples expect pruvc exit 1 with a codegen/unsupported_type diagnostic (nothing is linked or run)."""
 import concurrent.futures, glob, json, os, platform, re, shutil, subprocess, sys, tempfile, threading
@@ -69,6 +74,43 @@ def body_functions(text):
         end = text.find("\n}", m.start())
         out[m.group(1)] = text[m.start(): end + 2 if end >= 0 else len(text)]
     return out
+
+
+# G4 A3 (docs/G4_SPEC.md 7, 13): defined symbols with external linkage of an .ll text (function definitions and global
+# definitions without internal/private linkage; declarations and llvm.* metadata globals are not definitions).
+EXT_FN_DEF = re.compile(r"^define (?!internal\b|private\b)[^\n@]*@([A-Za-z0-9_.$]+)\(", re.M)
+EXT_GLOBAL_DEF = re.compile(r"^@([A-Za-z0-9_.$]+) = (?!internal\b|private\b|external\b|appending\b)", re.M)
+
+
+def exported_symbols(text):
+    """sorted names of the symbols an .ll text defines with external linkage"""
+    names = set(EXT_FN_DEF.findall(text)) | set(EXT_GLOBAL_DEF.findall(text))
+    return sorted(n for n in names if not n.startswith("llvm."))
+
+
+def exports_problems(text, expected):
+    """problems of the exported-symbol check: the defined external symbols must be exactly `expected` (a list of names,
+    all `pruv_abi_*`: the host entries and their typed variants). Checked for every G4 llvm row (explicit expectations,
+    not only compiler parity)."""
+    got = exported_symbols(text)
+    out = []
+    stray = [n for n in got if not n.startswith("pruv_abi_")]
+    if stray:
+        out.append("non-entry external symbols %s" % stray)
+    if got != sorted(expected):
+        out.append("exported symbols %s != expected %s" % (got, sorted(expected)))
+    return out
+
+
+ROOT_PUB_FN = re.compile(r"^pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*(<)?", re.M)
+
+
+def root_entry_exports(root_text, got):
+    """expected exports of a project example (no spec.json): one `pruv_abi_<name>` per root `pub fn <name>(` without type
+    parameters; a `pruv_abi_<name>__typed` is also allowed when the entry has a [bool]/str parameter (taken from `got`)."""
+    names = ["pruv_abi_" + m.group(1) for m in ROOT_PUB_FN.finditer(root_text) if not m.group(2)]
+    return names + [g for g in got if g.endswith("__typed") and g[:-len("__typed")] in names]
+
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -488,6 +530,10 @@ def example_job(f, mode, flags, llvm, name):
             if c.returncode != 0:
                 return False, "pruvc exit %d %s" % (c.returncode, c.stdout + c.stderr)
             text = open(ll).read()
+            if base == "root.pruv":   # G4 A3: only the root `pub fn` entries are exported (bodies and wrappers are internal)
+                ps = exports_problems(text, root_entry_exports(open(f, encoding="utf-8").read(), exported_symbols(text)))
+                if ps:
+                    return False, "; ".join(ps)
             bodies = body_functions(text)
             if not bodies:
                 return False, "no @..__pruv_body( definitions found in .ll"
@@ -562,6 +608,9 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
         proj = os.path.basename(j) == "spec.json"      # G4 A2 project: root.pruv + modules + main.rs + spec.json
         pruv, drv = (os.path.join(d, "root.pruv"), os.path.join(d, "main.rs")) if proj else \
             (os.path.join(d, t + ".pruv"), os.path.join(d, t + ".rs"))
+        if llvm and proj and os.path.exists(os.path.join(d, "main_llvm.rs")):
+            # G4 A3: a project may need a llvm-only host driver (raw `pruv_abi_*` calls with invalid representations)
+            drv = os.path.join(d, "main_llvm.rs")
         link = []
         # G6 A2 (G6_SPEC 12.5): "rust_externs": {"NAME": "tests/runtime/FILE.rs"} -> an rlib per job, passed to
         # pruvc as --rust-extern NAME=RLIB and to the final rustc as --extern NAME=RLIB
@@ -633,9 +682,22 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
                     if a != fr or a <= 0:
                         problems.append("alloc balance %d allocs / %d frees" % (a, fr))
             ll_text = open(ll).read()
+            if proj:   # G4 A3: the exported-symbol check; spec.json "llvm_exports" lists the expected defined externals
+                if "llvm_exports" not in spec:
+                    problems.append("spec.json has no llvm_exports")
+                else:
+                    problems += exports_problems(ll_text, spec["llvm_exports"])
             for s in spec.get("ll_contains") or []:
                 if s not in ll_text:
                     problems.append("ll lacks %r" % s)
+            if spec.get("bindings_contains") or spec.get("bindings_absent"):   # G4 A3: the generated Rust bindings (gen)
+                bind_text = open(gen).read()
+                for s in spec.get("bindings_contains") or []:
+                    if s not in bind_text:
+                        problems.append("bindings lack %r" % s)
+                for s in spec.get("bindings_absent") or []:
+                    if s in bind_text:
+                        problems.append("bindings contain forbidden %r" % s)
             bodies = body_functions(ll_text)
             for field, want in (("llvm_fn_contains", True), ("llvm_fn_absent", False)):
                 for fn_name, pats in (spec.get(field) or {}).items():
@@ -672,6 +734,8 @@ def runtime_jobs(backend):
     for j, t in specs:
         try:
             spec = json.load(open(j))
+            if llvm and isinstance(spec.get("llvm"), dict):   # G4 A3: "llvm": {...} overrides fields on the llvm backend
+                spec = dict(spec, **spec["llvm"])
             budget = spec.get("contract_budget")
             extra = ["--contract-budget", str(budget)] if budget is not None else []
             rows = []

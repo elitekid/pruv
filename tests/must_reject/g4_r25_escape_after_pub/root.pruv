@@ -1,0 +1,2 @@
+// G4 A2 reject parse/string_escape: a bad escape inside a string after a top-level `pub` still names the root file
+pub fn main() -> () { let s: str = "bad\q"; }
