@@ -246,8 +246,7 @@ class _Expander:
                             _synth_assert(r, label, ex, "refinement_assign",
                                           "the %s of local %s after the call on line %d" % (label, a.expr.name, e.line))
                             for label, ex in parts(r, a.expr.name, s.k)]
-        for c in _kids(e):
-            s.annotate(c, scope)
+        # statement-boundary rule (G5 §2.1): an inout call is always the whole statement expression; no recursion
 
     def block(s, stmts, scope):
         out = []

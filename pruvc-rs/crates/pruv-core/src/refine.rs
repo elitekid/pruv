@@ -420,47 +420,7 @@ impl Expander {
                 }
             }
         }
-        match e {
-            Expr::InoutArg(x) => self.annotate(&mut x.expr, scope),
-            Expr::Unary(x) => self.annotate(&mut x.operand, scope),
-            Expr::Binary(x) => {
-                self.annotate(&mut x.left, scope);
-                self.annotate(&mut x.right, scope);
-            }
-            Expr::Index(x) => {
-                self.annotate(&mut x.array, scope);
-                self.annotate(&mut x.index, scope);
-            }
-            Expr::Ctor(x) => {
-                if let Some(a) = x.arg.as_mut() {
-                    self.annotate(a, scope);
-                }
-            }
-            Expr::Quant(x) => {
-                self.annotate(&mut x.lo, scope);
-                self.annotate(&mut x.hi, scope);
-                self.annotate(&mut x.body, scope);
-            }
-            Expr::Call(x) => {
-                for a in x.args.iter_mut() {
-                    self.annotate(a, scope);
-                }
-            }
-            Expr::StructLit(x) => {
-                for f in x.fields.iter_mut() {
-                    self.annotate(&mut f.value, scope);
-                }
-            }
-            Expr::EnumCtor(x) => {
-                for a in x.args.iter_mut() {
-                    self.annotate(a, scope);
-                }
-            }
-            Expr::FieldAccess(x) => self.annotate(&mut x.base, scope),
-            Expr::IsVariant(x) => self.annotate(&mut x.value, scope),
-            Expr::VariantField(x) => self.annotate(&mut x.value, scope),
-            Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
-        }
+        // statement-boundary rule (G5 §2.1): an inout call is always the whole statement expression; no recursion
     }
 
     fn block(&self, stmts: Vec<Stmt>, scope: &mut Scope) -> Vec<Stmt> {
