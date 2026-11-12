@@ -504,7 +504,32 @@ pub struct Model {
     size_f: RefCell<HashMap<String, FuncDecl>>,
     wf_f: RefCell<HashMap<String, FuncDecl>>,
     /// verify.py `s.fixed_memo`: memoized `fixed_size` per structural type (keyed by its Debug text; Ty is not Hash)
-    fixed_memo: RefCell<HashMap<String, Option<i64>>>,
+    fixed_memo: RefCell<HashMap<String, Option<String>>>,
+}
+
+/// Unbounded non-negative decimal addition (Python ints are unbounded; a deeply nested struct's fixed size can exceed i64).
+fn dec_add(a: &str, b: &str) -> String {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut out: Vec<u8> = Vec::with_capacity(a.len().max(b.len()) + 1);
+    let (mut i, mut j, mut carry) = (a.len(), b.len(), 0u8);
+    while i > 0 || j > 0 || carry > 0 {
+        let mut s = carry;
+        if i > 0 {
+            i -= 1;
+            s += a[i] - b'0';
+        }
+        if j > 0 {
+            j -= 1;
+            s += b[j] - b'0';
+        }
+        out.push(b'0' + s % 10);
+        carry = s / 10;
+    }
+    if out.is_empty() {
+        out.push(b'0');
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap_or_default()
 }
 
 /// typeinfo.py `_deps` as names: field dependencies on declared user types (no duplicates, first-appearance order).
@@ -926,7 +951,7 @@ impl Model {
             }
             // a generic application: a constant when the size is value-independent, else its own per-instance size
             if let Some(k) = self.fixed_size(fty)? {
-                return Ok(Some(self.z.int(k)));
+                return Ok(Some(self.z.int_str(&k)));
             }
             return Ok(Some(self.size_inst(fty)?.apply1(t)));
         }
@@ -936,15 +961,15 @@ impl Model {
     /// verify.py `Model.fixed_size`: the size of every value of the user type `ty` when it does not depend on the value (a
     /// struct whose fields are all scalars, buffers, collections or such structs), else None. Memoized per structural type;
     /// an in-progress (cyclic) type is never fixed.
-    pub fn fixed_size(&self, ty: &Ty) -> Result<Option<i64>, String> {
+    pub fn fixed_size(&self, ty: &Ty) -> Result<Option<String>, String> {
         let key = format!("{:?}", ty);
         if let Some(r) = self.fixed_memo.borrow().get(&key) {
-            return Ok(*r);
+            return Ok(r.clone());
         }
         self.fixed_memo.borrow_mut().insert(key.clone(), None);
-        let mut k: Option<i64> = None;
+        let mut k: Option<String> = None;
         if self.nominal_kind(ty) == Some(NomKind::Struct) {
-            k = Some(1);
+            k = Some("1".to_string());
             for (_fd, fty) in self.fields_of(ty, None)? {
                 if matches!(fty, Ty::Param(_) | Ty::I64 | Ty::Bool) || Model::is_buf(&fty) || fty.coll().is_some() {
                     continue;
@@ -960,11 +985,11 @@ impl Model {
                         k = None;
                         break;
                     }
-                    Some(c) => k = k.map(|x| x + c),
+                    Some(c) => k = k.map(|x| dec_add(&x, &c)),
                 }
             }
         }
-        self.fixed_memo.borrow_mut().insert(key, k);
+        self.fixed_memo.borrow_mut().insert(key, k.clone());
         Ok(k)
     }
 
@@ -1453,5 +1478,13 @@ mod tests {
         assert_eq!(Ty::from_gtype(&GType::option()), Ty::Opt);
         let p = gtype::mk_param("fn:f", 0, "T");
         assert_eq!(Ty::from_name(&gtype::mk_array(p.clone()).to_key()), Ty::GArray(p));
+    }
+
+    #[test]
+    fn dec_add_does_not_wrap_past_i64() {
+        // G9 A2 audit fix: fixed sizes are unbounded (Python ints); 2^63 + 2^63 must not wrap
+        assert_eq!(dec_add("9223372036854775808", "9223372036854775808"), "18446744073709551616");
+        assert_eq!(dec_add("0", "0"), "0");
+        assert_eq!(dec_add("999", "1"), "1000");
     }
 }

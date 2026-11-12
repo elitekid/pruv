@@ -1550,6 +1550,8 @@
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p33_field_read_parent_wf.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p34_nested_generic_size.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p35_variant_buffer_len.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p36_ctor_payload_operand.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p37_payload_subfield_read.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/cd01_requires_index.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/cd02_requires_order.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/cd03_div_zero.pruv"}

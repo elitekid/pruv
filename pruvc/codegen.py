@@ -816,11 +816,75 @@ class Gen:
             msg = "variant_field expected %s::%s.%s" % (getattr(e, "src_name", e.enum_name), e.variant, e.field)
             return ("({ let %s: &%s = %s; match %s { %s::%s(%s) => { let pruv_r: &%s = pruv_f; pruv_r } _ => pruv_ud(%s) } })" % (
                 tmp, e.enum_name, s.cx(e.value), tmp, e.enum_name, e.variant, pats, rty(vf.fields[idx].type), rstr(msg)))
-        if isinstance(e, EnumCtor) and not e.args:
-            return "(&%s::%s)" % (e.enum_name, e.variant)
-        if isinstance(e, StructLit) and not e.fields:
-            return "(&%s {})" % e.name
-        raise s.g9_unsupported(e, "a constructor with payload as an aggregate operand")
+        if isinstance(e, (EnumCtor, StructLit)):
+            # a constructor (with or without payload) is a REAL temporary value of the type; a reference to it lives
+            # through the enclosing statement. Contract integers are i128: every i64 field is converted with a checked
+            # conversion (pruv_ud when out of range).
+            return "(&%s)" % s.g9_real(e)
+        raise s.g9_unsupported(e, "this expression as an aggregate operand")
+
+    def g9_field_real(s, x, ty, label):
+        """a constructor field of declared type ty: the real value, boxed on a recursive edge"""
+        v = s.g9_real(x, ty)
+        return "::std::boxed::Box::new(%s)" % v if label in s.boxed else v
+
+    def g9_real(s, e, ty=None):
+        """Rust expression of the REAL (executed representation) OWNED value of the contract expression e (declared type
+        ty, default e.ty). Constructors are built field by field in declaration order; i64 values come from the i128
+        contract value through a checked conversion; named values and field paths are cloned from their reference."""
+        if isinstance(e, StructLit):
+            inits = {f.name: f.value for f in e.fields}
+            fs = s.table.fields(Type(e.name))
+            if not fs:
+                return "%s {}" % e.name
+            return "%s { %s }" % (e.name, ", ".join(
+                "%s: %s" % (f.name, s.g9_field_real(inits[f.name], f.type, "%s.%s" % (e.name, f.name))) for f in fs))
+        if isinstance(e, EnumCtor):
+            ctor = "%s::%s" % (e.enum_name, e.variant)
+            if not e.args:
+                return ctor
+            vf = s.table.variant(Type(e.enum_name), e.variant).fields
+            return "%s(%s)" % (ctor, ", ".join(
+                s.g9_field_real(a, fd.type, "%s::%s.%s" % (e.enum_name, e.variant, fd.name)) for a, fd in zip(e.args, vf)))
+        t = ty if ty is not None else e.ty
+        if isinstance(e, Ctor):
+            px = t.args[0] if t is not None and t.args else I64
+            rx = rty(px)
+            if e.name == "None":
+                return "None::<%s>" % rx
+            if e.name == "Some":
+                return "Some::<%s>(%s)" % (rx, s.g9_real(e.arg, px))
+            return "%s::<%s, i64>(%s)" % (e.name, rx, s.g9_real(e.arg, px if e.name == "Ok" else I64))
+        if t is None or (t.owner is None and t.name == "i64"):
+            return "i64::try_from(%s).unwrap_or_else(|_| pruv_ud(\"constructor field out of i64 range\"))" % s.c(e)
+        if t.owner is None and t.name == "bool":
+            return s.c(e)
+        if isinstance(e, (Var, FieldAccess, VariantField)) and (is_user_type(t) or t.name in ("option", "result")):
+            return "::std::clone::Clone::clone(%s)" % s.cx(e)
+        if is_array(t):
+            return "%s.to_vec()" % s.carr(e)
+        if t == STR:
+            return "%s.to_owned()" % s.carr(e)
+        raise s.g9_unsupported(e, "this expression as a constructor field of an aggregate operand")
+
+    def g9_real_path(s, e):
+        """e reads a part of a REAL (extended) value through references (cx): a variant_field of an extended value, or
+        a field path below one"""
+        if isinstance(e, VariantField):
+            return s.is_ext(e.value.ty) or s.g9_real_path(e.value)
+        if isinstance(e, FieldAccess):
+            return s.is_ext(e.base.ty) or s.g9_real_path(e.base)
+        return False
+
+    def g9_metered(s, ty, ref):
+        """contract value of type ty from `ref` (a Rust expression of type `&R(ty)`). A value holding nominal parts is
+        converted whole, so the conversion is charged to the shared budget first: one unit per nominal node visited
+        (the size helper ticks once per node)."""
+        if not nominals_in(ty):
+            return conv(ty, "(*%s)" % ref)
+        s.need_size.update(nominals_in(ty))
+        return "({ let pruv_m: &%s = %s; let _ = %s; %s })" % (
+            rty(ty), ref, s.g9_weight(ty, "pruv_m", "&mut pruv_budget"), conv(ty, "(*pruv_m)"))
 
     def path_boxed(s, root, fields):
         """the LAST field of the assignment path root.f1.f2... is a Box edge (follows the declared field types)"""
@@ -921,17 +985,20 @@ class Gen:
                 return ctor
             return "%s(%s)" % (ctor, ", ".join(s.c(a) for a in e.args))
         if isinstance(e, FieldAccess):
-            if s.is_ext(e.base.ty):
-                # G9: a scalar-like field of a real extended struct (aggregate / buffer fields are read through cx / carr)
+            if s.is_ext(e.base.ty) or s.g9_real_path(e.base):
+                # G9: a field of a real value (extended struct, or a part of one) is read from the original reference;
+                # only the field itself is converted (a nominal field is converted whole and charged to the budget)
                 if s.is_ext(e.ty) or is_array(e.ty) or e.ty == STR:
                     raise s.g9_unsupported(e, "the aggregate field %s as a plain operand" % e.field)
+                if nominals_in(e.ty):
+                    return s.g9_metered(e.ty, s.cx(e))
                 return conv(e.ty, "(%s).%s" % (s.cx(e.base), e.field))
             return "%s.%s" % (s.c(e.base), e.field)
         if isinstance(e, IsVariant):
-            if s.is_ext(e.value.ty):
+            if s.is_ext(e.value.ty) or s.g9_real_path(e.value):
                 return "matches!(%s, %s::%s { .. })" % (s.cx(e.value), e.enum_name, e.variant)
             return "matches!(%s, pruv_contract__%s::%s { .. })" % (s.c(e.value), e.enum_name, e.variant)
-        if isinstance(e, VariantField) and s.is_ext(e.value.ty):
+        if isinstance(e, VariantField) and (s.is_ext(e.value.ty) or s.g9_real_path(e.value)):
             if s.is_ext(e.ty) or is_array(e.ty) or e.ty == STR:
                 raise s.g9_unsupported(e, "the aggregate field %s as a plain operand" % e.field)
             s.tmp += 1
@@ -942,7 +1009,7 @@ class Gen:
             pats = ", ".join("pruv_f" if i == idx else "_" for i in range(len(vf.fields)))
             msg = "variant_field expected %s::%s.%s" % (getattr(e, "src_name", e.enum_name), e.variant, e.field)
             return "({ let %s: &%s = %s; match %s { %s::%s(%s) => %s, _ => pruv_ud(%s) } })" % (
-                tmp, e.enum_name, s.cx(e.value), tmp, e.enum_name, e.variant, pats, conv(e.ty, "(*pruv_f)"), rstr(msg))
+                tmp, e.enum_name, s.cx(e.value), tmp, e.enum_name, e.variant, pats, s.g9_metered(e.ty, "pruv_f"), rstr(msg))
         if isinstance(e, VariantField):
             s.tmp += 1
             tmp = "pruv_e%d" % s.tmp
@@ -1034,11 +1101,12 @@ class Gen:
     def decl_fields(d):
         return d.fields if isinstance(d, StructDecl) else [f for v in d.variants for f in v.fields]
 
-    def g9_weight(s, t, x):
-        """Rust i128 expression for weight(value) (G9_SPEC 3); x names a variable of type `&R(t)`.
+    def g9_weight(s, t, x, bud="pruv_budget"):
+        """Rust i128 expression for weight(value) (G9_SPEC 3); x names a variable of type `&R(t)`; bud is the budget
+        argument expression (`pruv_budget` inside a helper, where it is a `&mut i64`).
         Scalars, arrays and str weigh 0; a nominal value weighs its size; Some / Ok weigh their payload; None / Err 0."""
         if t.owner is None and t.args and t.name in ("option", "result"):
-            inner = s.g9_weight(t.args[0], "pruv_w")
+            inner = s.g9_weight(t.args[0], "pruv_w", bud)
             if inner == "0i128":
                 return "0i128"
             if t.name == "option":
@@ -1047,7 +1115,7 @@ class Gen:
             return ("match %s { ::std::result::Result::Ok(pruv_w) => %s, ::std::result::Result::Err(_) => 0i128 }"
                     % (x, inner))
         if is_user_type(t):
-            return "pruv_csize__%s(%s, pruv_budget)" % (t.name, x)
+            return "pruv_csize__%s(%s, %s)" % (t.name, x, bud)
         return "0i128"
 
     def g9_walks(s, t):
@@ -1087,16 +1155,25 @@ class Gen:
                     ws.append(w)
             return binds, ws
 
+        def stmts(ws):
+            """sequential accumulator statements (linear text, no nested pruv_cadd(pruv_cadd(..)..) chain)"""
+            return ["let mut pruv_s: i128 = 1i128;"] + ["pruv_s = pruv_cadd(pruv_s, %s);" % w for w in ws]
+
         def fold(ws):
-            r = "1i128"
-            for w in ws:
-                r = "pruv_cadd(%s, %s)" % (r, w)
-            return r
+            if len(ws) == 0:
+                return "1i128"
+            if len(ws) == 1:
+                return "pruv_cadd(1i128, %s)" % ws[0]
+            return "{ %s pruv_s }" % " ".join(stmts(ws))
         if isinstance(d, StructDecl):
             binds, ws = unit(d.fields)
             if d.fields:
                 lines.append("    let %s { %s } = v;" % (n, ", ".join("%s: %s" % (f.name, b) for f, b in zip(d.fields, binds))))
-            lines.append("    " + fold(ws))
+            if len(ws) >= 2:
+                lines.extend("    " + x for x in stmts(ws))
+                lines.append("    pruv_s")
+            else:
+                lines.append("    " + fold(ws))
         else:
             lines.append("    match v {")
             for v in d.variants:

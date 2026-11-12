@@ -838,10 +838,126 @@ impl<'a> Gen<'a> {
                     m = rstr(&msg)
                 ))
             }
-            Expr::EnumCtor(x) if x.args.is_empty() => Ok(format!("(&{}::{})", x.enum_name, x.variant)),
-            Expr::StructLit(x) if x.fields.is_empty() => Ok(format!("(&{} {{}})", x.name)),
-            _ => Err(self.g9_unsupported(e, "a constructor with payload as an aggregate operand")),
+            // a constructor (with or without payload) is a REAL temporary value of the type; a reference to it lives
+            // through the enclosing statement. Every i64 field is converted from the i128 contract value (checked).
+            Expr::EnumCtor(_) | Expr::StructLit(_) => Ok(format!("(&{})", self.g9_real(e, None)?)),
+            _ => Err(self.g9_unsupported(e, "this expression as an aggregate operand")),
         }
+    }
+
+    /// a constructor field of declared type `ty`: the real value, boxed on a recursive edge (Python `g9_field_real`)
+    fn g9_field_real(&mut self, x: &Expr, ty: &str, label: &str) -> R<String> {
+        let v = self.g9_real(x, Some(ty))?;
+        Ok(if self.boxed.contains(label) { format!("::std::boxed::Box::new({})", v) } else { v })
+    }
+
+    /// Rust expression of the REAL (executed representation) OWNED value of the contract expression `e` (declared type
+    /// `ty`, default the type of e); Python `g9_real`.
+    fn g9_real(&mut self, e: &Expr, ty: Option<&str>) -> R<String> {
+        match e {
+            Expr::StructLit(x) => {
+                let fs: Vec<FieldDecl> = k_fields(&self.table, &x.name, None)?.to_vec();
+                if fs.is_empty() {
+                    return Ok(format!("{} {{}}", x.name));
+                }
+                let vals = init_map(&x.fields);
+                let mut parts: Vec<String> = Vec::new();
+                for f in &fs {
+                    let v = init_value(&vals, &f.name)?;
+                    let fv = self.g9_field_real(v, &f.ty, &format!("{}.{}", x.name, f.name))?;
+                    parts.push(format!("{}: {}", f.name, fv));
+                }
+                return Ok(format!("{} {{ {} }}", x.name, parts.join(", ")));
+            }
+            Expr::EnumCtor(x) => {
+                let ctor = format!("{}::{}", x.enum_name, x.variant);
+                if x.args.is_empty() {
+                    return Ok(ctor);
+                }
+                let vf: Vec<FieldDecl> = k_variant(&self.table, &x.enum_name, &x.variant)?.fields.to_vec();
+                let mut parts: Vec<String> = Vec::new();
+                for (a, fd) in x.args.iter().zip(vf.iter()) {
+                    parts.push(self.g9_field_real(a, &fd.ty, &format!("{}::{}.{}", x.enum_name, x.variant, fd.name))?);
+                }
+                return Ok(format!("{}({})", ctor, parts.join(", ")));
+            }
+            _ => {}
+        }
+        let t: Option<String> = match ty {
+            Some(s) => Some(s.to_string()),
+            None => expr_ty(e).clone(),
+        };
+        if let Expr::Ctor(x) = e {
+            let px: String = payload_type(&t).map(|g| g.to_key()).unwrap_or_else(|| "i64".to_string());
+            let rx = rty(&px, false);
+            if x.name == "None" {
+                return Ok(format!("None::<{}>", rx));
+            }
+            let a = match &x.arg {
+                Some(a) => a,
+                None => return Err("codegen: unsupported expression in requires: None".to_string()),
+            };
+            if x.name == "Some" {
+                return Ok(format!("Some::<{}>({})", rx, self.g9_real(a, Some(&px))?));
+            }
+            let at = if x.name == "Ok" { px.clone() } else { "i64".to_string() };
+            return Ok(format!("{}::<{}, i64>({})", x.name, rx, self.g9_real(a, Some(&at))?));
+        }
+        let tk: Option<&str> = t.as_deref();
+        if tk.is_none() || tk == Some("i64") {
+            return Ok(format!(
+                "i64::try_from({}).unwrap_or_else(|_| pruv_ud(\"constructor field out of i64 range\"))",
+                self.c(e)?
+            ));
+        }
+        let tk = tk.unwrap_or("i64");
+        if tk == "bool" {
+            return self.c(e);
+        }
+        if matches!(e, Expr::Var(_) | Expr::FieldAccess(_) | Expr::VariantField(_))
+            && (is_user_key(tk) || key_name(tk) == "option" || key_name(tk) == "result")
+        {
+            return Ok(format!("::std::clone::Clone::clone({})", self.cx(e)?));
+        }
+        if is_array_name(tk) {
+            return Ok(format!("{}.to_vec()", self.carr(e)?));
+        }
+        if tk == "str" {
+            return Ok(format!("{}.to_owned()", self.carr(e)?));
+        }
+        Err(self.g9_unsupported(e, "this expression as a constructor field of an aggregate operand"))
+    }
+
+    /// `e` reads a part of a REAL (extended) value through references (cx): a variant_field of an extended value, or a
+    /// field path below one (Python `g9_real_path`)
+    fn g9_real_path(&self, e: &Expr) -> bool {
+        match e {
+            Expr::VariantField(x) => self.is_ext(expr_ty(&x.value).as_deref()) || self.g9_real_path(&x.value),
+            Expr::FieldAccess(x) => self.is_ext(expr_ty(&x.base).as_deref()) || self.g9_real_path(&x.base),
+            _ => false,
+        }
+    }
+
+    /// contract value of type `ty` from `reference` (a Rust expression of type `&R(ty)`). A value holding nominal parts is
+    /// converted whole, so the conversion is charged to the shared budget first: one unit per nominal node visited
+    /// (Python `g9_metered`).
+    fn g9_metered(&mut self, ty: &str, reference: &str) -> R<String> {
+        let g = GType::from_key(ty);
+        let noms = nominals_in(&g);
+        if noms.is_empty() {
+            return try_conv(ty, &format!("(*{})", reference));
+        }
+        for n in noms {
+            self.need_size.insert(n);
+        }
+        let w = self.g9_weight(&g, "pruv_m", "&mut pruv_budget");
+        Ok(format!(
+            "({{ let pruv_m: &{} = {}; let _ = {}; {} }})",
+            rty(ty, false),
+            reference,
+            w,
+            try_conv(ty, "(*pruv_m)")?
+        ))
     }
 
     fn c(&mut self, e: &Expr) -> R<String> {
@@ -999,20 +1115,25 @@ impl<'a> Gen<'a> {
                 Ok(format!("{}({})", ctor, parts.join(", ")))
             }
             Expr::FieldAccess(x) => {
-                if self.is_ext(expr_ty(&x.base).as_deref()) {
-                    // G9: a scalar-like field of a real extended struct (aggregate / buffer fields go through cx / carr)
+                if self.is_ext(expr_ty(&x.base).as_deref()) || self.g9_real_path(&x.base) {
+                    // G9: a field of a real value (extended struct, or a part of one) is read from the original
+                    // reference; only the field itself is converted (a nominal field is converted whole and charged)
                     let fty = expr_ty(e);
                     if self.is_ext(fty.as_deref()) || fty.as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
                         return Err(self.g9_unsupported(e, &format!("the aggregate field {} as a plain operand", x.field)));
                     }
-                    let base = self.cx(&x.base)?;
                     let t = fty.as_deref().ok_or_else(|| "'NoneType' object has no attribute 'owner'".to_string())?;
+                    if !nominals_in(&GType::from_key(t)).is_empty() {
+                        let r = self.cx(e)?;
+                        return self.g9_metered(t, &r);
+                    }
+                    let base = self.cx(&x.base)?;
                     return try_conv(t, &format!("({}).{}", base, x.field));
                 }
                 Ok(format!("{}.{}", self.c(&x.base)?, x.field))
             }
             Expr::IsVariant(x) => {
-                if self.is_ext(expr_ty(&x.value).as_deref()) {
+                if self.is_ext(expr_ty(&x.value).as_deref()) || self.g9_real_path(&x.value) {
                     let v = self.cx(&x.value)?;
                     return Ok(format!("matches!({}, {}::{} {{ .. }})", v, x.enum_name, x.variant));
                 }
@@ -1020,7 +1141,7 @@ impl<'a> Gen<'a> {
             }
             // G6 A0: `move` is checked but never lowered (the driver's A0 guard stops the program earlier)
             Expr::Move(_) => Err("G6 move reached the Rust generator".to_string()),
-            Expr::VariantField(x) if self.is_ext(expr_ty(&x.value).as_deref()) => {
+            Expr::VariantField(x) if self.is_ext(expr_ty(&x.value).as_deref()) || self.g9_real_path(&x.value) => {
                 let fty = expr_ty(e);
                 if self.is_ext(fty.as_deref()) || fty.as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
                     return Err(self.g9_unsupported(e, &format!("the aggregate field {} as a plain operand", x.field)));
@@ -1033,7 +1154,7 @@ impl<'a> Gen<'a> {
                 let msg = format!("variant_field expected {}::{}.{}", src_name(&x.enum_name), x.variant, x.field);
                 let val = self.cx(&x.value)?;
                 let t = fty.as_deref().ok_or_else(|| "'NoneType' object has no attribute 'owner'".to_string())?;
-                let cv = try_conv(t, "(*pruv_f)")?;
+                let cv = self.g9_metered(t, "pruv_f")?;
                 Ok(format!(
                     "({{ let {tmp}: &{en} = {val}; match {tmp} {{ {en}::{v}({pats}) => {cv}, _ => pruv_ud({m}) }} }})",
                     tmp = tmp,
@@ -1262,9 +1383,10 @@ impl<'a> Gen<'a> {
 
     /// Rust i128 expression for weight(value) (G9_SPEC 3); x names a variable of type `&R(t)`.
     /// Scalars, arrays and str weigh 0; a nominal value weighs its size; Some / Ok weigh their payload; None / Err 0.
-    fn g9_weight(&self, t: &GType, x: &str) -> String {
+    /// `bud` is the budget argument expression (`pruv_budget` inside a helper, where it is a `&mut i64`).
+    fn g9_weight(&self, t: &GType, x: &str, bud: &str) -> String {
         if is_optres(t) {
-            let inner = self.g9_weight(&t.args[0], "pruv_w");
+            let inner = self.g9_weight(&t.args[0], "pruv_w", bud);
             if inner == "0i128" {
                 return "0i128".to_string();
             }
@@ -1280,7 +1402,7 @@ impl<'a> Gen<'a> {
             );
         }
         if t.is_user_type() {
-            return format!("pruv_csize__{}({}, pruv_budget)", t.name, x);
+            return format!("pruv_csize__{}({}, {})", t.name, x, bud);
         }
         "0i128".to_string()
     }
@@ -1326,7 +1448,7 @@ impl<'a> Gen<'a> {
             let mut binds: Vec<String> = Vec::new();
             let mut ws: Vec<String> = Vec::new();
             for (i, f) in fields.iter().enumerate() {
-                let w = self.g9_weight(&GType::from_key(&f.ty), &format!("pruv_a{}", i));
+                let w = self.g9_weight(&GType::from_key(&f.ty), &format!("pruv_a{}", i), "pruv_budget");
                 if w == "0i128" {
                     binds.push("_".to_string());
                 } else {
@@ -1336,12 +1458,20 @@ impl<'a> Gen<'a> {
             }
             (binds, ws)
         };
-        let fold = |ws: &[String]| -> String {
-            let mut r = "1i128".to_string();
+        // sequential accumulator statements (linear text, no nested pruv_cadd(pruv_cadd(..)..) chain)
+        let stmts = |ws: &[String]| -> Vec<String> {
+            let mut v: Vec<String> = vec!["let mut pruv_s: i128 = 1i128;".to_string()];
             for w in ws {
-                r = format!("pruv_cadd({}, {})", r, w);
+                v.push(format!("pruv_s = pruv_cadd(pruv_s, {});", w));
             }
-            r
+            v
+        };
+        let fold = |ws: &[String]| -> String {
+            match ws.len() {
+                0 => "1i128".to_string(),
+                1 => format!("pruv_cadd(1i128, {})", ws[0]),
+                _ => format!("{{ {} pruv_s }}", stmts(ws).join(" ")),
+            }
         };
         match d {
             TypeDecl::Struct(s) => {
@@ -1351,7 +1481,14 @@ impl<'a> Gen<'a> {
                         s.fields.iter().zip(binds.iter()).map(|(f, b)| format!("{}: {}", f.name, b)).collect();
                     lines.push(format!("    let {} {{ {} }} = v;", n, parts.join(", ")));
                 }
-                lines.push(format!("    {}", fold(&ws)));
+                if ws.len() >= 2 {
+                    for x in stmts(&ws) {
+                        lines.push(format!("    {}", x));
+                    }
+                    lines.push("    pruv_s".to_string());
+                } else {
+                    lines.push(format!("    {}", fold(&ws)));
+                }
             }
             TypeDecl::Enum(en) => {
                 lines.push("    match v {".to_string());
