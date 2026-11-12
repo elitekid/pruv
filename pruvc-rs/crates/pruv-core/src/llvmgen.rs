@@ -345,13 +345,26 @@ fn t_variant_index(tt: &TypeTable, ty: &str, variant: &str) -> R<usize> {
 
 /// Storage index of the i-th field of `variant` inside the flattened enum type
 pub fn payload_index(tt: &TypeTable, ty: &str, variant: &str, i: usize) -> R<usize> {
-    let mut base = 1usize;
+    // The variant -> base offset map is computed once per (type table, type) and memoized: rescanning the variants on
+    // every call made helper generation quadratic in the number of variants. The cache lives in `words_memo` (the
+    // type table's existing per-type memo) under keys that cannot collide with a type key (they start with NUL).
+    let key = |v: &str| format!("\u{0}payload\u{0}{}\u{0}{}", ty, v);
+    if let Some(&b) = tt.words_memo.borrow().get(&key(variant)) {
+        return Ok(b + i);
+    }
     if let TypeDecl::Enum(e) = t_decl(tt, ty)? {
+        let mut memo = tt.words_memo.borrow_mut();
+        let mut base = 1usize;
+        let mut found: Option<usize> = None;
         for v in &e.variants {
-            if v.name == variant {
-                return Ok(base + i);
+            memo.insert(key(&v.name), base);
+            if v.name == variant && found.is_none() {
+                found = Some(base);
             }
             base += v.fields.len();
+        }
+        if let Some(b) = found {
+            return Ok(b + i);
         }
     } else {
         return Err("'StructDecl' object has no attribute 'variants'".to_string());
@@ -672,6 +685,8 @@ pub struct FnGen<'a> {
     bridge: bool,
     /// G9 A3: the parameter names of the function (Python `s.cparams`, set when the contract parameters are bound)
     cparams: HashSet<String>,
+    /// G9: constructor temporaries (type, storage) of the contract expression being evaluated, per region
+    cregions: Vec<Vec<(String, String)>>,
 }
 
 impl<'a> FnGen<'a> {
@@ -702,6 +717,7 @@ impl<'a> FnGen<'a> {
             budget: None,
             bridge: false,
             cparams: HashSet::new(),
+            cregions: Vec::new(),
         }
     }
 
@@ -2505,8 +2521,160 @@ impl<'a> FnGen<'a> {
                 self.spill(&V::agg(v, &ety))
             }
             Expr::StructLit(x) if x.fields.is_empty() => self.spill(&V::agg("zeroinitializer", &x.name)),
-            _ => Err(g9_diag_err(e.line(), e.col(), "a constructor with payload as an aggregate operand")),
+            Expr::EnumCtor(_) | Expr::StructLit(_) => {
+                // A constructor with payload is a REAL temporary of the type (code form) in entry-block storage. An
+                // extended one owns heap parts: it is dropped when the enclosing evaluation region ends (cregion).
+                let v = self.g9_real(e, None)?;
+                let ty = need_ty(&v.ty)?.to_string();
+                let base = format!("%ct{}", self.nslot);
+                self.nslot += 1;
+                self.allocas.push(format!("{} = alloca {}", base, lty(&ty)));
+                self.ins(format!("store {} {}, ptr {}", lty(&ty), v.a, base))?;
+                if self.is_ext(&ty) {
+                    self.cregions.last_mut().ok_or_else(|| IDX_ERR.to_string())?.push((ty, base.clone()));
+                }
+                Ok(base)
+            }
+            _ => Err(g9_diag_err(e.line(), e.col(), "this expression as an aggregate operand")),
         }
+    }
+
+    /// Runs f (a contract evaluation) and then drops the extended constructor temporaries it created, newest first.
+    /// A region is a requires clause, a short-circuit right side or a quantifier body iteration: every temporary of a
+    /// region is built on the straight-line path that reaches its end.
+    fn cregion(&mut self, f: &dyn Fn(&mut FnGen<'a>) -> R<V>) -> R<V> {
+        self.cregions.push(Vec::new());
+        let r = f(self)?;
+        let ts = self.cregions.pop().ok_or_else(|| "pop from empty list".to_string())?;
+        for (ty, p) in ts.iter().rev() {
+            self.ins(format!("call void @pruv_drop__{}(ptr {})", ty, p))?;
+        }
+        Ok(r)
+    }
+
+    /// V (code form, OWNED) of the REAL value of the contract expression e of declared type ty (default: its own type).
+    /// Constructors are built field by field in declaration order; an i64 comes from the i128 contract value through a
+    /// checked narrowing; a named value / part is charged its weight and then deep-copied; a buffer is charged its
+    /// length and then copied. Same order of effects and messages as the Rust backend.
+    fn g9_real(&mut self, e: &Expr, ty: Option<&str>) -> R<V> {
+        let tt = self.tt;
+        match e {
+            Expr::StructLit(x) => {
+                let sty = x.name.as_str();
+                let mut inits: HashMap<&str, &Expr> = HashMap::new();
+                for f in &x.fields {
+                    inits.insert(f.name.as_str(), &f.value);
+                }
+                let mut acc = "zeroinitializer".to_string();
+                for (i, fd) in t_fields(tt, sty, None)?.iter().enumerate() {
+                    let init = inits.get(fd.name.as_str()).copied().ok_or_else(|| format!("'{}'", fd.name))?;
+                    let v = self.g9_real(init, Some(&fd.ty))?;
+                    acc = self.putf(&acc, sty, i, &v, fd, None, false)?;
+                }
+                return Ok(V::agg(acc, sty));
+            }
+            Expr::EnumCtor(x) => {
+                let ety = x.enum_name.as_str();
+                let tag = t_variant_index(tt, ety, &x.variant)?;
+                let mut acc = self.op(format!("insertvalue {} zeroinitializer, i64 {}, 0", st(ety, false), tag))?;
+                for (i, (a, fd)) in x.args.iter().zip(t_fields(tt, ety, Some(&x.variant))?.iter()).enumerate() {
+                    let v = self.g9_real(a, Some(&fd.ty))?;
+                    let pi = payload_index(tt, ety, &x.variant, i)?;
+                    acc = self.putf(&acc, ety, pi, &v, fd, Some(&x.variant), false)?;
+                }
+                return Ok(V::agg(acc, ety));
+            }
+            _ => {}
+        }
+        let t: Option<String> = match ty {
+            Some(t) => Some(t.to_string()),
+            None => expr_ty(e).clone(),
+        };
+        if let Expr::Ctor(x) = e {
+            let px: String = match t.as_deref() {
+                Some(t) if is_gopt(t) => g_arg(t).to_string(),
+                _ => "i64".to_string(),
+            };
+            if let Some(gt) = t.as_deref().filter(|s| is_gopt(s)) {
+                if x.name == "None" {
+                    return Ok(V::agg("zeroinitializer", gt));
+                }
+                let a = x.arg.as_ref().ok_or_else(|| "llvmgen: constructor without argument".to_string())?;
+                if x.name == "Some" || x.name == "Ok" {
+                    let xv = self.g9_real(a, Some(&px))?;
+                    let acc = self.op(format!("insertvalue {} zeroinitializer, i1 true, 0", st(gt, false)))?;
+                    let r = self.put(&acc, gt, 1, &xv, &px, false)?;
+                    return Ok(V::agg(r, gt));
+                }
+                let xv = self.g9_real(a, Some("i64"))?;
+                let r = self.op(format!("insertvalue {} zeroinitializer, i64 {}, 2", st(gt, false), xv.a))?;
+                return Ok(V::agg(r, gt));
+            }
+            if x.name == "None" {
+                return Ok(V::with_b(Kind::Opt, "false", "0"));
+            }
+            let a = x.arg.as_ref().ok_or_else(|| "llvmgen: constructor without argument".to_string())?;
+            let xv = self.g9_real(a, Some(if x.name == "Err" { "i64" } else { px.as_str() }))?;
+            return Ok(V::with_b(Kind::Opt, if x.name == "Some" || x.name == "Ok" { "true" } else { "false" }, xv.a));
+        }
+        if t.is_none() || t.as_deref() == Some("i64") {
+            let x = self.cev(e)?;
+            let tr = self.op(format!("trunc i128 {} to i64", x.a))?;
+            let back = self.op(format!("sext i64 {} to i128", tr))?;
+            let ok = self.op(format!("icmp eq i128 {}, {}", back, x.a))?;
+            self.guard(&ok, Fail::Panic1("pruv_panic_undefined", "constructor field out of i64 range".to_string()), false)?;
+            return Ok(V::new(Kind::I64, tr));
+        }
+        let t = need_ty(&t)?.to_string();
+        if t == "bool" {
+            let x = self.cev(e)?;
+            return Ok(V::new(Kind::I1, x.a));
+        }
+        if matches!(e, Expr::Var(_) | Expr::FieldAccess(_) | Expr::VariantField(_))
+            && (crate::emit_common::is_user_key(&t) || t == "option" || t == "result" || is_gopt(&t))
+        {
+            let p = self.cx(e)?;
+            self.g9_charge_weight(&t, &p)?;
+            if self.is_ext(&t) {
+                return self.clone_val(&V::agg_p("None", &t, p));
+            }
+            let x = self.op(format!("load {}, ptr {}", lty(&t), p))?;
+            return self.unpack(&x, &t, false);
+        }
+        if is_arr_name(&t) {
+            let a = self.cev(e)?;
+            self.spend_n(&a.b)?;
+            let np = if is_bytes_ty(&a.ty) {
+                self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", a.a, a.b))?
+            } else {
+                self.op(format!("call ptr @pruv_copy(ptr {}, i64 {})", a.a, a.b))?
+            };
+            let mut r = V::with_b(Kind::Arr, np, a.b.clone());
+            r.ty = elem_ty(&t);
+            return Ok(r);
+        }
+        Err(g9_diag_err(e.line(), e.col(), "this expression as a constructor field of an aggregate operand"))
+    }
+
+    /// e reads a part of a REAL (extended) value through its storage (cx): a variant_field of an extended value, or a
+    /// field path below one.
+    fn g9_real_path(&self, e: &Expr) -> bool {
+        match e {
+            Expr::VariantField(x) => self.is_ext_opt(expr_ty(&x.value)) || self.g9_real_path(&x.value),
+            Expr::FieldAccess(x) => self.is_ext_opt(expr_ty(&x.base)) || self.g9_real_path(&x.base),
+            _ => false,
+        }
+    }
+
+    /// Charges the contract budget the weight of the value of type t stored at p (one unit per nominal node); a type
+    /// without nominal parts costs nothing.
+    fn g9_charge_weight(&mut self, t: &str, p: &str) -> R<()> {
+        for n in g9_nominals_in(t) {
+            self.m.need_size.insert(n);
+        }
+        let bud = self.budget.clone().ok_or_else(|| "'FnGen' object has no attribute 'budget'".to_string())?;
+        g9_weight(self, t, p, &bud)?;
+        Ok(())
     }
 
     /// Value of a field path / variant_field whose root is an extended value: a buffer (arr), an extended value (ref)
@@ -2525,6 +2693,8 @@ impl<'a> FnGen<'a> {
         if self.is_ext(&t) {
             return Ok(V { k: Kind::Ref, a: p, b: "None".to_string(), ty: Some(t), p: None });
         }
+        // a whole nominal value is converted whole: charge its weight to the budget first
+        self.g9_charge_weight(&t, &p)?;
         let x = self.op(format!("load {}, ptr {}", st(&t, false), p))?;
         let u = self.unpack(&x, &t, false)?;
         self.to_c(&u, &t)
@@ -2563,7 +2733,7 @@ impl<'a> FnGen<'a> {
                         l = V::new(Kind::I1, r);
                     }
                     let right = &x.right;
-                    let r = self.shortcircuit(&l.a, op != "&&", &|g| Ok(g.cev(right)?.a))?;
+                    let r = self.shortcircuit(&l.a, op != "&&", &|g| Ok(g.cregion(&|g2| g2.cev(right))?.a))?;
                     return Ok(V::new(Kind::I1, r));
                 }
                 if (op == "==" || op == "!=") && self.is_ext_opt(expr_ty(&x.left)) {
@@ -2669,8 +2839,8 @@ impl<'a> FnGen<'a> {
             Expr::StructLit(x) => self.mk_struct(x, true, false),
             Expr::EnumCtor(x) => self.mk_enum(x, true, false),
             Expr::FieldAccess(x) => {
-                if self.is_ext_opt(expr_ty(&x.base)) {
-                    // G9 A3: a field of a real extended value
+                if self.is_ext_opt(expr_ty(&x.base)) || self.g9_real_path(&x.base) {
+                    // G9: a field of a real value, read through its storage
                     return self.cload(e);
                 }
                 let b = self.cev(&x.base)?;
@@ -2681,8 +2851,8 @@ impl<'a> FnGen<'a> {
                 self.get(&b, &bty, i, fty, true)
             }
             Expr::IsVariant(x) => {
-                if self.is_ext_opt(expr_ty(&x.value)) {
-                    // G9 A3: the tag of the real value
+                if self.is_ext_opt(expr_ty(&x.value)) || self.g9_real_path(&x.value) {
+                    // G9: the tag of the real value
                     let ety = need_ty(expr_ty(&x.value))?.to_string();
                     let p = self.cx(&x.value)?;
                     let tp = self.tag_ptr(&ety, &p)?;
@@ -2701,7 +2871,7 @@ impl<'a> FnGen<'a> {
             // G6 A0: `move` is checked but never lowered (the driver's A0 guard stops the program earlier)
             Expr::Move(_) => Err("G6 move reached the LLVM generator".to_string()),
             Expr::VariantField(x) => {
-                if self.is_ext_opt(expr_ty(&x.value)) {
+                if self.is_ext_opt(expr_ty(&x.value)) || self.g9_real_path(&x.value) {
                     return self.cload(e);
                 }
                 let b = self.cev(&x.value)?;
@@ -2805,12 +2975,18 @@ impl<'a> FnGen<'a> {
 
     /// Consumes 1 unit of the requires iteration budget (docs/M0_CONTRACTS.md B)
     pub fn spend(&mut self) -> R<()> {
+        self.spend_n("1")
+    }
+
+    /// Consumes n units of the budget. The budget is never negative at rest and n is a non-negative length, so the
+    /// subtraction cannot overflow.
+    pub fn spend_n(&mut self, n: &str) -> R<()> {
         let budget = match &self.budget {
             Some(b) => b.clone(),
             None => return Err("llvmgen: internal error: no iteration budget slot".to_string()),
         };
         let old = self.op(format!("load i64, ptr {}", budget))?;
-        let nv = self.op(format!("sub i64 {}, 1", old))?;
+        let nv = self.op(format!("sub i64 {}, {}", old, n))?;
         self.ins(format!("store i64 {}, ptr {}", nv, budget))?;
         let ok = self.op(format!("icmp sge i64 {}, 0", nv))?;
         self.guard(&ok, Fail::Panic1("pruv_panic_undefined", "contract iteration budget exceeded".to_string()), false)
@@ -2922,7 +3098,8 @@ impl<'a> FnGen<'a> {
         self.spend()?;
         let saved = self.cenv.get(&x.var).cloned();
         self.cenv.insert(x.var.clone(), V::new(Kind::I128, kv.clone()));
-        let b = self.cev(&x.body)?;
+        let body = &x.body;
+        let b = self.cregion(&|g| g.cev(body))?;
         match saved {
             None => {
                 self.cenv.remove(&x.var);
@@ -3006,7 +3183,7 @@ pub fn entry_of(
         g.allocas.push(format!("{} = alloca i64", bname));
         g.ins(format!("store i64 {}, ptr {}", budget, bname))?;
         for r in &f.requires {
-            let c = g.cev(r)?;
+            let c = g.cregion(&|g2| g2.cev(r))?;
             let msg_fn = g.m.string(&f.name);
             let msg_ex = g.m.string(&crate::emit_common::show(r));
             g.guard(&c.a, Fail::Requires(msg_fn, msg_ex), false)?;
@@ -3258,8 +3435,9 @@ fn g9_walks(t: &str) -> bool {
 }
 
 /// i128 SSA value of weight(value stored at p) (G9_SPEC 3), or None when it is statically 0. Some / Ok weigh their
-/// payload, None / Err 0; a nominal value weighs its size (one budget unit per node, inside pruv_csize).
-fn g9_weight(g: &mut FnGen, t: &str, p: &str) -> R<Option<String>> {
+/// payload, None / Err 0; a nominal value weighs its size (one budget unit per node, inside pruv_csize). bud is the
+/// budget pointer the size helper charges.
+fn g9_weight(g: &mut FnGen, t: &str, p: &str, bud: &str) -> R<Option<String>> {
     if is_gopt(t) {
         let x = g_arg(t);
         if !g9_walks(x) {
@@ -3274,7 +3452,7 @@ fn g9_weight(g: &mut FnGen, t: &str, p: &str) -> R<Option<String>> {
         let end = g.label("gwe");
         g.condbr(&tag, &yes, &end)?;
         g.place(&yes);
-        let w = g9_weight(g, x, &pl)?.unwrap_or_else(|| "None".to_string());
+        let w = g9_weight(g, x, &pl, bud)?.unwrap_or_else(|| "None".to_string());
         let wcur = g.cur.clone();
         g.br(&end)?;
         g.place(&end);
@@ -3282,7 +3460,7 @@ fn g9_weight(g: &mut FnGen, t: &str, p: &str) -> R<Option<String>> {
         return Ok(Some(r));
     }
     if crate::emit_common::is_user_key(t) {
-        let r = g.op(format!("call i128 @pruv_csize__{}(ptr {}, ptr %bud)", t, p))?;
+        let r = g.op(format!("call i128 @pruv_csize__{}(ptr {}, ptr {})", t, p, bud))?;
         return Ok(Some(r));
     }
     Ok(None)
@@ -3299,7 +3477,7 @@ fn g9_size_fold(g: &mut FnGen, tt: &TypeTable, ty: &str, tl: &str, vn: Option<&s
         if g.fb(ty, vn, &f.name) {
             gp = g.op(format!("load ptr, ptr {}", gp))?;
         }
-        let w = g9_weight(g, &f.ty, &gp)?.unwrap_or_else(|| "None".to_string());
+        let w = g9_weight(g, &f.ty, &gp, "%bud")?.unwrap_or_else(|| "None".to_string());
         acc = g.checked("i128", "sadd", "+", &acc, &w)?;
     }
     Ok(acc)

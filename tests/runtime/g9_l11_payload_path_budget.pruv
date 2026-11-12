@@ -1,0 +1,28 @@
+// G9 L11: a field path below variant_field of an extended value in a runtime requires is read through the real storage
+// (only the selected leaf is loaded, IR size is linear in the path depth), and a whole non-extended nominal payload
+// handed to size is charged to the contract budget; the payload types are nested non-extended structs
+struct P0 { v: i64 }
+struct P1 { a: P0, b: P0 }
+struct P2 { a: P1, b: P1 }
+enum T { End, Node(p: P2, next: T) }
+
+fn head_v(t: T) -> i64
+  ensures result == 1
+  requires is_variant(t, T::Node)
+  requires variant_field(t, T::Node, p).a.a.v >= 0
+{
+  return 1;
+}
+
+fn head_size(t: T) -> i64
+  ensures result == 2
+  requires is_variant(t, T::Node)
+  requires size(variant_field(t, T::Node, p)) >= 1
+{
+  return 2;
+}
+
+fn run() -> i64 ! alloc {
+  let t: T = T::Node(P2 { a: P1 { a: P0 { v: 1 }, b: P0 { v: 2 } }, b: P1 { a: P0 { v: 3 }, b: P0 { v: 4 } } }, T::End);
+  return head_v(t) + head_size(t);
+}

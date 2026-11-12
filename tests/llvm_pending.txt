@@ -6,6 +6,3 @@
 tests/runtime/g6_a02_option_find.pruv
 tests/runtime/g6_a03_result_half.pruv
 tests/runtime/g6_v05_option_elems.pruv
-# G9 A3: constructors with payload as aggregate operands of a runtime requires are Rust-backend only for now
-tests/runtime/g9_r26_ctor_payload_select.pruv
-tests/runtime/g9_r27_ctor_copy_budget.pruv

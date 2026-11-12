@@ -972,11 +972,12 @@ impl<'a> Gen<'a> {
         }
         if is_array_name(tk) {
             let a = self.carr(e)?;
-            return Ok(format!("({{ {} {}.to_vec() }})", g9_charge(&format!("{}.len()", a)), a));
+            // the buffer expression is evaluated once: bound, charged by its length, then copied
+            return Ok(format!("({{ let pruv_b: &[_] = {}; {} pruv_b.to_vec() }})", a, g9_charge("pruv_b.len()")));
         }
         if tk == "str" {
             let a = self.carr(e)?;
-            return Ok(format!("({{ {} {}.to_owned() }})", g9_charge(&format!("{}.len()", a)), a));
+            return Ok(format!("({{ let pruv_b: &str = {}; {} pruv_b.to_owned() }})", a, g9_charge("pruv_b.len()")));
         }
         Err(self.g9_unsupported(e, "this expression as a constructor field of an aggregate operand"))
     }
@@ -1220,11 +1221,6 @@ impl<'a> Gen<'a> {
                 ))
             }
             Expr::VariantField(x) => {
-                if g9_owned(&x.value) {
-                    // the selected value is a fresh constructor (or a part of one): select from the OWNED temporary and
-                    // borrow the moved-out field, so no reference into a block-local temporary escapes its block
-                    return Ok(format!("(&{})", self.g9_owned_expr(e)?));
-                }
                 self.tmp += 1;
                 let tmp = format!("pruv_e{}", self.tmp);
                 let cn = format!("pruv_contract__{}", x.enum_name);

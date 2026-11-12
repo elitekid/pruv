@@ -1,0 +1,22 @@
+// G9 L12: constructors with payload as aggregate operands of size in a runtime requires, on both backends: an i64
+// field comes from the i128 contract value through a checked narrowing, a buffer field is charged its length and then
+// copied, and the extended temporary is dropped when the requires clause has been evaluated
+struct S { n: i64 }
+enum E { A, B(n: i64) }
+struct B { a: [i64] }
+
+fn f(x: i64, a: [i64]) -> i64
+  requires x >= 0 && x <= 100 && len(a) <= 100000
+  requires size(S { n: x }) == 1
+  requires size(E::B(x)) == 1
+  requires size(B { a: a }) == 1
+{
+  return x + len(a);
+}
+
+fn run(n: i64) -> i64 ! alloc
+  requires n >= 0 && n <= 100
+{
+  let a: [i64] = alloc(n, 7);
+  return f(n, a);
+}

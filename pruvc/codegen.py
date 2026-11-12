@@ -906,11 +906,10 @@ class Gen:
                 s.need_size.update(nominals_in(t))
             return "({ let pruv_c: &%s = %s; let _ = %s; ::std::clone::Clone::clone(pruv_c) })" % (rty(t), s.cx(e), w)
         if is_array(t):
-            a = s.carr(e)
-            return "({ %s %s.to_vec() })" % (s.g9_charge("%s.len()" % a), a)
+            # the buffer expression is evaluated once: bound, charged by its length, then copied
+            return "({ let pruv_b: &[_] = %s; %s pruv_b.to_vec() })" % (s.carr(e), s.g9_charge("pruv_b.len()"))
         if t == STR:
-            a = s.carr(e)
-            return "({ %s %s.to_owned() })" % (s.g9_charge("%s.len()" % a), a)
+            return "({ let pruv_b: &str = %s; %s pruv_b.to_owned() })" % (s.carr(e), s.g9_charge("pruv_b.len()"))
         raise s.g9_unsupported(e, "this expression as a constructor field of an aggregate operand")
 
     def g9_real_path(s, e):
@@ -1057,10 +1056,6 @@ class Gen:
             return "({ let %s: &%s = %s; match %s { %s::%s(%s) => %s, _ => pruv_ud(%s) } })" % (
                 tmp, e.enum_name, s.cx(e.value), tmp, e.enum_name, e.variant, pats, s.g9_metered(e.ty, "pruv_f"), rstr(msg))
         if isinstance(e, VariantField):
-            if s.g9_owned(e.value):
-                # the selected value is a fresh constructor (or a part of one): select from the OWNED temporary and
-                # borrow the moved-out field, so no reference into a block-local temporary escapes its block
-                return "(&%s)" % s.g9_owned_expr(e)
             s.tmp += 1
             tmp = "pruv_e%d" % s.tmp
             cn = "pruv_contract__%s" % e.enum_name

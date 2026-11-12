@@ -203,12 +203,19 @@ def st(t, c=False):
 
 def payload_index(tt, ty, variant, i):
     """storage index of field i of `variant` inside the flattened enum %pruv_t_/%pruv_c_ type"""
-    base = 1
-    for v in tt.decl(ty).variants:
-        if v.name == variant:
-            return base + i
-        base += len(v.fields)
-    raise KeyError(variant)
+    # the variant -> base offset map is computed once per (type table, type name): rescanning the variants on every
+    # call made helper generation quadratic in the number of variants
+    memo = tt.__dict__.setdefault("_payload_memo", {})
+    offs = memo.get(ty.name)
+    if offs is None:
+        offs, base = {}, 1
+        for v in tt.decl(ty).variants:
+            offs[v.name] = base
+            base += len(v.fields)
+        memo[ty.name] = offs
+    if variant not in offs:
+        raise KeyError(variant)
+    return offs[variant] + i
 
 
 def words(tt, ty):
@@ -385,6 +392,7 @@ class FnGen:
         s.scopes = []
         s.temps = []
         s.cenv = {}
+        s.cregions = []     # G9: constructor temporaries of the contract expression being evaluated, per region
         s.tt = m.tt
         s.bridge = False    # G6 A3: this function references @pruv_g6_bridge_v1
 
@@ -1545,11 +1553,109 @@ class FnGen:
             return s.spill(V("agg", x, None, ety))
         if isinstance(e, StructLit) and not e.fields:
             return s.spill(V("agg", "zeroinitializer", None, Type(e.name)))
-        raise s.g9_unsupported(e, "a constructor with payload as an aggregate operand")
+        if isinstance(e, (EnumCtor, StructLit)):
+            # a constructor with payload is a REAL temporary of the type (code form) in entry-block storage.  An
+            # extended one owns heap parts: it is dropped when the enclosing evaluation region ends (cregion).
+            v = s.g9_real(e)
+            base = "%%ct%d" % s.nslot
+            s.nslot += 1
+            s.allocas.append("%s = alloca %s" % (base, lty(v.ty)))
+            s.ins("store %s %s, ptr %s" % (lty(v.ty), v.a, base))
+            if s.is_ext(v.ty):
+                s.cregions[-1].append((v.ty, base))
+            return base
+        raise s.g9_unsupported(e, "this expression as an aggregate operand")
+
+    def cregion(s, fn):
+        """run fn (a contract evaluation) and then drop the extended constructor temporaries it created, newest first.
+        A region is a requires clause, a short-circuit right side or a quantifier body iteration: every temporary of
+        a region is built on the straight-line path that reaches its end."""
+        s.cregions.append([])
+        r = fn()
+        for ty, p in reversed(s.cregions.pop()):
+            s.ins("call void @pruv_drop__%s(ptr %s)" % (ty.name, p))
+        return r
+
+    def g9_real(s, e, ty=None):
+        """V (code form, OWNED) of the REAL value of the contract expression e of declared type ty (default e.ty).
+        Constructors are built field by field in declaration order; an i64 comes from the i128 contract value through
+        a checked narrowing; a named value / part is charged its weight and then deep-copied; a buffer is charged its
+        length and then copied.  Same order of effects and messages as the Rust backend."""
+        if isinstance(e, StructLit):
+            sty = Type(e.name)
+            inits = {f.name: f.value for f in e.fields}
+            acc = "zeroinitializer"
+            for i, fd in enumerate(s.tt.fields(sty)):
+                acc = s.putf(acc, sty, i, s.g9_real(inits[fd.name], fd.type), fd, None, False)
+            return V("agg", acc, None, sty)
+        if isinstance(e, EnumCtor):
+            ety = Type(e.enum_name)
+            acc = s.op("insertvalue %s zeroinitializer, i64 %d, 0" % (st(ety), s.tt.variant_index(ety, e.variant)))
+            for i, (a, fd) in enumerate(zip(e.args, s.tt.fields(ety, e.variant))):
+                acc = s.putf(acc, ety, payload_index(s.tt, ety, e.variant, i), s.g9_real(a, fd.type), fd, e.variant,
+                             False)
+            return V("agg", acc, None, ety)
+        t = ty if ty is not None else e.ty
+        if isinstance(e, Ctor):
+            px = t.args[0] if t is not None and t.args else I64
+            if t is not None and gopt(t):
+                if e.name == "None":
+                    return V("agg", "zeroinitializer", None, t)
+                if e.name in ("Some", "Ok"):
+                    x = s.g9_real(e.arg, px)
+                    acc = s.op("insertvalue %s zeroinitializer, i1 true, 0" % st(t))
+                    return V("agg", s.put(acc, t, 1, x, px, False), None, t)
+                x = s.g9_real(e.arg, I64)
+                return V("agg", s.op("insertvalue %s zeroinitializer, i64 %s, 2" % (st(t), x.a)), None, t)
+            if e.name == "None":
+                return V("opt", "false", "0")
+            x = s.g9_real(e.arg, px if e.name != "Err" else I64)
+            return V("opt", "true" if e.name in ("Some", "Ok") else "false", x.a)
+        if t is None or (t.owner is None and t.name == "i64"):
+            x = s.cev(e)
+            tr = s.op("trunc i128 %s to i64" % x.a)
+            back = s.op("sext i64 %s to i128" % tr)
+            ok = s.op("icmp eq i128 %s, %s" % (back, x.a))
+            s.guard(ok, s.panic1("pruv_panic_undefined", "constructor field out of i64 range"), False)
+            return V("i64", tr)
+        if t.owner is None and t.name == "bool":
+            return V("i1", s.cev(e).a)
+        if isinstance(e, (Var, FieldAccess, VariantField)) and (is_user_type(t) or t.name in ("option", "result")):
+            p = s.cx(e)
+            s.g9_charge_weight(t, p)
+            if s.is_ext(t):
+                return s.clone_val(V("agg", None, None, t, p))
+            return s.unpack(s.op("load %s, ptr %s" % (lty(t), p)), t, False)
+        if is_arr(t):
+            a = s.cev(e)
+            s.spend(a.b)
+            if is_bytes(a):
+                np_ = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (a.a, a.b))
+            else:
+                np_ = s.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (a.a, a.b))
+            return V("arr", np_, a.b, elem_ty(t))
+        raise s.g9_unsupported(e, "this expression as a constructor field of an aggregate operand")
+
+    def g9_real_path(s, e):
+        """e reads a part of a REAL (extended) value through its storage (cx): a variant_field of an extended value, or
+        a field path below one"""
+        if isinstance(e, VariantField):
+            return s.is_ext(e.value.ty) or s.g9_real_path(e.value)
+        if isinstance(e, FieldAccess):
+            return s.is_ext(e.base.ty) or s.g9_real_path(e.base)
+        return False
+
+    def g9_charge_weight(s, t, p):
+        """charge the contract budget the weight of the value of type t stored at p (one unit per nominal node); a
+        type without nominal parts costs nothing"""
+        for n in codegen.nominals_in(t):
+            s.m.need_size.add(n)
+        g9_weight(s, t, p, s.budget)
 
     def cload(s, e):
         """value of a field path / variant_field whose root is an extended value: a buffer (arr), an extended value
-        (ref) or a scalar-like value converted to its contract form"""
+        (ref) or a scalar-like value converted to its contract form.  A whole nominal value is converted whole, so
+        its weight is charged to the budget first."""
         p = s.cx(e)
         t = e.ty
         if is_arr(t):
@@ -1558,6 +1664,7 @@ class FnGen:
                      elem_ty(t))
         if s.is_ext(t):
             return V("ref", p, None, t)
+        s.g9_charge_weight(t, p)
         x = s.op("load %s, ptr %s" % (st(t), p))
         return s.to_c(s.unpack(x, t, False), t)
 
@@ -1582,7 +1689,7 @@ class FnGen:
                 l = s.cev(e.left)
                 if op == "==>":
                     l = V("i1", s.op("xor i1 %s, true" % l.a))
-                return V("i1", s.shortcircuit(l.a, lambda: s.cev(e.right).a, op != "&&"))
+                return V("i1", s.shortcircuit(l.a, lambda: s.cregion(lambda: s.cev(e.right)).a, op != "&&"))
             if op in ("==", "!=") and s.is_ext(e.left.ty):
                 # G9 A3: structural equality of buffer-free extended aggregates, visited lazily on the real values:
                 # one budget unit per visited node pair, only the active variant's fields are compared
@@ -1654,13 +1761,13 @@ class FnGen:
         if isinstance(e, EnumCtor):
             return s.mk_enum(e, s.cev, True)
         if isinstance(e, FieldAccess):
-            if s.is_ext(e.base.ty):     # G9 A3: a field of a real extended value
+            if s.is_ext(e.base.ty) or s.g9_real_path(e.base):   # G9: a field of a real value, read through its storage
                 return s.cload(e)
             b = s.cev(e.base)
             i = s.tt.field_index(b.ty, e.field)
             return s.get(b, b.ty, i, s.tt.fields(b.ty)[i].type, True)
         if isinstance(e, IsVariant):
-            if s.is_ext(e.value.ty):    # G9 A3: the tag of the real value
+            if s.is_ext(e.value.ty) or s.g9_real_path(e.value):    # G9: the tag of the real value
                 ety = e.value.ty
                 p = s.cx(e.value)
                 tag = s.op("load i64, ptr %s" % s.tag_ptr(ety, p))
@@ -1668,7 +1775,7 @@ class FnGen:
             b = s.cev(e.value)
             k = s.tt.variant_index(b.ty, e.variant)
             return V("i1", s.op("icmp eq i64 %s, %d" % (s.tag_of(b, True), k)))
-        if isinstance(e, VariantField) and s.is_ext(e.value.ty):
+        if isinstance(e, VariantField) and (s.is_ext(e.value.ty) or s.g9_real_path(e.value)):
             return s.cload(e)
         if isinstance(e, VariantField):
             b = s.cev(e.value)
@@ -1723,12 +1830,13 @@ class FnGen:
                 return V("i128", o.b)
         raise Exception("llvmgen: unsupported expression in requires: %r" % e)
 
-    def spend(s):
-        """consume one unit of the per-entry requires iteration budget (docs/M0_CONTRACTS.md B)"""
+    def spend(s, n="1"):
+        """consume n units (default one) of the per-entry requires iteration budget (docs/M0_CONTRACTS.md B).  The
+        budget is never negative at rest and n is a non-negative length, so the subtraction cannot overflow."""
         if not hasattr(s, "budget"):
             raise Exception("llvmgen: internal error: no iteration budget slot")
         old = s.op("load i64, ptr %s" % s.budget)
-        nv = s.op("sub i64 %s, 1" % old)
+        nv = s.op("sub i64 %s, %s" % (old, n))
         s.ins("store i64 %s, ptr %s" % (nv, s.budget))
         ok = s.op("icmp sge i64 %s, 0" % nv)
         s.guard(ok, s.panic1("pruv_panic_undefined", "contract iteration budget exceeded"), False)
@@ -1813,7 +1921,7 @@ class FnGen:
         s.spend()
         saved = s.cenv.get(e.var)
         s.cenv[e.var] = V("i128", kv)
-        b = s.cev(e.body)
+        b = s.cregion(lambda: s.cev(e.body))
         if saved is None:
             del s.cenv[e.var]
         else:
@@ -1867,7 +1975,7 @@ def entry_of(m, funcs, f, trust, budget=1 << 30):
         g.allocas.append("%s = alloca i64" % g.budget)
         g.ins("store i64 %d, ptr %s" % (budget, g.budget))
         for r in f.requires:
-            c = g.cev(r)
+            c = g.cregion(lambda r=r: g.cev(r))
             msg_fn = m.string(f.name)
             msg_ex = m.string(show(r))
             g.guard(c.a, lambda a=msg_fn, b=msg_ex: g.ins("call void @pruv_panic_requires(ptr %s, ptr %s)" % (a, b)),
@@ -2057,9 +2165,10 @@ def g9_walks(t):
     return is_user_type(t)
 
 
-def g9_weight(g, t, p):
+def g9_weight(g, t, p, bud="%bud"):
     """i128 SSA value of weight(value stored at p) (G9_SPEC 3), or None when it is statically 0.  Some / Ok weigh their
-    payload, None / Err 0; a nominal value weighs its size (one budget unit per node, inside pruv_csize)."""
+    payload, None / Err 0; a nominal value weighs its size (one budget unit per node, inside pruv_csize).  bud is the
+    budget pointer the size helper charges."""
     if gopt(t):
         X = t.args[0]
         if not g9_walks(X):
@@ -2070,13 +2179,13 @@ def g9_weight(g, t, p):
         lcur, yes, end = g.cur, g.label("gwy"), g.label("gwe")
         g.condbr(tag, yes, end)
         g.place(yes)
-        w = g9_weight(g, X, pl)
+        w = g9_weight(g, X, pl, bud)
         wcur = g.cur
         g.br(end)
         g.place(end)
         return g.op("phi i128 [ 0, %%%s ], [ %s, %%%s ]" % (lcur, w, wcur))
     if is_user_type(t):
-        return g.op("call i128 @pruv_csize__%s(ptr %s, ptr %%bud)" % (t.name, p))
+        return g.op("call i128 @pruv_csize__%s(ptr %s, ptr %s)" % (t.name, p, bud))
     return None
 
 

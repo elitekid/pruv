@@ -1,0 +1,16 @@
+// G9 A3 audit fix: variant_field selecting a scalar payload of a constructor in a plain (non-aggregate) contract
+// position is a contract (i128) value, not a reference into the owned temporary
+enum E { A(n: i64), B }
+
+fn first(x: i64) -> i64
+  requires x >= 0 && x <= 100
+  requires variant_field(E::A(1), E::A, n) == 1
+  requires variant_field(E::A(x), E::A, n) + 1 > x
+  ensures result == x + 1
+{
+  return x + 1;
+}
+
+fn run() -> i64 {
+  return first(41);
+}
