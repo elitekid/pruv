@@ -1,0 +1,15 @@
+// G4 A0 frontend: repeated leaf names (functions and same-spelled types) are distinct items per module
+mod left;
+mod right;
+
+fn helper(x: i64) -> i64 {
+  return x;
+}
+
+pub fn combine(x: i64) -> i64
+  requires 0 <= x && x <= 100
+{
+  let a: crate::left::Item = crate::left::make(x);
+  let b: crate::right::Item = crate::right::make(x);
+  return helper(a.v) + crate::left::helper(b.v) + crate::right::helper(x);
+}

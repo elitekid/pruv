@@ -1,0 +1,12 @@
+// companion module of p04
+pub enum Tree { Empty, Node(v: i64, kids: crate::b::Forest) }
+
+pub fn is_empty(t: Tree) -> bool
+  ensures is_variant(t, Tree::Empty) ==> result
+  ensures is_variant(t, Tree::Node) ==> !result
+{
+  match t {
+    Tree::Empty => { return true; }
+    Tree::Node(v, kids) => { return false; }
+  }
+}

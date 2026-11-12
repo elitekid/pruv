@@ -1,0 +1,13 @@
+// G4 A1 proof: two proved callee bodies with identical contracts; callers see only the contract, so both calls agree
+mod a;
+mod b;
+
+pub fn same(x: i64) -> i64
+  requires 0 <= x && x <= 10
+  ensures result == x + 1
+{
+  let p: i64 = crate::a::step(x);
+  let q: i64 = crate::b::step(x);
+  assert p == q;
+  return q;
+}

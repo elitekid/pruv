@@ -107,6 +107,66 @@ fn move_token(src: &[char], end: usize, toks: &[Tok]) -> bool {
     false
 }
 
+/// G4 A0: position after the blanks and complete line comments starting at `p` (regex `(?:[ \t\r\n]|//[^\n]*(?=\n|\Z))*`).
+fn g4_skip(src: &[char], mut p: usize) -> usize {
+    let n = src.len();
+    while p < n {
+        let c = src[p];
+        if matches!(c, ' ' | '\t' | '\r' | '\n') {
+            p += 1;
+        } else if c == '/' && p + 1 < n && src[p + 1] == '/' {
+            while p < n && src[p] != '\n' {
+                p += 1;
+            }
+        } else {
+            break;
+        }
+    }
+    p
+}
+
+/// G4 A0 (vparser.py `_g4_token`): `mod`, `pub` and `crate` are Rust keywords (reserved names) but also contextual module
+/// syntax. They become a `kw` token only in these positions; everywhere else they stay the old reserved_name error.
+///   mod   at top level (brace depth 0), at the start of an item (first token, after `}` or `;`, or after `pub`), and
+///         followed by a name, a string or `{`
+///   pub   at top level, at the start of an item (or after another `pub`), followed by fn/struct/enum/mod/trusted/rust/pub
+///   crate right before `::`, not after fn/let/mut/struct/enum and not after `.` or `::`
+fn g4_token(word: &str, src: &[char], end: usize, toks: &[Tok], depth: usize) -> bool {
+    let prev = toks.last();
+    let n = src.len();
+    if word == "crate" {
+        if let Some(p) = prev {
+            if (p.kind == Kind::Kw && matches!(p.val.as_str(), "fn" | "let" | "mut" | "struct" | "enum"))
+                || (p.kind == Kind::Op && matches!(p.val.as_str(), "." | "::"))
+            {
+                return false;
+            }
+        }
+        let q = g4_skip(src, end);
+        return q + 1 < n && src[q] == ':' && src[q + 1] == ':';
+    }
+    if depth != 0 {
+        return false;
+    }
+    let start = match prev {
+        None => true,
+        Some(p) => (p.kind == Kind::Op && matches!(p.val.as_str(), "}" | ";")) || (p.kind == Kind::Kw && p.val == "pub"),
+    };
+    if !start {
+        return false;
+    }
+    let q = g4_skip(src, end);
+    if word == "mod" {
+        return q < n && (src[q].is_ascii_alphabetic() || matches!(src[q], '_' | '"' | '{'));
+    }
+    let mut r = q;
+    while r < n && (src[r].is_ascii_alphanumeric() || src[r] == '_') {
+        r += 1;
+    }
+    let w: String = src[q..r].iter().collect();
+    matches!(w.as_str(), "fn" | "struct" | "enum" | "mod" | "pub" | "trusted" | "rust")
+}
+
 /// The operator token starting at pos (regex order: 3 characters, 2 characters, 1 character).
 fn match_op(src: &[char], pos: usize) -> Option<&'static str> {
     let n = src.len();
@@ -123,9 +183,15 @@ fn match_op(src: &[char], pos: usize) -> Option<&'static str> {
 }
 
 pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
+    lex_tagged(src, 0)
+}
+
+/// `lex` for module file number `tag` (G4: the line numbers carry the tag, see diagnostic.rs; tag 0 = plain lines).
+pub fn lex_tagged(src: &[char], tag: usize) -> Result<Vec<Tok>, PruvError> {
     let n = src.len();
     let mut toks: Vec<Tok> = Vec::new();
-    let (mut pos, mut line, mut lstart) = (0usize, 1i64, 0usize);
+    let (mut pos, mut line, mut lstart) = (0usize, 1i64 + ((tag as i64) << 32), 0usize);
+    let mut brace_depth: usize = 0; // G4: brace depth
     while pos < n {
         let c = src[pos];
         let col = (pos - lstart + 1) as i64;
@@ -221,6 +287,11 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
                 toks.push(Tok { kind: Kind::Move, val: v, line, col, end });
                 continue;
             }
+            if matches!(v.as_str(), "mod" | "pub" | "crate") && g4_token(&v, src, pos, &toks, brace_depth) {
+                let end = col + (pos - start) as i64;
+                toks.push(Tok { kind: Kind::Kw, val: v, line, col, end });
+                continue;
+            }
             let is_kw = KEYWORDS.contains(&v.as_str());
             if !is_kw && (v.starts_with("pruv_") || v.contains("__") || RUST_KEYWORDS.contains(&v.as_str())) {
                 return Err(PruvError::new(
@@ -240,6 +311,11 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
                 return Err(PruvError::new("parse", line, col, "bad_char", format!("unexpected character {}", repr_str("|")), "remove it"));
             }
             pos += op.len();
+            if op == "{" {
+                brace_depth += 1;
+            } else if op == "}" && brace_depth > 0 {
+                brace_depth -= 1;
+            }
             toks.push(Tok { kind: Kind::Op, val: op.to_string(), line, col, end: col + op.len() as i64 });
         } else {
             return Err(PruvError::new(

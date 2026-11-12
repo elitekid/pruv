@@ -40,6 +40,7 @@ def _bar_after_type(toks):
     return a.val in ("i64", "bool", "u8", "Option", "Result") or a.val[:1].isupper()
 
 
+_MOD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")   # G4: module names
 _STR_ESC = {'"': 0x22, "\\": 0x5C, "n": 0x0A, "r": 0x0D, "t": 0x09, "0": 0x00}
 
 
@@ -108,8 +109,38 @@ def _move_token(src, end, toks):
     return _MOVE_AHEAD.match(src, end) is not None
 
 
+# G4 A0: `mod`, `pub` and `crate` are Rust keywords (reserved names) but also contextual module syntax. They become a
+# `kw` token only in the positions below; everywhere else they stay the old reserved_name error.
+#   mod   at top level (brace depth 0), at the start of an item (first token, after `}` or `;`, or after `pub`), and
+#         followed by a name, a string or `{` (so `mod x;`, `mod "p";`, `mod x { }` reach the module-syntax errors)
+#   pub   at top level, at the start of an item (or after another `pub`), followed by fn/struct/enum/mod/trusted/rust/pub
+#   crate right before `::`, not after fn/let/mut/struct/enum and not after `.` or `::`
+_G4_SKIP = r"(?:[ \t\r\n]|//[^\n]*(?=\n|\Z))*"
+_G4_MOD_AHEAD = re.compile(_G4_SKIP + r"[A-Za-z_\"{]")
+_G4_PUB_AHEAD = re.compile(_G4_SKIP + r"(?:fn|struct|enum|mod|pub|trusted|rust)(?![A-Za-z0-9_])")
+_G4_CRATE_AHEAD = re.compile(_G4_SKIP + r"::")
+
+
+def _g4_token(word, src, end, toks, depth):
+    prev = toks[-1] if toks else None
+    if word == "crate":
+        if prev is not None and ((prev.kind == "kw" and prev.val in ("fn", "let", "mut", "struct", "enum"))
+                                 or (prev.kind == "op" and prev.val in (".", "::"))):
+            return False
+        return _G4_CRATE_AHEAD.match(src, end) is not None
+    if depth != 0:
+        return False
+    start = prev is None or (prev.kind == "op" and prev.val in ("}", ";")) or (prev.kind == "kw" and prev.val == "pub")
+    if not start:
+        return False
+    if word == "mod":
+        return _G4_MOD_AHEAD.match(src, end) is not None
+    return _G4_PUB_AHEAD.match(src, end) is not None
+
+
 def lex(src):
     toks, pos, line, lstart = [], 0, 1, 0
+    depth = 0   # G4: brace depth
     while pos < len(src):
         if src[pos] == '"':
             raw, end_pos = _lex_string(src, pos, line, lstart)
@@ -137,6 +168,10 @@ def lex(src):
                 toks.append(Tok("move", v, line, col, col + len(v)))
                 pos = m.end()
                 continue
+            if v in ("mod", "pub", "crate") and _g4_token(v, src, m.end(), toks, depth):
+                toks.append(Tok("kw", v, line, col, col + len(v)))
+                pos = m.end()
+                continue
             if v not in KEYWORDS and (v.startswith("pruv_") or "__" in v or v in RUST_KEYWORDS):
                 raise PruvError("parse", line, col, "reserved_name",
                                "name %r is reserved for the compiler" % v,
@@ -146,6 +181,10 @@ def lex(src):
             if v == "|" and not _bar_after_type(toks):
                 # a lone `|` outside a type position stays the lexical error it always was
                 raise PruvError("parse", line, col, "bad_char", "unexpected character %r" % v, "remove it")
+            if v == "{":
+                depth += 1
+            elif v == "}" and depth > 0:
+                depth -= 1
             toks.append(Tok("op", v, line, col, col + len(v)))
         pos = m.end()
     toks.append(Tok("eof", None, line, pos - lstart + 1))
@@ -191,23 +230,108 @@ class Parser:
     # program
     def program(s):
         p = Program()
+        p.items = []
+        p.mods = []
         while s.peek().kind != "eof":
-            if s.at("struct"):
-                p.types.append(s.struct_decl())
+            pub = None
+            if s.at("pub"):               # G4: visibility of the next item
+                pub = s.next()
+                if s.at("pub"):
+                    s.visibility_syntax(s.peek(), "`pub` is written once", "remove the second `pub`")
+                if s.at("mod"):
+                    s.visibility_syntax(pub, "`pub mod` is not supported: module namespaces have no visibility",
+                                        "write `mod name;`")
+            if s.at("mod"):
+                p.mods.append(s.mod_decl())
+            elif s.at("struct"):
+                d = s.struct_decl()
+                d.pub = pub is not None
+                p.types.append(d)
+                p.items.append(d)
             elif s.at("enum"):
-                p.types.append(s.enum_decl())
+                d = s.enum_decl()
+                d.pub = pub is not None
+                p.types.append(d)
+                p.items.append(d)
             elif s.peek().kind == "id" and s.peek().val == "trusted":
                 t = s.peek()
+                if pub is not None:
+                    s.visibility_syntax(pub, "a trusted rust fn cannot be `pub`",
+                                        "keep it private and expose it through a public Pruv function with explicit contracts")
                 if not (s.peek(1).kind == "id" and s.peek(1).val == "rust" and s.at("fn", 2)):
                     s.foreign_syntax(t, "expected `rust fn` after `trusted`",
                                      'write `trusted rust fn name(..) -> T ensures .. = "::path";`')
                 s.next(); s.next()
-                p.functions.append(s.function(t))
+                f = s.function(t)
+                p.functions.append(f)
+                p.items.append(f)
             elif s.peek().kind == "id" and s.peek().val == "rust" and s.at("fn", 1):
                 s.foreign_syntax(s.peek(), "missing `trusted`", "write `trusted rust fn ...`")
             else:
-                p.functions.append(s.function())
+                f = s.function()
+                f.pub = pub is not None
+                p.functions.append(f)
+                p.items.append(f)
+            if pub is not None:
+                p.has_pub = True
         return p
+
+    # ---- G4 A0: module declarations and paths ----
+    def visibility_syntax(s, tok, msg, fix=""):
+        raise PruvError("parse", tok.line, tok.col, "visibility_syntax", msg, fix)
+
+    def module_syntax(s, tok, msg, fix=""):
+        raise PruvError("parse", tok.line, tok.col, "module_syntax", msg, fix)
+
+    def path_syntax(s, tok, msg, fix="write an absolute path such as crate::math::clamp"):
+        raise PruvError("parse", tok.line, tok.col, "path_syntax", msg, fix)
+
+    def mod_decl(s):
+        """`mod name;` at top level -> ModDecl"""
+        kw = s.next()
+        t = s.peek()
+        if t.kind == "str":
+            s.module_syntax(t, "a module path cannot be a string", "write `mod name;`; the file is <name>.pruv")
+        if s.at("{"):
+            s.module_syntax(t, "inline modules are not supported", "move the items into <name>.pruv and write `mod name;`")
+        if t.kind != "id":
+            s.module_syntax(t, "expected a module name after `mod`", "write `mod name;`")
+        s.next()
+        if not _MOD_NAME_RE.match(t.val):
+            s.module_syntax(t, "module name %s must match [a-z][A-Za-z0-9_]*" % t.val,
+                            "rename it, e.g. %s" % (t.val[:1].lower() + t.val[1:]))
+        if s.at("{"):
+            s.module_syntax(s.peek(), "inline modules are not supported",
+                            "move the items into %s.pruv and write `mod %s;`" % (t.val, t.val))
+        if not s.at(";"):
+            s.module_syntax(s.peek(), "expected ';' after `mod %s`" % t.val, "write `mod %s;`" % t.val)
+        s.next()
+        return ModDecl(kw.line, kw.col, t.val)
+
+    def crate_path(s, allow_targs):
+        """at `crate`: `crate::a::b` -> (crate token, [segment names]); stops before a `::<` when allow_targs"""
+        t = s.next()
+        segs = []
+        while s.at("::"):
+            if s.at("<", 1):
+                if allow_targs and segs:
+                    break
+                s.path_syntax(s.peek(1), "type arguments are not allowed here",
+                              "attach type arguments to the item: crate::m::f::<T>(x)")
+            s.next()
+            n = s.peek()
+            if n.kind != "id":
+                s.path_syntax(n, "expected a name after `::` in a path, found %s" % (
+                    "end of file" if n.kind == "eof" else repr(n.val)))
+            segs.append(s.next().val)
+        if not segs:
+            s.path_syntax(s.peek(), "a path needs at least one name after `crate::`")
+        return t, segs
+
+    def type_path(s):
+        """a `crate::..` path in a type position -> a pseudo identifier token whose value is the full path"""
+        t, segs = s.crate_path(False)
+        return Tok("id", "crate::" + "::".join(segs), t.line, t.col, None)
 
     def foreign_syntax(s, tok, msg, fix=""):
         raise PruvError("parse", tok.line, tok.col, "foreign_syntax", msg, fix)
@@ -419,10 +543,10 @@ class Parser:
             s.next(); s.expect(")"); return UNIT, None
         if s.at("["):
             s.next()
-            e = s.ident()
+            e = s.type_path() if s.at("crate") else s.ident()   # G4: a qualified element type
             if e.val in ("i64", "u8", "bool"):
                 elem = {"i64": I64, "u8": U8, "bool": BOOL}[e.val]
-            elif e.val[0].isupper():
+            elif e.val[0].isupper() or e.val.startswith("crate::"):
                 elem = s.named_type(e)   # G3: a type parameter (checker: needs Element); other types: checker rejects
             else:
                 # G2 A5: [bool] joins the element names
@@ -447,7 +571,7 @@ class Parser:
             if lo is None and maxlen is None:
                 return aty, None
             return aty, Refinement(t.line, t.col, "array", e.val, lo, hi, maxlen)
-        n = s.ident()
+        n = s.type_path() if s.at("crate") else s.ident()   # G4: a qualified type path
         if n.val in ("u8", "i32"):
             raise PruvError("parse", n.line, n.col, "element_storage_type",
                             "%s is only an array element type" % n.val,
@@ -645,6 +769,29 @@ class Parser:
             s.expect("{")
             arms = []
             while not s.at("}"):
+                if s.at("crate"):
+                    # G4: `crate::m::Enum::Variant(x) =>`; the last segment is the variant
+                    ct, segs = s.crate_path(False)
+                    if len(segs) < 2:
+                        s.path_syntax(ct, "a variant pattern is written crate::module::Enum::Variant")
+                    binders = []
+                    if s.at("("):
+                        lp = s.next()
+                        if s.at(")"):
+                            s.err("a pattern lists one name per field; a variant without fields has no parentheses",
+                                  "write `%s::%s =>`" % ("::".join(["crate"] + segs[:-1]), segs[-1]), lp)
+                        while True:
+                            binders.append(s.ident().val)
+                            if not s.at(","):
+                                break
+                            s.next()
+                        s.expect(")")
+                    s.expect("=>")
+                    arms.append(MatchArm(ct.line, ct.col, "::".join(["crate"] + segs[:-1]), segs[-1], binders,
+                                         s.block()))
+                    if s.at(","):
+                        s.next()
+                    continue
                 ct = s.next()
                 if ct.kind == "id" and s.at("::"):
                     s.next()
@@ -788,10 +935,85 @@ class Parser:
         return e
 
     def enum_ref(s):
-        """`Enum::Variant` -> (enum token, variant token)"""
+        """`Enum::Variant` -> (enum token, variant token); G4: also `crate::m::Enum::Variant` (enum token value =
+        the enum's path)"""
+        if s.at("crate"):
+            ct, segs = s.crate_path(False)
+            if len(segs) < 2:
+                s.path_syntax(ct, "a variant is written crate::module::Enum::Variant")
+            vt = Tok("id", segs[-1], ct.line, ct.col, None)
+            return Tok("id", "::".join(["crate"] + segs[:-1]), ct.line, ct.col, None), vt
         en = s.ident()
         s.expect("::")
         return en, s.ident()
+
+    def call_args(s):
+        """at `(`: the argument list of a call or constructor"""
+        s.next()
+        args = []
+        while not s.at(")"):
+            args.append(s.expr())
+            if not s.at(")"):
+                s.expect(",")
+        s.expect(")")
+        return args
+
+    def crate_expr(s):
+        """G4: an absolute path in an expression.
+          crate::m::f(args) / crate::m::Enum::Variant(args)  -> Call(name = the whole path) (the resolver tells a
+                                                                function from a variant constructor)
+          crate::m::Enum::Variant                            -> EnumCtor without arguments
+          crate::m::S { .. }                                  -> StructLit
+          crate::m::f::<T>(args), crate::m::S::<A> { .. }, crate::m::E::<A>::V(args): type arguments attach to the item"""
+        t, segs = s.crate_path(True)
+        path = "::".join(["crate"] + segs)
+        if s.at("::") and s.at("<", 1):
+            targs = s.expr_targs()
+            if not (s.at("::") or s.at("(") or (s.at("{") and segs[-1][0].isupper())):
+                s.generic_syntax(s.peek(), "a type application must be followed by `(`, `{` or `::Variant`",
+                                 "write crate::m::f::<T>(x), crate::m::Pair::<A, B> { .. } or crate::m::Choice::<A, B>::Left(x)")
+            if s.at("::"):
+                s.next()
+                vt = s.ident()
+                args = []
+                if s.at("("):
+                    lp = s.peek()
+                    args = s.call_args()
+                    if not args:
+                        s.err("empty parentheses after a variant",
+                              "write `%s::%s` for a variant without fields, or pass its fields as arguments"
+                              % (path, vt.val), lp)
+                ec = EnumCtor(t.line, t.col, path, vt.val, args)
+                ec.targs = targs
+                return ec
+            if s.at("{"):
+                sl = StructLit(t.line, t.col, path, s.struct_inits())
+                sl.targs = targs
+                return sl
+            call = Call(t.line, t.col, path, s.call_args())
+            call.targs = targs
+            return call
+        if s.at("("):
+            return Call(t.line, t.col, path, s.call_args())
+        if s.at("{") and segs[-1][0].isupper():
+            return StructLit(t.line, t.col, path, s.struct_inits())
+        if len(segs) < 2:
+            s.path_syntax(t, "a path expression must be a call, a struct literal or an enum variant",
+                          "write crate::module::f(x), crate::module::S { .. } or crate::module::Enum::Variant")
+        return EnumCtor(t.line, t.col, "::".join(["crate"] + segs[:-1]), segs[-1], [])
+
+    def struct_inits(s):
+        """at `{`: `name: expr, ...` up to and including `}` -> [FieldInit]"""
+        s.next()
+        inits = []
+        while not s.at("}"):
+            fn = s.ident()
+            s.expect(":")
+            inits.append(FieldInit(fn.line, fn.col, fn.val, s.expr()))
+            if not s.at("}"):
+                s.expect(",")
+        s.expect("}")
+        return inits
 
     def primary(s):
         t = s.peek()
@@ -855,6 +1077,8 @@ class Parser:
             f = s.ident()
             s.expect(")")
             return VariantField(t.line, t.col, v, en.val, vt.val, f.val)
+        if s.at("crate"):
+            return s.crate_expr()
         if t.kind == "id":
             s.next()
             targs = None

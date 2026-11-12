@@ -1,0 +1,8 @@
+// G4 A1 reject type/type_mismatch: a::Item and b::Item are spelled and shaped alike but are different types
+mod a;
+mod b;
+
+pub fn bad(x: i64) -> i64 {
+  let p: crate::a::Item = crate::a::make(x);
+  return crate::b::read(p);
+}

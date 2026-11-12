@@ -52,6 +52,7 @@ sys.path.insert(0, os.path.join(ROOT, "pruvc"))
 import vast  # noqa: E402
 from vast import PruvError  # noqa: E402
 from vparser import parse as pruv_parse  # noqa: E402
+from modules import load_program  # noqa: E402  (G4: the file-taking entry point; a legacy root is plain parse(src))
 import check as check_mod  # noqa: E402
 from typeinfo import format_type, g9_unimplemented_error  # noqa: E402
 from foreign import g6_unimplemented_error  # noqa: E402
@@ -181,6 +182,31 @@ def _g3_extras(v, out):
     # G9 A0, written only when present: Function.decreases (While.decreases is a dataclass field, not this)
     if type(v).__name__ == "Function" and getattr(v, "decreases", None) is not None:
         out["decreases"] = ser(v.decreases)
+    _g4_extras(v, out)
+
+
+# G4 A0, written ONLY in explicit visibility mode (a legacy program has no mod_path / explicit), so legacy dumps are
+# byte-identical:
+#   Function / StructDecl / EnumDecl: "module": [components of the defining module] ([] = root), "file": the repo-relative
+#       path of the defining file, "pub": true (only when public), "src_name": the name as written (only when the
+#       resolved name differs, i.e. in the check dump), "host_entry": true (Function; check dump)
+#   Program: "modules": [{"path": [..], "file": "a/b.pruv", "mods": [{"kind": "ModDecl", "line", "col", "name"}]}]
+#       in root-first depth-first order
+def _g4_extras(v, out):
+    kind = type(v).__name__
+    if kind in ("Function", "StructDecl", "EnumDecl") and getattr(v, "mod_path", None) is not None:
+        out["module"] = list(v.mod_path)
+        out["file"] = v.file
+        if v.pub:
+            out["pub"] = True
+        if v.src_name is not None and v.src_name != v.name:
+            out["src_name"] = v.src_name
+        if kind == "Function" and v.host_entry:
+            out["host_entry"] = True
+    elif kind == "Program" and getattr(v, "explicit", False):
+        out["modules"] = [{"path": list(m.path), "file": m.file,
+                           "mods": [{"kind": "ModDecl", "line": str(md.line), "col": str(md.col), "name": md.name}
+                                    for md in m.mods]} for m in v.modules]
 
 
 def ser(v):
@@ -230,7 +256,7 @@ def read_source(path):
 def parse_result(path):
     _verify_schema()
     try:
-        prog = pruv_parse(read_source(path))
+        prog = load_program(path)
     except PruvError as e:
         return {"schema": AST_SCHEMA, "error": err_dict(e)}
     return {"schema": AST_SCHEMA, "program": ser(prog)}
@@ -254,12 +280,15 @@ def check_result(path, externs=()):
     externs: --rust-extern crate names (G6)"""
     _verify_schema()
     try:
-        prog = pruv_parse(read_source(path))
+        prog = load_program(path)
         c = check_mod.Checker(prog, externs)
         c.run()
     except PruvError as e:
         return {"schema": AST_SCHEMA, "error": err_dict(e)}
-    return {"schema": AST_SCHEMA, "program": ser(prog), "type_table": type_table_json(c.tt)}
+    res = {"schema": AST_SCHEMA, "program": ser(prog), "type_table": type_table_json(c.tt)}
+    if prog.explicit:   # G4 A0: entry classification (explicit mode only)
+        res["g4"] = {"entries": list(prog.entries), "main": prog.main}
+    return res
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +304,7 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
         rep = []
         out["inference"] = rep
     try:
-        prog = pruv_parse(read_source(path))
+        prog = load_program(path)
         check_mod.check(prog, externs)
         # G9 A2: the rust backend (the default code generator here) lowers G9 programs; no guard
         # G6 A1: no guard here; G6 programs get real traces (G6_SPEC 11.1)
@@ -289,6 +318,13 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
             else:
                 errs = verify.verify_program(prog, rec=rec)
             errors.extend(err_dict(e) for e in errs)
+        if prog.explicit and not errors:
+            # G4 staging guard, after the proof since A1 (same diagnostic and position as pruvc.compile_file); a
+            # failing proof reports its own errors instead
+            first = prog.items[0] if prog.items else None
+            raise PruvError("codegen", first.line if first else 1, first.col if first else 1, "unsupported_type",
+                            "G4 modules and visibility are not implemented by the verify and codegen layers yet",
+                            "use a single file without `mod` and `pub` for now", file=prog.modules[0].file)
     except PruvError as e:
         errors.append(err_dict(e))
     except Exception as e:   # like pruvc.main: compiler-internal failure
@@ -361,6 +397,12 @@ def _tag(flags):
     return re.sub(r"[^A-Za-z0-9_.+-]", "_", "-".join(f.lstrip("-") for f in flags))
 
 
+def _g4_projects():
+    sys.path.insert(0, HERE)
+    import importlib
+    return importlib.import_module("g4.projects")
+
+
 def discover(mode):
     """[(relative path, flags list)] in a fixed order"""
     items = []
@@ -382,6 +424,10 @@ def discover(mode):
             items.append((_rel(p), flags))
     for p in sorted(glob.glob(os.path.join(ROOT, "bench/solutions/pruv_agg/*.pruv"))):
         items.append((_rel(p), []))
+    # G4 A0: project roots (tests/g4 fixtures); companion modules are never standalone inputs
+    import_g4 = _g4_projects()
+    for r in import_g4.all_roots():
+        items.append((r, []))
     if mode == "all":
         have = set(r for r, _ in items)
         for top in ("tests", "bench"):
@@ -390,6 +436,8 @@ def discover(mode):
                 for fn in sorted(fns):
                     if fn.endswith(".pruv"):
                         r = _rel(os.path.join(dp, fn))
+                        if import_g4.is_companion(r):
+                            continue
                         if r not in have:
                             have.add(r)
                             items.append((r, []))

@@ -1,0 +1,4 @@
+// G4 A0 reject parse/reserved_name: `crate` as an identifier (not a path root) keeps the old reserved-name error
+mod a;
+
+pub fn f(crate: i64) -> i64 { return crate; }

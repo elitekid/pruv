@@ -1,0 +1,6 @@
+// companion module of g4_r06
+struct Hidden { v: i64 }
+
+pub fn make() -> Hidden {
+  return Hidden { v: 1 };
+}

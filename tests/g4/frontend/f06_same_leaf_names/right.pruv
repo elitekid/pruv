@@ -1,0 +1,10 @@
+// companion module of f06: same leaf names as left, different items
+pub struct Item { v: i64 }
+
+pub fn helper(x: i64) -> i64 {
+  return x + 2;
+}
+
+pub fn make(x: i64) -> Item {
+  return Item { v: helper(x) };
+}

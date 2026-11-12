@@ -34,7 +34,7 @@ fn strt() -> GType {
 }
 
 /// What a contract-only built-in returns.
-enum CRes {
+pub(crate) enum CRes {
     Bool,
     I64,
     /// The Option/Result payload type.
@@ -42,7 +42,7 @@ enum CRes {
 }
 
 /// Built-ins used only in contracts: name -> (argument kind, result).
-fn contract_only(n: &str) -> Option<(&'static str, CRes)> {
+pub(crate) fn contract_only(n: &str) -> Option<(&'static str, CRes)> {
     match n {
         "is_some" => Some(("option", CRes::Bool)),
         "some_val" => Some(("option", CRes::Payload)),
@@ -189,14 +189,14 @@ fn expr_ty(e: &Expr) -> &Ty {
     }
 }
 
-const RESERVED_TYPE_NAMES: [&str; 6] = ["Option", "Result", "Some", "None", "Ok", "Err"];
+pub(crate) const RESERVED_TYPE_NAMES: [&str; 6] = ["Option", "Result", "Some", "None", "Ok", "Err"];
 
 fn is_tail(s: &str) -> bool {
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// ^[A-Z][A-Za-z0-9_]*$ (ASCII)
-fn type_name_ok(s: &str) -> bool {
+pub(crate) fn type_name_ok(s: &str) -> bool {
     match s.chars().next() {
         Some(c) if c.is_ascii_uppercase() => is_tail(&s[1..]),
         _ => false,
@@ -212,7 +212,7 @@ fn field_name_ok(s: &str) -> bool {
 }
 
 /// Converts only the first character to ASCII case (names are ASCII identifiers, never empty).
-fn cap_first(s: &str, upper: bool) -> String {
+pub(crate) fn cap_first(s: &str, upper: bool) -> String {
     let mut it = s.chars();
     match it.next() {
         Some(c) => {
@@ -302,6 +302,25 @@ struct Checker {
     call_log: Vec<(String, i64, i64, Option<Vec<GType>>, String)>,
     /// root variable names of the enclosing match arms on extended scrutinees
     active_roots: Vec<String>,
+    /// G4 A0: explicit visibility mode (the declaration names are resolved identities)
+    explicit: bool,
+    /// G4 A0: per function (same index as Program.functions): a host entry
+    host_entry: Vec<bool>,
+}
+
+/// G4 A0: `check_with_externs` for an explicit-mode program: resolves the names of the whole program to identities first
+/// (modules::resolve), then runs the same checker plus the host-entry signature rules.
+pub fn check_explicit(
+    prog: &mut Program,
+    g4: &mut crate::modules::G4,
+    externs: &[String],
+) -> Result<TypeTable, PruvError> {
+    crate::modules::resolve(prog, g4)?;
+    let mut c = Checker::new(prog, externs)?;
+    c.explicit = true;
+    c.host_entry = g4.fn_meta.iter().map(|m| m.host_entry).collect();
+    c.run(prog)?;
+    Ok(c.tt)
 }
 
 /// Checks the program, fills in ty for every expression, and returns the type table.
@@ -418,6 +437,8 @@ impl Checker {
             fn_sccs: Vec::new(),
             call_log: Vec::new(),
             active_roots: Vec::new(),
+            explicit: false,
+            host_entry: Vec::new(),
         })
     }
 
@@ -454,6 +475,9 @@ impl Checker {
         self.inhabitance(&prog.types)?; // G9 A0: every declaration needs a finite value
         self.compute_extended(&prog.types);
         self.check_extended_uses(prog)?;
+        if self.explicit {
+            self.check_entries(prog)?; // G4 A0: host-entry signatures
+        }
         self.tt = TypeTable::new(&prog.types);
         for f in prog.functions.iter_mut() {
             self.fn_(f)?;
@@ -467,7 +491,8 @@ impl Checker {
     fn declare_types(&mut self, types: &[TypeDecl]) -> Res<()> {
         for d in types {
             let (name, line, col) = (d.name(), d.line(), d.col());
-            if !type_name_ok(name) {
+            // G4: explicit mode checked the names as written (modules::resolve); the identities are not type-name shaped
+            if !self.explicit && !type_name_ok(name) {
                 return Err(terr(
                     line,
                     col,
@@ -476,7 +501,7 @@ impl Checker {
                     format!("rename it, e.g. {}", cap_first(name, true)),
                 ));
             }
-            if RESERVED_TYPE_NAMES.contains(&name) {
+            if !self.explicit && RESERVED_TYPE_NAMES.contains(&name) {
                 return Err(terr(line, col, "reserved", format!("{} is a builtin name", name), "rename the type"));
             }
             if self.decls.contains_key(name) {
@@ -1372,6 +1397,31 @@ impl Checker {
                 self.ext_misuse(f.line, f.col, &GType::from_key(&p.ty), None)?;
             }
             self.ext_misuse(f.line, f.col, &GType::from_key(&f.ret), None)?;
+        }
+        Ok(())
+    }
+
+    /// G4 A0 (explicit mode): a host entry (root `pub`, nongeneric, ordinary function) may not have a collection or an extended
+    /// (G9) type in its signature; child `pub` functions and generic functions are not host entries.
+    fn check_entries(&self, prog: &Program) -> Res<()> {
+        for (i, f) in prog.functions.iter().enumerate() {
+            if !self.host_entry.get(i).copied().unwrap_or(false) {
+                continue;
+            }
+            let mut sig: Vec<(String, &str)> = f.params.iter().map(|p| (format!("parameter {}", p.name), p.ty.as_str())).collect();
+            sig.push(("the result".to_string(), f.ret.as_str()));
+            for (what, key) in sig {
+                let ty = GType::from_key(key);
+                if ty.contains_collection() || dependencies(&ty).iter().any(|n| self.extended.contains(n)) {
+                    return Err(terr(
+                        f.line,
+                        f.col,
+                        "entry_signature",
+                        format!("host entry {} cannot have the type {} in {}", f.name, tn(&ty), what),
+                        "keep it Pruv-callable (child `pub` or private) and expose a scalar/value wrapper at the root",
+                    ));
+                }
+            }
         }
         Ok(())
     }

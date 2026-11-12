@@ -1,0 +1,8 @@
+// companion module of g4_r17: take -> Outer -> Mid -> Hidden (private)
+pub fn take(o: Outer) -> i64 { return 0; }
+
+pub struct Outer { m: Mid }
+
+pub struct Mid { h: Hidden }
+
+struct Hidden { v: i64 }

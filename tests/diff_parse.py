@@ -6,8 +6,10 @@
                              [--fuzz-count 200] [--mutations 6] [--save-dir DIR]
                              [--only GROUP[,GROUP...]]
 
-Groups: must_reject examples runtime bench edge g6 g9 bytes fuzz mutate
+Groups: must_reject examples runtime bench edge g6 g9 g4 bytes fuzz mutate
   g6 = tests/g6/frontend, g9 = tests/g9/frontend (the g9_* must_reject sources are part of must_reject).
+  g4 = the project roots listed in tests/g4/fixtures.json (frontend + tests/must_reject/g4_*/root.pruv); companion
+  module files are never inputs. The dump tools load the declared children relative to the root file.
 --mode parse (default): expected line = diff_py_adapter.dumps(parse_result(FILE)), Rust = pruv-parse-dump,
   edge = tests/parse_edge.
 --mode check: expected line = diff_py_adapter.dumps(check_result(FILE)), Rust = pruv-check-dump,
@@ -54,6 +56,7 @@ GROUP_DIRS = [
     ("edge", "tests/parse_edge"),
     ("g6", "tests/g6/frontend"),
     ("g9", "tests/g9/frontend"),
+    ("g4", "tests/g4"),
 ]
 CHECK_EDGE_DIR = "tests/check_edge"
 PARSE_EDGE_DIR = "tests/parse_edge"
@@ -210,6 +213,10 @@ def rel(path):
 
 
 def list_dir(sub):
+    if sub == "tests/g4":
+        # G4 A0: project roots (frontend + rejection projects) from tests/g4/fixtures.json; companion modules are not roots
+        import importlib
+        return sorted(os.path.join(ROOT, *r.split("/")) for r in importlib.import_module("g4.projects").all_roots())
     return sorted(glob.glob(os.path.join(ROOT, *sub.split("/")) + os.sep + "*.pruv"))
 
 

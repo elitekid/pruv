@@ -8,10 +8,8 @@ fn work(files: Vec<std::ffi::OsString>) -> bool {
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
     for f in files {
-        let line = match std::fs::read(&f) {
-            Ok(bytes) => pruv_core::dump::parse_dump_line(&bytes),
-            Err(_) => r#"{"adapter_error": "io"}"#.to_string(),
-        };
+        // G4: through the module loader (an explicit-mode root also reads its declared module files)
+        let line = pruv_core::dump::parse_dump_path(std::path::Path::new(&f));
         if lock.write_all(line.as_bytes()).is_err() || lock.write_all(b"\n").is_err() || lock.flush().is_err() {
             return false;
         }

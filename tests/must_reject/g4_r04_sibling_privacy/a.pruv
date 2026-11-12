@@ -1,0 +1,2 @@
+// companion module of g4_r04
+pub fn f() -> i64 { return crate::b::hidden(); }

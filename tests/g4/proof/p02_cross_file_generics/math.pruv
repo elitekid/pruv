@@ -1,0 +1,15 @@
+// companion module of p02
+pub fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return a[0];
+}
+
+pub fn choose<T>(flag: bool, x: T, y: T) -> T
+  ensures flag ==> result == x
+  ensures !flag ==> result == y
+{
+  if flag { return x; }
+  return y;
+}

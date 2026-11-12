@@ -1,0 +1,6 @@
+// companion module of g4_r13
+pub struct Item { v: i64 }
+
+pub fn make(x: i64) -> Item {
+  return Item { v: x };
+}

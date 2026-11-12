@@ -44,6 +44,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vast import PruvError  # noqa: E402
 from vparser import parse, RUST_KEYWORDS  # noqa: E402
+from modules import load_program  # noqa: E402
 from check import check  # noqa: E402
 from codegen import gen_rust, gen_rust_ex  # noqa: E402
 from typeinfo import g2_unimplemented_error, first_g3_use  # noqa: E402
@@ -68,8 +69,7 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     assert 1 <= budget <= 2 ** 62
     if also_llvm and backend != "rust":
         raise ValueError("also_llvm requires backend='rust'")
-    src = open(path, encoding="utf-8").read()
-    prog = parse(src)
+    prog = load_program(path)   # G4: the root file plus its declared module files; a legacy root is plain parse(src)
     check(prog, externs=externs)
     # G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.
     # G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm)
@@ -88,6 +88,14 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             return errs
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
+    if prog.explicit:
+        # G4 staging guard (moved after the proof in A1): explicit visibility mode verifies, but has no code generation
+        # until A2 (Rust) / A3 (LLVM); a failing proof has already returned its normal error above.
+        # Its text is the contract of tests/run_all.py (G4_GUARD_LAYER).
+        first = prog.items[0] if prog.items else None
+        return [PruvError("codegen", first.line if first else 1, first.col if first else 1, "unsupported_type",
+                          "G4 modules and visibility are not implemented by the verify and codegen layers yet",
+                          "use a single file without `mod` and `pub` for now", file=prog.modules[0].file)]
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same
     # shared specialization plan (pruvc/mono.py), also with --no-verify.
     plan = None

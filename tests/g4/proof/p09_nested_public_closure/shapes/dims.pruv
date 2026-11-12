@@ -1,0 +1,2 @@
+// companion module of p09 (path crate::shapes::dims)
+pub struct Size { w: i64, h: i64 }

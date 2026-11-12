@@ -1,0 +1,4 @@
+// G4 A0 reject parse/module_file: the declared child file missing.pruv does not exist
+mod missing;
+
+pub fn f() -> i64 { return 1; }

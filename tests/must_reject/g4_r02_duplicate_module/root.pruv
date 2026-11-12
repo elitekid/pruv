@@ -1,0 +1,5 @@
+// G4 A0 reject type/duplicate_module: the same sibling module is declared twice
+mod a;
+mod a;
+
+pub fn f() -> i64 { return crate::a::g(); }

@@ -1,0 +1,2 @@
+// companion module of g4_r02
+pub fn g() -> i64 { return 1; }

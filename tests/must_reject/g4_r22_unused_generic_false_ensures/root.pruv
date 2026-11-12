@@ -1,0 +1,4 @@
+// G4 A1 reject verify/ensures: an unused private generic function of util is still verified, and its ensures is false
+mod util;
+
+pub fn ok() -> i64 { return 0; }

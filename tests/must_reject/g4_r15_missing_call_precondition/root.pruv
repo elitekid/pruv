@@ -1,0 +1,6 @@
+// G4 A1 reject verify/call_requires: the call into module math does not establish the callee precondition
+mod math;
+
+pub fn f(x: i64) -> i64 {
+  return crate::math::dec(x);
+}

@@ -20,7 +20,7 @@ FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
 
 
 def terr(node, code, msg, fix="", stage="type"):
-    raise PruvError(stage, node.line, node.col, code, msg, fix)
+    raise PruvError(stage, node.line, node.col, code, msg, fix, file=getattr(node, "file", None))   # G4: file only in explicit mode
 
 
 def _sccs(n, adj):
@@ -102,6 +102,9 @@ def _cycle_through(start, adj, members):
 class Checker:
     def __init__(s, prog, externs=()):
         s.prog = prog
+        if prog.explicit:                # G4 A0: explicit visibility mode: resolve names to identities first
+            from modules import resolve
+            resolve(prog)
         s.externs = frozenset(externs)   # G6: crate names given with --rust-extern
         s.funcs = {}
         for f in prog.functions:
@@ -140,6 +143,8 @@ class Checker:
         s.inhabitance()        # G9 A0: every declaration needs a finite value
         s.compute_extended()
         s.check_extended_uses()
+        if s.prog.explicit:
+            s.check_entries()      # G4 A0: host-entry signatures
         s.tt = TypeTable(s.prog)
         for f in s.prog.functions:
             s.fn(f)
@@ -149,10 +154,10 @@ class Checker:
     # ---- user type declarations ----
     def declare_types(s):
         for d in s.prog.types:
-            if not TYPE_NAME_RE.match(d.name):
+            if d.src_name is None and not TYPE_NAME_RE.match(d.name):   # G4: explicit mode checked the written names
                 terr(d, "type_name", "type name %s must start with an upper-case letter" % d.name,
                      "rename it, e.g. %s" % (d.name[:1].upper() + d.name[1:]))
-            if d.name in RESERVED_TYPE_NAMES:
+            if d.src_name is None and d.name in RESERVED_TYPE_NAMES:
                 terr(d, "reserved", "%s is a builtin name" % d.name, "rename the type")
             if d.name in s.decls:
                 terr(d, "dup_type", "type %s defined twice" % d.name)
@@ -580,6 +585,18 @@ class Checker:
             for p in f.params:
                 s.ext_misuse(f, p.type)
             s.ext_misuse(f, f.ret)
+
+    def check_entries(s):
+        """G4 A0 (explicit mode): a host entry (root `pub`, nongeneric, ordinary function) may not have a collection or an
+        extended (G9) type in its signature; child `pub` functions and generic functions are not host entries"""
+        for f in s.prog.functions:
+            if not f.host_entry:
+                continue
+            for what, ty in [("parameter %s" % p.name, p.type) for p in f.params] + [("the result", f.ret)]:
+                if contains_collection(ty) or any(n in s.extended for n in dependencies(ty)):
+                    terr(f, "entry_signature", "host entry %s cannot have the type %s in %s" % (
+                        f.name, type_name(ty), what),
+                         "keep it Pruv-callable (child `pub` or private) and expose a scalar/value wrapper at the root")
 
     def check_fn_sccs(s):
         names = [f.name for f in s.prog.functions]

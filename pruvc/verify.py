@@ -122,9 +122,11 @@ class TraceRecorder:
     def __init__(s):
         s.obligations = []
 
-    def begin(s, fn, node, code, skipped, phase, round_, cand):
+    def begin(s, fn, node, code, skipped, phase, round_, cand, file=None):
         entry = {"seq": len(s.obligations), "fn": fn, "line": node.line, "col": node.col, "code": code,
                  "attempts": [], "phase": phase, "round": round_, "cand": cand}
+        if file is not None:        # G4 A1: explicit mode only; legacy entries keep their exact key set
+            entry["file"] = file
         if skipped:
             entry["skipped"] = True
         s.obligations.append(entry)
@@ -819,6 +821,7 @@ class FnVerifier:
         s.probe = probe
         s.loop_no = {id(w): n for n, (w, _, _) in enumerate(walk_loops(f.body))} if s.extra else {}
         s.funcs = {g.name: g for g in prog.functions}
+        s.explicit = bool(prog.explicit)    # G4 A1
         s.model = model if model is not None else Model(prog)
         s.f, s.errors = f, errors
         s.k = 0
@@ -927,7 +930,7 @@ class FnVerifier:
         skipped = False if probing else key in s.seen
         idx = None
         if s.rec is not None:
-            idx = s.rec.begin(s.f.name, node, code, skipped, s.qcfg.phase, s.qcfg.round, cand)
+            idx = s.rec.begin(s.f.name, node, code, skipped, s.qcfg.phase, s.qcfg.round, cand, file=s.file_of(node))
         if skipped:
             return
         def run(with_lemmas):
@@ -989,7 +992,13 @@ class FnVerifier:
             code2, msg = code, "cannot prove %s in %s" % (what, s.f.name)
         else:
             code2, msg = "verify_unknown", "solver gave up proving %s in %s (%s)" % (what, s.f.name, sol.reason_unknown())
-        s.errors.append(PruvError("verify", node.line, node.col, code2, msg, FIX.get(code, ""), cex))
+        s.errors.append(PruvError("verify", node.line, node.col, code2, msg, FIX.get(code, ""), cex,
+                                  file=s.file_of(node)))
+
+    def file_of(s, node):
+        """G4 A1: the file of an obligation's node; synthesized nodes (inferred invariants) fall back to the function's
+        file. None for every legacy program (nodes carry no file there), so legacy output is unchanged."""
+        return getattr(node, "file", None) or s.f.file
 
     def _probe_attempts(s, run, code, cand):
         """STAGE1 B2 exploration of one candidate obligation: the same two stages as prove (without lemmas, then
@@ -1547,7 +1556,9 @@ class FnVerifier:
             if f.ret == UNIT:
                 # G6 A1 (11.4): a trusted unit result still assumes its ensures; G9 A1: so does a member of a recursive
                 # SCC, after the termination obligations above (also when called from outside the SCC)
-                if f.foreign is not None or n in s.scc_id:
+                # G4 A1 (G4_SPEC 5): in explicit visibility mode every ordinary unit call assumes its ensures, after
+                # the same requires/termination obligations; legacy programs keep their exact old behavior and SMT.
+                if f.foreign is not None or n in s.scc_id or s.explicit:
                     for en in f.ensures:
                         s.assume(st, g, s.ev(en, st, g, False, cenv))
                 return None
@@ -1978,7 +1989,7 @@ def verify_program(prog, rec=None, infer=False, report=None):
             errors.append(PruvError(
                 "verify", f.line, f.col, "inference_timeout",
                 "invariant inference for %s hit the time safety limit (5 s per function, 500 ms per query)" % f.name,
-                "write the loop invariants explicitly, or compile without --infer"))
+                "write the loop invariants explicitly, or compile without --infer", file=f.file))
         else:
             FnVerifier(prog, f, errors, model, rec=rec, extra=res.extra()).run()
         if report is not None:

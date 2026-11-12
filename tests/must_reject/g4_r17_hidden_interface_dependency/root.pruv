@@ -1,0 +1,4 @@
+// G4 A1 reject type/public_interface: a public function reaches a private type through two public types
+mod a;
+
+pub fn go() -> i64 { return 0; }

@@ -1,0 +1,2 @@
+// G4 A0 reject type/unknown_module: a path segment that names no declared module
+pub fn f() -> i64 { return crate::nope::g(1); }

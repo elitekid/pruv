@@ -1,0 +1,6 @@
+// companion module of g4_r22
+fn unused<T>(x: T, y: T) -> T
+  ensures result == y
+{
+  return x;
+}

@@ -1,0 +1,10 @@
+// G4 A1 proof: mutual recursion across two files; the function SCC spans modules and the measures decrease
+mod even;
+mod odd;
+
+pub fn parity(n: i64) -> bool
+  requires n >= 0
+  ensures n != 0 || result
+{
+  return crate::even::is_even(n);
+}

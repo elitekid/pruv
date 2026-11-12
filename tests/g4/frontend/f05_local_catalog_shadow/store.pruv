@@ -1,0 +1,11 @@
+// companion module of f05: a local struct named Vec (a user type, not the catalog collection)
+struct Vec { size: i64 }
+
+fn make() -> Vec {
+  return Vec { size: 3 };
+}
+
+pub fn total() -> i64 {
+  let v: Vec = make();
+  return v.size;
+}

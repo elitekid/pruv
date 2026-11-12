@@ -1,0 +1,2 @@
+// G4 A0 reject parse/visibility_syntax: a trusted rust fn is always module-private
+pub trusted rust fn min2(a: i64, b: i64) -> i64 = "::std::cmp::min";

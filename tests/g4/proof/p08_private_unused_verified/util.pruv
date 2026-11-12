@@ -1,0 +1,27 @@
+// companion module of p08
+pub fn bounded(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures 0 <= result && result <= 101
+{
+  return inc(x);
+}
+
+fn inc(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result == x + 1
+{
+  return x + 1;
+}
+
+fn unused_generic<T>(x: T) -> T
+  ensures result == x
+{
+  return x;
+}
+
+fn unused_private(a: [i64]) -> i64
+  requires len(a) > 0
+  ensures result == a[0]
+{
+  return a[0];
+}

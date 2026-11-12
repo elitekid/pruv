@@ -360,17 +360,49 @@ Function.decreases = None  # the `decreases Expr` clause of a function header (N
 Program.g9 = None          # checker metadata dict (see check.Checker.g9_meta), only when a G9 feature exists
 
 
+# ---------- G4 A0: modules, visibility, source identity ----------
+# Same convention: plain class attributes, never dataclass fields, so every legacy dump is unchanged.
+class ModDecl:
+    """`mod name;` (parse level). line/col = the `mod` token."""
+    def __init__(self, line, col, name):
+        self.line, self.col, self.name = line, col, name
+        self.file = None
+
+
+# every node can carry the repo-relative file it came from (set only in explicit visibility mode)
+for _cls in (Expr, Stmt, FieldDecl, VariantDecl, FieldInit, MatchArm, Refinement, Param, Function, TypeDecl,
+             TypeParam):
+    _cls.file = None
+Function.pub = False        # `pub fn`
+TypeDecl.pub = False        # `pub struct` / `pub enum`
+Function.src_name = None    # explicit mode: the name as written; Function.name then holds the resolved identity
+TypeDecl.src_name = None
+Function.mod_path = None    # explicit mode: tuple of module components of the defining module (() = root)
+TypeDecl.mod_path = None
+Function.host_entry = False  # explicit mode: root `pub` nongeneric ordinary function
+Program.items = None        # ordered items (Function / StructDecl / EnumDecl) of the whole program
+Program.mods = ()           # parse level: the ModDecl list of this file
+Program.has_pub = False     # parse level: this file has a valid top-level `pub`
+Program.explicit = False    # explicit visibility mode (root has `mod` or top-level `pub`)
+Program.modules = None      # explicit mode: [modules.Module] in root-first depth-first order
+Program.entries = None      # explicit mode, after resolution: identities of the host entries
+Program.main = None         # explicit mode, after resolution: identity of the root main (or None)
+
+
 class PruvError(Exception):
-    """Raise for any compile error. stage: parse|type|effect|verify|rustc."""
-    def __init__(self, stage, line, col, code, message, fix="", counterexample=None):
+    """Raise for any compile error. stage: parse|type|effect|verify|rustc.
+    G4: `file` (repo-relative root-directory path with `/`) is set only for explicit-mode programs."""
+    def __init__(self, stage, line, col, code, message, fix="", counterexample=None, file=None):
         super().__init__(message)
         self.stage = stage; self.line = line; self.col = col; self.code = code
-        self.message = message; self.fix = fix; self.counterexample = counterexample
+        self.message = message; self.fix = fix; self.counterexample = counterexample; self.file = file
 
     def to_json(self):
         import json
         d = {"stage": self.stage, "line": self.line, "col": self.col, "code": self.code,
              "message": self.message, "fix": self.fix}
+        if self.file is not None:
+            d["file"] = self.file
         if self.counterexample is not None:
             d["counterexample"] = self.counterexample
         return json.dumps(d, ensure_ascii=False)

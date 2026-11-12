@@ -1,0 +1,9 @@
+// companion module of p07: a different body, the same contract
+pub fn step(x: i64) -> i64
+  requires 0 <= x && x <= 10
+  ensures result == x + 1
+{
+  let mut r: i64 = x;
+  r = r + 1;
+  return r;
+}

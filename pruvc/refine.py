@@ -29,7 +29,7 @@ MAX_LEN = 2 ** 40
 
 
 def _terr(r, code, msg, fix=""):
-    raise PruvError("type", r.line, r.col, code, msg, fix)
+    raise PruvError("type", r.line, r.col, code, msg, fix, file=getattr(r, "file", None))   # G4: explicit mode only
 
 
 def _validate(r, user=()):
@@ -163,14 +163,23 @@ def _assigned(stmts, out):
 
 
 # ---------- condition builders (all nodes at the annotation position) ----------
+def _at_file(node, r):
+    """G4: a synthetic node inherits the source file of its annotation (None, i.e. nothing set, in legacy mode)"""
+    f = getattr(r, "file", None)
+    if f is not None:
+        node.file = f
+    return node
+
+
 class _At:
     def __init__(s, r, kname):
         s.line, s.col, s.k = r.line, r.col, kname
+        s.r = r
 
-    def lit(s, v): return IntLit(s.line, s.col, v)
-    def var(s, n): return Var(s.line, s.col, n)
-    def bin(s, op, l, r): return Binary(s.line, s.col, op, l, r)
-    def length(s, n): return Call(s.line, s.col, "len", [s.var(n)])
+    def lit(s, v): return _at_file(IntLit(s.line, s.col, v), s.r)
+    def var(s, n): return _at_file(Var(s.line, s.col, n), s.r)
+    def bin(s, op, l, r): return _at_file(Binary(s.line, s.col, op, l, r), s.r)
+    def length(s, n): return _at_file(Call(s.line, s.col, "len", [s.var(n)]), s.r)
 
     def within(s, v, r):
         """L <= v && v <= U for an i64 expression builder `v()`"""
@@ -186,13 +195,14 @@ def parts(r, name, kname):
     if r.maxlen is not None:
         out.append(("length bound", at.bin("<=", at.length(name), at.lit(r.maxlen))))
     if r.lo is not None:
-        body = at.within(lambda: Index(at.line, at.col, at.var(name), at.var(kname)), r)
-        out.append(("element range", Quant(at.line, at.col, "forall", kname, at.lit(0), at.length(name), body)))
+        body = at.within(lambda: _at_file(Index(at.line, at.col, at.var(name), at.var(kname)), r), r)
+        out.append(("element range", _at_file(
+            Quant(at.line, at.col, "forall", kname, at.lit(0), at.length(name), body), r)))
     return out
 
 
 def _synth_assert(r, label, expr, code, what):
-    return Assert(r.line, r.col, expr, code, what)
+    return _at_file(Assert(r.line, r.col, expr, code, what), r)
 
 
 class _Expander:

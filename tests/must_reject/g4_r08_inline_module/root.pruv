@@ -1,0 +1,4 @@
+// G4 A0 reject parse/module_syntax: inline modules are not supported
+mod a {
+  fn f() -> i64 { return 1; }
+}

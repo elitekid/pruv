@@ -1,0 +1,8 @@
+// companion module of f03: public generic types; the module refers to itself by absolute path
+pub struct Pair<A, B> { first: A, second: B }
+
+pub enum Choice<A, B> { Left(l: A), Right(r: B) }
+
+pub fn make_pair(x: i64, y: bool) -> crate::model::Pair<i64, bool> {
+  return crate::model::Pair::<i64, bool> { first: x, second: y };
+}

@@ -1,0 +1,8 @@
+// companion module of g4_r18
+enum Hidden { A(n: i64), B }
+
+pub fn f(x: i64) -> i64
+  ensures true || is_variant(Hidden::A(x), Hidden::B)
+{
+  return x;
+}

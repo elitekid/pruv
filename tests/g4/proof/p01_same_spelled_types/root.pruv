@@ -1,0 +1,15 @@
+// G4 A1 proof: two modules spell the nominal type `Item` with different fields; they are distinct SMT datatypes
+mod a;
+mod b;
+
+pub fn combine(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures result == x + 1
+{
+  let p: crate::a::Item = crate::a::make(x);
+  let q: crate::b::Item = crate::b::make(x > 5);
+  if q.flag {
+    assert x > 5;
+  }
+  return p.v + 1;
+}

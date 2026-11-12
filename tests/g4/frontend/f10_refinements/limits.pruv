@@ -1,0 +1,5 @@
+// companion module of f10
+pub fn clamp(x: i64 | 0..=100) -> i64 | 0..=100 {
+  let y: i64 | 0..=100 = x;
+  return y;
+}

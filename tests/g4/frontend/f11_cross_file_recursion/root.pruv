@@ -1,0 +1,7 @@
+// G4 A0 frontend: mutual recursion across two files (function SCCs span modules)
+mod even;
+mod odd;
+
+pub fn parity(n: i64) -> bool
+  requires n >= 0
+{ return crate::even::is_even(n); }

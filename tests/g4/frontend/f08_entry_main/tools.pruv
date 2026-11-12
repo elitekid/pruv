@@ -1,0 +1,8 @@
+// companion module of f08: `main` here is an ordinary function with another signature
+pub fn main() -> i64 {
+  return 7;
+}
+
+pub fn answer() -> i64 {
+  return crate::tools::main();
+}

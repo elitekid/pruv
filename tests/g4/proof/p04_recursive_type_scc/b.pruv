@@ -1,0 +1,13 @@
+// companion module of p04
+pub enum Forest { Nil, Cons(t: crate::a::Tree, rest: Forest) }
+
+pub fn count(f: Forest) -> i64
+  requires size(f) <= 1000
+  ensures result >= 0 && result <= size(f)
+  decreases size(f)
+{
+  match f {
+    Forest::Nil => { return 0; }
+    Forest::Cons(t, rest) => { return 1 + count(rest); }
+  }
+}

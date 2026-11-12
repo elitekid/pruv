@@ -20,8 +20,20 @@ use crate::model::{Coll, Elem, Model, NomKind, Prelude, Ty};
 use crate::obligation::Trace;
 use crate::sys::{Ast, FuncDecl, Sort, Z3};
 
-/// (line, col), 1-based.
-pub type Pos = (u32, u32);
+/// (line, col), 1-based. The line is the AST line number as is, i.e. with the G4 file tag in bits 32.. (tag 0 in legacy mode
+/// and for the prototype literals). Use `pos_line` for the plain per-file line; the `seen` key uses the plain line (Python's
+/// key has no file either).
+pub type Pos = (u64, u32);
+
+/// A `Pos` from a (possibly file-tagged) AST line number.
+fn mk_pos(line: i64, col: i64) -> Pos {
+    (line.max(0) as u64, col as u32)
+}
+
+/// The plain per-file line of a `Pos` (the value printed everywhere).
+pub fn pos_line(p: Pos) -> u32 {
+    pruv_core::diagnostic::plain_line(p.0 as i64) as u32
+}
 
 /// Internal failures (Python exceptions) are propagated as strings.
 pub type R<T> = Result<T, String>;
@@ -238,7 +250,7 @@ pub fn has_vf(e: &Expr, kind: PKind) -> bool {
 }
 
 fn pos(e: &Expr) -> Pos {
-    (e.line() as u32, e.col() as u32)
+    mk_pos(e.line(), e.col())
 }
 
 /// verify.py `_enum_ty`: the instantiated enum type of an is_variant / variant_field scrutinee: the type of the value
@@ -281,7 +293,7 @@ fn stmt_pos(s: &Stmt) -> Pos {
         Stmt::FieldAssign(x) => (x.line, x.col),
         Stmt::Match(x) => (x.line, x.col),
     };
-    (l as u32, c as u32)
+    mk_pos(l, c)
 }
 
 /// verify.py `assigned` (line 671): assigned names (Let excluded). A name-ordered set, so havoc iteration is in sorted order.
@@ -586,9 +598,33 @@ pub struct FnVerifier<'a> {
     pub(crate) scc_id: HashMap<String, usize>,
     /// G9 A1: the frozen entry value of this function's decreases measure (`s.m0`).
     pub(crate) m0: Option<Ast>,
+    /// G4 A1: the file tag of the function being proved (0 in legacy mode). A function of an explicit-mode program has a
+    /// nonzero tag, so `fn_tag != 0` is the explicit visibility mode (Python `s.explicit`); legacy programs keep tag 0.
+    pub(crate) fn_tag: u32,
 }
 
 impl<'a> FnVerifier<'a> {
+    /// G4 A1 (verify.py `s.explicit`): explicit visibility mode.
+    pub(crate) fn explicit(&self) -> bool {
+        self.fn_tag != 0
+    }
+
+    /// G4 A1 (verify.py `file_of`): the file name of an obligation's node (the function's file for a synthesized node);
+    /// None for every legacy program, so legacy output is unchanged.
+    pub(crate) fn file_of(&self, node: Pos) -> Option<String> {
+        let tag = pruv_core::diagnostic::line_tag(node.0 as i64) as u32;
+        let tag = if tag != 0 { tag } else { self.fn_tag };
+        pruv_core::diagnostic::file_of_tag(tag as usize)
+    }
+
+    /// The line number of a verify error for `node`: the plain line carrying the node's file tag (its function's tag for a
+    /// synthesized node); `PruvError::to_json_value` prints it untagged and adds `file`.
+    pub(crate) fn err_line(&self, node: Pos) -> i64 {
+        let tag = pruv_core::diagnostic::line_tag(node.0 as i64) as u32;
+        let tag = if tag != 0 { tag } else { self.fn_tag };
+        pruv_core::diagnostic::tagged_line(pos_line(node) as i64, tag as usize)
+    }
+
     /// Prototype (hand-builder) path: uses only the pieces, without a program or function.
     pub fn new(z: &Z3, prelude: &'a Prelude, model: &'a Model, trace: &'a mut Trace, fname: &str) -> Self {
         FnVerifier {
@@ -616,6 +652,7 @@ impl<'a> FnVerifier<'a> {
             opq: RefCell::new(HashMap::new()),
             scc_id: HashMap::new(),
             m0: None,
+            fn_tag: 0,
         }
     }
 
@@ -667,6 +704,7 @@ impl<'a> FnVerifier<'a> {
             }
         }
         v.f = Some(f);
+        v.fn_tag = pruv_core::diagnostic::line_tag(f.line) as u32;
         v
     }
 
@@ -1819,7 +1857,7 @@ impl<'a> FnVerifier<'a> {
                     &ob,
                     pos(e),
                     "call_requires",
-                    &format!("precondition of {} (line {})", n, r.line()),
+                    &format!("precondition of {} (line {})", n, pruv_core::diagnostic::plain_line(r.line())),
                     None,
                 );
             }
@@ -1829,9 +1867,10 @@ impl<'a> FnVerifier<'a> {
         let ret = Ty::from_name(&f.ret);
         if ret == Ty::Unit {
             // G6 A1 (11.4): a trusted unit result still assumes its ensures; G9 A1: so does a member of a recursive SCC, after
-            // the termination obligations above (also when called from outside the SCC)
-            if f.foreign.is_some() || self.scc_id.contains_key(n) {
-                // (ordinary unit functions keep the legacy behaviour)
+            // the termination obligations above (also when called from outside the SCC).
+            // G4 A1 (G4_SPEC 5): in explicit visibility mode every ordinary unit call assumes its ensures too.
+            if f.foreign.is_some() || self.scc_id.contains_key(n) || self.explicit() {
+                // (legacy ordinary unit functions keep the legacy behaviour)
                 for en in &f.ensures {
                     let v = self.ev_ast(en, st, g, false, &cenv)?;
                     self.assume(st, g, v);
@@ -2263,11 +2302,14 @@ impl<'a> FnVerifier<'a> {
         }
         let mut prev: Vec<Ast> = Vec::new(); // earlier clauses (domain + value) were proved above and can justify lookups in later clauses
         for en in &f.ensures {
-            let what = format!("variant_field lookups in postcondition (line {}) are defined", en.line());
+            let what = format!(
+                "variant_field lookups in postcondition (line {}) are defined",
+                pruv_core::diagnostic::plain_line(en.line())
+            );
             let ds = self.check_dom_e(st, &prev, en, node, &what, Some(&env))?;
             prev.extend(ds);
             let ob = self.ev_ast(en, st, &[], false, &env)?;
-            self.prove_core(&st.env, &st.pc, &[], &ob, node, "ensures", &format!("postcondition (line {})", en.line()), None);
+            self.prove_core(&st.env, &st.pc, &[], &ob, node, "ensures", &format!("postcondition (line {})", pruv_core::diagnostic::plain_line(en.line())), None);
             prev.push(ob);
         }
         Ok(())
@@ -2620,7 +2662,10 @@ impl<'a> FnVerifier<'a> {
         }
         let mut prev: Vec<Ast> = Vec::new();
         for en in &f.ensures {
-            let what = format!("variant_field lookups in postcondition (line {}) are defined", en.line());
+            let what = format!(
+                "variant_field lookups in postcondition (line {}) are defined",
+                pruv_core::diagnostic::plain_line(en.line())
+            );
             let ds = self.check_dom_e(st, &prev, en, pos(en), &what, Some(&env))?;
             prev.extend(ds);
             let v = self.ev_ast(en, st, &[], false, &env)?;
@@ -2657,7 +2702,10 @@ impl<'a> FnVerifier<'a> {
         let mut st = State::new(env, pc);
         for r in &f.requires {
             // D(r) is proved from the preceding requires only, then D(r) && r is assumed in declaration order
-            let what = format!("variant_field lookups in requires (line {}) are defined", r.line());
+            let what = format!(
+                "variant_field lookups in requires (line {}) are defined",
+                pruv_core::diagnostic::plain_line(r.line())
+            );
             self.check_dom_e(&mut st, &[], r, pos(r), &what, None)?;
             // Only the variant_field part is assumed: the remaining domains were proved above but are not assumed
             let envc = st.env.clone();
@@ -2682,7 +2730,7 @@ impl<'a> FnVerifier<'a> {
             return self.run_foreign(&mut st);
         }
         let ret_unit = Ty::from_name(&f.ret) == Ty::Unit;
-        let node: Pos = (f.line as u32, f.col as u32);
+        let node: Pos = mk_pos(f.line, f.col);
         for mut end in self.exec_block(&f.body, st)? {
             if ret_unit {
                 self.ensures_ok(&mut end, None, node)?;

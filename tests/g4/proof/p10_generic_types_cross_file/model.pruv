@@ -1,0 +1,8 @@
+// companion module of p10
+pub struct Pair<A, B> { first: A, second: B }
+
+pub fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A>
+  ensures result.first == p.second && result.second == p.first
+{
+  return Pair::<B, A> { first: p.second, second: p.first };
+}

@@ -11,7 +11,7 @@ from refine import _kids as expr_kids
 
 
 def _err(node, code, msg, fix=""):
-    raise PruvError("type", node.line, node.col, code, msg, fix)
+    raise PruvError("type", node.line, node.col, code, msg, fix, file=getattr(node, "file", None))   # G4: file only in explicit mode
 
 
 # ---------------------------------------------------------------------------

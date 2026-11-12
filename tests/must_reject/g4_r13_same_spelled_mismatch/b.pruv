@@ -1,0 +1,6 @@
+// companion module of g4_r13
+pub struct Item { v: i64 }
+
+pub fn read(i: Item) -> i64 {
+  return i.v;
+}

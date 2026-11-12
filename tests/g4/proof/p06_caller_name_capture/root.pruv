@@ -1,0 +1,16 @@
+// G4 A1 proof: the root declares its own Event and helper with the leaf names used by module m.
+// The contracts of m are resolved in m, so these local names never capture them.
+mod m;
+
+enum Event { Hit(v: bool), Miss }
+
+fn helper(x: i64) -> i64 requires x <= 1000 { return x + 1000; }
+
+pub fn use_m(x: i64) -> i64
+  requires 0 <= x && x <= 10
+  ensures result == x
+{
+  let e: crate::m::Event = crate::m::make(x);
+  assert is_variant(e, crate::m::Event::Hit) && variant_field(e, crate::m::Event::Hit, v) == x;
+  return crate::m::helper(x);
+}

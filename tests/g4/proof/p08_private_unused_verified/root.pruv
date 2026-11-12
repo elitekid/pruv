@@ -1,0 +1,9 @@
+// G4 A1 proof: private, unused and generic definitions are all verified (and all of them hold here)
+mod util;
+
+pub fn entry(x: i64) -> i64
+  requires 0 <= x && x <= 100
+  ensures 0 <= result && result <= 101
+{
+  return crate::util::bounded(x);
+}

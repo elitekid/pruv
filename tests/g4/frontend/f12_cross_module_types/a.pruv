@@ -1,0 +1,2 @@
+// companion module of f12
+pub struct Point { x: i64, y: i64 }

@@ -363,7 +363,7 @@ impl Expander {
                     if let Some(r) = &l.refine {
                         scope_set(scope, &l.name, r.clone());
                         for (label, e) in parts(r, &l.name, &self.k) {
-                            let what = format!("the {} of local {} at its declaration (line {})", label, l.name, l.line);
+                            let what = format!("the {} of local {} at its declaration (line {})", label, l.name, crate::diagnostic::plain_line(l.line));
                             after.push(synth_assert(r, e, "refinement_init", what));
                         }
                     }
@@ -371,7 +371,7 @@ impl Expander {
                 Stmt::Assign(a) => {
                     if let Some(r) = scope_get(scope, &a.name) {
                         for (label, e) in parts(r, &a.name, &self.k) {
-                            let what = format!("the {} of local {} after the assignment on line {}", label, a.name, a.line);
+                            let what = format!("the {} of local {} after the assignment on line {}", label, a.name, crate::diagnostic::plain_line(a.line));
                             after.push(synth_assert(r, e, "refinement_assign", what));
                         }
                     }
@@ -380,7 +380,7 @@ impl Expander {
                     if let Some(r) = scope_get(scope, &a.name) {
                         if r.shape == "array" && r.lo.is_some() {
                             // No synthesized assert: the verifier proves the range of the stored value (code refinement_assign)
-                            let what = format!("the element range of local {} after the store on line {}", a.name, a.line);
+                            let what = format!("the element range of local {} after the store on line {}", a.name, crate::diagnostic::plain_line(a.line));
                             a.elem_refine = Some((
                                 r.lo.clone().unwrap_or_default(),
                                 r.hi.clone().unwrap_or_default(),

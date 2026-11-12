@@ -1,0 +1,6 @@
+// G4 A1 reject verify/call_requires: a cross-file generic call whose requires (len(a) > 0) is not established
+mod math;
+
+pub fn f(a: [i64]) -> i64 {
+  return crate::math::first::<i64>(a);
+}

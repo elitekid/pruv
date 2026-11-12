@@ -1,0 +1,10 @@
+// G4 A1 reject verify/assert: the assumed unit postcondition (n >= 0) does not give n >= 1
+mod log;
+
+pub fn run(n: i64) -> i64
+  requires n >= 0
+{
+  crate::log::note(n);
+  assert n >= 1;
+  return n;
+}

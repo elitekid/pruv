@@ -1,0 +1,4 @@
+// G4 A0 reject parse/module_alias: `mod root;` loads <dir>/root.pruv, which is this very file
+mod root;
+
+pub fn f() -> i64 { return 1; }

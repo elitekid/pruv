@@ -17,15 +17,21 @@ fn obj1(k: &str, v: Json) -> String {
     dumps_sorted(&Json::Obj(vec![(k.to_string(), v)]))
 }
 
-fn line_for(bytes: &[u8], o: &Opts) -> String {
-    let src = match std::str::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(_) => return obj1("adapter_error", Json::str("decode")),
+fn line_for(path: &std::ffi::OsStr, o: &Opts) -> String {
+    // G4: through the module loader; an explicit-mode program stops at the A0 staging guard (as pruvc.compile_file)
+    let loaded = match pruv_core::modules::load_program(std::path::Path::new(path)) {
+        Ok(l) => l,
+        Err(pruv_core::modules::LoadError::Io(_)) => return obj1("adapter_error", Json::str("io")),
+        Err(pruv_core::modules::LoadError::Decode(_)) => return obj1("adapter_error", Json::str("decode")),
+        Err(pruv_core::modules::LoadError::Lang(e)) => return obj1("error", e.to_json_value()),
     };
-    let mut prog = match pruv_core::parse(src) {
-        Ok(p) => p,
-        Err(e) => return obj1("error", e.to_json_value()),
-    };
+    let mut prog = loaded.prog;
+    if let Some(mut g4) = loaded.g4 {
+        if let Err(e) = pruv_core::check::check_explicit(&mut prog, &mut g4, &[]) {
+            return obj1("error", e.to_json_value());
+        }
+        return obj1("error", pruv_core::modules::guard_error(&prog, &g4).to_json_value());
+    }
     if let Err(e) = pruv_core::check::check(&mut prog) {
         return obj1("error", e.to_json_value());
     }
@@ -43,10 +49,7 @@ fn work(o: Opts) -> bool {
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
     for f in &o.files {
-        let line = match std::fs::read(f) {
-            Ok(bytes) => line_for(&bytes, &o),
-            Err(_) => obj1("adapter_error", Json::str("io")),
-        };
+        let line = line_for(f, &o);
         if lock.write_all(line.as_bytes()).is_err() || lock.write_all(b"\n").is_err() || lock.flush().is_err() {
             return false;
         }

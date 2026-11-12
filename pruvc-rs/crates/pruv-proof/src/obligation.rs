@@ -64,6 +64,8 @@ pub struct Obligation {
     pub phase: String,
     pub round: Option<u32>,
     pub cand: Option<String>,
+    /// G4 A1: the file of the obligation's node (explicit visibility mode only; None keeps the legacy key set).
+    pub file: Option<String>,
 }
 
 #[derive(Debug)]
@@ -103,6 +105,7 @@ impl Trace {
         phase: &str,
         round: Option<u32>,
         cand: Option<String>,
+        file: Option<String>,
     ) -> Option<usize> {
         if !self.record || (skipped && !self.adapter) {
             return None;
@@ -112,7 +115,7 @@ impl Trace {
         self.obligations.push(Obligation {
             seq,
             fn_name: fname.to_string(),
-            line: node.0,
+            line: crate::symbolic::pos_line(node),
             col: node.1,
             code: code.to_string(),
             attempts: Vec::new(),
@@ -120,6 +123,7 @@ impl Trace {
             phase: phase.to_string(),
             round,
             cand,
+            file,
         });
         Some(self.obligations.len() - 1)
     }
@@ -275,7 +279,8 @@ impl<'a> FnVerifier<'a> {
                 return;
             }
         }
-        let key = (node.0, node.1, code.to_string(), key_extra.map(|s| s.to_string()));
+        // The key uses the plain per-file line (Python's key has no file).
+        let key = (crate::symbolic::pos_line(node), node.1, code.to_string(), key_extra.map(|s| s.to_string()));
         let skipped = if probing { false } else { self.seen.contains(&key) };
         let idx = self.trace.begin(
             &self.fname,
@@ -285,6 +290,7 @@ impl<'a> FnVerifier<'a> {
             &self.qcfg.phase,
             self.qcfg.round,
             cand.map(|s| s.to_string()),
+            self.file_of(node),
         );
         if skipped {
             return;
@@ -335,7 +341,7 @@ impl<'a> FnVerifier<'a> {
         };
         self.errors.push(PruvError {
             stage: "verify".to_string(),
-            line: node.0 as i64,
+            line: self.err_line(node), // G4 A1: carries the file tag; the JSON prints it untagged with `file`
             col: node.1 as i64,
             code: code2,
             message: msg,
@@ -806,6 +812,10 @@ pub fn adapter_obligations_json(trace: &Trace) -> Json {
             ];
             if o.skipped {
                 kv.push(("skipped".to_string(), Json::Bool(true)));
+            }
+            // G4 A1: only in explicit mode (the output keys are sorted by dumps_sorted, like Python's sort_keys)
+            if let Some(f) = &o.file {
+                kv.push(("file".to_string(), Json::Str(f.clone())));
             }
             Json::Obj(kv)
         })

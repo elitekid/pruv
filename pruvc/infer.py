@@ -825,6 +825,8 @@ class InferResult:
                 "invariants": ["invariant " + text for (_, _, text) in l.alive],
                 "generated": l.generated, "capped": l.capped, "kept": len(l.alive),
                 "dropped": l.dropped, "rounds": s.rounds, "queries": s.queries}
+            if s.f.file is not None:    # G4 A1: explicit mode only (legacy records keep their exact key set)
+                rec["file"] = s.f.file
             if s.fallback:
                 rec["fallback"] = "v1"
             out.append(rec)

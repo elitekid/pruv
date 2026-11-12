@@ -1,0 +1,11 @@
+// G4 A1 proof: a public generic type and a generic function of another module, instantiated at (i64, bool) and (bool, i64)
+mod model;
+
+pub fn flip(x: i64, f: bool) -> i64
+  ensures result == x
+{
+  let p: crate::model::Pair<i64, bool> = crate::model::Pair::<i64, bool> { first: x, second: f };
+  let q: crate::model::Pair<bool, i64> = crate::model::swap::<i64, bool>(p);
+  assert q.second == x && q.first == f;
+  return q.second;
+}

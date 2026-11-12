@@ -6,8 +6,9 @@
                              [--fuzz-count 40] [--jobs N] [--save-dir DIR] [--input FILE ...]
                              [--flags "STR"]
 
-Groups: must_reject examples runtime bench check_edge g6 g9 fuzz input
-  (g6 = tests/g6/*/*.pruv, g9 = tests/g9/{frontend,proof}/*.pruv)
+Groups: must_reject examples runtime bench check_edge g6 g9 g4 g4_reject fuzz input
+  (g6 = tests/g6/*/*.pruv, g9 = tests/g9/{frontend,proof}/*.pruv,
+   g4 = tests/g4/{frontend,proof}/*/root.pruv, g4_reject = tests/must_reject/g4_*/root.pruv)
   (if only --input is given and there is no --only, only the input group runs)
 For each input, Python (`PY tests/diff_py_adapter.py trace FILE`) and Rust (`pruv-trace-dump FILE`) are each
 run in a new process (no shell, timeout 300). The two runs for one input happen one after the other in the same worker.
@@ -69,6 +70,10 @@ GROUP_DIRS = [
     ("bench_noinv", "bench/inference/agg_noinv", "*.pruv"),
     ("g6", "tests/g6", "*/*.pruv"),
     ("g9", "tests/g9", "*/*.pruv"),
+    # G4 A1: project roots only (companion modules are never standalone inputs): tests/g4/{frontend,proof}/<project>/root.pruv
+    # and the rejection projects tests/must_reject/g4_*/root.pruv
+    ("g4", "tests/g4", "*/*/root.pruv"),
+    ("g4_reject", "tests/must_reject", "g4_*/root.pruv"),
 ]
 ALL_GROUPS = [g for g, _, _ in GROUP_DIRS] + ["fuzz", "input"]
 COLS = ("inputs", "same", "same_unknown", "cex_only", "flaky_unknown", "py_recursion", "diff", "option_mismatch",

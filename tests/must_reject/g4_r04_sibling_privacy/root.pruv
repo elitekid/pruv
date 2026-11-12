@@ -1,0 +1,5 @@
+// G4 A0 reject type/private_item: module a reads a private item of its sibling b
+mod a;
+mod b;
+
+pub fn go() -> i64 { return crate::a::f(); }

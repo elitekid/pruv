@@ -1,0 +1,2 @@
+// companion module of g4_r04
+fn hidden() -> i64 { return 1; }

@@ -1,0 +1,5 @@
+// G4 A1 reject verify/recursive_decrease: the cycle between two files keeps the measure unchanged on one edge
+mod even;
+mod odd;
+
+pub fn run() -> i64 { return 0; }

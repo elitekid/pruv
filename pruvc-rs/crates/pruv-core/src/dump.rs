@@ -2,7 +2,9 @@
 //! Integers, line and col are decimal strings, bool is a JSON bool, None is null, Type is its name string.
 
 use crate::ast::*;
+use crate::diagnostic::plain_line;
 use crate::gtype::{format_type, is_g3_key, GType};
+use crate::modules::{load_program, G4, LoadError};
 use crate::parser::parse_source;
 use crate::pyjson::{dumps_sorted, Json};
 
@@ -113,7 +115,7 @@ fn list<T>(v: &[T], f: fn(&T) -> Json) -> Json {
 fn node(kind: &str, lc: Option<(i64, i64)>, fields: Vec<(&str, Json)>) -> Json {
     let mut kv: Vec<(String, Json)> = vec![("kind".to_string(), js(kind))];
     if let Some((l, c)) = lc {
-        kv.push(("line".to_string(), Json::Str(l.to_string())));
+        kv.push(("line".to_string(), Json::Str(plain_line(l).to_string()))); // G4: no file tag in the dump
         kv.push(("col".to_string(), Json::Str(c.to_string())));
     }
     // Like a Python dict, the same key is overwritten: in the adapter's ser(), Quant.kind ("forall" etc.)
@@ -395,7 +397,7 @@ fn function(f: &Function) -> Json {
             "foreign",
             Json::Obj(vec![
                 ("path".to_string(), js(&fo.path)),
-                ("line".to_string(), Json::Str(fo.line.to_string())),
+                ("line".to_string(), Json::Str(plain_line(fo.line).to_string())),
                 ("col".to_string(), Json::Str(fo.col.to_string())),
             ]),
         ));
@@ -412,6 +414,137 @@ pub fn program(p: &Program) -> Json {
         None,
         vec![("functions", list(&p.functions, function)), ("types", list(&p.types, type_decl))],
     )
+}
+
+fn push_kv(j: &mut Json, k: &str, v: Json) {
+    if let Json::Obj(kv) = j {
+        kv.push((k.to_string(), v));
+    }
+}
+
+/// G4 A0, explicit mode only (diff_py_adapter `_g4_extras`): module, file, pub (only when public), src_name (only when the
+/// resolved name differs), host_entry (functions, only when true).
+fn g4_item_extras(j: &mut Json, g4: &G4, m: &crate::modules::ItemMeta, name: &str, is_fn: bool) {
+    let module = &g4.modules[m.module];
+    push_kv(j, "module", Json::Arr(module.path.iter().map(|s| js(s)).collect()));
+    push_kv(j, "file", js(&module.file));
+    if m.is_pub {
+        push_kv(j, "pub", Json::Bool(true));
+    }
+    if m.src_name != name {
+        push_kv(j, "src_name", js(&m.src_name));
+    }
+    if is_fn && m.host_entry {
+        push_kv(j, "host_entry", Json::Bool(true));
+    }
+}
+
+/// `program` plus the explicit-mode data: per-item extras and the Program "modules" list (root-first depth-first order).
+pub fn program_g4(p: &Program, g4: Option<&G4>) -> Json {
+    let g4 = match g4 {
+        None => return program(p),
+        Some(g) => g,
+    };
+    let mut fns: Vec<Json> = Vec::new();
+    for (i, f) in p.functions.iter().enumerate() {
+        let mut j = function(f);
+        g4_item_extras(&mut j, g4, &g4.fn_meta[i], &f.name, true);
+        fns.push(j);
+    }
+    let mut tys: Vec<Json> = Vec::new();
+    for (i, d) in p.types.iter().enumerate() {
+        let mut j = type_decl(d);
+        g4_item_extras(&mut j, g4, &g4.ty_meta[i], d.name(), false);
+        tys.push(j);
+    }
+    let mut top = node("Program", None, vec![("functions", Json::Arr(fns)), ("types", Json::Arr(tys))]);
+    let mods: Vec<Json> = g4
+        .modules
+        .iter()
+        .map(|m| {
+            let decls: Vec<Json> = m
+                .mods
+                .iter()
+                .map(|md| node("ModDecl", Some((md.line, md.col)), vec![("name", js(&md.name))]))
+                .collect();
+            Json::Obj(vec![
+                ("path".to_string(), Json::Arr(m.path.iter().map(|s| js(s)).collect())),
+                ("file".to_string(), js(&m.file)),
+                ("mods".to_string(), Json::Arr(decls)),
+            ])
+        })
+        .collect();
+    push_kv(&mut top, "modules", Json::Arr(mods));
+    top
+}
+
+fn adapter_error(kind: &str) -> String {
+    dumps_sorted(&Json::Obj(vec![("adapter_error".to_string(), js(kind))]))
+}
+
+/// One root file (through the module loader: its declared child files are read too) -> one parse output line.
+pub fn parse_dump_path(path: &std::path::Path) -> String {
+    let top = match load_program(path) {
+        Err(LoadError::Io(_)) => return adapter_error("io"),
+        Err(LoadError::Decode(_)) => return adapter_error("decode"),
+        Err(LoadError::Lang(e)) => Json::Obj(vec![
+            ("schema".to_string(), js(crate::SCHEMA_AST)),
+            ("error".to_string(), e.to_json_value()),
+        ]),
+        Ok(l) => Json::Obj(vec![
+            ("schema".to_string(), js(crate::SCHEMA_AST)),
+            ("program".to_string(), program_g4(&l.prog, l.g4.as_ref())),
+        ]),
+    };
+    dumps_sorted(&top)
+}
+
+/// One root file -> one parse+check output line (G4: explicit mode resolves names first and adds the top-level "g4").
+pub fn check_dump_path(path: &std::path::Path, externs: &[String]) -> String {
+    let err_top = |e: crate::diagnostic::PruvError| {
+        Json::Obj(vec![
+            ("schema".to_string(), js(crate::SCHEMA_AST)),
+            ("error".to_string(), e.to_json_value()),
+        ])
+    };
+    let top = match load_program(path) {
+        Err(LoadError::Io(_)) => return adapter_error("io"),
+        Err(LoadError::Decode(_)) => return adapter_error("decode"),
+        Err(LoadError::Lang(e)) => err_top(e),
+        Ok(mut l) => {
+            let res = match l.g4.as_mut() {
+                Some(g4) => crate::check::check_explicit(&mut l.prog, g4, externs),
+                None => crate::check::check_with_externs(&mut l.prog, externs),
+            };
+            match res {
+                Err(e) => err_top(e),
+                Ok(tt) => {
+                    let mut kv = vec![
+                        ("schema".to_string(), js(crate::SCHEMA_AST)),
+                        ("program".to_string(), program_g4(&l.prog, l.g4.as_ref())),
+                        ("type_table".to_string(), type_table_json(&tt)),
+                    ];
+                    if let Some(g4) = &l.g4 {
+                        kv.push((
+                            "g4".to_string(),
+                            Json::Obj(vec![
+                                ("entries".to_string(), strs(&g4.entries)),
+                                (
+                                    "main".to_string(),
+                                    match &g4.main {
+                                        Some(m) => js(m),
+                                        None => Json::Null,
+                                    },
+                                ),
+                            ]),
+                        ));
+                    }
+                    Json::Obj(kv)
+                }
+            }
+        }
+    };
+    dumps_sorted(&top)
 }
 
 /// One file's bytes -> one output line (without the newline).

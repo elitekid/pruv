@@ -62,33 +62,57 @@ fn output(
 
 fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
     // Like the adapter's trace_result, read/decode failures are also reported as internal_error (Python exception sentence) (audit must-fix 1).
-    let src = match pruv_core::pyio::read_source(std::path::Path::new(path)) {
-        Ok(s) => s,
-        Err(msg) => return output(vec![internal_err(&msg)], &Trace::adapter(), None, infer, no_verify, Vec::new()),
+    // G4: through the module loader (an explicit-mode root also reads its declared module files)
+    let loaded = match pruv_core::modules::load_program(std::path::Path::new(path)) {
+        Ok(l) => Ok(l),
+        Err(pruv_core::modules::LoadError::Io(msg)) | Err(pruv_core::modules::LoadError::Decode(msg)) => {
+            return output(vec![internal_err(&msg)], &Trace::adapter(), None, infer, no_verify, Vec::new())
+        }
+        Err(pruv_core::modules::LoadError::Lang(e)) => Err(e),
     };
     let mut errors: Vec<Json> = Vec::new();
     let mut trace = Trace::adapter();
     let mut timeout: Option<u32> = None;
     let mut report: Vec<Json> = Vec::new();
-    match pruv_core::parse(&src) {
+    match loaded {
         Err(e) => errors.push(e.to_json_value()),
-        Ok(mut prog) => match pruv_core::check::check(&mut prog) {
+        Ok(l) => {
+            let mut prog = l.prog;
+            let mut g4 = l.g4;
+            let checked = match g4.as_mut() {
+                Some(g) => pruv_core::check::check_explicit(&mut prog, g, &[]),
+                None => pruv_core::check::check(&mut prog),
+            };
+            match checked {
             Err(e) => errors.push(e.to_json_value()),
-            // --no-verify: do not run verification (obligations [], no timeout_ms). G9 A2: the rust backend (the default
-            // code generator here) lowers G9 programs; no guard (as tests/diff_py_adapter.py).
-            Ok(_) if no_verify => {}
             Ok(tt) => {
-                timeout = Some(TIMEOUT_MS);
-                let opts = VerifyOptions { infer };
-                let rep = if infer { Some(&mut report) } else { None };
-                match verify_program_opts(&prog, &tt, Some(&mut trace), &opts, rep) {
-                    Ok(errs) => {
-                        errors.extend(errs.iter().map(|e| e.to_json_value()));
+                // --no-verify: do not run verification (obligations [], no timeout_ms). G9 A2: the rust backend (the default
+                // code generator here) lowers G9 programs; no guard for legacy programs (as tests/diff_py_adapter.py).
+                let mut internal = false;
+                if !no_verify {
+                    timeout = Some(TIMEOUT_MS);
+                    let opts = VerifyOptions { infer };
+                    let rep = if infer { Some(&mut report) } else { None };
+                    match verify_program_opts(&prog, &tt, Some(&mut trace), &opts, rep) {
+                        Ok(errs) => {
+                            errors.extend(errs.iter().map(|e| e.to_json_value()));
+                        }
+                        Err(msg) => {
+                            internal = true;
+                            errors.push(internal_err(&msg));
+                        }
                     }
-                    Err(msg) => errors.push(internal_err(&msg)),
+                }
+                // G4 A1 staging guard, after the proof (same diagnostic and position as pruvc.compile_file): a failing
+                // proof (or an internal failure) reports its own errors instead
+                if !internal && errors.is_empty() {
+                    if let Some(g) = &g4 {
+                        errors.push(pruv_core::modules::guard_error(&prog, g).to_json_value());
+                    }
                 }
             }
-        },
+            }
+        }
     }
     output(errors, &trace, timeout, infer, no_verify, report)
 }

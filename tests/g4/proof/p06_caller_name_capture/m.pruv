@@ -1,0 +1,16 @@
+// companion module of p06
+pub enum Event { Hit(v: i64), Miss }
+
+pub fn helper(x: i64) -> i64
+  requires 0 <= x && x <= 10
+  ensures result == x
+{
+  return x;
+}
+
+pub fn make(x: i64) -> Event
+  requires 0 <= x && x <= 10
+  ensures is_variant(result, Event::Hit) && variant_field(result, Event::Hit, v) == x
+{
+  return Event::Hit(x);
+}

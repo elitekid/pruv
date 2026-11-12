@@ -1,0 +1,2 @@
+// companion module of g4_r05
+pub fn f() -> i64 { return crate::secret(); }

@@ -3,7 +3,7 @@
 use crate::ast::*;
 use crate::diagnostic::PruvError;
 use crate::gtype::{fn_owner, decl_owner, mk_array, mk_option, mk_param, mk_result, GType};
-use crate::lexer::{lex, Kind, Tok};
+use crate::lexer::{lex, lex_tagged, Kind, Tok};
 use crate::pyrepr::repr_str;
 use std::collections::HashMap;
 
@@ -13,10 +13,66 @@ const CMP_OPS: [&str; 6] = ["==", "!=", "<=", ">=", "<", ">"];
 
 /// Public entry: first applies the universal newline handling of Python open().read().
 pub fn parse_source(src: &str) -> R<Program> {
+    Ok(parse_file(src, 0)?.prog)
+}
+
+/// One parsed source file (G4 A0): the program plus the parse-level module data (Python `Program.mods` / `has_pub` /
+/// `items`, and the `pub` flag of every function / type declaration).
+pub struct ParsedFile {
+    pub prog: Program,
+    pub mods: Vec<ModDecl>,
+    pub has_pub: bool,
+    pub items: Vec<Item>,
+    pub fn_pub: Vec<bool>,
+    pub ty_pub: Vec<bool>,
+}
+
+fn normalized_chars(src: &str) -> Vec<char> {
     let norm = src.replace("\r\n", "\n").replace('\r', "\n");
-    let chars: Vec<char> = norm.chars().collect();
-    let mut p = Parser { t: lex(&chars)?, i: 0, depth: 0, scope: HashMap::new() };
-    p.program()
+    norm.chars().collect()
+}
+
+/// Parses one file whose line numbers carry the module file number `tag` (0 = a plain, legacy-style file).
+pub fn parse_file(src: &str, tag: usize) -> R<ParsedFile> {
+    let chars = normalized_chars(src);
+    let mut p = Parser {
+        t: lex_tagged(&chars, tag)?,
+        i: 0,
+        depth: 0,
+        scope: HashMap::new(),
+        mods: Vec::new(),
+        has_pub: false,
+        items: Vec::new(),
+        fn_pub: Vec::new(),
+        ty_pub: Vec::new(),
+    };
+    let prog = p.program()?;
+    Ok(ParsedFile { prog, mods: p.mods, has_pub: p.has_pub, items: p.items, fn_pub: p.fn_pub, ty_pub: p.ty_pub })
+}
+
+/// vparser `_sniff_explicit`: a root that failed to parse: does it use module syntax (a `mod` / `pub` token)?
+pub fn sniff_explicit(src: &str) -> bool {
+    match lex(&normalized_chars(src)) {
+        Ok(toks) => toks.iter().any(|t| t.kind == Kind::Kw && (t.val == "mod" || t.val == "pub")),
+        Err(_) => false,
+    }
+}
+
+/// `[a-z][A-Za-z0-9_]*` (module names)
+fn mod_name_ok(s: &str) -> bool {
+    let mut it = s.chars();
+    match it.next() {
+        Some(c) if c.is_ascii_lowercase() => it.all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        _ => false,
+    }
+}
+
+fn lower_first(s: &str) -> String {
+    let mut it = s.chars();
+    match it.next() {
+        Some(c) => format!("{}{}", c.to_ascii_lowercase(), it.as_str()),
+        None => String::new(),
+    }
 }
 
 /// Decodes the raw text of a string token (quotes included, already validated by the lexer) into a UTF-8 byte sequence.
@@ -70,6 +126,12 @@ struct Parser {
     depth: usize,
     /// G3: type-parameter name -> bound parameter type, inside a generic declaration (empty elsewhere).
     scope: HashMap<String, GType>,
+    // ---- G4 A0 parse-level module data (see ParsedFile) ----
+    mods: Vec<ModDecl>,
+    has_pub: bool,
+    items: Vec<Item>,
+    fn_pub: Vec<bool>,
+    ty_pub: Vec<bool>,
 }
 
 /// AST depth limit. Python stops with RecursionError at about 1000 levels (outside the cross-check range), so this is set much larger than that,
@@ -151,13 +213,47 @@ impl Parser {
     fn program(&mut self) -> R<Program> {
         let mut p = Program::default();
         while self.peek(0).kind != Kind::Eof {
-            if self.at("struct", 0) {
-                p.types.push(TypeDecl::Struct(self.struct_decl()?));
+            let mut pub_tok: Option<Tok> = None;
+            if self.at("pub", 0) {
+                // G4: visibility of the next item
+                let pt = self.next();
+                if self.at("pub", 0) {
+                    let t = self.peek(0).clone();
+                    return Err(self.visibility_syntax(&t, "`pub` is written once", "remove the second `pub`"));
+                }
+                if self.at("mod", 0) {
+                    return Err(self.visibility_syntax(
+                        &pt,
+                        "`pub mod` is not supported: module namespaces have no visibility",
+                        "write `mod name;`",
+                    ));
+                }
+                pub_tok = Some(pt);
+            }
+            let is_pub = pub_tok.is_some();
+            if self.at("mod", 0) {
+                let m = self.mod_decl()?;
+                self.mods.push(m);
+            } else if self.at("struct", 0) {
+                let d = TypeDecl::Struct(self.struct_decl()?);
+                self.ty_pub.push(is_pub);
+                p.types.push(d);
+                self.items.push(Item::Ty(p.types.len() - 1));
             } else if self.at("enum", 0) {
-                p.types.push(TypeDecl::Enum(self.enum_decl()?));
+                let d = TypeDecl::Enum(self.enum_decl()?);
+                self.ty_pub.push(is_pub);
+                p.types.push(d);
+                self.items.push(Item::Ty(p.types.len() - 1));
             } else if self.peek(0).kind == Kind::Id && self.peek(0).val == "trusted" {
                 // G6 A0: `trusted rust fn name(..) -> T ensures .. = "::path";`
                 let t = self.peek(0).clone();
+                if let Some(pt) = &pub_tok {
+                    return Err(self.visibility_syntax(
+                        pt,
+                        "a trusted rust fn cannot be `pub`",
+                        "keep it private and expose it through a public Pruv function with explicit contracts",
+                    ));
+                }
                 if !(self.peek(1).kind == Kind::Id && self.peek(1).val == "rust" && self.at("fn", 2)) {
                     return Err(self.foreign_syntax(
                         &t,
@@ -167,12 +263,21 @@ impl Parser {
                 }
                 self.bump();
                 self.bump();
-                p.functions.push(self.function(Some(t))?);
+                let f = self.function(Some(t))?;
+                self.fn_pub.push(false);
+                p.functions.push(f);
+                self.items.push(Item::Fn(p.functions.len() - 1));
             } else if self.peek(0).kind == Kind::Id && self.peek(0).val == "rust" && self.at("fn", 1) {
                 let t = self.peek(0).clone();
                 return Err(self.foreign_syntax(&t, "missing `trusted`", "write `trusted rust fn ...`"));
             } else {
-                p.functions.push(self.function(None)?);
+                let f = self.function(None)?;
+                self.fn_pub.push(is_pub);
+                p.functions.push(f);
+                self.items.push(Item::Fn(p.functions.len() - 1));
+            }
+            if is_pub {
+                self.has_pub = true;
             }
         }
         Ok(p)
@@ -180,6 +285,202 @@ impl Parser {
 
     fn foreign_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
         PruvError::new("parse", tok.line, tok.col, "foreign_syntax", msg, fix)
+    }
+
+    // ---- G4 A0: module declarations and paths ----
+    fn visibility_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
+        PruvError::new("parse", tok.line, tok.col, "visibility_syntax", msg, fix)
+    }
+
+    fn module_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
+        PruvError::new("parse", tok.line, tok.col, "module_syntax", msg, fix)
+    }
+
+    fn path_syntax(&self, tok: &Tok, msg: &str) -> PruvError {
+        PruvError::new("parse", tok.line, tok.col, "path_syntax", msg, "write an absolute path such as crate::math::clamp")
+    }
+
+    /// `mod name;` at top level -> ModDecl
+    fn mod_decl(&mut self) -> R<ModDecl> {
+        let kw = self.next();
+        let t = self.peek(0).clone();
+        if t.kind == Kind::Str {
+            return Err(self.module_syntax(&t, "a module path cannot be a string", "write `mod name;`; the file is <name>.pruv"));
+        }
+        if self.at("{", 0) {
+            return Err(self.module_syntax(&t, "inline modules are not supported", "move the items into <name>.pruv and write `mod name;`"));
+        }
+        if t.kind != Kind::Id {
+            return Err(self.module_syntax(&t, "expected a module name after `mod`", "write `mod name;`"));
+        }
+        self.bump();
+        if !mod_name_ok(&t.val) {
+            return Err(self.module_syntax(
+                &t,
+                &format!("module name {} must match [a-z][A-Za-z0-9_]*", t.val),
+                &format!("rename it, e.g. {}", lower_first(&t.val)),
+            ));
+        }
+        if self.at("{", 0) {
+            let p = self.peek(0).clone();
+            return Err(self.module_syntax(
+                &p,
+                "inline modules are not supported",
+                &format!("move the items into {}.pruv and write `mod {};`", t.val, t.val),
+            ));
+        }
+        if !self.at(";", 0) {
+            let p = self.peek(0).clone();
+            return Err(self.module_syntax(&p, &format!("expected ';' after `mod {}`", t.val), &format!("write `mod {};`", t.val)));
+        }
+        self.bump();
+        Ok(ModDecl { line: kw.line, col: kw.col, name: t.val })
+    }
+
+    /// At `crate`: `crate::a::b` -> (crate token, [segment names]); stops before a `::<` when allow_targs.
+    fn crate_path(&mut self, allow_targs: bool) -> R<(Tok, Vec<String>)> {
+        let t = self.next();
+        let mut segs: Vec<String> = Vec::new();
+        while self.at("::", 0) {
+            if self.at("<", 1) {
+                if allow_targs && !segs.is_empty() {
+                    break;
+                }
+                let p1 = self.peek(1).clone();
+                return Err(PruvError::new(
+                    "parse",
+                    p1.line,
+                    p1.col,
+                    "path_syntax",
+                    "type arguments are not allowed here",
+                    "attach type arguments to the item: crate::m::f::<T>(x)",
+                ));
+            }
+            self.bump();
+            let n = self.peek(0).clone();
+            if n.kind != Kind::Id {
+                let found = if n.kind == Kind::Eof { "end of file".to_string() } else { n.repr() };
+                return Err(self.path_syntax(&n, &format!("expected a name after `::` in a path, found {}", found)));
+            }
+            segs.push(self.next().val);
+        }
+        if segs.is_empty() {
+            let p = self.peek(0).clone();
+            return Err(self.path_syntax(&p, "a path needs at least one name after `crate::`"));
+        }
+        Ok((t, segs))
+    }
+
+    /// A `crate::..` path in a type position -> a pseudo identifier token whose value is the full path.
+    fn type_path(&mut self) -> R<Tok> {
+        let (t, segs) = self.crate_path(false)?;
+        Ok(Tok { kind: Kind::Id, val: format!("crate::{}", segs.join("::")), line: t.line, col: t.col, end: 0 })
+    }
+
+    /// At `(`: the argument list of a call or constructor.
+    fn call_args(&mut self) -> R<Vec<Expr>> {
+        self.bump();
+        let mut args = Vec::new();
+        while !self.at(")", 0) {
+            args.push(self.expr()?);
+            if !self.at(")", 0) {
+                self.expect(",")?;
+            }
+        }
+        self.expect(")")?;
+        Ok(args)
+    }
+
+    /// At `{`: `name: expr, ...` up to and including `}`.
+    fn struct_inits(&mut self) -> R<Vec<FieldInit>> {
+        self.bump();
+        let mut inits = Vec::new();
+        while !self.at("}", 0) {
+            let fname = self.ident()?;
+            self.expect(":")?;
+            let value = self.expr()?;
+            inits.push(FieldInit { line: fname.line, col: fname.col, name: fname.val, value });
+            if !self.at("}", 0) {
+                self.expect(",")?;
+            }
+        }
+        self.expect("}")?;
+        Ok(inits)
+    }
+
+    /// G4: an absolute path in an expression.
+    ///   crate::m::f(args) / crate::m::Enum::Variant(args) -> Call(name = the whole path) (the resolver tells a function from a variant)
+    ///   crate::m::Enum::Variant                           -> EnumCtor without arguments
+    ///   crate::m::S { .. }                                -> StructLit
+    ///   crate::m::f::<T>(args), crate::m::S::<A> { .. }, crate::m::E::<A>::V(args): type arguments attach to the item
+    fn crate_expr(&mut self) -> R<Expr> {
+        let (t, segs) = self.crate_path(true)?;
+        let (line, col) = (t.line, t.col);
+        let path = format!("crate::{}", segs.join("::"));
+        let last_upper = segs.last().map_or(false, |s| is_upper(s));
+        if self.at("::", 0) && self.at("<", 1) {
+            let targs = self.expr_targs()?;
+            if !(self.at("::", 0) || self.at("(", 0) || (self.at("{", 0) && last_upper)) {
+                let p = self.peek(0).clone();
+                return Err(self.generic_syntax(
+                    &p,
+                    "a type application must be followed by `(`, `{` or `::Variant`",
+                    "write crate::m::f::<T>(x), crate::m::Pair::<A, B> { .. } or crate::m::Choice::<A, B>::Left(x)",
+                ));
+            }
+            if self.at("::", 0) {
+                self.bump();
+                let vt = self.ident()?;
+                let mut args = Vec::new();
+                if self.at("(", 0) {
+                    let lp = self.peek(0).clone();
+                    args = self.call_args()?;
+                    if args.is_empty() {
+                        return Err(self.err(
+                            "empty parentheses after a variant",
+                            format!("write `{}::{}` for a variant without fields, or pass its fields as arguments", path, vt.val),
+                            Some(&lp),
+                        ));
+                    }
+                }
+                return Ok(Expr::EnumCtor(EnumCtor { line, col, enum_name: path, variant: vt.val, args, ty: None, targs: Some(targs), inst: None }));
+            }
+            if self.at("{", 0) {
+                let fields = self.struct_inits()?;
+                return Ok(Expr::StructLit(StructLit { line, col, name: path, fields, ty: None, targs: Some(targs), inst: None }));
+            }
+            let args = self.call_args()?;
+            return Ok(Expr::Call(Call { line, col, name: path, args, ty: None, targs: Some(targs), inst: None }));
+        }
+        if self.at("(", 0) {
+            let args = self.call_args()?;
+            return Ok(Expr::Call(Call { line, col, name: path, args, ty: None, targs: None, inst: None }));
+        }
+        if self.at("{", 0) && last_upper {
+            let fields = self.struct_inits()?;
+            return Ok(Expr::StructLit(StructLit { line, col, name: path, fields, ty: None, targs: None, inst: None }));
+        }
+        if segs.len() < 2 {
+            return Err(PruvError::new(
+                "parse",
+                t.line,
+                t.col,
+                "path_syntax",
+                "a path expression must be a call, a struct literal or an enum variant",
+                "write crate::module::f(x), crate::module::S { .. } or crate::module::Enum::Variant",
+            ));
+        }
+        let enum_name = format!("crate::{}", segs[..segs.len() - 1].join("::"));
+        Ok(Expr::EnumCtor(EnumCtor {
+            line,
+            col,
+            enum_name,
+            variant: segs[segs.len() - 1].clone(),
+            args: Vec::new(),
+            ty: None,
+            targs: None,
+            inst: None,
+        }))
     }
 
     fn unsupported(&self, what: &str, tok: &Tok) -> PruvError {
@@ -496,14 +797,14 @@ impl Parser {
         }
         if self.at("[", 0) {
             self.bump();
-            let e = self.ident()?;
+            let e = if self.at("crate", 0) { self.type_path()? } else { self.ident()? }; // G4: a qualified element type
             let elem: GType = if e.val == "i64" {
                 GType::i64()
             } else if e.val == "u8" {
                 GType::u8()
             } else if e.val == "bool" {
                 GType::bool()
-            } else if is_upper(&e.val) {
+            } else if is_upper(&e.val) || e.val.starts_with("crate::") {
                 // G3: a type parameter (the checker: needs Element); other types: the checker rejects them
                 self.named_type(&e)?
             } else {
@@ -547,7 +848,7 @@ impl Parser {
                 Some(Refinement { line: t.line, col: t.col, shape: "array".to_string(), base: e.val.clone(), lo, hi, maxlen }),
             ));
         }
-        let n = self.ident()?;
+        let n = if self.at("crate", 0) { self.type_path()? } else { self.ident()? }; // G4: a qualified type path
         let ty: GType;
         if n.val == "u8" || n.val == "i32" {
             return Err(PruvError::new(
@@ -852,6 +1153,41 @@ impl Parser {
             self.expect("{")?;
             let mut arms = Vec::new();
             while !self.at("}", 0) {
+                if self.at("crate", 0) {
+                    // G4: `crate::m::Enum::Variant(x) =>`; the last segment is the variant
+                    let (ct, segs) = self.crate_path(false)?;
+                    if segs.len() < 2 {
+                        return Err(self.path_syntax(&ct, "a variant pattern is written crate::module::Enum::Variant"));
+                    }
+                    let enum_path = format!("crate::{}", segs[..segs.len() - 1].join("::"));
+                    let variant = segs[segs.len() - 1].clone();
+                    let mut binders = Vec::new();
+                    if self.at("(", 0) {
+                        let lp = self.next();
+                        if self.at(")", 0) {
+                            return Err(self.err(
+                                "a pattern lists one name per field; a variant without fields has no parentheses",
+                                format!("write `{}::{} =>`", enum_path, variant),
+                                Some(&lp),
+                            ));
+                        }
+                        loop {
+                            binders.push(self.ident()?.val);
+                            if !self.at(",", 0) {
+                                break;
+                            }
+                            self.bump();
+                        }
+                        self.expect(")")?;
+                    }
+                    self.expect("=>")?;
+                    let body = self.block()?;
+                    arms.push(MatchArm { line: ct.line, col: ct.col, enum_name: Some(enum_path), ctor: variant, binders, body });
+                    if self.at(",", 0) {
+                        self.bump();
+                    }
+                    continue;
+                }
                 let ct = self.next();
                 if ct.kind == Kind::Id && self.at("::", 0) {
                     self.bump();
@@ -1141,8 +1477,23 @@ impl Parser {
         Ok(e)
     }
 
-    /// `Enum::Variant` -> (enum token, variant token)
+    /// `Enum::Variant` -> (enum token, variant token); G4: also `crate::m::Enum::Variant` (enum token value = the enum's path)
     fn enum_ref(&mut self) -> R<(Tok, Tok)> {
+        if self.at("crate", 0) {
+            let (ct, segs) = self.crate_path(false)?;
+            if segs.len() < 2 {
+                return Err(self.path_syntax(&ct, "a variant is written crate::module::Enum::Variant"));
+            }
+            let vt = Tok { kind: Kind::Id, val: segs[segs.len() - 1].clone(), line: ct.line, col: ct.col, end: 0 };
+            let en = Tok {
+                kind: Kind::Id,
+                val: format!("crate::{}", segs[..segs.len() - 1].join("::")),
+                line: ct.line,
+                col: ct.col,
+                end: 0,
+            };
+            return Ok((en, vt));
+        }
         let en = self.ident()?;
         self.expect("::")?;
         let vt = self.ident()?;
@@ -1250,6 +1601,9 @@ impl Parser {
             return Ok(Expr::VariantField(VariantField {
                 line, col, value: Box::new(v), enum_name: en.val, variant: vt.val, field: f.val, ty: None, enum_ty: None,
             }));
+        }
+        if self.at("crate", 0) {
+            return self.crate_expr();
         }
         if t.kind == Kind::Id {
             self.bump();

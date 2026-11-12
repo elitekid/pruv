@@ -1,0 +1,6 @@
+// G4 A0 frontend: a private item is visible inside its defining module, also through its absolute path
+mod a;
+
+pub fn go() -> i64 {
+  return crate::a::reveal();
+}

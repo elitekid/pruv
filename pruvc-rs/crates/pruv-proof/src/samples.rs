@@ -275,7 +275,7 @@ fn s3_option_result(z: &Z3, pre: &Prelude, trace: &mut Trace) {
 }
 
 /// ensures is_ok(result) ==> b > 0
-fn safe_div_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast, node: (u32, u32)) {
+fn safe_div_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast, node: (u64, u32)) {
     let env = v.ensures_env(st, Some(Val::Dt(result, Ty::Res)));
     let (res, b) = (env.get("result").ast().clone(), env.get("b").ast().clone());
     let ob = pre.is_ok(&res).implies(&b.gt_l(0));
@@ -283,7 +283,7 @@ fn safe_div_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast, 
 }
 
 /// ensures is_some(result) ==> x > 0
-fn first_pos_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast, node: (u32, u32)) {
+fn first_pos_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast, node: (u64, u32)) {
     let env = v.ensures_env(st, Some(Val::Dt(result, Ty::Opt)));
     let (res, x) = (env.get("result").ast().clone(), env.get("x").ast().clone());
     let ob = pre.is_some(&res).implies(&x.gt_l(0));
@@ -291,7 +291,7 @@ fn first_pos_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast,
 }
 
 /// ensures !is_some(o) ==> result == d
-fn unwrap_or_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast, node: (u32, u32)) {
+fn unwrap_or_ensures(v: &mut FnVerifier, pre: &Prelude, st: &State, result: Ast, node: (u64, u32)) {
     let env = v.ensures_env(st, Some(Val::Int(result)));
     let (res, o, d) = (
         env.get("result").ast().clone(),
@@ -525,14 +525,14 @@ fn s5_nested_quant(z: &Z3, pre: &Prelude, trace: &mut Trace) {
 // s6_alloc_loop: array parameters/returns, alloc, arrays in loop havoc (`out!k`, `out!k.len`), index_oob counterexample
 // =============================================================================================
 struct FillPos {
-    alloc: (u32, u32),
-    inv1: (u32, u32),
-    inv2: (u32, u32),
-    dec: (u32, u32),
-    index_assign: (u32, u32),
-    index_add: Option<(u32, u32)>,
-    i_add: (u32, u32),
-    ret: (u32, u32),
+    alloc: (u64, u32),
+    inv1: (u64, u32),
+    inv2: (u64, u32),
+    dec: (u64, u32),
+    index_assign: (u64, u32),
+    index_add: Option<(u64, u32)>,
+    i_add: (u64, u32),
+    ret: (u64, u32),
 }
 
 fn s6_alloc_loop(z: &Z3, pre: &Prelude, trace: &mut Trace) {

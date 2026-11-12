@@ -1,0 +1,2 @@
+// companion module of f04
+pub enum Event { Hit(v: i64), Miss, Tick(a: i64, b: i64) }

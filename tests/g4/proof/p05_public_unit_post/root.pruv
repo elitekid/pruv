@@ -1,0 +1,11 @@
+// G4 A1 proof: a public unit function of another module; in explicit mode its ensures is assumed by callers
+mod log;
+
+pub fn run(n: i64) -> i64
+  requires 0 <= n && n <= 100
+  ensures result == n
+{
+  crate::log::bump(n);
+  assert n <= 100;
+  return n;
+}

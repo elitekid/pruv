@@ -1,0 +1,6 @@
+// companion module of f12
+pub struct Segment { from: crate::a::Point, to: crate::a::Point }
+
+pub fn dx(s: crate::b::Segment) -> i64 {
+  return s.to.x - s.from.x;
+}

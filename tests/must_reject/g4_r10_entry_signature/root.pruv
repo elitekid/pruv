@@ -1,0 +1,4 @@
+// G4 A0 reject type/entry_signature: a root public nongeneric function is a host entry and cannot take a Vec
+pub fn count(v: Vec<i64>) -> i64 {
+  return len(v);
+}

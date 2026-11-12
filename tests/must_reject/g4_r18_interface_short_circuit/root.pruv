@@ -1,0 +1,4 @@
+// G4 A1 reject type/public_interface: an unreachable short-circuit operand of a public contract names a private enum
+mod a;
+
+pub fn go() -> i64 { return 0; }

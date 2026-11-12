@@ -1,0 +1,10 @@
+// G4 A0 frontend: public types whose fields name public types of another module
+mod a;
+mod b;
+
+pub fn width() -> i64 {
+  let p: crate::a::Point = crate::a::Point { x: 1, y: 2 };
+  let q: crate::a::Point = crate::a::Point { x: 5, y: 9 };
+  let s: crate::b::Segment = crate::b::Segment { from: p, to: q };
+  return crate::b::dx(s);
+}

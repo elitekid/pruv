@@ -1,0 +1,6 @@
+// G4 A0 frontend: the optional root main is `pub fn main() -> ()`; a child function named main is ordinary
+mod tools;
+
+pub fn main() -> () ! io {
+  print(crate::tools::answer());
+}

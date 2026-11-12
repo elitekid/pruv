@@ -1,0 +1,9 @@
+// companion module of f03: public generic functions are Pruv APIs, not host entries
+pub fn first<T: Element>(a: [T]) -> T
+  requires len(a) > 0
+{ return a[0]; }
+
+pub fn pick<T>(x: T, y: T, left: bool) -> T {
+  if left { return x; }
+  return y;
+}

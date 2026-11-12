@@ -1,0 +1,21 @@
+// companion module of p09
+mod dims;
+
+struct Scratch { t: i64 }
+
+pub struct Rect { dim: crate::shapes::dims::Size }
+
+pub fn make(w: i64, h: i64) -> Rect
+  ensures result.dim.w == w && result.dim.h == h
+{
+  return Rect { dim: crate::shapes::dims::Size { w: w, h: h } };
+}
+
+pub fn area(r: Rect) -> i64
+  requires 0 <= r.dim.w && r.dim.w <= 1000
+  requires 0 <= r.dim.h && r.dim.h <= 1000
+  ensures result == r.dim.w * r.dim.h
+{
+  let s: Scratch = Scratch { t: r.dim.w * r.dim.h };
+  return s.t;
+}

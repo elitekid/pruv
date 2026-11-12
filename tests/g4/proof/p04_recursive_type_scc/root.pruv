@@ -1,0 +1,6 @@
+// G4 A1 proof: two recursive enums in two files form one type SCC (one simultaneous datatype group).
+// The functions over them live in the child modules: a root host entry may not use recursive types.
+mod a;
+mod b;
+
+pub fn run() -> i64 { return 0; }

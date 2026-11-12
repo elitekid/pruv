@@ -1,0 +1,9 @@
+// companion module of p01: Item holds an integer
+pub struct Item { v: i64 }
+
+pub fn make(x: i64) -> Item
+  requires 0 <= x && x <= 100
+  ensures result.v == x
+{
+  return Item { v: x };
+}

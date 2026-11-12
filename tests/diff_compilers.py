@@ -94,6 +94,15 @@ def build_cases(args):
     if want("bench"):
         for f in sorted(glob.glob(os.path.join(ROOT, "bench/solutions/pruv_agg/*.pruv"))):
             cases.append({"name": "bench/pruv_agg/" + os.path.basename(f), "src": f, "flags": []})
+    if want("g4"):
+        # G4 A0: project roots from tests/g4/fixtures.json (frontend and rejection projects; companion modules are not
+        # inputs). "project": the saved case copies the whole tree (relative tree and root basename preserved).
+        import importlib
+        P = importlib.import_module("g4.projects")
+        for e in P.all_entries():
+            if e["group"] in ("frontend", "reject", "proof"):   # G4 A1: proof projects (verify, then the staging guard)
+                cases.append({"name": "g4/" + e["name"], "src": os.path.join(ROOT, *e["root"].split("/")),
+                              "flags": [], "project": True})
     for f in args.input or []:
         if not os.path.isfile(f):
             errors.append("--input: no such file: %s" % f)
@@ -286,7 +295,13 @@ def write_text(path, text):
 
 def save_case(case_dir, spec, tmpl_a, tmpl_b, outcome, versions, case_id):
     os.makedirs(case_dir, exist_ok=True)
-    shutil.copyfile(spec["src"], os.path.join(case_dir, "input.pruv"))
+    project_root = None
+    if spec.get("project"):
+        # G4: the whole project directory, so replay sees the same relative tree and the same root basename
+        shutil.copytree(os.path.dirname(spec["src"]), os.path.join(case_dir, "project"))
+        project_root = os.path.basename(spec["src"])
+    else:
+        shutil.copyfile(spec["src"], os.path.join(case_dir, "input.pruv"))
     sides = outcome["sides"]
     write_text(os.path.join(case_dir, "argv.json"), json.dumps(
         {"a": sides["a"]["argv"], "b": sides["b"]["argv"], "a_template": tmpl_a, "b_template": tmpl_b}, indent=1))
@@ -306,7 +321,7 @@ def save_case(case_dir, spec, tmpl_a, tmpl_b, outcome, versions, case_id):
     write_text(os.path.join(case_dir, "case.json"), json.dumps(
         {"id": case_id, "name": spec["name"], "original_src": spec["src"], "flags": spec["flags"],
          "backend": spec["backend"], "classification": outcome["cls"], "details": outcome["details"],
-         "cex_differs": outcome.get("cex_differs", False),
+         "cex_differs": outcome.get("cex_differs", False), "project_root": project_root,
          "exit": {"a": sides["a"]["res"].returncode, "b": sides["b"]["res"].returncode}}, indent=1, ensure_ascii=False))
 
 
@@ -323,9 +338,10 @@ def replay(case_dir, args):
     except (OSError, ValueError) as e:
         print("replay: cannot read case folder %s: %r" % (case_dir, e))
         return 2
-    src = os.path.abspath(os.path.join(case_dir, "input.pruv"))
+    pr = meta.get("project_root")   # G4: a saved project keeps its tree and its root basename
+    src = os.path.abspath(os.path.join(case_dir, "project", pr) if pr else os.path.join(case_dir, "input.pruv"))
     if not os.path.exists(src):
-        print("replay: input.pruv missing in " + case_dir)
+        print("replay: %s missing in %s" % ("project/" + pr if pr else "input.pruv", case_dir))
         return 2
     spec = {"name": meta["name"], "src": src, "flags": meta["flags"], "backend": meta["backend"]}
     print("replay %s  (saved classification: %s)" % (meta["name"], meta["classification"]))
@@ -368,7 +384,7 @@ def main():
     ap.add_argument("--backend", choices=["rust", "llvm", "both"], default="both")
     ap.add_argument("--input", action="append", default=[], metavar="FILE", help="additional input (repeatable)")
     ap.add_argument("--flag", action="append", default=[], help="compiler flag to give the --input files (repeatable)")
-    ap.add_argument("--only", choices=["must_reject", "examples", "runtime", "bench"], default=None)
+    ap.add_argument("--only", choices=["must_reject", "examples", "runtime", "bench", "g4"], default=None)
     ap.add_argument("--no-default-inputs", action="store_true", help="only --input, no default inputs")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--timeout", type=int, default=300, help="seconds per compiler process (default 300)")

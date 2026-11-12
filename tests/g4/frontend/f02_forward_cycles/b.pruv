@@ -1,0 +1,12 @@
+// companion module of f02: pong calls back into a (a cycle across files)
+pub fn pong(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 1; }
+  return crate::a::ping(n - 1);
+}
+
+pub fn tick(c: crate::a::Counter) -> crate::a::Counter {
+  return crate::a::bump(c);
+}

@@ -1,6 +1,15 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof]
                         [--backend rust|llvm|both]
+
+group g4_proof (G4 A1): tests/g4/proof/*/root.pruv from tests/g4/fixtures.json (default mode, backend null rows, each project
+copied to a new directory first). While G4_GUARD is True (until A3) a row passes when verification succeeds and pruvc then
+stops at the same staging guard codegen/unsupported_type ("G4 modules and visibility"); a verification error fails the row.
+
+group g4_frontend (G4 A0): tests/g4/frontend/*/root.pruv from tests/g4/fixtures.json (mode no-verify, backend null rows,
+each project copied to a new directory first). While G4_GUARD is True (until A3) a row passes when pruvc exits 1 with the
+staging guard codegen/unsupported_type ("G4 modules and visibility"). The tests/must_reject/g4_*/root.pruv projects are
+rows of the must_reject group (sample = the project's root.pruv; expected stage/code in the sibling root.json).
                         [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH]
                         [--list-rows [FILE]] [--compare-rows FILE]
 
@@ -239,6 +248,113 @@ def must_reject_jobs():
             return ok, detail
         jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": list(flags), "mode": None,
                                      "group": "must_reject"}))
+    return jobs + g4_reject_jobs()
+
+
+def _g4():
+    """tests/g4/projects.py (project fixtures); imported lazily"""
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    import importlib
+    return importlib.import_module("g4.projects")
+
+
+def g4_reject_jobs():
+    """G4 A0: tests/must_reject/g4_*/root.pruv (project directories; companion modules are not roots). The project is
+    copied to a new work directory first, so the run also shows that nothing depends on the original location; the
+    expected stage/code come from the project's root.json."""
+    jobs = []
+    P = _g4()
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/g4_*/root.pruv"))):
+        rel = rel_sample(f)
+        name = "must_reject/" + rel[len("tests/must_reject/"):]
+        proj = os.path.basename(os.path.dirname(f))
+        jf = os.path.join(os.path.dirname(f), "root.json")
+        flags = []
+        want = {}
+        if os.path.exists(jf):
+            try:
+                want = json.load(open(jf))
+            except (OSError, ValueError):
+                want = {}
+            fl = want.get("flags") if isinstance(want, dict) else None
+            if isinstance(fl, list) and all(isinstance(x, str) for x in fl):
+                flags = list(fl)
+
+        def fn(f=f, proj=proj, want=want, flags=flags):
+            root = P.copy_project(f, os.path.join(WORK, "g4mr_" + proj))
+            c = pruvc(root, os.path.join(WORK, "g4mr_%s.rs" % proj), flags)
+            if c.returncode != 1:
+                return False, "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr)
+            diags = []
+            for line in c.stdout.splitlines():
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(d, dict):
+                    diags.append(d)
+            ok = any(d.get("stage") == want.get("stage") and d.get("code") == want.get("code") for d in diags)
+            return ok, "expected stage=%s code=%s; got %s" % (
+                want.get("stage"), want.get("code"), [(d.get("stage"), d.get("code")) for d in diags])
+        jobs.append(safe(name, fn, {"sample": rel, "backend": None, "flags": list(flags), "mode": None,
+                                     "group": "must_reject"}))
+    return jobs
+
+
+# G4 A0 (docs/G4_SPEC.md 10): explicit-mode programs are frontend-only until A1/A2/A3. While G4_GUARD is True a g4_frontend
+# row passes when pruvc exits 1 with the staging guard codegen/unsupported_type naming G4 modules (which also shows that
+# loading, resolution, visibility and entry checks all accepted the project). A3 removes the guard: rows expect exit 0.
+G4_GUARD = True
+G4_GUARD_CODE = "unsupported_type"
+G4_GUARD_LAYER = "G4 modules and visibility"
+
+
+def g4_frontend_jobs(group="g4_frontend", modes=(("no-verify", ["--no-verify"]),)):
+    """tests/g4/frontend/*/root.pruv (listed in tests/g4/fixtures.json); rows have backend null. Each project is copied
+    to a new directory first (relocation: the relative tree and the root basename must be all that matters)."""
+    jobs = []
+    P = _g4()
+    for e in P.frontend():
+        f = os.path.join(ROOT, *e["root"].split("/"))
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, e["name"], mode)
+
+            def fn(f=f, flags=flags, mode=mode, nm=e["name"]):
+                root = P.copy_project(f, os.path.join(WORK, "g4fe_%s_%s" % (nm, mode)))
+                c = pruvc(root, os.path.join(WORK, "g4fe_%s_%s.rs" % (nm, mode)), flags)
+                text = c.stdout + c.stderr
+                if G4_GUARD:
+                    ok = c.returncode == 1 and G4_GUARD_CODE in text and G4_GUARD_LAYER in text
+                    return ok, "pruvc exit %d (expected 1 with the G4 guard %s / %r) %s" % (
+                        c.returncode, G4_GUARD_CODE, G4_GUARD_LAYER, text[-400:])
+                return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, text[-400:])
+            jobs.append(safe(name, fn, {"sample": e["root"], "backend": None, "flags": flags, "mode": mode,
+                                         "group": group}))
+    return jobs
+
+
+def g4_proof_jobs():
+    """G4 A1: tests/g4/proof/*/root.pruv (listed in tests/g4/fixtures.json) must verify completely in the default mode
+    (rows have backend null). While G4_GUARD is True the run then stops at the staging guard (exit 1); a verification
+    error is a different diagnostic and fails the row. The project is copied to a new directory first."""
+    jobs = []
+    P = _g4()
+    for e in P.proof():
+        f = os.path.join(ROOT, *e["root"].split("/"))
+        name = "g4_proof/%s [default]" % e["name"]
+
+        def fn(f=f, nm=e["name"]):
+            root = P.copy_project(f, os.path.join(WORK, "g4pr_" + nm))
+            c = pruvc(root, os.path.join(WORK, "g4pr_%s.rs" % nm), [])
+            text = c.stdout + c.stderr
+            if G4_GUARD:
+                ok = c.returncode == 1 and G4_GUARD_CODE in text and G4_GUARD_LAYER in text
+                return ok, "pruvc exit %d (expected 1 with the G4 guard %s / %r after verification) %s" % (
+                    c.returncode, G4_GUARD_CODE, G4_GUARD_LAYER, text[-400:])
+            return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, text[-400:])
+        jobs.append(safe(name, fn, {"sample": e["root"], "backend": None, "flags": [], "mode": "default",
+                                     "group": "g4_proof"}))
     return jobs
 
 
@@ -545,7 +661,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -633,7 +749,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof"):
+                        "g9_proof", "g4_frontend", "g4_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -660,6 +776,10 @@ def main():
             jobs += g9_frontend_jobs()
         if only in (None, "g9_proof"):
             jobs += g9_proof_jobs()
+        if only in (None, "g4_frontend"):
+            jobs += g4_frontend_jobs()
+        if only in (None, "g4_proof"):
+            jobs += g4_proof_jobs()
         for b in backends:
             if only in (None, "examples"):
                 jobs += examples_jobs(b)
@@ -702,7 +822,8 @@ def main():
     if saved_rows is not None:
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
-        null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof")
+        null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
+                        "g4_proof")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

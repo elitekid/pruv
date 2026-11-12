@@ -1,0 +1,14 @@
+// G4 A0 frontend: generic paths (type arguments attach to the item, never to a module segment)
+mod math;
+mod model;
+
+pub fn choose(a: [i64]) -> i64
+  requires len(a) > 0
+{
+  let p: crate::model::Pair<i64, bool> = crate::model::make_pair(crate::math::first::<i64>(a), true);
+  let c: crate::model::Choice<i64, bool> = crate::model::Choice::<i64, bool>::Left(3);
+  match c {
+    crate::model::Choice::Left(v) => { return v + p.first; }
+    crate::model::Choice::Right(b) => { return crate::math::pick::<i64>(1, 2, b); }
+  }
+}

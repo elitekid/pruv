@@ -198,11 +198,27 @@ fn check_runtime(target: &Target) -> Result<(), Fail> {
 }
 
 fn compile(a: &Args) -> Result<(), Fail> {
-    // A read failure or UTF-8 decode failure is an internal error (handled like Python open().read())
-    let src = pruv_core::pyio::read_source(Path::new(&a.input)).map_err(Fail::Internal)?;
+    // G4: the root file plus its declared module files (a legacy root is the plain parse). A read failure or UTF-8 decode
+    // failure of the root is an internal error (handled like Python open().read()).
     // Exceeding the depth limit is reported by the parser as stage "internal" (exit 3, like Python RecursionError).
-    let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
-    let tt = pruv_core::check::check_with_externs(&mut prog, &a.rust_extern).map_err(|e| Fail::Lang(vec![e]))?;
+    let loaded = pruv_core::modules::load_program(Path::new(&a.input)).map_err(|e| match e {
+        pruv_core::modules::LoadError::Io(m) | pruv_core::modules::LoadError::Decode(m) => Fail::Internal(m),
+        pruv_core::modules::LoadError::Lang(e) => {
+            if e.stage == "internal" {
+                Fail::Internal(e.message)
+            } else {
+                Fail::Lang(vec![e])
+            }
+        }
+    })?;
+    let mut prog = loaded.prog;
+    let mut g4 = loaded.g4;
+    let checked = match g4.as_mut() {
+        Some(g) => pruv_core::check::check_explicit(&mut prog, g, &a.rust_extern),
+        None => pruv_core::check::check_with_externs(&mut prog, &a.rust_extern),
+    };
+    let tt = checked.map_err(|e| Fail::Lang(vec![e]))?;
+    // G4 A1: the staging guard of explicit visibility mode now comes after the proof (below), like Python compile_file.
     // G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.
     // G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm) lowers
     // the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type inside the LLVM generator
@@ -210,7 +226,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // which Python does not have, cannot link the Rust shim: codegen/foreign_target (G6_SPEC 13.1). With --no-verify
     // that check fires right after the check; otherwise after verification.
     let g6_native = matches!(a.kind, Kind::Obj | Kind::Exe);
-    if !a.verify && g6_native {
+    if !a.verify && g6_native && g4.is_none() {
         if let Some(e) = foreign_target_error(&prog) {
             return Err(Fail::Lang(vec![e]));
         }
@@ -238,6 +254,10 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
+        if let Some(g) = &g4 {
+            // G4 A1 staging guard (after the proof): explicit visibility mode verifies but has no code generation yet
+            return Err(Fail::Lang(vec![pruv_core::modules::guard_error(&prog, g)]));
+        }
         if g6_native {
             if let Some(e) = foreign_target_error(&prog) {
                 return Err(Fail::Lang(vec![e]));
@@ -245,6 +265,12 @@ fn compile(a: &Args) -> Result<(), Fail> {
         }
     } else if a.infer && a.show_inferred {
         eprintln!("{{\"status\": \"skipped_no_verify\"}}");
+    }
+    if !a.verify {
+        if let Some(g) = &g4 {
+            // G4 A1 staging guard without a proof (--no-verify), same diagnostic as Python compile_file
+            return Err(Fail::Lang(vec![pruv_core::modules::guard_error(&prog, g)]));
+        }
     }
     // G3 A3/A4 (same place as in Python compile_file): every backend (rust, llvm, also --also-llvm) specializes generic
     // programs through the shared plan (mono.rs) and generates from the concrete program.

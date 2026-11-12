@@ -1,0 +1,4 @@
+// G4 A0 reject type/public_interface: a public function of module a returns a private struct
+mod a;
+
+pub fn go() -> i64 { return 0; }

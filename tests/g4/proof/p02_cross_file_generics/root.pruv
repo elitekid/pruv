@@ -1,0 +1,13 @@
+// G4 A1 proof: public generic functions of another module, instantiated at two types; proved once where defined
+mod math;
+
+pub fn demo(a: [i64], flag: bool) -> i64
+  requires len(a) > 0
+  requires -1000 <= a[0] && a[0] <= 1000
+  ensures result == a[0] + 1
+{
+  let h: i64 = crate::math::first::<i64>(a);
+  let b: bool = crate::math::choose::<bool>(flag, true, true);
+  assert b;
+  return h + 1;
+}

@@ -1,0 +1,6 @@
+// G4 A0 reject type/private_item: a child reads a private item of the root (children get no implicit access)
+mod a;
+
+fn secret() -> i64 { return 1; }
+
+pub fn go() -> i64 { return crate::a::f(); }

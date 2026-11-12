@@ -1,0 +1,11 @@
+// G4 A1 proof: nested modules (shapes, shapes::dims); the public interface closure is all public, and a private
+// type is used only inside a body
+mod shapes;
+
+pub fn total(w: i64, h: i64) -> i64
+  requires 0 <= w && w <= 1000
+  requires 0 <= h && h <= 1000
+  ensures result == w * h
+{
+  return crate::shapes::area(crate::shapes::make(w, h));
+}

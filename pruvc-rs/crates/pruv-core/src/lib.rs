@@ -31,6 +31,7 @@ pub mod foreign_shim;
 pub mod gtype;
 pub mod lexer;
 pub mod llvmgen;
+pub mod modules;
 pub mod mono;
 pub mod parser;
 pub mod pyio;

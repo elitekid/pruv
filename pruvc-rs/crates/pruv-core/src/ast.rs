@@ -267,6 +267,18 @@ pub struct G9Meta {
     pub fn_sccs: Vec<Vec<String>>,
 }
 
+// ---------- G4 A0: modules and visibility (parse level) ----------
+// `Program` is unchanged: the explicit-mode data (modules, `pub`, source names, host entries) lives in modules.rs `G4`,
+// next to the program the module loader returns. Node positions carry the source file in their line number (diagnostic.rs).
+
+/// `mod name;` (vast.ModDecl). line/col = the `mod` token.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModDecl { pub line: i64, pub col: i64, pub name: String }
+
+/// A top-level item of one file, in source order: an index into `Program.functions` / `Program.types` (Python `Program.items`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Item { Fn(usize), Ty(usize) }
+
 /// No line/col.
 #[derive(Debug, Clone, PartialEq, Default)]
 /// refined: a marker that refine::expand has already run (Python `_refined`). Not emitted in the dump.

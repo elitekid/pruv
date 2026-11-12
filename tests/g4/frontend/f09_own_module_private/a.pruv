@@ -1,0 +1,8 @@
+// companion module of f09
+fn secret() -> i64 {
+  return 3;
+}
+
+pub fn reveal() -> i64 {
+  return crate::a::secret();
+}

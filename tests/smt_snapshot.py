@@ -3,7 +3,8 @@
 tests/smt_snapshot_inputs.txt and keep only the verification-relevant part (errors without counterexample,
 obligations as [fn, line, col, code, skipped, [[lemmas, smt2, result], ...]]).
 
-  python tests/smt_snapshot.py run OUT.json [--root ROOT] [--python PY] [--jobs 8] [--abs-keys] [--flags FLAG...]
+  python tests/smt_snapshot.py run OUT.json [--root ROOT] [--python PY] [--jobs 8] [--abs-keys] [--g4] [--flags FLAG...]
+     --g4 (G4 A1): also trace the tests/g4/proof project roots (listed in tests/g4/fixtures.json)
   python tests/smt_snapshot.py compare A.json B.json
 
 run: keys are repo-relative paths (--abs-keys: os.path.join(ROOT, rel) with ROOT exactly as given, like the old
@@ -28,12 +29,18 @@ TIMEOUT = 600
 USAGE = ("usage: smt_snapshot.py run OUT.json [--root ROOT] [--python PY] [--jobs 8] [--abs-keys] [--flags FLAG...]\n"
          "       smt_snapshot.py compare A.json B.json")
 
-_REL = re.compile(r"(?:^|/)((?:tests/(?:must_reject|runtime|check_edge)|examples|bench/solutions/(?:pruv_agg|pruv_refine))/[^/]+)$")
+_REL = re.compile(r"(?:^|/)((?:tests/(?:must_reject|runtime|check_edge)|tests/g4/proof/[^/]+|examples|bench/solutions/(?:pruv_agg|pruv_refine))/[^/]+)$")
 
 
-def read_inputs():
+def read_inputs(g4=False):
     with open(INPUTS, encoding="utf-8") as fh:
-        return [l.strip() for l in fh.read().splitlines() if l.strip()]
+        rels = [l.strip() for l in fh.read().splitlines() if l.strip()]
+    if g4:
+        # G4 A1: the proof projects of tests/g4/fixtures.json (roots only), appended after the fixed list
+        sys.path.insert(0, HERE)
+        import importlib
+        rels += [e["root"] for e in importlib.import_module("g4.projects").proof()]
+    return rels
 
 
 def reduce_trace(data):
@@ -42,8 +49,11 @@ def reduce_trace(data):
         errors.append({k: v for k, v in e.items() if k != "counterexample"})
     obs = []
     for o in data.get("obligations", []):
-        obs.append([o["fn"], o["line"], o["col"], o["code"], o.get("skipped", False),
-                    [[a["lemmas"], a["smt2"], a["result"]] for a in o.get("attempts", [])]])
+        row = [o["fn"], o["line"], o["col"], o["code"], o.get("skipped", False),
+               [[a["lemmas"], a["smt2"], a["result"]] for a in o.get("attempts", [])]]
+        if "file" in o:     # G4 A1: explicit-mode obligations only; legacy rows keep their exact shape
+            row.append(o["file"])
+        obs.append(row)
     return {"errors": errors, "obs": obs}
 
 
@@ -73,6 +83,7 @@ def cmd_run(args):
         return 2
     out_path = args[0]
     root, python, jobs, abs_keys, flags = DEFAULT_ROOT, sys.executable, 8, False, []
+    g4 = False
     i = 1
     while i < len(args):
         a = args[i]
@@ -81,6 +92,9 @@ def cmd_run(args):
             break
         if a == "--abs-keys":
             abs_keys = True
+            i += 1
+        elif a == "--g4":
+            g4 = True
             i += 1
         elif a in ("--root", "--python", "--jobs"):
             if i + 1 >= len(args):
@@ -101,7 +115,7 @@ def cmd_run(args):
         else:
             print(USAGE)
             return 2
-    rels = read_inputs()
+    rels = read_inputs(g4)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         results = list(pool.map(lambda r: one(python, root, r, flags), rels))
     out = {}

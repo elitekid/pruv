@@ -1,0 +1,8 @@
+// companion module of f05: no local Vec here, so Vec<i64> is the catalog collection type
+fn count(v: Vec<i64>) -> i64 {
+  return len(v);
+}
+
+pub fn answer() -> i64 {
+  return 4;
+}

@@ -1,0 +1,7 @@
+// companion module of p05
+pub fn bump(n: i64) -> ()
+  requires 0 <= n && n <= 100
+  ensures n <= 100
+{
+  let t: i64 = n + 1;
+}

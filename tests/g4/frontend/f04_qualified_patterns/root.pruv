@@ -1,0 +1,17 @@
+// G4 A0 frontend: qualified patterns, constructors and contract selectors
+mod model;
+
+pub fn weight(e: crate::model::Event) -> i64
+  requires is_variant(e, crate::model::Event::Hit) ==> variant_field(e, crate::model::Event::Hit, v) >= 0
+  ensures is_variant(e, crate::model::Event::Miss) ==> result == 0
+{
+  match e {
+    crate::model::Event::Hit(v) => { return v; }
+    crate::model::Event::Miss => { return 0; }
+    crate::model::Event::Tick(a, b) => { return a + b; }
+  }
+}
+
+pub fn quiet() -> crate::model::Event {
+  return crate::model::Event::Miss;
+}

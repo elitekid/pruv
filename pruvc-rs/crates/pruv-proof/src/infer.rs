@@ -1664,6 +1664,8 @@ pub struct InferResult {
     pub queries: usize,
     /// Whether the version 1 fallback was done (4.1)
     pub fallback: bool,
+    /// G4 A1: the function's file (explicit visibility mode only); the report records carry it as "file".
+    pub file: Option<String>,
 }
 
 impl InferResult {
@@ -1709,7 +1711,7 @@ impl InferResult {
             let mut rec = vec![
                 ("fn".to_string(), Json::Str(self.fname.clone())),
                 ("loop".to_string(), Json::int(l.n as i64)),
-                ("line".to_string(), Json::int(l.line)),
+                ("line".to_string(), Json::int(pruv_core::diagnostic::plain_line(l.line))),
                 ("col".to_string(), Json::int(l.col)),
                 ("status".to_string(), Json::str(status)),
                 ("invariants".to_string(), Json::Arr(invariants)),
@@ -1720,6 +1722,10 @@ impl InferResult {
                 ("rounds".to_string(), Json::int(self.rounds as i64)),
                 ("queries".to_string(), Json::int(self.queries as i64)),
             ];
+            if let Some(file) = &self.file {
+                // G4 A1: explicit mode only (legacy records keep their exact key set; keys are sorted on output)
+                rec.push(("file".to_string(), Json::Str(file.clone())));
+            }
             if self.fallback {
                 rec.push(("fallback".to_string(), Json::str("v1")));
             }
@@ -1831,6 +1837,7 @@ pub fn infer_function(
         rounds: 0,
         queries: 0,
         fallback: false,
+        file: pruv_core::diagnostic::file_of_tag(pruv_core::diagnostic::line_tag(f.line)),
     };
     let deadline = Instant::now() + Duration::from_secs(MAX_SECONDS);
     let mut probe = Probe::new(MAX_QUERIES, deadline);

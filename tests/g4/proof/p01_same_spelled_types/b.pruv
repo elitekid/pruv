@@ -1,0 +1,8 @@
+// companion module of p01: Item holds a flag (same spelling as a::Item, a different type)
+pub struct Item { flag: bool }
+
+pub fn make(flag: bool) -> Item
+  ensures result.flag == flag
+{
+  return Item { flag: flag };
+}

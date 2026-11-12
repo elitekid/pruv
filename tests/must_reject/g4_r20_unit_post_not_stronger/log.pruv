@@ -1,0 +1,7 @@
+// companion module of g4_r20
+pub fn note(n: i64) -> ()
+  requires n >= 0
+  ensures n >= 0
+{
+  let t: i64 = n;
+}

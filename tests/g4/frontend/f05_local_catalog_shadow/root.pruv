@@ -1,0 +1,7 @@
+// G4 A0 frontend: a module-local nominal `Vec` keeps its meaning; another module's `Vec<i64>` is the catalog type
+mod store;
+mod other;
+
+pub fn run() -> i64 {
+  return crate::store::total() + crate::other::answer();
+}

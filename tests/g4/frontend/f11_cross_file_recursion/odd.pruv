@@ -1,0 +1,8 @@
+// companion module of f11
+pub fn is_odd(n: i64) -> bool
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return false; }
+  return crate::even::is_even(n - 1);
+}

@@ -1,0 +1,4 @@
+// G4 A0 reject type/entry_main: the root main takes no parameters
+pub fn main(x: i64) -> () {
+  return;
+}
