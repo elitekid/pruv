@@ -338,11 +338,13 @@ def rty(t, param=False):
         if t.name == "option":
             return "::std::option::Option<%s>" % x
         return "::std::result::Result<%s, i64>" % x
-    if t.owner is None and t.name in ("vec", "hashmap", "string"):   # G6: owned; a borrowed parameter is a reference
+    if t.owner is None and t.name in ("vec", "hashmap", "string", "file"):   # G6: owned; a borrowed parameter is a reference
         if t.name == "vec":
             r = "::std::vec::Vec<%s>" % rty(t.args[0])
         elif t.name == "hashmap":
             r = "::std::collections::HashMap<%s, %s>" % (rty(t.args[0]), rty(t.args[1]))
+        elif t.name == "file":
+            r = "PruvFile"
         else:
             r = "::std::string::String"
         return "&" + r if param else r
@@ -650,7 +652,8 @@ class Gen:
         s.need_size = set()
         s.need_eq = set()
         # G6 (section 12): only a program that uses G6 gets any of the following
-        from foreign import first_g6_use
+        from foreign import first_g6_use, g10_unimplemented_error
+        s.g10 = g10_unimplemented_error(prog) is not None
         s.g6 = first_g6_use(prog) is not None
         s.fmode = foreign_checks
         s.allow = ALLOW_G6 if s.g6 else ALLOW
@@ -675,10 +678,13 @@ class Gen:
         return False
 
     def prelude(s):
+        if s.g10:
+            s.out.append("struct PruvFile { file: ::std::option::Option<::std::fs::File>, "
+                         "ok: bool, readable: bool, writable: bool, buf: ::std::vec::Vec<u8> }\n")
         types = emit_public_types(s.prog, s.table.order if s.g9 else None)
         if types:
             s.out.append(types)
-        u8_used = uses_array_type(s.prog, "array_u8")
+        u8_used = uses_array_type(s.prog, "array_u8") or s.g10
         bool_used = uses_array_type(s.prog, "array_bool")  # G2 A5
         str_used = uses_str(s.prog)  # G2 B2
         if s.g9:
@@ -1141,6 +1147,12 @@ class Gen:
                 # G9: structural size on the real value, checked i128 additions, one budget unit per node visited
                 s.need_size.add(a[0].ty.name)
                 return "pruv_csize__%s(%s, &mut pruv_budget)" % (a[0].ty.name, s.cx(a[0]))
+            if n in ("file_ok", "file_readable", "file_writable"):
+                return "(%s).%s" % (s.c(a[0]), n[5:])
+            if n == "file_size":
+                return "((%s).buf.len() as i128)" % s.c(a[0])
+            if n == "file_byte":
+                return "pruv_cidx_u8(&(%s).buf, %s)" % (s.c(a[0]), s.c(a[1]))
             if n == "map_lookup":   # G6: finite-map lookup, Option mirror of the stored value
                 kt, vt = a[0].ty.args[0], a[0].ty.args[1]
                 key = s.c(a[1])
@@ -1516,7 +1528,7 @@ class Gen:
         for p, x in zip(cat.params, e.args):
             if is_collection(p.type):
                 args.append(s.e(x) if p.take else s.cref(x))
-            elif p.type == STR:
+            elif p.type == STR or (e.name == "file_write_bytes" and p.type == ARRAY_U8):
                 args.append(s.arr_ref(x))
             else:
                 args.append(s.e(x))

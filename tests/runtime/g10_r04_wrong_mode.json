@@ -1,0 +1,14 @@
+{
+  "flags_matrix": [
+    [
+      "--no-verify"
+    ],
+    [
+      "--no-verify",
+      "--foreign-checks",
+      "all"
+    ]
+  ],
+  "exit": 101,
+  "stderr_contains": "pruv: foreign requires violated: file_read_all:"
+}

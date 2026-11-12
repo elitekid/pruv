@@ -430,6 +430,7 @@ struct Gen<'a> {
     vars: HashMap<String, String>,
     /// G6: the program uses G6 (a foreign declaration, a collection, take or move)
     g6: bool,
+    g10: bool,
     /// the attribute of every emitted function (ALLOW, or ALLOW_G6 for a G6 program)
     allow: &'static str,
     /// function name -> declaration (first one wins)
@@ -515,6 +516,7 @@ impl<'a> Gen<'a> {
                 }),
             vars: HashMap::new(),
             g6,
+            g10: crate::foreign::g10_unimplemented_error(prog).is_some(),
             allow: if g6 { ALLOW_G6 } else { ALLOW },
             fmap,
             borrowed: HashSet::new(),
@@ -615,11 +617,14 @@ impl<'a> Gen<'a> {
     }
 
     fn prelude(&mut self) -> R<()> {
+        if self.g10 {
+            self.out.push("struct PruvFile { file: ::std::option::Option<::std::fs::File>, ok: bool, readable: bool, writable: bool, buf: ::std::vec::Vec<u8> }\n".to_string());
+        }
         let types = emit_public_types_with(self.prog, &self.table);
         if !types.is_empty() {
             self.out.push(types);
         }
-        let mut u8_used = uses_array_type(self.prog, "array_u8");
+        let mut u8_used = uses_array_type(self.prog, "array_u8") || self.g10;
         let mut bool_used = uses_array_type(self.prog, "array_bool"); // G2 A5
         let mut str_used = uses_str(self.prog); // G2 B2
         if self.g9 {
@@ -1392,6 +1397,15 @@ impl<'a> Gen<'a> {
                     let v = self.cx(a0)?;
                     return Ok(format!("pruv_csize__{}({}, &mut pruv_budget)", tn, v));
                 }
+                if matches!(n, "file_ok" | "file_readable" | "file_writable") {
+                    return Ok(format!("({}).{}", self.c(arg(a, 0)?)?, &n[5..]));
+                }
+                if n == "file_size" {
+                    return Ok(format!("(({}).buf.len() as i128)", self.c(arg(a, 0)?)?));
+                }
+                if n == "file_byte" {
+                    return Ok(format!("pruv_cidx_u8(&({}).buf, {})", self.c(arg(a, 0)?)?, self.c(arg(a, 1)?)?));
+                }
                 if n == "map_lookup" {
                     // G6: finite-map lookup, Option mirror of the stored value
                     let (kt, vt) = map_type_args(arg(a, 0)?)?;
@@ -2060,7 +2074,7 @@ impl<'a> Gen<'a> {
                 } else {
                     args.push(self.cref(xa)?);
                 }
-            } else if p.ty == GType::str() {
+            } else if p.ty == GType::str() || (x.name == "file_write_bytes" && p.ty == GType::new("array_u8", vec![])) {
                 args.push(self.arr_ref(xa)?);
             } else {
                 args.push(self.e(xa)?);

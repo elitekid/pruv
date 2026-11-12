@@ -1033,7 +1033,7 @@ fn g10_stmts(stmts: &[Stmt]) -> bool {
 }
 
 /// G10 A0 guard: the first function that uses `File` or a `file_*` operation -> codegen/unsupported_type.
-/// Runs after type and ownership checking and before verification, in every mode.
+/// G10 A2: runs after verification (or its bypass) on LLVM paths.
 pub fn g10_unimplemented_error(prog: &Program) -> Option<PruvError> {
     for f in &prog.functions {
         let uses = f.params.iter().any(|p| key_has_file(&p.ty))
@@ -1048,7 +1048,7 @@ pub fn g10_unimplemented_error(prog: &Program) -> Option<PruvError> {
                 f.line,
                 f.col,
                 "unsupported_type",
-                "files (G10) are not implemented by the code generation layers yet",
+                "files (G10) are not implemented by the llvm codegen layer yet",
                 "avoid File and file_* operations for now",
             ));
         }

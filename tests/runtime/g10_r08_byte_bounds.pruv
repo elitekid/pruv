@@ -1,0 +1,6 @@
+fn past_end(path: str) -> i64 ! fs, alloc {
+  let f: File = file_open_read(path);
+  if !file_readable(f) { return -1; }
+  let g: File = file_read_all(move f);
+  return file_byte(g, file_size(g));
+}

@@ -421,6 +421,7 @@ class _Mono:
                        ensures=self.cp(f.ensures) if f.foreign is not None else [],   # G6: kept for `all` checks
                        body=self.cp(f.body), ret_refine=self.cp(f.ret_refine))
         new.private = private
+        new.file = f.file   # explicit mode: later codegen diagnostics keep the source file (Rust: the tagged line)
         if f.foreign is not None:
             new.foreign = f.foreign
         return self._mark_fn(new, f, private)

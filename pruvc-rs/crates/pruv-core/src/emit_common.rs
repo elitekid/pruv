@@ -121,6 +121,10 @@ fn rty_name(t: &str, param: bool) -> String {
         "str" => {
             if param { "&str".to_string() } else { "::std::string::String".to_string() }
         }
+        // G10: File is owned; a borrowed parameter is a reference
+        "file" => {
+            if param { "&PruvFile".to_string() } else { "PruvFile".to_string() }
+        }
         // G6: String is owned; a borrowed parameter is a reference
         "string" => {
             if param { "&::std::string::String".to_string() } else { "::std::string::String".to_string() }

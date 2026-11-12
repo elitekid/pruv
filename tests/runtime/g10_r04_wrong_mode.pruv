@@ -1,0 +1,5 @@
+fn wrong(path: str) -> bool ! fs, alloc {
+  let f: File = file_create(path);
+  let g: File = file_read_all(move f);
+  return file_close(move g);
+}

@@ -433,7 +433,7 @@ def g6_unimplemented_error(prog, stage="codegen"):
 
 
 def g10_unimplemented_error(prog):
-    """G10 A1 guard, after verification (or its bypass) in every mode."""
+    """G10 A2 LLVM guard, after verification (or its bypass)."""
     def uses_file(node):
         if isinstance(node, (list, tuple)):
             return any(uses_file(x) for x in node)
@@ -448,6 +448,6 @@ def g10_unimplemented_error(prog):
     for f in prog.functions:
         if uses_file(f):
             return PruvError("codegen", f.line, f.col, "unsupported_type",
-                             "files (G10) are not implemented by the code generation layers yet",
+                             "files (G10) are not implemented by the llvm codegen layer yet",
                              "avoid File and file_* operations for now", file=getattr(f, "file", None))
     return None

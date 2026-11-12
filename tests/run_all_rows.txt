@@ -5,6 +5,12 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_reentry.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_sum_budget.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all", "--contract-budget", "4"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_x02_budget.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g4_r08_foreign/root.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a01_min_max.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a02_option_find.pruv"}
@@ -33,6 +39,12 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v05_option_elems.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v06_fresh_borrow.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_x01_string_requires.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a01_min_max.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a02_option_find.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a03_result_half.pruv"}
@@ -70,6 +82,14 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_nested_budget.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_reentry.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_sum_budget.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r04_wrong_mode.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r08_byte_bounds.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a01_min_max.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a02_option_find.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a03_result_half.pruv"}
@@ -226,6 +246,14 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/fz02_const_div_zero.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/fz03_const_overflow.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/fz04_alloc_order.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r04_wrong_mode.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r08_byte_bounds.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r02_nested.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r03_variants.pruv"}
@@ -510,6 +538,12 @@
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g9_tree_walk.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/prefix.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/sum.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r02_nested.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r03_variants.pruv"}
@@ -693,6 +727,12 @@
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/fz02_const_div_zero.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/fz03_const_overflow.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/fz04_alloc_order.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r02_nested.pruv"}
 {"backend": "llvm", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r03_variants.pruv"}
@@ -883,6 +923,12 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_reentry.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_sum_budget.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all", "--contract-budget", "4"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_x02_budget.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g4_r08_foreign/root.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a01_min_max.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a02_option_find.pruv"}
@@ -911,6 +957,12 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v05_option_elems.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_v06_fresh_borrow.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_x01_string_requires.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a01_min_max.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a02_option_find.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--foreign-checks", "off"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a03_result_half.pruv"}
@@ -948,6 +1000,14 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_nested_budget.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_reentry.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--contract-budget", "1000"], "group": "runtime", "mode": null, "sample": "tests/runtime/qb_sum_budget.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r04_wrong_mode.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r08_byte_bounds.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a01_min_max.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a02_option_find.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify", "--foreign-checks", "all"], "group": "runtime", "mode": null, "sample": "tests/runtime/g6_a03_result_half.pruv"}
@@ -1104,6 +1164,14 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/fz02_const_div_zero.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/fz03_const_overflow.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/fz04_alloc_order.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r04_wrong_mode.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r08_byte_bounds.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r02_nested.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--no-verify"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r03_variants.pruv"}
@@ -1388,6 +1456,12 @@
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/g9_tree_walk.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/prefix.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "examples", "mode": "trust-callers", "sample": "examples/sum.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r02_nested.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": ["--trust-callers"], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r03_variants.pruv"}
@@ -1571,6 +1645,12 @@
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/fz02_const_div_zero.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/fz03_const_overflow.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/fz04_alloc_order.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r01_text_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r02_bytes_roundtrip.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r03_missing.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r05_drop.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r06_truncate_eof.pruv"}
+{"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g10_r07_io_failure.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r01_copy.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r02_nested.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/g1_r03_variants.pruv"}

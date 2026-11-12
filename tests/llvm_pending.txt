@@ -7,3 +7,11 @@
 tests/runtime/g6_a02_option_find.pruv
 tests/runtime/g6_a03_result_half.pruv
 tests/runtime/g6_v05_option_elems.pruv
+tests/runtime/g10_r01_text_roundtrip.pruv
+tests/runtime/g10_r02_bytes_roundtrip.pruv
+tests/runtime/g10_r03_missing.pruv
+tests/runtime/g10_r04_wrong_mode.pruv
+tests/runtime/g10_r05_drop.pruv
+tests/runtime/g10_r06_truncate_eof.pruv
+tests/runtime/g10_r07_io_failure.pruv
+tests/runtime/g10_r08_byte_bounds.pruv

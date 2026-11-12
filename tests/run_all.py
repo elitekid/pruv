@@ -3,11 +3,12 @@ python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_fronten
                         [--backend rust|llvm|both]
 
 group g10_frontend (G10 A0; backend null rows): tests/g10/frontend/*.pruv runs on both backends in
-default, no-verify, trust-callers and infer modes. File programs expect codegen/unsupported_type with the
-G10 staging message; fs_only.pruv must exit 0. No inventory is needed for these flat roots.
+default, no-verify, trust-callers and infer modes. File programs exit 0 on Rust and expect
+codegen/unsupported_type with the LLVM staging message on LLVM; fs_only.pruv exits 0 on both.
+No inventory is needed for these flat roots.
 
 group g10_proof (G10 A1; backend null rows): tests/g10/proof/*.pruv runs on both backends in
-default and infer modes, expecting the code-generation guard after a complete proof.
+default and infer modes, expecting Rust generation after a complete proof and the guard on LLVM.
 The g10_v_* roots are ordinary must_reject rows in default mode.
 
 groups g5_frontend / g5_reject (G5 A0, inventory tests/g5/fixtures.json; rows have backend null): g5_frontend runs the roots of
@@ -74,6 +75,7 @@ variant and reused; every job uses its own work file names.
 
 Optional runtime json field "contract_budget": N appends
 ["--contract-budget", str(N)] to the pruvc flags of every matrix row (labels unchanged).
+G10 runtime fixtures run with a fresh temporary working directory per row, for relative file paths.
 Optional runtime json field "ll_contains": [strings] (llvm backend only) must each occur in
 the WHOLE generated .ll text (not just __pruv_body functions); "ll_absent" [strings] (G5 A3) must each be absent from it.
 G4 A3 spec.json fields (llvm backend only unless stated): "llvm_exports" [symbols] (required for every G4 project: the exact
@@ -562,12 +564,12 @@ def g5_frontend_jobs(group="g5_frontend", modes=(("no-verify", ["--no-verify"]),
 
 
 def g10_frontend_jobs(group="g10_frontend", subdir="frontend", modes=None):
-    """G10: both backends; proof roots must reach the guard after verification."""
+    """G10 A2: Rust generation and LLVM guard, after verification for proof roots."""
     if modes is None:
         modes = (("default", []), ("no-verify", ["--no-verify"]),
                  ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"]))
     jobs = []
-    message = "files (G10) are not implemented by the code generation layers yet"
+    message = "files (G10) are not implemented by the llvm codegen layer yet"
     for f in sorted(glob.glob(os.path.join(ROOT, "tests", "g10", subdir, "*.pruv"))):
         stem = os.path.splitext(os.path.basename(f))[0]
         for mode, flags in modes:
@@ -578,7 +580,7 @@ def g10_frontend_jobs(group="g10_frontend", subdir="frontend", modes=None):
                 for backend in ("rust", "llvm"):
                     c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
                          pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
-                    if stem == "fs_only":
+                    if backend == "rust" or stem == "fs_only":
                         ok = c.returncode == 0
                     else:
                         diags = []
@@ -851,7 +853,11 @@ def runtime_job(j, t, spec, flags, name, suffix, llvm):
             return False, "rustc: " + r.stderr[-400:]
         g6_count = bool(llvm and spec.get("g6_drop_balance"))   # G6 A3 (G6_SPEC 13.4)
         env = dict(os.environ, PRUV_G6_COUNT="1") if g6_count else None
-        p = subprocess.run([exe], capture_output=True, text=True, timeout=60, env=env)
+        if t.startswith("g10_"):
+            with tempfile.TemporaryDirectory(prefix="g10_fs_", dir=work) as run_dir:
+                p = subprocess.run([exe], capture_output=True, text=True, timeout=60, env=env, cwd=run_dir)
+        else:
+            p = subprocess.run([exe], capture_output=True, text=True, timeout=60, env=env)
         problems = []
         if g6_count:
             m = re.search(r"pruv-g6-live: (-?\d+)", p.stderr)

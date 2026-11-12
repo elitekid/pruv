@@ -94,6 +94,8 @@ class ForeignGen:
         return name
 
     def _catalog_text(s, op, name, low):
+        if op.startswith("file_"):
+            return s._file_text(op, name)
         STRING = "::std::string::String"
         if op in ("vec_new", "vec_push", "vec_get"):
             T = rty(low[0])
@@ -199,6 +201,65 @@ class ForeignGen:
             body += ["pruv_r"]
             return s._fn(name, "s: &%s" % STRING, STRING, body)
         raise Exception("codegen: unknown catalog operation %s" % op)
+
+    def _file_text(s, op, name):
+        """G10: fallible I/O keeps failure in the owned handle, never unwraps an I/O result."""
+        if op in ("file_ok", "file_readable", "file_writable"):
+            return s._fn(name, "f: &PruvFile", "bool", ["f." + op[5:]])
+        if op == "file_size":
+            body = ["let pruv_r = f.buf.len() as i64;"]
+            body += s._ens("pruv_r >= 0", "result >= 0")
+            return s._fn(name, "f: &PruvFile", "i64", body + ["pruv_r"])
+        if op == "file_byte":
+            cond = "i >= 0 && (i as u64) < (f.buf.len() as u64)"
+            body = s._req(cond, "0 <= i && i < file_size(f)")
+            body += ['let pruv_k = if %s { i as usize } else { pruv_g6_repr("index") };' % cond,
+                     "let pruv_r = f.buf[pruv_k] as i64;"]
+            body += s._ens("0 <= pruv_r && pruv_r <= 255", "0 <= result && result <= 255")
+            return s._fn(name, "f: &PruvFile, i: i64", "i64", body + ["pruv_r"])
+        if op in ("file_open_read", "file_create"):
+            read = op == "file_open_read"
+            body = ["let file = ::std::fs::File::%s(path).ok();" % ("open" if read else "create"),
+                    "let ok = file.is_some();",
+                    "let f = PruvFile { file, ok, readable: %s, writable: %s, buf: ::std::vec::Vec::new() };" %
+                    ("ok" if read else "false", "false" if read else "ok")]
+            params = "path: &str"
+        elif op == "file_close":
+            body = ["let pruv_ok = f.ok;",
+                    "let pruv_r = f.ok && match f.file.as_mut() {",
+                    "    Some(file) => ::std::io::Write::flush(file).is_ok(), None => false",
+                    "};"]
+            body += s._ens("!pruv_r || pruv_ok", "result ==> file_ok(f)")
+            return s._fn(name, "mut f: PruvFile", "bool", body + ["pruv_r"])
+        else:
+            read = op == "file_read_all"
+            field = "readable" if read else "writable"
+            body = s._req("f." + field, "file_%s(f)" % field)
+            params = "mut f: PruvFile"
+            if read:
+                body += ["f.buf.clear();"]
+                action = "::std::io::Read::read_to_end(file, &mut f.buf).is_ok()"
+            else:
+                params += ", text: &str" if op == "file_write_str" else ", data: &[u8]"
+                data = "text.as_bytes()" if op == "file_write_str" else "data"
+                action = "::std::io::Write::write_all(file, %s).is_ok()" % data
+            body += ["let pruv_ok = f.ok && f.%s && match f.file.as_mut() {" % field,
+                     "    Some(file) => %s, None => false" % action,
+                     "};",
+                     "if !pruv_ok { f.ok = false; f.file = None; f.buf.clear(); }",
+                     "f.readable = %s; f.writable = %s;" %
+                     ("f.ok" if read else "false", "false" if read else "f.ok")]
+        if read:
+            body += s._ens("!f.writable && f.readable == f.ok", "!file_writable(result) && file_readable(result) == file_ok(result)")
+            if op == "file_read_all":
+                body += s._ens("if f.ok { (f.buf.len() as i64) >= 0 } else { f.buf.is_empty() }",
+                               "file_ok(result) ? file_size(result) >= 0 : file_size(result) == 0")
+            else:
+                body += s._ens("f.buf.is_empty()", "file_size(result) == 0")
+        else:
+            body += s._ens("!f.readable && f.writable == f.ok && f.buf.is_empty()",
+                           "!file_readable(result) && file_writable(result) == file_ok(result) && file_size(result) == 0")
+        return s._fn(name, params, "PruvFile", body + ["f"])
 
     # ------------------------------------------------------------------ contract-only scan (requires)
     def map_updated_helper(s, kt, vt, src):

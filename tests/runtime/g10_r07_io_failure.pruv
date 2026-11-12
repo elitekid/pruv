@@ -1,0 +1,12 @@
+fn create_failed(path: str) -> bool ! fs {
+  let f: File = file_create(path);
+  return !file_ok(f) && !file_writable(f) && !file_readable(f) && file_size(f) == 0;
+}
+fn read_failed(path: str) -> bool ! fs, alloc {
+  let f: File = file_open_read(path);
+  if !file_readable(f) { return !file_ok(f); }
+  let g: File = file_read_all(move f);
+  let failed: bool = !file_ok(g) && !file_readable(g) && !file_writable(g) && file_size(g) == 0;
+  let closed: bool = file_close(move g);
+  return failed && !closed;
+}

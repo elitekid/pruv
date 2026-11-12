@@ -1,0 +1,28 @@
+fn byte_at(f: File, i: i64) -> i64
+  requires 0 <= i && i < file_size(f)
+  requires 0 <= file_byte(f, i) && file_byte(f, i) <= 255
+  ensures result == file_byte(f, i)
+{
+  return file_byte(f, i);
+}
+fn write(path: str, text: str) -> bool ! fs {
+  let f: File = file_create(path);
+  if !file_writable(f) { return false; }
+  let g: File = file_write_str(move f, text);
+  return file_close(move g);
+}
+fn matches(path: str, data: [u8]) -> bool ! fs, alloc {
+  let f: File = file_open_read(path);
+  if !file_readable(f) { return false; }
+  let g: File = file_read_all(move f);
+  if !file_ok(g) || file_size(g) != len(data) { return false; }
+  let mut i: i64 = 0;
+  while i < len(data)
+    invariant 0 <= i && i <= len(data)
+    decreases len(data) - i
+  {
+    if byte_at(g, i) != data[i] { return false; }
+    i = i + 1;
+  }
+  return file_close(move g);
+}

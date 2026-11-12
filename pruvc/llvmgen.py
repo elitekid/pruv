@@ -3172,7 +3172,9 @@ def g6_llvm_error(prog):
         return None
 
     def err(line, col):
-        return PruvError("codegen", line, col, "unsupported_type", G6_UNSUPPORTED_MSG, G6_UNSUPPORTED_FIX)
+        e = PruvError("codegen", line, col, "unsupported_type", G6_UNSUPPORTED_MSG, G6_UNSUPPORTED_FIX)
+        e.file = getattr(f, "file", None)   # explicit mode: the function's source file (Rust: the tagged line)
+        return e
 
     for f in prog.functions:
         if f.foreign is not None:

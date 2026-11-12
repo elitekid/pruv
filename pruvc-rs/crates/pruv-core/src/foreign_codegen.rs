@@ -220,6 +220,9 @@ impl ForeignGen {
     }
 
     fn catalog_text(&self, op: &str, name: &str, low: &[GType]) -> R<String> {
+        if op.starts_with("file_") {
+            return Ok(self.file_text(op, name));
+        }
         const STRING: &str = "::std::string::String";
         let g = |i: usize| low.get(i).ok_or_else(idx_err);
         match op {
@@ -371,6 +374,87 @@ impl ForeignGen {
             }
             other => Err(format!("codegen: unknown catalog operation {}", other)),
         }
+    }
+
+    /// G10: I/O failures stay in the owned handle.
+    fn file_text(&self, op: &str, name: &str) -> String {
+        if matches!(op, "file_ok" | "file_readable" | "file_writable") {
+            return self.fn_text(name, "f: &PruvFile", Some("bool"), &[format!("f.{}", &op[5..])]);
+        }
+        if op == "file_size" {
+            let mut body = vec!["let pruv_r = f.buf.len() as i64;".to_string()];
+            body.extend(self.ens_line("pruv_r >= 0", "result >= 0"));
+            body.push("pruv_r".to_string());
+            return self.fn_text(name, "f: &PruvFile", Some("i64"), &body);
+        }
+        if op == "file_byte" {
+            let cond = "i >= 0 && (i as u64) < (f.buf.len() as u64)";
+            let mut body = self.req_line(cond, "0 <= i && i < file_size(f)");
+            body.push(format!("let pruv_k = if {} {{ i as usize }} else {{ pruv_g6_repr(\"index\") }};", cond));
+            body.push("let pruv_r = f.buf[pruv_k] as i64;".to_string());
+            body.extend(self.ens_line("0 <= pruv_r && pruv_r <= 255", "0 <= result && result <= 255"));
+            body.push("pruv_r".to_string());
+            return self.fn_text(name, "f: &PruvFile, i: i64", Some("i64"), &body);
+        }
+        let read;
+        let params;
+        let mut body;
+        if matches!(op, "file_open_read" | "file_create") {
+            read = op == "file_open_read";
+            body = vec![
+                format!("let file = ::std::fs::File::{}(path).ok();", if read { "open" } else { "create" }),
+                "let ok = file.is_some();".to_string(),
+                format!("let f = PruvFile {{ file, ok, readable: {}, writable: {}, buf: ::std::vec::Vec::new() }};",
+                    if read { "ok" } else { "false" }, if read { "false" } else { "ok" }),
+            ];
+            params = "path: &str".to_string();
+        } else if op == "file_close" {
+            body = vec![
+                "let pruv_ok = f.ok;".to_string(),
+                "let pruv_r = f.ok && match f.file.as_mut() {".to_string(),
+                "    Some(file) => ::std::io::Write::flush(file).is_ok(), None => false".to_string(),
+                "};".to_string(),
+            ];
+            body.extend(self.ens_line("!pruv_r || pruv_ok", "result ==> file_ok(f)"));
+            body.push("pruv_r".to_string());
+            return self.fn_text(name, "mut f: PruvFile", Some("bool"), &body);
+        } else {
+            read = op == "file_read_all";
+            let field = if read { "readable" } else { "writable" };
+            body = self.req_line(&format!("f.{}", field), &format!("file_{}(f)", field));
+            let mut ps = "mut f: PruvFile".to_string();
+            let action;
+            if read {
+                body.push("f.buf.clear();".to_string());
+                action = "::std::io::Read::read_to_end(file, &mut f.buf).is_ok()".to_string();
+            } else {
+                ps.push_str(if op == "file_write_str" { ", text: &str" } else { ", data: &[u8]" });
+                let data = if op == "file_write_str" { "text.as_bytes()" } else { "data" };
+                action = format!("::std::io::Write::write_all(file, {}).is_ok()", data);
+            }
+            params = ps;
+            body.extend([
+                format!("let pruv_ok = f.ok && f.{} && match f.file.as_mut() {{", field),
+                format!("    Some(file) => {}, None => false", action),
+                "};".to_string(),
+                "if !pruv_ok { f.ok = false; f.file = None; f.buf.clear(); }".to_string(),
+                format!("f.readable = {}; f.writable = {};", if read { "f.ok" } else { "false" }, if read { "false" } else { "f.ok" }),
+            ]);
+        }
+        if read {
+            body.extend(self.ens_line("!f.writable && f.readable == f.ok", "!file_writable(result) && file_readable(result) == file_ok(result)"));
+            if op == "file_read_all" {
+                body.extend(self.ens_line("if f.ok { (f.buf.len() as i64) >= 0 } else { f.buf.is_empty() }",
+                    "file_ok(result) ? file_size(result) >= 0 : file_size(result) == 0"));
+            } else {
+                body.extend(self.ens_line("f.buf.is_empty()", "file_size(result) == 0"));
+            }
+        } else {
+            body.extend(self.ens_line("!f.readable && f.writable == f.ok && f.buf.is_empty()",
+                "!file_readable(result) && file_writable(result) == file_ok(result) && file_size(result) == 0"));
+        }
+        body.push("f".to_string());
+        self.fn_text(name, &params, Some("PruvFile"), &body)
     }
 
     // ------------------------------------------------------------------ contract-only scan (requires)

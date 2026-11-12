@@ -230,7 +230,7 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type inside the LLVM generator
     // (after verification, so verification errors win; same as Python compile_file). The native paths (--emit obj|exe),
     // which Python does not have, cannot link the Rust shim: codegen/foreign_target (G6_SPEC 13.1). That check fires
-    // after verification (or after the --no-verify notice) and after the G10 guard.
+    // after verification and after the G10 guard; with --no-verify a File-free program gets it before the notice.
     let g6_native = matches!(a.kind, Kind::Obj | Kind::Exe);
     if a.verify {
         let errs = if a.infer {
@@ -255,12 +255,22 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
-    } else if a.infer && a.show_inferred {
-        eprintln!("{{\"status\": \"skipped_no_verify\"}}");
+    } else {
+        // Pre-G10 order for File-free native programs: with --no-verify, foreign_target fires before the notice.
+        if g6_native && pruv_core::foreign::g10_unimplemented_error(&prog).is_none() {
+            if let Some(e) = foreign_target_error(&prog) {
+                return Err(Fail::Lang(vec![e]));
+            }
+        }
+        if a.infer && a.show_inferred {
+            eprintln!("{{\"status\": \"skipped_no_verify\"}}");
+        }
     }
-    // G10 A1: verification errors precede the guard, including the bypass path.
-    if let Some(e) = pruv_core::foreign::g10_unimplemented_error(&prog) {
-        return Err(Fail::Lang(vec![e]));
+    // G10 A2: only LLVM paths retain the guard; verification errors still precede it.
+    if !matches!(a.kind, Kind::Rs) || a.also_llvm.is_some() {
+        if let Some(e) = pruv_core::foreign::g10_unimplemented_error(&prog) {
+            return Err(Fail::Lang(vec![e]));
+        }
     }
     if g6_native {
         if let Some(e) = foreign_target_error(&prog) {
