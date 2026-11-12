@@ -1,0 +1,88 @@
+// G9 A2 runtime: JSON-like value tree (Json, Items, Members: a three-type recursion cycle with str payloads), counted by mutual recursion
+// demo_json(): [1, "ab", {"k": 2}, null] has 13 constructors and 2 numbers; flat_json(): [1, 2, 3] has 8 constructors
+enum Json {
+  Null, Boolean(value: bool), Number(value: i64), Text(value: str),
+  Array(items: Items), Object(members: Members)
+}
+enum Items { End, Next(value: Json, rest: Items) }
+enum Members { End, Next(key: str, value: Json, rest: Members) }
+
+fn json_numbers(j: Json) -> i64
+  requires size(j) <= 1000
+  ensures result >= 0 && result <= size(j)
+  decreases size(j)
+{
+  match j {
+    Json::Null => { return 0; }
+    Json::Boolean(b) => { return 0; }
+    Json::Number(n) => { return 1; }
+    Json::Text(s) => { return 0; }
+    Json::Array(items) => { return items_numbers(items); }
+    Json::Object(members) => { return members_numbers(members); }
+  }
+}
+
+fn items_numbers(it: Items) -> i64
+  requires size(it) <= 1000
+  ensures result >= 0 && result <= size(it)
+  decreases size(it)
+{
+  match it {
+    Items::End => { return 0; }
+    Items::Next(v, rest) => { return json_numbers(v) + items_numbers(rest); }
+  }
+}
+
+fn members_numbers(m: Members) -> i64
+  requires size(m) <= 1000
+  ensures result >= 0 && result <= size(m)
+  decreases size(m)
+{
+  match m {
+    Members::End => { return 0; }
+    Members::Next(k, v, rest) => { return json_numbers(v) + members_numbers(rest); }
+  }
+}
+
+fn kind(j: Json) -> i64 {
+  match j {
+    Json::Null => { return 0; }
+    Json::Boolean(b) => { return 1; }
+    Json::Number(n) => { return 2; }
+    Json::Text(s) => { return 3; }
+    Json::Array(items) => { return 4; }
+    Json::Object(members) => { return 5; }
+  }
+}
+
+fn demo_json() -> Json ! alloc
+  ensures size(result) == 13
+{
+  return Json::Array(Items::Next(Json::Number(1), Items::Next(Json::Text(copy("ab")), Items::Next(Json::Object(Members::Next(copy("k"), Json::Number(2), Members::End)), Items::Next(Json::Null, Items::End)))));
+}
+
+fn flat_json() -> Json ! alloc
+  ensures size(result) == 8
+{
+  return Json::Array(Items::Next(Json::Number(1), Items::Next(Json::Number(2), Items::Next(Json::Number(3), Items::End))));
+}
+
+fn demo_numbers() -> i64 ! alloc {
+  return json_numbers(demo_json());
+}
+
+fn demo_kind() -> i64 ! alloc {
+  return kind(demo_json());
+}
+
+fn flat_numbers() -> i64 ! alloc {
+  return json_numbers(flat_json());
+}
+
+fn object_numbers() -> i64 ! alloc {
+  return json_numbers(Json::Object(Members::End));
+}
+
+fn number_kind() -> i64 ! alloc {
+  return kind(Json::Number(7));
+}

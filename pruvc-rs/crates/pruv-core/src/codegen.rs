@@ -5,9 +5,10 @@
 //! Places where Python raises an Exception return Err(str(e)) (an AST printed with %r becomes {:?} — an unreachable path).
 
 use crate::ast::*;
+use crate::diagnostic::PruvError;
 use crate::emit_common::{
-    emit_public_types, is_spec_fn, is_user_key, key_name, match_sorted_requires, rstr, rty, rty_g, show, try_conv, try_conv_g,
-    try_cty, try_cty_g,
+    emit_public_types_with, is_spec_fn, is_user_key, key_name, make_type_table, match_sorted_requires, rstr, rty, rty_g,
+    show, src_name, try_conv, try_conv_g, try_cty, try_cty_g,
 };
 use crate::foreign::{catalog_fn, is_catalog};
 use crate::foreign_codegen::ForeignGen;
@@ -211,6 +212,32 @@ fn pruv_cidx_str(a: &str, i: i128) -> i128 { if i >= 0 && i < (a.len() as i128) 
 fn pruv_cboundary(a: &str, i: i128) -> bool { i >= 0 && i <= (a.len() as i128) && a.is_char_boundary(i as usize) }
 "##;
 
+// ---------------------------------------------------------------------------
+// G9 A2: runtime contract helpers for `size` and for equality of extended (buffer-free recursive) values. They are emitted
+// only when a runtime requires needs them (see Gen::g9_helper_texts) and share the entry's iteration budget.
+// ---------------------------------------------------------------------------
+const G9_TICK: &str = r##"#[allow(dead_code)]
+#[inline]
+fn pruv_g9_tick(pruv_budget: &mut i64) { *pruv_budget -= 1; if *pruv_budget < 0 { pruv_ud("contract iteration budget exceeded") } }
+"##;
+const G9_HELPER_ALLOW: &str =
+    "#[allow(dead_code, non_camel_case_types, non_snake_case, unused_variables, unreachable_patterns)]";
+
+/// names of the user types a field of type t can contribute to `size` / structural equality (Python `nominals_in`)
+fn nominals_in(t: &GType) -> Vec<String> {
+    if t.owner.is_none() && !t.args.is_empty() && (t.name == "option" || t.name == "result") {
+        return nominals_in(&t.args[0]);
+    }
+    if t.is_user_type() {
+        return vec![t.name.clone()];
+    }
+    Vec::new()
+}
+
+fn is_optres(t: &GType) -> bool {
+    t.owner.is_none() && !t.args.is_empty() && (t.name == "option" || t.name == "result")
+}
+
 /// G2 B2: string literal spelling LIT (spec 1.2). The bytes are UTF-8, guaranteed by the parser.
 fn lit_str(bytes: &[u8]) -> String {
     let mut s = String::from("\"");
@@ -403,6 +430,19 @@ struct Gen<'a> {
     borrowed: HashSet<String>,
     /// boundary helpers and manifest data (only for a G6 program)
     fg: Option<ForeignGen>,
+    /// G9 A2: the program carries G9 metadata
+    g9: bool,
+    /// G9 A2: extended declaration names (Clone, never Copy)
+    ext: HashSet<String>,
+    /// G9 A2: boxed field labels ("Struct.field" / "Enum::Variant.field")
+    boxed: HashSet<String>,
+    /// G9 A2: names bound to a Rust reference (extended parameters, match payload views, buffer payload views)
+    refs: HashSet<String>,
+    /// G9 A2: types whose runtime contract helpers (size / equality) are needed
+    need_size: HashSet<String>,
+    need_eq: HashSet<String>,
+    /// G9 A2: the diagnostic raised by g9_unsupported (the R error is only a marker)
+    diag: Option<PruvError>,
 }
 
 impl<'a> Gen<'a> {
@@ -427,7 +467,7 @@ impl<'a> Gen<'a> {
             cp: None,
             bound: Vec::new(),
             tmp: 0,
-            table: TypeTable::new(&prog.types),
+            table: make_type_table(prog),
             params: HashSet::new(),
             vars: HashMap::new(),
             g6,
@@ -435,16 +475,94 @@ impl<'a> Gen<'a> {
             fmap,
             borrowed: HashSet::new(),
             fg: if g6 { Some(ForeignGen::new(foreign_checks, budget)) } else { None },
+            g9: prog.g9.is_some(),
+            ext: prog.g9.as_ref().map(|m| m.extended.iter().cloned().collect()).unwrap_or_default(),
+            boxed: prog.g9.as_ref().map(|m| m.boxed.iter().cloned().collect()).unwrap_or_default(),
+            refs: HashSet::new(),
+            need_size: HashSet::new(),
+            need_eq: HashSet::new(),
+            diag: None,
         }
+    }
+
+    /// G9: some struct field / enum payload has the internal type `name` (array_u8, array_bool, str)
+    fn field_uses(&self, name: &str) -> bool {
+        self.prog.types.iter().any(|d| d.all_fields().iter().any(|f| f.ty == name))
+    }
+
+    /// t is an extended user type (G9): recursive, or holding a buffer or an extended type
+    fn is_ext(&self, t: Option<&str>) -> bool {
+        !self.ext.is_empty() && t.map_or(false, |t| !is_g3_key(t) && self.ext.contains(t))
+    }
+
+    /// rty, except that an extended parameter is a shared reference `&Name` (read view)
+    fn rt(&self, t: &str, param: bool) -> String {
+        if param && self.is_ext(Some(t)) {
+            return format!("&{}", t);
+        }
+        rty(t, param)
+    }
+
+    /// G9: the diagnostic of a runtime requires the Rust backend cannot lower; the returned String is only a marker
+    fn g9_unsupported(&mut self, e: &Expr, what: &str) -> String {
+        self.diag = Some(PruvError::new(
+            "codegen",
+            e.line(),
+            e.col(),
+            "unsupported_type",
+            format!("{} is not supported in a runtime requires by the Rust backend yet", what),
+            "compare tags with is_variant and fields with variant_field, or move the check into the body",
+        ));
+        "G9 unsupported runtime requires".to_string()
+    }
+
+    /// the LAST field of the assignment path root.f1.f2... is a Box edge (follows the declared field types)
+    fn path_boxed(&self, root: &str, fields: &[String]) -> bool {
+        let mut cur: Option<String> = self.vars.get(root).cloned();
+        let mut boxed = false;
+        for fname in fields {
+            let c = match &cur {
+                Some(c) if !is_g3_key(c) => c.clone(),
+                _ => return false,
+            };
+            let decl = match self.table.decl(&c) {
+                Some(d) => d,
+                None => return false,
+            };
+            let sd = match decl {
+                TypeDecl::Struct(s) => s,
+                TypeDecl::Enum(_) => return false,
+            };
+            boxed = self.boxed.contains(&format!("{}.{}", c, fname));
+            let mut nxt: Option<String> = None;
+            for fd in &sd.fields {
+                if fd.name == *fname {
+                    nxt = Some(fd.ty.clone());
+                }
+            }
+            cur = nxt;
+        }
+        boxed
+    }
+
+    /// the field `field` of the struct type base_ty is a Box edge
+    fn field_boxed(&self, base_ty: &Option<String>, field: &str) -> bool {
+        !self.boxed.is_empty()
+            && base_ty.as_deref().map_or(false, |t| self.boxed.contains(&format!("{}.{}", key_name(t), field)))
     }
 
     fn fg_mut(&mut self) -> R<&mut ForeignGen> {
         self.fg.as_mut().ok_or_else(|| "codegen: foreign helper requested outside a G6 program".to_string())
     }
 
-    /// G3 specializations and G6 collection-bearing functions are private Rust items
+    /// G3 specializations, G6 collection-bearing functions and (G9) functions with an extended type in their signature
+    /// are private Rust items (this includes their checked entry wrappers)
     fn private(&self, f: &Function) -> bool {
-        is_spec_fn(&f.name) || f.params.iter().any(|p| key_is_collection(&p.ty)) || key_is_collection(&f.ret)
+        is_spec_fn(&f.name)
+            || f.params.iter().any(|p| key_is_collection(&p.ty))
+            || key_is_collection(&f.ret)
+            || f.params.iter().any(|p| self.is_ext(Some(&p.ty)))
+            || self.is_ext(Some(&f.ret))
     }
 
     fn emit(&mut self, ind: usize, line: &str) {
@@ -452,13 +570,19 @@ impl<'a> Gen<'a> {
     }
 
     fn prelude(&mut self) -> R<()> {
-        let types = emit_public_types(self.prog);
+        let types = emit_public_types_with(self.prog, &self.table);
         if !types.is_empty() {
             self.out.push(types);
         }
-        let u8_used = uses_array_type(self.prog, "array_u8");
-        let bool_used = uses_array_type(self.prog, "array_bool"); // G2 A5
+        let mut u8_used = uses_array_type(self.prog, "array_u8");
+        let mut bool_used = uses_array_type(self.prog, "array_bool"); // G2 A5
         let mut str_used = uses_str(self.prog); // G2 B2
+        if self.g9 {
+            // G9: the G2 helpers are emitted by usage; uses_array_type / uses_str look at parameters, results and lets only
+            u8_used = u8_used || self.field_uses("array_u8");
+            bool_used = bool_used || self.field_uses("array_bool");
+            str_used = str_used || self.field_uses("str");
+        }
         if self.g6 && !str_used {
             // G6: a String parameter can be indexed in a runtime requires (pruv_cidx_str)
             str_used = uses_array_type(self.prog, "string");
@@ -509,6 +633,9 @@ impl<'a> Gen<'a> {
         let attrs = "#[allow(dead_code, non_camel_case_types, non_snake_case, unused_variables)]";
         let mut out: Vec<String> = Vec::new();
         for d in self.table.ordered() {
+            if self.ext.contains(d.name()) {
+                continue; // G9: extended values have no i128 mirror; contracts read them through references (cx)
+            }
             let cn = format!("pruv_contract__{}", d.name());
             out.push(attrs.to_string());
             out.push("#[derive(Clone, Copy, PartialEq, Eq)]".to_string());
@@ -591,7 +718,8 @@ impl<'a> Gen<'a> {
         self.vars = f.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect();
         self.borrowed =
             f.params.iter().filter(|p| key_is_collection(&p.ty) && !p.take).map(|p| p.name.clone()).collect();
-        let ps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, rty(&p.ty, !p.take)));
+        self.refs = f.params.iter().filter(|p| self.is_ext(Some(&p.ty))).map(|p| p.name.clone()).collect();
+        let ps = join_map(&f.params, ", ", |p| format!("{}: {}", p.name, self.rt(&p.ty, !p.take)));
         let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", rty(&f.ret, false)) };
         let has = !f.requires.is_empty();
         let body_name = if has { format!("{}__pruv_body", f.name) } else { f.name.clone() };
@@ -654,11 +782,65 @@ impl<'a> Gen<'a> {
 
     // ---------- contract (requires) evaluation, i128 ----------
 
-    fn carr(&self, e: &Expr) -> R<String> {
+    fn carr(&mut self, e: &Expr) -> R<String> {
         match e {
             Expr::Var(x) => Ok(x.name.clone()),
             Expr::StrLit(x) => Ok(lit_str(&x.value)), // G2 B2
+            // G9: a buffer field of a real (extended) value
+            Expr::FieldAccess(_) | Expr::VariantField(_) if self.g9 => self.cx(e),
             other => Err(format!("codegen: unsupported array expression in contract: {:?}", other)),
+        }
+    }
+
+    // ---------- G9: contract operands over REAL values ----------
+
+    /// Rust expression of type `&R(T)` for a contract operand of nominal or buffer type, evaluated on the REAL parameter
+    /// values (Python `cx`). Supported: a parameter, a field path, variant_field and nullary constructors.
+    fn cx(&mut self, e: &Expr) -> R<String> {
+        match e {
+            Expr::Var(x) => {
+                if self.bound.iter().any(|b| b == &x.name) || !self.params.contains(&x.name) {
+                    return Err(self.g9_unsupported(e, &format!("the variable {} as an aggregate operand", x.name)));
+                }
+                if self.is_ext(x.ty.as_deref()) {
+                    Ok(x.name.clone())
+                } else {
+                    Ok(format!("(&{})", x.name))
+                }
+            }
+            Expr::FieldAccess(x) => {
+                let deref = if self.field_boxed(expr_ty(&x.base), &x.field) { "*" } else { "" };
+                let base = self.cx(&x.base)?;
+                Ok(format!("(&{}({}).{})", deref, base, x.field))
+            }
+            Expr::VariantField(x) => {
+                self.tmp += 1;
+                let tmp = format!("pruv_e{}", self.tmp);
+                let nfields = k_variant(&self.table, &x.enum_name, &x.variant)?.fields.len();
+                let idx = k_field_index(&self.table, &x.enum_name, &x.field, Some(&x.variant))?;
+                let fty = k_variant(&self.table, &x.enum_name, &x.variant)?.fields[idx].ty.clone();
+                let pats = (0..nfields).map(|i| if i == idx { "pruv_f" } else { "_" }).collect::<Vec<_>>().join(", ");
+                let msg = format!(
+                    "variant_field expected {}::{}.{}",
+                    src_name(&x.enum_name),
+                    x.variant,
+                    x.field
+                );
+                let val = self.cx(&x.value)?;
+                Ok(format!(
+                    "({{ let {tmp}: &{en} = {val}; match {tmp} {{ {en}::{v}({pats}) => {{ let pruv_r: &{rt} = pruv_f; pruv_r }} _ => pruv_ud({m}) }} }})",
+                    tmp = tmp,
+                    en = x.enum_name,
+                    val = val,
+                    v = x.variant,
+                    pats = pats,
+                    rt = rty(&fty, false),
+                    m = rstr(&msg)
+                ))
+            }
+            Expr::EnumCtor(x) if x.args.is_empty() => Ok(format!("(&{}::{})", x.enum_name, x.variant)),
+            Expr::StructLit(x) if x.fields.is_empty() => Ok(format!("(&{} {{}})", x.name)),
+            _ => Err(self.g9_unsupported(e, "a constructor with payload as an aggregate operand")),
         }
     }
 
@@ -674,6 +856,10 @@ impl<'a> Gen<'a> {
             Expr::Var(x) => {
                 if self.bound.iter().any(|b| b == &x.name) {
                     return Ok(x.name.clone());
+                }
+                if self.is_ext(x.ty.as_deref()) {
+                    // G9: an extended value is only an operand of size / == / is_variant / field access
+                    return Err(self.g9_unsupported(e, &format!("the extended value {} as a plain operand", x.name)));
                 }
                 if let Some(ty) = &x.ty {
                     if self.cp.is_some() && is_user_key(ty) && self.params.contains(&x.name) {
@@ -699,6 +885,16 @@ impl<'a> Gen<'a> {
             }
             Expr::Binary(x) => {
                 let op = x.op.as_str();
+                if (op == "==" || op == "!=") && self.is_ext(expr_ty(&x.left).as_deref()) {
+                    // G9: structural equality of buffer-free extended aggregates, visited lazily on the real values;
+                    // every visited node pair costs one budget unit; only the active variant's fields are compared
+                    let tn = key_name(expr_ty(&x.left).as_deref().unwrap_or("")).to_string();
+                    self.need_eq.insert(tn.clone());
+                    let l = self.cx(&x.left)?;
+                    let r = self.cx(&x.right)?;
+                    let code = format!("pruv_ceq__{}({}, {}, &mut pruv_budget)", tn, l, r);
+                    return Ok(if op == "==" { code } else { format!("(!{})", code) });
+                }
                 if op == "==>" {
                     let l = self.c(&x.left)?;
                     let r = self.c(&x.right)?;
@@ -802,12 +998,53 @@ impl<'a> Gen<'a> {
                 }
                 Ok(format!("{}({})", ctor, parts.join(", ")))
             }
-            Expr::FieldAccess(x) => Ok(format!("{}.{}", self.c(&x.base)?, x.field)),
+            Expr::FieldAccess(x) => {
+                if self.is_ext(expr_ty(&x.base).as_deref()) {
+                    // G9: a scalar-like field of a real extended struct (aggregate / buffer fields go through cx / carr)
+                    let fty = expr_ty(e);
+                    if self.is_ext(fty.as_deref()) || fty.as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
+                        return Err(self.g9_unsupported(e, &format!("the aggregate field {} as a plain operand", x.field)));
+                    }
+                    let base = self.cx(&x.base)?;
+                    let t = fty.as_deref().ok_or_else(|| "'NoneType' object has no attribute 'owner'".to_string())?;
+                    return try_conv(t, &format!("({}).{}", base, x.field));
+                }
+                Ok(format!("{}.{}", self.c(&x.base)?, x.field))
+            }
             Expr::IsVariant(x) => {
+                if self.is_ext(expr_ty(&x.value).as_deref()) {
+                    let v = self.cx(&x.value)?;
+                    return Ok(format!("matches!({}, {}::{} {{ .. }})", v, x.enum_name, x.variant));
+                }
                 Ok(format!("matches!({}, pruv_contract__{}::{} {{ .. }})", self.c(&x.value)?, x.enum_name, x.variant))
             }
             // G6 A0: `move` is checked but never lowered (the driver's A0 guard stops the program earlier)
             Expr::Move(_) => Err("G6 move reached the Rust generator".to_string()),
+            Expr::VariantField(x) if self.is_ext(expr_ty(&x.value).as_deref()) => {
+                let fty = expr_ty(e);
+                if self.is_ext(fty.as_deref()) || fty.as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
+                    return Err(self.g9_unsupported(e, &format!("the aggregate field {} as a plain operand", x.field)));
+                }
+                self.tmp += 1;
+                let tmp = format!("pruv_e{}", self.tmp);
+                let nfields = k_variant(&self.table, &x.enum_name, &x.variant)?.fields.len();
+                let idx = k_field_index(&self.table, &x.enum_name, &x.field, Some(&x.variant))?;
+                let pats = (0..nfields).map(|i| if i == idx { "pruv_f" } else { "_" }).collect::<Vec<_>>().join(", ");
+                let msg = format!("variant_field expected {}::{}.{}", src_name(&x.enum_name), x.variant, x.field);
+                let val = self.cx(&x.value)?;
+                let t = fty.as_deref().ok_or_else(|| "'NoneType' object has no attribute 'owner'".to_string())?;
+                let cv = try_conv(t, "(*pruv_f)")?;
+                Ok(format!(
+                    "({{ let {tmp}: &{en} = {val}; match {tmp} {{ {en}::{v}({pats}) => {cv}, _ => pruv_ud({m}) }} }})",
+                    tmp = tmp,
+                    en = x.enum_name,
+                    val = val,
+                    v = x.variant,
+                    pats = pats,
+                    cv = cv,
+                    m = rstr(&msg)
+                ))
+            }
             Expr::VariantField(x) => {
                 self.tmp += 1;
                 let tmp = format!("pruv_e{}", self.tmp);
@@ -832,6 +1069,17 @@ impl<'a> Gen<'a> {
                 let a = &x.args;
                 if n == "len" {
                     return Ok(format!("({}.len() as i128)", self.carr(arg(a, 0)?)?));
+                }
+                if n == "size" {
+                    // G9: structural size on the real value, checked i128 additions, one budget unit per node visited
+                    let a0 = arg(a, 0)?;
+                    let tn = key_name(
+                        expr_ty(a0).as_deref().ok_or_else(|| "'NoneType' object has no attribute 'name'".to_string())?,
+                    )
+                    .to_string();
+                    self.need_size.insert(tn.clone());
+                    let v = self.cx(a0)?;
+                    return Ok(format!("pruv_csize__{}({}, &mut pruv_budget)", tn, v));
                 }
                 if n == "map_lookup" {
                     // G6: finite-map lookup, Option mirror of the stored value
@@ -1010,27 +1258,310 @@ impl<'a> Gen<'a> {
         ))
     }
 
+    // ---------- G9: generated contract helpers (size, structural equality) ----------
+
+    /// Rust i128 expression for weight(value) (G9_SPEC 3); x names a variable of type `&R(t)`.
+    /// Scalars, arrays and str weigh 0; a nominal value weighs its size; Some / Ok weigh their payload; None / Err 0.
+    fn g9_weight(&self, t: &GType, x: &str) -> String {
+        if is_optres(t) {
+            let inner = self.g9_weight(&t.args[0], "pruv_w");
+            if inner == "0i128" {
+                return "0i128".to_string();
+            }
+            if t.name == "option" {
+                return format!(
+                    "match {} {{ ::std::option::Option::Some(pruv_w) => {}, ::std::option::Option::None => 0i128 }}",
+                    x, inner
+                );
+            }
+            return format!(
+                "match {} {{ ::std::result::Result::Ok(pruv_w) => {}, ::std::result::Result::Err(_) => 0i128 }}",
+                x, inner
+            );
+        }
+        if t.is_user_type() {
+            return format!("pruv_csize__{}({}, pruv_budget)", t.name, x);
+        }
+        "0i128".to_string()
+    }
+
+    /// equality has to walk into t (a nominal value, or Option / Result of one)
+    fn g9_walks(&self, t: &GType) -> bool {
+        if is_optres(t) {
+            return self.g9_walks(&t.args[0]);
+        }
+        t.is_user_type()
+    }
+
+    /// Rust bool expression: structural equality of the values behind the references x and y (type `&R(t)`)
+    fn g9_eq(&self, t: &GType, x: &str, y: &str) -> String {
+        if is_optres(t) && self.g9_walks(&t.args[0]) {
+            let inner = self.g9_eq(&t.args[0], "pruv_p", "pruv_q");
+            if t.name == "option" {
+                return format!(
+                    "(match ({}, {}) {{ (::std::option::Option::Some(pruv_p), ::std::option::Option::Some(pruv_q)) => {}, (::std::option::Option::None, ::std::option::Option::None) => true, _ => false }})",
+                    x, y, inner
+                );
+            }
+            return format!(
+                "(match ({}, {}) {{ (::std::result::Result::Ok(pruv_p), ::std::result::Result::Ok(pruv_q)) => {}, (::std::result::Result::Err(pruv_p), ::std::result::Result::Err(pruv_q)) => (*pruv_p == *pruv_q), _ => false }})",
+                x, y, inner
+            );
+        }
+        if t.is_user_type() {
+            return format!("pruv_ceq__{}({}, {}, pruv_budget)", t.name, x, y);
+        }
+        format!("(*{} == *{})", x, y)
+    }
+
+    /// pruv_csize__Name: 1 + sum of the weights of the ACTIVE fields, one budget unit per call (= per node)
+    fn g9_size_text(&self, d: &TypeDecl) -> String {
+        let n = d.name();
+        let mut lines: Vec<String> = vec![
+            G9_HELPER_ALLOW.to_string(),
+            format!("fn pruv_csize__{}(v: &{}, pruv_budget: &mut i64) -> i128 {{", n, n),
+            "    pruv_g9_tick(pruv_budget);".to_string(),
+        ];
+        let unit = |fields: &[FieldDecl]| -> (Vec<String>, Vec<String>) {
+            let mut binds: Vec<String> = Vec::new();
+            let mut ws: Vec<String> = Vec::new();
+            for (i, f) in fields.iter().enumerate() {
+                let w = self.g9_weight(&GType::from_key(&f.ty), &format!("pruv_a{}", i));
+                if w == "0i128" {
+                    binds.push("_".to_string());
+                } else {
+                    binds.push(format!("pruv_a{}", i));
+                    ws.push(w);
+                }
+            }
+            (binds, ws)
+        };
+        let fold = |ws: &[String]| -> String {
+            let mut r = "1i128".to_string();
+            for w in ws {
+                r = format!("pruv_cadd({}, {})", r, w);
+            }
+            r
+        };
+        match d {
+            TypeDecl::Struct(s) => {
+                let (binds, ws) = unit(&s.fields);
+                if !s.fields.is_empty() {
+                    let parts: Vec<String> =
+                        s.fields.iter().zip(binds.iter()).map(|(f, b)| format!("{}: {}", f.name, b)).collect();
+                    lines.push(format!("    let {} {{ {} }} = v;", n, parts.join(", ")));
+                }
+                lines.push(format!("    {}", fold(&ws)));
+            }
+            TypeDecl::Enum(en) => {
+                lines.push("    match v {".to_string());
+                for v in &en.variants {
+                    if v.fields.is_empty() {
+                        lines.push(format!("        {}::{} => 1i128,", n, v.name));
+                        continue;
+                    }
+                    let (binds, ws) = unit(&v.fields);
+                    lines.push(format!("        {}::{}({}) => {},", n, v.name, binds.join(", "), fold(&ws)));
+                }
+                lines.push("    }".to_string());
+            }
+        }
+        lines.push("}".to_string());
+        format!("{}\n", lines.join("\n"))
+    }
+
+    /// pruv_ceq__Name: structural equality; fields are compared left to right and only for the same active variant
+    fn g9_eq_text(&self, d: &TypeDecl) -> String {
+        let n = d.name();
+        let mut lines: Vec<String> = vec![
+            G9_HELPER_ALLOW.to_string(),
+            format!("fn pruv_ceq__{}(a: &{}, b: &{}, pruv_budget: &mut i64) -> bool {{", n, n, n),
+            "    pruv_g9_tick(pruv_budget);".to_string(),
+        ];
+        let conj = |fields: &[FieldDecl]| -> String {
+            if fields.is_empty() {
+                return "true".to_string();
+            }
+            fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| self.g9_eq(&GType::from_key(&f.ty), &format!("pruv_a{}", i), &format!("pruv_b{}", i)))
+                .collect::<Vec<_>>()
+                .join(" && ")
+        };
+        match d {
+            TypeDecl::Struct(s) => {
+                if !s.fields.is_empty() {
+                    for (side, var) in [("a", "pruv_a"), ("b", "pruv_b")] {
+                        let parts: Vec<String> =
+                            s.fields.iter().enumerate().map(|(i, f)| format!("{}: {}{}", f.name, var, i)).collect();
+                        lines.push(format!("    let {} {{ {} }} = {};", n, parts.join(", "), side));
+                    }
+                }
+                lines.push(format!("    {}", conj(&s.fields)));
+            }
+            TypeDecl::Enum(en) => {
+                lines.push("    match (a, b) {".to_string());
+                for v in &en.variants {
+                    if v.fields.is_empty() {
+                        lines.push(format!("        ({}::{}, {}::{}) => true,", n, v.name, n, v.name));
+                        continue;
+                    }
+                    let pa = (0..v.fields.len()).map(|i| format!("pruv_a{}", i)).collect::<Vec<_>>().join(", ");
+                    let pb = (0..v.fields.len()).map(|i| format!("pruv_b{}", i)).collect::<Vec<_>>().join(", ");
+                    lines.push(format!(
+                        "        ({}::{}({}), {}::{}({})) => {},",
+                        n,
+                        v.name,
+                        pa,
+                        n,
+                        v.name,
+                        pb,
+                        conj(&v.fields)
+                    ));
+                }
+                lines.push("        _ => false,".to_string());
+                lines.push("    }".to_string());
+            }
+        }
+        lines.push("}".to_string());
+        format!("{}\n", lines.join("\n"))
+    }
+
+    /// the helpers the runtime requires of this program need, in declaration order (size, then equality, per type).
+    /// need_size / need_eq hold the operand types seen; both are closed over the nominal types of the fields.
+    fn g9_helper_texts(&self) -> Vec<String> {
+        if self.need_size.is_empty() && self.need_eq.is_empty() {
+            return Vec::new();
+        }
+        let close = |seed: &HashSet<String>| -> HashSet<String> {
+            let mut out: HashSet<String> = HashSet::new();
+            let mut work: Vec<String> = seed.iter().cloned().collect();
+            work.sort();
+            while let Some(n) = work.pop() {
+                if out.contains(&n) {
+                    continue;
+                }
+                let d = match self.table.decl(&n) {
+                    Some(d) => d,
+                    None => continue,
+                };
+                out.insert(n);
+                for f in d.all_fields() {
+                    work.extend(nominals_in(&GType::from_key(&f.ty)));
+                }
+            }
+            out
+        };
+        let sizes = close(&self.need_size);
+        let eqs = close(&self.need_eq);
+        let mut texts: Vec<String> = vec![G9_TICK.to_string()];
+        for d in &self.table.decls {
+            if sizes.contains(d.name()) {
+                texts.push(self.g9_size_text(d));
+            }
+            if eqs.contains(d.name()) {
+                texts.push(self.g9_eq_text(d));
+            }
+        }
+        texts
+    }
+
+    // ---------- G9: owning and viewing extended values (executable code) ----------
+
+    /// Rust `&T` for an extended expression in a READ position (argument, match scrutinee): no clone, no alloc.
+    fn view(&mut self, e: &Expr) -> R<String> {
+        match e {
+            Expr::Var(x) => Ok(if self.refs.contains(&x.name) { x.name.clone() } else { format!("&{}", x.name) }),
+            Expr::FieldAccess(x) => {
+                let deref = if self.field_boxed(expr_ty(&x.base), &x.field) { "*" } else { "" };
+                Ok(format!("&{}{}", deref, self.e(e)?))
+            }
+            _ => Ok(format!("&({})", self.e(e)?)),
+        }
+    }
+
+    /// an expression in an OWNING position (let, assignment, constructor field, return). A named value or a field path is
+    /// cloned explicitly; a fresh temporary (constructor, literal, call) moves. Other types: plain self.e.
+    fn own_e(&mut self, e: &Expr) -> R<String> {
+        if !self.ext.is_empty()
+            && self.is_ext(expr_ty(e).as_deref())
+            && matches!(e, Expr::Var(_) | Expr::FieldAccess(_))
+        {
+            return Ok(format!("::std::clone::Clone::clone({})", self.view(e)?));
+        }
+        self.e(e)
+    }
+
+    /// the value stored into the field `label` of a constructor / literal: owned, boxed on a recursive edge
+    fn field_value(&mut self, x: &Expr, label: &str) -> R<String> {
+        let v = self.own_e(x)?;
+        Ok(if self.boxed.contains(label) { format!("::std::boxed::Box::new({})", v) } else { v })
+    }
+
     // ---------- statements / code expressions ----------
 
     fn block(&mut self, stmts: &[Stmt], ind: usize) -> R<()> {
         let saved = self.vars.clone();
+        let saved_refs = self.refs.clone();
         for st in stmts {
             self.stmt(st, ind)?;
         }
         self.vars = saved;
+        self.refs = saved_refs;
+        Ok(())
+    }
+
+    /// match on an extended enum: the scrutinee is borrowed (a view, never cloned, never consumed) and every payload
+    /// binder is an arm-local view.
+    fn match_ext(&mut self, x: &Match, ind: usize) -> R<()> {
+        let sty = key_name(expr_ty(&x.scrutinee).as_deref().unwrap_or("")).to_string();
+        let sv = self.view(&x.scrutinee)?;
+        self.emit(ind, &format!("match {} {{", sv));
+        for a in &x.arms {
+            let name = match &a.enum_name {
+                None => a.ctor.clone(),
+                Some(en) => format!("{}::{}", en, a.ctor),
+            };
+            let pat = if a.binders.is_empty() { name } else { format!("{}({})", name, a.binders.join(", ")) };
+            self.emit(ind + 1, &format!("{} => {{", pat));
+            let saved_vars = self.vars.clone();
+            let saved_refs = self.refs.clone();
+            let fields: Vec<FieldDecl> = k_variant(&self.table, &sty, &a.ctor)?.fields.clone();
+            for (b, fd) in a.binders.iter().zip(fields.iter()) {
+                let ft = fd.ty.as_str();
+                if self.is_ext(Some(ft)) {
+                    self.emit(ind + 2, &format!("let {}: &{} = {};", b, ft, b));
+                    self.refs.insert(b.clone());
+                } else if is_array_name(ft) || ft == "str" {
+                    self.emit(ind + 2, &format!("let {}: {} = {};", b, rty(ft, true), b));
+                    self.refs.insert(b.clone());
+                } else {
+                    self.emit(ind + 2, &format!("let {}: {} = *{};", b, rty(ft, false), b));
+                    self.refs.remove(b);
+                }
+                self.vars.insert(b.clone(), fd.ty.clone());
+            }
+            self.block(&a.body, ind + 2)?;
+            self.vars = saved_vars;
+            self.refs = saved_refs;
+            self.emit(ind + 1, "}");
+        }
+        self.emit(ind, "}");
         Ok(())
     }
 
     fn stmt(&mut self, st: &Stmt, ind: usize) -> R<()> {
         match st {
             Stmt::Let(x) => {
-                let v = self.e(&x.value)?;
+                let v = self.own_e(&x.value)?;
                 let line = format!("let {}{}: {} = {};", if x.mutable { "mut " } else { "" }, x.name, rty(&x.ty, false), v);
                 self.emit(ind, &line);
                 self.vars.insert(x.name.clone(), x.ty.clone());
+                self.refs.remove(&x.name); // G9: a local is an owned value, never a reference
             }
             Stmt::Assign(x) => {
-                let v = self.e(&x.value)?;
+                let v = self.own_e(&x.value)?;
                 self.emit(ind, &format!("{} = {};", x.name, v));
             }
             Stmt::FieldAssign(x) => {
@@ -1039,8 +1570,12 @@ impl<'a> Gen<'a> {
                     Some(t) => format!("let pruv_v: {} = ", rty(t, false)),
                     None => "let pruv_v = ".to_string(),
                 };
-                let v = self.e(&x.value)?;
-                self.emit(ind, &format!("{{ {}{}; {}.{} = pruv_v; }}", decl, v, x.name, x.fields.join(".")));
+                let mut stored = "pruv_v".to_string();
+                if !self.boxed.is_empty() && self.path_boxed(&x.name, &x.fields) {
+                    stored = "::std::boxed::Box::new(pruv_v)".to_string(); // the assigned field is a recursive (Box) edge
+                }
+                let v = self.own_e(&x.value)?;
+                self.emit(ind, &format!("{{ {}{}; {}.{} = {}; }}", decl, v, x.name, x.fields.join("."), stored));
             }
             Stmt::IndexAssign(x) => {
                 let i = self.e(&x.index)?;
@@ -1121,7 +1656,7 @@ impl<'a> Gen<'a> {
             Stmt::Return(x) => match &x.value {
                 None => self.emit(ind, "return;"),
                 Some(v) => {
-                    let t = self.e(v)?;
+                    let t = self.own_e(v)?;
                     self.emit(ind, &format!("return {};", t));
                 }
             },
@@ -1129,6 +1664,9 @@ impl<'a> Gen<'a> {
             Stmt::ExprStmt(x) => {
                 let t = self.e(&x.expr)?;
                 self.emit(ind, &format!("{};", t));
+            }
+            Stmt::Match(x) if self.is_ext(expr_ty(&x.scrutinee).as_deref()) => {
+                self.match_ext(x, ind)?;
             }
             Stmt::Match(x) => {
                 let s = self.e(&x.scrutinee)?;
@@ -1152,6 +1690,9 @@ impl<'a> Gen<'a> {
     /// An array expression used as a borrowed slice
     fn arr_ref(&mut self, e: &Expr) -> R<String> {
         if let Expr::Var(x) = e {
+            if self.refs.contains(&x.name) {
+                return Ok(x.name.clone()); // G9: a buffer payload view is already a reference
+            }
             if !self.params.contains(&x.name) {
                 return Ok(format!("&{}", x.name));
             }
@@ -1355,7 +1896,13 @@ impl<'a> Gen<'a> {
                 let mut parts: Vec<String> = Vec::new();
                 for f in &fs {
                     let v = init_value(&vals, &f.name)?;
-                    parts.push(format!("{}: {}", f.name, self.e(v)?));
+                    if !self.ext.is_empty() {
+                        // G9: constructor fields are owning positions; a recursive edge is boxed
+                        let fv = self.field_value(v, &format!("{}.{}", x.name, f.name))?;
+                        parts.push(format!("{}: {}", f.name, fv));
+                    } else {
+                        parts.push(format!("{}: {}", f.name, self.e(v)?));
+                    }
                 }
                 Ok(format!("({} {{ {} }})", x.name, parts.join(", ")))
             }
@@ -1365,8 +1912,16 @@ impl<'a> Gen<'a> {
                     return Ok(ctor);
                 }
                 let mut parts: Vec<String> = Vec::new();
-                for a in &x.args {
-                    parts.push(self.e(a)?);
+                if !self.ext.is_empty() {
+                    // G9
+                    let vf: Vec<FieldDecl> = k_variant(&self.table, &x.enum_name, &x.variant)?.fields.clone();
+                    for (a, fd) in x.args.iter().zip(vf.iter()) {
+                        parts.push(self.field_value(a, &format!("{}::{}.{}", x.enum_name, x.variant, fd.name))?);
+                    }
+                } else {
+                    for a in &x.args {
+                        parts.push(self.e(a)?);
+                    }
                 }
                 Ok(format!("{}({})", ctor, parts.join(", ")))
             }
@@ -1460,6 +2015,8 @@ impl<'a> Gen<'a> {
                         } else {
                             args.push(self.cref(xa)?);
                         }
+                    } else if !self.ext.is_empty() && self.is_ext(expr_ty(xa).as_deref()) {
+                        args.push(self.view(xa)?); // G9: an extended argument is a read view; a fresh temporary lives through the call
                     } else if expr_ty(xa).as_deref().map_or(false, |t| is_array_name(t) || t == "str") {
                         args.push(self.arr_ref(xa)?);
                     } else {
@@ -1522,10 +2079,9 @@ pub fn gen_rust_ex(
             crate::mono::MonoError::Limit(p) => GenError::Diag(p),
             crate::mono::MonoError::Internal(m) => GenError::Msg(m),
         })?;
-        return gen_rust_concrete_ex(&plan.program, verified, trust_callers, budget, foreign_checks, externs)
-            .map_err(GenError::Msg);
+        return gen_rust_concrete_ex(&plan.program, verified, trust_callers, budget, foreign_checks, externs);
     }
-    gen_rust_concrete_ex(prog, verified, trust_callers, budget, foreign_checks, externs).map_err(GenError::Msg)
+    gen_rust_concrete_ex(prog, verified, trust_callers, budget, foreign_checks, externs)
 }
 
 /// Pruv -> Rust source. Err is the str(e) at the place where Python raises an Exception. A generic program is
@@ -1539,7 +2095,10 @@ pub fn gen_rust(prog: &Program, verified: bool, trust_callers: bool, budget: u64
 
 /// The generator proper, for a CONCRETE program (no type parameters; a plan.program of mono.rs, or a program without G3).
 pub fn gen_rust_concrete(prog: &Program, verified: bool, trust_callers: bool, budget: u64) -> Result<String, String> {
-    gen_rust_concrete_ex(prog, verified, trust_callers, budget, "requires", &[]).map(|(text, _)| text)
+    gen_rust_concrete_ex(prog, verified, trust_callers, budget, "requires", &[]).map(|(text, _)| text).map_err(|e| match e {
+        GenError::Msg(m) => m,
+        GenError::Diag(p) => format!("{}: {}", p.code, p.message),
+    })
 }
 
 /// `gen_rust_concrete` with the G6 boundary check mode and the --rust-extern specs; also returns the manifest text
@@ -1551,19 +2110,34 @@ pub fn gen_rust_concrete_ex(
     budget: u64,
     foreign_checks: &str,
     externs: &[(String, String)],
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<String>), GenError> {
     if !matches!(foreign_checks, "requires" | "all" | "off") {
-        return Err("foreign_checks must be requires, all or off".to_string());
+        return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
     if let Some(e) = crate::typeinfo::g2_unimplemented_error(prog, "codegen", None, &["array_u8", "array_bool", "str"], None) { // G2 B2
-        return Err(format!("unsupported_type: {}", e.message));
+        return Err(GenError::Msg(format!("unsupported_type: {}", e.message)));
     }
     let mut g = Gen::new(prog, verified, trust_callers, budget, foreign_checks);
-    g.prelude()?;
-    let mark = g.out.len();
-    for f in &prog.functions {
-        g.func(f)?;
+    let mut mark = 0usize;
+    let res: R<()> = (|| {
+        g.prelude()?;
+        mark = g.out.len();
+        for f in &prog.functions {
+            g.func(f)?;
+        }
+        Ok(())
+    })();
+    if let Err(msg) = res {
+        // G9: a runtime requires the Rust backend cannot lower is a diagnostic (Python PruvError)
+        return Err(match g.diag.take() {
+            Some(p) => GenError::Diag(p),
+            None => GenError::Msg(msg),
+        });
     }
+    // G9: size / equality helpers discovered while the requires checks were generated go in front of the functions
+    // (declaration order); nothing at all is added when no runtime requires needs them
+    let g9_texts = g.g9_helper_texts();
+    drop(g.out.splice(mark..mark, g9_texts));
     let mut manifest: Option<String> = None;
     if g.g6 {
         // helpers are discovered while the functions are generated; they go in front of them, in first-use order

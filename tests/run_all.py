@@ -283,7 +283,7 @@ def g6_frontend_jobs(group="g6_frontend", sub="frontend", modes=(("no-verify", [
 # G9 feature at the downstream guard. While G9_GUARD is True a g9_frontend row passes when pruvc exits 1 and reports
 # the guard (code unsupported_type, message naming the rust codegen layer), which also shows that the program
 # was accepted by parsing and checking. Batch A2 flips G9_GUARD to False: the rows then expect exit 0.
-G9_GUARD = True
+G9_GUARD = False   # G9 A2: the Rust backend lowers G9 programs
 G9_GUARD_CODE = "unsupported_type"
 G9_GUARD_LAYER = "rust codegen layer"
 

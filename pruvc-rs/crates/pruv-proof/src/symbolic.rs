@@ -937,12 +937,22 @@ impl<'a> FnVerifier<'a> {
         if !(m.rel(ty) || (force && m.rel_nominal(ty))) {
             return Ok(());
         }
+        // z3 AST ids: a term (datatype sort) never shares an id with a fact (Bool)
+        let tid = t.id();
+        if st.obs.contains(&tid) {
+            return Ok(());
+        }
+        let mut new: Vec<u32> = vec![tid];
         for fct in self.facts(ty, t)? {
             let i = fct.id();
             if !st.obs.contains(&i) {
-                std::rc::Rc::make_mut(&mut st.obs).insert(i);
+                new.push(i);
                 st.pc.push(fct);
             }
+        }
+        let obs = std::rc::Rc::make_mut(&mut st.obs);
+        for i in new {
+            obs.insert(i);
         }
         Ok(())
     }
@@ -982,6 +992,8 @@ impl<'a> FnVerifier<'a> {
             for ((_fd, fty), acc) in m.fields_of(ty, vname.as_deref())?.iter().zip(accs.iter()) {
                 if m.rel_nominal(fty) {
                     out.push(m.size_fn(fty.name())?.apply1(&acc.apply1(t)).ge_i(1));
+                } else if matches!(fty, Ty::Inst(_)) && m.is_user(fty) && m.fixed_size(fty)?.is_none() {
+                    out.push(m.size_inst(fty)?.apply1(&acc.apply1(t)).ge_i(1));
                 }
             }
         }
@@ -1587,8 +1599,10 @@ impl<'a> FnVerifier<'a> {
                 let idx = model.field_index_of(sty, &x.field, None)?;
                 let fty = model.fields_of(sty, None)?[idx].1.clone();
                 if model.is_g9() {
-                    // G9 A1: adapt a buffer field to an Arr; a nominal child is an observed term
-                    let rv = self.field_val(&fty, sf.accs[idx].apply1(va), &x.field)?;
+                    // G9 A1: adapt a buffer field to an Arr; parent and nominal child are observed terms
+                    let r = sf.accs[idx].apply1(va);
+                    self.observe(st, va, Some(sty), false)?; // the parent's one-step wf/size equations give the field's own facts
+                    let rv = self.field_val(&fty, r, &x.field)?;
                     if let Val::Dt(a, t) = &rv {
                         self.observe(st, a, Some(t), false)?;
                     }
@@ -1611,7 +1625,9 @@ impl<'a> FnVerifier<'a> {
                 let idx = model.field_index_of(&ety, &x.field, Some(&x.variant))?;
                 let fty = model.fields_of(&ety, Some(&x.variant))?[idx].1.clone();
                 if model.is_g9() {
-                    let rv = self.field_val(&fty, vf.accs[idx].apply1(v.try_ast()?), &x.field)?;
+                    let r = vf.accs[idx].apply1(v.try_ast()?);
+                    self.observe(st, v.try_ast()?, Some(&ety), false)?;
+                    let rv = self.field_val(&fty, r, &x.field)?;
                     if let Val::Dt(a, t) = &rv {
                         self.observe(st, a, Some(t), false)?;
                     }

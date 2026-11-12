@@ -73,13 +73,12 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
     check(prog, externs=externs)
     # G9 A1: the verifier handles G9 programs; the code generation guard (A2/A3 lift it) runs after verification,
     # so a G9 program that does not verify reports its proof errors first. --no-verify: the guard runs right here.
+    # G9 A2: the Rust source backend lowers G9 programs; only the LLVM backend (and --also-llvm) keeps the guard.
     if not verify:
-        if backend == "llvm":
+        if backend == "llvm" or also_llvm:
             g9err = g9_unimplemented_error(prog, "codegen", "llvm codegen layer")
-        else:
-            g9err = g9_unimplemented_error(prog, "codegen", "rust codegen layer")
-        if g9err is not None:
-            return [g9err]
+            if g9err is not None:
+                return [g9err]
     # G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm)
     # lowers the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type: that decision
     # is made inside llvmgen.gen_llvm (after verification, so verification errors win).
@@ -94,13 +93,11 @@ def compile_file(path, out, verify=True, trust_callers=False, backend="rust", ru
             errs = verify_program(prog)
         if errs:
             return errs
-        # G9 A1: verification succeeded; the downstream guard still stops every G9 program
-        if backend == "llvm":
+        # G9: verification succeeded; the LLVM guard (lifted by A3) still stops G9 programs there
+        if backend == "llvm" or also_llvm:
             g9err = g9_unimplemented_error(prog, "codegen", "llvm codegen layer")
-        else:
-            g9err = g9_unimplemented_error(prog, "codegen", "rust codegen layer")
-        if g9err is not None:
-            return [g9err]
+            if g9err is not None:
+                return [g9err]
     elif infer and show_inferred:
         print(json.dumps({"status": "skipped_no_verify"}, sort_keys=True, ensure_ascii=False), file=sys.stderr)
     # G3 A3/A4: both back ends (the Rust source backend, the LLVM backend, also --also-llvm) consume the same

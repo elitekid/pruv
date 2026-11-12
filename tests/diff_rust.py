@@ -264,9 +264,7 @@ def eval_python(c):
             src = fh.read()
         prog = parse(src)
         check(prog)
-        g9err = g9_unimplemented_error(prog, "codegen", "rust codegen layer")   # G9 A0 guard, as in pruvc
-        if g9err is not None:
-            raise g9err
+        # G9 A2: the Rust source backend lowers G9 programs (no guard)
         rs_src = gen_rust(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)
         obj = {"rs": rs_src}
     except UnicodeDecodeError:

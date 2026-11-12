@@ -1,0 +1,43 @@
+// G9 A2 runtime: [bool] and str struct fields; recursive count over the bits and an indexed read (bits 1 and 3 are set)
+struct Flags { bits: [bool], name: str }
+
+fn make_flags() -> Flags ! alloc
+  ensures len(result.bits) == 4
+{
+  let mut arr: [bool] = alloc(4, false);
+  arr[1] = true;
+  arr[3] = true;
+  return Flags { bits: copy(arr), name: "flags" };
+}
+
+fn count_true(f: Flags, i: i64) -> i64
+  requires 0 <= i && i <= len(f.bits)
+  ensures 0 <= result && result <= len(f.bits) - i
+  decreases len(f.bits) - i
+{
+  if i == len(f.bits) { return 0; }
+  if f.bits[i] { return 1 + count_true(f, i + 1); }
+  return count_true(f, i + 1);
+}
+
+fn total_true() -> i64 ! alloc {
+  let f: Flags = make_flags();
+  return count_true(f, 0);
+}
+
+fn tail_true() -> i64 ! alloc {
+  let f: Flags = make_flags();
+  return count_true(f, 2);
+}
+
+fn flag_at(i: i64) -> bool ! alloc
+  requires 0 <= i && i < 4
+{
+  let f: Flags = make_flags();
+  return f.bits[i];
+}
+
+fn name_len() -> i64 ! alloc {
+  let f: Flags = make_flags();
+  return len(f.name);
+}

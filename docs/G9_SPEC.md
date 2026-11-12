@@ -289,8 +289,10 @@ and child well-formedness. A1 decision: `size_D` and `wf_D` are uninterpreted fu
 symbols constrained only by the one-step equations of observed terms below, which are
 instances of the structural definition; Z3 recursive-function definitions are not used
 (their automatic unfolding timed out on the tree fixtures), and no cyclic axioms are added.
-Internal size helpers also traverse any admitted acyclic G3 field application; this
-does not expose `size` on generic applications or abstract parameters in source.
+The weight of an admitted acyclic G3 field application is a constant when its size is
+value-independent, otherwise a per-instance uninterpreted size constrained by positivity
+only; this does not expose `size` on generic applications or abstract parameters in source.
+Field access observes the parent term first, and `observe` caches observed terms by id.
 At constructors, matches, and guarded selectors expose the corresponding one-step
 equations, child wf facts, and nonnegative size facts. The size positivity/child-smaller
 lemmas are valid by structural induction on finite datatypes and need an audited

@@ -1,0 +1,30 @@
+// G9 A2 runtime: size(...) in an internal requires over a built tree stays within the contract budget (--contract-budget 1000);
+// chain(n) has 2n + 1 constructors, so n = 10 and n = 50 cost about 21 and 101 visits when the check runs (--no-verify)
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn chain(n: i64) -> Tree ! alloc
+  requires n >= 0
+  ensures size(result) == 2 * n + 1
+  decreases n
+{
+  if n == 0 { return Tree::Empty; }
+  return Tree::Node(n, chain(n - 1), Tree::Empty);
+}
+
+fn nodes(t: Tree) -> i64
+  requires size(t) <= 100000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + nodes(l) + nodes(r); }
+  }
+}
+
+fn chain_nodes(n: i64) -> i64 ! alloc
+  requires n >= 0 && n <= 2000
+{
+  let t: Tree = chain(n);
+  return nodes(t);
+}

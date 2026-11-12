@@ -1,0 +1,76 @@
+// G9 A2 runtime: recursive pattern views: nested statement matches read grandchildren through bindings; shape_code classifies a node by its children
+// shape codes: 0 Empty, 1 leaf, 2 left child only, 3 right child only, 4 both children
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn sample() -> Tree ! alloc
+  ensures size(result) == 9
+{
+  return Tree::Node(4, Tree::Node(2, Tree::Empty, Tree::Empty), Tree::Node(7, Tree::Node(5, Tree::Empty, Tree::Empty), Tree::Empty));
+}
+
+fn is_empty(t: Tree) -> bool {
+  match t {
+    Tree::Empty => { return true; }
+    Tree::Node(v, l, r) => { return false; }
+  }
+}
+
+fn shape_code(t: Tree) -> i64 {
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => {
+      let el: bool = is_empty(l);
+      let er: bool = is_empty(r);
+      if el && er { return 1; }
+      if er { return 2; }
+      if el { return 3; }
+      return 4;
+    }
+  }
+}
+
+fn left_value(t: Tree) -> i64 {
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => {
+      match l {
+        Tree::Empty => { return 0 - 1; }
+        Tree::Node(lv, ll, lr) => { return lv; }
+      }
+    }
+  }
+}
+
+fn right_value(t: Tree) -> i64 {
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => {
+      match r {
+        Tree::Empty => { return 0 - 1; }
+        Tree::Node(rv, rl, rr) => { return rv; }
+      }
+    }
+  }
+}
+
+fn shape_of(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 4
+{
+  if k == 0 { return shape_code(Tree::Empty); }
+  if k == 1 { return shape_code(Tree::Node(1, Tree::Empty, Tree::Empty)); }
+  if k == 2 { return shape_code(Tree::Node(1, Tree::Node(2, Tree::Empty, Tree::Empty), Tree::Empty)); }
+  if k == 3 { return shape_code(Tree::Node(1, Tree::Empty, Tree::Node(2, Tree::Empty, Tree::Empty))); }
+  return shape_code(sample());
+}
+
+fn sample_left() -> i64 ! alloc {
+  return left_value(sample());
+}
+
+fn sample_right() -> i64 ! alloc {
+  return right_value(sample());
+}
+
+fn leaf_left() -> i64 ! alloc {
+  return left_value(Tree::Node(1, Tree::Empty, Tree::Empty));
+}

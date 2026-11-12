@@ -54,9 +54,23 @@ it contains, so there is no generic Rust. Generic function specializations are p
 `::std::option::Option<R(X)>` / `::std::result::Result<R(X), i64>`; their constructors are written with explicit
 turbofish (`None::<R(X)>`, `Ok::<R(X), i64>(..)`). Contract mirrors are recursive: C(Option<X>) = Option<C(X)>,
 C(Result<X>) = Result<C(X), i128>. A program without generics is generated directly, byte for byte as before G3.
+
+G9 (recursion, recursive types, aggregate buffer fields; docs/G9_SPEC.md 3, 4, 6, 12): recursion is an ordinary Rust call.
+An EXTENDED type (prog.g9["extended"]) derives `Clone, Debug` and never Copy; a recursive edge (prog.g9["boxed"]) is
+`::std::boxed::Box<Child>`; buffer fields are Vec<i64>/Vec<u8>/Vec<bool>/String. Value contexts:
+  read parameter / payload view  `&T`     (a call argument borrows: `f(&local)`, `f(param)`, `f(&(fresh()))`)
+  owning position                 let / assignment / constructor field / return: a named value or a field path is
+                                  cloned (`::std::clone::Clone::clone(&x)`), a constructor / call result moves; a
+                                  constructor stores a recursive edge as `Box::new(..)`
+  match on an extended enum       `match <view> { E::V(a, b) => { let a: i64 = *a; let b: &T = b; .. } }`
+A function with an extended type in its signature is private (and so is its checked entry wrapper). Runtime requires use
+`size` and `==` on extended values through generated helpers `pruv_csize__Name` / `pruv_ceq__Name` (declaration order,
+only the needed ones) over the REAL values: nothing is converted eagerly, only active variants are visited, one budget
+unit per node, i128 checked additions; exhaustion -> `pruv: requires undefined: ...`. Types are emitted in the order of
+the SCC condensation of the field graph (the same as before for acyclic programs).
 """
 from vast import *
-from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str, is_collection
+from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str, is_collection, dependencies
 from foreign import CATALOG
 
 ALLOW = ("#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, "
@@ -288,6 +302,28 @@ fn pruv_g6_charge(budget: &mut i64, n: usize) { let n: i64 = if n > (i64::MAX as
 """
 
 
+# ---------------------------------------------------------------------------
+# G9 A2: runtime contract helpers for `size` and for equality of extended (buffer-free recursive) values. They are emitted
+# only when a runtime requires needs them (see Gen.g9_helper_texts) and share the entry's iteration budget.
+# ---------------------------------------------------------------------------
+G9_TICK = """\
+#[allow(dead_code)]
+#[inline]
+fn pruv_g9_tick(pruv_budget: &mut i64) { *pruv_budget -= 1; if *pruv_budget < 0 { pruv_ud("contract iteration budget exceeded") } }
+"""
+G9_HELPER_ALLOW = "#[allow(dead_code, non_camel_case_types, non_snake_case, unused_variables, unreachable_patterns)]"
+
+
+def nominals_in(t):
+    """names of the user types a field of type t can contribute to `size` / structural equality: the type itself, or
+    the payload type of Option / Result (arrays, str and scalars contribute nothing), in first-occurrence order"""
+    if t.owner is None and t.args and t.name in ("option", "result"):
+        return nominals_in(t.args[0])
+    if is_user_type(t):
+        return [t.name]
+    return []
+
+
 def rty(t, param=False):
     if t.owner is None and t.args and t.name in ("option", "result"):  # G3: Option<X> / Result<X>, X != i64
         x = rty(t.args[0])
@@ -362,15 +398,108 @@ def conv(t, x):
     raise Exception("codegen: type %r has no contract representation" % (t,))
 
 
-def emit_public_types(prog):
-    """`pub struct` / `pub enum` for every user type, dependency-first (TypeTable.order)."""
+def condensed_type_order(decls):
+    """G9 A2: declarations (dict name -> decl, first declaration wins) in dependency-first order over the SCC
+    condensation of the field-dependency graph. Iterative Tarjan (no recursion over the type graph): roots are visited in
+    declaration order, successors in field order (first occurrence), a component is emitted when its root finishes, and
+    the members of one component are listed in declaration order. For an acyclic graph this is exactly the old
+    depth-first post-order of TypeTable._build_order, so the order of non-recursive programs does not change."""
+    names = list(decls)
+    index = dict((n, i) for i, n in enumerate(names))
+    adj = []
+    for n in names:
+        d = decls[n]
+        fields = d.fields if isinstance(d, StructDecl) else [f for v in d.variants for f in v.fields]
+        out = []
+        for f in fields:
+            for m in dependencies(f.type):
+                j = index.get(m)
+                if j is not None and j not in out:
+                    out.append(j)
+        adj.append(out)
+    count = len(names)
+    num = [-1] * count
+    low = [0] * count
+    onstack = [False] * count
+    stack = []
+    comps = []
+    counter = 0
+    for root in range(count):
+        if num[root] != -1:
+            continue
+        num[root] = low[root] = counter
+        counter += 1
+        stack.append(root)
+        onstack[root] = True
+        work = [(root, 0)]
+        while work:
+            v, pos = work.pop()
+            if pos < len(adj[v]):
+                work.append((v, pos + 1))
+                w = adj[v][pos]
+                if num[w] == -1:
+                    num[w] = low[w] = counter
+                    counter += 1
+                    stack.append(w)
+                    onstack[w] = True
+                    work.append((w, 0))
+                elif onstack[w]:
+                    low[v] = min(low[v], num[w])
+            else:
+                if low[v] == num[v]:
+                    comp = []
+                    while True:
+                        w = stack.pop()
+                        onstack[w] = False
+                        comp.append(w)
+                        if w == v:
+                            break
+                    comps.append(comp)
+                if work:
+                    parent = work[-1][0]
+                    low[parent] = min(low[parent], low[v])
+    return [decls[names[i]] for comp in comps for i in sorted(comp)]
+
+
+class CondensedTypeTable(TypeTable):
+    """TypeTable whose dependency order is computed on the SCC condensation (G9 programs only)."""
+    def _build_order(self):
+        self.order = condensed_type_order(self.decls)
+
+
+def make_type_table(prog):
+    return CondensedTypeTable(prog) if getattr(prog, "g9", None) is not None else TypeTable(prog)
+
+
+def g9_sets(prog):
+    """(extended declaration names, boxed field labels) of a G9 program; two empty sets otherwise.
+    A boxed label is "Struct.field" or "Enum::Variant.field" (check.py field_label)."""
+    meta = getattr(prog, "g9", None)
+    if meta is None:
+        return set(), set()
+    return set(meta["extended"]), set(meta["boxed"])
+
+
+def emit_public_types(prog, order=None):
+    """`pub struct` / `pub enum` for every user type, dependency-first (TypeTable.order).
+    G9: an extended type (recursive, or holding a buffer or an extended type) derives Clone, never Copy; a boxed field
+    (recursive edge inside a recursive type SCC) is `::std::boxed::Box<Child>`; buffer fields are Vec / String.
+    Every other type keeps its exact old text."""
+    ext, boxed = g9_sets(prog)
     out = []
-    for d in TypeTable(prog).order:
+    for d in (order if order is not None else make_type_table(prog).order):
         out.append("#[allow(dead_code, non_camel_case_types, non_snake_case)]")
-        out.append("#[derive(Clone, Copy, Debug, PartialEq, Eq)]")
+        if d.name in ext:
+            out.append("#[derive(Clone, Debug)]")
+        else:
+            out.append("#[derive(Clone, Copy, Debug, PartialEq, Eq)]")
+
+        def fty(f, label):
+            r = rty(f.type)
+            return "::std::boxed::Box<%s>" % r if label in boxed else r
         if isinstance(d, StructDecl):
             if d.fields:
-                body = ", ".join("pub %s: %s" % (f.name, rty(f.type)) for f in d.fields)
+                body = ", ".join("pub %s: %s" % (f.name, fty(f, "%s.%s" % (d.name, f.name))) for f in d.fields)
                 out.append("pub struct %s { %s }" % (d.name, body))
             else:
                 out.append("pub struct %s {}" % d.name)
@@ -378,7 +507,8 @@ def emit_public_types(prog):
             vs = []
             for v in d.variants:
                 if v.fields:
-                    vs.append("%s(%s)" % (v.name, ", ".join(rty(f.type) for f in v.fields)))
+                    vs.append("%s(%s)" % (v.name, ", ".join(
+                        fty(f, "%s::%s.%s" % (d.name, v.name, f.name)) for f in v.fields)))
                 else:
                     vs.append(v.name)
             out.append("pub enum %s { %s }" % (d.name, ", ".join(vs)))
@@ -479,10 +609,19 @@ class Gen:
         s.cp = None    # set during requires entry checks: user-type params already converted
         s.bound = []   # quantifier variables in scope (contract evaluation)
         s.tmp = 0
-        s.table = TypeTable(prog)
+        s.table = make_type_table(prog)
         s.params = set()
         s.vt = {}
         s.borrowed = set()
+        # G9 A2 (docs/G9_SPEC.md 6, 12): `ext` = extended declarations (Clone, never Copy), `boxed` = field labels that
+        # are Box edges, `refs` = names bound to a Rust reference (extended parameters, match payload views, buffer
+        # payload views), `need_size` / `need_eq` = types whose runtime contract helpers are needed (filled while the
+        # requires checks are generated, closed over field types by g9_helper_texts). All empty for a non-G9 program.
+        s.g9 = getattr(prog, "g9", None) is not None
+        s.ext, s.boxed = g9_sets(prog)
+        s.refs = set()
+        s.need_size = set()
+        s.need_eq = set()
         # G6 (section 12): only a program that uses G6 gets any of the following
         from foreign import first_g6_use
         s.g6 = first_g6_use(prog) is not None
@@ -499,13 +638,26 @@ class Gen:
     def emit(s, ind, line):
         s.out.append("    " * ind + line)
 
+    def field_uses(s, name):
+        """G9: some struct field / enum payload has the internal type `name` (array_u8, array_bool, str). The G2
+        helpers are emitted by usage; uses_array_type / uses_str look at parameters, results and lets only."""
+        for d in s.prog.types:
+            fields = d.fields if isinstance(d, StructDecl) else [f for v in d.variants for f in v.fields]
+            if any(f.type.name == name for f in fields):
+                return True
+        return False
+
     def prelude(s):
-        types = emit_public_types(s.prog)
+        types = emit_public_types(s.prog, s.table.order if s.g9 else None)
         if types:
             s.out.append(types)
         u8_used = uses_array_type(s.prog, "array_u8")
         bool_used = uses_array_type(s.prog, "array_bool")  # G2 A5
         str_used = uses_str(s.prog)  # G2 B2
+        if s.g9:
+            u8_used = u8_used or s.field_uses("array_u8")
+            bool_used = bool_used or s.field_uses("array_bool")
+            str_used = str_used or s.field_uses("str")
         if s.g6 and not str_used:   # G6: a String parameter can be indexed in a runtime requires (pruv_cidx_str)
             str_used = uses_array_type(s.prog, "string")
         if str_used:
@@ -537,6 +689,8 @@ class Gen:
         attrs = "#[allow(dead_code, non_camel_case_types, non_snake_case, unused_variables)]"
         out = []
         for d in s.table.order:
+            if d.name in s.ext:
+                continue    # G9: extended values have no i128 mirror; contracts read them through references (cx)
             cn = "pruv_contract__" + d.name
             out.append(attrs)
             out.append("#[derive(Clone, Copy, PartialEq, Eq)]")
@@ -563,9 +717,21 @@ class Gen:
                 out.append("fn pruv_to_c__%s(v: %s) -> %s { match v { %s } }" % (d.name, d.name, cn, " ".join(arms)))
         return "\n".join(out) + ("\n" if out else "")
 
+    def is_ext(s, t):
+        """t is an extended user type (G9): recursive, or holding a buffer or an extended type"""
+        return bool(s.ext) and t is not None and t.owner is None and not t.args and t.name in s.ext
+
+    def rt(s, t, param=False):
+        """rty, except that an extended parameter is a shared reference `&Name` (read view)"""
+        if param and s.is_ext(t):
+            return "&" + t.name
+        return rty(t, param)
+
     def private(s, f):
-        """G3 specializations and G6 collection-bearing functions are private Rust items"""
-        return getattr(f, "private", False) or any(is_collection(p.type) for p in f.params) or is_collection(f.ret)
+        """G3 specializations, G6 collection-bearing functions and (G9) functions with an extended type in their
+        signature are private Rust items (no raw ABI); this includes their checked entry wrappers"""
+        return (getattr(f, "private", False) or any(is_collection(p.type) for p in f.params) or is_collection(f.ret)
+                or any(s.is_ext(p.type) for p in f.params) or s.is_ext(f.ret))
 
     def fn(s, f):
         if f.foreign is not None:
@@ -573,7 +739,8 @@ class Gen:
         s.params = {p.name for p in f.params}
         s.vt = {p.name: p.type for p in f.params}
         s.borrowed = {p.name for p in f.params if is_collection(p.type) and not p.take}
-        ps = ", ".join("%s: %s" % (p.name, rty(p.type, not p.take)) for p in f.params)
+        s.refs = {p.name for p in f.params if s.is_ext(p.type)}
+        ps = ", ".join("%s: %s" % (p.name, s.rt(p.type, not p.take)) for p in f.params)
         ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
         body_name = f.name + "__pruv_body" if f.requires else f.name
         vis = "" if (f.requires or s.private(f)) else "pub "   # G3: specializations are private
@@ -617,7 +784,65 @@ class Gen:
             return e.name
         if isinstance(e, StrLit):  # G2 B2: &'static str
             return str_lit(e.value)
+        if s.g9 and isinstance(e, (FieldAccess, VariantField)):   # G9: a buffer field of a real (extended) value
+            return s.cx(e)
         raise Exception("codegen: unsupported array expression in contract: %r" % e)
+
+    # ---------- G9: contract operands over REAL values ----------
+    def g9_unsupported(s, e, what):
+        return PruvError("codegen", e.line, e.col, "unsupported_type",
+                         "%s is not supported in a runtime requires by the Rust backend yet" % what,
+                         "compare tags with is_variant and fields with variant_field, or move the check into the body")
+
+    def cx(s, e):
+        """Rust expression of type `&R(T)` for a contract operand of nominal or buffer type, evaluated on the REAL
+        parameter values (extended values have no i128 mirror, so nothing is converted eagerly and an inactive variant
+        or a skipped operand is never inspected). Supported: a parameter, a field path, variant_field (a partial
+        selector: `pruv_ud` when the variant is not active) and nullary constructors of a unit variant / empty struct."""
+        if isinstance(e, Var):
+            if e.name in s.bound or e.name not in s.params:
+                raise s.g9_unsupported(e, "the variable %s as an aggregate operand" % e.name)
+            return e.name if s.is_ext(e.ty) else "(&%s)" % e.name
+        if isinstance(e, FieldAccess):
+            deref = "*" if s.field_boxed(e.base.ty, e.field) else ""
+            return "(&%s(%s).%s)" % (deref, s.cx(e.base), e.field)
+        if isinstance(e, VariantField):
+            s.tmp += 1
+            tmp = "pruv_e%d" % s.tmp
+            ety = Type(e.enum_name)
+            vf = s.table.variant(ety, e.variant)
+            idx = s.table.field_index(ety, e.field, e.variant)
+            pats = ", ".join("pruv_f" if i == idx else "_" for i in range(len(vf.fields)))
+            msg = "variant_field expected %s::%s.%s" % (getattr(e, "src_name", e.enum_name), e.variant, e.field)
+            return ("({ let %s: &%s = %s; match %s { %s::%s(%s) => { let pruv_r: &%s = pruv_f; pruv_r } _ => pruv_ud(%s) } })" % (
+                tmp, e.enum_name, s.cx(e.value), tmp, e.enum_name, e.variant, pats, rty(vf.fields[idx].type), rstr(msg)))
+        if isinstance(e, EnumCtor) and not e.args:
+            return "(&%s::%s)" % (e.enum_name, e.variant)
+        if isinstance(e, StructLit) and not e.fields:
+            return "(&%s {})" % e.name
+        raise s.g9_unsupported(e, "a constructor with payload as an aggregate operand")
+
+    def path_boxed(s, root, fields):
+        """the LAST field of the assignment path root.f1.f2... is a Box edge (follows the declared field types)"""
+        cur = s.vt.get(root)
+        boxed = False
+        for fname in fields:
+            if cur is None or cur.owner is not None or cur.name not in s.table.decls:
+                return False
+            decl = s.table.decls[cur.name]
+            if not isinstance(decl, StructDecl):
+                return False
+            boxed = ("%s.%s" % (cur.name, fname)) in s.boxed
+            nxt = None
+            for fd in decl.fields:
+                if fd.name == fname:
+                    nxt = fd.type
+            cur = nxt
+        return boxed
+
+    def field_boxed(s, base_ty, field):
+        """the field `field` of the struct type base_ty is a Box edge"""
+        return bool(s.boxed) and base_ty is not None and ("%s.%s" % (base_ty.name, field)) in s.boxed
 
     def c(s, e):
         if isinstance(e, StrLit):  # G2 B2
@@ -630,6 +855,8 @@ class Gen:
             if e.name in s.bound:
                 return e.name
             t = e.ty.name if e.ty is not None else "i64"
+            if s.is_ext(e.ty):    # G9: an extended value is only an operand of size / == / is_variant / field access
+                raise s.g9_unsupported(e, "the extended value %s as a plain operand" % e.name)
             if s.cp is not None and e.ty is not None and is_user_type(e.ty) and e.name in s.params:
                 s.cp[e.name] = e.ty
                 return "pruv_cp_" + e.name
@@ -642,6 +869,12 @@ class Gen:
             return "pruv_cneg(%s)" % s.c(e.operand)
         if isinstance(e, Binary):
             op = e.op
+            if op in ("==", "!=") and s.is_ext(e.left.ty):
+                # G9: structural equality of buffer-free extended aggregates, visited lazily on the real values; every
+                # visited node pair costs one budget unit; only the active variant's fields are compared
+                s.need_eq.add(e.left.ty.name)
+                code = "pruv_ceq__%s(%s, %s, &mut pruv_budget)" % (e.left.ty.name, s.cx(e.left), s.cx(e.right))
+                return code if op == "==" else "(!%s)" % code
             if op == "==>":
                 return "(!%s || %s)" % (s.c(e.left), s.c(e.right))
             if op in CONTRACT_ARITH:
@@ -688,9 +921,28 @@ class Gen:
                 return ctor
             return "%s(%s)" % (ctor, ", ".join(s.c(a) for a in e.args))
         if isinstance(e, FieldAccess):
+            if s.is_ext(e.base.ty):
+                # G9: a scalar-like field of a real extended struct (aggregate / buffer fields are read through cx / carr)
+                if s.is_ext(e.ty) or is_array(e.ty) or e.ty == STR:
+                    raise s.g9_unsupported(e, "the aggregate field %s as a plain operand" % e.field)
+                return conv(e.ty, "(%s).%s" % (s.cx(e.base), e.field))
             return "%s.%s" % (s.c(e.base), e.field)
         if isinstance(e, IsVariant):
+            if s.is_ext(e.value.ty):
+                return "matches!(%s, %s::%s { .. })" % (s.cx(e.value), e.enum_name, e.variant)
             return "matches!(%s, pruv_contract__%s::%s { .. })" % (s.c(e.value), e.enum_name, e.variant)
+        if isinstance(e, VariantField) and s.is_ext(e.value.ty):
+            if s.is_ext(e.ty) or is_array(e.ty) or e.ty == STR:
+                raise s.g9_unsupported(e, "the aggregate field %s as a plain operand" % e.field)
+            s.tmp += 1
+            tmp = "pruv_e%d" % s.tmp
+            ety = Type(e.enum_name)
+            vf = s.table.variant(ety, e.variant)
+            idx = s.table.field_index(ety, e.field, e.variant)
+            pats = ", ".join("pruv_f" if i == idx else "_" for i in range(len(vf.fields)))
+            msg = "variant_field expected %s::%s.%s" % (getattr(e, "src_name", e.enum_name), e.variant, e.field)
+            return "({ let %s: &%s = %s; match %s { %s::%s(%s) => %s, _ => pruv_ud(%s) } })" % (
+                tmp, e.enum_name, s.cx(e.value), tmp, e.enum_name, e.variant, pats, conv(e.ty, "(*pruv_f)"), rstr(msg))
         if isinstance(e, VariantField):
             s.tmp += 1
             tmp = "pruv_e%d" % s.tmp
@@ -705,6 +957,10 @@ class Gen:
             n, a = e.name, e.args
             if n == "len":
                 return "(%s.len() as i128)" % s.carr(a[0])
+            if n == "size":   # also for a program without other G9 features (size of a plain acyclic struct / enum)
+                # G9: structural size on the real value, checked i128 additions, one budget unit per node visited
+                s.need_size.add(a[0].ty.name)
+                return "pruv_csize__%s(%s, &mut pruv_budget)" % (a[0].ty.name, s.cx(a[0]))
             if n == "map_lookup":   # G6: finite-map lookup, Option mirror of the stored value
                 kt, vt = a[0].ty.args[0], a[0].ty.args[1]
                 key = s.c(a[1])
@@ -773,24 +1029,190 @@ class Gen:
                 "%s = Some(match %s { None => pruv_v, Some(pruv_a) => if pruv_v %s pruv_a { pruv_v } else { pruv_a } }); " % (r, r, cmp) +
                 tail + '%s.unwrap_or_else(|| pruv_ud("%s over an empty range")) }' % (r, kind))
 
+    # ---------- G9: generated contract helpers (size, structural equality) ----------
+    @staticmethod
+    def decl_fields(d):
+        return d.fields if isinstance(d, StructDecl) else [f for v in d.variants for f in v.fields]
+
+    def g9_weight(s, t, x):
+        """Rust i128 expression for weight(value) (G9_SPEC 3); x names a variable of type `&R(t)`.
+        Scalars, arrays and str weigh 0; a nominal value weighs its size; Some / Ok weigh their payload; None / Err 0."""
+        if t.owner is None and t.args and t.name in ("option", "result"):
+            inner = s.g9_weight(t.args[0], "pruv_w")
+            if inner == "0i128":
+                return "0i128"
+            if t.name == "option":
+                return ("match %s { ::std::option::Option::Some(pruv_w) => %s, ::std::option::Option::None => 0i128 }"
+                        % (x, inner))
+            return ("match %s { ::std::result::Result::Ok(pruv_w) => %s, ::std::result::Result::Err(_) => 0i128 }"
+                    % (x, inner))
+        if is_user_type(t):
+            return "pruv_csize__%s(%s, pruv_budget)" % (t.name, x)
+        return "0i128"
+
+    def g9_walks(s, t):
+        """equality has to walk into t (a nominal value, or Option / Result of one)"""
+        if t.owner is None and t.args and t.name in ("option", "result"):
+            return s.g9_walks(t.args[0])
+        return is_user_type(t)
+
+    def g9_eq(s, t, x, y):
+        """Rust bool expression: structural equality of the values behind the references x and y (type `&R(t)`)"""
+        if t.owner is None and t.args and t.name in ("option", "result") and s.g9_walks(t.args[0]):
+            inner = s.g9_eq(t.args[0], "pruv_p", "pruv_q")
+            if t.name == "option":
+                return ("(match (%s, %s) { (::std::option::Option::Some(pruv_p), ::std::option::Option::Some(pruv_q)) => %s, "
+                        "(::std::option::Option::None, ::std::option::Option::None) => true, _ => false })" % (x, y, inner))
+            return ("(match (%s, %s) { (::std::result::Result::Ok(pruv_p), ::std::result::Result::Ok(pruv_q)) => %s, "
+                    "(::std::result::Result::Err(pruv_p), ::std::result::Result::Err(pruv_q)) => (*pruv_p == *pruv_q), "
+                    "_ => false })" % (x, y, inner))
+        if is_user_type(t):
+            return "pruv_ceq__%s(%s, %s, pruv_budget)" % (t.name, x, y)
+        return "(*%s == *%s)" % (x, y)
+
+    def g9_size_text(s, d):
+        """pruv_csize__Name: 1 + sum of the weights of the ACTIVE fields, one budget unit per call (= per node)"""
+        n = d.name
+        lines = [G9_HELPER_ALLOW, "fn pruv_csize__%s(v: &%s, pruv_budget: &mut i64) -> i128 {" % (n, n),
+                 "    pruv_g9_tick(pruv_budget);"]
+
+        def unit(fields):
+            binds, ws = [], []
+            for i, f in enumerate(fields):
+                w = s.g9_weight(f.type, "pruv_a%d" % i)
+                if w == "0i128":
+                    binds.append("_")
+                else:
+                    binds.append("pruv_a%d" % i)
+                    ws.append(w)
+            return binds, ws
+
+        def fold(ws):
+            r = "1i128"
+            for w in ws:
+                r = "pruv_cadd(%s, %s)" % (r, w)
+            return r
+        if isinstance(d, StructDecl):
+            binds, ws = unit(d.fields)
+            if d.fields:
+                lines.append("    let %s { %s } = v;" % (n, ", ".join("%s: %s" % (f.name, b) for f, b in zip(d.fields, binds))))
+            lines.append("    " + fold(ws))
+        else:
+            lines.append("    match v {")
+            for v in d.variants:
+                if not v.fields:
+                    lines.append("        %s::%s => 1i128," % (n, v.name))
+                    continue
+                binds, ws = unit(v.fields)
+                lines.append("        %s::%s(%s) => %s," % (n, v.name, ", ".join(binds), fold(ws)))
+            lines.append("    }")
+        lines.append("}")
+        return "\n".join(lines) + "\n"
+
+    def g9_eq_text(s, d):
+        """pruv_ceq__Name: structural equality; fields are compared left to right and only for the same active variant"""
+        n = d.name
+        lines = [G9_HELPER_ALLOW, "fn pruv_ceq__%s(a: &%s, b: &%s, pruv_budget: &mut i64) -> bool {" % (n, n, n),
+                 "    pruv_g9_tick(pruv_budget);"]
+
+        def conj(fields):
+            if not fields:
+                return "true"
+            return " && ".join(s.g9_eq(f.type, "pruv_a%d" % i, "pruv_b%d" % i) for i, f in enumerate(fields))
+        if isinstance(d, StructDecl):
+            if d.fields:
+                for side, var in (("a", "pruv_a"), ("b", "pruv_b")):
+                    lines.append("    let %s { %s } = %s;" % (n, ", ".join(
+                        "%s: %s%d" % (f.name, var, i) for i, f in enumerate(d.fields)), side))
+            lines.append("    " + conj(d.fields))
+        else:
+            lines.append("    match (a, b) {")
+            for v in d.variants:
+                if not v.fields:
+                    lines.append("        (%s::%s, %s::%s) => true," % (n, v.name, n, v.name))
+                    continue
+                pa = ", ".join("pruv_a%d" % i for i in range(len(v.fields)))
+                pb = ", ".join("pruv_b%d" % i for i in range(len(v.fields)))
+                lines.append("        (%s::%s(%s), %s::%s(%s)) => %s," % (n, v.name, pa, n, v.name, pb, conj(v.fields)))
+            lines.append("        _ => false,")
+            lines.append("    }")
+        lines.append("}")
+        return "\n".join(lines) + "\n"
+
+    def g9_helper_texts(s):
+        """the helpers the runtime requires of this program need, in declaration order (size, then equality, per type).
+        need_size / need_eq hold the operand types seen; both are closed over the nominal types of the fields."""
+        if not (s.need_size or s.need_eq):
+            return []
+        decls = s.table.decls
+
+        def close(seed):
+            out = set()
+            work = sorted(seed)
+            while work:
+                n = work.pop()
+                if n in out or n not in decls:
+                    continue
+                out.add(n)
+                for f in s.decl_fields(decls[n]):
+                    work.extend(nominals_in(f.type))
+            return out
+        sizes, eqs = close(s.need_size), close(s.need_eq)
+        texts = [G9_TICK]
+        for d in decls.values():
+            if d.name in sizes:
+                texts.append(s.g9_size_text(d))
+            if d.name in eqs:
+                texts.append(s.g9_eq_text(d))
+        return texts
+
+    # ---------- G9: owning and viewing extended values (executable code) ----------
+    def view(s, e):
+        """Rust `&T` for an extended expression in a READ position (argument, match scrutinee): no clone, no alloc.
+        A parameter / payload view is already a reference; an owned local or a field path is borrowed; a fresh temporary
+        (call result, constructor) is borrowed as a temporary, which lives through the whole enclosing statement."""
+        if isinstance(e, Var):
+            return e.name if e.name in s.refs else "&" + e.name
+        if isinstance(e, FieldAccess):
+            return "&" + ("*" if s.field_boxed(e.base.ty, e.field) else "") + s.e(e)
+        return "&(%s)" % s.e(e)
+
+    def own_e(s, e):
+        """an expression in an OWNING position (let, assignment, constructor field, return). A named value or a field
+        path is cloned explicitly; a fresh temporary (constructor, literal, call) moves. Other types: plain s.e."""
+        if s.ext and s.is_ext(e.ty) and isinstance(e, (Var, FieldAccess)):
+            return "::std::clone::Clone::clone(%s)" % s.view(e)
+        return s.e(e)
+
+    def field_value(s, x, label):
+        """the value stored into the field `label` of a constructor / literal: owned, boxed on a recursive edge"""
+        v = s.own_e(x)
+        return "::std::boxed::Box::new(%s)" % v if label in s.boxed else v
+
     # ---------- statements / code expressions ----------
     def block(s, stmts, ind):
         saved = dict(s.vt)
+        saved_refs = set(s.refs)
         for st in stmts:
             s.stmt(st, ind)
         s.vt = saved
+        s.refs = saved_refs
 
     def stmt(s, st, ind):
         if isinstance(st, Let):
-            s.emit(ind, "let %s%s: %s = %s;" % ("mut " if st.mutable else "", st.name, rty(st.type), s.e(st.value)))
+            s.emit(ind, "let %s%s: %s = %s;" % ("mut " if st.mutable else "", st.name, rty(st.type), s.own_e(st.value)))
             s.vt[st.name] = st.type
+            s.refs.discard(st.name)    # G9: a local is an owned value, never a reference
         elif isinstance(st, Assign):
-            s.emit(ind, "%s = %s;" % (st.name, s.e(st.value)))
+            s.emit(ind, "%s = %s;" % (st.name, s.own_e(st.value)))
         elif isinstance(st, FieldAssign):
-            # rhs is fully evaluated into a temporary before the store
+            # rhs is fully evaluated into a temporary before the store (the replaced value drops at the store)
             vty = st.value.ty
             decl = "let pruv_v: %s = " % rty(vty) if vty is not None else "let pruv_v = "
-            s.emit(ind, "{ %s%s; %s.%s = pruv_v; }" % (decl, s.e(st.value), st.name, ".".join(st.fields)))
+            stored = "pruv_v"
+            if s.boxed and s.path_boxed(st.name, st.fields):
+                stored = "::std::boxed::Box::new(pruv_v)"    # the assigned field is a recursive (Box) edge
+            s.emit(ind, "{ %s%s; %s.%s = %s; }" % (decl, s.own_e(st.value), st.name, ".".join(st.fields), stored))
         elif isinstance(st, IndexAssign):
             if is_bool_array(s.vt.get(st.name)):  # G2 A5
                 if s.verified:
@@ -825,11 +1247,13 @@ class Gen:
             s.block(st.body, ind + 1)
             s.emit(ind, "}")
         elif isinstance(st, Return):
-            s.emit(ind, "return;" if st.value is None else "return %s;" % s.e(st.value))
+            s.emit(ind, "return;" if st.value is None else "return %s;" % s.own_e(st.value))
         elif isinstance(st, Assert):
             pass
         elif isinstance(st, ExprStmt):
             s.emit(ind, s.e(st.expr) + ";")
+        elif isinstance(st, Match) and s.is_ext(st.scrutinee.ty):
+            s.match_ext(st, ind)
         elif isinstance(st, Match):
             s.emit(ind, "match %s {" % s.e(st.scrutinee))
             for a in st.arms:
@@ -840,8 +1264,39 @@ class Gen:
                 s.emit(ind + 1, "}")
             s.emit(ind, "}")
 
+    def match_ext(s, st, ind):
+        """match on an extended enum: the scrutinee is borrowed (a view, never cloned, never consumed) and every payload
+        binder is an arm-local view. Scalars and non-extended values are copied out (`let v: i64 = *v;`), extended
+        payloads become `&T` (a Box edge derefs by coercion), buffers become `&[T]` / `&str`."""
+        sty = st.scrutinee.ty
+        s.emit(ind, "match %s {" % s.view(st.scrutinee))
+        for a in st.arms:
+            name = a.ctor if a.enum_name is None else "%s::%s" % (a.enum_name, a.ctor)
+            pat = name if not a.binders else "%s(%s)" % (name, ", ".join(a.binders))
+            s.emit(ind + 1, "%s => {" % pat)
+            saved_vt, saved_refs = dict(s.vt), set(s.refs)
+            fields = s.table.variant(sty, a.ctor).fields
+            for b, fd in zip(a.binders, fields):
+                ft = fd.type
+                if s.is_ext(ft):
+                    s.emit(ind + 2, "let %s: &%s = %s;" % (b, ft.name, b))
+                    s.refs.add(b)
+                elif is_array(ft) or ft == STR:
+                    s.emit(ind + 2, "let %s: %s = %s;" % (b, rty(ft, True), b))
+                    s.refs.add(b)
+                else:
+                    s.emit(ind + 2, "let %s: %s = *%s;" % (b, rty(ft), b))
+                    s.refs.discard(b)
+                s.vt[b] = ft
+            s.block(a.body, ind + 2)
+            s.vt, s.refs = saved_vt, saved_refs
+            s.emit(ind + 1, "}")
+        s.emit(ind, "}")
+
     def arr_ref(s, e):
         """an array expression used as a borrowed slice"""
+        if isinstance(e, Var) and e.name in s.refs:
+            return e.name          # G9: a buffer payload view is already a reference
         if isinstance(e, Var) and e.name not in s.params:
             return "&" + e.name
         if isinstance(e, Var):
@@ -923,9 +1378,16 @@ class Gen:
             fs = s.table.fields(Type(e.name))
             if not fs:
                 return "(%s {})" % e.name
+            if s.ext:   # G9: constructor fields are owning positions; a recursive edge is boxed
+                return "(%s { %s })" % (e.name, ", ".join(
+                    "%s: %s" % (f.name, s.field_value(inits[f.name], "%s.%s" % (e.name, f.name))) for f in fs))
             return "(%s { %s })" % (e.name, ", ".join("%s: %s" % (f.name, s.e(inits[f.name])) for f in fs))
         if isinstance(e, EnumCtor):
             ctor = "%s::%s" % (e.enum_name, e.variant)
+            if e.args and s.ext:   # G9
+                vf = s.table.variant(Type(e.enum_name), e.variant).fields
+                return "%s(%s)" % (ctor, ", ".join(
+                    s.field_value(a, "%s::%s.%s" % (e.enum_name, e.variant, fd.name)) for a, fd in zip(e.args, vf)))
             return "%s(%s)" % (ctor, ", ".join(s.e(a) for a in e.args)) if e.args else ctor
         if isinstance(e, FieldAccess):
             return "%s.%s" % (s.e(e.base), e.field)
@@ -971,6 +1433,8 @@ class Gen:
                 if s.g6 and (isinstance(x, Move) or (x.ty is not None and is_collection(x.ty))):
                     take = isinstance(x, Move) or (callee is not None and callee.params[i].take)
                     args.append(s.e(x) if take else s.cref(x))
+                elif s.ext and s.is_ext(x.ty):
+                    args.append(s.view(x))   # G9: an extended argument is a read view; a fresh temporary lives through the call
                 elif x.ty is not None and (is_array(x.ty) or is_str(x.ty)):
                     args.append(s.arr_ref(x))
                 else:
@@ -1009,6 +1473,9 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
     mark = len(g.out)
     for f in prog.functions:
         g.fn(f)
+    # G9: size / equality helpers discovered while the requires checks were generated go in front of the functions
+    # (declaration order, no addresses or hashes); nothing at all is added when no runtime requires needs them
+    g.out[mark:mark] = g.g9_helper_texts()
     manifest = None
     if g.g6:
         # helpers are discovered while the functions are generated; they go in front of them, in first-use order

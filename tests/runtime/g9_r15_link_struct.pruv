@@ -1,0 +1,98 @@
+// G9 A2 runtime: a recursive struct reached through an enum (Node <-> Link); builders add 2 constructors per link, traversals cross both types
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn single(v: i64) -> Node ! alloc
+  ensures size(result) == 2 && result.value == v
+{
+  return Node { value: v, next: Link::End };
+}
+
+fn push(n: Node, v: i64) -> Node ! alloc
+  ensures size(result) == size(n) + 2 && result.value == v
+{
+  return Node { value: v, next: Link::More(n) };
+}
+
+fn chain3() -> Node ! alloc
+  ensures size(result) == 6
+{
+  let a: Node = single(1);
+  let b: Node = push(a, 2);
+  return push(b, 3);
+}
+
+fn grow(k: i64) -> Node ! alloc
+  requires k >= 0
+  ensures size(result) == 2 * k + 2
+  decreases k
+{
+  if k == 0 { return single(0); }
+  let r: Node = grow(k - 1);
+  return push(r, k);
+}
+
+fn node_len(n: Node) -> i64
+  requires size(n) <= 1000
+  ensures result >= 1 && result <= size(n)
+  decreases size(n)
+{
+  return 1 + link_len(n.next);
+}
+
+fn link_len(l: Link) -> i64
+  requires size(l) <= 1000
+  ensures result >= 0 && result <= size(l)
+  decreases size(l)
+{
+  match l {
+    Link::End => { return 0; }
+    Link::More(n) => { return node_len(n); }
+  }
+}
+
+fn last_value(n: Node) -> i64
+  requires size(n) <= 1000
+  decreases size(n)
+{
+  return link_last(n.next, n.value);
+}
+
+fn link_last(l: Link, fallback: i64) -> i64
+  requires size(l) <= 1000
+  decreases size(l)
+{
+  match l {
+    Link::End => { return fallback; }
+    Link::More(n) => { return last_value(n); }
+  }
+}
+
+fn chain3_len() -> i64 ! alloc {
+  let c: Node = chain3();
+  return node_len(c);
+}
+
+fn chain3_head() -> i64 ! alloc {
+  let c: Node = chain3();
+  return c.value;
+}
+
+fn chain3_last() -> i64 ! alloc {
+  let c: Node = chain3();
+  return last_value(c);
+}
+
+fn grown_len(k: i64) -> i64 ! alloc
+  requires k >= 0 && k <= 100
+{
+  let g: Node = grow(k);
+  return node_len(g);
+}
+
+fn grown_last(k: i64) -> i64 ! alloc
+  requires k >= 0 && k <= 100
+{
+  let g: Node = grow(k);
+  return last_value(g);
+}

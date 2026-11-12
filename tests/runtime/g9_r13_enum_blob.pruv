@@ -1,0 +1,77 @@
+// G9 A2 runtime: enum payloads of [i64], [u8], [bool] and str built inside Pruv and measured by a match
+enum Blob { Empty, Ints(items: [i64]), Bytes(data: [u8]), Bits(flags: [bool]), Text(s: str) }
+
+fn make_ints() -> Blob ! alloc {
+  let a: [i64] = alloc(2, 1);
+  return Blob::Ints(copy(a));
+}
+
+fn make_bytes() -> Blob ! alloc {
+  let a: [u8] = alloc(5, 0);
+  return Blob::Bytes(copy(a));
+}
+
+fn make_bits() -> Blob ! alloc {
+  let a: [bool] = alloc(3, true);
+  return Blob::Bits(copy(a));
+}
+
+fn make_text() -> Blob ! alloc {
+  return Blob::Text(copy("hello"));
+}
+
+fn blob_len(b: Blob) -> i64
+  ensures result >= 0
+  ensures is_variant(b, Blob::Empty) ==> result == 0
+{
+  match b {
+    Blob::Empty => { return 0; }
+    Blob::Ints(a) => { return len(a); }
+    Blob::Bytes(d) => { return len(d); }
+    Blob::Bits(f) => { return len(f); }
+    Blob::Text(s) => { return len(s); }
+  }
+}
+
+fn first_true(b: Blob) -> bool {
+  match b {
+    Blob::Empty => { return false; }
+    Blob::Ints(a) => { return false; }
+    Blob::Bytes(d) => { return false; }
+    Blob::Bits(f) => {
+      if len(f) >= 1 { return f[0]; }
+      return false;
+    }
+    Blob::Text(s) => { return false; }
+  }
+}
+
+fn blob_demo(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 4
+{
+  if k == 0 { return blob_len(Blob::Empty); }
+  if k == 1 {
+    let b: Blob = make_ints();
+    return blob_len(b);
+  }
+  if k == 2 {
+    let b: Blob = make_bytes();
+    return blob_len(b);
+  }
+  if k == 3 {
+    let b: Blob = make_bits();
+    return blob_len(b);
+  }
+  let b: Blob = make_text();
+  return blob_len(b);
+}
+
+fn bits_first() -> bool ! alloc {
+  let b: Blob = make_bits();
+  return first_true(b);
+}
+
+fn ints_first() -> bool ! alloc {
+  let b: Blob = make_ints();
+  return first_true(b);
+}

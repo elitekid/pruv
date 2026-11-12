@@ -1,0 +1,11 @@
+// G9 A1 audit fix: a guarded buffer selector of a recursive enum has len >= 0 from the parent's wf equation
+enum Chain { Stop, Link(data: [i64], rest: Chain) }
+
+fn f(c: Chain) -> i64
+  ensures result >= 0
+{
+  match c {
+    Chain::Stop => { return 0; }
+    Chain::Link(data, rest) => { return len(data); }
+  }
+}

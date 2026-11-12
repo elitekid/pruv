@@ -13,8 +13,12 @@ For a non-generic nominal declaration D with constructors C_1..C_k (a struct has
 as the structural definition (a nested `If` over the recognizers; the last constructor is the else branch, the
 constructors are exhaustive). Weights: nominal non-generic value -> `size_E(value)`; `Some(v)`/`Ok(v)` -> weight of the
 payload (guarded by the recognizer), `None`/`Err` -> 0; scalar, `[i64]`/`[u8]`/`[bool]`, `str` -> 0; an admitted acyclic
-G3 application (e.g. `Pair<i64>`) is expanded by the Python helper `size_value` (one level per generic application,
-finite because generic declarations are never recursive). All `size_E` of one nominal type SCC are declared first and
+G3 application (e.g. `Pair<i64>`) -> a constant when its size is value-independent (`fixed_size`: a struct whose
+fields are all scalars, buffers, collections or such structs has size 1 + the sum of the nested sizes; anything with
+an Option/Result/enum field has no fixed size), otherwise the per-instance uninterpreted function `size!<instance
+sort>` (`size_inst`). The instance function gets positivity only (`size_inst(c) >= 1`, added by `facts` for every
+such direct child); it has no one-step equation, so it is never expanded (a function over a deep finite datatype
+sort is very slow in z3, hence the constant). All `size_E` of one nominal type SCC are declared first and
 defined together (mutual recursion); dependency SCCs are built first, so every definition refers only to functions
 already declared. A1 decision: the Z3 symbols are plain uninterpreted functions; the definition is
 asserted only as ground one-step instances on observed terms (`Model.facts`), never as a `RecFunction` or a
@@ -64,8 +68,11 @@ siblings (observed children).
   an argument that is a proven in-range i64 satisfies its own wf, so nothing unchecked is used to prove itself.
 * Match arms: the binders are assumed well formed, exactly as before G9 (the scrutinee is an executable value).
   For a recursive child the assumption is `wf_E(binder)`; it is also derivable from `wf_D(scrutinee)` and L2.
-* Guarded selectors (`variant_field`, field access): the term is observed (L1/L2 only); the `variant_domain` /
+* Guarded selectors (`variant_field`, field access): the parent term is observed first (its one-step wf/size
+  equations give the field's own facts), then the field value; only L1/L2 facts are added; the `variant_domain` /
   `contract_domain` obligation of the partial selector is unchanged and still required.
+* `observe` caches observed terms by z3 AST id (`State.obs` holds the ids of observed terms and of added facts): a
+  term already observed on the path is skipped without recomputing its facts.
 * Contract literals (`code=False`): constructors build the datatype value from the mathematical field values
   without range obligations or assumptions; wf is never assumed for them. Only the valid facts L1/L2 are added.
 * Buffer fields: stored as a datatype `Buf(len, arr)`. `field_get` projects to the existing array model and

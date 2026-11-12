@@ -1,0 +1,46 @@
+// G9 A2 runtime: mutually recursive enums (Rose, Kids) with mutually recursive functions measured by size
+// rose_sample(): Branch(1)[Leaf 2, Branch(3)[Leaf 4], Leaf 5]: 5 rose nodes, 11 constructors
+enum Rose { Leaf(value: i64), Branch(value: i64, kids: Kids) }
+enum Kids { End, Next(head: Rose, rest: Kids) }
+
+fn rose_count(r: Rose) -> i64
+  requires size(r) <= 1000
+  ensures result >= 1 && result <= size(r)
+  decreases size(r)
+{
+  match r {
+    Rose::Leaf(v) => { return 1; }
+    Rose::Branch(v, kids) => { return 1 + kids_count(kids); }
+  }
+}
+
+fn kids_count(k: Kids) -> i64
+  requires size(k) <= 1000
+  ensures result >= 0 && result <= size(k)
+  decreases size(k)
+{
+  match k {
+    Kids::End => { return 0; }
+    Kids::Next(h, rest) => { return rose_count(h) + kids_count(rest); }
+  }
+}
+
+fn rose_sample() -> Rose ! alloc
+  ensures size(result) == 11
+{
+  return Rose::Branch(1, Kids::Next(Rose::Leaf(2), Kids::Next(Rose::Branch(3, Kids::Next(Rose::Leaf(4), Kids::End)), Kids::Next(Rose::Leaf(5), Kids::End))));
+}
+
+fn two_kids() -> Kids ! alloc
+  ensures size(result) == 5
+{
+  return Kids::Next(Rose::Leaf(1), Kids::Next(Rose::Leaf(2), Kids::End));
+}
+
+fn sample_rose_count() -> i64 ! alloc {
+  return rose_count(rose_sample());
+}
+
+fn two_kids_count() -> i64 ! alloc {
+  return kids_count(two_kids());
+}

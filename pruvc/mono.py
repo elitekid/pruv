@@ -21,6 +21,14 @@ loop invariants are dropped from the concrete functions (code generation never r
 Output order: functions by declaration order, then the lexicographic tuple of argument encodings (G3_SPEC 5.2);
 types by the same key, then dependency-first (TypeTable.order, applied by the code generator).
 
+G9 A2 (recursion): an instance is REGISTERED (request_fn / request_type put it into self.fns / self.types and onto the
+work list) before its body is copied, and a call is only ever replaced by the stem of a registered instance. Following a
+recursive or mutually recursive call therefore finds the instance already registered and adds nothing: specialization of
+(mutually) recursive generic functions terminates, and it never recurses over call chains (work list, no recursion over
+the call graph). G9 allows only stable type-parameter vectors inside a recursive SCC (check.py), so the number of
+instances stays bounded by the existing limits below. The output order (declaration order, then argument encodings) never
+walks the call graph; type dependency order is computed by the code generator on the SCC condensation of the type graph.
+
 Limits (G3_SPEC 5.1): 4096 function specializations, 4096 nominal applications, instantiated type nesting depth
 128 (the root counts as depth one). Exceeding one raises PruvError(codegen, specialization_limit) naming the
 trigger; no plan (hence no output) is produced. One more guard of the same code: a single instantiated type with
@@ -383,6 +391,11 @@ class _Mono:
         keyed += [((self.tindex[s.name], s.encs), s.decl) for s in type_specs]
         keyed.sort(key=lambda kd: kd[0])
         program = Program(functions=functions, types=[d for _, d in keyed])
+        # G9 A2: the concrete program keeps the checker's G9 metadata (recursive/boxed/extended declarations). Extended
+        # types are never generic (check.py), so their names are the same in the concrete program; the metadata is
+        # shared read-only, never mutated.
+        if prog.g9 is not None:
+            program.g9 = prog.g9
         return SpecPlan(prog, program, fn_specs, type_specs, root_names)
 
 

@@ -1,0 +1,86 @@
+// G9 A2 runtime: recursive builder (BST insert) where every insert adds exactly 2 constructors; queries over the built tree
+// inserts 5, 3, 8, 1, 4, 9: 6 nodes, size 13, minimum (leftmost) 1
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn insert(t: Tree, x: i64) -> Tree ! alloc
+  ensures size(result) == size(t) + 2
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return Tree::Node(x, Tree::Empty, Tree::Empty); }
+    Tree::Node(v, l, r) => {
+      if x < v { return Tree::Node(v, insert(l, x), r); }
+      return Tree::Node(v, l, insert(r, x));
+    }
+  }
+}
+
+fn build() -> Tree ! alloc
+  ensures size(result) == 13
+{
+  let t0: Tree = Tree::Empty;
+  let t1: Tree = insert(t0, 5);
+  let t2: Tree = insert(t1, 3);
+  let t3: Tree = insert(t2, 8);
+  let t4: Tree = insert(t3, 1);
+  let t5: Tree = insert(t4, 4);
+  return insert(t5, 9);
+}
+
+fn nodes(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + nodes(l) + nodes(r); }
+  }
+}
+
+fn contains(t: Tree, x: i64) -> bool
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return false; }
+    Tree::Node(v, l, r) => {
+      if v == x { return true; }
+      if x < v { return contains(l, x); }
+      return contains(r, x);
+    }
+  }
+}
+
+fn is_empty(t: Tree) -> bool {
+  match t {
+    Tree::Empty => { return true; }
+    Tree::Node(v, l, r) => { return false; }
+  }
+}
+
+fn leftmost(t: Tree) -> i64
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => {
+      if is_empty(l) { return v; }
+      return leftmost(l);
+    }
+  }
+}
+
+fn bst_count() -> i64 ! alloc {
+  let t: Tree = build();
+  return nodes(t);
+}
+
+fn bst_has(x: i64) -> bool ! alloc {
+  let t: Tree = build();
+  return contains(t, x);
+}
+
+fn bst_min() -> i64 ! alloc {
+  let t: Tree = build();
+  return leftmost(t);
+}

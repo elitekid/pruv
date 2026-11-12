@@ -1,0 +1,34 @@
+// G9 A2 runtime: [u8] and str fields of a struct read by array-index recursion; bytes 9, 200, 9, 9 sum to 227
+struct Packet { bytes: [u8], label: str }
+
+fn bytes_sum(p: Packet, i: i64) -> i64
+  requires 0 <= i && i <= len(p.bytes) && len(p.bytes) <= 1000
+  ensures 0 <= result && result <= 255 * (len(p.bytes) - i)
+  decreases len(p.bytes) - i
+{
+  if i == len(p.bytes) { return 0; }
+  return p.bytes[i] + bytes_sum(p, i + 1);
+}
+
+fn make_packet() -> Packet ! alloc
+  ensures len(result.bytes) == 4
+{
+  let mut raw: [u8] = alloc(4, 9);
+  raw[1] = 200;
+  return Packet { bytes: copy(raw), label: "ok" };
+}
+
+fn packet_sum() -> i64 ! alloc {
+  let p: Packet = make_packet();
+  return bytes_sum(p, 0);
+}
+
+fn packet_tail_sum() -> i64 ! alloc {
+  let p: Packet = make_packet();
+  return bytes_sum(p, 2);
+}
+
+fn packet_label_len() -> i64 ! alloc {
+  let p: Packet = make_packet();
+  return len(p.label);
+}

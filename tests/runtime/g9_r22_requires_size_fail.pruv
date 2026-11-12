@@ -1,0 +1,30 @@
+// G9 A2 runtime: an internal requires over size() is checked at run time under --no-verify (the default verifier would reject the second call)
+// leaf has 3 constructors and passes; the 5-node chain (11 constructors) violates size(t) <= 3
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn chain(n: i64) -> Tree ! alloc
+  requires n >= 0
+  ensures size(result) == 2 * n + 1
+  decreases n
+{
+  if n == 0 { return Tree::Empty; }
+  return Tree::Node(n, chain(n - 1), Tree::Empty);
+}
+
+fn small_nodes(t: Tree) -> i64
+  requires size(t) <= 3
+  ensures result >= 0 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + small_nodes(l) + small_nodes(r); }
+  }
+}
+
+fn chain_small(n: i64) -> i64 ! alloc
+  requires n >= 0 && n <= 100
+{
+  let t: Tree = chain(n);
+  return small_nodes(t);
+}

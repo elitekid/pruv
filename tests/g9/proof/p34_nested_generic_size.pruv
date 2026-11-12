@@ -1,0 +1,9 @@
+// G9 A1 audit fix: a nested generic field gets its own size function (no value expansion that doubles per level)
+struct Dup<T> { a: T, b: T }
+struct Root { d: Dup<Dup<Dup<Dup<Dup<Dup<Dup<Dup<Dup<Dup<Dup<Dup<bool>>>>>>>>>>>> }
+
+fn f(r: Root) -> i64
+  ensures size(r) >= 2
+{
+  return 0;
+}

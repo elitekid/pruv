@@ -206,13 +206,9 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // G9 A1 (same place as in Python compile_file): the verifier handles G9 programs; the code generation guard runs
     // right here only with --no-verify, otherwise after a successful verification (so proof errors come first).
     // Nothing is written. The llvm backend is every kind other than the Rust source one.
-    if !a.verify {
-        let g9_err = if a.kind != Kind::Rs {
-            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer")
-        } else {
-            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "rust codegen layer")
-        };
-        if let Some(e) = g9_err {
+    // G9 A2: the Rust source backend lowers G9 programs; only the LLVM backend (and --also-llvm) keeps the guard.
+    if !a.verify && (a.kind != Kind::Rs || a.also_llvm.is_some()) {
+        if let Some(e) = pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer") {
             return Err(Fail::Lang(vec![e]));
         }
     }
@@ -250,14 +246,11 @@ fn compile(a: &Args) -> Result<(), Fail> {
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
         }
-        // G9 A1: verification succeeded; the downstream guard still stops every G9 program
-        let g9_err = if a.kind != Kind::Rs {
-            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer")
-        } else {
-            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "rust codegen layer")
-        };
-        if let Some(e) = g9_err {
-            return Err(Fail::Lang(vec![e]));
+        // G9: verification succeeded; the LLVM guard (lifted by A3) still stops G9 programs there
+        if a.kind != Kind::Rs || a.also_llvm.is_some() {
+            if let Some(e) = pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer") {
+                return Err(Fail::Lang(vec![e]));
+            }
         }
         if g6_native {
             if let Some(e) = foreign_target_error(&prog) {
@@ -296,7 +289,11 @@ fn compile(a: &Args) -> Result<(), Fail> {
                 &a.foreign_checks,
                 &a.rust_extern_specs,
             )
-            .map_err(Fail::Internal)?;
+            .map_err(|e| match e {
+                // G9 A2: a runtime requires the Rust backend cannot lower yet is a diagnostic (Python PruvError)
+                pruv_core::codegen::GenError::Diag(p) => Fail::Lang(vec![p]),
+                pruv_core::codegen::GenError::Msg(m) => Fail::Internal(m),
+            })?;
             let llvm_texts = match &a.also_llvm {
                 Some(_) => Some(generate(a, gprog)?),
                 None => None,

@@ -1,0 +1,50 @@
+// G9 A2 runtime: byte reads of str values: byte sums and the first non-ASCII byte position (UTF-8 bytes, not characters)
+// "abc" sums to 294; "héllo" is 6 bytes 104 195 169 108 108 111 (sum 795) with the first byte >= 128 at index 1
+fn byte_sum(s: str, i: i64) -> i64
+  requires 0 <= i && i <= len(s) && len(s) <= 1000
+  ensures 0 <= result && result <= 255 * (len(s) - i)
+  decreases len(s) - i
+{
+  if i == len(s) { return 0; }
+  return s[i] + byte_sum(s, i + 1);
+}
+
+fn first_high(s: str, i: i64) -> i64
+  requires 0 <= i && i <= len(s)
+  ensures result >= 0 - 1 && result < len(s)
+  decreases len(s) - i
+{
+  if i == len(s) { return 0 - 1; }
+  if s[i] >= 128 { return i; }
+  return first_high(s, i + 1);
+}
+
+fn abc_sum() -> i64 ! alloc {
+  let s: str = "abc";
+  return byte_sum(s, 0);
+}
+
+fn uni_sum() -> i64 ! alloc {
+  let s: str = "héllo";
+  return byte_sum(s, 0);
+}
+
+fn uni_len() -> i64 ! alloc {
+  let s: str = "héllo";
+  return len(s);
+}
+
+fn uni_high() -> i64 ! alloc {
+  let s: str = "héllo";
+  return first_high(s, 0);
+}
+
+fn ascii_high() -> i64 ! alloc {
+  let s: str = "hello";
+  return first_high(s, 0);
+}
+
+fn uni_tail_high() -> i64 ! alloc {
+  let s: str = "héllo";
+  return first_high(s, 3);
+}

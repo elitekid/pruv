@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"]], "contract_budget": 1000, "exit": 0, "stdout_lines": ["0", "10", "50"]}

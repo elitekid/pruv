@@ -1,0 +1,43 @@
+// G9 A2 runtime: mutual recursion: even/odd with a shared measure and a three-function cycle with phase measures 3n+2, 3n+1, 3n
+fn even(n: i64) -> bool
+  requires n >= 0
+  ensures result == (n % 2 == 0)
+  decreases n
+{
+  if n == 0 { return true; }
+  return odd(n - 1);
+}
+
+fn odd(n: i64) -> bool
+  requires n >= 0
+  ensures result == (n % 2 == 1)
+  decreases n
+{
+  if n == 0 { return false; }
+  return even(n - 1);
+}
+
+fn pa(n: i64) -> i64
+  requires n >= 0
+  ensures result == n
+  decreases 3 * n + 2
+{
+  if n == 0 { return 0; }
+  return pb(n);
+}
+
+fn pb(n: i64) -> i64
+  requires n >= 1
+  ensures result == n
+  decreases 3 * n + 1
+{
+  return pc(n);
+}
+
+fn pc(n: i64) -> i64
+  requires n >= 1
+  ensures result == n
+  decreases 3 * n
+{
+  return 1 + pa(n - 1);
+}

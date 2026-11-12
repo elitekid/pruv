@@ -1,0 +1,44 @@
+// G9 A2 runtime: [i64] struct field; with_first clones the bag, rewrites the buffer through a mutable copy and replaces the field; the original is unchanged
+struct Bag { items: [i64], tag: i64 }
+
+fn make_bag() -> Bag ! alloc
+  ensures len(result.items) == 3
+{
+  let a: [i64] = alloc(3, 7);
+  return Bag { items: copy(a), tag: 1 };
+}
+
+fn with_first(b: Bag, v: i64) -> Bag ! alloc
+  requires len(b.items) >= 1
+  ensures len(result.items) == len(b.items)
+{
+  let mut c: Bag = b;
+  let mut arr: [i64] = copy(c.items);
+  arr[0] = v;
+  c.items = copy(arr);
+  return c;
+}
+
+fn orig_first() -> i64 ! alloc {
+  let b: Bag = make_bag();
+  let c: Bag = with_first(b, 5);
+  return b.items[0];
+}
+
+fn new_first() -> i64 ! alloc {
+  let b: Bag = make_bag();
+  let c: Bag = with_first(b, 5);
+  return c.items[0];
+}
+
+fn new_len() -> i64 ! alloc {
+  let b: Bag = make_bag();
+  let c: Bag = with_first(b, 5);
+  return len(c.items);
+}
+
+fn new_tag() -> i64 ! alloc {
+  let b: Bag = make_bag();
+  let c: Bag = with_first(b, 5);
+  return c.tag;
+}

@@ -168,7 +168,7 @@ class Model:
         s.recrel = set()    # names of non-generic types that are recursive or (transitively) contain a recursive type
         s.bufs = {}         # "int" | "bool" -> (sort, constructor, length accessor, array accessor)
         s.buf_names = set()
-        s.size_f, s.wf_f = {}, {}
+        s.size_f, s.wf_f, s.fixed_memo = {}, {}, {}
         if meta is not None:
             pindex = {}
             for i, d in enumerate(prog.types):
@@ -311,8 +311,46 @@ class Model:
         if s.tt.is_struct(fty) or s.tt.is_enum(fty):
             if not fty.args:
                 return s.size_fn(fty.name)(t)
-            return s.size_value(fty, t)      # admitted acyclic G3 application: internal helper traversal
+            k = s.fixed_size(fty)
+            if k is not None:
+                return z3.IntVal(k)          # value-independent size: a constant (no function over a huge finite sort)
+            return s.size_inst(fty)(t)       # admitted acyclic G3 application: its own uninterpreted size
         return None
+
+    def fixed_size(s, ty):
+        """the size of every value of the user type ty when it does not depend on the value (a struct whose fields are
+        all scalars, buffers, collections or such structs), else None. Memoized per structural type, so a nested
+        generic application costs one computation per level. z3 is very slow on an uninterpreted function over a deep
+        nested finite datatype sort, so such sizes are never left to a function."""
+        memo = s.fixed_memo
+        if ty in memo:
+            return memo[ty]
+        memo[ty] = None      # an in-progress (cyclic) type is never fixed
+        k = None
+        if s.tt.is_struct(ty):
+            k = 1
+            for _, fty in s.fields_of(ty):
+                if fty.owner is not None or fty in (I64, BOOL) or s.is_buf(fty) or is_collection(fty):
+                    continue
+                if fty in (OPTION, RESULT) or fty.name in ("option", "result") or not s.tt.is_struct(fty):
+                    k = None
+                    break
+                c = s.fixed_size(fty)
+                if c is None:
+                    k = None
+                    break
+                k += c
+        memo[ty] = k
+        return k
+
+    def size_inst(s, ty):
+        """size of an admitted acyclic generic application D<X..> as an uninterpreted z3 function per instance
+        sort; its one-step equation comes from facts() on observed terms only (never a full value expansion)"""
+        srt = s.instance(ty)
+        f = s.size_f.get(srt.name())
+        if f is None:
+            f = s.size_f[srt.name()] = z3.Function("%ssize!%s" % (s.pre, srt.name()), srt, z3.IntSort())
+        return f
 
     def size_sum(s, ty, variant, accs, t):
         total = z3.IntVal(1)
@@ -356,13 +394,15 @@ class Model:
             out.append(s.wf_fn(n)(t) == (z3.BoolVal(True) if body is None else body))
         d = s.tt.decls[n]
         if isinstance(d, StructDecl):
-            groups = [(None, s.struct[n][1])]
+            groups = [(None, s.struct_info(ty)[1])]
         else:
-            groups = [(v.name, s.enum[n][v.name][2]) for v in d.variants]
+            groups = [(v.name, s.enum_info(ty)[v.name][2]) for v in d.variants]
         for vname, accs in groups:
             for (fd, fty), acc in zip(s.fields_of(ty, vname), accs):
                 if s.rel_nominal(fty):
                     out.append(s.size_fn(fty.name)(acc(t)) >= 1)
+                elif fty.owner is None and fty.args and s.is_user(fty) and s.fixed_size(fty) is None:
+                    out.append(s.size_inst(fty)(acc(t)) >= 1)
         return out
 
     def rel_nominal(s, ty):
@@ -852,13 +892,16 @@ class FnVerifier:
             return
         if not (m.rel(ty) or (force and m.rel_nominal(ty))):
             return
-        ids = st.obs
+        tid = t.get_id()            # z3 AST ids: a term (datatype sort) never shares an id with a fact (Bool)
+        if tid in st.obs:
+            return
+        new = [tid]
         for fct in m.facts(ty, t):
             i = fct.get_id()
-            if i not in ids:
-                ids = ids | {i}
+            if i not in st.obs:
+                new.append(i)
                 st.pc.append(fct)
-        st.obs = ids
+        st.obs = st.obs | set(new)
 
     def rebuild(s, ty, cur, path, new):
         """struct value `cur` of type ty with the field path replaced by `new`"""
@@ -1237,7 +1280,8 @@ class FnVerifier:
             ty = s.model.type_of(v)
             i = s.model.tt.field_index(ty, e.field)
             r = s.model.struct_info(ty)[1][i](v)
-            if s.model.g9:      # G9 A1: adapt a buffer field to an Arr; a nominal child is an observed term
+            if s.model.g9:      # G9 A1: adapt a buffer field to an Arr; parent and nominal child are observed terms
+                s.observe(st, v, ty)        # the parent's one-step wf/size equations give the field's own facts
                 fty = s.model.fields_of(ty)[i][1]
                 r = s.model.field_get(fty, r, e.field)
                 s.observe(st, r, fty)
@@ -1251,6 +1295,7 @@ class FnVerifier:
             i = s.model.tt.field_index(ety, e.field, e.variant)
             r = s.model.enum_info(ety)[e.variant][2][i](v)
             if s.model.g9:
+                s.observe(st, v, ety)
                 fty = s.model.fields_of(ety, e.variant)[i][1]
                 r = s.model.field_get(fty, r, e.field)
                 s.observe(st, r, fty)

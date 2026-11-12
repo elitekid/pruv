@@ -189,18 +189,127 @@ pub fn conv(t: &str, x: &str) -> String {
     try_conv(t, x).unwrap()
 }
 
+/// G9 A2 (Python `condensed_type_order`): indices into `tt.decls` in dependency-first order over the SCC condensation of
+/// the field-dependency graph. Iterative Tarjan: roots in declaration order, successors in field order (first
+/// occurrence), a component is emitted when its root finishes, the members of one component in declaration order.
+pub fn condensed_type_order(tt: &TypeTable) -> Vec<usize> {
+    let count = tt.decls.len();
+    let mut index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (i, d) in tt.decls.iter().enumerate() {
+        index.insert(d.name(), i);
+    }
+    let mut adj: Vec<Vec<usize>> = Vec::with_capacity(count);
+    for d in &tt.decls {
+        let mut out: Vec<usize> = Vec::new();
+        for f in d.all_fields() {
+            for m in crate::gtype::dependencies(&GType::from_key(&f.ty)) {
+                if let Some(&j) = index.get(m.as_str()) {
+                    if !out.contains(&j) {
+                        out.push(j);
+                    }
+                }
+            }
+        }
+        adj.push(out);
+    }
+    let mut num: Vec<i64> = vec![-1; count];
+    let mut low: Vec<i64> = vec![0; count];
+    let mut onstack: Vec<bool> = vec![false; count];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut comps: Vec<Vec<usize>> = Vec::new();
+    let mut counter: i64 = 0;
+    for root in 0..count {
+        if num[root] != -1 {
+            continue;
+        }
+        num[root] = counter;
+        low[root] = counter;
+        counter += 1;
+        stack.push(root);
+        onstack[root] = true;
+        let mut work: Vec<(usize, usize)> = vec![(root, 0)];
+        while let Some((v, pos)) = work.pop() {
+            if pos < adj[v].len() {
+                work.push((v, pos + 1));
+                let w = adj[v][pos];
+                if num[w] == -1 {
+                    num[w] = counter;
+                    low[w] = counter;
+                    counter += 1;
+                    stack.push(w);
+                    onstack[w] = true;
+                    work.push((w, 0));
+                } else if onstack[w] {
+                    low[v] = low[v].min(num[w]);
+                }
+            } else {
+                if low[v] == num[v] {
+                    let mut comp: Vec<usize> = Vec::new();
+                    loop {
+                        let w = stack.pop().unwrap();
+                        onstack[w] = false;
+                        comp.push(w);
+                        if w == v {
+                            break;
+                        }
+                    }
+                    comps.push(comp);
+                }
+                if let Some(&(parent, _)) = work.last() {
+                    low[parent] = low[parent].min(low[v]);
+                }
+            }
+        }
+    }
+    let mut out: Vec<usize> = Vec::with_capacity(count);
+    for mut comp in comps {
+        comp.sort();
+        out.extend(comp);
+    }
+    out
+}
+
+/// G9 A2 (Python `make_type_table`): the type table of a program; a G9 program gets the condensed dependency order.
+pub fn make_type_table(prog: &Program) -> TypeTable {
+    let mut tt = TypeTable::new(&prog.types);
+    if prog.g9.is_some() {
+        tt.order = condensed_type_order(&tt);
+    }
+    tt
+}
+
 /// A `pub struct`/`pub enum` per user type, dependencies first (TypeTable.order).
 pub fn emit_public_types(prog: &Program) -> String {
-    let tt = TypeTable::new(&prog.types);
+    emit_public_types_with(prog, &make_type_table(prog))
+}
+
+/// `emit_public_types` over a given table (Python `emit_public_types(prog, order)`): G9: an extended type derives Clone,
+/// never Copy; a boxed field (recursive edge) is `::std::boxed::Box<Child>`.
+pub fn emit_public_types_with(prog: &Program, tt: &TypeTable) -> String {
+    let (ext, boxed): (std::collections::HashSet<&str>, std::collections::HashSet<&str>) = match &prog.g9 {
+        Some(m) => (m.extended.iter().map(|s| s.as_str()).collect(), m.boxed.iter().map(|s| s.as_str()).collect()),
+        None => (Default::default(), Default::default()),
+    };
+    let fty = |ty: &str, label: &str| -> String {
+        let r = rty(ty, false);
+        if boxed.contains(label) { format!("::std::boxed::Box<{}>", r) } else { r }
+    };
     let mut out: Vec<String> = Vec::new();
     for d in tt.ordered() {
         out.push("#[allow(dead_code, non_camel_case_types, non_snake_case)]".to_string());
-        out.push("#[derive(Clone, Copy, Debug, PartialEq, Eq)]".to_string());
+        if ext.contains(d.name()) {
+            out.push("#[derive(Clone, Debug)]".to_string());
+        } else {
+            out.push("#[derive(Clone, Copy, Debug, PartialEq, Eq)]".to_string());
+        }
         match d {
             TypeDecl::Struct(s) => {
                 if !s.fields.is_empty() {
-                    let body: Vec<String> =
-                        s.fields.iter().map(|f| format!("pub {}: {}", f.name, rty(&f.ty, false))).collect();
+                    let body: Vec<String> = s
+                        .fields
+                        .iter()
+                        .map(|f| format!("pub {}: {}", f.name, fty(&f.ty, &format!("{}.{}", s.name, f.name))))
+                        .collect();
                     out.push(format!("pub struct {} {{ {} }}", s.name, body.join(", ")));
                 } else {
                     out.push(format!("pub struct {} {{}}", s.name));
@@ -210,7 +319,11 @@ pub fn emit_public_types(prog: &Program) -> String {
                 let mut vs: Vec<String> = Vec::new();
                 for v in &e.variants {
                     if !v.fields.is_empty() {
-                        let fs: Vec<String> = v.fields.iter().map(|f| rty(&f.ty, false)).collect();
+                        let fs: Vec<String> = v
+                            .fields
+                            .iter()
+                            .map(|f| fty(&f.ty, &format!("{}::{}.{}", e.name, v.name, f.name)))
+                            .collect();
                         vs.push(format!("{}({})", v.name, fs.join(", ")));
                     } else {
                         vs.push(v.name.clone());

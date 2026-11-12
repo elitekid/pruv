@@ -503,6 +503,8 @@ pub struct Model {
     /// lazily declared uninterpreted `size!<Name>` / `wf!<Name>` functions
     size_f: RefCell<HashMap<String, FuncDecl>>,
     wf_f: RefCell<HashMap<String, FuncDecl>>,
+    /// verify.py `s.fixed_memo`: memoized `fixed_size` per structural type (keyed by its Debug text; Ty is not Hash)
+    fixed_memo: RefCell<HashMap<String, Option<i64>>>,
 }
 
 /// typeinfo.py `_deps` as names: field dependencies on declared user types (no duplicates, first-appearance order).
@@ -635,6 +637,7 @@ impl Model {
             buf_names: RefCell::new(HashSet::new()),
             size_f: RefCell::new(HashMap::new()),
             wf_f: RefCell::new(HashMap::new()),
+            fixed_memo: RefCell::new(HashMap::new()),
         };
         // G9 A1: recursive type SCCs and the types that (transitively) contain one
         if let Some(meta) = meta {
@@ -921,10 +924,62 @@ impl Model {
             if let Ty::User(n) = fty {
                 return Ok(Some(self.size_fn(n)?.apply1(t)));
             }
-            // an admitted acyclic G3 application: internal helper traversal
-            return Ok(Some(self.size_value(fty, t)?));
+            // a generic application: a constant when the size is value-independent, else its own per-instance size
+            if let Some(k) = self.fixed_size(fty)? {
+                return Ok(Some(self.z.int(k)));
+            }
+            return Ok(Some(self.size_inst(fty)?.apply1(t)));
         }
         Ok(None)
+    }
+
+    /// verify.py `Model.fixed_size`: the size of every value of the user type `ty` when it does not depend on the value (a
+    /// struct whose fields are all scalars, buffers, collections or such structs), else None. Memoized per structural type;
+    /// an in-progress (cyclic) type is never fixed.
+    pub fn fixed_size(&self, ty: &Ty) -> Result<Option<i64>, String> {
+        let key = format!("{:?}", ty);
+        if let Some(r) = self.fixed_memo.borrow().get(&key) {
+            return Ok(*r);
+        }
+        self.fixed_memo.borrow_mut().insert(key.clone(), None);
+        let mut k: Option<i64> = None;
+        if self.nominal_kind(ty) == Some(NomKind::Struct) {
+            k = Some(1);
+            for (_fd, fty) in self.fields_of(ty, None)? {
+                if matches!(fty, Ty::Param(_) | Ty::I64 | Ty::Bool) || Model::is_buf(&fty) || fty.coll().is_some() {
+                    continue;
+                }
+                let is_opt_res = matches!(&fty, Ty::Opt | Ty::Res)
+                    || matches!(&fty, Ty::Inst(g) if g.name == "option" || g.name == "result");
+                if is_opt_res || self.nominal_kind(&fty) != Some(NomKind::Struct) {
+                    k = None;
+                    break;
+                }
+                match self.fixed_size(&fty)? {
+                    None => {
+                        k = None;
+                        break;
+                    }
+                    Some(c) => k = k.map(|x| x + c),
+                }
+            }
+        }
+        self.fixed_memo.borrow_mut().insert(key, k);
+        Ok(k)
+    }
+
+    /// verify.py `Model.size_inst`: size of an admitted acyclic generic application D<X..> as an uninterpreted z3 function per
+    /// instance sort (`<pre>size!<instance sort name>`, cached in `size_f` under the sort name).
+    pub fn size_inst(&self, ty: &Ty) -> Result<FuncDecl, String> {
+        let Ty::Inst(g) = ty else { return Err(nokey(ty.name())) };
+        let srt = self.instance(g)?;
+        let sname = srt.name();
+        if let Some(f) = self.size_f.borrow().get(&sname) {
+            return Ok(f.clone());
+        }
+        let f = self.z.func_decl(&format!("{}size!{}", self.pre_tag, sname), &[srt], &self.int_sort);
+        self.size_f.borrow_mut().insert(sname, f.clone());
+        Ok(f)
     }
 
     /// verify.py `Model.size_sum`.

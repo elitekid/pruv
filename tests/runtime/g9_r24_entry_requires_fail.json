@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"]], "exit": 101, "stdout_lines": ["10", "100"], "stderr_contains": "pruv: requires violated: chain_nodes:"}

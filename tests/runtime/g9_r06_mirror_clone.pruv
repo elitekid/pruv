@@ -1,0 +1,63 @@
+// G9 A2 runtime: independent clones: mirroring a clone (and a fresh mirrored tree) never changes the original tree
+// leftmost value: original sample 2, mirrored sample 7 (the mirrored root's left child is the old right child 7)
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn sample() -> Tree ! alloc
+  ensures size(result) == 9
+{
+  return Tree::Node(4, Tree::Node(2, Tree::Empty, Tree::Empty), Tree::Node(7, Tree::Node(5, Tree::Empty, Tree::Empty), Tree::Empty));
+}
+
+fn mirror(t: Tree) -> Tree ! alloc
+  ensures size(result) == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return Tree::Empty; }
+    Tree::Node(v, l, r) => { return Tree::Node(v, mirror(r), mirror(l)); }
+  }
+}
+
+fn is_empty(t: Tree) -> bool {
+  match t {
+    Tree::Empty => { return true; }
+    Tree::Node(v, l, r) => { return false; }
+  }
+}
+
+fn leftmost(t: Tree) -> i64
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0 - 1; }
+    Tree::Node(v, l, r) => {
+      if is_empty(l) { return v; }
+      return leftmost(l);
+    }
+  }
+}
+
+fn orig_leftmost() -> i64 ! alloc {
+  return leftmost(sample());
+}
+
+fn mirrored_leftmost() -> i64 ! alloc {
+  return leftmost(mirror(sample()));
+}
+
+fn fresh_mirror_independent() -> bool ! alloc {
+  let a: Tree = sample();
+  let b: Tree = mirror(a);
+  let la: i64 = leftmost(a);
+  let lb: i64 = leftmost(b);
+  return la == 2 && lb == 7;
+}
+
+fn clone_mirror_independent() -> bool ! alloc {
+  let a: Tree = sample();
+  let mut c: Tree = a;
+  c = mirror(c);
+  let la: i64 = leftmost(a);
+  let lc: i64 = leftmost(c);
+  return la == 2 && lc == 7;
+}

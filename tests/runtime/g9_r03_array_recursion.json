@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--no-verify"], ["--trust-callers"]], "exit": 0, "stdout_lines": ["10", "7", "0", "3", "2", "true", "false", "false"]}

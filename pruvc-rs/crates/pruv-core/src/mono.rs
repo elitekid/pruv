@@ -843,7 +843,10 @@ impl<'a> Mono<'a> {
             }
         }
         keyed.sort_by(|a, b| a.0.cmp(&b.0));
-        let program = Program { functions, types: keyed.into_iter().map(|(_, d)| d).collect(), refined: prog.refined, g9: None };
+        let program = Program { functions, types: keyed.into_iter().map(|(_, d)| d).collect(), refined: prog.refined,
+            // G9 A2: the concrete program keeps the checker's G9 metadata (extended types are never generic)
+            g9: prog.g9.clone(),
+        };
         Ok(SpecPlan { program, fn_stems, type_stems, roots: root_names })
     }
 }

@@ -1,0 +1,51 @@
+// G9 A2 runtime: whole-field replacement of a [u8] and a str field on a mutable clone; the original keeps its fields
+struct Packet { bytes: [u8], label: str }
+
+fn make() -> Packet ! alloc
+  ensures len(result.bytes) == 2
+{
+  let raw: [u8] = alloc(2, 7);
+  return Packet { bytes: copy(raw), label: "ok" };
+}
+
+fn replaced(p: Packet) -> Packet ! alloc
+  requires len(p.bytes) >= 1
+  ensures len(result.bytes) == len(p.bytes)
+{
+  let mut q: Packet = p;
+  let mut ch: [u8] = copy(q.bytes);
+  ch[0] = 9;
+  q.bytes = copy(ch);
+  q.label = copy("new");
+  return q;
+}
+
+fn orig_byte() -> i64 ! alloc {
+  let p: Packet = make();
+  let q: Packet = replaced(p);
+  return p.bytes[0];
+}
+
+fn new_byte() -> i64 ! alloc {
+  let p: Packet = make();
+  let q: Packet = replaced(p);
+  return q.bytes[0];
+}
+
+fn untouched_byte() -> i64 ! alloc {
+  let p: Packet = make();
+  let q: Packet = replaced(p);
+  return q.bytes[1];
+}
+
+fn orig_label_len() -> i64 ! alloc {
+  let p: Packet = make();
+  let q: Packet = replaced(p);
+  return len(p.label);
+}
+
+fn new_label_len() -> i64 ! alloc {
+  let p: Packet = make();
+  let q: Packet = replaced(p);
+  return len(q.label);
+}

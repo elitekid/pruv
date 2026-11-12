@@ -1,0 +1,64 @@
+// G9 A2 runtime: recursive enum with a str payload; depth and non-empty-label count by recursion, first label byte read in a match arm
+// chain: "ab" -> "" -> "xyz" -> End (3 links, 4 constructors)
+enum Chain { End, Link(label: str, rest: Chain) }
+
+fn make_chain() -> Chain ! alloc
+  ensures size(result) == 4
+{
+  return Chain::Link(copy("ab"), Chain::Link(copy(""), Chain::Link(copy("xyz"), Chain::End)));
+}
+
+fn depth(c: Chain) -> i64
+  requires size(c) <= 1000
+  ensures result >= 0 && result <= size(c)
+  decreases size(c)
+{
+  match c {
+    Chain::End => { return 0; }
+    Chain::Link(label, rest) => { return 1 + depth(rest); }
+  }
+}
+
+fn nonempty(c: Chain) -> i64
+  requires size(c) <= 1000
+  ensures result >= 0 && result <= size(c)
+  decreases size(c)
+{
+  match c {
+    Chain::End => { return 0; }
+    Chain::Link(label, rest) => {
+      if len(label) > 0 { return 1 + nonempty(rest); }
+      return nonempty(rest);
+    }
+  }
+}
+
+fn first_label_byte(c: Chain) -> i64 {
+  match c {
+    Chain::End => { return 0 - 1; }
+    Chain::Link(label, rest) => {
+      if len(label) >= 1 { return label[0]; }
+      return 0 - 2;
+    }
+  }
+}
+
+fn chain_depth() -> i64 ! alloc {
+  return depth(make_chain());
+}
+
+fn chain_nonempty() -> i64 ! alloc {
+  return nonempty(make_chain());
+}
+
+fn chain_first_byte() -> i64 ! alloc {
+  return first_label_byte(make_chain());
+}
+
+fn end_first_byte() -> i64 ! alloc {
+  return first_label_byte(Chain::End);
+}
+
+fn empty_first_byte() -> i64 ! alloc {
+  return first_label_byte(Chain::Link(copy(""), Chain::End));
+}
