@@ -1,0 +1,12 @@
+// G9 A1 proof: recursive builder with the alloc effect; mirroring a tree preserves size(result) == size(t)
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn mirror(t: Tree) -> Tree ! alloc
+  ensures size(result) == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return Tree::Empty; }
+    Tree::Node(v, l, r) => { return Tree::Node(v, mirror(r), mirror(l)); }
+  }
+}

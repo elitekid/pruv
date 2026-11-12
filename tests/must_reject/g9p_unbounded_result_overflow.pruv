@@ -1,0 +1,8 @@
+// G9 A1 reject: terminates, but without an ensures the recursive result is any i64, so `1 + grow(n - 1)` can overflow (overflow)
+fn grow(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return 1 + grow(n - 1);
+}

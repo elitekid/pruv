@@ -1,0 +1,24 @@
+// G9 A1 reject: fa -> fb and fb -> fc decrease, but the closing edge fc -> fa passes n unchanged (recursive_decrease)
+fn fa(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return fb(n - 1);
+}
+
+fn fb(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 1; }
+  return fc(n - 1);
+}
+
+fn fc(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 2; }
+  return fa(n);
+}

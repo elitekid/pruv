@@ -1,0 +1,14 @@
+// G9 A1 proof: whole-field buffer replacement on a mutable copy; the new length and content are known and other fields are preserved
+struct Packet { bytes: [u8], tag: i64 }
+
+fn replace(p: Packet) -> i64 ! alloc
+  requires p.tag == 5
+  ensures result == 9
+{
+  let mut q: Packet = p;
+  let fresh: [u8] = alloc(2, 9);
+  q.bytes = copy(fresh);
+  assert q.tag == 5;
+  assert len(q.bytes) == 2;
+  return q.bytes[1];
+}

@@ -1,0 +1,11 @@
+// G9 A1 proof: recursive linear search; false means no element from i on equals x, true means some element does
+fn find_from(a: [i64], i: i64, x: i64) -> bool
+  requires 0 <= i && i <= len(a)
+  ensures !result ==> forall k in i..len(a): a[k] != x
+  ensures result ==> exists k in i..len(a): a[k] == x
+  decreases len(a) - i
+{
+  if i == len(a) { return false; }
+  if a[i] == x { return true; }
+  return find_from(a, i + 1, x);
+}

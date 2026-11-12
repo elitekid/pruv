@@ -277,12 +277,13 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
     try:
         prog = pruv_parse(read_source(path))
         check_mod.check(prog, externs)
-        # G9 A0: same guard as pruvc.compile_file (the rust backend is the default code generator here)
-        g9err = g9_unimplemented_error(prog, "verify", "verifier") if verify_on else \
-            g9_unimplemented_error(prog, "codegen", "rust codegen layer")
-        if g9err is not None:
-            errors.append(err_dict(g9err))
-            return out
+        # G9 A1: same order as pruvc.compile_file (the rust backend is the default code generator here): without
+        # verification the codegen guard stops a G9 program right away; with it, the guard runs after the proof
+        if not verify_on:
+            g9err = g9_unimplemented_error(prog, "codegen", "rust codegen layer")
+            if g9err is not None:
+                errors.append(err_dict(g9err))
+                return out
         # G6 A1: no guard here; G6 programs get real traces (G6_SPEC 11.1)
         if verify_on:
             import verify
@@ -294,6 +295,10 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
             else:
                 errs = verify.verify_program(prog, rec=rec)
             errors.extend(err_dict(e) for e in errs)
+            if not errs:
+                g9err = g9_unimplemented_error(prog, "codegen", "rust codegen layer")
+                if g9err is not None:
+                    errors.append(err_dict(g9err))
     except PruvError as e:
         errors.append(err_dict(e))
     except Exception as e:   # like pruvc.main: compiler-internal failure

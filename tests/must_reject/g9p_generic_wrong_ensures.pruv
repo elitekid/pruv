@@ -1,0 +1,9 @@
+// G9 A1 reject: generic recursion proven once for opaque T; the base case returns x while ensures promises y (ensures)
+fn repeat_pick<T>(x: T, y: T, n: i64) -> T
+  requires n >= 0
+  ensures result == y
+  decreases n
+{
+  if n == 0 { return x; }
+  return repeat_pick::<T>(x, y, n - 1);
+}

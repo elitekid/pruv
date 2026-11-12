@@ -1,0 +1,16 @@
+// G9 A1 reject: mutually recursive unit functions with the same measure n; ping_u -> pong_u(n) does not decrease (recursive_decrease)
+fn ping_u(n: i64) -> ()
+  requires n >= 0
+  decreases n
+{
+  if n > 0 {
+    pong_u(n);
+  }
+}
+
+fn pong_u(n: i64) -> ()
+  requires n >= 1
+  decreases n
+{
+  ping_u(n - 1);
+}

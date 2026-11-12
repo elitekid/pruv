@@ -1,0 +1,22 @@
+// G9 A1 proof: size facts across a struct <-> enum type SCC; two mutually recursive functions bound their results by size
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn node_len(n: Node) -> i64
+  requires size(n) <= 1000
+  ensures result >= 1 && result <= size(n)
+  decreases size(n)
+{
+  return 1 + link_len(n.next);
+}
+
+fn link_len(l: Link) -> i64
+  requires size(l) <= 1000
+  ensures result >= 0 && result <= size(l)
+  decreases size(l)
+{
+  match l {
+    Link::End => { return 0; }
+    Link::More(n) => { return node_len(n); }
+  }
+}

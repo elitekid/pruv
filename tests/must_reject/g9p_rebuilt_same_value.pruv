@@ -1,0 +1,12 @@
+// G9 A1 reject: link_len rebuilds Link::More(n) and recurses; size(More(n)) == size(l), so the measure does not decrease (recursive_decrease)
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn link_len(l: Link) -> i64 ! alloc
+  decreases size(l)
+{
+  match l {
+    Link::End => { return 0; }
+    Link::More(n) => { return link_len(Link::More(n)); }
+  }
+}

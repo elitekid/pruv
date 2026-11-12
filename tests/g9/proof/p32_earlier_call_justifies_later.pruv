@@ -1,0 +1,10 @@
+// G9 A1 proof: an earlier justified recursive call (result == 0) supplies the fact that makes the later call f(a) decrease
+fn f(n: i64) -> i64
+  requires n >= 0
+  ensures result == 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  let a: i64 = f(n - 1);
+  return f(a);
+}

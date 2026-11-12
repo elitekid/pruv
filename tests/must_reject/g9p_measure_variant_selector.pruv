@@ -1,0 +1,9 @@
+// G9 A1 reject: the measure reads a variant field that is undefined when e is Empty (variant_domain)
+enum Event { Empty, Hit(value: i64) }
+
+fn pick(e: Event) -> i64
+  requires !is_variant(e, Event::Hit) || variant_field(e, Event::Hit, value) >= 0
+  decreases variant_field(e, Event::Hit, value)
+{
+  return 0;
+}

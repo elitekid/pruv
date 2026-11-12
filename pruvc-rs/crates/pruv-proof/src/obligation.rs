@@ -149,6 +149,8 @@ fn fix_for(code: &str) -> &'static str {
         "invariant_preserved" => "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
         "decreases_nonneg" => "the decreases expression must be >= 0 whenever the loop condition holds; add an invariant",
         "decreases_decrease" => "the decreases expression must strictly decrease each iteration",
+        "recursive_nonneg" => "the decreases measure must be >= 0 at function entry and at every recursive call; add a requires, or guard the call with an if/match",
+        "recursive_decrease" => "the callee's measure must be strictly smaller than the caller's entry measure: recurse on a smaller argument (a child of a match binder, an index one closer to the end), or fix the measure",
         "variant_domain" => "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
         "contract_domain" => "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
         "elem_range" => "store or fill only values in 0..=255 into a [u8] array: bound the value with requires, an if, or a loop invariant",
@@ -193,6 +195,32 @@ fn clamp8(n: &str) -> usize {
         Ok(v) => v.min(8) as usize,
         Err(_) => 8,
     }
+}
+
+/// One byte of a `str` field element in a counterexample (verify.py `_fmt_buf`): `chr(b)` for a printable ASCII byte other than
+/// `"` and `\`, else `\x%02x` of `b & 255` (Python's unbounded two's complement for a negative or huge element). `s` is the
+/// decimal text of the element.
+fn byte_text(s: &str) -> String {
+    if let Ok(b) = s.parse::<i64>() {
+        if (32..127).contains(&b) {
+            let c = b as u8 as char;
+            if c != '"' && c != '\\' {
+                return c.to_string();
+            }
+        }
+    }
+    let (neg, digits) = match s.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, s),
+    };
+    let mut r: u32 = 0;
+    for ch in digits.chars() {
+        if let Some(d) = ch.to_digit(10) {
+            r = (r * 10 + d) % 256;
+        }
+    }
+    let low = if neg { (256 - r) % 256 } else { r };
+    format!("\\x{:02x}", low)
 }
 
 /// `dict(relaxed, _note=...)`: if present, replace only the value, keeping its position; otherwise append at the end.
@@ -438,7 +466,16 @@ impl<'a> FnVerifier<'a> {
             Val::Int(a) => Some(Json::Num(m.eval(a)?.numeral_string()?)),
             Val::Bool(a) => Some(Json::Bool(m.eval(a)?.is_true())),
             // G3: an abstract value is the opaque dict at the top (a string `T:opaque#N` only inside a datatype)
-            Val::Dt(a, _) => Some(self.fmt_val_j(&m.eval(a)?, false)),
+            Val::Dt(a, _) => {
+                let mv = m.eval(a)?;
+                if self.model.is_g9() {
+                    // G9 A1: a program with a G9 feature takes the bounded printer; any other program the original one
+                    let mut lim = 0usize;
+                    Some(self.fmt_g9(m, &mv, false, &mut lim, 1, None))
+                } else {
+                    Some(self.fmt_val_j(&mv, false))
+                }
+            }
             // G6 A1: Python evaluates the Map object in the model and the exception skips the variable
             Val::Map(_) => None,
             Val::Unit => None,
@@ -538,6 +575,150 @@ impl<'a> FnVerifier<'a> {
                 }
             }
             None => {}
+        }
+        Json::Str(py_str(v))
+    }
+
+    /// verify.py `_fmt_buf`: a buffer field value Buf(len, arr): `[e0, e1, ...]` (first 8 elements) or `"bytes"` for a str field.
+    /// Any failure (Python exception) is the caller's `str(v)`.
+    fn fmt_buf(&self, m: &ZModel, v: &Ast, fty: Option<&crate::model::Ty>) -> Json {
+        use crate::model::Ty;
+        let fallback = || Json::Str(py_str(v));
+        let kids = v.children();
+        let (Some(n_ast), Some(arr)) = (kids.first(), kids.get(1)) else { return fallback() };
+        let Some(n) = n_ast.numeral_string() else { return fallback() };
+        let Some(fty) = fty else { return fallback() };
+        let is_bool = matches!(fty, Ty::Array(crate::model::Elem::Bool));
+        let is_str = matches!(fty, Ty::Str);
+        // elements as (bool, decimal text)
+        let mut els: Vec<(bool, String)> = Vec::new();
+        for i in 0..clamp8(&n) {
+            let sel = arr.select(&self.z.int(i as i64));
+            let Some(x) = m.eval(&sel) else { return fallback() };
+            if is_bool {
+                els.push((x.is_true(), String::new()));
+            } else {
+                let Some(t) = x.numeral_string() else { return fallback() };
+                els.push((false, t));
+            }
+        }
+        let more = !n.starts_with('-') && n.parse::<u64>().map_or(true, |c| c > 8);
+        if is_str {
+            let body: String = els.iter().map(|(_, t)| byte_text(t)).collect();
+            return Json::Str(format!("\"{}{}\"", body, if more { "..." } else { "" }));
+        }
+        let txt = els
+            .iter()
+            .map(|(b, t)| if is_bool { (if *b { "true" } else { "false" }).to_string() } else { t.clone() })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let tail = if more {
+            if txt.is_empty() { "..." } else { ", ..." }
+        } else {
+            ""
+        };
+        Json::Str(format!("[{}{}]", txt, tail))
+    }
+
+    /// `fmt_g9` of a nested value (always a string).
+    fn fmt_g9_s(&self, m: &ZModel, v: &Ast, lim: &mut usize, depth: usize, fty: Option<&crate::model::Ty>) -> String {
+        match self.fmt_g9(m, v, true, lim, depth, fty) {
+            Json::Str(s) => s,
+            _ => py_str(v),
+        }
+    }
+
+    /// verify.py `_fmt_g9`: the bounded counterexample printer of a program with a G9 feature (at most `CEX_MAX_NODES` nominal
+    /// constructor nodes per value in preorder, nesting depth at most `CEX_MAX_DEPTH`; the cut parts print as `<truncated>`).
+    /// `lim` is the node counter shared by one top-level value, `depth` starts at 1, `fty` is the declared type of a field value
+    /// (needed to print a buffer field). A Python exception anywhere inside is `str(v)` of that level.
+    pub(crate) fn fmt_g9(
+        &self,
+        m: &ZModel,
+        v: &Ast,
+        nested: bool,
+        lim: &mut usize,
+        depth: usize,
+        fty: Option<&crate::model::Ty>,
+    ) -> Json {
+        use crate::model::{Ty, TypeKind};
+        const CEX_MAX_NODES: usize = 64;
+        const CEX_MAX_DEPTH: usize = 16;
+        const CEX_TRUNCATED: &str = "<truncated>";
+        let model = self.model;
+        if v.sort().is_int() && v.is_numeral() {
+            if let Some(n) = v.numeral_string() {
+                return Json::Str(n);
+            }
+        }
+        if v.sort().is_bool() {
+            return Json::Str(if v.is_true() { "true" } else { "false" }.to_string());
+        }
+        let sname = v.sort().name();
+        if model.is_buf_sort_name(&sname) {
+            return self.fmt_buf(m, v, fty);
+        }
+        if model.abs_name_of(&sname).is_some() {
+            if nested {
+                let (tp, val) = self.opaque(v);
+                return Json::Str(format!("{}:{}", tp, val));
+            }
+            return self.opaque_json(v);
+        }
+        let ty = match model.type_of(v) {
+            Some(t) => t,
+            None => return Json::Str(py_str(v)),
+        };
+        if let Ty::Inst(g) = &ty {
+            if (g.name == "option" || g.name == "result") && v.is_app() {
+                let dn = v.decl_name().unwrap_or_default();
+                let nm = model.short_of(&dn).map(|s| s.to_string()).unwrap_or(dn);
+                let ks: Vec<String> = v.children().iter().map(|c| self.fmt_g9_s(m, c, lim, depth, None)).collect();
+                return Json::Str(if ks.is_empty() { nm } else { format!("{}({})", nm, ks.join(", ")) });
+            }
+        }
+        if !model.is_user(&ty) || !v.is_app() {
+            return Json::Str(py_str(v));
+        }
+        if *lim >= CEX_MAX_NODES || depth > CEX_MAX_DEPTH {
+            return Json::Str(CEX_TRUNCATED.to_string());
+        }
+        *lim += 1;
+        let dn = v.decl_name().unwrap_or_default();
+        let tyname = ty.name().to_string();
+        let Some(decl) = model.decl_opt(&tyname) else { return Json::Str(py_str(v)) };
+        let kids = v.children();
+        match &decl.kind {
+            TypeKind::Struct(fields) => {
+                let Ok(sf) = model.struct_info(&ty) else { return Json::Str(py_str(v)) };
+                if sf.ctor.name() == dn && fields.len() == kids.len() {
+                    if fields.is_empty() {
+                        return Json::Str(tyname);
+                    }
+                    let mut parts: Vec<String> = Vec::new();
+                    for (fd, c) in fields.iter().zip(kids.iter()) {
+                        let k = self.fmt_g9_s(m, c, lim, depth + 1, Some(&fd.ty));
+                        parts.push(format!("{}: {}", fd.name, k));
+                    }
+                    return Json::Str(format!("{} {{ {} }}", tyname, parts.join(", ")));
+                }
+            }
+            TypeKind::Enum(variants) => {
+                let Ok(infos) = model.enum_info(&ty) else { return Json::Str(py_str(v)) };
+                for vd in variants {
+                    let Some((_, vf)) = infos.iter().find(|(n, _)| *n == vd.name) else { return Json::Str(py_str(v)) };
+                    if vf.ctor.name() == dn {
+                        if vd.fields.is_empty() {
+                            return Json::Str(format!("{}::{}", tyname, vd.name));
+                        }
+                        let mut ks: Vec<String> = Vec::new();
+                        for (fd, c) in vd.fields.iter().zip(kids.iter()) {
+                            ks.push(self.fmt_g9_s(m, c, lim, depth + 1, Some(&fd.ty)));
+                        }
+                        return Json::Str(format!("{}::{}({})", tyname, vd.name, ks.join(", ")));
+                    }
+                }
+            }
         }
         Json::Str(py_str(v))
     }

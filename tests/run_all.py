@@ -6,7 +6,7 @@ python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_fronten
 
 groups g9_frontend / g9_proof (G9 A0): tests/g9/frontend/*.pruv (mode no-verify, --no-verify) and tests/g9/proof/*.pruv
 (mode default); rows have backend null. While G9_GUARD is True (until batch A2) a g9_frontend row passes when pruvc
-exits 1 with the downstream guard unsupported_type / "rust codegen layer"; g9_proof rows expect exit 0.
+exits 1 with the downstream guard unsupported_type / "rust codegen layer"; g9_proof rows expect verification to pass and then the same guard.
 
 group g3_proof (G3 A2): tests/g3/proof/*.pruv must verify; they run through tests/g3/verify_only.py (Python verifier,
 no code generation, whatever --compiler says) because the code generators still reject generics. Rows have
@@ -312,8 +312,8 @@ def g9_frontend_jobs(group="g9_frontend", sub="frontend", modes=(("no-verify", [
 
 
 def g9_proof_jobs(group="g9_proof", sub="proof", modes=(("default", []),)):
-    """G9 A0: tests/g9/proof/*.pruv must also verify completely (default mode, exit 0, backend null rows).
-    The directory is empty in A0 (filled in A1)."""
+    """G9 A1: tests/g9/proof/*.pruv must verify completely (default mode, backend null rows). While G9_GUARD is True
+    the run then stops at the codegen guard (exit 1, "rust codegen layer"); a verification error fails the row."""
     jobs = []
     for f in sorted(glob.glob(os.path.join(ROOT, "tests/g9", sub, "*.pruv"))):
         for mode, flags in modes:
@@ -323,7 +323,12 @@ def g9_proof_jobs(group="g9_proof", sub="proof", modes=(("default", []),)):
                 stem = "g9_%s_%s_%s" % (sub, os.path.splitext(os.path.basename(f))[0], mode)
                 out = os.path.join(WORK, stem + ".rs")
                 c = pruvc(f, out, flags)
-                return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, (c.stdout + c.stderr)[-400:])
+                text = c.stdout + c.stderr
+                if G9_GUARD:   # G9 A1: verification runs first; only the downstream codegen guard may stop it
+                    ok = c.returncode == 1 and G9_GUARD_CODE in text and G9_GUARD_LAYER in text
+                    return ok, "pruvc exit %d (expected 1 with the G9 guard %s / %r after verification) %s" % (
+                        c.returncode, G9_GUARD_CODE, G9_GUARD_LAYER, text[-400:])
+                return c.returncode == 0, "pruvc exit %d (expected 0) %s" % (c.returncode, text[-400:])
             jobs.append(safe(name, fn, {"sample": rel_sample(f), "backend": None, "flags": flags, "mode": mode,
                                          "group": group}))
     return jobs

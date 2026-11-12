@@ -1,0 +1,25 @@
+// G9 A1 proof: three-function SCC with three phase measures (3n+2, 3n+1, 3n); all three prove result == n
+fn pa(n: i64) -> i64
+  requires n >= 0
+  ensures result == n
+  decreases 3 * n + 2
+{
+  if n == 0 { return 0; }
+  return pb(n);
+}
+
+fn pb(n: i64) -> i64
+  requires n >= 1
+  ensures result == n
+  decreases 3 * n + 1
+{
+  return pc(n);
+}
+
+fn pc(n: i64) -> i64
+  requires n >= 1
+  ensures result == n
+  decreases 3 * n
+{
+  return 1 + pa(n - 1);
+}

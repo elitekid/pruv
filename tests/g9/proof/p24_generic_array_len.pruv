@@ -1,0 +1,21 @@
+// G9 A1 proof: a generic array walk with bounded T proven once (result == len(a)), instantiated at i64 and bool
+fn walk<T: Element>(a: [T], i: i64) -> i64
+  requires 0 <= i && i <= len(a)
+  ensures result == len(a)
+  decreases len(a) - i
+{
+  if i == len(a) { return i; }
+  return walk::<T>(a, i + 1);
+}
+
+fn walk_ints(a: [i64]) -> i64
+  ensures result == len(a)
+{
+  return walk::<i64>(a, 0);
+}
+
+fn walk_bools(a: [bool]) -> i64
+  ensures result == len(a)
+{
+  return walk::<bool>(a, 0);
+}

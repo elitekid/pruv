@@ -1,0 +1,16 @@
+// G9 A1 proof: the recursive argument comes from a non-SCC helper call; the helper's ensures (result == n - 1) justifies the decrease
+fn dec(n: i64) -> i64
+  requires n >= 1
+  ensures result == n - 1
+{
+  return n - 1;
+}
+
+fn down(n: i64) -> i64
+  requires n >= 0
+  ensures result == 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return down(dec(n));
+}

@@ -1,0 +1,33 @@
+// G9 A1 proof: mutual recursion across a three-type SCC (Json, Items, Members) with size-bounded counting results
+enum Json {
+  Null, Boolean(value: bool), Number(value: i64), Text(value: str),
+  Array(items: Items), Object(members: Members)
+}
+enum Items { End, Next(value: Json, rest: Items) }
+enum Members { End, Next(key: str, value: Json, rest: Members) }
+
+fn json_numbers(j: Json) -> i64
+  requires size(j) <= 1000
+  ensures result >= 0 && result <= size(j)
+  decreases size(j)
+{
+  match j {
+    Json::Null => { return 0; }
+    Json::Boolean(b) => { return 0; }
+    Json::Number(n) => { return 1; }
+    Json::Text(s) => { return 0; }
+    Json::Array(items) => { return items_numbers(items); }
+    Json::Object(members) => { return 0; }
+  }
+}
+
+fn items_numbers(it: Items) -> i64
+  requires size(it) <= 1000
+  ensures result >= 0 && result <= size(it)
+  decreases size(it)
+{
+  match it {
+    Items::End => { return 0; }
+    Items::Next(v, rest) => { return json_numbers(v) + items_numbers(rest); }
+  }
+}

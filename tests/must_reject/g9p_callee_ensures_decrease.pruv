@@ -1,0 +1,9 @@
+// G9 A1 reject: the inner call shrink(n) is unchanged; its own ensures (result < n) must not justify that call's decrease (recursive_decrease)
+fn shrink(n: i64) -> i64
+  requires n >= 0
+  ensures result >= 0 && result <= n && (n == 0 || result < n)
+  decreases n
+{
+  if n == 0 { return 0; }
+  return shrink(shrink(n));
+}

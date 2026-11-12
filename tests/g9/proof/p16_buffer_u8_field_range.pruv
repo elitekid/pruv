@@ -1,0 +1,15 @@
+// G9 A1 proof: well-formedness of a struct parameter's buffer fields: [u8] elements are in 0..=255 and str lengths are non-negative
+struct Packet { bytes: [u8], label: str }
+
+fn first_byte(p: Packet) -> i64
+  requires len(p.bytes) >= 1
+  ensures result >= 0 && result <= 255 && result == p.bytes[0]
+{
+  return p.bytes[0];
+}
+
+fn label_len(p: Packet) -> i64
+  ensures result >= 0 && result == len(p.label)
+{
+  return len(p.label);
+}

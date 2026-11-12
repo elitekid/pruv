@@ -1,0 +1,13 @@
+// G9 A1 proof: a traversal whose result equals size(t); the size bound in requires keeps the additions inside i64
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn node_total(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 1; }
+    Tree::Node(v, l, r) => { return 1 + node_total(l) + node_total(r); }
+  }
+}

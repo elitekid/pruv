@@ -1,0 +1,9 @@
+// G9 A1 proof: f(f(n - 1)); the inner call's ensures (result <= n - 1) justifies the decrease of the outer call
+fn f(n: i64) -> i64
+  requires n >= 0
+  ensures result >= 0 && result <= n
+  decreases n
+{
+  if n == 0 { return 0; }
+  return f(f(n - 1));
+}

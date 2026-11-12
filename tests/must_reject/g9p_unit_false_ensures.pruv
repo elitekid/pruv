@@ -1,0 +1,10 @@
+// G9 A1 reject: unit recursive function; terminates, but ensures n >= 1 is false on the n == 0 path (ensures)
+fn tick(n: i64) -> ()
+  requires n >= 0
+  ensures n >= 1
+  decreases n
+{
+  if n > 0 {
+    tick(n - 1);
+  }
+}

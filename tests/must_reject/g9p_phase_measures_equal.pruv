@@ -1,0 +1,15 @@
+// G9 A1 reject: ping and pong both use `decreases n`, so the ping -> pong(n) edge does not decrease (recursive_decrease); the phase offset is missing
+fn ping(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return pong(n);
+}
+
+fn pong(n: i64) -> i64
+  requires n >= 1
+  decreases n
+{
+  return ping(n - 1);
+}

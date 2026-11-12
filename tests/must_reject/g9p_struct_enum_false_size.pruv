@@ -1,0 +1,9 @@
+// G9 A1 reject: wrapping a Node in Link::More adds one constructor, so size(result) == size(n) is false (ensures)
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn wrap(n: Node) -> Link ! alloc
+  ensures size(result) == size(n)
+{
+  return Link::More(n);
+}

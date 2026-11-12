@@ -1,0 +1,9 @@
+// G9 A1 reject: the recursive call walk(n - 1, k - 1) can violate the callee's requires k >= 1; the measure itself decreases (call_requires)
+fn walk(n: i64, k: i64) -> i64
+  requires n >= 0
+  requires k >= 1
+  decreases n
+{
+  if n == 0 { return k; }
+  return walk(n - 1, k - 1);
+}

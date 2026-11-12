@@ -1,0 +1,16 @@
+// G9 A1 reject: even -> odd decreases, but the other edge odd -> even passes n unchanged (recursive_decrease)
+fn is_even(n: i64) -> bool
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return true; }
+  return is_odd(n - 1);
+}
+
+fn is_odd(n: i64) -> bool
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return false; }
+  return is_even(n);
+}

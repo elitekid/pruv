@@ -1,0 +1,18 @@
+// G9 A1 proof: tree depth with two sibling calls; proves 1 <= depth <= size(t) from the child size facts
+enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+fn depth(t: Tree) -> i64
+  requires size(t) <= 1000
+  ensures result >= 1 && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 1; }
+    Tree::Node(v, l, r) => {
+      let dl: i64 = depth(l);
+      let dr: i64 = depth(r);
+      if dl > dr { return 1 + dl; }
+      return 1 + dr;
+    }
+  }
+}

@@ -1,0 +1,33 @@
+// G9 A1 proof: three-function SCC fa -> fb -> fc -> fa, all measure n; each proves 0 <= result <= 2 using the shared hypothesis
+fn base() -> i64
+  ensures result == 0
+{
+  return 0;
+}
+
+fn fa(n: i64) -> i64
+  requires n >= 0
+  ensures result >= 0 && result <= 2
+  decreases n
+{
+  if n == 0 { return base(); }
+  return fb(n - 1);
+}
+
+fn fb(n: i64) -> i64
+  requires n >= 0
+  ensures result >= 0 && result <= 2
+  decreases n
+{
+  if n == 0 { return 1; }
+  return fc(n - 1);
+}
+
+fn fc(n: i64) -> i64
+  requires n >= 0
+  ensures result >= 0 && result <= 2
+  decreases n
+{
+  if n == 0 { return 2; }
+  return fa(n - 1);
+}

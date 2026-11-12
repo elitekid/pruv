@@ -1,0 +1,26 @@
+// G9 A1 proof: enum payload buffers are well-formed in a match arm (length >= 0, [u8] elements in 0..=255)
+enum Blob { Empty, Ints(items: [i64]), Bytes(data: [u8]) }
+
+fn blob_len(b: Blob) -> i64
+  ensures result >= 0
+  ensures is_variant(b, Blob::Empty) ==> result == 0
+{
+  match b {
+    Blob::Empty => { return 0; }
+    Blob::Ints(a) => { return len(a); }
+    Blob::Bytes(d) => { return len(d); }
+  }
+}
+
+fn first_or_zero(b: Blob) -> i64
+  ensures result >= 0 && result <= 255
+{
+  match b {
+    Blob::Empty => { return 0; }
+    Blob::Ints(a) => { return 0; }
+    Blob::Bytes(d) => {
+      if len(d) >= 1 { return d[0]; }
+      return 0;
+    }
+  }
+}

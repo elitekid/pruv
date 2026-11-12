@@ -1,0 +1,8 @@
+// G9 A1 reject: the call is allowed by requires and the measure stays non-negative, but n + 1 > n (recursive_decrease)
+fn climb(n: i64) -> i64
+  requires 0 <= n && n <= 100
+  decreases n
+{
+  if n < 100 { return climb(n + 1); }
+  return n;
+}

@@ -1,0 +1,8 @@
+// G9 A1 reject: recursive function whose measure n - 1 is -1 at entry n == 0; the guarded call itself is fine (recursive_nonneg)
+fn shifted_rec(n: i64) -> i64
+  requires n >= 0
+  decreases n - 1
+{
+  if n > 1 { return shifted_rec(n - 1); }
+  return 0;
+}

@@ -1,0 +1,9 @@
+// G9 A1 reject: the base case is right, but the step drops the `1 +`, so result == n - 1 and ensures result == n fails (ensures)
+fn count_down(n: i64) -> i64
+  requires n >= 0
+  ensures result == n
+  decreases n
+{
+  if n == 0 { return 0; }
+  return count_down(n - 1);
+}

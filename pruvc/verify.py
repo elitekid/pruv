@@ -2,7 +2,8 @@
 import time
 import z3
 from vast import *
-from typeinfo import (TypeTable, is_array, array_elem, array_of, bind_args, substitute, decl_owner, format_type)
+from typeinfo import (TypeTable, is_array, array_elem, array_of, bind_args, substitute, decl_owner, format_type,
+                      is_collection)
 from foreign import CATALOG_NAMES   # G6 A1: the twelve reserved catalog names
 
 I64_MIN, I64_MAX = -2 ** 63, 2 ** 63 - 1
@@ -159,26 +160,214 @@ class Model:
         s.abstract = {}     # (owner, index) -> uninterpreted sort of a function type parameter
         s.abs_name = {}     # sort name -> type-parameter spelling (counterexample rendering)
         s.short = {}        # constructor name of a generic Option/Result instance -> source name
-        for idx, d in enumerate(s.tt.order):
-            if d.tparams:
-                continue
-            tag = "%st%d!" % (pre, idx)
+        # G9 A1: recursive nominal type SCCs (one simultaneous datatype each), buffer-field datatypes, and the lazily
+        # built recursive wf/size definitions. All of it is empty/unused for a program without a G9 feature.
+        meta = getattr(prog, "g9", None)
+        s.g9 = meta is not None
+        s.scc_of = {}       # recursive type name -> member names of its SCC (declaration order)
+        s.recrel = set()    # names of non-generic types that are recursive or (transitively) contain a recursive type
+        s.bufs = {}         # "int" | "bool" -> (sort, constructor, length accessor, array accessor)
+        s.buf_names = set()
+        s.size_f, s.wf_f = {}, {}
+        if meta is not None:
+            pindex = {}
+            for i, d in enumerate(prog.types):
+                pindex.setdefault(d.name, i)
+            for names in meta["type_sccs"]:
+                mem = sorted(names, key=lambda n: pindex[n])
+                for n in mem:
+                    s.scc_of[n] = mem
+            s.recrel = set(s.scc_of)
+            changed = bool(s.recrel)
+            while changed:
+                changed = False
+                for d in s.tt.decls.values():
+                    if d.name not in s.recrel and not d.tparams and any(n in s.recrel for n in s.tt._deps(d)):
+                        s.recrel.add(d.name)
+                        changed = True
+        s.idx_of = {d.name: i for i, d in enumerate(s.tt.order)}
+        s.done = set()
+        for d in s.tt.order:
+            s._build(d.name)
+
+    def _build(s, name):
+        """create the datatype of `name` (its whole recursive SCC at once), dependencies first. For a program
+        without recursive types this visits the declarations in tt.order exactly like the old loop."""
+        if name in s.done:
+            return
+        d = s.tt.decls[name]
+        group = s.scc_of.get(name) or [name]
+        for n in group:
+            s.done.add(n)
+        if d.tparams:
+            return      # generic declarations are instantiated lazily
+        members = [s.tt.decls[n] for n in group]
+        for mdecl in members:
+            for dep in s.tt._deps(mdecl):
+                if dep not in group:
+                    s._build(dep)
+        s._make_group(members)
+
+    def _make_group(s, members):
+        gdt = {}
+        dts = []
+        for d in members:
+            tag = "%st%d!" % (s.pre, s.idx_of[d.name])
             dt = z3.Datatype(tag + d.name)
+            gdt[d.name] = dt
+            dts.append((d, tag, dt))
+
+        def fsort(ft):
+            # a field of a member type refers to the datatype under construction (z3 simultaneous declaration)
+            if ft.owner is None and not ft.args and ft.name in gdt:
+                return gdt[ft.name]
+            return s.sort_of(ft)
+        for d, tag, dt in dts:
             if isinstance(d, StructDecl):
-                dt.declare(tag + d.name, *[(tag + d.name + "." + fd.name, s.sort_of(fd.type)) for fd in d.fields])
-                srt = dt.create()
-                s.struct[d.name] = (srt.constructor(0), [srt.accessor(0, j) for j in range(len(d.fields))])
+                dt.declare(tag + d.name, *[(tag + d.name + "." + fd.name, fsort(fd.type)) for fd in d.fields])
             else:
                 for v in d.variants:
                     cn = tag + d.name + "::" + v.name
-                    dt.declare(cn, *[(cn + "." + fd.name, s.sort_of(fd.type)) for fd in v.fields])
-                srt = dt.create()
+                    dt.declare(cn, *[(cn + "." + fd.name, fsort(fd.type)) for fd in v.fields])
+        srts = z3.CreateDatatypes(*[dt for _, _, dt in dts])
+        for (d, tag, dt), srt in zip(dts, srts):
+            if isinstance(d, StructDecl):
+                s.struct[d.name] = (srt.constructor(0), [srt.accessor(0, j) for j in range(len(d.fields))])
+            else:
                 s.enum[d.name] = {}
                 for i, v in enumerate(d.variants):
                     s.enum[d.name][v.name] = (srt.constructor(i), srt.recognizer(i),
                                               [srt.accessor(i, j) for j in range(len(v.fields))])
             s.sorts[d.name] = srt
             s.by_sort[srt.name()] = Type(d.name)
+
+    # ---------- G9 A1: buffer fields ----------
+    @staticmethod
+    def is_buf(ty):
+        """a [i64] / [u8] / [bool] / str field type (never a G3 [T])"""
+        return ty.owner is None and not ty.args and ty.name in ("array", "array_u8", "array_bool", "str")
+
+    @staticmethod
+    def buf_elem(ty):
+        return BOOL if ty.name == "array_bool" else U8 if ty.name in ("array_u8", "str") else I64
+
+    def bufsort(s, ty):
+        """datatype Buf(len: Int, arr: Array(Int, elem sort)); one per element sort (Int for i64/u8/str, Bool)"""
+        key = "bool" if ty.name == "array_bool" else "int"
+        ent = s.bufs.get(key)
+        if ent is None:
+            tag = "%sbuf!%s" % (s.pre, key)
+            dt = z3.Datatype(tag)
+            esort = z3.BoolSort() if key == "bool" else z3.IntSort()
+            dt.declare(tag + ".mk", (tag + ".len", z3.IntSort()), (tag + ".arr", z3.ArraySort(z3.IntSort(), esort)))
+            srt = dt.create()
+            ent = (srt, srt.constructor(0), srt.accessor(0, 0), srt.accessor(0, 1))
+            s.bufs[key] = ent
+            s.buf_names.add(srt.name())
+        return ent[0]
+
+    def field_get(s, fty, term, name="field"):
+        """adapt a stored field value to the verifier's own model: a buffer field becomes an Arr"""
+        if not s.is_buf(fty):
+            return term
+        s.bufsort(fty)
+        ent = s.bufs["bool" if fty.name == "array_bool" else "int"]
+        return mk_arr(ent[3](term), ent[2](term), name, s.buf_elem(fty))
+
+    def field_put(s, fty, val):
+        """inverse of field_get: an Arr stored into a buffer field becomes a Buf value"""
+        if not (s.is_buf(fty) and isinstance(val, Arr)):
+            return val
+        s.bufsort(fty)
+        return s.bufs["bool" if fty.name == "array_bool" else "int"][1](val.n, val.a)
+
+    # ---------- G9 A1: structural size and well-formedness of recursive values ----------
+    def rel(s, ty):
+        return ty.owner is None and not ty.args and ty.name in s.recrel
+
+    def size_fn(s, name):
+        """size_D as an uninterpreted z3 function (one-step equations come from facts(); all members of the SCC of D are declared first, then defined together)"""
+        f = s.size_f.get(name)
+        if f is not None:
+            return f
+        group = s.scc_of.get(name) or [name]
+        for n in group:
+            s.size_f[n] = z3.Function("%ssize!%s" % (s.pre, n), s.sorts[n], z3.IntSort())
+        return s.size_f[name]
+
+    def weight(s, fty, t):
+        """size weight of a field value t of type fty (None = always 0): nominal values count their own size,
+        Some/Ok payloads count their payload, everything else is 0"""
+        if fty.owner is not None or fty in (I64, BOOL, OPTION, RESULT) or s.is_buf(fty) or is_collection(fty):
+            return None
+        if fty.name == "option":
+            o = s.opt(fty)
+            w = s.weight(fty.args[0], o.sval(t))
+            return None if w is None else z3.If(o.is_some(t), w, 0)
+        if fty.name == "result":
+            o = s.res(fty)
+            w = s.weight(fty.args[0], o.oval(t))
+            return None if w is None else z3.If(o.is_ok(t), w, 0)
+        if s.tt.is_struct(fty) or s.tt.is_enum(fty):
+            if not fty.args:
+                return s.size_fn(fty.name)(t)
+            return s.size_value(fty, t)      # admitted acyclic G3 application: internal helper traversal
+        return None
+
+    def size_sum(s, ty, variant, accs, t):
+        total = z3.IntVal(1)
+        for (fd, fty), acc in zip(s.fields_of(ty, variant), accs):
+            w = s.weight(fty, s.field_get(fty, acc(t), fd.name))
+            if w is not None:
+                total = total + w
+        return total
+
+    def size_value(s, ty, t):
+        """one step of size: 1 + the weights of the active constructor's fields"""
+        if s.tt.is_struct(ty):
+            return s.size_sum(ty, None, s.struct_info(ty)[1], t)
+        infos = s.enum_info(ty)
+        body = None
+        for v in reversed(s.tt.decl(ty).variants):
+            _, rec, accs = infos[v.name]
+            val = s.size_sum(ty, v.name, accs, t)
+            body = val if body is None else z3.If(rec(t), val, body)
+        return body
+
+    def wf_fn(s, name):
+        """wf_D (recursive types only) as an uninterpreted z3 function over the SCC of D"""
+        f = s.wf_f.get(name)
+        if f is not None:
+            return f
+        group = s.scc_of[name]
+        for n in group:
+            s.wf_f[n] = z3.Function("%swf!%s" % (s.pre, n), s.sorts[n], z3.BoolSort())
+        return s.wf_f[name]
+
+    def facts(s, ty, t):
+        """valid facts about one observed term t of the non-generic nominal type ty (see tests/g9/model_notes.md):
+        size positivity, the one-step size equation, for a recursive type the one-step wf equation, and positivity
+        of the size of every direct nominal child (so child-smaller follows from the equation)."""
+        n = ty.name
+        sf = s.size_fn(n)
+        out = [sf(t) >= 1, sf(t) == s.size_value(ty, t)]
+        if n in s.scc_of:
+            body = _wf_step(s, ty, t)
+            out.append(s.wf_fn(n)(t) == (z3.BoolVal(True) if body is None else body))
+        d = s.tt.decls[n]
+        if isinstance(d, StructDecl):
+            groups = [(None, s.struct[n][1])]
+        else:
+            groups = [(v.name, s.enum[n][v.name][2]) for v in d.variants]
+        for vname, accs in groups:
+            for (fd, fty), acc in zip(s.fields_of(ty, vname), accs):
+                if s.rel_nominal(fty):
+                    out.append(s.size_fn(fty.name)(acc(t)) >= 1)
+        return out
+
+    def rel_nominal(s, ty):
+        """a plain non-generic user struct/enum type"""
+        return ty.owner is None and not ty.args and ty.name in s.tt.decls and not s.tt.decls[ty.name].tparams
 
     def is_user(s, ty):
         return ty.owner is None and ty.name in s.tt.decls
@@ -188,6 +377,8 @@ class Model:
             return z3.IntSort()
         if ty == BOOL:
             return z3.BoolSort()
+        if s.is_buf(ty):        # G9 A1: a buffer field of a struct/enum
+            return s.bufsort(ty)
         if ty == OPTION:
             return Opt
         if ty == RESULT:
@@ -224,6 +415,8 @@ class Model:
             r = True
         elif ty.name == "option":
             r = s.wf_trivial(ty.args[0])
+        elif ty.owner is None and not ty.args and ty.name in s.scc_of:
+            r = False       # G9 A1: a recursive type has the wf_D definition (never trivially true here)
         elif s.tt.is_struct(ty):
             r = all(s.wf_trivial(ft) for fd, ft in s.fields_of(ty))
         elif s.tt.is_enum(ty):
@@ -414,9 +607,106 @@ _STRING = Type("string")
 class State:
     def __init__(s, env, pc):
         s.env, s.pc = env, pc
+        s.obs = frozenset()     # G9 A1: ids of the recursive-value facts already in pc (immutable, shared by forks)
 
     def fork(s, extra=None):
-        return State(dict(s.env), s.pc + ([extra] if extra is not None else []))
+        n = State(dict(s.env), s.pc + ([extra] if extra is not None else []))
+        n.obs = s.obs
+        return n
+
+
+def _wf_of(m, ty, v):
+    """well_formed(ty, v): every active leaf is an i64. None when trivially true. m: the Model.
+    G9 A1: a recursive nominal type is the application of its wf_D definition; a buffer field (v is an Arr
+    adapted by Model.field_get) has 0 <= len <= 2^40 and, for u8/str, the byte domain."""
+    if ty == I64:
+        return in_range(v)
+    if isinstance(v, Arr) and m.is_buf(ty):
+        ln = z3.And(v.n >= 0, v.n <= MAX_LEN)
+        return z3.And(ln, u8_dom(v)) if v.elem == U8 else ln
+    if ty.owner is None and ty.name in _COLL:     # G6 A1: 0 <= n <= MAX_LEN (and the u8 domain of a String)
+        ln = z3.And(v.n >= 0, v.n <= MAX_LEN)
+        return z3.And(ln, u8_dom(v)) if ty.name == "string" else ln
+    if ty == OPTION:
+        return z3.Implies(Opt.is_some(v), in_range(Opt.sval(v)))
+    if ty == RESULT:
+        return z3.And(z3.Implies(Res.is_ok(v), in_range(Res.oval(v))),
+                      z3.Implies(Res.is_err(v), in_range(Res.eval(v))))
+    if ty.owner is not None:        # G3: an abstract value has no well-formedness predicate
+        return None
+    if ty.args and m.wf_trivial(ty):
+        # G3: no constrained leaf anywhere inside (e.g. Dup<Dup<T>>); create the datatype as the full walk would,
+        # but skip the field recursion, which is exponential in the nesting depth
+        if ty.name == "option":
+            m.opt(ty)
+        elif m.tt.is_struct(ty):
+            m.struct_info(ty)
+        elif m.tt.is_enum(ty):
+            for vd in m.tt.decl(ty).variants:
+                m.enum_info(ty)[vd.name]
+        return None
+    if ty.name == "option":         # G3: Option<X>, X other than i64
+        o = m.opt(ty)
+        w = _wf_of(m, ty.args[0], o.sval(v))
+        return None if w is None else z3.Implies(o.is_some(v), w)
+    if ty.name == "result":
+        o = m.res(ty)
+        w = _wf_of(m, ty.args[0], o.oval(v))
+        parts = [] if w is None else [z3.Implies(o.is_ok(v), w)]
+        parts.append(z3.Implies(o.is_err(v), in_range(o.eval(v))))
+        return _conj(parts)
+    if not ty.args and ty.name in m.scc_of:     # G9 A1: recursive type: the definition, never a Python expansion
+        return m.wf_fn(ty.name)(v)
+    return _wf_step(m, ty, v)
+
+
+def _wf_step(m, ty, v):
+    """one structural step of well_formed for a struct/enum type (the fields are checked with _wf_of)"""
+    if m.tt.is_struct(ty):
+        accs = m.struct_info(ty)[1]
+        return _conj([_wf_of(m, ft, m.field_get(ft, acc(v), fd.name))
+                      for (fd, ft), acc in zip(m.fields_of(ty), accs)])
+    if m.tt.is_enum(ty):
+        parts = []
+        for vd in m.tt.decl(ty).variants:
+            _, rec, accs = m.enum_info(ty)[vd.name]
+            w = _conj([_wf_of(m, ft, m.field_get(ft, acc(v), fd.name))
+                       for (fd, ft), acc in zip(m.fields_of(ty, vd.name), accs)])
+            if w is not None:
+                parts.append(z3.Implies(rec(v), w))
+        return _conj(parts)
+    return None
+
+
+def _expr_text(e):
+    """source-like text of a contract expression (used to name measures in messages)"""
+    if isinstance(e, IntLit):
+        return str(e.value)
+    if isinstance(e, BoolLit):
+        return "true" if e.value else "false"
+    if isinstance(e, Var):
+        return e.name
+    if isinstance(e, Unary):
+        return e.op + _expr_text(e.operand)
+    if isinstance(e, Binary):
+        def side(x):
+            return "(%s)" % _expr_text(x) if isinstance(x, Binary) else _expr_text(x)
+        return "%s %s %s" % (side(e.left), e.op, side(e.right))
+    if isinstance(e, Call):
+        return "%s(%s)" % (e.name, ", ".join(_expr_text(a) for a in e.args))
+    if isinstance(e, Index):
+        return "%s[%s]" % (_expr_text(e.array), _expr_text(e.index))
+    if isinstance(e, FieldAccess):
+        return "%s.%s" % (_expr_text(e.base), e.field)
+    if isinstance(e, Ctor):
+        return e.name if e.arg is None else "%s(%s)" % (e.name, _expr_text(e.arg))
+    if isinstance(e, Quant):
+        return "%s(%s in %s..%s: %s)" % (e.kind, e.var, _expr_text(e.lo), _expr_text(e.hi), _expr_text(e.body))
+    if isinstance(e, IsVariant):
+        return "is_variant(%s, %s::%s)" % (_expr_text(e.value), e.enum_name, e.variant)
+    if isinstance(e, VariantField):
+        return "variant_field(%s, %s::%s, %s)" % (_expr_text(e.value), e.enum_name, e.variant, e.field)
+    return "..."
 
 
 def _occurs(t, c):
@@ -469,6 +759,8 @@ FIX = {
     "invariant_preserved": "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
     "decreases_nonneg": "the decreases expression must be >= 0 whenever the loop condition holds; add an invariant",
     "decreases_decrease": "the decreases expression must strictly decrease each iteration",
+    "recursive_nonneg": "the decreases measure must be >= 0 at function entry and at every recursive call; add a requires, or guard the call with an if/match",
+    "recursive_decrease": "the callee's measure must be strictly smaller than the caller's entry measure: recurse on a smaller argument (a child of a match binder, an index one closer to the end), or fix the measure",
     "variant_domain": "guard the lookup so it is only reached for that variant, e.g. `is_variant(e, E::V) && variant_field(e, E::V, f) > 0` or `!is_variant(e, E::V) || ...`",
     "contract_domain": "guard the partial operation earlier in the same contract or in an earlier clause: index range, divisor != 0, is_some/is_ok before some_val/ok_val/err_val, lo < hi before max/min",
     "elem_range": "store or fill only values in 0..=255 into a [u8] array: bound the value with requires, an if, or a loop invariant",
@@ -497,6 +789,15 @@ class FnVerifier:
         s.lemma_keys = set()
         s.theta = {}        # G3 A2: callee type-parameter substitution while a callee contract is re-interpreted
         s._opq = {}
+        # G9 A1: function SCCs (Program.g9) and the frozen entry value of this function's decreases measure
+        meta = getattr(prog, "g9", None)
+        s.scc_id = {}
+        if meta is not None:
+            for i, names in enumerate(meta["fn_sccs"]):
+                for n in names:
+                    s.scc_id[n] = i
+        s.m0 = None
+        s._cex_m = None
 
     def T(s, ty):
         """type of a checked node under the current contract-instantiation substitution"""
@@ -539,53 +840,25 @@ class FnVerifier:
 
     # ---------- value domain ----------
     def wf(s, ty, v):
-        """well_formed(ty, v): every active leaf is an i64. None when trivially true."""
-        if ty == I64:
-            return in_range(v)
-        if ty.owner is None and ty.name in _COLL:     # G6 A1: 0 <= n <= MAX_LEN (and the u8 domain of a String)
-            ln = z3.And(v.n >= 0, v.n <= MAX_LEN)
-            return z3.And(ln, u8_dom(v)) if ty.name == "string" else ln
-        if ty == OPTION:
-            return z3.Implies(Opt.is_some(v), in_range(Opt.sval(v)))
-        if ty == RESULT:
-            return z3.And(z3.Implies(Res.is_ok(v), in_range(Res.oval(v))),
-                          z3.Implies(Res.is_err(v), in_range(Res.eval(v))))
-        if ty.owner is not None:        # G3: an abstract value has no well-formedness predicate
-            return None
+        """well_formed(ty, v): every active leaf is an i64. None when trivially true (module-level _wf_of)."""
+        return _wf_of(s.model, ty, v)
+
+    def observe(s, st, t, ty, force=False):
+        """G9 A1: add the valid one-step size/wf facts of the observed nominal term t (Model.facts) to the path
+        condition of st, once per fact. Only for recursive-related types, or any non-generic nominal when forced
+        (an explicit `size` call). A no-op for programs without recursive types."""
         m = s.model
-        if ty.args and m.wf_trivial(ty):
-            # G3: no constrained leaf anywhere inside (e.g. Dup<Dup<T>>); create the datatype as the full walk would,
-            # but skip the field recursion, which is exponential in the nesting depth
-            if ty.name == "option":
-                m.opt(ty)
-            elif m.tt.is_struct(ty):
-                m.struct_info(ty)
-            elif m.tt.is_enum(ty):
-                for vd in m.tt.decl(ty).variants:
-                    m.enum_info(ty)[vd.name]
-            return None
-        if ty.name == "option":         # G3: Option<X>, X other than i64
-            o = m.opt(ty)
-            w = s.wf(ty.args[0], o.sval(v))
-            return None if w is None else z3.Implies(o.is_some(v), w)
-        if ty.name == "result":
-            o = m.res(ty)
-            w = s.wf(ty.args[0], o.oval(v))
-            parts = [] if w is None else [z3.Implies(o.is_ok(v), w)]
-            parts.append(z3.Implies(o.is_err(v), in_range(o.eval(v))))
-            return _conj(parts)
-        if m.tt.is_struct(ty):
-            accs = m.struct_info(ty)[1]
-            return _conj([s.wf(ft, acc(v)) for (fd, ft), acc in zip(m.fields_of(ty), accs)])
-        if m.tt.is_enum(ty):
-            parts = []
-            for vd in m.tt.decl(ty).variants:
-                _, rec, accs = m.enum_info(ty)[vd.name]
-                w = _conj([s.wf(ft, acc(v)) for (fd, ft), acc in zip(m.fields_of(ty, vd.name), accs)])
-                if w is not None:
-                    parts.append(z3.Implies(rec(v), w))
-            return _conj(parts)
-        return None
+        if ty is None or isinstance(t, (Arr, Map)):
+            return
+        if not (m.rel(ty) or (force and m.rel_nominal(ty))):
+            return
+        ids = st.obs
+        for fct in m.facts(ty, t):
+            i = fct.get_id()
+            if i not in ids:
+                ids = ids | {i}
+                st.pc.append(fct)
+        st.obs = ids
 
     def rebuild(s, ty, cur, path, new):
         """struct value `cur` of type ty with the field path replaced by `new`"""
@@ -595,7 +868,11 @@ class FnVerifier:
         i = m.tt.field_index(ty, path[0])
         ctor, accs = m.struct_info(ty)
         vals = [acc(cur) for acc in accs]
-        vals[i] = s.rebuild(m.fields_of(ty)[i][1], vals[i], path[1:], new)
+        fty = m.fields_of(ty)[i][1]
+        if len(path) == 1:
+            vals[i] = m.field_put(fty, new)       # G9 A1: a buffer field stores a Buf datatype value
+        else:
+            vals[i] = s.rebuild(fty, vals[i], path[1:], new)
         return ctor(*vals)
 
     # ---------- obligations ----------
@@ -711,6 +988,7 @@ class FnVerifier:
     def cex(s, m, st):
         out = {}
         s._opq = {}
+        s._cex_m = m
         for name, v in st.env.items():
             try:
                 if isinstance(v, Arr):
@@ -734,9 +1012,81 @@ class FnVerifier:
                 pass
         return out
 
+    # G9 A1: display bounds of a recursive counterexample value (they never constrain the solver)
+    CEX_MAX_NODES = 64      # nominal constructor nodes printed per value, preorder
+    CEX_MAX_DEPTH = 16      # nesting depth printed (the value itself is depth 1)
+    CEX_TRUNCATED = "<truncated>"
+
     def fmt_val(s, v, nested=False):
         """z3 model value -> Pruv syntax on one line (user struct/enum); unknown shapes keep z3's str().
-        G3: an abstract value is its opaque token (a dict at the top, `T:opaque#N` inside a datatype)."""
+        G3: an abstract value is its opaque token (a dict at the top, `T:opaque#N` inside a datatype).
+        A program with a G9 feature takes the bounded printer; any other program the original one."""
+        if s.model.g9:
+            return s._fmt_g9(v, nested, [0], 1, None)
+        return s._fmt_val_old(v, nested)
+
+    def _fmt_buf(s, v, fty):
+        """a buffer field value Buf(len, arr): [e0, e1, ...] (first 8 elements) or "bytes" for a str field"""
+        m = s._cex_m
+        n = v.children()[0].as_long()
+        arr = v.children()[1]
+        els = []
+        for i in range(min(max(n, 0), 8)):
+            x = m.eval(z3.Select(arr, z3.IntVal(i)), model_completion=True)
+            els.append(z3.is_true(x) if fty.name == "array_bool" else x.as_long())
+        more = n > 8
+        if fty.name == "str":
+            body = "".join(chr(b) if 32 <= b < 127 and chr(b) not in '"\\' else "\\x%02x" % (b & 255) for b in els)
+            return '"%s%s"' % (body, "..." if more else "")
+        txt = ", ".join(("true" if x else "false") if fty.name == "array_bool" else str(x) for x in els)
+        return "[%s%s]" % (txt, (", ..." if txt else "...") if more else "")
+
+    def _fmt_g9(s, v, nested, lim, depth, fty):
+        try:
+            if z3.is_int_value(v):
+                return str(v.as_long())
+            if z3.is_bool(v):
+                return "true" if z3.is_true(v) else "false"
+            sname = v.sort().name()
+            if sname in s.model.buf_names:
+                return s._fmt_buf(v, fty)
+            if sname in s.model.abs_name:
+                tok = s.opaque(v)
+                return "%s:%s" % (tok["type_parameter"], tok["value"]) if nested else tok
+            ty = s.model.type_of(v)
+            if ty is not None and ty.name in ("option", "result") and ty.args and z3.is_app(v):
+                nm = s.model.short.get(v.decl().name(), v.decl().name())
+                ks = [s._fmt_g9(c, True, lim, depth, None) for c in v.children()]
+                return nm if not ks else "%s(%s)" % (nm, ", ".join(ks))
+            if ty is None or not s.model.is_user(ty) or not z3.is_app(v):
+                return str(v)
+            if lim[0] >= s.CEX_MAX_NODES or depth > s.CEX_MAX_DEPTH:
+                return s.CEX_TRUNCATED
+            lim[0] += 1
+            dn = v.decl().name()
+            decl = s.model.tt.decls.get(ty.name)
+            if decl is None:
+                return str(v)
+            if isinstance(decl, StructDecl):
+                ctor, _ = s.model.struct_info(ty)
+                if ctor.name() == dn and len(decl.fields) == v.num_args():
+                    if not decl.fields:
+                        return ty.name
+                    kids = [s._fmt_g9(c, True, lim, depth + 1, fd.type) for fd, c in zip(decl.fields, v.children())]
+                    return "%s { %s }" % (ty.name, ", ".join("%s: %s" % (fd.name, k) for fd, k in zip(decl.fields, kids)))
+            else:
+                for vd in decl.variants:
+                    ctor = s.model.enum_info(ty)[vd.name][0]
+                    if ctor.name() == dn:
+                        if not vd.fields:
+                            return "%s::%s" % (ty.name, vd.name)
+                        kids = [s._fmt_g9(c, True, lim, depth + 1, fd.type) for fd, c in zip(vd.fields, v.children())]
+                        return "%s::%s(%s)" % (ty.name, vd.name, ", ".join(kids))
+            return str(v)
+        except Exception:
+            return str(v)
+
+    def _fmt_val_old(s, v, nested=False):
         try:
             if z3.is_int_value(v):
                 return str(v.as_long())
@@ -867,22 +1217,44 @@ class FnVerifier:
         if isinstance(e, StructLit):
             vals = [s.ev(fi.value, st, g, code, env) for fi in e.fields]
             sty = s.T(e.ty) if e.ty is not None else Type(e.name)
+            if s.model.g9:      # G9 A1: buffer fields store Buf values; recursive results expose their facts
+                vals = [s.model.field_put(ft, x) for (fd, ft), x in zip(s.model.fields_of(sty), vals)]
+                res = s.model.struct_info(sty)[0](*vals)
+                s.observe(st, res, sty)
+                return res
             return s.model.struct_info(sty)[0](*vals)
         if isinstance(e, EnumCtor):
             vals = [s.ev(a, st, g, code, env) for a in e.args]
             ety = s.T(e.ty) if e.ty is not None else Type(e.enum_name)
+            if s.model.g9:
+                vals = [s.model.field_put(ft, x) for (fd, ft), x in zip(s.model.fields_of(ety, e.variant), vals)]
+                res = s.model.enum_info(ety)[e.variant][0](*vals)
+                s.observe(st, res, ety)
+                return res
             return s.model.enum_info(ety)[e.variant][0](*vals)
         if isinstance(e, FieldAccess):
             v = s.ev(e.base, st, g, code, env)
             ty = s.model.type_of(v)
-            return s.model.struct_info(ty)[1][s.model.tt.field_index(ty, e.field)](v)
+            i = s.model.tt.field_index(ty, e.field)
+            r = s.model.struct_info(ty)[1][i](v)
+            if s.model.g9:      # G9 A1: adapt a buffer field to an Arr; a nominal child is an observed term
+                fty = s.model.fields_of(ty)[i][1]
+                r = s.model.field_get(fty, r, e.field)
+                s.observe(st, r, fty)
+            return r
         if isinstance(e, IsVariant):
             v = s.ev(e.value, st, g, code, env)
             return s.model.enum_info(s._enum_ty(e, v))[e.variant][1](v)
         if isinstance(e, VariantField):
             v = s.ev(e.value, st, g, code, env)
             ety = s._enum_ty(e, v)
-            return s.model.enum_info(ety)[e.variant][2][s.model.tt.field_index(ety, e.field, e.variant)](v)
+            i = s.model.tt.field_index(ety, e.field, e.variant)
+            r = s.model.enum_info(ety)[e.variant][2][i](v)
+            if s.model.g9:
+                fty = s.model.fields_of(ety, e.variant)[i][1]
+                r = s.model.field_get(fty, r, e.field)
+                s.observe(st, r, fty)
+            return r
         raise Exception("ev: %r" % e)
 
     def _enum_ty(s, e, v):
@@ -1069,6 +1441,10 @@ class FnVerifier:
         args = [s.ev(a, st, g, code, env) for a in e.args]
         if n == "len":
             return args[0].n
+        if n == "size":     # G9 A1: contract-only structural size of a non-generic nominal value
+            sty = s.model.type_of(args[0])
+            s.observe(st, args[0], sty, force=True)
+            return s.model.size_fn(sty.name)(args[0])
         if n == "alloc":
             s.prove(st, g, z3.And(args[0] >= 0, args[0] <= MAX_LEN), e, "alloc_negative",
                     "alloc length in 0..2^40")
@@ -1122,8 +1498,11 @@ class FnVerifier:
                 for r in f.requires:
                     ob = s.ev(r, st, g, False, cenv)
                     s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
+                s.termination(e, f, st, g, cenv)    # G9 A1: only a call inside the caller's own recursive SCC
             if f.ret == UNIT:
-                if f.foreign is not None:       # G6 A1 (11.4): a trusted unit result still assumes its ensures
+                # G6 A1 (11.4): a trusted unit result still assumes its ensures; G9 A1: so does a member of a recursive
+                # SCC, after the termination obligations above (also when called from outside the SCC)
+                if f.foreign is not None or n in s.scc_id:
                     for en in f.ensures:
                         s.assume(st, g, s.ev(en, st, g, False, cenv))
                 return None
@@ -1145,6 +1524,24 @@ class FnVerifier:
             return res
         finally:
             s.theta = saved
+
+    def termination(s, e, f, st, g, cenv):
+        """G9 A1 (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:
+        definedness of the instantiated callee measure (existing domain codes), M_f(actuals) >= 0
+        (recursive_nonneg), M_f(actuals) < M_s.f(frozen entry value) (recursive_decrease). Only after these the
+        caller introduces the fresh result and assumes the callee ensures (so the call's own ensures never justify
+        its own decrease or precondition). cenv: the callee parameters bound to the actual argument values."""
+        a, b = s.scc_id.get(f.name), s.scc_id.get(s.f.name)
+        if a is None or a != b or f.decreases is None or s.m0 is None:
+            return
+        s.check_dom(st, g, f.decreases, e, "variant_field lookups in the decreases clause of %s are defined" % f.name,
+                    cenv)
+        mg = s.ev(f.decreases, st, g, False, cenv)
+        tg, tf = _expr_text(f.decreases), _expr_text(s.f.decreases)
+        s.prove(st, g, mg >= 0, e, "recursive_nonneg",
+                "decreases measure of %s (`%s`) >= 0 at this call" % (f.name, tg))
+        s.prove(st, g, mg < s.m0, e, "recursive_decrease",
+                "decreases measure of %s (`%s`) < decreases measure of %s at its entry (`%s`)" % (f.name, tg, s.f.name, tf))
 
     def catalog_call(s, e, args, st, g, code):
         """G6 A1 (G6_SPEC 11.3): the standard catalog; every requires is a `call_requires` obligation
@@ -1315,7 +1712,9 @@ class FnVerifier:
             outer = set(st.env)
             out = []
             sty = s.model.type_of(v)     # G3: the scrutinee's complete (possibly generic) type
-            payload = sty.args[0] if sty is not None and sty.args and sty.name in ("option", "result") else I64
+            if s.model.g9:
+                s.observe(st, v, sty)    # G9 A1: one-step facts of the matched value
+            payload =sty.args[0] if sty is not None and sty.args and sty.name in ("option", "result") else I64
             for a in stmt.arms:
                 if a.enum_name is not None:
                     ety = sty if sty is not None and sty.name == a.enum_name else Type(a.enum_name)
@@ -1336,6 +1735,9 @@ class FnVerifier:
                     ftys = [I64 if a.ctor == "Err" else payload] * len(vals)
                 b = st.fork(cond)
                 for name, val, fty in zip(a.binders, vals, ftys):
+                    if s.model.g9:       # G9 A1: buffer payloads become Arr views; nominal payloads are observed
+                        val = s.model.field_get(fty, val, name)
+                        s.observe(b, val, fty)
                     b.env[name] = val
                     w = s.wf(fty, val)
                     if w is not None:
@@ -1492,6 +1894,13 @@ class FnVerifier:
             if d is not None:
                 st.pc.append(d)
             st.pc.append(s.ev(r, st, [], False))
+        if f.decreases is not None and f.foreign is None:
+            # G9 A1 (G9_SPEC 5): the measure is defined and >= 0 under the requires at every entry (errors point to the
+            # clause); its value is frozen here and is the caller measure of every recursive call in the body
+            s.check_dom(st, [], f.decreases, f.decreases, "variant_field lookups in the decreases clause are defined")
+            s.m0 = s.ev(f.decreases, st, [], False)
+            s.prove(st, [], s.m0 >= 0, f.decreases, "recursive_nonneg",
+                    "decreases measure `%s` >= 0 at function entry" % _expr_text(f.decreases))
         if f.foreign is not None:       # G6 A1 (11.4): a trusted declaration has no body and no ensures proof
             s.run_foreign(st)
             return

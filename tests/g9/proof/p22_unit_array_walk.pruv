@@ -1,0 +1,15 @@
+// G9 A1 proof: a unit-returning array walk with measure len(a) - i, called from a non-recursive function
+fn walk_unit(a: [i64], i: i64) -> ()
+  requires 0 <= i && i <= len(a)
+  ensures i <= len(a)
+  decreases len(a) - i
+{
+  if i < len(a) {
+    walk_unit(a, i + 1);
+  }
+}
+
+fn visit(a: [i64]) -> i64 {
+  walk_unit(a, 0);
+  return len(a);
+}

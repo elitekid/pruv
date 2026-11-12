@@ -1,0 +1,9 @@
+// G9 A1 reject: the cursor advances i + 1 but the measure is `i` instead of len(a) - i, so it increases (recursive_decrease)
+fn find_from(a: [i64], i: i64, x: i64) -> bool
+  requires 0 <= i && i <= len(a)
+  decreases i
+{
+  if i == len(a) { return false; }
+  if a[i] == x { return true; }
+  return find_from(a, i + 1, x);
+}

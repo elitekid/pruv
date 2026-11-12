@@ -1,0 +1,18 @@
+// G9 A1 proof: generic two-function SCC with an identical parameter vector forwarded unchanged; both prove result == x
+fn bounce_a<T>(x: T, n: i64) -> T
+  requires n >= 0
+  ensures result == x
+  decreases n
+{
+  if n == 0 { return x; }
+  return bounce_b::<T>(x, n - 1);
+}
+
+fn bounce_b<T>(x: T, n: i64) -> T
+  requires n >= 0
+  ensures result == x
+  decreases n
+{
+  if n == 0 { return x; }
+  return bounce_a::<T>(x, n - 1);
+}

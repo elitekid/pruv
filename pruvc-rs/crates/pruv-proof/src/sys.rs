@@ -344,19 +344,35 @@ impl Z3 {
     // ---- datatypes ----
     /// z3py `CreateDatatypes(d1, d2, ...)`: creates several sorts together with a single `Z3_mk_datatypes`.
     pub fn create_datatypes(&self, specs: &[DtSpec]) -> Vec<DtSort> {
+        self.create_datatypes_refs(specs, &[])
+    }
+
+    /// z3py `CreateDatatypes(d1, d2, ...)` with datatype references (G9 A1, simultaneous recursive declaration).
+    /// `refs[i][j][k] = Some(m)`: field k of constructor j of datatype i has the datatype number m of this very call as its
+    /// sort (z3py: a field whose type is a `Datatype` object of the list gives `sorts[k] = None, refs[k] = list index`);
+    /// the sort stored in `fields` is then ignored. A missing (or shorter) `refs` means "no references" everywhere.
+    pub fn create_datatypes_refs(&self, specs: &[DtSpec], refs_spec: &[Vec<Vec<Option<usize>>>]) -> Vec<DtSort> {
         let c = self.raw();
         let mut all_cons: Vec<RawConstructor> = Vec::new();
         let mut lists = Vec::new();
-        for spec in specs {
+        for (si, spec) in specs.iter().enumerate() {
             let mut cons: Vec<RawConstructor> = Vec::new();
-            for ct in &spec.ctors {
+            for (ci, ct) in spec.ctors.iter().enumerate() {
                 let name = self.sym(&ct.name);
                 let rec = self.sym(&format!("is-{}", ct.name)); // z3py: declare(name) → recognizer "is-name"
                 let fnames: Vec<RawSymbol> = ct.fields.iter().map(|(n, _)| self.sym(n)).collect();
-                let sorts: Vec<Option<RawSort>> = ct.fields.iter().map(|(_, s)| Some(s.raw)).collect();
-                let mut refs: Vec<c_uint> = vec![0; ct.fields.len()];
-                // SAFETY: S1 S2 S3 S5 — field sorts are all already-created sorts (no recursive references → refs is 0);
-                // every constructor made is del'd below.
+                let field_ref = |k: usize| -> Option<usize> {
+                    refs_spec.get(si).and_then(|a| a.get(ci)).and_then(|b| b.get(k)).copied().flatten()
+                };
+                let sorts: Vec<Option<RawSort>> = ct
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(k, (_, s))| if field_ref(k).is_some() { None } else { Some(s.raw) })
+                    .collect();
+                let mut refs: Vec<c_uint> = (0..ct.fields.len()).map(|k| field_ref(k).unwrap_or(0) as c_uint).collect();
+                // SAFETY: S1 S2 S3 S5 — field sorts are already-created sorts (refs 0) or null with a datatype index
+                // of this call (z3 resolves it inside Z3_mk_datatypes); every constructor made is del'd below.
                 let con = unsafe {
                     nn(z::Z3_mk_constructor(
                         c,

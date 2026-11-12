@@ -469,16 +469,67 @@ impl Env {
 pub struct State {
     pub env: Env,
     pub pc: Vec<Ast>,
+    /// G9 A1 (verify.py `State.obs`): ids of the recursive-value facts already in `pc` (immutable, shared by forks).
+    pub obs: std::rc::Rc<HashSet<u32>>,
 }
 
 impl State {
+    /// A fresh state (empty `obs`).
+    pub fn new(env: Env, pc: Vec<Ast>) -> State {
+        State { env, pc, obs: std::rc::Rc::new(HashSet::new()) }
+    }
+
     /// verify.py `State.fork` (line 146).
     pub fn fork(&self, extra: Option<Ast>) -> State {
         let mut pc = self.pc.clone();
         if let Some(e) = extra {
             pc.push(e);
         }
-        State { env: self.env.clone(), pc }
+        State { env: self.env.clone(), pc, obs: std::rc::Rc::clone(&self.obs) }
+    }
+}
+
+/// verify.py `_expr_text`: source-like text of a contract expression (used to name measures in messages).
+pub(crate) fn expr_text(e: &Expr) -> String {
+    match e {
+        Expr::IntLit(x) => norm_int(&x.value),
+        Expr::BoolLit(x) => (if x.value { "true" } else { "false" }).to_string(),
+        Expr::Var(x) => x.name.clone(),
+        Expr::Unary(x) => format!("{}{}", x.op, expr_text(&x.operand)),
+        Expr::Binary(x) => {
+            let side = |y: &Expr| -> String {
+                if matches!(y, Expr::Binary(_)) {
+                    format!("({})", expr_text(y))
+                } else {
+                    expr_text(y)
+                }
+            };
+            format!("{} {} {}", side(&x.left), x.op, side(&x.right))
+        }
+        Expr::Call(x) => format!("{}({})", x.name, x.args.iter().map(expr_text).collect::<Vec<_>>().join(", ")),
+        Expr::Index(x) => format!("{}[{}]", expr_text(&x.array), expr_text(&x.index)),
+        Expr::FieldAccess(x) => format!("{}.{}", expr_text(&x.base), x.field),
+        Expr::Ctor(x) => match &x.arg {
+            None => x.name.clone(),
+            Some(a) => format!("{}({})", x.name, expr_text(a)),
+        },
+        Expr::Quant(x) => format!(
+            "{}({} in {}..{}: {})",
+            x.kind,
+            x.var,
+            expr_text(&x.lo),
+            expr_text(&x.hi),
+            expr_text(&x.body)
+        ),
+        Expr::IsVariant(x) => format!("is_variant({}, {}::{})", expr_text(&x.value), x.enum_name, x.variant),
+        Expr::VariantField(x) => format!(
+            "variant_field({}, {}::{}, {})",
+            expr_text(&x.value),
+            x.enum_name,
+            x.variant,
+            x.field
+        ),
+        _ => "...".to_string(),
     }
 }
 
@@ -531,6 +582,10 @@ pub struct FnVerifier<'a> {
     pub(crate) theta: Mapping,
     /// G3 A2 (4.7): per abstract sort, the model values seen so far in this counterexample (their order gives `opaque#N`).
     pub(crate) opq: RefCell<HashMap<String, Vec<String>>>,
+    /// G9 A1: function name -> recursive function SCC number (`Program.g9.fn_sccs`); empty without G9 metadata.
+    pub(crate) scc_id: HashMap<String, usize>,
+    /// G9 A1: the frozen entry value of this function's decreases measure (`s.m0`).
+    pub(crate) m0: Option<Ast>,
 }
 
 impl<'a> FnVerifier<'a> {
@@ -559,6 +614,8 @@ impl<'a> FnVerifier<'a> {
             probe: None,
             theta: Mapping::new(),
             opq: RefCell::new(HashMap::new()),
+            scc_id: HashMap::new(),
+            m0: None,
         }
     }
 
@@ -600,6 +657,14 @@ impl<'a> FnVerifier<'a> {
         let mut v = FnVerifier::new(z, prelude, model, trace, &f.name);
         for g in &prog.functions {
             v.funcs.insert(g.name.clone(), g);
+        }
+        // G9 A1: function SCCs (Program.g9)
+        if let Some(meta) = &prog.g9 {
+            for (i, names) in meta.fn_sccs.iter().enumerate() {
+                for n in names {
+                    v.scc_id.insert(n.clone(), i);
+                }
+            }
         }
         v.f = Some(f);
         v
@@ -773,47 +838,179 @@ impl<'a> FnVerifier<'a> {
                 parts.push(Some(o.is_err.apply1(v).implies(&in_range(z, &o.eval.apply1(v)))));
                 conj(z, parts)
             }
-            Ty::User(_) | Ty::Inst(_) => match m.nominal_kind(ty) {
-                Some(NomKind::Struct) => {
-                    let accs = m.struct_info(ty)?.accs;
-                    let mut parts: Vec<Option<Ast>> = Vec::new();
-                    for ((_, ft), acc) in m.fields_of(ty, None)?.iter().zip(accs.iter()) {
-                        parts.push(self.try_wf(ft, &acc.apply1(v))?);
-                    }
-                    conj(z, parts)
-                }
-                Some(NomKind::Enum) => {
-                    let mut parts: Vec<Option<Ast>> = Vec::new();
-                    for vn in m.variant_names(ty) {
-                        let vf = m.variant_fns(ty, &vn)?;
-                        let mut ws: Vec<Option<Ast>> = Vec::new();
-                        for ((_, ft), acc) in m.fields_of(ty, Some(&vn))?.iter().zip(vf.accs.iter()) {
-                            ws.push(self.try_wf(ft, &acc.apply1(v))?);
-                        }
-                        if let Some(w) = conj(z, ws) {
-                            parts.push(Some(vf.rec.apply1(v).implies(&w)));
-                        }
-                    }
-                    conj(z, parts)
-                }
-                None => None,
-            },
+            // G9 A1: a recursive type is the application of its wf_D definition, never a Python expansion
+            Ty::User(n) if m.in_scc(n) => Some(m.wf_fn(n)?.apply1(v)),
+            Ty::User(_) | Ty::Inst(_) => self.wf_step(ty, v)?,
             Ty::Bool | Ty::Unit | Ty::Array(_) | Ty::GArray(_) | Ty::Str => None,
         })
     }
 
+    /// verify.py `_wf_step`: one structural step of well_formed for a struct/enum type (the fields are checked with `wf_field`).
+    pub(crate) fn wf_step(&self, ty: &Ty, v: &Ast) -> R<Option<Ast>> {
+        let z = &self.z;
+        let m = self.model;
+        Ok(match m.nominal_kind(ty) {
+            Some(NomKind::Struct) => {
+                let accs = m.struct_info(ty)?.accs;
+                let mut parts: Vec<Option<Ast>> = Vec::new();
+                for ((_, ft), acc) in m.fields_of(ty, None)?.iter().zip(accs.iter()) {
+                    parts.push(self.wf_field(ft, &acc.apply1(v))?);
+                }
+                conj(z, parts)
+            }
+            Some(NomKind::Enum) => {
+                let mut parts: Vec<Option<Ast>> = Vec::new();
+                for vn in m.variant_names(ty) {
+                    let vf = m.variant_fns(ty, &vn)?;
+                    let mut ws: Vec<Option<Ast>> = Vec::new();
+                    for ((_, ft), acc) in m.fields_of(ty, Some(&vn))?.iter().zip(vf.accs.iter()) {
+                        ws.push(self.wf_field(ft, &acc.apply1(v))?);
+                    }
+                    if let Some(w) = conj(z, ws) {
+                        parts.push(Some(vf.rec.apply1(v).implies(&w)));
+                    }
+                }
+                conj(z, parts)
+            }
+            None => None,
+        })
+    }
+
+    /// `_wf_of(m, ft, m.field_get(ft, acc(v), name))`: a stored buffer field is viewed as an Arr (`Model::buf_parts`),
+    /// every other field is checked as is.
+    fn wf_field(&self, ft: &Ty, term: &Ast) -> R<Option<Ast>> {
+        if Model::is_buf(ft) {
+            let (a, n) = self.model.buf_parts(ft, term)?;
+            return Ok(Some(self.wf_buf(ft, &n, &a)));
+        }
+        self.try_wf(ft, term)
+    }
+
+    /// The Arr branch of verify.py `_wf_of` for a buffer field: `0 <= len <= 2^40` and, for u8/str, the byte domain.
+    fn wf_buf(&self, ty: &Ty, n: &Ast, a: &Ast) -> Ast {
+        let ln = self.z.and(&[n.ge_i(0), n.le_i(MAX_LEN)]);
+        if Model::buf_elem(ty) == Elem::U8 {
+            let arr = Arr::new(a.clone(), n.clone(), String::new(), Elem::U8);
+            self.z.and(&[ln, self.u8_dom(&arr)])
+        } else {
+            ln
+        }
+    }
+
+    /// `wf(ty, v)` of an environment value: an Arr view of a buffer field (G9) uses the buffer branch, anything else `try_wf`.
+    fn wf_of_val(&self, ty: &Ty, v: &Val) -> R<Option<Ast>> {
+        if let Val::Arr(a) = v {
+            if Model::is_buf(ty) {
+                return Ok(Some(self.wf_buf(ty, &a.n, &a.a)));
+            }
+        }
+        self.try_wf(ty, v.try_ast()?)
+    }
+
+    /// verify.py `Model.field_get` for the verifier's values: a buffer field becomes an Arr view named `name`, any other field
+    /// is classified by its type (`Val::from_field`).
+    fn field_val(&self, fty: &Ty, term: Ast, name: &str) -> R<Val> {
+        if Model::is_buf(fty) {
+            let (a, n) = self.model.buf_parts(fty, &term)?;
+            return Ok(Val::Arr(Arr::new(a, n, name.to_string(), Model::buf_elem(fty))));
+        }
+        Val::from_field(fty, term)
+    }
+
+    /// verify.py `Model.field_put`: an Arr stored into a buffer field becomes a Buf value, any other value is stored as is.
+    fn field_put(&self, fty: &Ty, v: &Val) -> R<Ast> {
+        if let Val::Arr(a) = v {
+            if Model::is_buf(fty) {
+                return Ok(self.model.buf_put(fty, &a.n, &a.a)?);
+            }
+        }
+        Ok(v.try_ast()?.clone())
+    }
+
+    /// verify.py `FnVerifier.observe`: add the valid one-step size/wf facts of the observed nominal term `t` (`facts`) to the
+    /// path condition of `st`, once per fact. Only for recursive-related types, or any non-generic nominal when `force`d (an
+    /// explicit `size` call). A no-op for programs without recursive types. (The Python early return for an Arr/Map term is
+    /// the caller's: only datatype values are passed.)
+    pub(crate) fn observe(&self, st: &mut State, t: &Ast, ty: Option<&Ty>, force: bool) -> R<()> {
+        let m = self.model;
+        let Some(ty) = ty else { return Ok(()) };
+        if !(m.rel(ty) || (force && m.rel_nominal(ty))) {
+            return Ok(());
+        }
+        for fct in self.facts(ty, t)? {
+            let i = fct.id();
+            if !st.obs.contains(&i) {
+                std::rc::Rc::make_mut(&mut st.obs).insert(i);
+                st.pc.push(fct);
+            }
+        }
+        Ok(())
+    }
+
+    /// verify.py `Model.facts`: valid facts about one observed term `t` of the non-generic nominal type `ty` (see
+    /// tests/g9/model_notes.md): size positivity, the one-step size equation, for a recursive type the one-step wf equation, and
+    /// positivity of the size of every direct nominal child (so child-smaller follows from the equation). It lives here
+    /// because the wf step needs `in_range` / `u8_dom` / `conj`.
+    pub(crate) fn facts(&self, ty: &Ty, t: &Ast) -> R<Vec<Ast>> {
+        let m = self.model;
+        let n = ty.name().to_string();
+        let sf = m.size_fn(&n)?;
+        let mut out: Vec<Ast> = Vec::new();
+        out.push(sf.apply1(t).ge_i(1));
+        let sv = m.size_value(ty, t)?;
+        out.push(sf.apply1(t).eq(&sv));
+        if m.in_scc(&n) {
+            let body = self.wf_step(ty, t)?;
+            let rhs = match body {
+                Some(b) => b,
+                None => self.z.bool_val(true),
+            };
+            out.push(m.wf_fn(&n)?.apply1(t).eq(&rhs));
+        }
+        let groups: Vec<(Option<String>, Vec<FuncDecl>)> = match m.nominal_kind(ty) {
+            Some(NomKind::Struct) => vec![(None, m.struct_info(ty)?.accs)],
+            _ => {
+                let mut gs: Vec<(Option<String>, Vec<FuncDecl>)> = Vec::new();
+                for vn in m.variant_names(ty) {
+                    let accs = m.variant_fns(ty, &vn)?.accs;
+                    gs.push((Some(vn), accs));
+                }
+                gs
+            }
+        };
+        for (vname, accs) in &groups {
+            for ((_fd, fty), acc) in m.fields_of(ty, vname.as_deref())?.iter().zip(accs.iter()) {
+                if m.rel_nominal(fty) {
+                    out.push(m.size_fn(fty.name())?.apply1(&acc.apply1(t)).ge_i(1));
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// `rebuild(ty, cur, path, new)` (line 242): the struct value `cur` with the field path replaced by `new`.
     pub fn try_rebuild(&self, ty: &Ty, cur: &Ast, path: &[&str], new: &Ast) -> R<Ast> {
+        self.try_rebuild_v(ty, cur, path, &Val::Int(new.clone()))
+    }
+
+    /// `rebuild` with an environment value as the new field value (G9 A1: a buffer field stores a Buf datatype value built from
+    /// an Arr, `Model.field_put`).
+    pub fn try_rebuild_v(&self, ty: &Ty, cur: &Ast, path: &[&str], new: &Val) -> R<Ast> {
         if path.is_empty() {
-            return Ok(new.clone());
+            return Ok(new.try_ast()?.clone());
         }
         let m = self.model;
         let i = m.field_index_of(ty, path[0], None)?;
         let sf = m.struct_info(ty)?;
         let mut vals: Vec<Ast> = sf.accs.iter().map(|a| a.apply1(cur)).collect();
         let fty = m.fields_of(ty, None)?[i].1.clone();
-        let sub = self.try_rebuild(&fty, &vals[i], &path[1..], new)?;
-        vals[i] = sub;
+        if path.len() == 1 {
+            // G9 A1: a buffer field stores a Buf datatype value
+            vals[i] = self.field_put(&fty, new)?;
+        } else {
+            let sub = self.try_rebuild_v(&fty, &vals[i], &path[1..], new)?;
+            vals[i] = sub;
+        }
         Ok(sf.ctor.apply(&vals))
     }
 
@@ -837,7 +1034,7 @@ impl<'a> FnVerifier<'a> {
             env.set(name, v);
         }
         self.params = env.clone();
-        State { env, pc }
+        State::new(env, pc)
     }
 
     /// First part of `ensures_ok` (line 647): overlays the parameters' original values on the current env and inserts `result`.
@@ -1325,6 +1522,24 @@ impl<'a> FnVerifier<'a> {
             }
             Expr::Call(x) => self.call(e, x, st, g, code, env),
             Expr::StructLit(x) => {
+                if model.is_g9() {
+                    // G9 A1: buffer fields store Buf values; recursive results expose their facts
+                    let mut vals: Vec<Val> = Vec::new();
+                    for fi in &x.fields {
+                        vals.push(self.ev(&fi.value, st, g, code, env)?);
+                    }
+                    let sty = match self.t(x.ty.as_deref()) {
+                        Some(t) => t,
+                        None => Ty::User(x.name.clone()),
+                    };
+                    let mut asts: Vec<Ast> = Vec::new();
+                    for ((_, ft), xv) in model.fields_of(&sty, None)?.iter().zip(vals.iter()) {
+                        asts.push(self.field_put(ft, xv)?);
+                    }
+                    let res = model.struct_info(&sty)?.ctor.apply(&asts);
+                    self.observe(st, &res, Some(&sty), false)?;
+                    return Ok(Val::Dt(res, sty));
+                }
                 let mut vals: Vec<Ast> = Vec::new();
                 for fi in &x.fields {
                     vals.push(self.ev_ast(&fi.value, st, g, code, env)?);
@@ -1337,6 +1552,23 @@ impl<'a> FnVerifier<'a> {
                 Ok(Val::Dt(sf.ctor.apply(&vals), sty))
             }
             Expr::EnumCtor(x) => {
+                if model.is_g9() {
+                    let mut vals: Vec<Val> = Vec::new();
+                    for a in &x.args {
+                        vals.push(self.ev(a, st, g, code, env)?);
+                    }
+                    let ety = match self.t(x.ty.as_deref()) {
+                        Some(t) => t,
+                        None => Ty::User(x.enum_name.clone()),
+                    };
+                    let mut asts: Vec<Ast> = Vec::new();
+                    for ((_, ft), xv) in model.fields_of(&ety, Some(&x.variant))?.iter().zip(vals.iter()) {
+                        asts.push(self.field_put(ft, xv)?);
+                    }
+                    let res = model.variant_fns(&ety, &x.variant)?.ctor.apply(&asts);
+                    self.observe(st, &res, Some(&ety), false)?;
+                    return Ok(Val::Dt(res, ety));
+                }
                 let mut vals: Vec<Ast> = Vec::new();
                 for a in &x.args {
                     vals.push(self.ev_ast(a, st, g, code, env)?);
@@ -1354,6 +1586,14 @@ impl<'a> FnVerifier<'a> {
                 let sf = model.struct_info(sty)?;
                 let idx = model.field_index_of(sty, &x.field, None)?;
                 let fty = model.fields_of(sty, None)?[idx].1.clone();
+                if model.is_g9() {
+                    // G9 A1: adapt a buffer field to an Arr; a nominal child is an observed term
+                    let rv = self.field_val(&fty, sf.accs[idx].apply1(va), &x.field)?;
+                    if let Val::Dt(a, t) = &rv {
+                        self.observe(st, a, Some(t), false)?;
+                    }
+                    return Ok(rv);
+                }
                 Val::from_field(&fty, sf.accs[idx].apply1(va))
             }
             Expr::IsVariant(x) => {
@@ -1370,6 +1610,13 @@ impl<'a> FnVerifier<'a> {
                 let vf = model.variant_fns(&ety, &x.variant)?;
                 let idx = model.field_index_of(&ety, &x.field, Some(&x.variant))?;
                 let fty = model.fields_of(&ety, Some(&x.variant))?[idx].1.clone();
+                if model.is_g9() {
+                    let rv = self.field_val(&fty, vf.accs[idx].apply1(v.try_ast()?), &x.field)?;
+                    if let Val::Dt(a, t) = &rv {
+                        self.observe(st, a, Some(t), false)?;
+                    }
+                    return Ok(rv);
+                }
                 Val::from_field(&fty, vf.accs[idx].apply1(v.try_ast()?))
             }
         }
@@ -1390,6 +1637,15 @@ impl<'a> FnVerifier<'a> {
                     Val::Map(m) => m.n.clone(),
                     other => other.try_arr()?.n.clone(),
                 }));
+            }
+            "size" => {
+                // G9 A1: contract-only structural size of a non-generic nominal value
+                let (a, sty) = match arg(0)? {
+                    Val::Dt(a, t) => (a.clone(), t.clone()),
+                    _ => return Err("'NoneType' object has no attribute 'name'".to_string()),
+                };
+                self.observe(st, &a, Some(&sty), true)?;
+                return Ok(Val::Int(self.model.size_fn(sty.name())?.apply1(&a)));
             }
             "alloc" => {
                 let a0 = arg(0)?.try_ast()?.clone();
@@ -1551,11 +1807,15 @@ impl<'a> FnVerifier<'a> {
                     None,
                 );
             }
+            // G9 A1: only a call inside the caller's own recursive SCC
+            self.termination(e, f, st, g, &cenv)?;
         }
         let ret = Ty::from_name(&f.ret);
         if ret == Ty::Unit {
-            if f.foreign.is_some() {
-                // G6 A1 (11.4): a trusted unit result still assumes its ensures (ordinary unit functions keep the legacy behaviour)
+            // G6 A1 (11.4): a trusted unit result still assumes its ensures; G9 A1: so does a member of a recursive SCC, after
+            // the termination obligations above (also when called from outside the SCC)
+            if f.foreign.is_some() || self.scc_id.contains_key(n) {
+                // (ordinary unit functions keep the legacy behaviour)
                 for en in &f.ensures {
                     let v = self.ev_ast(en, st, g, false, &cenv)?;
                     self.assume(st, g, v);
@@ -1589,6 +1849,61 @@ impl<'a> FnVerifier<'a> {
             self.assume(st, g, v);
         }
         Ok(res)
+    }
+
+    /// verify.py `termination` (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:
+    /// definedness of the instantiated callee measure (existing domain codes), M_f(actuals) >= 0 (`recursive_nonneg`),
+    /// M_f(actuals) < M_s.f(frozen entry value) (`recursive_decrease`). Only after these the caller introduces the fresh result
+    /// and assumes the callee ensures (so the call's own ensures never justify its own decrease or precondition).
+    /// `cenv`: the callee parameters bound to the actual argument values.
+    fn termination(&mut self, e: &Expr, f: &'a ast::Function, st: &mut State, g: &[Ast], cenv: &Env) -> R<()> {
+        let Some(sf) = self.f else { return Ok(()) };
+        let a = self.scc_id.get(&f.name).copied();
+        let b = self.scc_id.get(&sf.name).copied();
+        let (Some(fd), Some(m0)) = (&f.decreases, self.m0.clone()) else { return Ok(()) };
+        if a.is_none() || a != b {
+            return Ok(());
+        }
+        self.check_dom_e(
+            st,
+            g,
+            fd,
+            pos(e),
+            &format!("variant_field lookups in the decreases clause of {} are defined", f.name),
+            Some(cenv),
+        )?;
+        let mg = self.ev_ast(fd, st, g, false, cenv)?;
+        let tg = expr_text(fd);
+        let tf = match &sf.decreases {
+            Some(d) => expr_text(d),
+            None => return Err("'NoneType' object has no attribute 'decreases'".to_string()),
+        };
+        let ob = mg.ge_i(0);
+        self.prove_core(
+            &st.env,
+            &st.pc,
+            g,
+            &ob,
+            pos(e),
+            "recursive_nonneg",
+            &format!("decreases measure of {} (`{}`) >= 0 at this call", f.name, tg),
+            None,
+        );
+        let ob = mg.lt(&m0);
+        self.prove_core(
+            &st.env,
+            &st.pc,
+            g,
+            &ob,
+            pos(e),
+            "recursive_decrease",
+            &format!(
+                "decreases measure of {} (`{}`) < decreases measure of {} at its entry (`{}`)",
+                f.name, tg, sf.name, tf
+            ),
+            None,
+        );
+        Ok(())
     }
 
     /// verify.py `catalog_call` (G6_SPEC 11.3): the standard catalog; every requires is a `call_requires` obligation
@@ -2041,6 +2356,9 @@ impl<'a> FnVerifier<'a> {
                     Val::Dt(_, t) => Some(t.clone()),
                     _ => None,
                 };
+                if model.is_g9() {
+                    self.observe(&mut st, &v, sty.as_ref(), false)?; // G9 A1: one-step facts of the matched value
+                }
                 let payload: Ty = match &sty {
                     Some(Ty::Inst(g)) if !g.args.is_empty() && (g.name == "option" || g.name == "result") => {
                         Ty::from_gtype(&g.args[0])
@@ -2083,6 +2401,18 @@ impl<'a> FnVerifier<'a> {
                     }
                     let mut b = st.fork(Some(cond));
                     for ((name, val), fty) in a.binders.iter().zip(vals.iter()).zip(ftys.iter()) {
+                        if model.is_g9() {
+                            // G9 A1: buffer payloads become Arr views; nominal payloads are observed
+                            let vv = self.field_val(fty, val.clone(), name)?;
+                            if let Val::Dt(da, dt) = &vv {
+                                self.observe(&mut b, da, Some(dt), false)?;
+                            }
+                            b.env.set(name, vv.clone());
+                            if let Some(w) = self.wf_of_val(fty, &vv)? {
+                                b.pc.push(w);
+                            }
+                            continue;
+                        }
                         b.env.set(name, Val::from_field(fty, val.clone())?);
                         if let Some(w) = self.try_wf(fty, val)? {
                             b.pc.push(w);
@@ -2102,13 +2432,14 @@ impl<'a> FnVerifier<'a> {
             }
             Stmt::FieldAssign(s) => {
                 let mut st = st.fork(None);
-                let v = self.ev0_ast(&s.value, &mut st, &[], true)?; // right-hand side first, in the state before storing
+                // right-hand side first, in the state before storing (G9 A1: an environment value, an Arr for a buffer field)
+                let v = self.ev0(&s.value, &mut st, &[], true)?;
                 let (root, ty) = match st.env.try_get(&s.name) {
                     Some(Val::Dt(r, t)) => (r.clone(), t.clone()),
                     _ => return Err(format!("field assignment on '{}' which is not a struct value", s.name)),
                 };
                 let path: Vec<&str> = s.fields.iter().map(|f| f.as_str()).collect();
-                let new = self.try_rebuild(&ty, &root, &path, &v)?;
+                let new = self.try_rebuild_v(&ty, &root, &path, &v)?;
                 st.env.set(&s.name, Val::Dt(new, ty));
                 Ok(vec![st])
             }
@@ -2307,7 +2638,7 @@ impl<'a> FnVerifier<'a> {
             env.set(&p.name, v);
         }
         self.params = env.clone();
-        let mut st = State { env, pc };
+        let mut st = State::new(env, pc);
         for r in &f.requires {
             // D(r) is proved from the preceding requires only, then D(r) && r is assumed in declaration order
             let what = format!("variant_field lookups in requires (line {}) are defined", r.line());
@@ -2319,6 +2650,16 @@ impl<'a> FnVerifier<'a> {
             }
             let v = self.ev0_ast(r, &mut st, &[], false)?;
             st.pc.push(v);
+        }
+        if let (Some(d), None) = (&f.decreases, &f.foreign) {
+            // G9 A1 (G9_SPEC 5): the measure is defined and >= 0 under the requires at every entry (errors point to the
+            // clause); its value is frozen here and is the caller measure of every recursive call in the body
+            self.check_dom_e(&mut st, &[], d, pos(d), "variant_field lookups in the decreases clause are defined", None)?;
+            let m0 = self.ev0_ast(d, &mut st, &[], false)?;
+            let ob = m0.ge_i(0);
+            self.m0 = Some(m0);
+            let what = format!("decreases measure `{}` >= 0 at function entry", expr_text(d));
+            self.prove_core(&st.env, &st.pc, &[], &ob, pos(d), "recursive_nonneg", &what, None);
         }
         if f.foreign.is_some() {
             // G6 A1 (11.4): a trusted declaration has no body and no ensures proof

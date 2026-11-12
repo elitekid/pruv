@@ -1,0 +1,8 @@
+// G9 A1 reject: the self call passes the same n, so the measure does not decrease (recursive_decrease)
+fn spin(n: i64) -> i64
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return 0; }
+  return spin(n);
+}

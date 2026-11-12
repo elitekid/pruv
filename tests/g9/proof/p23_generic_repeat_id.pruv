@@ -1,0 +1,21 @@
+// G9 A1 proof: a generic recursive function proven once for opaque T (result == x), then used at i64 and bool
+fn repeat_id<T>(x: T, n: i64) -> T
+  requires n >= 0
+  ensures result == x
+  decreases n
+{
+  if n == 0 { return x; }
+  return repeat_id::<T>(x, n - 1);
+}
+
+fn use_i64() -> i64
+  ensures result == 7
+{
+  return repeat_id::<i64>(7, 3);
+}
+
+fn use_bool() -> bool
+  ensures result == false
+{
+  return repeat_id::<bool>(false, 2);
+}

@@ -1,0 +1,21 @@
+// G9 A1 proof: constructor size equations across a struct <-> enum SCC (no recursion in the functions themselves)
+struct Node { value: i64, next: Link }
+enum Link { End, More(node: Node) }
+
+fn make_node(v: i64) -> Node ! alloc
+  ensures size(result) == 2 && result.value == v
+{
+  return Node { value: v, next: Link::End };
+}
+
+fn wrap(n: Node) -> Link ! alloc
+  ensures size(result) == size(n) + 1
+{
+  return Link::More(n);
+}
+
+fn three() -> Link ! alloc
+  ensures size(result) == 5
+{
+  return Link::More(Node { value: 1, next: Link::More(Node { value: 2, next: Link::End }) });
+}

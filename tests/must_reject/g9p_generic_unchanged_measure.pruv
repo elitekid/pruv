@@ -1,0 +1,8 @@
+// G9 A1 reject: generic self call with T forwarded correctly but n unchanged (recursive_decrease)
+fn spin_id<T>(x: T, n: i64) -> T
+  requires n >= 0
+  decreases n
+{
+  if n == 0 { return x; }
+  return spin_id::<T>(x, n);
+}

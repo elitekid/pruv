@@ -203,17 +203,18 @@ fn compile(a: &Args) -> Result<(), Fail> {
     // Exceeding the depth limit is reported by the parser as stage "internal" (exit 3, like Python RecursionError).
     let mut prog = pruv_core::parse(&src).map_err(|e| if e.stage == "internal" { Fail::Internal(e.message) } else { Fail::Lang(vec![e]) })?;
     let tt = pruv_core::check::check_with_externs(&mut prog, &a.rust_extern).map_err(|e| Fail::Lang(vec![e]))?;
-    // G9 A0 (same place as in Python compile_file): recursion, decreases, size, recursive types and aggregate buffer fields
-    // have no proof/codegen layer yet; nothing is written. The llvm backend is every kind other than the Rust source one.
-    let g9_err = if a.verify {
-        pruv_core::typeinfo::g9_unimplemented_error(&prog, "verify", "verifier")
-    } else if a.kind != Kind::Rs {
-        pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer")
-    } else {
-        pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "rust codegen layer")
-    };
-    if let Some(e) = g9_err {
-        return Err(Fail::Lang(vec![e]));
+    // G9 A1 (same place as in Python compile_file): the verifier handles G9 programs; the code generation guard runs
+    // right here only with --no-verify, otherwise after a successful verification (so proof errors come first).
+    // Nothing is written. The llvm backend is every kind other than the Rust source one.
+    if !a.verify {
+        let g9_err = if a.kind != Kind::Rs {
+            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer")
+        } else {
+            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "rust codegen layer")
+        };
+        if let Some(e) = g9_err {
+            return Err(Fail::Lang(vec![e]));
+        }
     }
     // G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm) lowers
     // the G6_SPEC 13.1 subset (A3) and rejects everything else with codegen/unsupported_type inside the LLVM generator
@@ -248,6 +249,15 @@ fn compile(a: &Args) -> Result<(), Fail> {
         };
         if !errs.is_empty() {
             return Err(Fail::Lang(errs));
+        }
+        // G9 A1: verification succeeded; the downstream guard still stops every G9 program
+        let g9_err = if a.kind != Kind::Rs {
+            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "llvm codegen layer")
+        } else {
+            pruv_core::typeinfo::g9_unimplemented_error(&prog, "codegen", "rust codegen layer")
+        };
+        if let Some(e) = g9_err {
+            return Err(Fail::Lang(vec![e]));
         }
         if g6_native {
             if let Some(e) = foreign_target_error(&prog) {

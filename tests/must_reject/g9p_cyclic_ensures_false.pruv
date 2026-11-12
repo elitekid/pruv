@@ -1,0 +1,8 @@
+// G9 A1 reject: `ensures false` plus an unchanged self call must fail termination, never prove false (recursive_decrease)
+fn absurd(n: i64) -> i64
+  requires n >= 0
+  ensures false
+  decreases n
+{
+  return absurd(n);
+}

@@ -18,7 +18,7 @@
 //!   calls `Model::with_seq` with the same number.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use pruv_core::ast as past;
 use pruv_core::gtype::{self, GType};
@@ -459,6 +459,16 @@ struct GState {
     short: HashMap<String, &'static str>,
 }
 
+/// G9 A1: the buffer-field datatype `Buf(len: Int, arr: Array(Int, elem sort))` of one element sort (verify.py `Model.bufs` entry
+/// `(sort, constructor, length accessor, array accessor)`).
+#[derive(Clone)]
+pub struct BufFns {
+    pub sort: Sort,
+    pub ctor: FuncDecl,
+    pub len: FuncDecl,
+    pub arr: FuncDecl,
+}
+
 pub struct Model {
     z: Z3,
     /// TypeTable.order: dependencies first, stable in declaration order (generic declarations included).
@@ -481,6 +491,31 @@ pub struct Model {
     g: RefCell<GState>,
     /// G3: `wf_trivial` cache per instance type.
     wf_triv: RefCell<HashMap<GType, bool>>,
+    /// G9 A1 (verify.py `s.g9`): the program carries G9 metadata (a G9 feature is present).
+    g9: bool,
+    /// recursive type name -> member names of its SCC (declaration order)
+    scc_of: HashMap<String, Vec<String>>,
+    /// names of non-generic types that are recursive or (transitively) contain a recursive type
+    recrel: HashSet<String>,
+    /// `false` = "int" (i64/u8/str elements), `true` = "bool": buffer datatypes built lazily
+    bufs: RefCell<HashMap<bool, BufFns>>,
+    buf_names: RefCell<HashSet<String>>,
+    /// lazily declared uninterpreted `size!<Name>` / `wf!<Name>` functions
+    size_f: RefCell<HashMap<String, FuncDecl>>,
+    wf_f: RefCell<HashMap<String, FuncDecl>>,
+}
+
+/// typeinfo.py `_deps` as names: field dependencies on declared user types (no duplicates, first-appearance order).
+fn dep_names(d: &TypeDecl, decls: &[TypeDecl]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for f in d.all_fields() {
+        for n in gtype::dependencies(&f.ty.to_gtype()) {
+            if decls.iter().any(|u| u.name == n) && !out.contains(&n) {
+                out.push(n);
+            }
+        }
+    }
+    out
 }
 
 /// typeinfo.py `_deps`: field dependencies on declared user types (no duplicates, first-appearance order),
@@ -532,12 +567,24 @@ impl Model {
     /// `Model(prog)` of a checked program: `fns` = the function names in declaration order (abstract sorts are named by index).
     pub fn for_program(z: &Z3, pre: &Prelude, decls: &[TypeDecl], prog: &past::Program, seq: u32) -> Result<Model, String> {
         let fns: Vec<String> = prog.functions.iter().map(|f| f.name.clone()).collect();
-        Model::with_seq_fns(z, pre, decls, &fns, seq)
+        Model::with_seq_g9(z, pre, decls, &fns, prog.g9.as_ref(), seq)
     }
 
     /// `Model(prog)` with a caller-chosen sequence number. `decls` is the program declaration order (if a name repeats, only the first declaration is used).
     /// If a field type has no sort (Python `KeyError`), `Err("'name'")`.
     pub fn with_seq_fns(z: &Z3, pre: &Prelude, decls: &[TypeDecl], fns: &[String], seq: u32) -> Result<Model, String> {
+        Model::with_seq_g9(z, pre, decls, fns, None, seq)
+    }
+
+    /// `Model(prog)` with the G9 A1 metadata (`prog.g9`, None for a program without a G9 feature).
+    pub fn with_seq_g9(
+        z: &Z3,
+        pre: &Prelude,
+        decls: &[TypeDecl],
+        fns: &[String],
+        meta: Option<&past::G9Meta>,
+        seq: u32,
+    ) -> Result<Model, String> {
         let mut uniq: Vec<TypeDecl> = Vec::new();
         for d in decls {
             if !uniq.iter().any(|u| u.name == d.name) {
@@ -581,55 +628,353 @@ impl Model {
             fn_index,
             g: RefCell::new(GState::default()),
             wf_triv: RefCell::new(HashMap::new()),
+            g9: meta.is_some(),
+            scc_of: HashMap::new(),
+            recrel: HashSet::new(),
+            bufs: RefCell::new(HashMap::new()),
+            buf_names: RefCell::new(HashSet::new()),
+            size_f: RefCell::new(HashMap::new()),
+            wf_f: RefCell::new(HashMap::new()),
         };
-        for (idx, d) in order.iter().enumerate() {
-            if d.tparams > 0 {
-                continue;
+        // G9 A1: recursive type SCCs and the types that (transitively) contain one
+        if let Some(meta) = meta {
+            for names in &meta.type_sccs {
+                let mut keyed: Vec<(usize, String)> = Vec::new();
+                for n in names {
+                    let i = uniq.iter().position(|u| u.name == *n).ok_or_else(|| nokey(n))?;
+                    keyed.push((i, n.clone()));
+                }
+                keyed.sort_by_key(|(i, _)| *i); // stable, like Python `sorted(key=pindex)`
+                let mem: Vec<String> = keyed.into_iter().map(|(_, n)| n).collect();
+                for n in &mem {
+                    m.scc_of.insert(n.clone(), mem.clone());
+                }
             }
-            let tag = format!("{}t{}!", pre_tag, idx);
+            m.recrel = m.scc_of.keys().cloned().collect();
+            let mut changed = !m.recrel.is_empty();
+            while changed {
+                changed = false;
+                for d in &uniq {
+                    if !m.recrel.contains(&d.name)
+                        && d.tparams == 0
+                        && dep_names(d, &uniq).iter().any(|n| m.recrel.contains(n))
+                    {
+                        m.recrel.insert(d.name.clone());
+                        changed = true;
+                    }
+                }
+            }
+        }
+        let idx_of: HashMap<String, usize> = order.iter().enumerate().map(|(i, d)| (d.name.clone(), i)).collect();
+        let mut done: HashSet<String> = HashSet::new();
+        for d in &order {
+            m.build(&d.name, &idx_of, &mut done)?;
+        }
+        Ok(m)
+    }
+
+    /// verify.py `Model._build`: create the datatype of `name` (its whole recursive SCC at once), dependencies first.
+    /// For a program without recursive types this visits the declarations in `order` exactly like the old loop.
+    fn build(&mut self, name: &str, idx_of: &HashMap<String, usize>, done: &mut HashSet<String>) -> Result<(), String> {
+        if done.contains(name) {
+            return Ok(());
+        }
+        let d = self.decl_opt(name).ok_or_else(|| nokey(name))?.clone();
+        let group: Vec<String> = match self.scc_of.get(name) {
+            Some(g) if !g.is_empty() => g.clone(),
+            _ => vec![name.to_string()],
+        };
+        for n in &group {
+            done.insert(n.clone());
+        }
+        if d.tparams > 0 {
+            return Ok(()); // generic declarations are instantiated lazily
+        }
+        let mut members: Vec<TypeDecl> = Vec::new();
+        for n in &group {
+            members.push(self.decl_opt(n).ok_or_else(|| nokey(n))?.clone());
+        }
+        for mdecl in &members {
+            for dep in dep_names(mdecl, &self.order) {
+                if !group.contains(&dep) {
+                    self.build(&dep, idx_of, done)?;
+                }
+            }
+        }
+        self.make_group(&members, idx_of)
+    }
+
+    /// The sort of a field type while the datatypes of `gnames` are under construction: a member type is a datatype
+    /// reference (`Some(index in the group)`; the returned sort is then an ignored placeholder), anything else its sort.
+    fn group_field_sort(&self, ft: &Ty, gnames: &[String]) -> Result<(Sort, Option<usize>), String> {
+        if let Ty::User(n) = ft {
+            if let Some(i) = gnames.iter().position(|g| g == n) {
+                return Ok((self.int_sort.clone(), Some(i)));
+            }
+        }
+        Ok((self.try_sort_of(ft)?, None))
+    }
+
+    /// verify.py `Model._make_group`: one simultaneous `CreateDatatypes` for the members of an SCC (a single member for an
+    /// ordinary type: the same call as the old per-type construction).
+    fn make_group(&mut self, members: &[TypeDecl], idx_of: &HashMap<String, usize>) -> Result<(), String> {
+        let gnames: Vec<String> = members.iter().map(|d| d.name.clone()).collect();
+        let mut specs: Vec<DtSpec> = Vec::new();
+        let mut refs: Vec<Vec<Vec<Option<usize>>>> = Vec::new();
+        for d in members {
+            let idx = *idx_of.get(&d.name).ok_or_else(|| nokey(&d.name))?;
+            let tag = format!("{}t{}!", self.pre_tag, idx);
+            let mut ctor_specs: Vec<DtCtorSpec> = Vec::new();
+            let mut ctor_refs: Vec<Vec<Option<usize>>> = Vec::new();
+            let dtname: String;
             match &d.kind {
                 TypeKind::Struct(fields) => {
                     let cn = format!("{}{}", tag, d.name);
                     let mut fs: Vec<(String, Sort)> = Vec::new();
+                    let mut rf: Vec<Option<usize>> = Vec::new();
                     for fd in fields {
-                        fs.push((format!("{}.{}", cn, fd.name), m.try_sort_of(&fd.ty)?));
+                        let (s, r) = self.group_field_sort(&fd.ty, &gnames)?;
+                        fs.push((format!("{}.{}", cn, fd.name), s));
+                        rf.push(r);
                     }
-                    let spec = DtSpec { name: cn.clone(), ctors: vec![DtCtorSpec { name: cn.clone(), fields: fs }] };
-                    let mut dt = z.create_datatypes(&[spec]);
-                    let DtSort { sort, mut ctors } = dt.pop().ok_or("datatype")?;
+                    dtname = cn.clone();
+                    ctor_specs.push(DtCtorSpec { name: cn, fields: fs });
+                    ctor_refs.push(rf);
+                }
+                TypeKind::Enum(variants) => {
+                    dtname = format!("{}{}", tag, d.name);
+                    for v in variants {
+                        let cn = format!("{}{}::{}", tag, d.name, v.name);
+                        let mut fs: Vec<(String, Sort)> = Vec::new();
+                        let mut rf: Vec<Option<usize>> = Vec::new();
+                        for fd in &v.fields {
+                            let (s, r) = self.group_field_sort(&fd.ty, &gnames)?;
+                            fs.push((format!("{}.{}", cn, fd.name), s));
+                            rf.push(r);
+                        }
+                        ctor_specs.push(DtCtorSpec { name: cn, fields: fs });
+                        ctor_refs.push(rf);
+                    }
+                }
+            }
+            specs.push(DtSpec { name: dtname, ctors: ctor_specs });
+            refs.push(ctor_refs);
+        }
+        let out = self.z.create_datatypes_refs(&specs, &refs);
+        for (d, dt) in members.iter().zip(out) {
+            let DtSort { sort, mut ctors } = dt;
+            match &d.kind {
+                TypeKind::Struct(_) => {
                     if ctors.is_empty() {
                         return Err("datatype".to_string());
                     }
                     let DtCtor { ctor, accs, .. } = ctors.remove(0);
-                    m.by_sort.borrow_mut().insert(sort.name(), Ty::User(d.name.clone()));
-                    m.structs.insert(d.name.clone(), StructFns { ctor, accs });
-                    m.sorts.insert(d.name.clone(), sort);
+                    self.structs.insert(d.name.clone(), StructFns { ctor, accs });
                 }
                 TypeKind::Enum(variants) => {
-                    let dn = format!("{}{}", tag, d.name);
-                    let mut specs: Vec<DtCtorSpec> = Vec::new();
-                    for v in variants {
-                        let cn = format!("{}{}::{}", tag, d.name, v.name);
-                        let mut fs: Vec<(String, Sort)> = Vec::new();
-                        for fd in &v.fields {
-                            fs.push((format!("{}.{}", cn, fd.name), m.try_sort_of(&fd.ty)?));
-                        }
-                        specs.push(DtCtorSpec { name: cn, fields: fs });
-                    }
-                    let mut dt = z.create_datatypes(&[DtSpec { name: dn, ctors: specs }]);
-                    let DtSort { sort, ctors } = dt.pop().ok_or("datatype")?;
                     let fns: Vec<(String, VariantFns)> = variants
                         .iter()
                         .zip(ctors)
                         .map(|(v, c)| (v.name.clone(), VariantFns { ctor: c.ctor, rec: c.rec, accs: c.accs }))
                         .collect();
-                    m.by_sort.borrow_mut().insert(sort.name(), Ty::User(d.name.clone()));
-                    m.enums.insert(d.name.clone(), fns);
-                    m.sorts.insert(d.name.clone(), sort);
+                    self.enums.insert(d.name.clone(), fns);
                 }
             }
+            self.by_sort.borrow_mut().insert(sort.name(), Ty::User(d.name.clone()));
+            self.sorts.insert(d.name.clone(), sort);
         }
-        Ok(m)
+        Ok(())
+    }
+
+    // ---------- G9 A1: buffer fields ----------
+
+    /// verify.py `Model.is_buf`: a `[i64]` / `[u8]` / `[bool]` / `str` field type (never a G3 `[T]`).
+    pub fn is_buf(ty: &Ty) -> bool {
+        matches!(ty, Ty::Array(_) | Ty::Str)
+    }
+
+    /// verify.py `Model.buf_elem`.
+    pub fn buf_elem(ty: &Ty) -> Elem {
+        match ty {
+            Ty::Array(Elem::Bool) => Elem::Bool,
+            Ty::Array(Elem::U8) | Ty::Str => Elem::U8,
+            _ => Elem::I64,
+        }
+    }
+
+    /// verify.py `Model.bufsort` (the whole `bufs` entry): datatype Buf(len: Int, arr: Array(Int, elem sort)); one per element
+    /// sort (Int for i64/u8/str, Bool).
+    pub fn buf_entry(&self, ty: &Ty) -> Result<BufFns, String> {
+        let key = matches!(ty, Ty::Array(Elem::Bool));
+        if let Some(e) = self.bufs.borrow().get(&key) {
+            return Ok(e.clone());
+        }
+        let tag = format!("{}buf!{}", self.pre_tag, if key { "bool" } else { "int" });
+        let esort = if key { self.bool_sort.clone() } else { self.int_sort.clone() };
+        let arr_sort = self.z.array_sort(&self.int_sort, &esort);
+        let spec = DtSpec {
+            name: tag.clone(),
+            ctors: vec![DtCtorSpec {
+                name: format!("{}.mk", tag),
+                fields: vec![(format!("{}.len", tag), self.int_sort.clone()), (format!("{}.arr", tag), arr_sort)],
+            }],
+        };
+        let mut dt = self.z.create_datatypes(&[spec]);
+        let DtSort { sort, mut ctors } = dt.pop().ok_or("datatype")?;
+        if ctors.is_empty() {
+            return Err("datatype".to_string());
+        }
+        let DtCtor { ctor, accs, .. } = ctors.remove(0);
+        if accs.len() < 2 {
+            return Err("datatype".to_string());
+        }
+        let ent = BufFns { sort: sort.clone(), ctor, len: accs[0].clone(), arr: accs[1].clone() };
+        self.bufs.borrow_mut().insert(key, ent.clone());
+        self.buf_names.borrow_mut().insert(sort.name());
+        Ok(ent)
+    }
+
+    /// verify.py `Model.bufsort`.
+    pub fn bufsort(&self, ty: &Ty) -> Result<Sort, String> {
+        Ok(self.buf_entry(ty)?.sort)
+    }
+
+    /// Is `name` the name of a buffer datatype sort (verify.py `sname in s.model.buf_names`)?
+    pub fn is_buf_sort_name(&self, name: &str) -> bool {
+        self.buf_names.borrow().contains(name)
+    }
+
+    /// The `(array, length)` of a stored buffer field value `term` of field type `fty` (what verify.py `Model.field_get` wraps
+    /// in `mk_arr(arr(term), len(term), ..)`). The array accessor is applied first, like the Python argument order.
+    pub fn buf_parts(&self, fty: &Ty, term: &Ast) -> Result<(Ast, Ast), String> {
+        let ent = self.buf_entry(fty)?;
+        let a = ent.arr.apply1(term);
+        let n = ent.len.apply1(term);
+        Ok((a, n))
+    }
+
+    /// verify.py `Model.field_put` for an array value `(a, n)` stored into a buffer field of type `fty`: `Buf(n, a)`.
+    pub fn buf_put(&self, fty: &Ty, n: &Ast, a: &Ast) -> Result<Ast, String> {
+        let ent = self.buf_entry(fty)?;
+        Ok(ent.ctor.apply(&[n.clone(), a.clone()]))
+    }
+
+    // ---------- G9 A1: structural size and well-formedness of recursive values ----------
+
+    /// verify.py `s.g9`.
+    pub fn is_g9(&self) -> bool {
+        self.g9
+    }
+
+    /// Does the (non-generic) type name belong to a recursive type SCC (`name in s.scc_of`)?
+    pub fn in_scc(&self, name: &str) -> bool {
+        self.scc_of.contains_key(name)
+    }
+
+    /// verify.py `Model.rel`.
+    pub fn rel(&self, ty: &Ty) -> bool {
+        matches!(ty, Ty::User(n) if self.recrel.contains(n))
+    }
+
+    /// verify.py `Model.rel_nominal`: a plain non-generic user struct/enum type.
+    pub fn rel_nominal(&self, ty: &Ty) -> bool {
+        matches!(ty, Ty::User(n) if self.decl_opt(n).map_or(false, |d| d.tparams == 0))
+    }
+
+    /// verify.py `Model.size_fn`: size_D as an uninterpreted z3 function (all members of the SCC of D are declared first).
+    pub fn size_fn(&self, name: &str) -> Result<FuncDecl, String> {
+        if let Some(f) = self.size_f.borrow().get(name) {
+            return Ok(f.clone());
+        }
+        let group: Vec<String> = match self.scc_of.get(name) {
+            Some(g) if !g.is_empty() => g.clone(),
+            _ => vec![name.to_string()],
+        };
+        for n in &group {
+            let s = self.sorts.get(n).cloned().ok_or_else(|| nokey(n))?;
+            let f = self.z.func_decl(&format!("{}size!{}", self.pre_tag, n), &[s], &self.int_sort);
+            self.size_f.borrow_mut().insert(n.clone(), f);
+        }
+        self.size_f.borrow().get(name).cloned().ok_or_else(|| nokey(name))
+    }
+
+    /// verify.py `Model.weight`: size weight of a field value `t` of type `fty` (None = always 0): nominal values count their
+    /// own size, Some/Ok payloads count their payload, everything else is 0.
+    pub fn weight(&self, fty: &Ty, t: &Ast) -> Result<Option<Ast>, String> {
+        let early = matches!(fty, Ty::Param(_) | Ty::I64 | Ty::Bool | Ty::Opt | Ty::Res);
+        if early || Model::is_buf(fty) || fty.coll().is_some() {
+            return Ok(None);
+        }
+        if let Ty::Inst(g) = fty {
+            if g.name == "option" {
+                let o = self.opt(Some(fty))?;
+                let w = self.weight(&Ty::from_gtype(&g.args[0]), &o.sval.apply1(t))?;
+                return Ok(w.map(|w| self.z.ite(&o.is_some.apply1(t), &w, &self.z.int(0))));
+            }
+            if g.name == "result" {
+                let o = self.res(Some(fty))?;
+                let w = self.weight(&Ty::from_gtype(&g.args[0]), &o.oval.apply1(t))?;
+                return Ok(w.map(|w| self.z.ite(&o.is_ok.apply1(t), &w, &self.z.int(0))));
+            }
+        }
+        if self.nominal_kind(fty).is_some() {
+            if let Ty::User(n) = fty {
+                return Ok(Some(self.size_fn(n)?.apply1(t)));
+            }
+            // an admitted acyclic G3 application: internal helper traversal
+            return Ok(Some(self.size_value(fty, t)?));
+        }
+        Ok(None)
+    }
+
+    /// verify.py `Model.size_sum`.
+    pub fn size_sum(&self, ty: &Ty, variant: Option<&str>, accs: &[FuncDecl], t: &Ast) -> Result<Ast, String> {
+        let mut total = self.z.int(1);
+        for ((_fd, fty), acc) in self.fields_of(ty, variant)?.iter().zip(accs.iter()) {
+            let term = acc.apply1(t);
+            if Model::is_buf(fty) {
+                // field_get makes an Arr view (weight None): only the buffer sort is (idempotently) ensured
+                self.buf_entry(fty)?;
+                continue;
+            }
+            if let Some(w) = self.weight(fty, &term)? {
+                total = total.add(&w);
+            }
+        }
+        Ok(total)
+    }
+
+    /// verify.py `Model.size_value`: one step of size: 1 + the weights of the active constructor's fields.
+    pub fn size_value(&self, ty: &Ty, t: &Ast) -> Result<Ast, String> {
+        if self.nominal_kind(ty) == Some(NomKind::Struct) {
+            let accs = self.struct_info(ty)?.accs;
+            return self.size_sum(ty, None, &accs, t);
+        }
+        let infos = self.enum_info(ty)?;
+        let mut body: Option<Ast> = None;
+        for vn in self.variant_names(ty).iter().rev() {
+            let vf = infos.iter().find(|(n, _)| n == vn).map(|(_, f)| f.clone()).ok_or_else(|| nokey(vn))?;
+            let val = self.size_sum(ty, Some(vn), &vf.accs, t)?;
+            body = Some(match body {
+                None => val,
+                Some(b) => self.z.ite(&vf.rec.apply1(t), &val, &b),
+            });
+        }
+        body.ok_or_else(|| "size of an enum without variants".to_string())
+    }
+
+    /// verify.py `Model.wf_fn`: wf_D (recursive types only) as an uninterpreted z3 function over the SCC of D.
+    pub fn wf_fn(&self, name: &str) -> Result<FuncDecl, String> {
+        if let Some(f) = self.wf_f.borrow().get(name) {
+            return Ok(f.clone());
+        }
+        let group: Vec<String> = self.scc_of.get(name).cloned().ok_or_else(|| nokey(name))?;
+        for n in &group {
+            let s = self.sorts.get(n).cloned().ok_or_else(|| nokey(n))?;
+            let f = self.z.func_decl(&format!("{}wf!{}", self.pre_tag, n), &[s], &self.bool_sort);
+            self.wf_f.borrow_mut().insert(n.clone(), f);
+        }
+        self.wf_f.borrow().get(name).cloned().ok_or_else(|| nokey(name))
     }
 
     // ---------- G3 A2: abstract sorts and generic datatype instances ----------
@@ -882,6 +1227,8 @@ impl Model {
             Ty::Param(_) => true,
             Ty::Inst(g) if g.name == "result" => false,
             Ty::Inst(g) if g.name == "option" => self.wf_trivial(&Ty::from_gtype(&g.args[0]))?,
+            // G9 A1: a recursive type has the wf_D definition (never trivially true here)
+            Ty::User(n) if self.scc_of.contains_key(n) => false,
             Ty::User(_) | Ty::Inst(_) => match self.nominal_kind(ty) {
                 Some(NomKind::Struct) => {
                     let mut all = true;
@@ -934,12 +1281,14 @@ impl Model {
         match ty {
             Ty::I64 => Ok(self.int_sort.clone()),
             Ty::Bool => Ok(self.bool_sort.clone()),
+            // G9 A1: a buffer field of a struct/enum (checked before the Opt/Res cases, like verify.py sort_of)
+            Ty::Array(_) | Ty::Str => self.bufsort(ty),
             Ty::Opt => Ok(self.opt_sort.clone()),
             Ty::Res => Ok(self.res_sort.clone()),
             Ty::Param(g) => Ok(self.abstract_sort(g)),
             Ty::User(n) => self.sorts.get(n).cloned().ok_or_else(|| nokey(n)),
             Ty::Inst(g) => self.instance(g),
-            Ty::Unit | Ty::Array(_) | Ty::Str | Ty::GArray(_) => Err(nokey(ty.name())),
+            Ty::Unit | Ty::GArray(_) => Err(nokey(ty.name())),
         }
     }
 

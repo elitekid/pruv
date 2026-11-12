@@ -1,0 +1,15 @@
+// G9 A1 reject: after a loop that assigns a field, the buffer length equality with the original is forgotten (assert)
+struct Bag { items: [i64], tag: i64 }
+
+fn same_len(b: Bag) -> () ! alloc {
+  let mut c: Bag = b;
+  let mut i: i64 = 0;
+  while i < 2
+    invariant 0 <= i && i <= 2
+    decreases 2 - i
+  {
+    c.tag = i;
+    i = i + 1;
+  }
+  assert len(c.items) == len(b.items);
+}

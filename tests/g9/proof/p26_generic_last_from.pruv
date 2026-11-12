@@ -1,0 +1,16 @@
+// G9 A1 proof: generic array recursion returning an element of T; ensures names the last element, caller instantiates at i64
+fn last_from<T: Element>(a: [T], i: i64) -> T
+  requires 0 <= i && i < len(a)
+  ensures result == a[len(a) - 1]
+  decreases len(a) - i
+{
+  if i == len(a) - 1 { return a[i]; }
+  return last_from::<T>(a, i + 1);
+}
+
+fn use_it() -> i64 ! alloc
+  ensures result == 4
+{
+  let a: [i64] = alloc(3, 4);
+  return last_from::<i64>(a, 0);
+}

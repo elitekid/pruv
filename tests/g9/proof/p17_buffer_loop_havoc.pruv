@@ -1,0 +1,19 @@
+// G9 A1 proof: a loop assigning a field havocs the whole struct; an invariant keeps the buffer length and wf still gives 0..=255 elements
+struct Packet { bytes: [u8], tag: i64 }
+
+fn touch(p: Packet) -> i64 ! alloc
+  requires len(p.bytes) >= 1
+  ensures result >= 0 && result <= 255
+{
+  let mut q: Packet = p;
+  let mut i: i64 = 0;
+  while i < 3
+    invariant 0 <= i && i <= 3
+    invariant len(q.bytes) >= 1
+    decreases 3 - i
+  {
+    q.tag = i;
+    i = i + 1;
+  }
+  return q.bytes[0];
+}

@@ -1,0 +1,9 @@
+// G9 A1 proof: linear-bound accumulation; requires n <= 1000 keeps n + sum_to(n - 1) inside i64 and proves result <= 1000 * n
+fn sum_to(n: i64) -> i64
+  requires n >= 0 && n <= 1000
+  ensures result >= 0 && result <= 1000 * n
+  decreases n
+{
+  if n == 0 { return 0; }
+  return n + sum_to(n - 1);
+}
