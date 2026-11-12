@@ -384,6 +384,91 @@ no recursion, no `main`, no foreign (`trusted`) functions, no negative (must-rej
 | Seed | Compiler | Generated | Verified | Executions compared | Failures | Digest |
 |---|---|---|---|---|---|---|
 
+## G5 mode (`--g5`)
+
+Programs with `inout` parameters (mutable array borrows, `docs/G5_SPEC.md` §2-§7 and §14 items 2-3). `--g5` is a separate mode (not combinable with
+`--g2`/`--g3`/`--g6`/`--g9`/`--g4`); without it nothing changes. It follows `--g4`: one directory per program, the compiler is called on `<dir>/root.pruv`, failures are saved as whole
+program folders.
+
+```
+python bench/fuzz/run.py --g5 --seed 41 --programs 30 --inputs 8 --compiler rs     # then again with --compiler py
+python bench/fuzz/run.py --g5 --seeds 41,56,57 --compiler rs
+python bench/fuzz/generate.py --g5 --seed 41 --count 6 --out /tmp/pruvgen_g5        # one folder per program
+python bench/fuzz/run.py --replay bench/fuzz/out/g5_41_rs/failures/<kind>_<case>     # a saved program folder (root.pruv + inputs.json inside)
+python bench/fuzz/oracle.py                                                          # includes _selftest_g5
+```
+
+`--programs` defaults to 30, `--inputs` is raised to 8. Output folder `out/g5_<seed>[_rs]`; options as for `--g4` (no `--g?-safe-only`, no `--rejected-sample`).
+Files in the output folder: `summary.json` (all `g5_*` keys below), `g5_results.json` (seed, compiler, per-program feature lists and completed comparisons, shortfalls,
+infer probe results, saved failures with their replay commands), `failures/<kind>_<name>/` (program folder, `inputs.json`, `results.json` with `g5_features` and a `replay` command,
+`pruvc_output.txt`, `gen/`), `unexpected_rejects/<name>/`, `oracle_gap/<name>/`, `generator_invalid/<name>/`.
+
+**Generator** (`generate_g5_case`, rng `"g5:<seed>:<index>:single"`, inputs `"g5:<seed>:<name>:inputs"`). The host entry is an ordinary root `pub fn f(..)` (explicit mode, so every function symbol is
+mangled and `inout` helpers are never host-visible): it copies its array arguments into `let mut` owners (`! alloc`), calls inout helpers and returns an array (`[i64]`, `[u8]`, `[bool]`) or a scalar.
+Every inout helper has contracts that are meant to verify: `len(a) == len(old(a))`, the exact new content, and a `forall` frame over `old(a)`; the host `requires` imply the helper
+`requires`. Inout calls are always whole statements (`let`, expression statement, `return`), never nested in an expression. Programs are picked by rotating through 22 (scenario, type) combinations (index + seed), so every
+22 consecutive non-twin programs cover everything; a twin pair is drawn from the scenarios that have an alternative body.
+
+| scenario | what it exercises |
+|---|---|
+| `pairs` (i64, u8, bool) | `put_at` + `put_pair` (the inout parameter is forwarded twice to an inout callee = nested-function reborrow), repeated calls on one owner (0-2 extra calls) |
+| `swapgen` (root / child module) | `exchange<T: Element>` called at `i64` and `bool` (two generic instances, one used twice), bool owner decides a conditional call |
+| `loopfill` (i64, u8, bool) | loop with an inout call per iteration (`fill_all` via `put_at`, invariants over `old(a)`), then another call; array or scalar result |
+| `loopbump` (i64, u8, bool) | `step_all` loop over `step_at` (`+1` below the limit, or flip for bool; `requires forall`, flipped twice for bool); array or scalar result |
+| `reverse` (i64) | in-place reversal with the invariant against `old(a)` (swap helper or inline stores), once or twice |
+| `recur` (i64, u8, bool) | recursion that reborrows the same inout parameter at every level (`fill_from`, `decreases len(a) - i`), or the equivalent loop |
+| `multi` (i64) | two owners, a call with two inout arguments and swapped roles (`fill_pair`), an inout destination + read-only other owner (`blit`), `print` of the second owner (`dump`) |
+| `cond` (i64) | an inout function with a `bool` result used as a `let` initializer (`order_pair`) |
+| `modules` / `modules_nested` (i64, u8, bool) | helpers in child module `ops` (and `ops/deep`), called by `crate::ops::..` paths from the root host and between modules |
+
+Feature tags per program (`g5_features`): `type_i64`, `type_u8`, `type_bool`, `generic_instance`, `repeated_reborrow`, `nested_reborrow`, `multi_owner`, `two_inout_args`, `swapped_roles`, `readonly_other_owner`, `loop`,
+`recursion`, `module_call`, `nested_module`, `old_contract`, `frame_forall`, `bool_result_call`, `print_output`, `array_return`, `scalar_return`, `body_replacement_twin`, `alternative_body`, `files_<n>`.
+`g5_features_verified` counts them over the counted verified programs of a run, `g5_program_features` lists them per program, and `g5_features_missing` names required tags
+(`type_*`, `generic_instance`, `repeated_reborrow`, `nested_reborrow`, `multi_owner`, `loop`, `recursion`, `module_call`, `old_contract`, and `body_replacement_twin` = at least one twin pair compared) that no counted program carries.
+
+**Twins (contract-preserving body replacement).** For about 30% of the program numbers `2k` and `2k+1` are a pair, identical except for one callee body (`put_at` store with/without a temporary, `exchange` store order, `fill_all`/`step_all`
+loop body = inout call vs inline store, `reverse` swap helper vs inline stores, `fill_from` recursion vs loop, `step_at` variant) that satisfies the same contract. They get the same inputs (`input_key`) and a difference in (exit code, stdout, `pruv:` line) of any mode/input is a `twin_mismatch`
+(the check is the G4 one, `g4_twin_check`); `g5_twin_pairs_compared` counts the pairs that were really compared. Other programs pick the body variant at random.
+
+**Oracle** (`oracle.py`). The independent interpreter got `inout` parameters (`_Fn.inout`, `_Parser.call_arg`, marker check in `_Interp.call`): a marked argument is the caller's own list, so element stores mutate the owner in
+place and a forwarded `inout a` reaches the same list; `old(a)` is a list copied at function entry (after the requires check) and is evaluated in ensures, invariants and asserts; ensures see the final contents. `run()` returns the usual
+`kind/value/output/contract_failures` plus, only for inout programs, `inout_final` (final arrays of the top-level function's own inout parameters) and `inout_calls`. Final arrays of the host's owners show up through the returned array / printed output, which the harness compares byte for byte.
+Expected values come from this interpreter only (no compiler output, SMT term or generated code). A missing or extra `inout` marker, `old` of a non-inout name, or an inout parameter of a non-array type raises `OracleUnsupported`.
+`python bench/fuzz/oracle.py` runs `_selftest_g5` (in-place mutation, caller input untouched, old frozen vs final, top-level `inout_final`, marker mismatch, recursion + loop invariants over `old`, generic instance statements, `[u8]`/`[bool]`).
+
+**Harness** (`run.py --g5`). Same pipeline as `--g4` (verified programs in `rust-proof`, `rust-safe`, `llvm-proof`, `llvm-safe`, each mode compared with its own oracle result, `rust-X == llvm-X`; `requires violated` is compared by message kind only; a rejected
+program is an "unexpected reject": run in the two safe modes as a rider, saved, never counted). Use `--compiler rs` and `--compiler py` on the same seed: programs and inputs do not depend on the compiler, and `g5_digest` / `g5_digest_exit_stdout` / `g5_program_digest` must agree.
+
+- `g5_verified`: counted programs (a g5 case, at least `--inputs` inputs, run results for all four modes without timeout or harness exception, no recorded failure, and at least one input that satisfies `requires` and that the proof oracle compared to the end).
+- `g5_comparisons_completed`: (program, mode, input) executions that were compared with the oracle, **only on counted verified programs**. Oracle gaps (`oracle_unsupported`/`oracle_parse_error`), rejected programs, oracle `limit`/error, timeouts and harness exceptions never contribute.
+  `g5_comparisons_target` = `--programs` × `--inputs` × 4. The whole §14 item 3 count (at least 5,760) is the sum of `g5_comparisons_completed` over the six runs (seeds 41, 56, 57 × `--compiler rs`/`py`) at 30 programs and 8 inputs: 3 × 2 × 960.
+- `--infer` probe: the first 12 verified programs are compiled again with `--infer` (the program as generated: must still verify, emitted Rust compared with the plain one) and, if the program has loop invariants, a copy with every `invariant` line removed (rejection allowed;
+  an accepted copy's Rust is compared with the explicit program's and a difference is listed in `g5_infer.stripped_rust_differs`, not counted as a failure). Result in `g5_infer` (`programs_probed`, `verified_with_infer`, `same_rust_as_explicit`, `stripped_*`) and `g5_results.json` (`infer_per_program`). A crash or rejection of the explicit program under `--infer` is an `infer_failure` (a timeout is a `timeout`).
+- Other report keys: `g5_generated`, `g5_executions_compared` / `_not_compared` (all built programs, riders included), `g5_kinds_verified`, `g5_features_verified`, `g5_features_missing`, `g5_program_features`, `g5_inputs_per_program_min`, `g5_twin_pairs_compared`, `g5_mismatches`
+  (`backend_or_mode_mismatch`, `oracle_mismatch`, `unsound`, `twin_mismatch`), `g5_timeouts`, `g5_unexpected_rejects`, `g5_oracle_gaps`, `g5_shortfall`, `g5_failures`, `g5_saved_failures` (directory + replay command for each, also printed and in `g5_results.json` as `replay_commands`).
+- Gates (extra failure kinds, exit code 1): `g5_shortfall` (fewer counted verified programs than `--programs`), `g5_comparison_shortfall` (value = missing comparisons), `g5_infer_shortfall` (fewer than 10 programs verified with `--infer`), `g5_feature_shortfall` (value = number of missing feature tags),
+  `g5_generator_invalid`, `g5_oracle_gap`, `infer_failure`. With `--programs` below ~25 the feature gate may legitimately fire because not every scenario was drawn.
+- Replay: `python bench/fuzz/run.py --replay <failure folder> [--compiler py|rs]` (a program folder with `root.pruv` is a G4/G5 program; a source with `inout name:` marks it as G5).
+
+**Limits / assumptions** (nothing here was executed when it was written, there was no shell): which programs the verifier accepts is a guess modelled on `examples/g5_*.pruv`, `tests/runtime/g5_r*` and the G4 shapes, so a systematic rejection shows up as `g5_unexpected_rejects`
+and as `g5_shortfall`. The least certain shapes: the `forall` frame of the nested `put_pair`, the `reverse` loop with inline stores, the `fill_from` loop variant (no `decreases` on a non-recursive function), `result ==> ...` ensures of `order_pair`, `-> [u8]`
+scalar `w[0]` results, `ensures len(result) == len(a)` on host entries, and `print` inside a loop of `dump`. Not generated: mutation through `match` roots, inout on `str`/Vec/aggregates (rejected by the spec), inout host entries (`type/entry_signature` is must_reject territory), `--trust-callers`/`--no-verify`-only exclusivity cases,
+nested mutating calls inside expressions (rejected by §2.1), refined locals (`verify/refinement_assign`), negative (must-reject) programs and mutants (those belong to `bench/g5`), arrays above 8 elements, and the per-element-type generic `exchange` for `u8` (not an Element).
+The oracle does not check the static exclusivity/context rules (the generator emits only legal programs) and does not model the safe-mode checked wrapper separately: a requires violation of an inner call is the same `requires violated` fault as at the entry.
+
+### G5 run log (filled in by the main)
+
+| Seed | Compiler | Generated | Verified | Comparisons completed | Infer verified | Failures | Digest |
+|---|---|---|---|---|---|---|---|
+| 41 | rs | 52 | 33 | 1056 | 12/12 | 0 | `09647ffcb5ab4077` |
+| 41 | py | 52 | 33 | 1056 | 12/12 | 0 | `09647ffcb5ab4077` |
+| 56 | rs | 52 | 33 | 1056 | 12/12 | 0 | `4016f7031ba6ec8f` |
+| 56 | py | 52 | 33 | 1056 | 12/12 | 0 | `4016f7031ba6ec8f` |
+| 57 | rs | 51 | 33 | 1056 | 12/12 | 0 | `1c1536ce58fc102f` |
+| 57 | py | 51 | 33 | 1056 | 12/12 | 0 | `1c1536ce58fc102f` |
+
+Total 6,336 comparisons (target 5,760), 0 failures, 0 mismatches of any kind; rs and py digests are identical per seed (2026-11-12).
+
 ## Failure kinds
 
 | kind | Meaning |
@@ -411,6 +496,13 @@ no recursion, no `main`, no foreign (`trusted`) functions, no negative (must-rej
 | `g4_shortfall` | (`--g4` only) Fewer counted verified programs than `--programs`. The value is the shortfall |
 | `g4_generator_invalid` | (`--g4` only) A generated program did not pass parse/type/effect checking |
 | `g4_oracle_gap` | (`--g4` only) The oracle could not load, resolve or evaluate a generated program |
+| `g5_shortfall` | (`--g5` only) Fewer counted verified programs than `--programs`. The value is the shortfall |
+| `g5_comparison_shortfall` | (`--g5` only) Fewer completed comparisons than `--programs` x `--inputs` x 4 (counted verified programs only). The value is the number missing |
+| `g5_infer_shortfall` | (`--g5` only) Fewer than 10 programs verified when compiled with `--infer`. The value is the number missing |
+| `g5_feature_shortfall` | (`--g5` only) A required feature tag (types, generic instances, reborrows, owners, loops, recursion, module calls, old contracts, twins) is carried by no counted program. The value is the number of missing tags |
+| `g5_generator_invalid` | (`--g5` only) A generated program did not pass parse/type/effect checking |
+| `g5_oracle_gap` | (`--g5` only) The oracle could not load, resolve or evaluate a generated program |
+| `infer_failure` | (`--g5` only) `--infer` rejected or crashed on a program that verifies without it (or crashed on its invariant-free copy); a timeout is recorded as `timeout` |
 
 ## Oracle independence
 

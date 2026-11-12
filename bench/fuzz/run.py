@@ -8,7 +8,8 @@
     python bench/fuzz/run.py --g6 [--seed 41] [--programs 100] [--g6-safe-only 20] [--inputs 8]   (G6 mode, see README)
     python bench/fuzz/run.py --g9 [--seed 41] [--programs 100] [--g9-safe-only 20] [--inputs 8]   (G9 mode, see README)
     python bench/fuzz/run.py --g4 [--seed 41] [--programs 30] [--inputs 8]   (G4 mode: multi-file module programs, see README)
-    python bench/fuzz/run.py --replay DIR_OR_PRUVFILE   (a G4 program folder with root.pruv works too)
+    python bench/fuzz/run.py --g5 [--seed 41] [--programs 30] [--inputs 8]   (G5 mode: inout parameters, see README)
+    python bench/fuzz/run.py --replay DIR_OR_PRUVFILE   (a G4/G5 program folder with root.pruv works too)
     (every form accepts [--compiler py|rs] [--compiler-path PATH], see tests/compiler_driver.py; default rs)
 
 Promise: a program the verifier accepted (pruvc default mode, exit 0) satisfies ensures on every input that
@@ -120,11 +121,16 @@ def read_tree(base):
     return files
 
 
+def is_tree(case):
+    """G4 and G5 programs are directories (root.pruv + module files); every other program is one source string."""
+    return bool(case.get("g4") or case.get("g5"))
+
+
 def save_program(dir_, rec, name=None):
-    """Save the source of rec below dir_: a G4 program as a directory tree <name>/..., any other as <name>.pruv."""
+    """Save the source of rec below dir_: a G4/G5 program as a directory tree <name>/..., any other as <name>.pruv."""
     name = name or rec["name"]
     case = rec.get("case") or {}
-    if case.get("g4"):
+    if is_tree(case):
         write_tree(os.path.join(dir_, name), case["files"])
     else:
         write(os.path.join(dir_, name + ".pruv"), rec["src"])
@@ -306,8 +312,8 @@ def phase_a(case, work):
     d = os.path.join(work, case["name"])
     os.makedirs(d, exist_ok=True)
     rec["dir"] = d
-    if case.get("g4"):
-        # G4: the program is a directory (root.pruv + module files); the compiler is invoked on <dir>/root.pruv
+    if is_tree(case):
+        # G4/G5: the program is a directory (root.pruv + module files); the compiler is invoked on <dir>/root.pruv
         write_tree(d, case["files"])
         pruv = os.path.join(d, "root.pruv")
     else:
@@ -315,7 +321,7 @@ def phase_a(case, work):
         write(pruv, case["src"])
     rec["pruv"] = pruv
     try:
-        rec["prog"] = oracle.parse_modules(case["files"]) if case.get("g4") else oracle.parse_program(case["src"])
+        rec["prog"] = oracle.parse_modules(case["files"]) if is_tree(case) else oracle.parse_program(case["src"])
     except oracle.OracleUnsupported as e:
         rec["status"], rec["detail"] = "oracle_unsupported", str(e)
         return rec
@@ -399,7 +405,8 @@ def choose_inputs(rec, args, fixed=None):
     if fixed is not None:
         inputs = fixed
     else:
-        prefix = ("g4:" if getattr(args, "g4", False) else "g9:" if getattr(args, "g9", False)
+        prefix = ("g5:" if getattr(args, "g5", False) else "g4:" if getattr(args, "g4", False)
+                  else "g9:" if getattr(args, "g9", False)
                   else "g6:" if getattr(args, "g6", False)
                   else "g3:" if getattr(args, "g3", False) else ("g2:" if getattr(args, "g2", False) else ""))
         # G4 twins (two programs that differ only in one callee body) share `input_key`, hence get the same inputs
@@ -725,7 +732,7 @@ def check(rec):
     modes = list(rec["runs"])
     verified = rec["status"] == "verified"
     # G4 compares only the message kind of `requires violated` (the callee name in a module program is source-qualified)
-    g3 = bool((rec.get("case") or {}).get("g3") or (rec.get("case") or {}).get("g4"))
+    g3 = bool((rec.get("case") or {}).get("g3") or (rec.get("case") or {}).get("g4") or (rec.get("case") or {}).get("g5"))
     for k, args in enumerate(rec["inputs"]):
         runs = {m: rec["runs"][m][k] for m in modes}
         orc = {m: mode_oracle(rec, m, k) for m in modes}
@@ -823,8 +830,8 @@ def rec_results(rec):
 def save_failure(out_dir, rec, kind, items):
     d = os.path.join(out_dir, "failures", "%s_%s" % (kind, rec["name"]))
     os.makedirs(d, exist_ok=True)
-    if (rec.get("case") or {}).get("g4"):
-        write_tree(d, rec["case"]["files"])       # G4: the whole program (root.pruv + modules), `--replay <this folder>` works
+    if is_tree(rec.get("case") or {}):
+        write_tree(d, rec["case"]["files"])       # G4/G5: the whole program (root.pruv + modules), `--replay <this folder>` works
     else:
         write(os.path.join(d, "case.pruv"), rec["src"])
     write(os.path.join(d, "inputs.json"), json.dumps(rec.get("inputs", []), indent=1))
@@ -853,6 +860,13 @@ def save_failure(out_dir, rec, kind, items):
         res["g4_features"] = rec["case"].get("g4_features", [])
         res["g4_twin"] = rec["case"].get("g4_twin")
         res["g4_variant"] = rec["case"].get("g4_variant")
+    if (rec.get("case") or {}).get("g5"):   # g5 cases only: features, twin info and the exact replay command
+        res["g5"] = True
+        res["g5_features"] = rec["case"].get("g5_features", [])
+        res["g5_twin"] = rec["case"].get("g5_twin")
+        res["g5_variant"] = rec["case"].get("g5_variant")
+        res["replay"] = "python bench/fuzz/run.py --replay %s --compiler %s" % (
+            os.path.relpath(d, ROOT) if d.startswith(ROOT) else d, DRIVER.name if DRIVER is not None else "rs")
     write(os.path.join(d, "results.json"), json.dumps(res, indent=1, default=str))
     write(os.path.join(d, "pruvc_output.txt"),
           "".join("== %s ==\n%s\n" % (k, v) for k, v in rec["logs"].items()))
@@ -925,6 +939,8 @@ def replay(path, args):
     if os.path.basename(pruv) == "root.pruv":
         case["g4"] = True   # G4 program (saved by --g4): all module files next to root.pruv, see phase_a / oracle.parse_modules
         case["files"] = read_tree(base)
+        if any(re.search(r"\binout\s+\w+\s*:", t) for t in case["files"].values()):
+            case["g5"] = True   # G5 program (saved by --g5): inout parameters, same program-directory handling as G4
     if "::<" in src:
         case["g3"] = True   # generic program: the run-time callee name of a generic instance is not compared strictly
     if re.search(r"\b(vec_new|map_new|string_new)\b|\btrusted\s+rust\s+fn\b", src):
@@ -1000,14 +1016,14 @@ def g4_twin_check(progs):
     -> number of pairs that were compared (pairs with a missing or failed half are skipped and not counted)."""
     groups = {}
     for r in progs:
-        key = (r.get("case") or {}).get("g4_twin")
+        key = (r.get("case") or {}).get("g4_twin") or (r.get("case") or {}).get("g5_twin")      # G5 twins use the same check
         if key and r.get("runs"):
             groups.setdefault(key, []).append(r)
     compared = 0
     for _key, lst in sorted(groups.items()):
         if len(lst) != 2:
             continue
-        a, b = sorted(lst, key=lambda r: r["case"]["g4_variant"])
+        a, b = sorted(lst, key=lambda r: r["case"].get("g4_variant", r["case"].get("g5_variant")))
         if a["inputs"] != b["inputs"]:
             b["failures"].append({"kind": "harness_error", "detail": "twin programs %s/%s got different inputs"
                                                                      % (a["name"], b["name"])})
@@ -1027,6 +1043,71 @@ def g4_twin_check(progs):
                     b["failures"].append({"kind": "twin_mismatch", "input": k, "mode": m,
                                           "detail": "%s=%r vs %s=%r" % (a["name"], sa, b["name"], sb)})
     return compared
+
+
+# G5: feature tags (docs/G5_SPEC.md section 14 item 2) that at least one counted verified program of every run must carry;
+# the twin tag is checked through the number of twin pairs that were really compared
+G5_REQUIRED = ["type_i64", "type_u8", "type_bool", "generic_instance", "repeated_reborrow", "nested_reborrow",
+               "multi_owner", "loop", "recursion", "module_call", "old_contract"]
+G5_INFER_MIN = 10           # --infer must be exercised on at least this many programs per seed
+G5_INFER_PROBED = 12        # programs probed (a few spare: a probe that fails does not count)
+
+
+def _read_text(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def infer_probe(rec):
+    """G5 `--infer` probe of a verified program (docs/G5_SPEC.md 5.3, section 14 item 3).
+    (1) The program as generated, with its explicit loop invariants: `--infer` must still verify it (explicit invariants are
+        always checked; inference may not break a valid program). The emitted Rust is compared with the plain verified Rust.
+    (2) A copy with every `invariant` line removed: inference may or may not rediscover them (a rejection is fine), but an
+        accepted copy must emit the same Rust as the explicit program (invariants are erased), otherwise it is reported.
+    Exit codes other than 0/1 and timeouts are failures. -> result dict (failures are appended to rec["failures"])."""
+    res = {"name": rec["name"], "exit": None, "same_rust": None, "stripped_exit": None, "stripped_same_rust": None}
+    ref = _read_text(rec["ver_rs"])
+    out = os.path.join(rec["dir"], "infer_gen.rs")
+    if os.path.exists(out):
+        os.remove(out)
+    rc, so, se = run_cmd(driver().argv(rec["pruv"], out, ["--infer"], "rust"), 120)
+    res["exit"] = rc
+    if rc == 0:
+        got = _read_text(out)
+        res["same_rust"] = None if ref is None or got is None else got == ref
+    else:
+        rec["failures"].append({"kind": "timeout" if rc == TIMEOUT_RC else "infer_failure",
+                                "detail": "--infer on the verified program: exit %d: %s" % (rc, (so + se).strip()[-400:])})
+    if rec["case"].get("g5_has_invariant"):
+        sd = os.path.join(rec["dir"], "noinv")
+        write_tree(sd, generate.g5_strip_invariants(rec["case"]["files"]))
+        sout = os.path.join(sd, "infer_gen.rs")
+        rc2, so2, se2 = run_cmd(driver().argv(os.path.join(sd, "root.pruv"), sout, ["--infer"], "rust"), 120)
+        res["stripped_exit"] = rc2
+        if rc2 == 0:
+            got = _read_text(sout)
+            res["stripped_same_rust"] = None if ref is None or got is None else got == ref
+        elif rc2 != 1:
+            rec["failures"].append({"kind": "timeout" if rc2 == TIMEOUT_RC else "infer_failure",
+                                    "detail": "--infer on the invariant-free copy: exit %d: %s"
+                                              % (rc2, (so2 + se2).strip()[-400:])})
+    return res
+
+
+def g5_infer_all(recs, jobs):
+    out = []
+    with cf.ThreadPoolExecutor(jobs) as ex:
+        futs = [(r, ex.submit(infer_probe, r)) for r in recs]
+        for r, f in futs:
+            try:
+                out.append(f.result())
+            except Exception:
+                r["failures"].append({"kind": "harness_error", "detail": traceback.format_exc()[-1500:]})
+                out.append({"name": r["name"], "exit": None, "error": True})
+    return out
 
 
 def g3_ran(r, names):
@@ -1115,7 +1196,7 @@ def run_seeds(args):
 def main():
     ap = argparse.ArgumentParser(description="Pruv differential fuzzing")
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--programs", type=int, default=None, help="default 100 (30 with --g4)")
+    ap.add_argument("--programs", type=int, default=None, help="default 100 (30 with --g4/--g5)")
     ap.add_argument("--inputs", type=int, default=8)
     ap.add_argument("--max-candidates", type=int, default=400)
     ap.add_argument("--rejected-sample", type=int, default=30)
@@ -1149,6 +1230,12 @@ def main():
                          "a/b.pruv), host entry `pub fn f` in the root, contract-preserving body-replacement twins; output "
                          "folder out/g4_<seed>[_rs], gate (g4_shortfall) applies, every program is meant to verify; "
                          "--rejected-sample is not used")
+    ap.add_argument("--g5", action="store_true",
+                    help="G5 mode: inout-parameter programs (directory per program: root.pruv + optional module files, host "
+                         "entry `pub fn f` copies its input and calls inout helpers), contract-preserving body-replacement "
+                         "twins, --infer probe on >= 10 programs; output folder out/g5_<seed>[_rs], gates (g5_shortfall, "
+                         "g5_comparison_shortfall, g5_infer_shortfall) apply, every program is meant to verify; "
+                         "--rejected-sample is not used")
     ap.add_argument("--seeds", default=None,
                     help="comma-separated seeds (e.g. 41,56,57): one run per seed with the other options unchanged; "
                          "with --out each seed gets the subfolder OUT/<seed>")
@@ -1167,9 +1254,11 @@ def main():
         ap.error("--g9 is a separate mode (not combinable with --g2/--g3/--g6)")
     if args.g4 and (args.g2 or args.g3 or args.g6 or args.g9):
         ap.error("--g4 is a separate mode (not combinable with --g2/--g3/--g6/--g9)")
+    if args.g5 and (args.g2 or args.g3 or args.g6 or args.g9 or args.g4):
+        ap.error("--g5 is a separate mode (not combinable with --g2/--g3/--g6/--g9/--g4)")
     if args.programs is None:
-        args.programs = 30 if args.g4 else 100
-    if args.g3 or args.g6 or args.g9 or args.g4:
+        args.programs = 30 if (args.g4 or args.g5) else 100
+    if args.g3 or args.g6 or args.g9 or args.g4 or args.g5:
         args.inputs = max(args.inputs, 8)    # exit criterion: at least eight concrete inputs per accepted program
     if args.g9:
         g9_prepare_process()
@@ -1177,7 +1266,8 @@ def main():
         return replay(args.replay, args)
     # per-compiler result/work folders: the py default path (out/<seed>) is unchanged, rs uses out/<seed>_rs;
     # G6: out/g6_<seed> (py), out/g6_<seed>_rs (rs); G9: out/g9_<seed>[_rs]
-    out_dir = args.out or os.path.join(HERE, "out", ("g4_" if args.g4 else "g9_" if args.g9 else "g6_" if args.g6 else "")
+    out_dir = args.out or os.path.join(HERE, "out", ("g5_" if args.g5 else "g4_" if args.g4 else "g9_" if args.g9
+                                                     else "g6_" if args.g6 else "")
                                        + str(args.seed)
                                        + ("" if DRIVER.name == "py" else "_" + DRIVER.name)
                                        + ("_g2" if args.g2 else "") + ("_g3" if args.g3 else ""))
@@ -1199,7 +1289,9 @@ def main():
             """Generate candidate i and run it through phase_a. Exceptions are recorded as harness failures."""
             case = None
             try:
-                if args.g4:
+                if args.g5:
+                    case = generate.generate_case(args.seed, i, g5=True)
+                elif args.g4:
                     case = generate.generate_case(args.seed, i, g4=True)
                 elif args.g9:
                     case = generate.generate_case(args.seed, i, g9=True)
@@ -1224,7 +1316,7 @@ def main():
             st = rec["status"]
             if st in ("oracle_unsupported", "oracle_parse_error", "generator_invalid"):
                 counts[st] += 1
-                if (args.g3 or args.g6 or args.g9 or args.g4) and st != "generator_invalid" and oracle_gap_saved[0] < 10:
+                if (args.g3 or args.g6 or args.g9 or args.g4 or args.g5) and st != "generator_invalid" and oracle_gap_saved[0] < 10:
                     # an oracle that cannot evaluate a generated program is a gap in the oracle, never a success
                     oracle_gap_saved[0] += 1
                     gd = os.path.join(out_dir, "oracle_gap")
@@ -1259,7 +1351,8 @@ def main():
         # Once enough are collected or --max-candidates is reached, stop submitting but collect the results of every candidate already submitted.
         # G2 mode collects an extra 10% (+5 for rejected) to cover programs dropped by the counting condition (existing path unchanged)
         # G3 mode does the same and additionally keeps generating until enough deliberately unproved programs were rejected
-        want_programs = args.programs + (args.programs // 10 if (args.g2 or args.g3 or args.g6 or args.g9 or args.g4) else 0)
+        want_programs = args.programs + (args.programs // 10 if (args.g2 or args.g3 or args.g6 or args.g9 or args.g4
+                                                                  or args.g5) else 0)
         want_rejected = args.rejected_sample + (5 if args.g2 else 0)
         if args.g3:
             want_rejected = args.g3_safe_only + 5
@@ -1304,9 +1397,9 @@ def main():
             unproved = [r for r in rejected_all if g3_unproved(r)]
             unexpected = [r for r in rejected_all if not g3_unproved(r)]
             sample = unproved[:want_rejected] + unexpected[:10]
-        elif args.g4:
-            # every G4 program is meant to verify: a few rejected ones ride along (safe modes only) so the oracle and the
-            # compilers are still compared on them; they are reported as unexpected rejects
+        elif args.g4 or args.g5:
+            # every G4/G5 program is meant to verify: a few rejected ones ride along (safe modes only) so the oracle and the
+            # compilers are still compared on them; they are reported as unexpected rejects (G5: never counted as completed)
             sample = rejected_all[:10]
         elif args.g9:
             # same as G6: deliberately unproved programs first, a few rejected "meant to verify" ones ride along (safe modes only)
@@ -1339,13 +1432,15 @@ def main():
         # --- phase 5 (run)
         run_all(progs, args.jobs)
         t3 = time.time()
+        # --- G5: --infer probe of the first verified programs (failures are recorded on the program and saved below)
+        infer_results = g5_infer_all(verified[:G5_INFER_PROBED], args.jobs) if args.g5 else []
         # --- phase 6 (check) + save
         inputs_run = 0
         outcome_counts = {}
         incomplete_total = 0
         input_errors_total = 0
         no_sat = []
-        twin_pairs = g4_twin_check(progs) if args.g4 else 0     # adds twin_mismatch failures before the loop below saves them
+        twin_pairs = g4_twin_check(progs) if (args.g4 or args.g5) else 0     # adds twin_mismatch failures before the loop below saves them
         for rec in progs:
             if "runs" in rec:
                 try:
@@ -1646,7 +1741,121 @@ def main():
                 fail_kinds["g4_shortfall"] = args.programs - summary["g4_verified"]
                 summary["g4_shortfall"] = {"verified_missing": args.programs - summary["g4_verified"]}
             summary["g4_failures"] = sum(fail_kinds.values())
+        g5_detail = None
+        if args.g5:
+            # Keys are added only in G5 mode (prefix g5_). Every G5 program is meant to verify, so a rejected program is an
+            # "unexpected reject" (reported, saved as a program folder). Completed comparisons (g5_comparisons_completed) are
+            # counted ONLY on counted verified programs without a recorded failure: oracle gaps, rejected programs, oracle
+            # limits/errors, timeouts and harness exceptions never contribute.
+            failed_set = set(failed_cases)
+            g5_ver = [r for r in verified if r["name"] not in failed_set and g3_counted(r, True, args.inputs, "g5")]
+            unexpected_rej = list(rejected_all)
+            feat = {}
+            per_prog = []
+            completed = 0
+            for r in g5_ver:
+                for t in (r["case"].get("g5_features") or []):
+                    feat[t] = feat.get(t, 0) + 1
+                done_r, _skip_r = g3_comparisons([r])
+                completed += done_r
+                per_prog.append({"name": r["name"], "kind": r["case"].get("kind"),
+                                 "features": r["case"].get("g5_features", []), "inputs": len(r.get("inputs", [])),
+                                 "comparisons_completed": done_r, "twin": r["case"].get("g5_twin"),
+                                 "oracle_inout_calls": sum(o.get("inout_calls", 0) for o in (r.get("oracle_proof") or []))})
+            kinds = {}
+            for r in g5_ver:
+                kinds[r["case"].get("kind")] = kinds.get(r["case"].get("kind"), 0) + 1
+            cmp_done, cmp_skipped = g3_comparisons(progs)
+            dig_full, dig_quiet = g3_digests(progs)
+            src_dig = hashlib.sha256()
+            for r in sorted(g5_ver, key=lambda x: x["name"]):
+                src_dig.update(json.dumps([r["name"], r["case"]["files"]], sort_keys=True).encode())
+            ipp = [len(r.get("inputs", [])) for r in progs]
+            target = args.programs * args.inputs * len(MODES)
+            miss_feat = [t for t in G5_REQUIRED if not feat.get(t)]
+            if twin_pairs == 0:
+                miss_feat.append("body_replacement_twin")
+            inf_ok = [x for x in infer_results if x.get("exit") == 0]
+            inf_strip = [x for x in infer_results if x.get("stripped_exit") is not None]
+            summary["g5"] = True
+            summary["compiler"] = DRIVER.name
+            summary["g5_seed"] = args.seed
+            summary["g5_generated"] = counts["candidates"]
+            summary["g5_verified"] = len(g5_ver)
+            summary["g5_executions_compared"] = cmp_done
+            summary["g5_executions_not_compared"] = cmp_skipped
+            summary["g5_comparisons_completed"] = completed
+            summary["g5_comparisons_target"] = target
+            summary["g5_kinds_verified"] = dict(sorted(kinds.items()))
+            summary["g5_features_verified"] = dict(sorted(feat.items()))
+            summary["g5_features_missing"] = miss_feat
+            summary["g5_program_features"] = dict((p["name"], p["features"]) for p in per_prog)
+            summary["g5_inputs_per_program_min"] = min(ipp) if ipp else 0
+            summary["g5_twin_pairs_compared"] = twin_pairs
+            summary["g5_mismatches"] = {"backend_or_mode_mismatch": fail_kinds.get("mode_mismatch", 0),
+                                        "oracle_mismatch": fail_kinds.get("oracle_mismatch", 0),
+                                        "unsound": fail_kinds.get("unsound", 0),
+                                        "twin_mismatch": fail_kinds.get("twin_mismatch", 0)}
+            summary["g5_timeouts"] = {k: v for k, v in sorted(fail_kinds.items()) if "timeout" in k}
+            summary["g5_unexpected_rejects"] = {
+                "count": len(unexpected_rej), "names": [r["name"] for r in unexpected_rej[:20]],
+                "codes": sorted(set(c for r in unexpected_rej for c in r.get("codes", [])))}
+            summary["g5_oracle_gaps"] = counts["oracle_unsupported"] + counts["oracle_parse_error"]
+            summary["g5_infer"] = {
+                "programs_probed": len(infer_results), "verified_with_infer": len(inf_ok),
+                "same_rust_as_explicit": sum(1 for x in inf_ok if x.get("same_rust")),
+                "stripped_probed": len(inf_strip),
+                "stripped_verified": sum(1 for x in inf_strip if x.get("stripped_exit") == 0),
+                "stripped_rejected": sum(1 for x in inf_strip if x.get("stripped_exit") == 1),
+                "stripped_rust_differs": [x["name"] for x in inf_strip if x.get("stripped_same_rust") is False],
+                "minimum": G5_INFER_MIN}
+            summary["g5_program_digest"] = src_dig.hexdigest()
+            summary["g5_digest"] = dig_full
+            summary["g5_digest_exit_stdout"] = dig_quiet
+            ud = os.path.join(out_dir, "unexpected_rejects")
+            for r in unexpected_rej[:10]:
+                os.makedirs(ud, exist_ok=True)
+                save_program(ud, r)
+                write(os.path.join(ud, r["name"] + ".txt"), r["logs"].get("verify", ""))
+            # the generator must produce well-typed programs and the oracle must be able to run them
+            if counts["generator_invalid"]:
+                fail_kinds["g5_generator_invalid"] = counts["generator_invalid"]
+            if counts["oracle_unsupported"] + counts["oracle_parse_error"]:
+                fail_kinds["g5_oracle_gap"] = counts["oracle_unsupported"] + counts["oracle_parse_error"]
+            shortfall = {}
+            if summary["g5_verified"] < args.programs:
+                shortfall["verified_missing"] = args.programs - summary["g5_verified"]
+                fail_kinds["g5_shortfall"] = shortfall["verified_missing"]
+            if completed < target:
+                shortfall["comparisons_missing"] = target - completed
+                fail_kinds["g5_comparison_shortfall"] = target - completed
+            if len(inf_ok) < G5_INFER_MIN:
+                shortfall["infer_programs_missing"] = G5_INFER_MIN - len(inf_ok)
+                fail_kinds["g5_infer_shortfall"] = G5_INFER_MIN - len(inf_ok)
+            if miss_feat:
+                shortfall["features_missing"] = miss_feat
+                fail_kinds["g5_feature_shortfall"] = len(miss_feat)
+            summary["g5_shortfall"] = shortfall
+            summary["g5_failures"] = sum(fail_kinds.values())
+            # saved failures + the command that replays each of them
+            saved = []
+            fdir = os.path.join(out_dir, "failures")
+            if os.path.isdir(fdir):
+                for nm in sorted(os.listdir(fdir)):
+                    p = os.path.join(fdir, nm)
+                    saved.append({"dir": p, "replay": "python bench/fuzz/run.py --replay %s --compiler %s" % (p, DRIVER.name)})
+            summary["g5_saved_failures"] = saved
+            g5_detail = {"seed": args.seed, "compiler": DRIVER.name, "programs_requested": args.programs,
+                         "inputs_per_program": args.inputs, "comparisons_completed": completed,
+                         "comparisons_target": target, "shortfall": shortfall,
+                         "feature_counts": summary["g5_features_verified"], "programs": per_prog,
+                         "infer": summary["g5_infer"], "infer_per_program": infer_results,
+                         "failures_by_kind": fail_kinds, "saved_failures": saved,
+                         "unexpected_rejects": summary["g5_unexpected_rejects"],
+                         "replay_commands": [s["replay"] for s in saved]}
         write(os.path.join(out_dir, "summary.json"), json.dumps(summary, indent=2))
+        if g5_detail is not None:
+            write(os.path.join(out_dir, "g5_results.json"), json.dumps(g5_detail, indent=2, default=str))
         print("---- summary ----")
         print("candidates %d (generator errors %d, oracle unsupported %d) -> pass %d / reject %d %s"
               % (summary["candidates"], summary["generator_invalid"],
@@ -1721,6 +1930,32 @@ def main():
             print("G4 programs meant to verify but rejected: %d %s"
                   % (summary["g4_unexpected_rejects"]["count"], json.dumps(summary["g4_unexpected_rejects"]["codes"])))
             print("G4 digest %s (exit+stdout only %s)" % (summary["g4_digest"][:16], summary["g4_digest_exit_stdout"][:16]))
+        if args.g5:
+            print("G5 seed %d (%s): generated %d, verified %d (requested %d), comparisons completed %d (target %d; "
+                  "executions compared %d, not compared %d), failures %d, min inputs per program %d"
+                  % (args.seed, summary["compiler"], summary["g5_generated"], summary["g5_verified"], args.programs,
+                     summary["g5_comparisons_completed"], summary["g5_comparisons_target"],
+                     summary["g5_executions_compared"], summary["g5_executions_not_compared"], summary["g5_failures"],
+                     summary["g5_inputs_per_program_min"]))
+            print("G5 kinds %s" % json.dumps(summary["g5_kinds_verified"]))
+            print("G5 features %s (missing %s)" % (json.dumps(summary["g5_features_verified"]),
+                                                   json.dumps(summary["g5_features_missing"])))
+            print("G5 mismatches %s, twin pairs compared %d, timeouts %s"
+                  % (json.dumps(summary["g5_mismatches"]), summary["g5_twin_pairs_compared"],
+                     json.dumps(summary["g5_timeouts"])))
+            print("G5 infer %s" % json.dumps(dict((k, v) for k, v in summary["g5_infer"].items()
+                                                  if k != "stripped_rust_differs")))
+            if summary["g5_infer"]["stripped_rust_differs"]:
+                print("G5 infer: invariant-free copies whose Rust differs from the explicit program: %s"
+                      % json.dumps(summary["g5_infer"]["stripped_rust_differs"]))
+            print("G5 programs meant to verify but rejected: %d %s; oracle gaps: %d"
+                  % (summary["g5_unexpected_rejects"]["count"], json.dumps(summary["g5_unexpected_rejects"]["codes"]),
+                     summary["g5_oracle_gaps"]))
+            print("G5 shortfall %s" % json.dumps(summary["g5_shortfall"]))
+            for s in summary["g5_saved_failures"][:20]:
+                print("G5 replay: " + s["replay"])
+            print("G5 digest %s (exit+stdout only %s), program digest %s"
+                  % (summary["g5_digest"][:16], summary["g5_digest_exit_stdout"][:16], summary["g5_program_digest"][:16]))
         print("failures: %s" % (json.dumps(fail_kinds) if fail_kinds else "none"))
         print("results: " + out_dir)
         return 1 if fail_kinds else 0

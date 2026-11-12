@@ -1,0 +1,12 @@
+diff --git a/pruvc/verify.py b/pruvc/verify.py
+index e42865c..cba488a 100644
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1615,6 +1615,7 @@ class FnVerifier:
+             nv = mk_arr(fv.a, pre.n, name, pre.elem)
+             if nv.elem == U8:
+                 s.assume(st, g, u8_dom(nv))
++            nv = pre
+             cenv[f.params[i].name] = nv
+             st.env[name] = nv
+ 

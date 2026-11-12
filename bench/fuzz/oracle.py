@@ -36,6 +36,14 @@ G6 (docs/G6_SPEC.md 10-13, SPEC.md 6d; switched on like G3 by catalog names, `tr
   `pruv: foreign requires violated:`) in BOTH modes: foreign requires are checked at run time in verified builds too
   (G6_SPEC 5.1, 12.2).  The requires of a trusted fn are checked the same way.
 
+G5 (docs/G5_SPEC.md 2-5, section 14; switched on by the contextual `inout` parameter marker, no flag): `fn f(inout a: [T], ..)`, call
+  arguments `f(inout x, ..)` (the marker must sit exactly on the inout parameters, else OracleUnsupported), `old(a)` in
+  ensures / invariants / asserts. An inout argument is the caller's own list (no copy): the callee's element stores mutate the
+  caller's owner in place, forwarded `inout a` reaches the same list again, and `old(a)` is a copy frozen at function entry
+  (taken after the requires check). `ensures` see the FINAL contents of inout parameters (other parameters keep their entry
+  values). run() reports `inout_final` (final arrays of the top-level function's own inout parameters) and `inout_calls` (number
+  of calls of inout functions) only for programs that use inout; the expected values come from this interpreter alone.
+
 VALUES: i64 int, bool bool, array list, unit None.  Option/Result are JSON-friendly dicts
   {"tag": "Some", "v": 3} / {"tag": "None"} / {"tag": "Ok", "v": 3} / {"tag": "Err", "v": -2}; this is also the
   format run()/check_requires() take for arguments and run() gives back for the return value.
@@ -177,6 +185,7 @@ def _lex(src):
 class _Fn(object):
     foreign = None      # G6: the Rust path string of a `trusted rust fn` (body is empty), else None
     decreases = None    # G9: function-level `decreases e`; evaluated only with run(..., fn_decreases=True)
+    inout = frozenset()  # G5: names of the `inout` (mutable array borrow) parameters
 
     def __init__(self, name, params, ret, requires, ensures, body, line):
         self.name, self.params, self.ret = name, params, ret
@@ -400,12 +409,18 @@ class _Parser(object):
         self.tparams = self.tparam_list()
         self.eat("(")
         params = []
+        inout = set()
         while not self.is_(")"):
             pn = self.ident()
             if pn == "take" and self.peek()[0] == "id" and self.is_(":", 1):
                 pn = self.ident()       # G6: `take v: Vec<T>` (consuming parameter; no run-time meaning here)
+            elif pn == "inout" and self.peek()[0] == "id" and self.is_(":", 1):
+                pn = self.ident()       # G5: `inout a: [i64]` (the caller's array is mutated in place)
+                inout.add(pn)
             self.eat(":")
             params.append((pn, self.type_()))
+            if pn in inout and params[-1][1] not in ("arr", "array_u8", "array_bool"):
+                raise OracleUnsupported("inout parameter %s is not an array" % pn)
             if not self.is_(")"):
                 self.eat(",")
         self.eat(")")
@@ -433,6 +448,8 @@ class _Parser(object):
         self.cur_ret = ret
         fn_ = _Fn(name, params, ret, req, ens, self.block(), line)
         fn_.decreases = dec
+        if inout:
+            fn_.inout = frozenset(inout)
         return fn_
 
     def foreign_fn(self):
@@ -584,7 +601,20 @@ class _Parser(object):
                 if e[0] != "call":
                     self.err("bad expression statement")
                 return ("expr", line, e)
+            if self.g3 and self.is_("::", 1) and self.is_("<", 2):
+                e = self.imp()          # G5: `exchange::<i64>(inout w, i, j);` (explicit instantiation as a statement)
+                self.eat(";")
+                if e[0] != "call":
+                    self.err("bad expression statement")
+                return ("expr", line, e)
         self.err("bad statement")
+
+    def call_arg(self):
+        """G5: one call argument; `inout x` marks the whole mutable-borrow place (a bare identifier follows `inout`)."""
+        if self.is_("inout") and self.peek(1)[0] == "id":
+            self.next()
+            return ("inout", self.ident())
+        return self.imp()
 
     def match_stmt(self):
         line = self.eat("match")[2]
@@ -752,7 +782,7 @@ class _Parser(object):
             self.next()
             args = []
             while not self.is_(")"):
-                args.append(self.imp())
+                args.append(self.call_arg())
                 if not self.is_(")"):
                     self.eat(",")
             self.eat(")")
@@ -865,7 +895,7 @@ class _Parser(object):
             self.next()
             args = []
             while not self.is_(")"):
-                args.append(self.imp())
+                args.append(self.call_arg())
                 if not self.is_(")"):
                     self.eat(",")
             self.eat(")")
@@ -933,6 +963,7 @@ class _Interp(object):
         # Opt-in (G9 mutation grading): check function-level `decreases` at every call inside a recursive
         # SCC: callee measure defined, >= 0 and < the caller's frozen entry measure ("decreases <fn> line N").
         self.fn_decreases, self._frames, self._scc = False, [], None
+        self.inout_calls = 0    # G5: number of calls of functions with inout parameters
 
     def scc_of(self, name):
         if self._scc is None:
@@ -1132,6 +1163,11 @@ class _Interp(object):
                 want = dict(before.d)
                 want[gk] = gv
                 return after.d == want
+            if e[1] == "old" and len(e[2]) == 1 and "old" not in self.prog.fns:     # G5: entry value of an inout parameter
+                a = e[2][0]
+                if a[0] != "var" or ("old " + a[1]) not in env:
+                    raise OracleUnsupported("old() of something other than an inout parameter")
+                return env["old " + a[1]]       # the frozen entry copy (taken before the body ran)
             raise OracleUnsupported("call to %s in contract" % e[1])
         if k in ("forall", "exists"):
             _, name, lo_e, hi_e, body, _ln = e
@@ -1201,6 +1237,12 @@ class _Interp(object):
         if k == "var" or k == "move":
             if e[1] not in env:
                 raise OracleUnsupported("unbound variable %s" % e[1])
+            return env[e[1]]
+        if k == "inout":
+            # G5: a marked argument names the caller's own array; it is handed over as is (no copy), so the callee's
+            # element stores land in the caller's owner
+            if e[1] not in env or not isinstance(env[e[1]], list):
+                raise OracleUnsupported("inout argument %s is not an array binding" % e[1])
             return env[e[1]]
         if k == "neg":
             v = -self.ev(e[1], env)
@@ -1276,7 +1318,8 @@ class _Interp(object):
                 return [v] * n
             if name in _CATALOG and name not in self.prog.fns:
                 return self.catalog(name, [self.ev(a, env) for a in args])
-            return self.call(name, [self.ev(a, env) for a in args], top=False)
+            return self.call(name, [self.ev(a, env) for a in args], top=False,
+                             marks=[a[0] == "inout" for a in args])
         raise OracleUnsupported("contract-only expression %s in code" % (k,))
 
     # ---- G6 catalog (arguments already evaluated, left to right). Every operation builds a NEW object, so a value that was
@@ -1354,15 +1397,19 @@ class _Interp(object):
                 return "violated", idx, ""
         return "ok", 0, ""
 
-    def call(self, name, args, top=True):
+    def call(self, name, args, top=True, marks=None):
         fn = self.prog.fns.get(name)
         if fn is None:
             raise OracleUnsupported("unknown function %s" % name)
         if len(args) != len(fn.params):
             raise OracleUnsupported("arity mismatch calling %s" % name)
+        if marks is not None and (fn.inout or any(marks)):
+            # G5: the call must carry `inout` exactly on the inout parameters (the compiler rejects anything else)
+            if any(m != (pn in fn.inout) for m, (pn, _pt) in zip(marks, fn.params)):
+                raise OracleUnsupported("inout marker mismatch calling %s" % name)
         penv = {}
         for (pn, _pt), a in zip(fn.params, args):
-            penv[pn] = _cp(a)
+            penv[pn] = a if pn in fn.inout else _cp(a)      # an inout parameter IS the caller's array (no copy)
         if fn.foreign is not None:
             return self.foreign_call(fn, penv)
         if top or self.mode != "proof":
@@ -1391,6 +1438,10 @@ class _Interp(object):
             if not ok:
                 self.fail("decreases %s line %d" % (name, dln))
         env = dict(penv)
+        for pn in fn.inout:
+            env["old " + pn] = list(penv[pn])       # old(a): frozen at function entry (after the requires check)
+        if fn.inout:
+            self.inout_calls += 1
         ret, returned = None, False
         self._frames.append((name, measure))
         try:
@@ -1402,7 +1453,9 @@ class _Interp(object):
         if fn.ret != "unit" and not returned:
             raise OracleUnsupported("function %s falls off the end" % name)
         ret = _cp(ret)
-        eenv = dict(penv)
+        eenv = dict(penv)       # an inout parameter denotes its FINAL contents here (same list object as in env)
+        for pn in fn.inout:
+            eenv["old " + pn] = env["old " + pn]
         eenv["result"] = ret
         for idx, (ce, _ln) in enumerate(fn.ensures, 1):
             st, v = self.cbool(ce, eenv, False)
@@ -1621,12 +1674,20 @@ def run(prog, fn_name, args, max_steps=2_000_000, mode="safe", fn_decreases=Fals
     it = _Interp(prog, max_steps, mode)
     it.fn_decreases = fn_decreases
     kind, value, detail = "ok", None, ""
+    cargs = [_cp(a) for a in args]
     try:
-        value = it.call(fn_name, [_cp(a) for a in args], top=True)
+        value = it.call(fn_name, cargs, top=True)
     except _Fault as f:
         kind, detail, value = f.kind, f.detail, None
-    return {"kind": kind, "value": value, "detail": detail, "output": it.output,
-            "contract_failures": it.failures}
+    res = {"kind": kind, "value": value, "detail": detail, "output": it.output,
+           "contract_failures": it.failures}
+    # G5 (keys only appear for programs that use inout, so other results are unchanged): the final contents of the
+    # top-level function's own inout parameters (mutated in place) and the number of inout calls that ran
+    if fn0 is not None and fn0.inout and len(cargs) == len(fn0.params):
+        res["inout_final"] = dict((pn, list(cargs[i])) for i, (pn, _t) in enumerate(fn0.params) if pn in fn0.inout)
+    if it.inout_calls:
+        res["inout_calls"] = it.inout_calls
+    return res
 
 
 def check_requires(prog, fn_name, args):
@@ -2548,9 +2609,80 @@ def _selftest_g4():
             pass
 
 
+def _selftest_g5():
+    """G5 (docs/G5_SPEC.md 2-5): inout parameters mutate the caller's owner in place, old(..) is frozen at entry,
+    ensures see the final contents, the top-level run reports the final inout arrays."""
+    setat = ("fn set_at(inout a: [i64], i: i64, v: i64) -> ()\n  requires 0 <= i && i < len(a)\n"
+             "  ensures len(a) == len(old(a))\n  ensures a[i] == v\n"
+             "  ensures forall k in 0..len(a): k != i ==> a[k] == old(a)[k]\n{\n  a[i] = v;\n}\n")
+    src = (setat +
+           "fn bad(inout a: [i64]) -> ()\n  requires len(a) >= 1\n  ensures a[0] == old(a)[0]\n{\n  a[0] = a[0] + 1;\n}\n"
+           "fn two(inout a: [i64], i: i64) -> ()\n  requires 0 <= i && i + 1 < len(a)\n"
+           "  ensures a[i] == 7 && a[i + 1] == 8\n{\n  set_at(inout a, i, 7);\n  set_at(inout a, i + 1, 8);\n}\n"
+           "fn f(a: [i64], i: i64) -> [i64] ! alloc\n  requires 0 <= i && i < len(a)\n{\n"
+           "  let mut w: [i64] = copy(a);\n  set_at(inout w, i, 7);\n  set_at(inout w, 0, 8);\n  return w;\n}\n"
+           "fn g(a: [i64]) -> [i64] ! alloc\n  requires len(a) >= 1\n{\n"
+           "  let mut w: [i64] = copy(a);\n  bad(inout w);\n  return w;\n}\n"
+           "fn h(a: [i64], i: i64) -> [i64] ! alloc\n  requires 0 <= i && i + 1 < len(a)\n{\n"
+           "  let mut w: [i64] = copy(a);\n  two(inout w, i);\n  return w;\n}\n")
+    prog = parse_program(src)
+    arr = [1, 2, 3]
+    for mode in ("safe", "proof"):
+        r = run(prog, "f", [arr, 1], mode=mode)
+        assert r["kind"] == "ok" and r["value"] == [8, 7, 3] and not r["contract_failures"], r
+        assert r["inout_calls"] == 2 and arr == [1, 2, 3], (r, arr)          # the caller's input is never mutated
+        r = run(prog, "h", [arr, 1], mode=mode)
+        assert r["kind"] == "ok" and r["value"] == [1, 7, 8] and not r["contract_failures"], r
+        r = run(prog, "g", [arr], mode=mode)                                  # old() is the entry value, not the latest
+        assert r["kind"] == "ok" and r["value"] == [2, 2, 3], r
+        assert r["contract_failures"] == ["ensures bad clause 1"], r
+        r = run(prog, "set_at", [arr, 1, 9], mode=mode)                       # top-level inout: final array is reported
+        assert r["kind"] == "ok" and r["value"] is None and r["inout_final"] == {"a": [1, 9, 3]}, r
+        assert arr == [1, 2, 3]
+    assert run(prog, "f", [arr, 3])["kind"] == "requires_violated"
+    assert run(prog, "set_at", [arr, 3, 9])["kind"] == "requires_violated"
+    # a missing or extra marker is not a G5 program
+    for bad in (src.replace("set_at(inout w, 0, 8)", "set_at(w, 0, 8)"),
+                src.replace("bad(inout w)", "bad(inout w, inout w)")):
+        try:
+            run(parse_program(bad), "f", [arr, 1])
+            run(parse_program(bad), "g", [arr])
+            assert False, "marker mismatch accepted"
+        except OracleUnsupported:
+            pass
+    # recursion with a function-level measure, a loop invariant over old(), a generic instance as a statement, [u8] / [bool]
+    src = ("fn fill_from(inout a: [i64], i: i64, v: i64) -> ()\n  requires 0 <= i && i <= len(a)\n"
+           "  ensures len(a) == len(old(a))\n  ensures forall k in i..len(a): a[k] == v\n"
+           "  ensures forall k in 0..i: a[k] == old(a)[k]\n  decreases len(a) - i\n{\n"
+           "  if i < len(a) {\n    a[i] = v;\n    fill_from(inout a, i + 1, v);\n  }\n}\n"
+           "fn exchange<T: Element>(inout b: [T], i: i64, j: i64) -> ()\n"
+           "  requires 0 <= i && i < len(b) && 0 <= j && j < len(b)\n  ensures b[i] == old(b)[j]\n"
+           "  ensures b[j] == old(b)[i]\n{\n  let x: T = b[i];\n  let y: T = b[j];\n  b[i] = y;\n  b[j] = x;\n}\n"
+           "fn put_byte(inout b: [u8], i: i64, v: i64) -> ()\n  requires 0 <= i && i < len(b) && 0 <= v && v <= 255\n"
+           "  ensures b[i] == v\n{\n  b[i] = v;\n}\n"
+           "fn inc_all(inout a: [i64]) -> ()\n  ensures forall k in 0..len(a): a[k] == old(a)[k] + 1\n{\n"
+           "  let n: i64 = len(a);\n  let mut i: i64 = 0;\n  while i < n\n    invariant 0 <= i && i <= n\n"
+           "    invariant n == len(old(a))\n    invariant forall k in 0..i: a[k] == old(a)[k] + 1\n"
+           "    invariant forall k in i..n: a[k] == old(a)[k]\n    decreases n - i\n  {\n"
+           "    a[i] = a[i] + 1;\n    i = i + 1;\n  }\n}\n"
+           "fn f(a: [i64], fl: [bool], u: [u8], i: i64) -> [i64] ! alloc\n  requires 0 <= i && i <= len(a) && len(fl) >= 1"
+           " && len(u) >= 1\n{\n"
+           "  let mut w: [i64] = copy(a);\n  let mut x: [bool] = copy(fl);\n  let mut y: [u8] = copy(u);\n"
+           "  fill_from(inout w, i, 5);\n  inc_all(inout w);\n  exchange::<bool>(inout x, 0, 0);\n"
+           "  exchange::<i64>(inout w, 0, i - i);\n  put_byte(inout y, 0, 255);\n  return w;\n}\n")
+    prog = parse_program(src)
+    for mode in ("safe", "proof"):
+        r = run(prog, "f", [[1, 2, 3], [True], [0], 1], mode=mode)
+        assert r["kind"] == "ok" and r["value"] == [2, 6, 6] and not r["contract_failures"], r
+        assert r["inout_calls"] == 7, r          # fill_from x3 (recursion), inc_all, exchange x2, put_byte
+    r = run(prog, "put_byte", [[1, 2], 0, 256], mode="proof")
+    assert r["kind"] == "requires_violated", r
+
+
 if __name__ == "__main__":
     _selftest()
     _selftest_g3()
     _selftest_g6()
     _selftest_g9()
     _selftest_g4()
+    _selftest_g5()

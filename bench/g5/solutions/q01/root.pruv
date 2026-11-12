@@ -1,0 +1,135 @@
+// G5 q01 reference: a bounded byte-range transformation over [u8]. Every host entry is an ordinary pub wrapper that
+// owns a copy of its input; the work is done in place through private inout helpers (no copy-and-return between steps).
+
+// store one byte
+fn set_byte(inout b: [u8], i: i64, v: i64) -> ()
+  requires 0 <= i && i < len(b) && 0 <= v && v <= 255
+  ensures len(b) == len(old(b))
+  ensures b[i] == v
+  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]
+{
+  b[i] = v;
+}
+
+// saturating add of one element
+fn bump_sat(inout b: [u8], i: i64, c: i64) -> ()
+  requires 0 <= i && i < len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures old(b)[i] + c <= 255 ==> b[i] == old(b)[i] + c
+  ensures old(b)[i] + c > 255 ==> b[i] == 255
+  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]
+{
+  let x: i64 = b[i] + c;
+  if x > 255 {
+    b[i] = 255;
+  } else {
+    b[i] = x;
+  }
+}
+
+// wrapping add of one element
+fn bump_wrap(inout b: [u8], i: i64, c: i64) -> ()
+  requires 0 <= i && i < len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures b[i] == (old(b)[i] + c) % 256
+  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]
+{
+  let x: i64 = (b[i] + c) % 256;
+  b[i] = x;
+}
+
+fn fill_range(inout b: [u8], lo: i64, hi: i64, v: i64) -> ()
+  requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= v && v <= 255
+  ensures len(b) == len(old(b))
+  ensures forall k in 0..len(b): (lo <= k && k < hi) ==> b[k] == v
+  ensures forall k in 0..len(b): (k < lo || k >= hi) ==> b[k] == old(b)[k]
+{
+  let n: i64 = len(b);
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant len(b) == n && n == len(old(b)) && hi <= n
+    invariant forall k in 0..n: (lo <= k && k < i) ==> b[k] == v
+    invariant forall k in 0..n: (k < lo || k >= i) ==> b[k] == old(b)[k]
+    decreases hi - i
+  {
+    set_byte(inout b, i, v);
+    i = i + 1;
+  }
+}
+
+fn add_range_sat(inout b: [u8], lo: i64, hi: i64, c: i64) -> ()
+  requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures forall k in 0..len(b): (lo <= k && k < hi && old(b)[k] + c <= 255) ==> b[k] == old(b)[k] + c
+  ensures forall k in 0..len(b): (lo <= k && k < hi && old(b)[k] + c > 255) ==> b[k] == 255
+  ensures forall k in 0..len(b): (k < lo || k >= hi) ==> b[k] == old(b)[k]
+{
+  let n: i64 = len(b);
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant len(b) == n && n == len(old(b)) && hi <= n
+    invariant forall k in 0..n: (lo <= k && k < i && old(b)[k] + c <= 255) ==> b[k] == old(b)[k] + c
+    invariant forall k in 0..n: (lo <= k && k < i && old(b)[k] + c > 255) ==> b[k] == 255
+    invariant forall k in 0..n: (k < lo || k >= i) ==> b[k] == old(b)[k]
+    decreases hi - i
+  {
+    bump_sat(inout b, i, c);
+    i = i + 1;
+  }
+}
+
+fn add_range_wrap(inout b: [u8], lo: i64, hi: i64, c: i64) -> ()
+  requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c <= 255
+  ensures len(b) == len(old(b))
+  ensures forall k in 0..len(b): (lo <= k && k < hi) ==> b[k] == (old(b)[k] + c) % 256
+  ensures forall k in 0..len(b): (k < lo || k >= hi) ==> b[k] == old(b)[k]
+{
+  let n: i64 = len(b);
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant len(b) == n && n == len(old(b)) && hi <= n
+    invariant forall k in 0..n: (lo <= k && k < i) ==> b[k] == (old(b)[k] + c) % 256
+    invariant forall k in 0..n: (k < lo || k >= i) ==> b[k] == old(b)[k]
+    decreases hi - i
+  {
+    bump_wrap(inout b, i, c);
+    i = i + 1;
+  }
+}
+
+pub fn add_sat(a: [u8], lo: i64, hi: i64, c: i64) -> [u8] ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(a) && 0 <= c && c <= 255
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): (lo <= k && k < hi && a[k] + c <= 255) ==> result[k] == a[k] + c
+  ensures forall k in 0..len(a): (lo <= k && k < hi && a[k] + c > 255) ==> result[k] == 255
+  ensures forall k in 0..len(a): (k < lo || k >= hi) ==> result[k] == a[k]
+{
+  let mut w: [u8] = copy(a);
+  add_range_sat(inout w, lo, hi, c);
+  return w;
+}
+
+pub fn add_wrap(a: [u8], lo: i64, hi: i64, c: i64) -> [u8] ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(a) && 0 <= c && c <= 255
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): (lo <= k && k < hi) ==> result[k] == (a[k] + c) % 256
+  ensures forall k in 0..len(a): (k < lo || k >= hi) ==> result[k] == a[k]
+{
+  let mut w: [u8] = copy(a);
+  add_range_wrap(inout w, lo, hi, c);
+  return w;
+}
+
+pub fn fill_bytes(a: [u8], lo: i64, hi: i64, v: i64) -> [u8] ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(a) && 0 <= v && v <= 255
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): (lo <= k && k < hi) ==> result[k] == v
+  ensures forall k in 0..len(a): (k < lo || k >= hi) ==> result[k] == a[k]
+{
+  let mut w: [u8] = copy(a);
+  fill_range(inout w, lo, hi, v);
+  return w;
+}

@@ -423,8 +423,9 @@ set_at(inout w, 0, 7);
 - **Refinements.** An annotation on an `inout` parameter is an entry `requires` only, not an output guarantee; state
   that in `ensures`. A refined local passed `inout` must satisfy its refinement again right after the call
   (`verify/refinement_assign`), proved from `ensures` (a length-only refinement follows from the preserved length).
-- **Modes and back ends.** Verified and safe (`--no-verify`) modes both work. Safe mode checks the callee's `requires`
-  on every internal call, including under `--trust-callers`, which only skips checks at host entries. Rust emits
+- **Modes and back ends.** Verified and safe (`--no-verify`) modes both work. Safe mode checks the `requires` of an
+  `inout` function on every call to it, including under `--trust-callers`, which only skips checks at host entries;
+  other internal calls follow the existing safe-mode rules. Rust emits
   `&mut [T]`; LLVM passes the existing pointer and length with `noalias nocapture` and no `readonly`, and never frees
   it. Neither allocates or copies for the parameter. Programs without `inout` compile exactly as before.
 - **Host limits.** An `inout` function is never host-visible: no exported ABI entry, no typed variant, no

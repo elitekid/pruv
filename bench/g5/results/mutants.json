@@ -1,0 +1,7436 @@
+{
+ "summary": {
+  "total": 144,
+  "incorrect": 104,
+  "correct": 40,
+  "not_compilable": 0,
+  "truth_unknown": 0,
+  "incorrect_by_class": {
+   "wrong_but_proved": 0,
+   "crash": 0,
+   "timeout": 0,
+   "unsupported": 0,
+   "unknown": 3,
+   "unexecuted": 0,
+   "accepted_correct": 0,
+   "rejected_checker": 0,
+   "rejected_verify": 101
+  },
+  "rejected_per_class": {
+   "rejected_verify": 101,
+   "rejected_checker": 0
+  },
+  "incorrect_by_config": {
+   "py-rust": {
+    "wrong_but_proved": 0,
+    "crash": 0,
+    "timeout": 0,
+    "unsupported": 0,
+    "unknown": 2,
+    "unexecuted": 0,
+    "accepted_correct": 0,
+    "rejected_checker": 0,
+    "rejected_verify": 102
+   },
+   "py-llvm": {
+    "wrong_but_proved": 0,
+    "crash": 0,
+    "timeout": 0,
+    "unsupported": 0,
+    "unknown": 2,
+    "unexecuted": 0,
+    "accepted_correct": 0,
+    "rejected_checker": 0,
+    "rejected_verify": 102
+   },
+   "rs-rust": {
+    "wrong_but_proved": 0,
+    "crash": 0,
+    "timeout": 0,
+    "unsupported": 0,
+    "unknown": 2,
+    "unexecuted": 0,
+    "accepted_correct": 0,
+    "rejected_checker": 0,
+    "rejected_verify": 102
+   },
+   "rs-llvm": {
+    "wrong_but_proved": 0,
+    "crash": 0,
+    "timeout": 0,
+    "unsupported": 0,
+    "unknown": 2,
+    "unexecuted": 0,
+    "accepted_correct": 0,
+    "rejected_checker": 0,
+    "rejected_verify": 102
+   }
+  },
+  "all_by_class": {
+   "wrong_but_proved": 0,
+   "crash": 0,
+   "timeout": 0,
+   "unsupported": 0,
+   "unknown": 3,
+   "unexecuted": 0,
+   "accepted_correct": 12,
+   "rejected_checker": 0,
+   "rejected_verify": 129
+  },
+  "wrong_but_proved": 0,
+  "wrong_but_proved_ids": [],
+  "unresolved_incorrect": [
+   {
+    "id": "m091",
+    "class": "unknown",
+    "detail": [
+     "verify/verify_unknown"
+    ]
+   },
+   {
+    "id": "m104",
+    "class": "unknown",
+    "detail": [
+     "verify/verify_unknown"
+    ]
+   },
+   {
+    "id": "m105",
+    "class": "unknown",
+    "detail": [
+     "verify/verify_unknown"
+    ]
+   }
+  ],
+  "incorrect_accepted_with_passing_tests": [],
+  "config_diffs": [
+   "m091",
+   "m104"
+  ],
+  "by_intent": {
+   "incorrect": 93,
+   "contract": 18,
+   "correct": 9,
+   "weak": 4,
+   "auto": 20
+  },
+  "intent_mismatch": [
+   {
+    "id": "m061",
+    "intent": "contract",
+    "truth": "incorrect"
+   },
+   {
+    "id": "m118",
+    "intent": "contract",
+    "truth": "incorrect"
+   }
+  ],
+  "contract_mutants_accepted": [],
+  "contract_mutants_rejected": 18,
+  "weak_contract": {
+   "total": 4,
+   "rejected_ids": [],
+   "accepted_ids": [
+    "m066",
+    "m067",
+    "m068",
+    "m124"
+   ]
+  },
+  "correct_rejected_ids": [
+   "m065"
+  ],
+  "correct_accepted_ids": [
+   "m062",
+   "m063",
+   "m064",
+   "m119",
+   "m120",
+   "m121",
+   "m122",
+   "m123"
+  ],
+  "by_operator": {
+   "wrong_index": {
+    "total": 28,
+    "incorrect": 28,
+    "rejected": 28
+   },
+   "missing_store": {
+    "total": 19,
+    "incorrect": 19,
+    "rejected": 17
+   },
+   "omitted_call": {
+    "total": 12,
+    "incorrect": 12,
+    "rejected": 12
+   },
+   "reordered": {
+    "total": 9,
+    "incorrect": 7,
+    "rejected": 7
+   },
+   "wrong_callee": {
+    "total": 3,
+    "incorrect": 3,
+    "rejected": 3
+   },
+   "wrong_frame": {
+    "total": 25,
+    "incorrect": 10,
+    "rejected": 21
+   },
+   "old_current": {
+    "total": 9,
+    "incorrect": 4,
+    "rejected": 8
+   },
+   "wrong_value": {
+    "total": 12,
+    "incorrect": 12,
+    "rejected": 12
+   },
+   "equivalent": {
+    "total": 7,
+    "incorrect": 0,
+    "rejected": 1
+   },
+   "rx_eq_to_ne": {
+    "total": 5,
+    "incorrect": 0,
+    "rejected": 5
+   },
+   "rx_plus1_to_plus0": {
+    "total": 3,
+    "incorrect": 3,
+    "rejected": 3
+   },
+   "rx_lt_to_le": {
+    "total": 2,
+    "incorrect": 0,
+    "rejected": 2
+   },
+   "rx_le_to_lt": {
+    "total": 7,
+    "incorrect": 6,
+    "rejected": 7
+   },
+   "rx_range_from_1": {
+    "total": 1,
+    "incorrect": 0,
+    "rejected": 1
+   },
+   "rx_and_to_or": {
+    "total": 2,
+    "incorrect": 0,
+    "rejected": 2
+   }
+  },
+  "incorrect_by_fault_kind": {
+   "wrong_index": 28,
+   "missing_store": 19,
+   "wrong_frame": 10,
+   "old_current": 4,
+   "omitted_call": 12,
+   "reordered": 7
+  },
+  "versions": {
+   "git_head": "cbe33cc9110de1a6030e934da47cf8e03d3fab6c",
+   "z3_python": "5.3.3",
+   "z3_src_crate": "503.3.0",
+   "compiler_sources_dirty": false,
+   "rs_binary_sha256": "b7063fce5e7ccb82bb9e3dd377b8e8cc06a6599e8f14a4cdf8380f31e41871ee",
+   "rs_binary_mtime": "2026-11-12T20:29:07"
+  }
+ },
+ "fault_injections": {
+  "executed": false,
+  "note": "Compiler fault injections (disabled exclusivity, old bound to current contents, omitted call havoc, omitted loop call-write collection, stale return-parameter overlay, readonly retained on a mutable LLVM parameter) are not part of the source-mutant classification and are not run by this script. Record their results separately.",
+  "cases": [
+   {
+    "name": "both compilers x both backends agree on the reference solutions",
+    "command": "python3 bench/g5/run.py bench/g5/solutions"
+   },
+   {
+    "name": "no-verify grader run on the incorrect source mutants (runtime detection)",
+    "command": "python3 bench/g5/run.py <mutant dir> --no-verify"
+   }
+  ]
+ },
+ "items": [
+  {
+   "id": "m001",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "set_byte stores at i + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  b[i] = v;",
+     "to": "  b[i + 1] = v;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [0] got PANIC pruv: index out of bounds: 1 (len 1)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m002",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "set_byte stores at 0",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  b[i] = v;",
+     "to": "  b[0] = v;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [0, 0, 0] got [0, 2, 3]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m003",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_sat reads element 0",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let x: i64 = b[i] + c;",
+     "to": "let x: i64 = b[0] + c;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [1, 2, 3] got [1, 1, 1]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m004",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_wrap reads element 0",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let x: i64 = (b[i] + c) % 256;",
+     "to": "let x: i64 = (b[0] + c) % 256;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [1, 2, 3] got [1, 1, 1]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m005",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_sat saturated store at i - 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    b[i] = 255;",
+     "to": "    b[i - 1] = 255;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got PANIC pruv: index out of bounds: -1 (len 1)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m006",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_sat starts at lo + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut i: i64 = lo;",
+     "to": "let mut i: i64 = lo + 1;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m007",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_range starts at lo + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut i: i64 = lo;",
+     "to": "let mut i: i64 = lo + 1;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [77] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m008",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_wrap starts at lo - 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut i: i64 = lo;",
+     "to": "let mut i: i64 = lo - 1;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [] got PANIC pruv: requires violated: crate::bump_wrap: ((((0 <= i) && (i < len(b))) && (0 <= c)) && (c <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m009",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_range stores at i + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "set_byte(inout b, i, v);",
+     "to": "set_byte(inout b, i + 1, v);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [0] got PANIC pruv: requires violated: crate::set_byte: ((((0 <= i) && (i < len(b))) && (0 <= v)) && (v <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m010",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_sat bumps hi - 1 every time",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "bump_sat(inout b, i, c);",
+     "to": "bump_sat(inout b, hi - 1, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [2, 3, 4] got [1, 2, 6]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m011",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_wrap bumps lo every time",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "bump_wrap(inout b, i, c);",
+     "to": "bump_wrap(inout b, lo, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [2, 3, 4] got [4, 2, 3]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m012",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_sat forwards hi - 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "add_range_sat(inout w, lo, hi, c);",
+     "to": "add_range_sat(inout w, lo, hi - 1, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [] got PANIC pruv: requires violated: crate::add_range_sat: (((((0 <= lo) && (lo <= hi)) && (hi <= len(b))) && (0 <= c)) && (c <= 255",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m013",
+   "pid": "q01",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_wrap forwards lo + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "add_range_wrap(inout w, lo, hi, c);",
+     "to": "add_range_wrap(inout w, lo + 1, hi, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [] got PANIC pruv: requires violated: crate::add_range_wrap: (((((0 <= lo) && (lo <= hi)) && (hi <= len(b))) && (0 <= c)) && (c <= 25",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m014",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "set_byte lost its store",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  b[i] = v;\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [77] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m015",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_sat: no store when not saturating",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  } else {\n    b[i] = x;\n  }",
+     "to": "  }"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m016",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_sat: the saturated store is a no-op",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    b[i] = 255;",
+     "to": "    b[i] = b[i];"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got [128]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m017",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_wrap lost its store",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "% 256;\n  b[i] = x;",
+     "to": "% 256;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m018",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_sat returns a fresh copy of a instead of the updated one",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  return w;",
+     "to": "  return copy(a);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m019",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_wrap returns a fresh copy of a instead of the updated one",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  return w;",
+     "to": "  return copy(a);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m020",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_bytes returns a fresh copy of a instead of the updated one",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  return w;",
+     "to": "  return copy(a);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [77] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m021",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_sat works on zeros instead of a copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut w: [u8] = copy(a);",
+     "to": "let mut w: [u8] = alloc(len(a), 0);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m022",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_wrap works on zeros instead of a copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut w: [u8] = copy(a);",
+     "to": "let mut w: [u8] = alloc(len(a), 0);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [255] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m023",
+   "pid": "q01",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_bytes works on zeros instead of a copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut w: [u8] = copy(a);",
+     "to": "let mut w: [u8] = alloc(len(a), 0);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [255] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m024",
+   "pid": "q01",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_sat does not call bump_sat",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    bump_sat(inout b, i, c);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m025",
+   "pid": "q01",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_wrap does not call bump_wrap",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    bump_wrap(inout b, i, c);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m026",
+   "pid": "q01",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_range does not call set_byte",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    set_byte(inout b, i, v);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [77] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m027",
+   "pid": "q01",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_sat does not call add_range_sat",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  add_range_sat(inout w, lo, hi, c);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m028",
+   "pid": "q01",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_wrap does not call add_range_wrap",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  add_range_wrap(inout w, lo, hi, c);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m029",
+   "pid": "q01",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_bytes does not call fill_range",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  fill_range(inout w, lo, hi, v);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [77] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m030",
+   "pid": "q01",
+   "operator": "reordered",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_sat: index incremented before the bump",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    bump_sat(inout b, i, c);\n    i = i + 1;",
+     "to": "    i = i + 1;\n    bump_sat(inout b, i, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [0] got PANIC pruv: requires violated: crate::bump_sat: ((((0 <= i) && (i < len(b))) && (0 <= c)) && (c <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m031",
+   "pid": "q01",
+   "operator": "reordered",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_wrap: index incremented before the bump",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    bump_wrap(inout b, i, c);\n    i = i + 1;",
+     "to": "    i = i + 1;\n    bump_wrap(inout b, i, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [0] got PANIC pruv: requires violated: crate::bump_wrap: ((((0 <= i) && (i < len(b))) && (0 <= c)) && (c <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m032",
+   "pid": "q01",
+   "operator": "reordered",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_range: index incremented before the store",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    set_byte(inout b, i, v);\n    i = i + 1;",
+     "to": "    i = i + 1;\n    set_byte(inout b, i, v);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [0] got PANIC pruv: requires violated: crate::set_byte: ((((0 <= i) && (i < len(b))) && (0 <= v)) && (v <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m033",
+   "pid": "q01",
+   "operator": "reordered",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_bytes: range arguments swapped",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "fill_range(inout w, lo, hi, v);",
+     "to": "fill_range(inout w, hi, lo, v);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [0] got PANIC pruv: requires violated: crate::fill_range: (((((0 <= lo) && (lo <= hi)) && (hi <= len(b))) && (0 <= v)) && (v <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m034",
+   "pid": "q01",
+   "operator": "reordered",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_sat: constant and range swapped",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "add_range_sat(inout w, lo, hi, c);",
+     "to": "add_range_sat(inout w, c, hi, lo);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [] got PANIC pruv: requires violated: crate::add_range_sat: (((((0 <= lo) && (lo <= hi)) && (hi <= len(b))) && (0 <= c)) && (c <= 255",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m035",
+   "pid": "q01",
+   "operator": "wrong_callee",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_sat calls the wrapping loop",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "add_range_sat(inout w, lo, hi, c);",
+     "to": "add_range_wrap(inout w, lo, hi, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m036",
+   "pid": "q01",
+   "operator": "wrong_callee",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_wrap calls the saturating loop",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "add_range_wrap(inout w, lo, hi, c);",
+     "to": "add_range_sat(inout w, lo, hi, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [0] got [255]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m037",
+   "pid": "q01",
+   "operator": "wrong_callee",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_sat bumps with the wrapping helper",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "bump_sat(inout b, i, c);",
+     "to": "bump_wrap(inout b, i, c);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m038",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "fill_range also writes element hi",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "while i < hi",
+     "to": "while i <= hi"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [] got PANIC pruv: requires violated: crate::set_byte: ((((0 <= i) && (i < len(b))) && (0 <= v)) && (v <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m039",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_sat also bumps element hi",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "while i < hi",
+     "to": "while i <= hi"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [] got PANIC pruv: requires violated: crate::bump_sat: ((((0 <= i) && (i < len(b))) && (0 <= c)) && (c <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m040",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_wrap also bumps element hi",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "while i < hi",
+     "to": "while i < hi + 1"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [] got PANIC pruv: requires violated: crate::bump_wrap: ((((0 <= i) && (i < len(b))) && (0 <= c)) && (c <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m041",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "set_byte also clobbers element 0",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  b[i] = v;",
+     "to": "  b[i] = v;\n  b[0] = v;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [1, 0, 3] got [0, 0, 3]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m042",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_wrap also clobbers element 0",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "% 256;\n  b[i] = x;",
+     "to": "% 256;\n  b[i] = x;\n  b[0] = 0;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [1] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m043",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_sat clears element 0 after the update",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  add_range_sat(inout w, lo, hi, c);\n  return w;",
+     "to": "  add_range_sat(inout w, lo, hi, c);\n  w[0] = 0;\n  return w;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [] got PANIC pruv: index out of bounds: 0 (len 0)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m044",
+   "pid": "q01",
+   "operator": "old_current",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_wrap applies the update twice (second one reads the current value)",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  let x: i64 = (b[i] + c) % 256;\n  b[i] = x;",
+     "to": "  b[i] = (b[i] + c) % 256;\n  b[i] = (b[i] + c) % 256;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [1] got [2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m045",
+   "pid": "q01",
+   "operator": "old_current",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_range_sat bumps every element twice",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    bump_sat(inout b, i, c);\n    i = i + 1;",
+     "to": "    bump_sat(inout b, i, c);\n    bump_sat(inout b, i, c);\n    i = i + 1;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [1] got [2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m046",
+   "pid": "q01",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_sat saturates at 254",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    b[i] = 255;",
+     "to": "    b[i] = 254;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got [254]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m047",
+   "pid": "q01",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_sat saturation test lets 256 through",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "if x > 255 {",
+     "to": "if x > 256 {"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got PANIC pruv: element out of range: 256 (u8 0..=255)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/elem_range",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/elem_range",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/elem_range",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/elem_range",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m048",
+   "pid": "q01",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_wrap reduces modulo 255",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "(b[i] + c) % 256;",
+     "to": "(b[i] + c) % 255;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [255] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m049",
+   "pid": "q01",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_wrap adds one too much",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let x: i64 = (b[i] + c) % 256;",
+     "to": "let x: i64 = (b[i] + c + 1) % 256;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [0] got [1]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m050",
+   "pid": "q01",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "bump_sat adds one too much",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let x: i64 = b[i] + c;",
+     "to": "let x: i64 = b[i] + c + 1;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [0] got [1]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m051",
+   "pid": "q01",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "set_byte stores the complement",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  b[i] = v;",
+     "to": "  b[i] = 255 - v;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [0] got [255]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m052",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "set_byte: frame clause only below i (callers rely on the rest)",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]",
+     "to": "ensures forall k in 0..len(b): k < i ==> b[k] == old(b)[k]"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m053",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "bump_sat: frame clause dropped",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]\n",
+     "to": ""
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m054",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "bump_wrap: frame clause dropped",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]\n",
+     "to": ""
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m055",
+   "pid": "q01",
+   "operator": "old_current",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "set_byte: frame clause compares with the current contents (trivial)",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "ensures forall k in 0..len(b): k != i ==> b[k] == old(b)[k]",
+     "to": "ensures forall k in 0..len(b): k != i ==> b[k] == b[k]"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m056",
+   "pid": "q01",
+   "operator": "old_current",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "bump_sat: ensures compares with the current element (false for c > 0)",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "old(b)[i] + c <= 255 ==> b[i] == old(b)[i] + c",
+     "to": "old(b)[i] + c <= 255 ==> b[i] == b[i] + c"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m057",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "add_range_sat: out-of-range frame clause only below lo",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "ensures forall k in 0..len(b): (k < lo || k >= hi) ==> b[k] == old(b)[k]",
+     "to": "ensures forall k in 0..len(b): k < lo ==> b[k] == old(b)[k]"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m058",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "add_range_sat: untouched-element invariant dropped",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "    invariant forall k in 0..n: (k < lo || k >= i) ==> b[k] == old(b)[k]\n",
+     "to": ""
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m059",
+   "pid": "q01",
+   "operator": "old_current",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "add_range_wrap: content invariant uses the current element instead of old",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "(lo <= k && k < i) ==> b[k] == (old(b)[k] + c) % 256",
+     "to": "(lo <= k && k < i) ==> b[k] == (b[k] + c) % 256"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m060",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "add_range_sat: decreases does not shrink",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "decreases hi - i",
+     "to": "decreases hi"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/decreases_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/decreases_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/decreases_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/decreases_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m061",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "bump_sat: requires strengthened beyond what callers establish",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "requires 0 <= i && i < len(b) && 0 <= c && c <= 255\n  ensures len(b) == len(old(b))\n  ensures old(b)[i] + c <= 255",
+     "to": "requires 0 <= i && i < len(b) && 0 <= c && c <= 100\n  ensures len(b) == len(old(b))\n  ensures old(b)[i] + c <= 255"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_sat want [255] got PANIC pruv: requires violated: crate::bump_sat: ((((0 <= i) && (i < len(b))) && (0 <= c)) && (c <= 100))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m062",
+   "pid": "q01",
+   "operator": "equivalent",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "bump_sat: saturation test with >= (stores 255 either way)",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "if x > 255 {",
+     "to": "if x >= 255 {"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m063",
+   "pid": "q01",
+   "operator": "equivalent",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "bump_wrap: commuted addition",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let x: i64 = (b[i] + c) % 256;",
+     "to": "let x: i64 = (c + b[i]) % 256;"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m064",
+   "pid": "q01",
+   "operator": "equivalent",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "set_byte: built-in length fact dropped from its ensures",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  ensures len(b) == len(old(b))\n  ensures b[i] == v",
+     "to": "  ensures b[i] == v"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m065",
+   "pid": "q01",
+   "operator": "equivalent",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "bump_sat: requires weakened (c <= 255 is not needed by the body or the callers)",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "requires 0 <= i && i < len(b) && 0 <= c && c <= 255\n  ensures len(b) == len(old(b))\n  ensures old(b)[i] + c <= 255",
+     "to": "requires 0 <= i && i < len(b) && 0 <= c\n  ensures len(b) == len(old(b))\n  ensures old(b)[i] + c <= 255"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m066",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "weak",
+   "kind": "explicit",
+   "desc": "fill_range: invariant loses hi <= n",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "invariant len(b) == n && n == len(old(b)) && hi <= n",
+     "to": "invariant len(b) == n && n == len(old(b))"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m067",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "weak",
+   "kind": "explicit",
+   "desc": "add_range_sat: invariant loses the built-in n == len(old(b))",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "invariant len(b) == n && n == len(old(b)) && hi <= n",
+     "to": "invariant len(b) == n && hi <= n"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m068",
+   "pid": "q01",
+   "operator": "wrong_frame",
+   "intent": "weak",
+   "kind": "explicit",
+   "desc": "add_range_wrap: invariant loses len(b) == n",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "invariant len(b) == n && n == len(old(b)) && hi <= n",
+     "to": "invariant n == len(old(b)) && hi <= n"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 1056,
+      "tests_total": 1056
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m069",
+   "pid": "q02",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "swap_at stores y twice",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  a[j] = x;",
+     "to": "  a[j] = y;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [2, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m070",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "swap_at lost the store to j",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  a[j] = x;\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [2, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m071",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "swap_at lost the store to i",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  a[i] = y;\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [1, 1]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m072",
+   "pid": "q02",
+   "operator": "old_current",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "swap_at reads the already overwritten element",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  a[j] = x;",
+     "to": "  a[j] = a[i];"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [2, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m073",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range recurses on lo + 1 .. hi",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "rev_range(inout a, lo + 1, hi - 1);",
+     "to": "rev_range(inout a, lo + 1, hi);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [3, 2, 1] got [3, 1, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m074",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range recurses on lo .. hi - 1",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "rev_range(inout a, lo + 1, hi - 1);",
+     "to": "rev_range(inout a, lo, hi - 1);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [3, 2, 1] got [2, 3, 1]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m075",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range swaps lo with hi - 1",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "swap_at(inout a, lo, hi);",
+     "to": "swap_at(inout a, lo, hi - 1);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [1, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m076",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range swaps lo with lo + 1",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "swap_at(inout a, lo, hi);",
+     "to": "swap_at(inout a, lo, lo + 1);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [3, 2, 1] got [2, 1, 3]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m077",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range stops one level early (needs two elements apart)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "if lo < hi {",
+     "to": "if lo + 1 < hi {"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [1, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m078",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range recurses once more at the middle element",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "if lo < hi {",
+     "to": "if lo <= hi {"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [5] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= (hi + 1))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m079",
+   "pid": "q02",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range does not recurse",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "    rev_range(inout a, lo + 1, hi - 1);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [40, 30, 20, 10] got [40, 20, 30, 10]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m080",
+   "pid": "q02",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range does not swap",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "    swap_at(inout a, lo, hi);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [1, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m081",
+   "pid": "q02",
+   "operator": "reordered",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "rev_range: swap arguments exchanged for the recursion order (hi first)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "swap_at(inout a, lo, hi);\n    rev_range(inout a, lo + 1, hi - 1);",
+     "to": "swap_at(inout a, hi, lo);\n    rev_range(inout a, hi - 1, lo + 1);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "does not terminate on the tests (timeout)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m082",
+   "pid": "q02",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from subtracts d",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "a[i] = a[i] + d;",
+     "to": "a[i] = a[i] - d;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [1000]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m083",
+   "pid": "q02",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from stores d",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "a[i] = a[i] + d;",
+     "to": "a[i] = d;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1001000] got [-1000]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m084",
+   "pid": "q02",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from adds one too much",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "a[i] = a[i] + d;",
+     "to": "a[i] = a[i] + d + 1;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [-999]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m085",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from lost its store",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "    a[i] = a[i] + d;\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m086",
+   "pid": "q02",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from does not recurse",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "    add_from(inout a, i + 1, d);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-999, -998, -997] got [-999, 2, 3]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m087",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from skips every other element",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "add_from(inout a, i + 1, d);",
+     "to": "add_from(inout a, i + 2, d);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got PANIC pruv: requires violated: crate::xform::add_from: ((((0 <= i) && (i <= len(a))) && (-1000 <= d)) && (d <= 1000))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m088",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from leaves out the last element",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "if i < len(a) {",
+     "to": "if i + 1 < len(a) {"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m089",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from updates a[i + 1]",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "a[i] = a[i] + d;",
+     "to": "a[i + 1] = a[i + 1] + d;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got PANIC pruv: index out of bounds: 1 (len 1)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m090",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from also updates element 0",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "    a[i] = a[i] + d;",
+     "to": "    a[i] = a[i] + d;\n    a[0] = a[0] + d;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [-2000]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m091",
+   "pid": "q02",
+   "operator": "old_current",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "add_from adds the current value of the next element",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "a[i] = a[i] + d;",
+     "to": "a[i] = a[i] + d + a[len(a) - 1];"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1001000] got [-2001000]",
+   "class": "unknown",
+   "runs": {
+    "py-rust": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": true
+  },
+  {
+   "id": "m092",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_window forwards hi - 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::rev_range(inout w, lo, hi);",
+     "to": "crate::xform::rev_range(inout w, lo, hi - 1);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= (hi + 1))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m093",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_window forwards lo + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::rev_range(inout w, lo, hi);",
+     "to": "crate::xform::rev_range(inout w, lo + 1, hi);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= (hi + 1))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m094",
+   "pid": "q02",
+   "operator": "reordered",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_window forwards hi and lo swapped",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::rev_range(inout w, lo, hi);",
+     "to": "crate::xform::rev_range(inout w, hi, lo);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= (hi + 1))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m095",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_all forwards n - 2",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::rev_range(inout w, 0, n - 1);",
+     "to": "crate::xform::rev_range(inout w, 0, n - 2);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_all want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= (hi + 1))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m096",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_all starts at 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::rev_range(inout w, 0, n - 1);",
+     "to": "crate::xform::rev_range(inout w, 1, n - 1);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_all want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= (hi + 1))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m097",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "shift_tail starts at i + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::add_from(inout w, i, d);",
+     "to": "crate::xform::add_from(inout w, i + 1, d);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [] got PANIC pruv: requires violated: crate::xform::add_from: ((((0 <= i) && (i <= len(a))) && (-1000 <= d)) && (d <= 1000))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m098",
+   "pid": "q02",
+   "operator": "wrong_index",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "shift_tail starts at 0",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::add_from(inout w, i, d);",
+     "to": "crate::xform::add_from(inout w, 0, d);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [0] got [-1000]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m099",
+   "pid": "q02",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "shift_tail forwards d + 1",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::add_from(inout w, i, d);",
+     "to": "crate::xform::add_from(inout w, i, d + 1);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [] got PANIC pruv: requires violated: crate::xform::add_from: ((((0 <= i) && (i <= len(a))) && (-1000 <= d)) && (d <= 1000))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m100",
+   "pid": "q02",
+   "operator": "wrong_value",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "shift_tail forwards 0 - d",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "crate::xform::add_from(inout w, i, d);",
+     "to": "crate::xform::add_from(inout w, i, 0 - d);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [1000]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m101",
+   "pid": "q02",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_window does not call rev_range",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  crate::xform::rev_range(inout w, lo, hi);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [1, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m102",
+   "pid": "q02",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_all does not call rev_range",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  crate::xform::rev_range(inout w, 0, n - 1);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_all want [2, 1] got [1, 2]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m103",
+   "pid": "q02",
+   "operator": "omitted_call",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "shift_tail does not call add_from",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  crate::xform::add_from(inout w, i, d);\n",
+     "to": ""
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m104",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_window returns a fresh copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  return w;",
+     "to": "  return copy(a);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [2, 1] got [1, 2]",
+   "class": "unknown",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": true
+  },
+  {
+   "id": "m105",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_all returns a fresh copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  return w;",
+     "to": "  return copy(a);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_all want [2, 1] got [1, 2]",
+   "class": "unknown",
+   "runs": {
+    "py-rust": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "unknown",
+     "detail": "verify/verify_unknown",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m106",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "shift_tail returns a fresh copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  return w;",
+     "to": "  return copy(a);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1000] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m107",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_window works on zeros instead of a copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut w: [i64] = copy(a);",
+     "to": "let mut w: [i64] = alloc(len(a), 0);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [5] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m108",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_all works on zeros instead of a copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut w: [i64] = copy(a);",
+     "to": "let mut w: [i64] = alloc(len(a), 0);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_all want [5] got [0]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m109",
+   "pid": "q02",
+   "operator": "missing_store",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "shift_tail works on zeros instead of a copy of a",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "let mut w: [i64] = copy(a);",
+     "to": "let mut w: [i64] = alloc(len(a), 0);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1001000] got [-1000]",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m110",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "incorrect",
+   "kind": "explicit",
+   "desc": "reverse_all clobbers element 0 after the reversal",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "from": "  crate::xform::rev_range(inout w, 0, n - 1);\n  return w;",
+     "to": "  crate::xform::rev_range(inout w, 0, n - 1);\n  w[0] = 0;\n  return w;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_all want [] got PANIC pruv: index out of bounds: 0 (len 0)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m111",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "rev_range: frame clause only below lo",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "ensures forall k in 0..len(a): (k < lo || k > hi) ==> a[k] == old(a)[k]",
+     "to": "ensures forall k in 0..len(a): k < lo ==> a[k] == old(a)[k]"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m112",
+   "pid": "q02",
+   "operator": "old_current",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "rev_range: content clause compares with the current contents",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "a[k] == old(a)[lo + hi - k]",
+     "to": "a[k] == a[lo + hi - k]"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m113",
+   "pid": "q02",
+   "operator": "old_current",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "swap_at: ensures compares a[j] with the current a[i]",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "ensures a[j] == old(a)[i]",
+     "to": "ensures a[j] == a[i]"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m114",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "swap_at: frame clause dropped",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  ensures forall k in 0..len(a): k != i && k != j ==> a[k] == old(a)[k]\n",
+     "to": ""
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m115",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "add_from: requires bound dropped (overflow no longer provable)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  requires forall k in i..len(a): -1000000 <= a[k] && a[k] <= 1000000\n",
+     "to": ""
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/overflow",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m116",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "add_from: decreases does not shrink",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "decreases len(a) - i",
+     "to": "decreases len(a)"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/recursive_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/recursive_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/recursive_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/recursive_decrease",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m117",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "add_from: ensures only strictly after i (host relies on k >= i)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "k >= i ==> a[k] == old(a)[k] + d",
+     "to": "k > i ==> a[k] == old(a)[k] + d"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m118",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "contract",
+   "kind": "explicit",
+   "desc": "rev_range: requires loses the empty window (lo == hi + 1)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "requires 0 <= lo && lo <= hi + 1 && hi < len(a)",
+     "to": "requires 0 <= lo && lo <= hi && hi < len(a)"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= hi)) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m119",
+   "pid": "q02",
+   "operator": "reordered",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "rev_range: recursion before the swap (disjoint positions, same result)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "    swap_at(inout a, lo, hi);\n    rev_range(inout a, lo + 1, hi - 1);",
+     "to": "    rev_range(inout a, lo + 1, hi - 1);\n    swap_at(inout a, lo, hi);"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m120",
+   "pid": "q02",
+   "operator": "reordered",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "add_from: recursion before the store (disjoint positions, same result)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "    a[i] = a[i] + d;\n    add_from(inout a, i + 1, d);",
+     "to": "    add_from(inout a, i + 1, d);\n    a[i] = a[i] + d;"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m121",
+   "pid": "q02",
+   "operator": "equivalent",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "rev_range: another valid measure (decreases by two)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "decreases hi - lo + 1",
+     "to": "decreases hi - lo + 2"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m122",
+   "pid": "q02",
+   "operator": "equivalent",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "swap_at: independent reads in the other order",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  let x: i64 = a[i];\n  let y: i64 = a[j];",
+     "to": "  let y: i64 = a[j];\n  let x: i64 = a[i];"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m123",
+   "pid": "q02",
+   "operator": "equivalent",
+   "intent": "correct",
+   "kind": "explicit",
+   "desc": "add_from: built-in length fact dropped from its ensures",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "  ensures len(a) == len(old(a))\n  ensures forall k in 0..len(a): k >= i",
+     "to": "  ensures forall k in 0..len(a): k >= i"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m124",
+   "pid": "q02",
+   "operator": "wrong_frame",
+   "intent": "weak",
+   "kind": "explicit",
+   "desc": "add_from: element bound in requires loosened (body and host still satisfy it)",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "from": "requires forall k in i..len(a): -1000000 <= a[k] && a[k] <= 1000000",
+     "to": "requires forall k in i..len(a): -2000000 <= a[k] && a[k] <= 2000000"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "accepted_correct",
+   "runs": {
+    "py-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "py-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-rust": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    },
+    "rs-llvm": {
+     "class": "accepted_correct",
+     "detail": "tests pass",
+     "grader": {
+      "status": "ok",
+      "tests_passed": 151,
+      "tests_total": 151
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m125",
+   "pid": "q02",
+   "operator": "rx_eq_to_ne",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "xform.pruv line 37: `==` -> `!=`",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "line": 37,
+     "from": "ensures forall k in 0..len(a): k >= i ==> a[k] == old(a)[k] + d",
+     "to": "ensures forall k in 0..len(a): k >= i ==> a[k] != old(a)[k] + d"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m126",
+   "pid": "q02",
+   "operator": "rx_plus1_to_plus0",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "xform.pruv line 43: `+ 1` -> `+ 0`",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "line": 43,
+     "from": "add_from(inout a, i + 1, d);",
+     "to": "add_from(inout a, i + 0, d);"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "does not terminate on the tests (timeout)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m127",
+   "pid": "q01",
+   "operator": "rx_lt_to_le",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 52: `<` -> `<=`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 52,
+     "from": "invariant forall k in 0..n: (lo <= k && k < i) ==> b[k] == v",
+     "to": "invariant forall k in 0..n: (lo <= k && k <= i) ==> b[k] == v"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m128",
+   "pid": "q02",
+   "operator": "rx_le_to_lt",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "xform.pruv line 35: `<=` -> `<`",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "line": 35,
+     "from": "requires forall k in i..len(a): -1000000 <= a[k] && a[k] <= 1000000",
+     "to": "requires forall k in i..len(a): -1000000 < a[k] && a[k] <= 1000000"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "shift_tail want [-1001000] got PANIC pruv: requires violated: crate::xform::add_from: forall k in i..len(a): ((-1000000 < a[k]) && (a[k] <= 1000000))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m129",
+   "pid": "q01",
+   "operator": "rx_le_to_lt",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 84: `<=` -> `<`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 84,
+     "from": "requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c <= 255",
+     "to": "requires 0 <= lo && lo <= hi && hi < len(b) && 0 <= c && c <= 255"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [] got PANIC pruv: requires violated: crate::add_range_wrap: (((((0 <= lo) && (lo <= hi)) && (hi < len(b))) && (0 <= c)) && (c <= 255",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m130",
+   "pid": "q02",
+   "operator": "rx_range_from_1",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "xform.pruv line 37: `0..` -> `1..`",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "line": 37,
+     "from": "ensures forall k in 0..len(a): k >= i ==> a[k] == old(a)[k] + d",
+     "to": "ensures forall k in 1..len(a): k >= i ==> a[k] == old(a)[k] + d"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m131",
+   "pid": "q01",
+   "operator": "rx_eq_to_ne",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 72: `==` -> `!=`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 72,
+     "from": "invariant len(b) == n && n == len(old(b)) && hi <= n",
+     "to": "invariant len(b) == n && n != len(old(b)) && hi <= n"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m132",
+   "pid": "q01",
+   "operator": "rx_eq_to_ne",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 93: `==` -> `!=`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 93,
+     "from": "invariant len(b) == n && n == len(old(b)) && hi <= n",
+     "to": "invariant len(b) == n && n != len(old(b)) && hi <= n"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m133",
+   "pid": "q01",
+   "operator": "rx_le_to_lt",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 84: `<=` -> `<`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 84,
+     "from": "requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c <= 255",
+     "to": "requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c < 255"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [] got PANIC pruv: requires violated: crate::add_range_wrap: (((((0 <= lo) && (lo <= hi)) && (hi <= len(b))) && (0 <= c)) && (c < 255",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m134",
+   "pid": "q01",
+   "operator": "rx_eq_to_ne",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 52: `==` -> `!=`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 52,
+     "from": "invariant forall k in 0..n: (lo <= k && k < i) ==> b[k] == v",
+     "to": "invariant forall k in 0..n: (lo <= k && k < i) ==> b[k] != v"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m135",
+   "pid": "q01",
+   "operator": "rx_lt_to_le",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 75: `<` -> `<=`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 75,
+     "from": "invariant forall k in 0..n: (k < lo || k >= i) ==> b[k] == old(b)[k]",
+     "to": "invariant forall k in 0..n: (k <= lo || k >= i) ==> b[k] == old(b)[k]"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m136",
+   "pid": "q01",
+   "operator": "rx_le_to_lt",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 42: `<=` -> `<`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 42,
+     "from": "requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= v && v <= 255",
+     "to": "requires 0 <= lo && lo <= hi && hi < len(b) && 0 <= v && v <= 255"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "fill_bytes want [] got PANIC pruv: requires violated: crate::fill_range: (((((0 <= lo) && (lo <= hi)) && (hi < len(b))) && (0 <= v)) && (v <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m137",
+   "pid": "q02",
+   "operator": "rx_eq_to_ne",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "xform.pruv line 36: `==` -> `!=`",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "line": 36,
+     "from": "ensures len(a) == len(old(a))",
+     "to": "ensures len(a) != len(old(a))"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/ensures",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m138",
+   "pid": "q01",
+   "operator": "rx_plus1_to_plus0",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 99: `+ 1` -> `+ 0`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 99,
+     "from": "i = i + 1;",
+     "to": "i = i + 0;"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "does not terminate on the tests (timeout)",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_preserved",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m139",
+   "pid": "q02",
+   "operator": "rx_le_to_lt",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "xform.pruv line 20: `<=` -> `<`",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "line": 20,
+     "from": "requires 0 <= lo && lo <= hi + 1 && hi < len(a)",
+     "to": "requires 0 < lo && lo <= hi + 1 && hi < len(a)"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 < lo) && (lo <= (hi + 1))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m140",
+   "pid": "q01",
+   "operator": "rx_and_to_or",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 16: `&&` -> `||`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 16,
+     "from": "requires 0 <= i && i < len(b) && 0 <= c && c <= 255",
+     "to": "requires 0 <= i || i < len(b) && 0 <= c && c <= 255"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/index_oob",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m141",
+   "pid": "q02",
+   "operator": "rx_plus1_to_plus0",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "xform.pruv line 20: `+ 1` -> `+ 0`",
+   "edit": [
+    {
+     "file": "xform.pruv",
+     "line": 20,
+     "from": "requires 0 <= lo && lo <= hi + 1 && hi < len(a)",
+     "to": "requires 0 <= lo && lo <= hi + 0 && hi < len(a)"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "reverse_window want [] got PANIC pruv: requires violated: crate::xform::rev_range: (((0 <= lo) && (lo <= (hi + 0))) && (hi < len(a)))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m142",
+   "pid": "q01",
+   "operator": "rx_le_to_lt",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 92: `<=` -> `<`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 92,
+     "from": "invariant lo <= i && i <= hi",
+     "to": "invariant lo <= i && i < hi"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m143",
+   "pid": "q01",
+   "operator": "rx_and_to_or",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 62: `&&` -> `||`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 62,
+     "from": "requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c && c <= 255",
+     "to": "requires 0 <= lo && lo <= hi && hi <= len(b) && 0 <= c || c <= 255"
+    }
+   ],
+   "truth": "correct",
+   "truth_detail": "tests pass",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/invariant_entry",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  },
+  {
+   "id": "m144",
+   "pid": "q01",
+   "operator": "rx_le_to_lt",
+   "intent": "auto",
+   "kind": "regex",
+   "desc": "root.pruv line 32: `<=` -> `<`",
+   "edit": [
+    {
+     "file": "root.pruv",
+     "line": 32,
+     "from": "requires 0 <= i && i < len(b) && 0 <= c && c <= 255",
+     "to": "requires 0 <= i && i < len(b) && 0 < c && c <= 255"
+    }
+   ],
+   "truth": "incorrect",
+   "truth_detail": "add_wrap want [0] got PANIC pruv: requires violated: crate::bump_wrap: ((((0 <= i) && (i < len(b))) && (0 < c)) && (c <= 255))",
+   "class": "rejected_verify",
+   "runs": {
+    "py-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "py-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-rust": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    },
+    "rs-llvm": {
+     "class": "rejected_verify",
+     "detail": "verify/call_requires",
+     "grader": {
+      "status": "pruv_error"
+     }
+    }
+   },
+   "config_diff": false
+  }
+ ]
+}

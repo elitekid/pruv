@@ -1,0 +1,13 @@
+diff --git a/pruvc/check.py b/pruvc/check.py
+index bbd07f9..a5fa366 100644
+--- a/pruvc/check.py
++++ b/pruvc/check.py
+@@ -1315,7 +1315,7 @@ class Checker:
+             arg.ty = v[0]
+             marked.append((arg, op.name))
+         for arg, name in marked:
+-            if any(x is not arg and _mentions(x, name) for x in e.args):
++            if False and any(x is not arg and _mentions(x, name) for x in e.args):
+                 terr(arg, "inout_alias", "%s is passed inout and also used elsewhere in the arguments of this call" % name,
+                      "compute the other value first, e.g. `let n: i64 = len(%s);`, then pass n" % name)
+         if not c and e is not s.boundary:

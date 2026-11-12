@@ -1,0 +1,13 @@
+diff --git a/pruvc/llvmgen.py b/pruvc/llvmgen.py
+index 34e535c..0f864a1 100644
+--- a/pruvc/llvmgen.py
++++ b/pruvc/llvmgen.py
+@@ -392,7 +392,7 @@ def sig_text(params, f=None):
+     end in .a; a G6 collection handle %p.NAME.h is a plain ptr).  G5 A3: with the function `f`, the pointer of an
+     inout parameter is a mutable borrow: `ptr noalias nocapture` (no readonly)"""
+     mut = set("%%p.%s.a" % mangle(p.name) for p in f.params if p.mode == "inout") if f is not None else ()
+-    return ", ".join("%s %s" % (("ptr noalias nocapture" if n in mut else "ptr noalias nocapture readonly")
++    return ", ".join("%s %s" % (("ptr noalias nocapture readonly" if n in mut else "ptr noalias nocapture readonly")
+                                 if t == "ptr" and n.endswith(".a") else t, n)
+                      for t, n in params)
+ 

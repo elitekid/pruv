@@ -1,0 +1,35 @@
+pub fn swap_at(inout a: [i64], i: i64, j: i64) -> ()
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+  ensures a[i] == old(a)[j] && a[j] == old(a)[i]
+  ensures forall k in 0..len(a): (k != i && k != j) ==> a[k] == old(a)[k]
+{
+  let x: i64 = a[i];
+  let y: i64 = a[j];
+  a[i] = y;
+  a[j] = x;
+}
+
+pub fn rev_rec(inout a: [i64], lo: i64, hi: i64) -> ()
+  requires 0 <= lo && lo <= hi + 1 && hi < len(a)
+  ensures forall k in 0..len(a): (lo <= k && k <= hi) ==> a[k] == old(a)[lo + hi - k]
+  ensures forall k in 0..len(a): (k < lo || k > hi) ==> a[k] == old(a)[k]
+  decreases hi - lo + 1
+{
+  if lo < hi {
+    swap_at(inout a, lo, hi);
+    rev_rec(inout a, lo + 1, hi - 1);
+  }
+}
+
+pub fn shift_from(inout a: [i64], i: i64, d: i64) -> ()
+  requires 0 <= i && i <= len(a) && -1000 <= d && d <= 1000
+  requires forall k in i..len(a): -1000000 <= a[k] && a[k] <= 1000000
+  ensures forall k in 0..len(a): k >= i ==> a[k] == old(a)[k] + d
+  ensures forall k in 0..len(a): k < i ==> a[k] == old(a)[k]
+  decreases len(a) - i
+{
+  if i < len(a) {
+    a[i] = a[i] + d;
+    shift_from(inout a, i + 1, d);
+  }
+}

@@ -1,0 +1,13 @@
+diff --git a/pruvc/verify.py b/pruvc/verify.py
+index e42865c..a91449b 100644
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1711,7 +1711,7 @@ class FnVerifier:
+     def ensures_ok(s, st, val, node):
+         env = dict(st.env)
+         for p in s.f.params:
+-            if p.mode is None:      # G5 A1: ordinary parameters denote their entry values; an inout parameter keeps its
++            if True:      # G5 A1: ordinary parameters denote their entry values; an inout parameter keeps its
+                 env[p.name] = s.params[p.name]      # current (final) value, and old(a) resolves through s.snap
+         if val is not None:
+             env["result"] = val

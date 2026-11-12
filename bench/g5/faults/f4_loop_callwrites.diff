@@ -1,0 +1,13 @@
+diff --git a/pruvc/verify.py b/pruvc/verify.py
+index e42865c..1e165f8 100644
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1954,7 +1954,7 @@ class FnVerifier:
+         # G5 A1 (5.3): inout call arguments are changed too. Inout parameters keep their entry length; a local changed
+         # by inout calls keeps the loop-head length only if no whole assignment in the body can replace it.
+         # Without inout, calls = {} and snap = {}: names/keep (and the SMT) are exactly the old ones.
+-        calls = s.call_writes(w.body, set())
++        calls = set()
+         keep = frozenset()
+         if calls or s.snap:
+             whole = s.whole_assigned(w.body, set()) if calls else set()

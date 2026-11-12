@@ -1,0 +1,1114 @@
+{
+ "spec": "G5_SPEC 14.7",
+ "task": "reverse 1000000 i64 elements",
+ "config": {
+  "n": 1000000,
+  "repeat": 10,
+  "inner": 20,
+  "compiler": "rs",
+  "backends": [
+   "rust",
+   "llvm"
+  ],
+  "verify": true,
+  "meets_min_10_repetitions": true,
+  "input": "deterministic LCG in driver.rs (seed 0x9E3779B97F4A7C15)",
+  "programs": {
+   "inout": "bench/g5/perf/inout_rev.pruv",
+   "copy": "bench/g5/perf/copy_rev.pruv"
+  },
+  "driver": "bench/g5/perf/driver.rs",
+  "rustc_flags": [
+   "-O",
+   "--edition",
+   "2021",
+   "-C",
+   "target-cpu=native"
+  ],
+  "clang_flags": [
+   "-O2",
+   "-mcpu=native",
+   "-Wno-override-module"
+  ],
+  "runtime_flags": [
+   "-O2",
+   "-mcpu=native",
+   "-std=c11",
+   "-DPRUV_RUST_ALLOCATOR"
+  ],
+  "optimization": "rustc -O (opt-level 2) / clang -O2, target-cpu native on both"
+ },
+ "versions": {
+  "python": "3.9.6",
+  "platform": "macOS-26.5-arm64-arm-64bit",
+  "machine": "arm64",
+  "git_rev": "cbe33cc9110de1a6030e934da47cf8e03d3fab6c",
+  "rustc": [
+   "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+   "binary: rustc",
+   "commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67",
+   "commit-date: 2026-10-13",
+   "host: aarch64-apple-darwin",
+   "release: 1.99.1",
+   "LLVM version: 23.1.1"
+  ],
+  "rust_host_triple": "aarch64-apple-darwin",
+  "clang": [
+   "Apple clang version 17.0.0 (clang-1700.6.4.2)",
+   "Target: arm64-apple-darwin25.5.0",
+   "Thread model: posix",
+   "InstalledDir: /Library/Developer/CommandLineTools/usr/bin"
+  ],
+  "clang_target": "arm64-apple-darwin25.5.0",
+  "pruvc": {
+   "which": "rs",
+   "cmd": [
+    "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc"
+   ],
+   "version": null
+  }
+ },
+ "rows": [
+  {
+   "variant": "inout",
+   "backend": "rust",
+   "pruvc_cmd": [
+    "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc",
+    "/Users/spica4345/Projects/pruv/bench/g5/perf/inout_rev.pruv",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_rust_gen.rs",
+    "--backend",
+    "rust"
+   ],
+   "status": "ok",
+   "compile_s": 0.207,
+   "rustc_cmd": [
+    "/Users/spica4345/.cargo/bin/rustc",
+    "-O",
+    "--edition",
+    "2021",
+    "-C",
+    "target-cpu=native",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_rust_main.rs",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_rust_bin"
+   ],
+   "peak_rss_bytes": 17711104,
+   "driver": {
+    "n": 1000000,
+    "reps": 10,
+    "inner": 20,
+    "checksum_id": 5302235648774681729,
+    "checksum_rev": 16549185781364774321,
+    "checksums_checked": true
+   },
+   "time_ms": {
+    "setup_inclusive_once": {
+     "median": 0.3620415,
+     "min": 0.339333,
+     "max": 0.795167,
+     "mean": 0.4035458,
+     "stdev": 0.13145470299673573,
+     "runs": 10
+    },
+    "setup_alone": {
+     "median": 0.1760215,
+     "min": 0.159209,
+     "max": 0.230875,
+     "mean": 0.179371,
+     "stdev": 0.018871311766806252,
+     "runs": 10
+    },
+    "setup_plus_inner": {
+     "median": 4.334312499999999,
+     "min": 4.027333,
+     "max": 4.685083,
+     "mean": 4.3009084,
+     "stdev": 0.19797634801521122,
+     "runs": 10
+    },
+    "repeated_op_per_reversal": {
+     "median": 0.2064052,
+     "min": 0.19334374999999998,
+     "max": 0.22531245000000003,
+     "mean": 0.20607687000000002,
+     "stdev": 0.009853389190963695,
+     "runs": 10
+    }
+   },
+   "raw_ms": {
+    "once": [
+     0.795167,
+     0.367958,
+     0.348334,
+     0.342,
+     0.347875,
+     0.339333,
+     0.356125,
+     0.381708,
+     0.370458,
+     0.3865
+    ],
+    "zero": [
+     0.230875,
+     0.181542,
+     0.172958,
+     0.183542,
+     0.160458,
+     0.173209,
+     0.172875,
+     0.180208,
+     0.178834,
+     0.159209
+    ],
+    "many": [
+     4.364375,
+     4.30425,
+     4.395833,
+     4.095667,
+     4.027333,
+     4.184334,
+     4.457667,
+     4.059625,
+     4.685083,
+     4.434917
+    ],
+    "repeated_op": [
+     0.206675,
+     0.20613540000000002,
+     0.21114375000000002,
+     0.19560625,
+     0.19334374999999998,
+     0.20055625,
+     0.21423960000000003,
+     0.19397085,
+     0.22531245000000003,
+     0.2137854
+    ]
+   },
+   "alloc": {
+    "once": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_alone": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_plus_inner": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "repeated_op": {
+     "allocs": {
+      "per_reversal": {
+       "median": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "frees": {
+      "per_reversal": {
+       "median": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "bytes": {
+      "per_reversal": {
+       "median": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     }
+    },
+    "note": "counting global allocator in driver.rs; llvm arrays use the Rust allocator (PRUV_RUST_ALLOCATOR)"
+   }
+  },
+  {
+   "variant": "copy",
+   "backend": "rust",
+   "pruvc_cmd": [
+    "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc",
+    "/Users/spica4345/Projects/pruv/bench/g5/perf/copy_rev.pruv",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_rust_gen.rs",
+    "--backend",
+    "rust"
+   ],
+   "status": "ok",
+   "compile_s": 0.053,
+   "rustc_cmd": [
+    "/Users/spica4345/.cargo/bin/rustc",
+    "-O",
+    "--edition",
+    "2021",
+    "-C",
+    "target-cpu=native",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_rust_main.rs",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_rust_bin"
+   ],
+   "peak_rss_bytes": 25739264,
+   "driver": {
+    "n": 1000000,
+    "reps": 10,
+    "inner": 20,
+    "checksum_id": 5302235648774681729,
+    "checksum_rev": 16549185781364774321,
+    "checksums_checked": true
+   },
+   "time_ms": {
+    "setup_inclusive_once": {
+     "median": 0.453229,
+     "min": 0.386458,
+     "max": 1.897875,
+     "mean": 0.5949165,
+     "stdev": 0.4385557320152707,
+     "runs": 10
+    },
+    "setup_alone": {
+     "median": 0.33358350000000003,
+     "min": 0.203417,
+     "max": 0.773917,
+     "mean": 0.3539291,
+     "stdev": 0.16871404127069564,
+     "runs": 10
+    },
+    "setup_plus_inner": {
+     "median": 10.398583,
+     "min": 8.569666,
+     "max": 14.024166,
+     "mean": 10.5414624,
+     "stdev": 1.5370921921644256,
+     "runs": 10
+    },
+    "repeated_op_per_reversal": {
+     "median": 0.49353017499999996,
+     "min": 0.41831245,
+     "max": 0.68110415,
+     "mean": 0.509376665,
+     "stdev": 0.07388817665101788,
+     "runs": 10
+    }
+   },
+   "raw_ms": {
+    "once": [
+     0.433208,
+     0.593791,
+     0.386458,
+     0.480333,
+     0.493792,
+     1.897875,
+     0.388541,
+     0.47325,
+     0.403792,
+     0.398125
+    ],
+    "zero": [
+     0.399583,
+     0.282042,
+     0.464833,
+     0.203708,
+     0.402083,
+     0.773917,
+     0.203417,
+     0.206458,
+     0.385125,
+     0.218125
+    ],
+    "many": [
+     11.318667,
+     9.816416,
+     11.4455,
+     11.378292,
+     14.024166,
+     10.98075,
+     8.569666,
+     9.051458,
+     9.342625,
+     9.487084
+    ],
+    "repeated_op": [
+     0.5459542,
+     0.4767187,
+     0.54903335,
+     0.5587291999999999,
+     0.68110415,
+     0.51034165,
+     0.41831245,
+     0.44225000000000003,
+     0.44787499999999997,
+     0.46344795000000005
+    ]
+   },
+   "alloc": {
+    "once": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_alone": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_plus_inner": {
+     "allocs": {
+      "median": 21.0,
+      "min": 21,
+      "max": 21,
+      "mean": 21.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 20.0,
+      "min": 20,
+      "max": 20,
+      "mean": 20.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 168000000.0,
+      "min": 168000000,
+      "max": 168000000,
+      "mean": 168000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "repeated_op": {
+     "allocs": {
+      "per_reversal": {
+       "median": 1.0,
+       "min": 1.0,
+       "max": 1.0,
+       "mean": 1.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "frees": {
+      "per_reversal": {
+       "median": 1.0,
+       "min": 1.0,
+       "max": 1.0,
+       "mean": 1.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "bytes": {
+      "per_reversal": {
+       "median": 8000000.0,
+       "min": 8000000.0,
+       "max": 8000000.0,
+       "mean": 8000000.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     }
+    },
+    "note": "counting global allocator in driver.rs; llvm arrays use the Rust allocator (PRUV_RUST_ALLOCATOR)"
+   }
+  },
+  {
+   "variant": "inout",
+   "backend": "llvm",
+   "pruvc_cmd": [
+    "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc",
+    "/Users/spica4345/Projects/pruv/bench/g5/perf/inout_rev.pruv",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_llvm.ll",
+    "--backend",
+    "llvm",
+    "--rust-bindings",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_llvm_gen.rs"
+   ],
+   "status": "ok",
+   "compile_s": 0.072,
+   "clang_cmd": [
+    "/usr/bin/clang",
+    "-O2",
+    "-mcpu=native",
+    "-Wno-override-module",
+    "-c",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_llvm.ll",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_llvm_gen.o"
+   ],
+   "rustc_cmd": [
+    "/Users/spica4345/.cargo/bin/rustc",
+    "-O",
+    "--edition",
+    "2021",
+    "-C",
+    "target-cpu=native",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_llvm_main.rs",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_llvm_bin",
+    "-C",
+    "link-arg=/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_inout_llvm_gen.o",
+    "-C",
+    "link-arg=/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/runtime.o"
+   ],
+   "peak_rss_bytes": 17711104,
+   "driver": {
+    "n": 1000000,
+    "reps": 10,
+    "inner": 20,
+    "checksum_id": 5302235648774681729,
+    "checksum_rev": 16549185781364774321,
+    "checksums_checked": true
+   },
+   "time_ms": {
+    "setup_inclusive_once": {
+     "median": 0.43727099999999997,
+     "min": 0.35275,
+     "max": 0.863791,
+     "mean": 0.5026542,
+     "stdev": 0.18396485306373062,
+     "runs": 10
+    },
+    "setup_alone": {
+     "median": 0.173854,
+     "min": 0.160166,
+     "max": 0.334709,
+     "mean": 0.1931625,
+     "stdev": 0.05046829621703114,
+     "runs": 10
+    },
+    "setup_plus_inner": {
+     "median": 4.407479,
+     "min": 3.918667,
+     "max": 6.622292,
+     "mean": 4.5370584,
+     "stdev": 0.7542664923476582,
+     "runs": 10
+    },
+    "repeated_op_per_reversal": {
+     "median": 0.21023435000000001,
+     "min": 0.1874271,
+     "max": 0.3225292,
+     "mean": 0.21719479500000002,
+     "stdev": 0.037761811407005165,
+     "runs": 10
+    }
+   },
+   "raw_ms": {
+    "once": [
+     0.373709,
+     0.37375,
+     0.35475,
+     0.498417,
+     0.438,
+     0.863791,
+     0.483625,
+     0.851208,
+     0.436542,
+     0.35275
+    ],
+    "zero": [
+     0.176,
+     0.170125,
+     0.1615,
+     0.160166,
+     0.171708,
+     0.227042,
+     0.334709,
+     0.176625,
+     0.184167,
+     0.169583
+    ],
+    "many": [
+     3.958792,
+     3.918667,
+     3.975,
+     4.826833,
+     6.622292,
+     4.505542,
+     4.60425,
+     4.521042,
+     4.12875,
+     4.309416
+    ],
+    "repeated_op": [
+     0.18913960000000002,
+     0.1874271,
+     0.19067499999999998,
+     0.23333335000000002,
+     0.3225292,
+     0.213925,
+     0.21347705,
+     0.21722085,
+     0.19722915000000002,
+     0.20699165000000003
+    ]
+   },
+   "alloc": {
+    "once": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_alone": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_plus_inner": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "repeated_op": {
+     "allocs": {
+      "per_reversal": {
+       "median": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "frees": {
+      "per_reversal": {
+       "median": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "bytes": {
+      "per_reversal": {
+       "median": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     }
+    },
+    "note": "counting global allocator in driver.rs; llvm arrays use the Rust allocator (PRUV_RUST_ALLOCATOR)"
+   }
+  },
+  {
+   "variant": "copy",
+   "backend": "llvm",
+   "pruvc_cmd": [
+    "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc",
+    "/Users/spica4345/Projects/pruv/bench/g5/perf/copy_rev.pruv",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_llvm.ll",
+    "--backend",
+    "llvm",
+    "--rust-bindings",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_llvm_gen.rs"
+   ],
+   "status": "ok",
+   "compile_s": 0.07,
+   "clang_cmd": [
+    "/usr/bin/clang",
+    "-O2",
+    "-mcpu=native",
+    "-Wno-override-module",
+    "-c",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_llvm.ll",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_llvm_gen.o"
+   ],
+   "rustc_cmd": [
+    "/Users/spica4345/.cargo/bin/rustc",
+    "-O",
+    "--edition",
+    "2021",
+    "-C",
+    "target-cpu=native",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_llvm_main.rs",
+    "-o",
+    "/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_llvm_bin",
+    "-C",
+    "link-arg=/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/rs_copy_llvm_gen.o",
+    "-C",
+    "link-arg=/var/folders/7t/7cpvgkh56p1drs_gq_kcpwdr0000gn/T/pruvg5_perf_wvq4g4ha/runtime.o"
+   ],
+   "peak_rss_bytes": 25755648,
+   "driver": {
+    "n": 1000000,
+    "reps": 10,
+    "inner": 20,
+    "checksum_id": 5302235648774681729,
+    "checksum_rev": 16549185781364774321,
+    "checksums_checked": true
+   },
+   "time_ms": {
+    "setup_inclusive_once": {
+     "median": 0.385687,
+     "min": 0.346041,
+     "max": 0.6385,
+     "mean": 0.4305331,
+     "stdev": 0.10053455645045636,
+     "runs": 10
+    },
+    "setup_alone": {
+     "median": 0.207604,
+     "min": 0.175875,
+     "max": 0.23075,
+     "mean": 0.2047374,
+     "stdev": 0.015749014376779266,
+     "runs": 10
+    },
+    "setup_plus_inner": {
+     "median": 8.613707999999999,
+     "min": 7.9155,
+     "max": 9.713959,
+     "mean": 8.5807625,
+     "stdev": 0.5123877269822625,
+     "runs": 10
+    },
+    "repeated_op_per_reversal": {
+     "median": 0.42002917500000003,
+     "min": 0.38647915,
+     "max": 0.47416045,
+     "mean": 0.418801255,
+     "stdev": 0.025281594636755514,
+     "runs": 10
+    }
+   },
+   "raw_ms": {
+    "once": [
+     0.354333,
+     0.387041,
+     0.420083,
+     0.372125,
+     0.369042,
+     0.613416,
+     0.384333,
+     0.420417,
+     0.346041,
+     0.6385
+    ],
+    "zero": [
+     0.220208,
+     0.193708,
+     0.23075,
+     0.209167,
+     0.175875,
+     0.216958,
+     0.197875,
+     0.210875,
+     0.185917,
+     0.206041
+    ],
+    "many": [
+     8.728125,
+     8.846292,
+     9.713959,
+     8.741166,
+     8.367209,
+     8.034667,
+     8.933625,
+     8.027791,
+     7.9155,
+     8.499291
+    ],
+    "repeated_op": [
+     0.42539585,
+     0.43262919999999994,
+     0.47416045,
+     0.42659995000000006,
+     0.40956669999999995,
+     0.39088544999999997,
+     0.4367875,
+     0.3908458,
+     0.38647915,
+     0.41466250000000004
+    ]
+   },
+   "alloc": {
+    "once": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_alone": {
+     "allocs": {
+      "median": 1.0,
+      "min": 1,
+      "max": 1,
+      "mean": 1.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 0.0,
+      "min": 0,
+      "max": 0,
+      "mean": 0.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 8000000.0,
+      "min": 8000000,
+      "max": 8000000,
+      "mean": 8000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "setup_plus_inner": {
+     "allocs": {
+      "median": 21.0,
+      "min": 21,
+      "max": 21,
+      "mean": 21.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "frees": {
+      "median": 20.0,
+      "min": 20,
+      "max": 20,
+      "mean": 20.0,
+      "stdev": 0.0,
+      "runs": 10
+     },
+     "bytes": {
+      "median": 168000000.0,
+      "min": 168000000,
+      "max": 168000000,
+      "mean": 168000000.0,
+      "stdev": 0.0,
+      "runs": 10
+     }
+    },
+    "repeated_op": {
+     "allocs": {
+      "per_reversal": {
+       "median": 1.0,
+       "min": 1.0,
+       "max": 1.0,
+       "mean": 1.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "frees": {
+      "per_reversal": {
+       "median": 1.0,
+       "min": 1.0,
+       "max": 1.0,
+       "mean": 1.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     },
+     "bytes": {
+      "per_reversal": {
+       "median": 8000000.0,
+       "min": 8000000.0,
+       "max": 8000000.0,
+       "mean": 8000000.0,
+       "stdev": 0.0,
+       "runs": 10
+      },
+      "exact": true
+     }
+    },
+    "note": "counting global allocator in driver.rs; llvm arrays use the Rust allocator (PRUV_RUST_ALLOCATOR)"
+   }
+  }
+ ],
+ "generated_code_scan": {
+  "rust": {
+   "inout": {
+    "functions": [
+     "pruv_m_f_1_3_rev",
+     "pruv_m_f_1_7_swap_at__pruv_body"
+    ],
+    "found": true,
+    "calls": {},
+    "total": 0,
+    "lines": 16,
+    "excerpt": "fn pruv_m_f_1_3_rev(a: &mut [i64]) {\n    let n: i64 = (a.len() as i64);\n    let mut i: i64 = 0i64;\n    let mut j: i64 = (n - 1i64);\n    while (i < j) {\n        pruv_m_f_1_7_swap_at__pruv_body(&mut *a, i, j);\n        i = (i + 1i64);\n        j = (j - 1i64);\n    }\n}\nfn pruv_m_f_1_7_swap_at__pruv_body(a: &mut [i64], i: i64, j: i64) {\n    let x: i64 = (unsafe { *a.get_unchecked((i) as usize) });\n    let y: i64 = (unsafe { *a.get_unchecked((j) as usize) });\n    { let pruv_i: i64 = i; let pruv_x: i64 = y; unsafe { *a.get_unchecked_mut(pruv_i as usize) = pruv_x; } }\n    { let pruv_i: i64 = j; let pruv_x: i64 = x; unsafe { *a.get_unchecked_mut(pruv_i as usize) = pruv_x; } }\n}"
+   },
+   "copy": {
+    "functions": [
+     "pruv_m_f_1_3_rev"
+    ],
+    "found": true,
+    "calls": {
+     ".to_vec()": 1
+    },
+    "total": 1,
+    "lines": 15,
+    "excerpt": "fn pruv_m_f_1_3_rev(a: &[i64]) -> ::std::vec::Vec<i64> {\n    let n: i64 = (a.len() as i64);\n    let mut w: ::std::vec::Vec<i64> = a.to_vec();\n    let mut i: i64 = 0i64;\n    let mut j: i64 = (n - 1i64);\n    while (i < j) {\n        let x: i64 = (unsafe { *w.get_unchecked((i) as usize) });\n        let y: i64 = (unsafe { *w.get_unchecked((j) as usize) });\n        { let pruv_i: i64 = i; let pruv_x: i64 = y; unsafe { *w.get_unchecked_mut(pruv_i as usize) = pruv_x; } }\n        { let pruv_i: i64 = j; let pruv_x: i64 = x; unsafe { *w.get_unchecked_mut(pruv_i as usize) = pruv_x; } }\n        i = (i + 1i64);\n        j = (j - 1i64);\n    }\n    return w;\n}"
+   }
+  },
+  "llvm": {
+   "inout": {
+    "functions": [
+     "pruv_m_f_1_3_rev__pruv_body",
+     "pruv_m_f_1_7_swap_at__pruv_body"
+    ],
+    "found": true,
+    "calls": {},
+    "total": 0,
+    "lines": 52,
+    "excerpt": "define internal void @pruv_m_f_1_3_rev__pruv_body(ptr noalias nocapture %p.a.a, i64 %p.a.n) {\nentry:\n  %l0.n.a = alloca i64\n  %l1.i.a = alloca i64\n  %l2.j.a = alloca i64\n  br label %start\nstart:\n  store i64 %p.a.n, ptr %l0.n.a\n  store i64 0, ptr %l1.i.a\n  %t1 = load i64, ptr %l0.n.a\n  %t2 = sub nsw i64 %t1, 1\n  store i64 %t2, ptr %l2.j.a\n  br label %wcond.1\nwcond.1:\n  %t3 = load i64, ptr %l1.i.a\n  %t4 = load i64, ptr %l2.j.a\n  %t5 = icmp slt i64 %t3, %t4\n  br i1 %t5, label %wbody.2, label %wend.3\nwbody.2:\n  %t6 = load i64, ptr %l1.i.a\n  %t7 = load i64, ptr %l2.j.a\n  call void @pruv_m_f_1_7_swap_at__pruv_body(ptr %p.a.a, i64 %p.a.n, i64 %t6, i64 %t7)\n  %t8 = load i64, ptr %l1.i.a\n  %t9 = add nsw i64 %t8, 1\n  store i64 %t9, ptr %l1.i.a\n  %t10 = load i64, ptr %l2.j.a\n  %t11 = sub nsw i64 %t10, 1\n  store i64 %t11, ptr %l2.j.a\n  br label %wcond.1\nwend.3:\n  ret void\n}\ndefine internal void @pruv_m_f_1_7_swap_at__pruv_body(ptr noalias nocapture %p.a.a, i64 %p.a.n, i64 %p.i, i64 %p.j) {\nentry:\n  %l0.x.a = alloca i64\n  %l1.y.a = alloca i64\n  br label %start\nstart:\n  %t1 = getelementptr inbounds i64, ptr %p.a.a, i64 %p.i\n  %t2 = load i64, ptr %t1\n  store i64 %t2, ptr %l0.x.a\n  %t3 = getelementptr inbounds i64, ptr %p.a.a, i64 %p.j\n  %t4 = load i64, ptr %t3\n  store i64 %t4, ptr %l1.y.a\n  %t5 = load i64, ptr %l1.y.a\n  %t6 = getelementptr inbounds i64, ptr %p.a.a, i64 %p.i\n  store i64 %t5, ptr %t6\n  %t7 = load i64, ptr %l0.x.a\n  %t8 = getelementptr inbounds i64, ptr %p.a.a, i64 %p.j\n  store i64 %t7, ptr %t8\n  ret void\n}"
+   },
+   "copy": {
+    "functions": [
+     "pruv_m_f_1_3_rev__pruv_body"
+    ],
+    "found": true,
+    "calls": {
+     "@pruv_copy(": 1,
+     "@pruv_free(": 1
+    },
+    "total": 2,
+    "lines": 69,
+    "excerpt": "define internal { ptr, i64 } @pruv_m_f_1_3_rev__pruv_body(ptr noalias nocapture readonly %p.a.a, i64 %p.a.n) {\nentry:\n  %l0.n.a = alloca i64\n  %l1.w.a = alloca ptr\n  %l1.w.b = alloca i64\n  %l2.i.a = alloca i64\n  %l3.j.a = alloca i64\n  %l4.x.a = alloca i64\n  %l5.y.a = alloca i64\n  br label %start\nstart:\n  store i64 %p.a.n, ptr %l0.n.a\n  %t1 = call ptr @pruv_copy(ptr %p.a.a, i64 %p.a.n)\n  store ptr %t1, ptr %l1.w.a\n  store i64 %p.a.n, ptr %l1.w.b\n  store i64 0, ptr %l2.i.a\n  %t2 = load i64, ptr %l0.n.a\n  %t3 = sub nsw i64 %t2, 1\n  store i64 %t3, ptr %l3.j.a\n  br label %wcond.1\nwcond.1:\n  %t4 = load i64, ptr %l2.i.a\n  %t5 = load i64, ptr %l3.j.a\n  %t6 = icmp slt i64 %t4, %t5\n  br i1 %t6, label %wbody.2, label %wend.3\nwbody.2:\n  %t7 = load ptr, ptr %l1.w.a\n  %t8 = load i64, ptr %l1.w.b\n  %t9 = load i64, ptr %l2.i.a\n  %t10 = getelementptr inbounds i64, ptr %t7, i64 %t9\n  %t11 = load i64, ptr %t10\n  store i64 %t11, ptr %l4.x.a\n  %t12 = load ptr, ptr %l1.w.a\n  %t13 = load i64, ptr %l1.w.b\n  %t14 = load i64, ptr %l3.j.a\n  %t15 = getelementptr inbounds i64, ptr %t12, i64 %t14\n  %t16 = load i64, ptr %t15\n  store i64 %t16, ptr %l5.y.a\n  %t17 = load i64, ptr %l2.i.a\n  %t18 = load i64, ptr %l5.y.a\n  %t19 = load ptr, ptr %l1.w.a\n  %t20 = load i64, ptr %l1.w.b\n  %t21 = getelementptr inbounds i64, ptr %t19, i64 %t17\n  store i64 %t18, ptr %t21\n  %t22 = load i64, ptr %l3.j.a\n  %t23 = load i64, ptr %l4.x.a\n  %t24 = load ptr, ptr %l1.w.a\n  %t25 = load i64, ptr %l1.w.b\n  %t26 = getelementptr inbounds i64, ptr %t24, i64 %t22\n  store i64 %t23, ptr %t26\n  %t27 = load i64, ptr %l2.i.a\n  %t28 = add nsw i64 %t27, 1\n  store i64 %t28, ptr %l2.i.a\n  %t29 = load i64, ptr %l3.j.a\n  %t30 = sub nsw i64 %t29, 1\n  store i64 %t30, ptr %l3.j.a\n  br label %wcond.1\nwend.3:\n  %t31 = load ptr, ptr %l1.w.a\n  %t32 = load i64, ptr %l1.w.b\n  store ptr null, ptr %l1.w.a\n  store i64 0, ptr %l1.w.b\n  %t33 = load ptr, ptr %l1.w.a\n  %t34 = load i64, ptr %l1.w.b\n  call void @pruv_free(ptr %t33, i64 %t34)\n  %t35 = insertvalue { ptr, i64 } undef, ptr %t31, 0\n  %t36 = insertvalue { ptr, i64 } %t35, i64 %t32, 1\n  ret { ptr, i64 } %t36\n}"
+   }
+  }
+ },
+ "comparison": {
+  "rust": {
+   "note": "ratios inout/copy of medians, recorded only (no threshold); <1 means inout is faster",
+   "setup_inclusive_once": 0.7988,
+   "repeated_op_per_reversal": 0.4182,
+   "peak_rss_ratio": 0.6881
+  },
+  "llvm": {
+   "note": "ratios inout/copy of medians, recorded only (no threshold); <1 means inout is faster",
+   "setup_inclusive_once": 1.1337,
+   "repeated_op_per_reversal": 0.5005,
+   "peak_rss_ratio": 0.6877
+  }
+ },
+ "notes": [
+  "timings are in-process Instant around one host call; peak RSS covers the whole driver process (input + checks + outputs included)",
+  "repeated-op time = (rev_n(a, inner) - rev_n(a, 0)) / inner per repetition; setup alone = rev_n(a, 0)",
+  "one unrecorded warm-up rev_once precedes the repetitions"
+ ],
+ "failures": []
+}

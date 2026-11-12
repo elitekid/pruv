@@ -19,7 +19,8 @@ Result fields, and enum fields. There is also a variant that observes evaluation
 G2 mode (generate_case(.., g2=True)), G3 mode (generate_case(.., g3=True), generics, see the G3 block and bench/fuzz/README.md) and
 G6 mode (generate_case(.., g6=True), trusted Rust calls and Vec/HashMap/String, see the G6 block) and
 G9 mode (generate_case(.., g9=True), recursion / recursive types / buffer fields, see the G9 block) and
-G4 mode (generate_case(.., g4=True), multi-file module programs, see the G4 block; the case carries `files`) use their own
+G4 mode (generate_case(.., g4=True), multi-file module programs, see the G4 block; the case carries `files`) and
+G5 mode (generate_case(.., g5=True), inout parameters, see the G5 block; the case carries `files`) use their own
 rng streams and templates; without them the output for a given seed is unchanged.
 """
 import argparse
@@ -5923,6 +5924,527 @@ def g4_candidate_inputs(case, rng, n):
     return out
 
 
+# ================================================================ G5 (inout parameters, docs/G5_SPEC.md section 14)
+# A case is a program directory (root.pruv + optional module files), like G4. The host entry is an ordinary `pub fn f`
+# that copies its array inputs into `let mut` owners, calls inout helpers (every helper has an exact content/frame
+# contract over old(..)) and returns an array or a scalar; inout functions are never host-visible. Every program is
+# meant to verify. The helper shapes are modelled on examples/g5_*.pruv and tests/runtime/g5_r*.pruv. Calls with an
+# inout argument are always whole statements (let / expression statement / return), never nested in an expression.
+# Function names are never reused as variable or parameter names (the oracle's module flattening renames by identifier).
+
+G5_T = {
+    "i64": {"ty": "[i64]", "pt": "array", "vty": "i64", "pv": "i64", "rt": "[i64]", "rs": "i64"},
+    "u8": {"ty": "[u8]", "pt": "array_u8", "vty": "i64", "pv": "i64", "rt": "array_u8", "rs": "i64"},
+    "bool": {"ty": "[bool]", "pt": "array_bool", "vty": "bool", "pv": "bool", "rt": "array_bool", "rs": "bool"},
+}
+G5_LIM = {"i64": 1000, "u8": 255}
+G5_FRAME = "forall k in 0..len(a): k != i ==> a[k] == old(a)[k]"
+
+
+def g5_join(*parts):
+    return " && ".join(p for p in parts if p)
+
+
+def g5_vreq(T, names):
+    """u8 values are plain i64 parameters that must stay in the byte range."""
+    return ["0 <= %s && %s <= 255" % (n, n) for n in names] if T == "u8" else []
+
+
+def g5_fn(name, params, ret, requires, ensures, body, pub=False, effects="", decreases=None):
+    head = "%sfn %s(%s) -> %s" % ("pub " if pub else "", name, params, ret)
+    if effects:
+        head += " ! " + effects
+    out = [head]
+    out += ["  requires " + r for r in requires if r]
+    out += ["  ensures " + e for e in ensures]
+    if decreases:
+        out.append("  decreases " + decreases)
+    out.append("{")
+    out += [("  " + b) if b else b for b in body]
+    out.append("}")
+    return "\n".join(out)
+
+
+def g5_host(params, ret, requires, ensures, body, effects="alloc"):
+    return g5_fn("f", params, ret, requires, ensures, body, pub=True, effects=effects)
+
+
+class G5Prog(object):
+    """Module tree of one program: blocks per module path (() is the root), `mod x;` declarations, feature tags."""
+
+    def __init__(self):
+        self.blocks = {(): []}
+        self.kids = {}
+        self.feats = set()
+
+    def add(self, text, mod=()):
+        self.blocks.setdefault(mod, []).append(text)
+        for n in range(len(mod)):
+            lst = self.kids.setdefault(mod[:n], [])
+            if mod[n] not in lst:
+                lst.append(mod[n])
+            self.blocks.setdefault(mod[:n + 1], [])
+
+    def feat(self, *names):
+        self.feats.update(names)
+
+    def files(self):
+        out = {}
+        for m in sorted(self.blocks, key=lambda p: (len(p), p)):
+            head = "// g5 fuzz module crate%s\n" % "".join("::" + s for s in m)
+            decls = "".join("mod %s;\n" % c for c in self.kids.get(m, []))
+            out[("/".join(m) + ".pruv") if m else "root.pruv"] = head + decls + "\n" + "\n\n".join(self.blocks[m]) + "\n"
+        return out
+
+
+# ---- inout helper functions (all take the array as `a` unless noted)
+
+def g5_set_at(name, T, alt, pub=False):
+    t = G5_T[T]
+    body = ["a[i] = v;"] if alt == 0 else ["let t: %s = v;" % t["vty"], "a[i] = t;"]
+    return g5_fn(name, "inout a: %s, i: i64, v: %s" % (t["ty"], t["vty"]), "()",
+                 [g5_join("0 <= i && i < len(a)", *g5_vreq(T, ["v"]))],
+                 ["len(a) == len(old(a))", "a[i] == v", G5_FRAME], body, pub)
+
+
+def g5_step_at(name, T, alt):
+    """bump (+1, i64/u8 below the limit) or flip (bool) one element."""
+    t = G5_T[T]
+    if T == "bool":
+        req, new = "0 <= i && i < len(a)", "!old(a)[i]"
+        body = ["a[i] = !a[i];"] if alt == 0 else ["let x: bool = a[i];", "a[i] = !x;"]
+    else:
+        req, new = "0 <= i && i < len(a) && a[i] < %d" % G5_LIM[T], "old(a)[i] + 1"
+        body = ["a[i] = a[i] + 1;"] if alt == 0 else ["let x: i64 = a[i];", "a[i] = x + 1;"]
+    return g5_fn(name, "inout a: %s, i: i64" % t["ty"], "()", [req],
+                 ["len(a) == len(old(a))", "a[i] == " + new, G5_FRAME], body)
+
+
+def g5_put_pair(name, T, set_call, pub=False):
+    """Nested reborrow: the inout parameter is forwarded twice to an inout callee."""
+    t = G5_T[T]
+    return g5_fn(name, "inout a: %s, i: i64, v: %s, u: %s" % (t["ty"], t["vty"], t["vty"]), "()",
+                 [g5_join("0 <= i && i + 1 < len(a)", *g5_vreq(T, ["v", "u"]))],
+                 ["len(a) == len(old(a))", "a[i] == v", "a[i + 1] == u",
+                  "forall k in 0..len(a): k != i && k != i + 1 ==> a[k] == old(a)[k]"],
+                 ["%s(inout a, i, v);" % set_call, "%s(inout a, i + 1, u);" % set_call], pub)
+
+
+def g5_fill_all(name, T, set_call, alt):
+    t = G5_T[T]
+    step = "%s(inout a, i, v);" % set_call if alt == 0 else "a[i] = v;"
+    body = ["let n: i64 = len(a);", "let mut i: i64 = 0;", "while i < n",
+            "  invariant 0 <= i && i <= n", "  invariant n == len(old(a))",
+            "  invariant forall k in 0..i: a[k] == v",
+            "  invariant forall k in i..n: a[k] == old(a)[k]",
+            "  decreases n - i", "{", "  " + step, "  i = i + 1;", "}"]
+    return g5_fn(name, "inout a: %s, v: %s" % (t["ty"], t["vty"]), "()", [g5_join(*g5_vreq(T, ["v"]))],
+                 ["len(a) == len(old(a))", "forall k in 0..len(a): a[k] == v"], body)
+
+
+def g5_step_all(name, T, step_call, alt):
+    t = G5_T[T]
+    new = "!old(a)[k]" if T == "bool" else "old(a)[k] + 1"
+    inline = "a[i] = !a[i];" if T == "bool" else "a[i] = a[i] + 1;"
+    step = "%s(inout a, i);" % step_call if alt == 0 else inline
+    req = [] if T == "bool" else ["forall k in 0..len(a): a[k] < %d" % G5_LIM[T]]
+    body = ["let n: i64 = len(a);", "let mut i: i64 = 0;", "while i < n",
+            "  invariant 0 <= i && i <= n", "  invariant n == len(old(a))",
+            "  invariant forall k in 0..i: a[k] == " + new,
+            "  invariant forall k in i..n: a[k] == old(a)[k]",
+            "  decreases n - i", "{", "  " + step, "  i = i + 1;", "}"]
+    return g5_fn(name, "inout a: %s" % t["ty"], "()", req,
+                 ["len(a) == len(old(a))", "forall k in 0..len(a): a[k] == " + new], body)
+
+
+def g5_swap_at(name):
+    return g5_fn(name, "inout a: [i64], i: i64, j: i64", "()", ["0 <= i && i < len(a) && 0 <= j && j < len(a)"],
+                 ["len(a) == len(old(a))", "a[i] == old(a)[j]", "a[j] == old(a)[i]",
+                  "forall k in 0..len(a): k != i && k != j ==> a[k] == old(a)[k]"],
+                 ["let x: i64 = a[i];", "let y: i64 = a[j];", "a[i] = y;", "a[j] = x;"])
+
+
+def g5_reverse(name, swap_call, alt):
+    step = (["%s(inout a, i, j);" % swap_call] if alt == 0
+            else ["let x: i64 = a[i];", "let y: i64 = a[j];", "a[i] = y;", "a[j] = x;"])
+    body = ["let n: i64 = len(a);", "let mut i: i64 = 0;", "let mut j: i64 = n - 1;", "while i < j",
+            "  invariant 0 <= i && i <= n", "  invariant j == n - 1 - i", "  invariant len(a) == n",
+            "  invariant n == len(old(a))",
+            "  invariant forall k in 0..i: a[k] == old(a)[n - 1 - k]",
+            "  invariant forall k in 0..n: j < k ==> a[k] == old(a)[n - 1 - k]",
+            "  invariant forall k in 0..n: i <= k && k <= j ==> a[k] == old(a)[k]",
+            "  decreases j - i", "{"] + ["  " + s for s in step] + ["  i = i + 1;", "  j = j - 1;", "}"]
+    return g5_fn(name, "inout a: [i64]", "()", [],
+                 ["len(a) == len(old(a))", "forall k in 0..len(a): a[k] == old(a)[len(a) - 1 - k]"], body)
+
+
+def g5_fill_from(name, T, alt):
+    """Recursion (alt 0, one inout reborrow per level) or the equivalent loop (alt 1, same contract)."""
+    t = G5_T[T]
+    req = [g5_join("0 <= i && i <= len(a)", *g5_vreq(T, ["v"]))]
+    ens = ["len(a) == len(old(a))", "forall k in i..len(a): a[k] == v", "forall k in 0..i: a[k] == old(a)[k]"]
+    params = "inout a: %s, i: i64, v: %s" % (t["ty"], t["vty"])
+    if alt == 0:
+        body = ["if i < len(a) {", "  a[i] = v;", "  %s(inout a, i + 1, v);" % name, "}"]
+        return g5_fn(name, params, "()", req, ens, body, decreases="len(a) - i")
+    body = ["let n: i64 = len(a);", "let mut j: i64 = i;", "while j < n",
+            "  invariant 0 <= i && i <= j && j <= n", "  invariant n == len(old(a))",
+            "  invariant forall k in 0..i: a[k] == old(a)[k]", "  invariant forall k in i..j: a[k] == v",
+            "  invariant forall k in j..n: a[k] == old(a)[k]",
+            "  decreases n - j", "{", "  a[j] = v;", "  j = j + 1;", "}"]
+    return g5_fn(name, params, "()", req, ens, body)
+
+
+def g5_exchange(name, alt, pub=False):
+    """Generic over the Element bound: used at i64 and bool."""
+    body = ["let x: T = buf[i];", "let y: T = buf[j];"]
+    body += ["buf[i] = y;", "buf[j] = x;"] if alt == 0 else ["buf[j] = x;", "buf[i] = y;"]
+    return g5_fn(name + "<T: Element>", "inout buf: [T], i: i64, j: i64", "()",
+                 ["0 <= i && i < len(buf) && 0 <= j && j < len(buf)"],
+                 ["len(buf) == len(old(buf))", "buf[i] == old(buf)[j]", "buf[j] == old(buf)[i]",
+                  "forall k in 0..len(buf): k != i && k != j ==> buf[k] == old(buf)[k]"], body, pub)
+
+
+def g5_order_pair(name):
+    """An inout function with a bool result (the call is the whole initializer of a let)."""
+    return g5_fn(name, "inout a: [i64], i: i64, j: i64", "bool",
+                 ["0 <= i && i < len(a) && 0 <= j && j < len(a)"],
+                 ["len(a) == len(old(a))", "result ==> old(a)[i] > old(a)[j]", "!result ==> old(a)[i] <= old(a)[j]",
+                  "result ==> a[i] == old(a)[j] && a[j] == old(a)[i]",
+                  "!result ==> a[i] == old(a)[i] && a[j] == old(a)[j]",
+                  "forall k in 0..len(a): k != i && k != j ==> a[k] == old(a)[k]"],
+                 ["if a[i] > a[j] {", "  let x: i64 = a[i];", "  let y: i64 = a[j];", "  a[i] = y;", "  a[j] = x;",
+                  "  return true;", "}", "return false;"])
+
+
+def g5_fill_pair(name):
+    """Two inout parameters in one call (relational postcondition over both owners)."""
+    return g5_fn(name, "inout lo: [i64], inout hi: [i64], v: i64", "()",
+                 ["len(lo) >= 2 && len(hi) >= 2 && -1000 < v && v < 1000"],
+                 ["len(lo) == len(old(lo))", "len(hi) == len(old(hi))", "lo[0] == v", "lo[1] == v + 1",
+                  "hi[0] == v + 2", "hi[1] == v + 3"],
+                 ["lo[0] = v;", "hi[0] = lo[0] + 2;", "lo[1] = lo[0] + 1;", "hi[1] = hi[0] + 1;"])
+
+
+def g5_blit(name):
+    """inout destination + read-only source (another owner), prefix copy."""
+    return g5_fn(name, "inout dst: [i64], src: [i64], n: i64", "()",
+                 ["0 <= n && n <= len(dst) && n <= len(src)"],
+                 ["len(dst) == len(old(dst))", "forall k in 0..n: dst[k] == src[k]",
+                  "forall k in n..len(dst): dst[k] == old(dst)[k]"],
+                 ["let mut i: i64 = 0;", "while i < n",
+                  "  invariant 0 <= i && i <= n",
+                  "  invariant forall k in 0..i: dst[k] == src[k]",
+                  "  invariant forall k in i..len(dst): dst[k] == old(dst)[k]",
+                  "  decreases n - i", "{", "  dst[i] = src[i];", "  i = i + 1;", "}"])
+
+
+def g5_dump(name):
+    return g5_fn(name, "a: [i64]", "()", [], [],
+                 ["let n: i64 = len(a);", "let mut i: i64 = 0;", "while i < n",
+                  "  invariant 0 <= i && i <= n", "  decreases n - i", "{", "  print(a[i]);", "  i = i + 1;", "}"],
+                 effects="io")
+
+
+# ---- input hints: arrays {kind, minlen, elem (lo, hi), bad}, ints {name: (lo, hi)}, idx {name: (array, off)} (valid
+# 0..len(array)-off), cnt {name: (array, array)} (valid 0..min of the lengths), samelen [(array, array)]
+
+def g5_ah(T, minlen=0, lo=None, hi=None, bad=None):
+    d = {"kind": T, "minlen": minlen}
+    if T == "i64":
+        d["elem"] = (-50 if lo is None else lo, 50 if hi is None else hi)
+    elif T == "u8":
+        d["elem"] = (0 if lo is None else lo, 255 if hi is None else hi)
+    if bad is not None:
+        d["bad"] = bad
+    return d
+
+
+def g5_vh(T):
+    return {"i64": (-1000, 1000), "u8": (0, 255)}.get(T, (0, 1))
+
+
+def g5_hints(arrays=None, ints=None, idx=None, cnt=None, samelen=None):
+    return {"arrays": arrays or {}, "ints": ints or {}, "idx": idx or {}, "cnt": cnt or {}, "samelen": samelen or []}
+
+
+# ---- scenarios: (P, rng, arg, alt) -> {"params", "ret", "hints"}; helpers and the host entry are added to P
+
+def g5_sc_pairs(P, rng, T, alt):
+    t = G5_T[T]
+    extra = rng.randrange(3)
+    P.add(g5_set_at("put_at", T, alt))
+    P.add(g5_put_pair("put_pair", T, "put_at"))
+    body = ["let mut w: %s = copy(a);" % t["ty"], "put_pair(inout w, i, v, u);", "put_at(inout w, i, u);"]
+    if extra >= 1:
+        body.append("put_at(inout w, i + 1, v);")
+    if extra == 2:
+        body.append("put_pair(inout w, i, u, v);")
+    body.append("return w;")
+    P.add(g5_host("a: %s, i: i64, v: %s, u: %s" % (t["ty"], t["vty"], t["vty"]), t["ty"],
+                  [g5_join("0 <= i && i + 1 < len(a)", *g5_vreq(T, ["v", "u"]))],
+                  ["len(result) == len(a)"], body))
+    P.feat("type_" + T, "repeated_reborrow", "nested_reborrow", "array_return", "frame_forall")
+    return {"params": [["a", t["pt"]], ["i", "i64"], ["v", t["pv"]], ["u", t["pv"]]], "ret": t["rt"],
+            "hints": g5_hints({"a": g5_ah(T, 2)}, {"v": g5_vh(T), "u": g5_vh(T)}, {"i": ("a", 2)})}
+
+
+def g5_sc_swapgen(P, rng, in_mod, alt):
+    pre = "crate::swaps::" if in_mod else ""
+    P.add(g5_exchange("exchange", alt, pub=in_mod), ("swaps",) if in_mod else ())
+    body = ["let mut w: [i64] = copy(a);", "let mut g: [bool] = copy(fl);",
+            "%sexchange::<i64>(inout w, i, j);" % pre,
+            "%sexchange::<bool>(inout g, i, j);" % pre,
+            "if g[i] {", "  %sexchange::<i64>(inout w, i, j);" % pre, "}", "return w;"]
+    P.add(g5_host("a: [i64], fl: [bool], i: i64, j: i64", "[i64]",
+                  ["0 <= i && i < len(a) && 0 <= j && j < len(a) && len(fl) == len(a)"],
+                  ["len(result) == len(a)"], body))
+    P.feat("type_i64", "type_bool", "generic_instance", "repeated_reborrow", "multi_owner", "array_return",
+           "frame_forall")
+    if in_mod:
+        P.feat("module_call")
+    return {"params": [["a", "array"], ["fl", "array_bool"], ["i", "i64"], ["j", "i64"]], "ret": "[i64]",
+            "hints": g5_hints({"a": g5_ah("i64", 1), "fl": g5_ah("bool", 0)}, None, {"i": ("a", 1), "j": ("a", 1)},
+                              None, [("a", "fl")])}
+
+
+def g5_sc_loopfill(P, rng, T, alt):
+    t = G5_T[T]
+    scalar = rng.random() < 0.35
+    P.add(g5_set_at("put_at", T, 0))
+    P.add(g5_fill_all("fill_all", T, "put_at", alt))
+    body = ["let mut w: %s = copy(a);" % t["ty"], "fill_all(inout w, v);", "put_at(inout w, i, u);",
+            "return w[i];" if scalar else "return w;"]
+    P.add(g5_host("a: %s, i: i64, v: %s, u: %s" % (t["ty"], t["vty"], t["vty"]), t["rs"] if scalar else t["ty"],
+                  [g5_join("0 <= i && i < len(a)", *g5_vreq(T, ["v", "u"]))],
+                  [] if scalar else ["len(result) == len(a)"], body))
+    P.feat("type_" + T, "loop", "nested_reborrow", "repeated_reborrow", "frame_forall",
+           "scalar_return" if scalar else "array_return")
+    return {"params": [["a", t["pt"]], ["i", "i64"], ["v", t["pv"]], ["u", t["pv"]]],
+            "ret": t["rs"] if scalar else t["rt"],
+            "hints": g5_hints({"a": g5_ah(T, 1)}, {"v": g5_vh(T), "u": g5_vh(T)}, {"i": ("a", 1)})}
+
+
+def g5_sc_loopbump(P, rng, T, alt):
+    t = G5_T[T]
+    scalar = rng.random() < 0.35
+    twice = rng.random() < 0.5
+    P.add(g5_step_at("step_at", T, 0))
+    P.add(g5_step_all("step_all", T, "step_at", alt))
+    body = ["let mut w: %s = copy(a);" % t["ty"], "step_all(inout w);"]
+    if T == "bool" and twice:
+        body.append("step_all(inout w);")          # flipping twice restores the input (no requires on bool)
+    body.append("return w[0];" if scalar else "return w;")
+    req = ["len(a) >= 1"] if scalar else []
+    if T != "bool":
+        req.append("forall k in 0..len(a): a[k] < %d" % G5_LIM[T])
+    P.add(g5_host("a: %s" % t["ty"], t["rs"] if scalar else t["ty"], req,
+                  [] if scalar else ["len(result) == len(a)"], body))
+    P.feat("type_" + T, "loop", "nested_reborrow", "frame_forall", "scalar_return" if scalar else "array_return")
+    if T == "bool" and twice:
+        P.feat("repeated_reborrow")
+    if T == "i64":
+        ah = g5_ah(T, 1 if scalar else 0, -100, 999, 1000)
+    elif T == "u8":
+        ah = g5_ah(T, 1 if scalar else 0, 0, 254, 255)
+    else:
+        ah = g5_ah(T, 1 if scalar else 0)
+    return {"params": [["a", t["pt"]]], "ret": t["rs"] if scalar else t["rt"], "hints": g5_hints({"a": ah})}
+
+
+def g5_sc_reverse(P, rng, T, alt):
+    twice = rng.random() < 0.5
+    P.add(g5_swap_at("swap_at"))
+    P.add(g5_reverse("reverse", "swap_at", alt))
+    body = ["let mut w: [i64] = copy(a);", "reverse(inout w);"]
+    if twice:
+        body.append("reverse(inout w);")
+    body.append("return w;")
+    P.add(g5_host("a: [i64]", "[i64]", [], ["len(result) == len(a)"], body))
+    P.feat("type_i64", "loop", "nested_reborrow", "array_return", "frame_forall",
+           "repeated_reborrow" if twice else "single_call")
+    return {"params": [["a", "array"]], "ret": "[i64]", "hints": g5_hints({"a": g5_ah("i64", 0)})}
+
+
+def g5_sc_recur(P, rng, T, alt):
+    t = G5_T[T]
+    scalar = rng.random() < 0.35
+    P.add(g5_fill_from("fill_from", T, alt))
+    body = ["let mut w: %s = copy(a);" % t["ty"], "fill_from(inout w, i, v);", "return w[i];" if scalar else "return w;"]
+    P.add(g5_host("a: %s, i: i64, v: %s" % (t["ty"], t["vty"]), t["rs"] if scalar else t["ty"],
+                  [g5_join("0 <= i && i < len(a)" if scalar else "0 <= i && i <= len(a)", *g5_vreq(T, ["v"]))],
+                  [] if scalar else ["len(result) == len(a)"], body))
+    P.feat("type_" + T, "recursion" if alt == 0 else "loop", "frame_forall",
+           "scalar_return" if scalar else "array_return")
+    return {"params": [["a", t["pt"]], ["i", "i64"], ["v", t["pv"]]], "ret": t["rs"] if scalar else t["rt"],
+            "hints": g5_hints({"a": g5_ah(T, 1 if scalar else 0)}, {"v": g5_vh(T)},
+                              {"i": ("a", 1 if scalar else 0)})}
+
+
+def g5_sc_multi(P, rng, T, alt):
+    P.add(g5_fill_pair("fill_pair"))
+    P.add(g5_blit("blit"))
+    P.add(g5_dump("dump"))
+    body = ["let mut x: [i64] = copy(a);", "let mut y: [i64] = copy(b);", "fill_pair(inout x, inout y, v);",
+            "fill_pair(inout y, inout x, v + 10);", "blit(inout x, y, n);", "dump(y);", "return x;"]
+    P.add(g5_host("a: [i64], b: [i64], v: i64, n: i64", "[i64]",
+                  ["len(a) >= 2 && len(b) >= 2 && -1000 < v && v < 900 && 0 <= n && n <= len(a) && n <= len(b)"],
+                  ["len(result) == len(a)"], body, effects="io, alloc"))
+    P.feat("type_i64", "multi_owner", "two_inout_args", "swapped_roles", "readonly_other_owner", "loop",
+           "print_output", "array_return", "frame_forall")
+    return {"params": [["a", "array"], ["b", "array"], ["v", "i64"], ["n", "i64"]], "ret": "[i64]",
+            "hints": g5_hints({"a": g5_ah("i64", 2), "b": g5_ah("i64", 2)}, {"v": (-999, 899)}, None,
+                              {"n": ("a", "b")})}
+
+
+def g5_sc_cond(P, rng, T, alt):
+    P.add(g5_order_pair("order_pair"))
+    body = ["let mut w: [i64] = copy(a);", "let c: bool = order_pair(inout w, i, j);", "if c {", "  return w[i];", "}",
+            "return w[j];"]
+    P.add(g5_host("a: [i64], i: i64, j: i64", "i64", ["0 <= i && i < len(a) && 0 <= j && j < len(a)"], [], body))
+    P.feat("type_i64", "bool_result_call", "scalar_return", "frame_forall")
+    return {"params": [["a", "array"], ["i", "i64"], ["j", "i64"]], "ret": "i64",
+            "hints": g5_hints({"a": g5_ah("i64", 1)}, None, {"i": ("a", 1), "j": ("a", 1)})}
+
+
+def g5_sc_modules(P, rng, T, alt, nested=False):
+    t = G5_T[T]
+    if nested:
+        P.add(g5_set_at("put_at", T, alt, pub=True), ("ops", "deep"))
+        P.add(g5_put_pair("put_pair", T, "crate::ops::deep::put_at", pub=True), ("ops",))
+        extra = "crate::ops::deep::put_at(inout w, i + 1, v);"
+    else:
+        P.add(g5_set_at("put_at", T, alt, pub=True), ("ops",))
+        P.add(g5_put_pair("put_pair", T, "put_at", pub=True), ("ops",))
+        extra = "crate::ops::put_at(inout w, i, u);"
+    body = ["let mut w: %s = copy(a);" % t["ty"], "crate::ops::put_pair(inout w, i, v, u);", extra, "return w;"]
+    P.add(g5_host("a: %s, i: i64, v: %s, u: %s" % (t["ty"], t["vty"], t["vty"]), t["ty"],
+                  [g5_join("0 <= i && i + 1 < len(a)", *g5_vreq(T, ["v", "u"]))],
+                  ["len(result) == len(a)"], body))
+    P.feat("type_" + T, "module_call", "nested_reborrow", "repeated_reborrow", "array_return", "frame_forall")
+    if nested:
+        P.feat("nested_module")
+    return {"params": [["a", t["pt"]], ["i", "i64"], ["v", t["pv"]], ["u", t["pv"]]], "ret": t["rt"],
+            "hints": g5_hints({"a": g5_ah(T, 2)}, {"v": g5_vh(T), "u": g5_vh(T)}, {"i": ("a", 2)})}
+
+
+G5_SCENARIOS = {
+    "pairs": g5_sc_pairs, "swapgen": g5_sc_swapgen, "loopfill": g5_sc_loopfill, "loopbump": g5_sc_loopbump,
+    "reverse": g5_sc_reverse, "recur": g5_sc_recur, "multi": g5_sc_multi, "cond": g5_sc_cond,
+    "modules": lambda P, rng, T, alt: g5_sc_modules(P, rng, T, alt, False),
+    "modules_nested": lambda P, rng, T, alt: g5_sc_modules(P, rng, T, alt, True),
+}
+# (scenario, element type / in-module flag): one full rotation covers every concrete element type, generic instances in the
+# root and in a module, loops, recursion, nested and repeated reborrows, two owners, a bool-result call and module calls
+G5_COMBOS = [("pairs", "i64"), ("pairs", "u8"), ("pairs", "bool"), ("swapgen", False), ("swapgen", True),
+             ("loopfill", "i64"), ("loopfill", "u8"), ("loopfill", "bool"),
+             ("loopbump", "i64"), ("loopbump", "u8"), ("loopbump", "bool"),
+             ("reverse", "i64"), ("recur", "i64"), ("recur", "u8"), ("recur", "bool"),
+             ("multi", "i64"), ("cond", "i64"),
+             ("modules", "i64"), ("modules", "u8"), ("modules", "bool"),
+             ("modules_nested", "i64"), ("modules_nested", "u8")]
+# scenarios with a contract-preserving alternative body (the `alt` argument): twin pairs are drawn from these
+G5_ALT_KINDS = ("pairs", "swapgen", "loopfill", "loopbump", "reverse", "recur", "modules", "modules_nested")
+G5_ALT_COMBOS = [c for c in G5_COMBOS if c[0] in G5_ALT_KINDS]
+
+
+def generate_g5_case(seed, index):
+    """Program numbers 2k and 2k+1 are a twin pair for about 30% of k: same program except that one callee body is
+    replaced by another with the same contract (variant 0 / 1); they get the same inputs (`input_key`)."""
+    base, variant = divmod(index, 2)
+    twin = random.Random("g5:%s:%s:twin" % (seed, base)).random() < 0.3
+    rng = random.Random("g5:%s:%s:prog" % (seed, base) if twin else "g5:%s:%s:single" % (seed, index))
+    if twin:
+        kind, arg = G5_ALT_COMBOS[(base + seed) % len(G5_ALT_COMBOS)]
+    else:
+        kind, arg = G5_COMBOS[(index + seed) % len(G5_COMBOS)]
+    alt = variant if twin else rng.randrange(2)
+    P = G5Prog()
+    sc = G5_SCENARIOS[kind](P, rng, arg, alt)
+    files = P.files()
+    P.feat("old_contract", "files_%d" % len(files))
+    if twin:
+        P.feat("body_replacement_twin")
+    elif kind in G5_ALT_KINDS and alt:
+        P.feat("alternative_body")
+    return {"name": "g5c%s_%s" % (seed, index), "src": files["root.pruv"], "files": files, "entry": "f",
+            "params": sc["params"], "ret": sc["ret"], "kind": "g5_%s_%s" % (kind, arg), "input_hints": sc["hints"],
+            "g5": True, "g5_features": sorted(P.feats),
+            "g5_has_invariant": any("invariant " in t for t in files.values()),
+            "g5_twin": ("%s_%s" % (seed, base)) if twin else None, "g5_variant": variant,
+            "input_key": ("g5in%s_%s" % (seed, base)) if twin else None}
+
+
+def g5_strip_invariants(files):
+    """The same program without its loop invariants (for the --infer probe: `decreases` and the contracts stay)."""
+    out = {}
+    for rel, text in files.items():
+        out[rel] = "\n".join(l for l in text.split("\n") if not l.strip().startswith("invariant "))
+    return out
+
+
+def g5_array(rng, h, bad):
+    kind, minlen = h["kind"], h.get("minlen", 0)
+    if bad and minlen > 0:
+        n = minlen - 1
+    else:
+        n = min(8, rng.choice([minlen, minlen + 1, rng.randint(minlen, 8), rng.randint(minlen, 8), 8]))
+    if kind == "bool":
+        out = [rng.random() < 0.5 for _ in range(n)]
+    else:
+        lo, hi = h["elem"]
+        out = [pick_in_range(rng, lo, hi) for _ in range(n)]
+    if out and h.get("bad") is not None and (bad or rng.random() < 0.06):
+        out[rng.randrange(len(out))] = h["bad"]
+    return out
+
+
+def g5_fit(rng, arr, n, h):
+    arr = list(arr)[:n]
+    while len(arr) < n:
+        arr.append((rng.random() < 0.5) if h["kind"] == "bool" else pick_in_range(rng, *h["elem"]))
+    return arr
+
+
+def g5_candidate_inputs(case, rng, n):
+    h = case["input_hints"]
+    names = [p[0] for p in case["params"]]
+    out = []
+    for _ in range(n):
+        bad = rng.randrange(len(names)) if rng.random() < 0.2 else -1
+        vals = {}
+        for j, (name, pt) in enumerate(case["params"]):
+            if name in h["arrays"]:
+                vals[name] = g5_array(rng, h["arrays"][name], j == bad)
+        for x, y in h["samelen"]:
+            if rng.random() < 0.85:
+                vals[y] = g5_fit(rng, vals[y], len(vals[x]), h["arrays"][y])
+        for j, (name, pt) in enumerate(case["params"]):
+            if name in vals:
+                continue
+            if name in h["idx"]:
+                arr, off = h["idx"][name]
+                hi = len(vals[arr]) - off
+                if j != bad and hi >= 0:
+                    vals[name] = rng.choice([0, hi, rng.randint(0, hi), rng.randint(0, hi)])
+                else:
+                    vals[name] = rng.choice([-1, hi + 1, hi + 2, len(vals[arr]) + 1])
+            elif name in h["cnt"]:
+                x, y = h["cnt"][name]
+                hi = min(len(vals[x]), len(vals[y]))
+                if j != bad:
+                    vals[name] = rng.choice([0, hi, rng.randint(0, hi), rng.randint(0, hi)])
+                else:
+                    vals[name] = rng.choice([-1, hi + 1, hi + 2])
+            elif pt == "bool":
+                vals[name] = rng.choice([True, False])
+            else:
+                lo, hi = h["ints"][name]
+                vals[name] = g4_pick(rng, lo, hi, j == bad)
+        out.append([vals[nm] for nm in names])
+    return out
+
+
 # ---------------------------------------------------------------- case assembly
 
 def render(ctx, body):
@@ -5946,7 +6468,9 @@ def render(ctx, body):
     return fsrc + "\n"
 
 
-def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False):
+def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False, g5=False):
+    if g5:
+        return generate_g5_case(seed, index)
     if g4:
         return generate_g4_case(seed, index)
     if g9:
@@ -6171,6 +6695,8 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g5"):
+        return g5_candidate_inputs(case, rng, n)
     if case.get("g4"):
         return g4_candidate_inputs(case, rng, n)
     if case.get("g9"):
@@ -6235,15 +6761,19 @@ def main(argv=None):
                     help="G9 mode: recursion, recursive types and buffer fields (some deliberately unproved)")
     ap.add_argument("--g4", action="store_true",
                     help="G4 mode: multi-module programs, one directory per program (root.pruv + module files)")
+    ap.add_argument("--g5", action="store_true",
+                    help="G5 mode: inout-parameter programs, one directory per program (root.pruv + module files)")
     a = ap.parse_args(argv)
     if a.g9 and (a.g2 or a.g3 or a.g6):
         ap.error("--g9 is a separate mode (not combinable with --g2/--g3/--g6)")
     if a.g4 and (a.g2 or a.g3 or a.g6 or a.g9):
         ap.error("--g4 is a separate mode (not combinable with --g2/--g3/--g6/--g9)")
+    if a.g5 and (a.g2 or a.g3 or a.g6 or a.g9 or a.g4):
+        ap.error("--g5 is a separate mode (not combinable with --g2/--g3/--g6/--g9/--g4)")
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4)
-        if a.g4:
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4, g5=a.g5)
+        if a.g4 or a.g5:
             for rel, text in case["files"].items():
                 path = os.path.join(a.out, case["name"], *rel.split("/"))
                 os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -1,0 +1,13 @@
+diff --git a/pruvc/verify.py b/pruvc/verify.py
+index e42865c..62ec804 100644
+--- a/pruvc/verify.py
++++ b/pruvc/verify.py
+@@ -1501,7 +1501,7 @@ class FnVerifier:
+             # G5 A1: old(a) is the frozen entry array. A callee contract being instantiated at a call site supplies its
+             # own pre-call arrays under ("old", name) in its environment; otherwise it is this function's snapshot.
+             key = ("old", e.old["param"])
+-            return env[key] if key in env else s.snap[e.old["param"]]
++            return env[key] if key in env else st.env[e.old["param"]]
+         args = [s.ev(a, st, g, code, env) for a in e.args]
+         if n == "len":
+             return args[0].n
