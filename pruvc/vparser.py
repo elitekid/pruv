@@ -138,8 +138,11 @@ def _g4_token(word, src, end, toks, depth):
     return _G4_PUB_AHEAD.match(src, end) is not None
 
 
-def lex(src):
-    toks, pos, line, lstart = [], 0, 1, 0
+def lex(src, toks=None):
+    """`toks` (optional) receives the tokens; on a lex error it keeps the ones read so far (G4 sniff)"""
+    if toks is None:
+        toks = []
+    pos, line, lstart = 0, 1, 0
     depth = 0   # G4: brace depth
     while pos < len(src):
         if src[pos] == '"':

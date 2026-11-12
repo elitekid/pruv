@@ -327,6 +327,63 @@ The G9 LLVM output defines its clone/drop/node helpers as `internal` symbols, so
 | Seed | Compiler | Generated | Verified | Safe-only | Executions compared | Failures | Digest |
 |---|---|---|---|---|---|---|---|
 
+## G4 mode (`--g4`)
+
+Multi-file module programs (SPEC §6f, `docs/G4_SPEC.md` §2-§4, §14 item 2). `--g4` is a separate mode (not combinable with `--g2`/`--g3`/`--g6`/`--g9`);
+without it nothing changes.
+
+```
+python bench/fuzz/run.py --g4 --seed 41 --programs 30 --inputs 8 --compiler rs     # then again with --compiler py
+python bench/fuzz/run.py --g4 --seeds 41,56,57 --compiler rs
+python bench/fuzz/generate.py --g4 --seed 41 --count 6 --out /tmp/pruvgen_g4         # one folder per program
+python bench/fuzz/run.py --replay bench/fuzz/out/g4_41_rs/failures/<kind>_<case>      # a saved program folder (root.pruv inside)
+python bench/fuzz/oracle.py                                                           # includes _selftest_g4
+```
+
+`--programs` defaults to 30 with `--g4`. Output folder `out/g4_<seed>[_rs]`; options as for `--g9` (no `--g4-safe-only`).
+
+**Layout of a program.** One directory per program (`g4c<seed>_<index>/`), 2-5 modules in all (root counts): `root.pruv`, `<m>.pruv`, and for nested
+modules `<m>/<n>.pruv` (a `mod n;` inside `m.pruv` loads `m/n.pruv`); some programs reuse a leaf module name under two parents (`a/util`, `b/util`).
+The compiler is called on `<dir>/root.pruv`; its output files land next to it. Failures are saved as whole program folders
+(`failures/<kind>_<name>/root.pruv, a.pruv, a/b.pruv, ..., inputs.json, results.json`), `unexpected_rejects/<name>/` and `oracle_gap/<name>/` the same way.
+
+**Generator** (`generate_g4_case`, class `G4Gen`; rng `"g4:<seed>:<index>:single"`, inputs `"g4:<seed>:<name>:inputs"`). The root has one host entry
+`pub fn f(x, ..) -> i64` (1-3 `i64` parameters, so the existing driver shim `<mod>::f(..)` is reused unchanged), often a root `pub` scalar helper that child
+modules call as `crate::h(..)`, sometimes a private root helper. Variety: private and `pub` helpers; the same leaf function name (`helper`, even `f`) and the
+same struct/enum leaf (`Pair`, `Mode`, ...) in several modules with different bodies/fields; generic calls by path (`crate::g::pick::<i64>(..)`, `id::<bool>`,
+`Boxed<i64>`, `repeat::<i64>` + `first::<i64>` over an array); structs and enums by full path (types, qualified literals `crate::m::Pair { v: a, w: b }`,
+`match` patterns `crate::m::Mode::Low`, `is_variant` contracts); calls to the parent/root (`call_to_ancestor`), to children (`call_to_descendant`) and sideways.
+Function-level calls are acyclic (a function only calls functions created before it), so no `decreases` is needed for recursion; module-level cycles do occur
+(root `f` -> child -> root `h`). Every contract is an exact `result == <affine expression>` or a range, and each call's arguments are built so that the
+callee's `requires` follow from the caller's parameter ranges (shifted values or constants otherwise); loops carry invariants/`decreases`.
+All programs are meant to verify (no deliberately unproved ones).
+
+**Twins (contract-preserving body replacement).** For about 30% of the program numbers `2k` and `2k+1` are a pair, identical except one pub callee whose body is replaced
+by a different one with the same functional contract (`k*x+c` as a formula / unrolled assignments / an `if`; `k*n+c` as a formula / counting loop / counting-down loop). They get the
+same inputs (`input_key`) and `twin_mismatch` is reported if any mode/input differs (`g4_twin_pairs_compared` counts the pairs that were really compared).
+
+**Oracle** (`oracle.py`: `parse_modules`, `flatten_modules`, `_selftest_g4`). It loads the files itself (`mod name;` -> `P/name.pruv`), resolves `crate::a::b::item[::Variant]`
+to the item of that module, resolves an unqualified name only in the same module, and keeps same-named items of different modules distinct by giving every non-root item
+a unique name (`m<module no>_<name>`) in a flattened single-file program that the ordinary interpreter runs; root names (`f`) are kept. It imports nothing from the compiler
+and does not check visibility (the compiler does; the generator only emits legal programs).
+
+**Harness.** Same pipeline as `--g9`: each program is compiled with `--compiler py|rs` to both backends, verified programs run in `rust-proof`, `rust-safe`, `llvm-proof`,
+`llvm-safe`, each mode compared with its own oracle result and `rust-X == llvm-X`; a rejected program (all rejects are "meant to verify" ones) is run in the safe modes only and reported.
+`requires violated` is compared by message kind only (`pruv: requires violated: `). Summary keys with prefix `g4_`: `g4_generated`, `g4_verified`, `g4_executions_compared`
+(and `_not_compared`), `g4_failures`, `g4_kinds_verified`, `g4_features_verified`, `g4_inputs_per_program_min`, `g4_twin_pairs_compared`, `g4_unexpected_rejects`, `g4_timeouts`,
+`g4_digest`, `g4_digest_exit_stdout`, and `g4_mismatches` = `backend_or_mode_mismatch` / `oracle_mismatch` / `unsound` / `twin_mismatch`. The digest depends only on generated programs
+and run results, so `--compiler py` and `--compiler rs` with the same seed must print the same `G4 digest`.
+
+**Limits / assumptions** (nothing here was executed when it was written): which programs the verifier accepts is a guess modelled on `tests/g4/*`, `tests/runtime/g4_*` and the G3
+fragments, so a systematic rejection shows up as `g4_unexpected_rejects`; the least certain shapes are the `repeat::<i64>` + `first::<i64>` array case (needs quantifier
+instantiation), `match` on a cross-module enum with `x > 0 ==> result == k` ensures, and qualified literals/types of the root (`crate::Name`, avoided). Only `i64` scalars cross the host boundary;
+no recursion, no `main`, no foreign (`trusted`) functions, no negative (must-reject) module cases; the oracle does not check privacy.
+
+### G4 run log (filled in by the main)
+
+| Seed | Compiler | Generated | Verified | Executions compared | Failures | Digest |
+|---|---|---|---|---|---|---|
+
 ## Failure kinds
 
 | kind | Meaning |
@@ -350,6 +407,10 @@ The G9 LLVM output defines its clone/drop/node helpers as `internal` symbols, so
 | `g9_shortfall` | (`--g9` only) Fewer counted verified programs than `--programs` or fewer counted unproved safe-only programs than `--g9-safe-only`. The value is the sum of the shortfalls |
 | `g9_generator_invalid` | (`--g9` only) A generated program did not pass parse/type/effect checking |
 | `g9_oracle_gap` | (`--g9` only) The oracle could not parse or evaluate a generated program |
+| `twin_mismatch` | (`--g4` only) Two programs that differ only in one contract-preserving callee body gave different (exit code, stdout, `pruv:` line) for the same mode and input |
+| `g4_shortfall` | (`--g4` only) Fewer counted verified programs than `--programs`. The value is the shortfall |
+| `g4_generator_invalid` | (`--g4` only) A generated program did not pass parse/type/effect checking |
+| `g4_oracle_gap` | (`--g4` only) The oracle could not load, resolve or evaluate a generated program |
 
 ## Oracle independence
 

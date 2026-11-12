@@ -188,8 +188,14 @@ pub fn lex(src: &[char]) -> Result<Vec<Tok>, PruvError> {
 
 /// `lex` for module file number `tag` (G4: the line numbers carry the tag, see diagnostic.rs; tag 0 = plain lines).
 pub fn lex_tagged(src: &[char], tag: usize) -> Result<Vec<Tok>, PruvError> {
-    let n = src.len();
     let mut toks: Vec<Tok> = Vec::new();
+    lex_into(src, tag, &mut toks)?;
+    Ok(toks)
+}
+
+/// `lex_tagged` that leaves the tokens read so far in `toks` when it fails (G4 sniff of a broken root)
+pub fn lex_into(src: &[char], tag: usize, toks: &mut Vec<Tok>) -> Result<(), PruvError> {
+    let n = src.len();
     let (mut pos, mut line, mut lstart) = (0usize, 1i64 + ((tag as i64) << 32), 0usize);
     let mut brace_depth: usize = 0; // G4: brace depth
     while pos < n {
@@ -330,7 +336,7 @@ pub fn lex_tagged(src: &[char], tag: usize) -> Result<Vec<Tok>, PruvError> {
     }
     let eof_col = (pos - lstart + 1) as i64;
     toks.push(Tok { kind: Kind::Eof, val: String::new(), line, col: eof_col, end: eof_col });
-    Ok(toks)
+    Ok(())
 }
 
 #[cfg(test)]

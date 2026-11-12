@@ -1,0 +1,62 @@
+{
+ "solutions": "/Users/spica4345/Projects/pruv/bench/g4/solutions",
+ "flags": [],
+ "results": {
+  "py-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 1854,
+    "tests_total": 1854,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 93,
+    "tests_total": 93,
+    "panics": 0
+   }
+  },
+  "py-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 1854,
+    "tests_total": 1854,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 93,
+    "tests_total": 93,
+    "panics": 0
+   }
+  },
+  "rs-rust": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 1854,
+    "tests_total": 1854,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 93,
+    "tests_total": 93,
+    "panics": 0
+   }
+  },
+  "rs-llvm": {
+   "q01": {
+    "status": "ok",
+    "tests_passed": 1854,
+    "tests_total": 1854,
+    "panics": 0
+   },
+   "q02": {
+    "status": "ok",
+    "tests_passed": 93,
+    "tests_total": 93,
+    "panics": 0
+   }
+  }
+ }
+}

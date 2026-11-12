@@ -13,7 +13,7 @@ use crate::ast::Program;
 use crate::codegen::{fmt_underscore, ALLOW_G6};
 use crate::emit_common::{rstr, rty_g, show, try_conv_g, try_cty_g};
 use crate::gtype::{encode, format_type, mk_option, GType};
-use crate::modules::safe_type;
+use crate::modules::safe_type_cow;
 use std::collections::HashSet;
 
 type R<T> = Result<T, String>;
@@ -208,7 +208,7 @@ impl ForeignGen {
         let mut name = format!("pruv_g6_{}", op);
         for t in src {
             name.push_str("__");
-            name.push_str(&encode(&safe_type(t))?); // G4: nominal identities use their [0-9A-Za-z_] encoding
+            name.push_str(&encode(&safe_type_cow(t))?); // G4: nominal identities use their [0-9A-Za-z_] encoding
         }
         if !self.has_item(&name) {
             self.op = op.to_string();
@@ -378,7 +378,7 @@ impl ForeignGen {
         let mut name = String::from("pruv_g6_map_updated");
         for t in src {
             name.push_str("__");
-            name.push_str(&encode(&safe_type(t))?); // G4: nominal identities use their [0-9A-Za-z_] encoding
+            name.push_str(&encode(&safe_type_cow(t))?); // G4: nominal identities use their [0-9A-Za-z_] encoding
         }
         if self.has_item(&name) {
             return Ok(name);

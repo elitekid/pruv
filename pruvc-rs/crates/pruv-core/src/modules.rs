@@ -65,17 +65,23 @@ pub fn identity_components(identity: &str) -> Vec<String> {
 /// A type whose nominal names (identities) are replaced by their `encode_name` (Python `safe_type`), so that the G3 stem and
 /// argument encodings only ever see [0-9A-Za-z_] names; injective like the identity.
 pub fn safe_type(ty: &GType) -> GType {
+    safe_type_cow(ty).into_owned()
+}
+
+/// `safe_type` that borrows a type it leaves unchanged (legacy types and builtin-only trees are never copied)
+pub fn safe_type_cow(ty: &GType) -> std::borrow::Cow<'_, GType> {
+    use std::borrow::Cow;
     if ty.owner.is_some() {
-        return ty.clone();
+        return Cow::Borrowed(ty);
     }
-    let args: Vec<GType> = ty.args.iter().map(safe_type).collect();
+    let args: Vec<Cow<'_, GType>> = ty.args.iter().map(safe_type_cow).collect();
     if BUILTIN_TYPE_NAMES.contains(&ty.name.as_str()) || !ty.name.starts_with("crate::") {
-        if args == ty.args {
-            return ty.clone();
+        if args.iter().all(|a| matches!(a, Cow::Borrowed(_))) {
+            return Cow::Borrowed(ty);
         }
-        return GType::new(&ty.name, args);
+        return Cow::Owned(GType::new(&ty.name, args.into_iter().map(Cow::into_owned).collect()));
     }
-    GType::new(&encode_name(&identity_components(&ty.name)), args)
+    Cow::Owned(GType::new(&encode_name(&identity_components(&ty.name)), args.into_iter().map(Cow::into_owned).collect()))
 }
 
 #[derive(Debug, Clone)]

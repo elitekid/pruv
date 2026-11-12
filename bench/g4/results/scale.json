@@ -1,0 +1,93 @@
+{
+ "fixture": {
+  "modules": 99,
+  "files": 100,
+  "lines": 1822,
+  "n": 99,
+  "e": 99
+ },
+ "repeat": 3,
+ "note": "cold whole-program compiles; no incremental claim",
+ "rows": [
+  {
+   "compiler": "py",
+   "backend": "rust",
+   "mode": "proof",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 0.622,
+   "median_s": 2.508,
+   "note": ""
+  },
+  {
+   "compiler": "py",
+   "backend": "rust",
+   "mode": "no-verify",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 0.099,
+   "median_s": 0.103,
+   "note": ""
+  },
+  {
+   "compiler": "py",
+   "backend": "llvm",
+   "mode": "proof",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 0.614,
+   "median_s": 0.627,
+   "note": ""
+  },
+  {
+   "compiler": "py",
+   "backend": "llvm",
+   "mode": "no-verify",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 0.113,
+   "median_s": 0.113,
+   "note": ""
+  },
+  {
+   "compiler": "rs",
+   "backend": "rust",
+   "mode": "proof",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 0.639,
+   "median_s": 0.872,
+   "note": ""
+  },
+  {
+   "compiler": "rs",
+   "backend": "rust",
+   "mode": "no-verify",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 0.031,
+   "median_s": 0.031,
+   "note": ""
+  },
+  {
+   "compiler": "rs",
+   "backend": "llvm",
+   "mode": "proof",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 1.042,
+   "median_s": 1.653,
+   "note": ""
+  },
+  {
+   "compiler": "rs",
+   "backend": "llvm",
+   "mode": "no-verify",
+   "rc": 0,
+   "runs": 3,
+   "min_s": 0.019,
+   "median_s": 0.02,
+   "note": ""
+  }
+ ]
+}

@@ -1669,6 +1669,97 @@ def expected_stderr_prefix(result):
     return None
 
 
+# ---------------------------------------------------------------- G4: multi-module programs
+# The oracle resolves module paths itself (written from SPEC.md 6f / docs/G4_SPEC.md 2-3 only, no compiler code):
+#   * root.pruv is the root; `mod name;` in the file of module P loads P/name.pruv (root: name.pruv);
+#   * `crate::a::b::item[::Variant]` names item `item` of module crate::a::b; an unqualified item name means the
+#     item of the SAME module (never a parent, sibling or the whole program); builtins stay as they are;
+#   * the modules are flattened into one single-file program in which every non-root item gets a unique mangled name
+#     (`m<module number>_<name>`), so same-named items of different modules stay distinct; root items keep their
+#     names (the host entry `f` stays `f`). The flat program is then run by the ordinary interpreter above.
+# Visibility is NOT checked here (the compiler does that; the generator only emits legal programs).
+_G4_TOK = re.compile(r"""
+    (?P<com>//[^\n]*)
+  | (?P<path>\bcrate(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)+)
+  | (?P<mod>\bmod\s+[A-Za-z_][A-Za-z0-9_]*\s*;)
+  | (?P<pub>\bpub\b)
+  | (?P<num>\d[A-Za-z0-9_]*)
+  | (?P<id>[A-Za-z_][A-Za-z0-9_]*)
+""", re.X)
+_G4_ITEM = re.compile(r"\b(?:fn|struct|enum)\s+([A-Za-z_][A-Za-z0-9_]*)")
+_G4_MODDECL = re.compile(r"^[ \t]*mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", re.M)
+
+
+def _g4_load(files):
+    """files {relative path: source} -> (module path tuple -> comment-free source, load order). Root first, depth first."""
+    mods, order = {}, []
+
+    def load(path):
+        rel = ("/".join(path) + ".pruv") if path else "root.pruv"
+        if rel not in files:
+            raise OracleParseError("module file missing: %s" % rel)
+        text = re.sub(r"//[^\n]*", "", files[rel])
+        mods[path] = text
+        order.append(path)
+        for nm in _G4_MODDECL.findall(text):
+            if path + (nm,) in mods:
+                raise OracleParseError("module %s declared twice" % "::".join(path + (nm,)))
+            load(path + (nm,))
+
+    load(())
+    return mods, order
+
+
+def flatten_modules(files):
+    """-> single-file source of a multi-module program (see the block comment above)."""
+    mods, order = _g4_load(files)
+    items = dict((p, set(_G4_ITEM.findall(t))) for p, t in mods.items())
+
+    def mangle(path, name):
+        return name if not path else "m%d_%s" % (order.index(path), name)
+
+    def rewrite(path, text):
+        def resolve(segs):
+            cur, i = (), 0
+            while i < len(segs) and cur + (segs[i],) in mods:
+                cur += (segs[i],)
+                i += 1
+            if i >= len(segs):
+                raise OracleUnsupported("path crate::%s names a module, not an item" % "::".join(segs))
+            if segs[i] not in items[cur]:
+                raise OracleUnsupported("crate::%s: module %s has no item %s"
+                                        % ("::".join(segs), "::".join(("crate",) + cur), segs[i]))
+            return mangle(cur, segs[i]) + "".join("::" + s for s in segs[i + 1:])
+
+        def sub(m):
+            k = m.lastgroup
+            if k in ("com", "mod", "pub"):
+                return ""
+            if k == "path":
+                return resolve(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", m.group())[1:])
+            if k == "id" and m.group() in items[path]:
+                before = text[:m.start()].rstrip()
+                after = text[m.end():].lstrip()
+                if before.endswith(".") or before.endswith("::"):
+                    return m.group()               # field access / variant name, never an item
+                if after.startswith(":") and not after.startswith("::"):
+                    return m.group()               # `name: T` parameter / field label
+                return mangle(path, m.group())
+            return m.group()
+
+        return _G4_TOK.sub(sub, text)
+
+    return "\n".join(rewrite(p, mods[p]) for p in order) + "\n"
+
+
+def parse_modules(files):
+    """Program of a multi-module source tree ({relative path: source}, root = "root.pruv")."""
+    flat = flatten_modules(files)
+    prog = parse_program(flat)
+    prog.flat_src = flat
+    return prog
+
+
 # ---------------------------------------------------------------- self-test
 def _selftest():
     def go(src, fn, args, **kw):
@@ -2422,8 +2513,44 @@ def _selftest_g9():
     assert go(src, "f", [[], 9])["kind"] == "requires_violated"
 
 
+def _selftest_g4():
+    """G4 (docs/G4_SPEC.md 2-3): module loading, `crate::` path resolution, distinct same-named items."""
+    files = {
+        "root.pruv": ("mod a;\nmod b;\n"
+                      "pub fn f(x: i64) -> i64\n  requires 0 <= x && x <= 100\n  ensures result == 3 * x + 3\n{\n"
+                      "  let p: crate::a::util::T = crate::a::util::f(x);\n"
+                      "  let q: crate::b::util::T = crate::b::util::f(x);\n"
+                      "  return helper(p.v + q.v + q.w);\n}\n"
+                      "fn helper(x: i64) -> i64\n  ensures result == x\n{\n  return x;\n}\n"),
+        "a.pruv": "mod util;\n",
+        "a/util.pruv": ("pub struct T { v: i64 }\n"
+                        "pub fn f(x: i64) -> T\n  ensures result.v == x + 1\n{\n  return T { v: x + 1 };\n}\n"),
+        "b.pruv": "mod util;\n",
+        "b/util.pruv": ("pub struct T { v: i64, w: i64 }\n"
+                        "pub fn f(x: i64) -> T\n  ensures result.v == x + 1 && result.w == x + 1\n{\n"
+                        "  return crate::b::util::T { v: x + 1, w: x + 1 };\n}\n"),
+    }
+    prog = parse_modules(files)
+    for mode in ("safe", "proof"):
+        r = run(prog, "f", [10], mode=mode)
+        assert r["kind"] == "ok" and r["value"] == 33 and not r["contract_failures"], r
+        assert run(prog, "f", [101], mode=mode)["kind"] == "requires_violated"
+    assert check_requires(prog, "f", [5]) == "ok" and check_requires(prog, "f", [-1]) == "violated"
+    # the same leaf names `f` / `T` in the three modules must stay three distinct items
+    assert len([n for n in prog.fns if n.endswith("_f") or n == "f"]) == 3, sorted(prog.fns)
+    assert len(prog.structs) == 2, sorted(prog.structs)
+    for bad in (dict(files, **{"root.pruv": files["root.pruv"].replace("crate::a::util::f", "crate::a::nope::f")}),
+                dict(files, **{"root.pruv": files["root.pruv"].replace("crate::b::util::f", "crate::b::util::g")})):
+        try:
+            parse_modules(bad)
+            assert False, "unknown path accepted"
+        except OracleUnsupported:
+            pass
+
+
 if __name__ == "__main__":
     _selftest()
     _selftest_g3()
     _selftest_g6()
     _selftest_g9()
+    _selftest_g4()

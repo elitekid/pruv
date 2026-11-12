@@ -3,7 +3,7 @@
 use crate::ast::*;
 use crate::diagnostic::PruvError;
 use crate::gtype::{fn_owner, decl_owner, mk_array, mk_option, mk_param, mk_result, GType};
-use crate::lexer::{lex, lex_tagged, Kind, Tok};
+use crate::lexer::{lex_tagged, Kind, Tok};
 use crate::pyrepr::repr_str;
 use std::collections::HashMap;
 
@@ -51,41 +51,12 @@ pub fn parse_file(src: &str, tag: usize) -> R<ParsedFile> {
 }
 
 /// vparser `_sniff_explicit`: a root that failed to parse: does it use module syntax (a `mod` / `pub` token)?
-/// A lex error sniffs the text before the error position, so a `pub` ahead of a bad character still counts.
+/// One lexing pass: the tokens read before a lex error count, so a `pub` ahead of a bad character still counts.
 pub fn sniff_explicit(src: &str) -> bool {
     let chars = normalized_chars(src);
-    let has = |toks: &[Tok]| toks.iter().any(|t| t.kind == Kind::Kw && (t.val == "mod" || t.val == "pub"));
-    // the cut repeats while each new error lands earlier (a cut inside a string reports its opening quote)
-    let mut end = chars.len();
-    loop {
-        let cur = &chars[..end];
-        match lex(cur) {
-            Ok(toks) => return has(&toks),
-            Err(e) => {
-                // the prefix: whole lines before the error line, then col - 1 characters of it
-                let lines = 1 + cur.iter().filter(|&&c| c == '\n').count() as i64;
-                if e.line < 1 || e.line > lines {
-                    return false;
-                }
-                let (mut line, mut i) = (1i64, 0usize);
-                while i < cur.len() && line < e.line {
-                    if cur[i] == '\n' {
-                        line += 1;
-                    }
-                    i += 1;
-                }
-                let mut c = 1i64;
-                while i < cur.len() && c < e.col && cur[i] != '\n' {
-                    c += 1;
-                    i += 1;
-                }
-                if i >= end {
-                    return false;
-                }
-                end = i;
-            }
-        }
-    }
+    let mut toks: Vec<Tok> = Vec::new();
+    let _ = crate::lexer::lex_into(&chars, 0, &mut toks);
+    toks.iter().any(|t| t.kind == Kind::Kw && (t.val == "mod" || t.val == "pub"))
 }
 
 /// `[a-z][A-Za-z0-9_]*` (module names)

@@ -1,0 +1,89 @@
+// module crate::store of the G4 q01 reference
+mod check;
+
+// private helper: only this module can call it
+fn next(x: i64) -> i64
+  requires 0 <= x && x <= 1000000
+  ensures result == x + 1
+{
+  return x + 1;
+}
+
+// exclusive end: 0 <= i < n (crate::store::check::within has an inclusive end)
+pub fn within(i: i64, n: i64) -> bool
+  ensures result == (0 <= i && i < n)
+{
+  return 0 <= i && i < n;
+}
+
+pub fn find(a: [i64], q: i64) -> i64
+  requires len(a) <= 1000
+  ensures result == 0 - 1 || (0 <= result && result < len(a))
+  ensures result >= 0 ==> a[result] == q && (forall k in 0..result: a[k] != q)
+  ensures result < 0 ==> (forall k in 0..len(a): a[k] != q)
+{
+  let mut i: i64 = 0;
+  while i < len(a) && a[i] != q
+    invariant 0 <= i && i <= len(a)
+    invariant forall k in 0..i: a[k] != q
+    decreases len(a) - i
+  {
+    i = i + 1;
+  }
+  if i == len(a) {
+    return 0 - 1;
+  }
+  return i;
+}
+
+pub fn range_sum(a: [i64], lo: i64, hi: i64) -> i64
+  requires 0 <= lo && lo <= hi && hi <= len(a) && len(a) <= 1000
+  requires forall k in 0..len(a): -1000000 <= a[k] && a[k] <= 1000000
+  ensures result == sum(k in lo..hi: a[k])
+{
+  let mut s: i64 = 0;
+  let mut i: i64 = lo;
+  while i < hi
+    invariant lo <= i && i <= hi
+    invariant s == sum(k in lo..i: a[k])
+    invariant -1000000 * (i - lo) <= s && s <= 1000000 * (i - lo)
+    decreases hi - i
+  {
+    s = s + a[i];
+    i = i + 1;
+  }
+  return s;
+}
+
+pub fn insert(a: [i64], i: i64, v: i64) -> [i64] ! alloc
+  requires 0 <= i && i <= len(a) && len(a) <= 1000
+  ensures len(result) == len(a) + 1
+  ensures forall k in 0..len(a) + 1: (k < i ==> result[k] == a[k]) && (k == i ==> result[k] == v) && (k > i ==> result[k] == a[k - 1])
+{
+  let mut out: [i64] = alloc(len(a) + 1, v);
+  let mut p: i64 = 0;
+  while p < i
+    invariant 0 <= p && p <= i
+    invariant len(out) == len(a) + 1
+    invariant forall j in 0..p: out[j] == a[j]
+    decreases i - p
+  {
+    out[p] = a[p];
+    p = p + 1;
+  }
+  out[i] = v;
+  let mut m: i64 = i;
+  while m < len(a)
+    invariant i <= m && m <= len(a)
+    invariant len(out) == len(a) + 1
+    invariant forall j in 0..i: out[j] == a[j]
+    invariant out[i] == v
+    invariant forall j in i + 1..m + 1: out[j] == a[j - 1]
+    decreases len(a) - m
+  {
+    let s: i64 = next(m);
+    out[s] = a[m];
+    m = m + 1;
+  }
+  return out;
+}

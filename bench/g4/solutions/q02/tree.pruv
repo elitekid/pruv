@@ -1,0 +1,71 @@
+// module crate::tree of the G4 q02 reference: a recursive tree type and recursive functions over it
+mod shape;
+
+pub enum Tree { Empty, Node(value: i64, left: Tree, right: Tree) }
+
+// private helper: only this module can call it
+fn larger(a: i64, b: i64) -> i64
+  ensures result >= a && result >= b && (result == a || result == b)
+{
+  if a > b {
+    return a;
+  }
+  return b;
+}
+
+// right-leaning split; the balanced build uses crate::tree::shape::middle instead (same name, other module)
+pub fn middle(lo: i64, hi: i64) -> i64
+  requires 0 <= lo && lo < hi
+  ensures lo <= result && result < hi
+{
+  return hi - 1;
+}
+
+pub fn build(lo: i64, hi: i64) -> Tree ! alloc
+  requires 0 <= lo && lo <= hi && hi <= 1000
+  ensures size(result) == 2 * (hi - lo) + 1
+  decreases hi - lo
+{
+  if lo == hi {
+    return Tree::Empty;
+  }
+  let mid: i64 = crate::tree::shape::middle(lo, hi);
+  return Tree::Node(mid, build(lo, mid), build(mid + 1, hi));
+}
+
+pub fn node_count(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 2 * result + 1 == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => { return 1 + node_count(l) + node_count(r); }
+  }
+}
+
+pub fn leaf_count(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 2 * result - 1 == size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 1; }
+    Tree::Node(v, l, r) => { return leaf_count(l) + leaf_count(r); }
+  }
+}
+
+pub fn height(t: Tree) -> i64
+  requires size(t) <= 2001
+  ensures 0 <= result && result <= size(t)
+  decreases size(t)
+{
+  match t {
+    Tree::Empty => { return 0; }
+    Tree::Node(v, l, r) => {
+      let hl: i64 = height(l);
+      let hr: i64 = height(r);
+      return larger(hl, hr) + 1;
+    }
+  }
+}

@@ -1,0 +1,22 @@
+// module crate::store::check of the G4 q01 reference
+pub fn valid_range(lo: i64, hi: i64, n: i64) -> bool
+  ensures result == (0 <= lo && lo <= hi && hi <= n)
+{
+  if lo < 0 {
+    return false;
+  }
+  if lo > hi {
+    return false;
+  }
+  if hi > n {
+    return false;
+  }
+  return true;
+}
+
+// inclusive end: 0 <= i <= n (crate::store::within has an exclusive end)
+pub fn within(i: i64, n: i64) -> bool
+  ensures result == (0 <= i && i <= n)
+{
+  return 0 <= i && i <= n;
+}

@@ -1,0 +1,8 @@
+// module crate::tree::shape of the G4 q02 reference: where a range is split when a balanced tree is built
+pub fn middle(lo: i64, hi: i64) -> i64
+  requires 0 <= lo && lo < hi
+  ensures lo <= result && result < hi
+  ensures result == lo + (hi - lo) / 2
+{
+  return lo + (hi - lo) / 2;
+}

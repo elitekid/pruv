@@ -18,7 +18,8 @@ Result fields, and enum fields. There is also a variant that observes evaluation
 
 G2 mode (generate_case(.., g2=True)), G3 mode (generate_case(.., g3=True), generics, see the G3 block and bench/fuzz/README.md) and
 G6 mode (generate_case(.., g6=True), trusted Rust calls and Vec/HashMap/String, see the G6 block) and
-G9 mode (generate_case(.., g9=True), recursion / recursive types / buffer fields, see the G9 block) use their own
+G9 mode (generate_case(.., g9=True), recursion / recursive types / buffer fields, see the G9 block) and
+G4 mode (generate_case(.., g4=True), multi-file module programs, see the G4 block; the case carries `files`) use their own
 rng streams and templates; without them the output for a given seed is unchanged.
 """
 import argparse
@@ -5319,6 +5320,609 @@ def g9_candidate_inputs(case, rng, n):
     return [[g9_value(rng, tag, name, h) for name, tag in case["params"]] for _ in range(n)]
 
 
+# ---------------------------------------------------------------- G4 (modules)
+# A G4 case is a directory-shaped program: `files` maps a relative path to its source, `root.pruv` is the root and
+# `mod name;` in P loads P/name.pruv (root: name.pruv). 2-5 modules per program, some with a nested module a/b.pruv.
+# The root has one `pub fn f(x: i64, ..) -> i64` (the host entry the harness calls with the inputs), optionally more
+# root `pub` scalar helpers (also host entries, callable from child modules as `crate::h(..)`) and private helpers.
+# Every program is meant to verify. Variety: private/public helpers, the same leaf function/struct/enum name in several
+# modules with different bodies/fields, generic functions called by path (`crate::g::pick::<i64>(..)`), structs and enums
+# used by full path (types, literals, patterns), cross-module calls in both directions (the call graph between
+# FUNCTIONS is acyclic: a function only calls functions created before it; module-level cycles are allowed), and
+# "contract-preserving body replacement" twins: two programs (consecutive candidate indexes 2k, 2k+1) that are identical
+# except one callee body, both satisfying the same functional contract; callers must produce identical results.
+# Every function has a functional (`result == <affine expression of the parameters>`) or a range contract and every
+# call site is built so that the callee's `requires` follow from interval arithmetic over the caller's parameter ranges.
+
+G4_MODS = ["alpha", "beta", "gamma", "calc", "geo", "metrics", "store", "rules", "tools", "codec", "ledger", "shapes"]
+G4_FNS = ["helper", "adjust", "combine", "scale", "mix", "bump", "shift", "blend", "step", "fold", "f"]
+G4_STRUCTS = ["Pair", "Cell", "Item"]
+G4_FIELDS = [("v", "w"), ("left", "right"), ("p", "q"), ("lo", "hi")]
+G4_ENUMS = [("Mode", "Low", "High"), ("Kind", "Cold", "Warm"), ("Shape", "Small", "Large")]
+G4_GEN_NAMES = ["pick", "id", "first", "repeat", "boxed", "unbox", "Boxed"]
+
+# Expression nodes (tuples): ("int", n) ("var", name, lo, hi) ("loc", name, lo, hi, closed) ("add", a, b) ("sub", a, b)
+# ("mul", k, a). `var` is a parameter, `loc` a let-bound call result (closed = its parameters-only form, or None if only a
+# range is known).
+
+def g4_range(e):
+    k = e[0]
+    if k == "int":
+        return e[1], e[1]
+    if k in ("var", "loc"):
+        return e[2], e[3]
+    if k == "mul":
+        lo, hi = g4_range(e[2])
+        a, b = e[1] * lo, e[1] * hi
+        return min(a, b), max(a, b)
+    (a, b), (c, d) = g4_range(e[1]), g4_range(e[2])
+    return (a + c, b + d) if k == "add" else (a - d, b - c)
+
+
+def g4_flat(e):
+    """Parameters-only form of e (locals replaced by their closed forms), or None if some local only has a range."""
+    k = e[0]
+    if k in ("int", "var"):
+        return e
+    if k == "loc":
+        return e[4]
+    if k == "mul":
+        x = g4_flat(e[2])
+        return None if x is None else ("mul", e[1], x)
+    a, b = g4_flat(e[1]), g4_flat(e[2])
+    return None if a is None or b is None else (k, a, b)
+
+
+def g4_subst(e, env):
+    """Instantiate a callee's closed form (vars/ints only) with argument nodes."""
+    k = e[0]
+    if k == "var":
+        return env[e[1]]
+    if k == "int":
+        return e
+    if k == "mul":
+        return ("mul", e[1], g4_subst(e[2], env))
+    return (k, g4_subst(e[1], env), g4_subst(e[2], env))
+
+
+def g4_text(e, closed=False, top=True):
+    k = e[0]
+    if k == "int":
+        return lit(e[1])
+    if k == "var":
+        return e[1]
+    if k == "loc":
+        return g4_text(e[4], True, top) if closed else e[1]
+    if k == "mul":
+        s = "%s * %s" % (lit(e[1]), g4_text(e[2], closed, False))
+    else:
+        s = "%s %s %s" % (g4_text(e[1], closed, False), "+" if k == "add" else "-", g4_text(e[2], closed, False))
+    return s if top else "(" + s + ")"
+
+
+def g4_req(name, lo, hi):
+    return "%s <= %s && %s <= %s" % (lit(lo), name, name, lit(hi))
+
+
+def g4_fn_text(name, pub, params, ret, fx, requires, ensures, body):
+    """params: [(name, type text)]."""
+    head = "%sfn %s(%s) -> %s" % ("pub " if pub else "", name, ", ".join("%s: %s" % p for p in params), ret)
+    if fx:
+        head += " ! " + ", ".join(sorted(fx))
+    return "\n".join([head] + ["  requires " + r for r in requires] + ["  ensures " + e for e in ensures]
+                     + ["{"] + body + ["}"])
+
+
+def g4_range_clause(lo, hi):
+    return "%s <= result && result <= %s" % (lit(lo), lit(hi))
+
+
+class G4Gen(object):
+    """Builds one G4 program. All randomness comes from `rng`; `variant` (0/1) only selects the replaced body of a twin."""
+
+    def __init__(self, rng, variant, twin):
+        self.rng, self.variant, self.twin = rng, variant, twin
+        self.mods = []
+        self.blocks, self.used = {}, {}
+        self.funcs = []                  # int -> int functions in creation order (the only callable ones)
+        self.struct_apis, self.enum_apis, self.gen_api = [], [], None
+        self.struct_decl = {}            # module -> (leaf, fields)
+        self.fn_names, self.type_names = {}, {}
+        self.feats = set()
+        self.twin_func = None
+
+    # ---- layout
+    def kids(self, path):
+        return [m for m in self.mods if len(m) == len(path) + 1 and m[:len(path)] == path]
+
+    def layout(self, n):
+        rng = self.rng
+        pool = list(G4_MODS)
+        rng.shuffle(pool)
+        mods = [()]
+        want_nested = n >= 3 and rng.random() < 0.65
+        ntop = rng.randint(1, min(3, n - 1))
+        if want_nested:
+            ntop = min(ntop, n - 2)
+        for _ in range(ntop):
+            mods.append((pool.pop(),))
+        while len(mods) < n:
+            parent = rng.choice([m for m in mods if 1 <= len(m) <= 2])
+            sib = set(m[-1] for m in mods if len(m) == len(parent) + 1 and m[:len(parent)] == parent)
+            reuse = [m[-1] for m in mods[1:] if m[-1] not in sib and m[-1] != parent[-1]]
+            if reuse and rng.random() < 0.35:
+                name = rng.choice(reuse)             # same leaf module name under another parent (a/util, b/util)
+            else:
+                name = pool.pop()
+            mods.append(parent + (name,))
+        self.mods = mods
+        for m in mods:
+            self.blocks[m] = []
+        for m in mods:
+            self.used[m] = set(c[-1] for c in self.kids(m))
+        self.used[()].add("f")
+        if any(len(m) >= 2 for m in mods):
+            self.feats.add("nested_module")
+
+    # ---- names and paths
+    def ref(self, path, name, here, qualify=False):
+        if path == here and not qualify:
+            return name
+        return "::".join(("crate",) + path + (name,))
+
+    def fresh_fn(self, path):
+        rng, taken = self.rng, self.used[path]
+        pool = [n for n in G4_FNS if n not in taken]
+        rep = [n for n in pool if any(n in self.used[m] for m in self.mods if m != path)]
+        fresh = [n for n in pool if n not in rep]
+        if rep and (not fresh or rng.random() < 0.5):
+            n = rng.choice(rep)
+        elif fresh:
+            n = rng.choice(fresh)
+        else:
+            n = "fn%d" % len(taken)
+        taken.add(n)
+        self.fn_names.setdefault(n, set()).add(path)
+        return n
+
+    def is_pub(self, path):
+        return self.rng.random() < (0.75 if path == () else 0.55)
+
+    def prange(self, big):
+        R = self.rng.choice([10000, 100000, 1000000] if big else [100, 1000, 10000])
+        return (-R, R) if self.rng.random() < 0.6 else (0, R)
+
+    def make_params(self, n, big):
+        return [(nm,) + self.prange(big) for nm in ["x", "y", "z"][:n]]
+
+    def visible(self, path):
+        return [f for f in self.funcs if f["pub"] or f["mod"] == path]
+
+    def add_func(self, mod, name, pub, params, closed, out, fx, text):
+        self.blocks[mod].append(text)
+        self.funcs.append({"mod": mod, "name": name, "pub": pub, "params": params, "closed": closed, "out": out,
+                           "fx": frozenset(fx)})
+        self.feats.add("pub_fn" if pub else "private_fn")
+
+    def int_fn(self, mod, name, pub, params, closed, out, fx, ens, body):
+        text = g4_fn_text(name, pub, [(p[0], "i64") for p in params], "i64", fx,
+                          [g4_req(*p) for p in params], ens, body)
+        self.add_func(mod, name, pub, params, closed, out, fx, text)
+
+    def contract(self, closed, out):
+        ens = []
+        if closed is not None:
+            ens.append("result == %s" % g4_text(closed, True))
+            if self.rng.random() < 0.25:
+                ens.append(g4_range_clause(*g4_range(closed)))
+        else:
+            ens.append(g4_range_clause(*out))
+        return ens
+
+    def note_call(self, caller, callee):
+        if caller == callee:
+            return
+        if callee == caller[:len(callee)]:
+            self.feats.add("call_to_ancestor")       # child -> parent / root
+        elif caller == callee[:len(caller)]:
+            self.feats.add("call_to_descendant")     # parent / root -> child
+        else:
+            self.feats.add("call_sideways")
+        self.feats.add("cross_module_call")
+
+    # ---- expression building
+    def pick_arg(self, avail, plo, phi):
+        """An argument node whose interval lies inside [plo, phi]: a value as is, a shifted value, or a constant."""
+        rng = self.rng
+        order = list(avail)
+        rng.shuffle(order)
+        for v in order:
+            lo, hi = g4_range(v)
+            if plo <= lo and hi <= phi:
+                return v
+        for v in order:
+            lo, hi = g4_range(v)
+            if hi - lo <= phi - plo:
+                off = plo - lo
+                return ("add", v, ("int", off)) if off else v
+        return ("int", rng.randint(plo, min(phi, plo + 5)))
+
+    def combine(self, avail, must):
+        rng = self.rng
+        pool = [a for a in avail if a not in must]
+        terms = list(must) + rng.sample(pool, min(len(pool), rng.choice([0, 1, 1, 2])))
+        if not terms:
+            terms = [rng.choice(avail)]
+        node = None
+        for v in terms:
+            k = rng.choice([1, 1, 1, 2, 3, -1])
+            t = v if k == 1 else ("mul", k, v)
+            node = t if node is None else (rng.choice(["add", "add", "sub"]), node, t)
+        c = rng.choice([0, 0, 1, 2, 5, -3])
+        if c:
+            node = ("add", node, ("int", c))
+        return node
+
+    # ---- function flavors
+    def f_compose(self, mod, pub=None, name=None, nparams=None, big=False, force=(), min_calls=0):
+        """Calls to earlier functions (any visible module) combined affinely, optionally through an if."""
+        rng = self.rng
+        name = name or self.fresh_fn(mod)
+        pub = self.is_pub(mod) if pub is None else pub
+        params = self.make_params(nparams or rng.choice([1, 1, 2, 2, 3]), big)
+        avail = [("var",) + p for p in params]
+        cands = self.visible(mod)
+        todo = list(force)
+        if cands:
+            for _ in range(max(rng.choice([0, 1, 1, 2, 2, 3]), min_calls - len(todo))):
+                todo.append(rng.choice(cands))
+        lines, fx, locs = [], set(), []
+        for i, callee in enumerate(todo):
+            args = [self.pick_arg(avail, plo, phi) for _n, plo, phi in callee["params"]]
+            env = dict((pn, a) for (pn, _l, _h), a in zip(callee["params"], args))
+            flat = g4_flat(g4_subst(callee["closed"], env)) if callee["closed"] is not None else None
+            lo, hi = g4_range(flat) if flat is not None else callee["out"]
+            loc = ("loc", "t%d" % (i + 1), lo, hi, flat)
+            cname = self.ref(callee["mod"], callee["name"], mod, rng.random() < 0.2)
+            lines.append("  let %s: i64 = %s(%s);" % (loc[1], cname, ", ".join(g4_text(a) for a in args)))
+            avail.append(loc)
+            locs.append(loc)
+            fx |= callee["fx"]
+            self.note_call(mod, callee["mod"])
+        must = locs[:len(force)]
+        if rng.random() < 0.25:
+            a = rng.choice(avail)
+            alo, ahi = g4_range(a)
+            thr = rng.randint(alo, ahi)
+            e1, e2 = self.combine(avail, must), self.combine(avail, must)
+            lines += ["  if %s < %s {" % (g4_text(a), lit(thr)), "    return %s;" % g4_text(e1), "  }",
+                      "  return %s;" % g4_text(e2)]
+            (l1, h1), (l2, h2) = g4_range(e1), g4_range(e2)
+            closed, out = None, (min(l1, l2), max(h1, h2))
+            self.feats.add("branch")
+        else:
+            node = self.combine(avail, must)
+            lines.append("  return %s;" % g4_text(node))
+            closed = g4_flat(node)
+            out = g4_range(closed) if closed is not None else g4_range(node)
+        self.int_fn(mod, name, pub, params, closed, out, fx, self.contract(closed, out), lines)
+
+    def f_clamp(self, mod):
+        rng = self.rng
+        name, pub = self.fresh_fn(mod), self.is_pub(mod)
+        p = self.make_params(1, False)
+        lo2 = rng.randint(-50, 50)
+        hi2 = lo2 + rng.randint(0, 100)
+        body = ["  if x < %s {" % lit(lo2), "    return %s;" % lit(lo2), "  }",
+                "  if x > %s {" % lit(hi2), "    return %s;" % lit(hi2), "  }", "  return x;"]
+        ens = [g4_range_clause(lo2, hi2), "(%s <= x && x <= %s) ==> result == x" % (lit(lo2), lit(hi2))]
+        self.int_fn(mod, name, pub, p, None, (lo2, hi2), (), ens, body)
+
+    def f_absdiff(self, mod):
+        name, pub = self.fresh_fn(mod), self.is_pub(mod)
+        ps = self.make_params(2, False)
+        B = max(ps[0][2] - ps[1][1], ps[1][2] - ps[0][1])
+        body = ["  if x >= y {", "    return x - y;", "  }", "  return y - x;"]
+        ens = ["0 <= result && result <= %s" % lit(B), "x >= y ==> result == x - y"]
+        self.int_fn(mod, name, pub, ps, None, (0, B), (), ens, body)
+
+    def f_closed(self, mod, force_pub=False, twin=False):
+        """A function with a functional contract and several equivalent bodies (the twin target when twin=True)."""
+        rng = self.rng
+        name = self.fresh_fn(mod)
+        pub = True if force_pub else self.is_pub(mod)
+        kind = rng.choice(["affine", "loop"])
+        k, c = rng.randint(1, 4), rng.randint(0, 9)
+        if kind == "affine":
+            params = [("x",) + self.prange(True)]
+            closed = ("add", ("mul", k, ("var",) + params[0]), ("int", c))
+            alts = [["  return %s;" % g4_text(closed)],
+                    ["  let mut r: i64 = %d;" % c] + ["  r = r + x;"] * k + ["  return r;"],
+                    ["  if x >= 0 {", "    return %d + (%d * x);" % (c, k), "  }", "  return (%d * x) + %d;" % (k, c)]]
+        else:
+            N = rng.choice([10, 100, 1000])
+            params = [("n", 0, N)]
+            closed = ("add", ("mul", k, ("var",) + params[0]), ("int", c))
+            alts = [["  return %s;" % g4_text(closed)],
+                    ["  let mut s: i64 = %d;" % c, "  let mut i: i64 = 0;", "  while i < n",
+                     "    invariant 0 <= i && i <= n", "    invariant s == (%d * i) + %d" % (k, c),
+                     "    decreases n - i", "  {", "    s = s + %d;" % k, "    i = i + 1;", "  }", "  return s;"],
+                    ["  let mut r: i64 = n;", "  let mut s: i64 = %d;" % c, "  while r > 0",
+                     "    invariant 0 <= r && r <= n", "    invariant s == (%d * (n - r)) + %d" % (k, c),
+                     "    decreases r", "  {", "    s = s + %d;" % k, "    r = r - 1;", "  }", "  return s;"]]
+            self.feats.add("loop")
+        other = 1 + rng.randrange(len(alts) - 1)       # drawn in every variant so both twins consume the same stream
+        sel = rng.randrange(len(alts))
+        is_twin = twin and self.twin
+        pick = (0 if self.variant == 0 else other) if is_twin else sel
+        self.int_fn(mod, name, pub, params, closed, g4_range(closed), (), self.contract(closed, g4_range(closed)),
+                    alts[pick])
+        if is_twin:
+            self.twin_func = self.funcs[-1]
+            self.feats.add("twin_body_replacement")
+
+    def struct_of(self, mod, pub):
+        if mod not in self.struct_decl:
+            leaf, fields = self.rng.choice(G4_STRUCTS), self.rng.choice(G4_FIELDS)
+            self.struct_decl[mod] = (leaf, fields)
+            self.type_names.setdefault(leaf, set()).add(mod)
+            self.blocks[mod].append("%sstruct %s { %s: i64, %s: i64 }" % ("pub " if pub else "", leaf, fields[0], fields[1]))
+        return self.struct_decl[mod]
+
+    def f_struct_local(self, mod):
+        """Builds and reads a (possibly private) struct of the module itself."""
+        rng = self.rng
+        leaf, (f1, f2) = self.struct_of(mod, False)
+        name, pub = self.fresh_fn(mod), self.is_pub(mod)
+        ps = self.make_params(2, False)
+        k = rng.randint(1, 3)
+        ty = self.ref(mod, leaf, mod, rng.random() < 0.3 and mod != ())
+        if ty != leaf:
+            self.feats.add("qualified_literal")
+        body = ["  let st: %s = %s { %s: x, %s: y };" % (ty, ty, f1, f2), "  return (%d * st.%s) + st.%s;" % (k, f1, f2)]
+        closed = ("add", ("mul", k, ("var",) + ps[0]), ("var",) + ps[1])
+        self.int_fn(mod, name, pub, ps, closed, g4_range(closed), (), self.contract(closed, g4_range(closed)), body)
+
+    def setup_struct_api(self, mod):
+        rng = self.rng
+        if mod in self.struct_decl:
+            return
+        leaf, (f1, f2) = self.struct_of(mod, True)
+        R = rng.choice([1000, 10000, 100000])
+        lo = rng.choice([-R, 0])
+        k = rng.randint(1, 4)
+        mk, rd = self.fresh_fn(mod), self.fresh_fn(mod)
+        self.blocks[mod].append(g4_fn_text(
+            mk, True, [("a", "i64"), ("b", "i64")], leaf, (), [g4_req("a", lo, R), g4_req("b", lo, R)],
+            ["result.%s == a && result.%s == b" % (f1, f2)], ["  return %s { %s: a, %s: b };" % (leaf, f1, f2)]))
+        self.blocks[mod].append(g4_fn_text(
+            rd, True, [("s0", leaf)], "i64", (), ["%s <= s0.%s && s0.%s <= %d" % (lit(lo), f1, f1, R),
+                                                  "%s <= s0.%s && s0.%s <= %d" % (lit(lo), f2, f2, R)],
+            ["result == (%d * s0.%s) + s0.%s" % (k, f1, f2)], ["  return (%d * s0.%s) + s0.%s;" % (k, f1, f2)]))
+        self.struct_apis.append({"mod": mod, "leaf": leaf, "f1": f1, "f2": f2, "mk": mk, "rd": rd, "k": k,
+                                 "lo": lo, "hi": R})
+
+    def f_struct_cross(self, mod):
+        rng = self.rng
+        api = rng.choice(self.struct_apis)
+        name, pub = self.fresh_fn(mod), self.is_pub(mod)
+        ps = self.make_params(2, False)
+        avail = [("var",) + p for p in ps]
+        a, b = self.pick_arg(avail, api["lo"], api["hi"]), self.pick_arg(avail, api["lo"], api["hi"])
+        ty = self.ref(api["mod"], api["leaf"], mod, rng.random() < 0.2)
+        if rng.random() < 0.4:
+            init = "%s { %s: %s, %s: %s }" % (ty, api["f1"], g4_text(a), api["f2"], g4_text(b))
+            self.feats.add("qualified_literal")
+        else:
+            init = "%s(%s, %s)" % (self.ref(api["mod"], api["mk"], mod), g4_text(a), g4_text(b))
+        body = ["  let st: %s = %s;" % (ty, init), "  return %s(st);" % self.ref(api["mod"], api["rd"], mod)]
+        closed = ("add", ("mul", api["k"], a), b)
+        self.note_call(mod, api["mod"])
+        self.feats.add("struct_path")
+        self.int_fn(mod, name, pub, ps, closed, g4_range(closed), (), self.contract(closed, g4_range(closed)), body)
+
+    def setup_enum_api(self, mod):
+        rng = self.rng
+        leaf, lowv, highv = rng.choice(G4_ENUMS)
+        if leaf in self.used[mod]:
+            return
+        self.used[mod].add(leaf)
+        self.type_names.setdefault(leaf, set()).add(mod)
+        R = rng.choice([1000, 10000])
+        lo = rng.choice([-R, 0])
+        cls = self.fresh_fn(mod)
+        self.blocks[mod].append("pub enum %s { %s, %s(amount: i64) }" % (leaf, lowv, highv))
+        self.blocks[mod].append(g4_fn_text(
+            cls, True, [("x", "i64")], leaf, (), [g4_req("x", lo, R)],
+            ["x > 0 ==> is_variant(result, %s::%s)" % (leaf, highv), "x <= 0 ==> is_variant(result, %s::%s)" % (leaf, lowv)],
+            ["  if x > 0 {", "    return %s::%s(x);" % (leaf, highv), "  }", "  return %s::%s;" % (leaf, lowv)]))
+        self.enum_apis.append({"mod": mod, "leaf": leaf, "low": lowv, "high": highv, "cls": cls, "lo": lo, "hi": R})
+
+    def f_enum_cross(self, mod):
+        rng = self.rng
+        api = rng.choice(self.enum_apis)
+        name, pub = self.fresh_fn(mod), self.is_pub(mod)
+        ps = self.make_params(1, False)
+        arg = self.pick_arg([("var",) + ps[0]], api["lo"], api["hi"])
+        ty = self.ref(api["mod"], api["leaf"], mod, rng.random() < 0.2)
+        k1, k2 = rng.randint(-5, 9), rng.randint(-5, 9)
+        body = ["  let m0: %s = %s(%s);" % (ty, self.ref(api["mod"], api["cls"], mod), g4_text(arg)),
+                "  match m0 {", "    %s::%s => { return %s; }" % (ty, api["low"], lit(k1)),
+                "    %s::%s(v0) => { return %s; }" % (ty, api["high"], lit(k2)), "  }"]
+        out = (min(k1, k2), max(k1, k2))
+        ens = [g4_range_clause(*out)]
+        if rng.random() < 0.5:
+            ens += ["%s > 0 ==> result == %s" % (g4_text(arg), lit(k2)), "%s <= 0 ==> result == %s" % (g4_text(arg), lit(k1))]
+        self.note_call(mod, api["mod"])
+        self.feats.add("enum_path")
+        self.int_fn(mod, name, pub, ps, None, out, (), ens, body)
+
+    def setup_generic_api(self, mod):
+        if any(n in self.used[mod] for n in G4_GEN_NAMES):
+            return
+        self.used[mod].update(G4_GEN_NAMES)
+        self.type_names.setdefault("Boxed", set()).add(mod)
+        g = G3_FRAGS
+        self.blocks[mod] += [
+            "pub struct Boxed<T> {\n  value: T\n}",
+            "pub fn pick<T>(flag: bool, a: T, b: T) -> T\n  ensures flag ==> result == a\n  ensures !flag ==> result == b\n"
+            "{\n  if flag {\n    return a;\n  }\n  return b;\n}",
+            "pub " + g["id"], "pub " + g["first"], "pub " + g["repeat"],
+            "pub fn boxed<T>(x: T) -> Boxed<T>\n  ensures result.value == x\n{\n  return Boxed::<T> { value: x };\n}",
+            "pub fn unbox<T>(b: Boxed<T>) -> T\n  ensures result == b.value\n{\n  return b.value;\n}"]
+        self.gen_api = mod
+
+    def f_generic_use(self, mod):
+        rng = self.rng
+        G = self.gen_api
+        name, pub = self.fresh_fn(mod), self.is_pub(mod)
+        ps = self.make_params(rng.choice([1, 2]), False)
+        avail = [("var",) + p for p in ps]
+        g = lambda n: self.ref(G, n, mod, rng.random() < 0.2)
+        sub = rng.choice(["id", "pick", "boxed", "array", "boolid"])
+        fx, closed = (), None
+        if sub == "id":
+            arg = self.combine(avail, [])
+            body = ["  let t0: i64 = %s::<i64>(%s);" % (g("id"), g4_text(arg)), "  return t0;"]
+            closed, out = g4_flat(arg), g4_range(arg)
+        elif sub == "pick":
+            a, b = rng.choice(avail), rng.choice(avail)
+            body = ["  let c0: bool = %s <= %s;" % (g4_text(a), g4_text(b)),
+                    "  let t0: i64 = %s::<i64>(c0, %s, %s);" % (g("pick"), g4_text(a), g4_text(b)), "  return t0;"]
+            (l1, h1), (l2, h2) = g4_range(a), g4_range(b)
+            out = (min(l1, l2), max(h1, h2))
+        elif sub == "boxed":
+            arg = self.combine(avail, [])
+            bt = self.ref(G, "Boxed", mod, rng.random() < 0.2)
+            body = ["  let bx: %s<i64> = %s::<i64>(%s);" % (bt, g("boxed"), g4_text(arg)),
+                    "  return %s::<i64>(bx);" % g("unbox")]
+            closed, out = g4_flat(arg), g4_range(arg)
+        elif sub == "array":
+            arg = self.combine(avail, [])
+            body = ["  let ar: [i64] = %s::<i64>(3, %s);" % (g("repeat"), g4_text(arg)),
+                    "  return %s::<i64>(ar);" % g("first")]
+            closed, out, fx = g4_flat(arg), g4_range(arg), ("alloc",)
+            self.feats.add("generic_array")
+        else:
+            arg = self.combine(avail, [])
+            k1, k2 = rng.randint(-5, 9), rng.randint(-5, 9)
+            body = ["  let c0: bool = %s > 0;" % g4_text(arg), "  let d0: bool = %s::<bool>(c0);" % g("id"),
+                    "  if d0 {", "    return %s;" % lit(k1), "  }", "  return %s;" % lit(k2)]
+            out = (min(k1, k2), max(k1, k2))
+        ens = self.contract(closed, out)
+        if sub == "boolid":
+            ens = [g4_range_clause(*out), "%s > 0 ==> result == %s" % (g4_text(arg), lit(k1)),
+                   "%s <= 0 ==> result == %s" % (g4_text(arg), lit(k2))]
+        self.note_call(mod, G)
+        self.feats.add("generic_path")
+        self.int_fn(mod, name, pub, ps, closed, out, fx, ens, body)
+
+    def random_func(self, mod):
+        rng = self.rng
+        opts = [("compose", 5), ("clamp", 2), ("absdiff", 2), ("closed", 3), ("local", 2)]
+        if self.struct_apis:
+            opts.append(("scross", 3))
+        if self.enum_apis:
+            opts.append(("ecross", 3))
+        if self.gen_api is not None:
+            opts.append(("gen", 3))
+        kind = rng.choices([o[0] for o in opts], weights=[o[1] for o in opts])[0]
+        if kind == "compose":
+            self.f_compose(mod, big=len(self.funcs) < 4)
+        elif kind == "clamp":
+            self.f_clamp(mod)
+        elif kind == "absdiff":
+            self.f_absdiff(mod)
+        elif kind == "closed":
+            self.f_closed(mod)
+        elif kind == "local":
+            self.f_struct_local(mod)
+        elif kind == "scross":
+            self.f_struct_cross(mod)
+        elif kind == "ecross":
+            self.f_enum_cross(mod)
+        else:
+            self.f_generic_use(mod)
+
+    # ---- whole program
+    def build(self):
+        rng = self.rng
+        self.layout(rng.choice([2, 3, 3, 4, 4, 5]))
+        nonroot = self.mods[1:]
+        if rng.random() < 0.7:
+            self.setup_struct_api(rng.choice(nonroot))
+        if rng.random() < 0.5:
+            self.setup_enum_api(rng.choice(nonroot))
+        if rng.random() < 0.5:
+            self.setup_generic_api(rng.choice(nonroot))
+        if rng.random() < 0.7:
+            self.f_compose((), big=True)                 # root helper that child modules may call (child -> root)
+        if self.twin or rng.random() < 0.3:
+            self.f_closed(rng.choice(nonroot), force_pub=True, twin=True)
+        order = list(nonroot)
+        rng.shuffle(order)
+        for m in order:
+            for _ in range(rng.choice([1, 1, 2, 2, 3])):
+                self.random_func(m)
+        if rng.random() < 0.4:
+            self.random_func(())
+        force = [self.twin_func] if self.twin_func is not None else []
+        cross = [f for f in self.funcs if f["mod"] != () and f["pub"] and f is not self.twin_func]
+        if cross:
+            force.append(rng.choice(cross))
+        self.f_compose((), pub=True, name="f", nparams=rng.choice([1, 2, 3]), big=False, force=force, min_calls=2)
+        entry = self.funcs[-1]
+        for n, ms in sorted(self.fn_names.items()):
+            if len(ms) > 1:
+                self.feats.add("repeated_fn_name")
+        if any(len(ms) > 1 for ms in self.type_names.values()):
+            self.feats.add("repeated_type_name")
+        return entry
+
+    def files(self):
+        out = {}
+        for m in self.mods:
+            head = "// g4 fuzz module crate%s\n" % "".join("::" + s for s in m)
+            decls = "".join("mod %s;\n" % c[-1] for c in self.kids(m))
+            out[("/".join(m) + ".pruv") if m else "root.pruv"] = head + decls + "\n" + "\n\n".join(self.blocks[m]) + "\n"
+        return out
+
+
+def generate_g4_case(seed, index):
+    base, variant = divmod(index, 2)
+    twin = random.Random("g4:%s:%s:twin" % (seed, base)).random() < 0.3
+    rng = random.Random("g4:%s:%s:prog" % (seed, base) if twin else "g4:%s:%s:single" % (seed, index))
+    G = G4Gen(rng, variant, twin)
+    entry = G.build()
+    files = G.files()
+    nmods = len(G.mods)
+    return {"name": "g4c%s_%s" % (seed, index), "src": files["root.pruv"], "files": files, "entry": "f",
+            "params": [[p[0], "i64"] for p in entry["params"]], "ret": "i64", "kind": "g4_m%d" % nmods,
+            "input_hints": {"ranges": dict((p[0], (p[1], p[2])) for p in entry["params"])},
+            "g4": True, "g4_bad": False, "g4_features": sorted(G.feats | {"modules_%d" % nmods}),
+            "g4_twin": ("%s_%s" % (seed, base)) if twin else None, "g4_variant": variant,
+            "input_key": ("g4in%s_%s" % (seed, base)) if twin else None}
+
+
+def g4_pick(rng, lo, hi, outside):
+    if outside:
+        return rng.choice([hi + rng.randint(1, 3), lo - rng.randint(1, 3)])
+    c = [lo, hi, min(hi, lo + 1), max(lo, hi - 1), rng.randint(lo, hi), rng.randint(lo, hi),
+         rng.randint(max(lo, -5), max(lo, min(hi, 5)))]
+    if lo <= 0 <= hi:
+        c.append(0)
+    return rng.choice(c)
+
+
+def g4_candidate_inputs(case, rng, n):
+    h = case["input_hints"]["ranges"]
+    out = []
+    for _ in range(n):
+        bad = rng.randrange(len(case["params"])) if rng.random() < 0.15 else -1
+        out.append([g4_pick(rng, h[name][0], h[name][1], i == bad) for i, (name, _t) in enumerate(case["params"])])
+    return out
+
+
 # ---------------------------------------------------------------- case assembly
 
 def render(ctx, body):
@@ -5342,7 +5946,9 @@ def render(ctx, body):
     return fsrc + "\n"
 
 
-def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False):
+def generate_case(seed, index, g2=False, g3=False, g6=False, g9=False, g4=False):
+    if g4:
+        return generate_g4_case(seed, index)
     if g9:
         return generate_g9_case(seed, index)
     if g6:
@@ -5565,6 +6171,8 @@ def fit_len(rng, arr, n, h, consts):
 
 
 def candidate_inputs(case, rng, n):
+    if case.get("g4"):
+        return g4_candidate_inputs(case, rng, n)
     if case.get("g9"):
         return g9_candidate_inputs(case, rng, n)
     if case.get("g6"):
@@ -5625,12 +6233,23 @@ def main(argv=None):
                     help="G6 mode: trusted Rust calls and Vec/HashMap/String programs (some deliberately unproved)")
     ap.add_argument("--g9", action="store_true",
                     help="G9 mode: recursion, recursive types and buffer fields (some deliberately unproved)")
+    ap.add_argument("--g4", action="store_true",
+                    help="G4 mode: multi-module programs, one directory per program (root.pruv + module files)")
     a = ap.parse_args(argv)
     if a.g9 and (a.g2 or a.g3 or a.g6):
         ap.error("--g9 is a separate mode (not combinable with --g2/--g3/--g6)")
+    if a.g4 and (a.g2 or a.g3 or a.g6 or a.g9):
+        ap.error("--g4 is a separate mode (not combinable with --g2/--g3/--g6/--g9)")
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
-        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9)
+        case = generate_case(a.seed, i, g2=a.g2, g3=a.g3, g6=a.g6, g9=a.g9, g4=a.g4)
+        if a.g4:
+            for rel, text in case["files"].items():
+                path = os.path.join(a.out, case["name"], *rel.split("/"))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            continue
         with open(os.path.join(a.out, case["name"] + ".pruv"), "w", encoding="utf-8") as fh:
             fh.write(case["src"])
     print("wrote %d files to %s" % (a.count, a.out))
