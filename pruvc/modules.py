@@ -143,8 +143,27 @@ def load_program(path):
             cpath = m.path + (md.name,)
             rel = "/".join(cpath) + ".pruv"
             fpath = os.path.join(root_dir, *cpath) + ".pruv"
+            if md.name == "std":
+                if m.path:
+                    raise PruvError("parse", md.line, md.col, "std_import_location",
+                                    "std may only be imported at the program root",
+                                    "move `mod std;` to the root and call `crate::std::name`", file=m.file)
+                if os.path.lexists(fpath):
+                    raise PruvError("parse", md.line, md.col, "std_module_conflict",
+                                    "local std.pruv conflicts with the bundled std module",
+                                    "rename the user module/file and its paths", file=m.file)
+                fpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "stdlib", "std.pruv")
+                rel = "@std/std.pruv"
+                try:
+                    with open(fpath, encoding="utf-8") as source:
+                        text = source.read()
+                except (OSError, UnicodeDecodeError):
+                    raise PruvError("parse", md.line, md.col, "std_source",
+                                    "cannot read the bundled std module as UTF-8",
+                                    "restore/reinstall the matching compiler resource", file=m.file)
             try:
-                text = open(fpath, encoding="utf-8").read()
+                if md.name != "std":
+                    text = open(fpath, encoding="utf-8").read()
             except UnicodeDecodeError:
                 raise PruvError("parse", md.line, md.col, "module_file",
                                 "the file of module %s is not valid UTF-8" % disp(cpath),

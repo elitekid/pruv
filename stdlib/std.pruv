@@ -1,0 +1,158 @@
+pub fn min_i64(a: i64, b: i64) -> i64
+  ensures result <= a && result <= b
+  ensures result == a || result == b
+{
+  if a <= b { return a; }
+  return b;
+}
+
+pub fn max_i64(a: i64, b: i64) -> i64
+  ensures result >= a && result >= b
+  ensures result == a || result == b
+{
+  if a >= b { return a; }
+  return b;
+}
+
+pub fn clamp_i64(x: i64, lo: i64, hi: i64) -> i64
+  requires lo <= hi
+  ensures lo <= result && result <= hi
+  ensures x < lo ==> result == lo
+  ensures x > hi ==> result == hi
+  ensures lo <= x && x <= hi ==> result == x
+{
+  if x < lo { return lo; }
+  if x > hi { return hi; }
+  return x;
+}
+
+pub fn abs_i64(x: i64) -> i64
+  requires x > -9223372036854775808
+  ensures result >= 0
+  ensures x >= 0 ==> result == x
+  ensures x < 0 ==> result == -x
+{
+  if x < 0 { return -x; }
+  return x;
+}
+
+pub fn checked_add_i64(a: i64, b: i64) -> Option<i64>
+  ensures is_some(result) == (-9223372036854775808 <= a + b && a + b <= 9223372036854775807)
+  ensures is_some(result) ==> some_val(result) == a + b
+{
+  if b > 0 { if a > 9223372036854775807 - b { return None; } }
+  if b < 0 { if a < -9223372036854775808 - b { return None; } }
+  return Some(a + b);
+}
+
+pub fn checked_sub_i64(a: i64, b: i64) -> Option<i64>
+  ensures is_some(result) == (-9223372036854775808 <= a - b && a - b <= 9223372036854775807)
+  ensures is_some(result) ==> some_val(result) == a - b
+{
+  if b > 0 { if a < -9223372036854775808 + b { return None; } }
+  if b < 0 { if a > 9223372036854775807 + b { return None; } }
+  return Some(a - b);
+}
+
+pub fn sum_i64(a: [i64]) -> i64
+  requires len(a) <= 1_000_000
+  requires forall k in 0..len(a): -1_000_000_000 <= a[k] && a[k] <= 1_000_000_000
+  ensures result == sum(k in 0..len(a): a[k])
+{
+  let mut i: i64 = 0;
+  let mut s: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant s == sum(k in 0..i: a[k])
+    invariant -1_000_000_000 * i <= s && s <= 1_000_000_000 * i
+    decreases len(a) - i
+  {
+    s = s + a[i];
+    i = i + 1;
+  }
+  return s;
+}
+
+pub fn contains_i64(a: [i64], x: i64) -> bool
+  ensures result == (exists k in 0..len(a): a[k] == x)
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant forall k in 0..i: a[k] != x
+    decreases len(a) - i
+  {
+    if a[i] == x { return true; }
+    i = i + 1;
+  }
+  return false;
+}
+
+pub fn index_of_i64(a: [i64], x: i64) -> Option<i64>
+  ensures is_some(result) == (exists k in 0..len(a): a[k] == x)
+  ensures is_some(result) ==> (0 <= some_val(result) && some_val(result) < len(a))
+  ensures is_some(result) ==> a[some_val(result)] == x
+  ensures is_some(result) ==> (forall k in 0..some_val(result): a[k] != x)
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant forall k in 0..i: a[k] != x
+    decreases len(a) - i
+  {
+    if a[i] == x { return Some(i); }
+    i = i + 1;
+  }
+  return None;
+}
+
+pub fn is_sorted_i64(a: [i64]) -> bool
+  ensures result == (forall k in 1..len(a): a[k - 1] <= a[k])
+{
+  if len(a) < 2 { return true; }
+  let mut i: i64 = 1;
+  while i < len(a)
+    invariant 1 <= i && i <= len(a)
+    invariant forall k in 1..i: a[k - 1] <= a[k]
+    decreases len(a) - i
+  {
+    if a[i - 1] > a[i] { return false; }
+    i = i + 1;
+  }
+  return true;
+}
+
+pub fn array_max_i64(a: [i64]) -> i64
+  requires len(a) > 0
+  ensures result == max(k in 0..len(a): a[k])
+{
+  let mut m: i64 = a[0];
+  let mut i: i64 = 1;
+  while i < len(a)
+    invariant 1 <= i && i <= len(a)
+    invariant m == max(k in 0..i: a[k])
+    decreases len(a) - i
+  {
+    if a[i] > m { m = a[i]; }
+    i = i + 1;
+  }
+  return m;
+}
+
+pub fn reverse_i64(a: [i64]) -> [i64] ! alloc
+  ensures len(result) == len(a)
+  ensures forall k in 0..len(a): result[k] == a[len(a) - 1 - k]
+{
+  let mut out: [i64] = alloc(len(a), 0);
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant len(out) == len(a)
+    invariant 0 <= i && i <= len(a)
+    invariant forall k in 0..i: out[k] == a[len(a) - 1 - k]
+    decreases len(a) - i
+  {
+    out[i] = a[len(a) - 1 - i];
+    i = i + 1;
+  }
+  return out;
+}

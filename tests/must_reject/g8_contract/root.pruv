@@ -1,0 +1,2 @@
+mod std;
+pub fn f(x: i64) -> i64 requires crate::std::min_i64(x, 0) == 0 { return x; }

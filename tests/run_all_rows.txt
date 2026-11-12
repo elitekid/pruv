@@ -2066,6 +2066,18 @@
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_nested_quant.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_nested_quant_bad.pruv"}
 {"backend": "rust", "compiler": "rs", "flags": [], "group": "runtime", "mode": null, "sample": "tests/runtime/sort_pairs.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "exe"], "group": "g8_frontend", "mode": "exe", "sample": "tests/g8/frontend/catalog/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "exe"], "group": "g8_frontend", "mode": "exe", "sample": "tests/g8/frontend/child_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "exe"], "group": "g8_frontend", "mode": "exe", "sample": "tests/g8/frontend/import_only/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "exe"], "group": "g8_frontend", "mode": "exe", "sample": "tests/g8/frontend/local_name/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "exe"], "group": "g8_frontend", "mode": "exe", "sample": "tests/g8/frontend/root_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "exe"], "group": "g8_frontend", "mode": "exe", "sample": "tests/g8/frontend/wrappers/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "obj"], "group": "g8_frontend", "mode": "obj", "sample": "tests/g8/frontend/catalog/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "obj"], "group": "g8_frontend", "mode": "obj", "sample": "tests/g8/frontend/child_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "obj"], "group": "g8_frontend", "mode": "obj", "sample": "tests/g8/frontend/import_only/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "obj"], "group": "g8_frontend", "mode": "obj", "sample": "tests/g8/frontend/local_name/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "obj"], "group": "g8_frontend", "mode": "obj", "sample": "tests/g8/frontend/root_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--emit", "obj"], "group": "g8_frontend", "mode": "obj", "sample": "tests/g8/frontend/wrappers/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g10_frontend", "mode": "infer", "sample": "tests/g10/frontend/borrow_helper.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g10_frontend", "mode": "infer", "sample": "tests/g10/frontend/checksum.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g10_frontend", "mode": "infer", "sample": "tests/g10/frontend/contract_observer.pruv"}
@@ -2101,6 +2113,12 @@
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g7_proof", "mode": "infer", "sample": "tests/g7/proof/old_current.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g7_proof", "mode": "infer", "sample": "tests/g7/proof/same_length_havoc.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g7_proof", "mode": "infer", "sample": "tests/g7/proof/shared_read_three.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g8_frontend", "mode": "infer", "sample": "tests/g8/frontend/catalog/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g8_frontend", "mode": "infer", "sample": "tests/g8/frontend/child_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g8_frontend", "mode": "infer", "sample": "tests/g8/frontend/import_only/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g8_frontend", "mode": "infer", "sample": "tests/g8/frontend/local_name/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g8_frontend", "mode": "infer", "sample": "tests/g8/frontend/root_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "g8_frontend", "mode": "infer", "sample": "tests/g8/frontend/wrappers/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g2a_bad_store_call_inf.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g2a_bad_store_in_loop_inf.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--infer"], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g2a_bad_store_loop_exit_inf.pruv"}
@@ -2241,6 +2259,12 @@
 {"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g7_frontend", "mode": "no-verify", "sample": "tests/g7/frontend/shared_read.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g7_frontend", "mode": "no-verify", "sample": "tests/g7/frontend/spec_example.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g7_frontend", "mode": "no-verify", "sample": "tests/g7/frontend/three_branches.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g8_frontend", "mode": "no-verify", "sample": "tests/g8/frontend/catalog/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g8_frontend", "mode": "no-verify", "sample": "tests/g8/frontend/child_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g8_frontend", "mode": "no-verify", "sample": "tests/g8/frontend/import_only/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g8_frontend", "mode": "no-verify", "sample": "tests/g8/frontend/local_name/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g8_frontend", "mode": "no-verify", "sample": "tests/g8/frontend/root_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g8_frontend", "mode": "no-verify", "sample": "tests/g8/frontend/wrappers/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g9_frontend", "mode": "no-verify", "sample": "tests/g9/frontend/a01_list_enum.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g9_frontend", "mode": "no-verify", "sample": "tests/g9/frontend/a02_tree_contains.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--no-verify"], "group": "g9_frontend", "mode": "no-verify", "sample": "tests/g9/frontend/a03_list_builder.pruv"}
@@ -2329,6 +2353,12 @@
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g5_reject", "mode": "trust-callers", "sample": "tests/must_reject/g5_syntax_repeated_mode.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g5_reject", "mode": "trust-callers", "sample": "tests/must_reject/g5_syntax_take_inout.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g5_reject", "mode": "trust-callers", "sample": "tests/must_reject/g5_whole_param_assign.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g8_frontend", "mode": "trust-callers", "sample": "tests/g8/frontend/catalog/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g8_frontend", "mode": "trust-callers", "sample": "tests/g8/frontend/child_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g8_frontend", "mode": "trust-callers", "sample": "tests/g8/frontend/import_only/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g8_frontend", "mode": "trust-callers", "sample": "tests/g8/frontend/local_name/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g8_frontend", "mode": "trust-callers", "sample": "tests/g8/frontend/root_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "g8_frontend", "mode": "trust-callers", "sample": "tests/g8/frontend/wrappers/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g7_alias_trust_callers.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_frontend", "mode": "trust-callers", "sample": "tests/s5/frontend/alloc_copy.pruv"}
 {"backend": null, "compiler": "rs", "flags": ["--trust-callers"], "group": "s5_frontend", "mode": "trust-callers", "sample": "tests/s5/frontend/calls.pruv"}
@@ -2480,6 +2510,13 @@
 {"backend": null, "compiler": "rs", "flags": [], "group": "g7_proof", "mode": "default", "sample": "tests/g7/proof/old_current.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g7_proof", "mode": "default", "sample": "tests/g7/proof/same_length_havoc.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g7_proof", "mode": "default", "sample": "tests/g7/proof/shared_read_three.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/catalog/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/child_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/import_only/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/local_name/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/root_calls/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "default", "sample": "tests/g8/frontend/wrappers/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "g8_frontend", "mode": "resources", "sample": "tests/g8/check_bundle.py"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p01_even_odd.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p02_ping_pong_phase.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "g9_proof", "mode": "default", "sample": "tests/g9/proof/p03_three_cycle_range.pruv"}
@@ -2905,6 +2942,15 @@
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g7_v_sibling_ensures_order.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g7_v_stale_contents.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g7_v_u8_requires.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_absent/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_child_import/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_collision/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_conflict/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_contract/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_duplicate/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_symlink_conflict/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_unknown/root.pruv"}
+{"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g8_user_type/root.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g9_buffer_nonfresh_assign.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g9_buffer_nonfresh_ctor.pruv"}
 {"backend": null, "compiler": "rs", "flags": [], "group": "must_reject", "mode": null, "sample": "tests/must_reject/g9_contract_buffer_copy.pruv"}

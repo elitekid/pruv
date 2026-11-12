@@ -1,0 +1,2 @@
+mod std;
+pub fn f() -> i64 ! alloc { let v: Vec<i64> = vec_new::<i64>(); return crate::std::min_i64(len(v), 10); }

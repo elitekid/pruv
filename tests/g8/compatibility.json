@@ -1,0 +1,86 @@
+{
+  "legacy/rust/default": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "7c5b14f8c1920afc5bb32657a2df4b4a1420b632d85a36557da74257019cbe8d",
+    "bindings": null
+  },
+  "legacy/rust/safe": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "45e20b2faf8e04e5b47f9039fc0dea19e1c50de446fe980bba01f79cf2baa9d4",
+    "bindings": null
+  },
+  "legacy/llvm/default": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "893d0884d990758e61b0e526712444fedee2f549688bc2cfc26898c9b5d092bb",
+    "bindings": "13b9ef5781bd1133715486a47c37dd7acd7e67de509c56e44bbc78ac23afe98b"
+  },
+  "legacy/llvm/safe": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "893d0884d990758e61b0e526712444fedee2f549688bc2cfc26898c9b5d092bb",
+    "bindings": "13b9ef5781bd1133715486a47c37dd7acd7e67de509c56e44bbc78ac23afe98b"
+  },
+  "modules/rust/default": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "2ca8c78dc3c9a0f8c04d0b2393a331da763cf387ffc3dd1b29670c826010906e",
+    "bindings": null
+  },
+  "modules/rust/safe": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "c8f4ed9bc7a528437c60a00ed6e842293a87879f4ba49f66b138c6d810920b1b",
+    "bindings": null
+  },
+  "modules/llvm/default": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "906036919e214b02d7ddec4084b5ebc49d01e5ca382af33a8f861b3db4593e73",
+    "bindings": "13b9ef5781bd1133715486a47c37dd7acd7e67de509c56e44bbc78ac23afe98b"
+  },
+  "modules/llvm/safe": {
+    "exit": 0,
+    "stdout": "{\"ok\": true}\n",
+    "stderr": "",
+    "output": "906036919e214b02d7ddec4084b5ebc49d01e5ca382af33a8f861b3db4593e73",
+    "bindings": "13b9ef5781bd1133715486a47c37dd7acd7e67de509c56e44bbc78ac23afe98b"
+  },
+  "diagnostic/rust/default": {
+    "exit": 1,
+    "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 24, \"code\": \"type_mismatch\", \"message\": \"expected i64, found bool\", \"fix\": \"\"}\n",
+    "stderr": "",
+    "output": null,
+    "bindings": null
+  },
+  "diagnostic/rust/safe": {
+    "exit": 1,
+    "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 24, \"code\": \"type_mismatch\", \"message\": \"expected i64, found bool\", \"fix\": \"\"}\n",
+    "stderr": "",
+    "output": null,
+    "bindings": null
+  },
+  "diagnostic/llvm/default": {
+    "exit": 1,
+    "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 24, \"code\": \"type_mismatch\", \"message\": \"expected i64, found bool\", \"fix\": \"\"}\n",
+    "stderr": "",
+    "output": null,
+    "bindings": null
+  },
+  "diagnostic/llvm/safe": {
+    "exit": 1,
+    "stdout": "{\"stage\": \"type\", \"line\": 1, \"col\": 24, \"code\": \"type_mismatch\", \"message\": \"expected i64, found bool\", \"fix\": \"\"}\n",
+    "stderr": "",
+    "output": null,
+    "bindings": null
+  }
+}

@@ -1,5 +1,5 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof|g8_frontend]
                         [--backend rust|llvm|both]
 
 group s5_proof: tests/s5/proof/*.pruv verifies in default, trust-callers and infer modes
@@ -341,8 +341,8 @@ def g4_reject_jobs():
     expected stage/code come from the project's root.json."""
     jobs = []
     P = _g4()
-    # G5 A0: the G5 project rejections (tests/must_reject/g5_*/root.pruv) follow the same convention
-    for f in sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/g[45]_*/root.pruv"))):
+    # G5/G8 project rejections follow the same convention.
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests/must_reject/g[458]_*/root.pruv"))):
         rel = rel_sample(f)
         name = "must_reject/" + rel[len("tests/must_reject/"):]
         proj = os.path.basename(os.path.dirname(f))
@@ -360,22 +360,26 @@ def g4_reject_jobs():
 
         def fn(f=f, proj=proj, want=want, flags=flags):
             root = P.copy_project(f, os.path.join(WORK, "g4mr_" + proj))
-            c = pruvc(root, os.path.join(WORK, "g4mr_%s.rs" % proj), flags)
-            if c.returncode != 1:
-                return False, "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr)
-            diags = []
-            for line in c.stdout.splitlines():
-                try:
-                    d = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(d, dict):
-                    diags.append(d)
-            ok = any(d.get("stage") == want.get("stage") and d.get("code") == want.get("code")
-                     and ("file" not in want or d.get("file") == want["file"]) for d in diags)
-            return ok, "expected stage=%s code=%s file=%s; got %s" % (
-                want.get("stage"), want.get("code"), want.get("file"),
-                [(d.get("stage"), d.get("code"), d.get("file")) for d in diags])
+            for backend in (("rust", "llvm") if proj.startswith("g8_") else ("rust",)):
+                c = pruvc(root, os.path.join(WORK, "g4mr_%s_%s.out" % (proj, backend)), flags, backend)
+                if c.returncode != 1:
+                    return False, "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr)
+                diags = []
+                for line in c.stdout.splitlines():
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(d, dict):
+                        diags.append(d)
+                ok = any(d.get("stage") == want.get("stage") and d.get("code") == want.get("code")
+                         and ("file" not in want or d.get("file") == want["file"]) for d in diags)
+                detail = "expected stage=%s code=%s file=%s; got %s" % (
+                    want.get("stage"), want.get("code"), want.get("file"),
+                    [(d.get("stage"), d.get("code"), d.get("file")) for d in diags])
+                if not ok:
+                    return False, backend + ": " + detail
+            return True, ""
         jobs.append(safe(name, fn, {"sample": rel, "backend": None, "flags": list(flags), "mode": None,
                                      "group": "must_reject"}))
     return jobs
@@ -641,6 +645,44 @@ def s5_erase(source):
     source = re.sub(r"\bassert\b[^;]*\bspent\b[^;]*;", "", source)
     return re.sub(r"\binvariant\b(?:(?!\binvariant\b|\bdecreases\b|[{}]).)*\bspent\b"
                   r"(?:(?!\binvariant\b|\bdecreases\b|[{}]).)*", "", source, flags=re.S)
+
+
+def g8_frontend_jobs():
+    """A0 rows check both backends; resource checks use a disposable Python distribution."""
+    inventory = json.load(open(os.path.join(ROOT, "tests/g8/fixtures.json")))
+    jobs = []
+    for entry in inventory["frontend"]:
+        f = os.path.join(ROOT, entry["root"])
+        for mode, flags in (("default", []), ("no-verify", ["--no-verify"]),
+                            ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"]),
+                            ("exe", ["--emit", "exe"]), ("obj", ["--emit", "obj"])):
+            def fn(f=f, mode=mode, flags=flags, name=entry["name"]):
+                root = _g4().copy_project(f, os.path.join(WORK, "g8_" + name + "_" + mode))
+                out = os.path.join(WORK, "g8_" + name + "_" + mode)
+                # Native emits exist only for the LLVM backend.
+                for backend in (("llvm",) if mode in ("exe", "obj") else ("rust", "llvm")):
+                    c = (pruvc(root, out + ".rs", flags) if backend == "rust" else
+                         pruvc(root, out + ".bin", flags, "llvm") if mode in ("exe", "obj") else
+                         pruvc_llvm(root, out + ".ll", out + "_llvm.rs", flags))
+                    ds = [json.loads(line) for line in c.stdout.splitlines() if line.startswith("{")]
+                    if c.returncode != 1 or not any(d.get("stage") == "codegen" and
+                            d.get("code") == "unsupported_type" and
+                            d.get("message") == "G8 std verification is not implemented yet" for d in ds):
+                        return False, backend + ": " + c.stdout + c.stderr
+                    if any(os.path.exists(out + suffix) for suffix in (".rs", ".ll", "_llvm.rs", ".bin")):
+                        return False, "guard wrote an output artifact"
+                return True, ""
+            jobs.append(safe("g8_frontend/%s [%s]" % (entry["name"], mode), fn,
+                             {"sample": entry["root"], "backend": None, "flags": flags,
+                              "mode": mode, "group": "g8_frontend"}))
+    def resources():
+        c = subprocess.run([CD.pinned_python(), os.path.join(ROOT, "tests/g8/check_bundle.py"), WORK],
+                           capture_output=True, text=True, timeout=120)
+        return c.returncode == 0, c.stdout + c.stderr
+    jobs.append(safe("g8_frontend/bundle", resources,
+                     {"sample": "tests/g8/check_bundle.py", "backend": None, "flags": [],
+                      "mode": "resources", "group": "g8_frontend"}))
+    return jobs
 
 
 def s5_frontend_jobs(group="s5_frontend", folder="frontend", modes=None):
@@ -1075,7 +1117,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend|s5_proof|g8_frontend] [--backend rust|llvm|both] "
          "[--sample-prefix PATH] [--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -1168,7 +1210,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof", "g8_frontend"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -1203,6 +1245,8 @@ def main():
             jobs += g10_frontend_jobs()
         if only in (None, "g10_proof"):
             jobs += g10_frontend_jobs("g10_proof", "proof", (("default", []), ("infer", ["--infer"])))
+        if only in (None, "g8_frontend"):
+            jobs += g8_frontend_jobs()
         if only in (None, "s5_frontend"):
             jobs += s5_frontend_jobs()
         if only in (None, "s5_proof"):
@@ -1262,7 +1306,7 @@ def main():
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
-                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof")
+                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof", "g8_frontend")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

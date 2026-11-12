@@ -226,6 +226,14 @@ fn compile(a: &Args) -> Result<(), Fail> {
         None => pruv_core::check::check_with_externs(&mut prog, &a.rust_extern),
     };
     let tt = checked.map_err(|e| Fail::Lang(vec![e]))?;
+    // G8 A0: stop after static/ownership checks, before verification or emission.
+    if let Some(md) = g4.as_ref().and_then(|g| g.modules[0].mods.iter().find(|md| md.name == "std")) {
+        return Err(Fail::Lang(vec![PruvError::new(
+            "codegen", md.line, md.col, "unsupported_type",
+            "G8 std verification is not implemented yet",
+            "remove the std import until G8 verification is available",
+        )]));
+    }
     // G4 A1: the staging guard of explicit visibility mode now comes after the proof (below), like Python compile_file.
     // G9 A3: both back ends lower G9 programs; the G9 staging guard is gone from the driver.
     // G6: the Rust source backend lowers foreign calls and collections (A2); the LLVM backend (and --also-llvm) lowers

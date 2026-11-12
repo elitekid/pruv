@@ -1,0 +1,84 @@
+{
+  "frontend": [
+    {
+      "name": "import_only",
+      "root": "tests/g8/frontend/import_only/root.pruv"
+    },
+    {
+      "name": "root_calls",
+      "root": "tests/g8/frontend/root_calls/root.pruv"
+    },
+    {
+      "name": "child_calls",
+      "root": "tests/g8/frontend/child_calls/root.pruv"
+    },
+    {
+      "name": "local_name",
+      "root": "tests/g8/frontend/local_name/root.pruv"
+    },
+    {
+      "name": "catalog",
+      "root": "tests/g8/frontend/catalog/root.pruv"
+    },
+    {
+      "name": "wrappers",
+      "root": "tests/g8/frontend/wrappers/root.pruv"
+    }
+  ],
+  "reject": [
+    {
+      "name": "child_import",
+      "root": "tests/must_reject/g8_child_import/root.pruv",
+      "stage": "parse",
+      "code": "std_import_location"
+    },
+    {
+      "name": "duplicate",
+      "root": "tests/must_reject/g8_duplicate/root.pruv",
+      "stage": "type",
+      "code": "duplicate_module"
+    },
+    {
+      "name": "conflict",
+      "root": "tests/must_reject/g8_conflict/root.pruv",
+      "stage": "parse",
+      "code": "std_module_conflict"
+    },
+    {
+      "name": "absent",
+      "root": "tests/must_reject/g8_absent/root.pruv",
+      "stage": "type",
+      "code": "unknown_module"
+    },
+    {
+      "name": "unknown",
+      "root": "tests/must_reject/g8_unknown/root.pruv",
+      "stage": "type",
+      "code": "unknown_fn"
+    },
+    {
+      "name": "contract",
+      "root": "tests/must_reject/g8_contract/root.pruv",
+      "stage": "type",
+      "code": "call_in_contract"
+    },
+    {
+      "name": "user_type",
+      "root": "tests/must_reject/g8_user_type/root.pruv",
+      "stage": "type",
+      "code": "type_mismatch"
+    },
+    {
+      "name": "collision",
+      "root": "tests/must_reject/g8_collision/root.pruv",
+      "stage": "type",
+      "code": "name_collision"
+    },
+    {
+      "name": "symlink_conflict",
+      "root": "tests/must_reject/g8_symlink_conflict/root.pruv",
+      "stage": "parse",
+      "code": "std_module_conflict"
+    }
+  ]
+}

@@ -209,38 +209,64 @@ impl Loader {
             }
             let mut cpath = self.modules[mi].path.clone();
             cpath.push(md.name.clone());
-            let rel = format!("{}.pruv", cpath.join("/"));
+            let mut rel = format!("{}.pruv", cpath.join("/"));
             let mut fp = self.root_dir.clone();
             for c in &cpath {
                 fp.push(c);
             }
             let fpath = PathBuf::from(format!("{}.pruv", fp.to_string_lossy()));
-            let text = match std::fs::read(&fpath) {
-                Ok(bytes) => match String::from_utf8(bytes) {
-                    Ok(s) => s,
+            let text = if md.name == "std" {
+                if !self.modules[mi].path.is_empty() {
+                    return Err(PruvError::new(
+                        "parse", md.line, md.col, "std_import_location",
+                        "std may only be imported at the program root",
+                        "move `mod std;` to the root and call `crate::std::name`",
+                    ));
+                }
+                // Like lexists: directories and dangling symlinks also conflict.
+                if std::fs::symlink_metadata(&fpath).is_ok() {
+                    return Err(PruvError::new(
+                        "parse", md.line, md.col, "std_module_conflict",
+                        "local std.pruv conflicts with the bundled std module",
+                        "rename the user module/file and its paths",
+                    ));
+                }
+                rel = "@std/std.pruv".to_string();
+                // Embed bytes so invalid UTF-8 retains the import-site diagnostic.
+                std::str::from_utf8(include_bytes!("../../../../stdlib/std.pruv"))
+                    .map_err(|_| PruvError::new(
+                        "parse", md.line, md.col, "std_source",
+                        "cannot read the bundled std module as UTF-8",
+                        "restore/reinstall the matching compiler resource",
+                    ))?.to_string()
+            } else {
+                match std::fs::read(&fpath) {
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            return Err(PruvError::new(
+                                "parse",
+                                md.line,
+                                md.col,
+                                "module_file",
+                                format!("the file of module {} is not valid UTF-8", disp(&cpath)),
+                                format!("save {} as UTF-8", rel),
+                            ));
+                        }
+                    },
                     Err(_) => {
                         return Err(PruvError::new(
                             "parse",
                             md.line,
                             md.col,
                             "module_file",
-                            format!("the file of module {} is not valid UTF-8", disp(&cpath)),
-                            format!("save {} as UTF-8", rel),
+                            format!("cannot read the file of module {} (expected {})", disp(&cpath), rel),
+                            format!("create {} next to the root file, or remove `mod {};`", rel, md.name),
                         ));
                     }
-                },
-                Err(_) => {
-                    return Err(PruvError::new(
-                        "parse",
-                        md.line,
-                        md.col,
-                        "module_file",
-                        format!("cannot read the file of module {} (expected {})", disp(&cpath), rel),
-                        format!("create {} next to the root file, or remove `mod {};`", rel, md.name),
-                    ));
                 }
             };
-            let fid = file_id(&fpath);
+            let fid = if md.name == "std" { None } else { file_id(&fpath) };
             if let Some(orel) = fid.as_ref().and_then(|k| self.loaded.get(k)) {
                 return Err(PruvError::new(
                     "parse",
