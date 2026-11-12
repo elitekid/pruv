@@ -44,7 +44,7 @@ from vparser import parse  # noqa: E402
 from check import check  # noqa: E402
 from modules import load_program  # noqa: E402
 from codegen import gen_rust  # noqa: E402
-from typeinfo import g9_unimplemented_error  # noqa: E402
+from typeinfo import g9_unimplemented_error, g5_unimplemented_error  # noqa: E402
 
 BATCH = 200
 RS_TIMEOUT = 300
@@ -283,6 +283,10 @@ def eval_python(c):
                 src = fh.read()
             prog = parse(src)
         check(prog)
+        # G5 guard (removed in G5 A3): inout programs stop before emission, like the drivers
+        g5err = g5_unimplemented_error(prog)
+        if g5err is not None:
+            raise g5err
         # G9 A2: the Rust source backend lowers G9 programs (no guard)
         rs_src = gen_rust(prog, verified=c.verified, trust_callers=c.trust, budget=c.budget)
         obj = {"rs": rs_src}

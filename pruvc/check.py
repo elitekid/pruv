@@ -126,6 +126,7 @@ class Checker:
             resolve(prog)
         s.externs = frozenset(externs)   # G6: crate names given with --rust-extern
         s.uses_inout = program_uses_inout(prog)   # G5 A0: enables the contextual builtin `old`
+        prog.uses_inout = s.uses_inout            # G5 A0: lets the staging guard skip its walk for inout-free programs
         s.ckind = "code"          # G5: kind of the expression being checked: requires/ensures/decreases/invariant/assert/code
         s.boundary = None         # G5: the call allowed at the statement boundary of the statement being checked
         s.funcs = {}

@@ -2534,7 +2534,7 @@ mod tests {
             foreign: None,
             decreases: None,
         };
-        Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None }
+        Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None, uses_inout: None }
     }
 
     #[test]
@@ -2582,7 +2582,7 @@ mod tests {
             foreign: None,
             decreases: None,
         };
-        Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None }
+        Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None, uses_inout: None }
     }
 
     #[test]

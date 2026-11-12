@@ -331,6 +331,7 @@ pub fn check_explicit(
     crate::modules::resolve(prog, g4)?;
     let src_names: Vec<String> = g4.fn_meta.iter().map(|m| m.src_name.clone()).collect();
     let mut c = Checker::new(prog, externs, &src_names)?;
+    prog.uses_inout = Some(c.uses_inout); // G5 A0: lets the staging guard skip its walk for inout-free programs
     c.explicit = true;
     c.host_entry = g4.fn_meta.iter().map(|m| m.host_entry).collect();
     c.run(prog)?;
@@ -345,6 +346,7 @@ pub fn check(prog: &mut Program) -> Result<TypeTable, PruvError> {
 /// `check` with the crate names given with --rust-extern (G6: crates a trusted rust fn path may start with besides std).
 pub fn check_with_externs(prog: &mut Program, externs: &[String]) -> Result<TypeTable, PruvError> {
     let mut c = Checker::new(prog, externs, &[])?;
+    prog.uses_inout = Some(c.uses_inout); // G5 A0: lets the staging guard skip its walk for inout-free programs
     c.run(prog)?;
     Ok(c.tt)
 }

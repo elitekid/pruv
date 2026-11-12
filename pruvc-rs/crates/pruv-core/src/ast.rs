@@ -320,10 +320,12 @@ pub struct Explicit {
 /// refined: a marker that refine::expand has already run (Python `_refined`). Not emitted in the dump.
 /// g9: G9 A0 checker metadata (Python `Program.g9`), None unless a G9 feature is present. Not emitted in the dump.
 /// explicit: G4 A2, Some only on the concrete program of an explicit visibility program (built by mono.rs).
+/// uses_inout: G5 A0, set by the checker (Python `Program.uses_inout`); None = not checked yet. Not emitted in the dump.
 pub struct Program {
     pub functions: Vec<Function>,
     pub types: Vec<TypeDecl>,
     pub refined: bool,
     pub g9: Option<G9Meta>,
     pub explicit: Option<Explicit>,
+    pub uses_inout: Option<bool>,
 }

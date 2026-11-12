@@ -714,10 +714,11 @@ fn g5_walk_fn(fun: &Function, f: &mut dyn FnMut(&Expr)) {
 
 /// True if some parameter has the inout mode or some call argument carries the inout marker.
 pub fn program_uses_inout(prog: &Program) -> bool {
+    // signatures first: a cheap scan that settles most inout programs without walking any body
+    if prog.functions.iter().any(|f| f.params.iter().any(|p| p.mode_pos.is_some())) {
+        return true;
+    }
     for fun in &prog.functions {
-        if fun.params.iter().any(|p| p.mode_pos.is_some()) {
-            return true;
-        }
         let mut found = false;
         g5_walk_fn(fun, &mut |e| {
             if matches!(e, Expr::InoutArg(_)) {
@@ -734,6 +735,9 @@ pub fn program_uses_inout(prog: &Program) -> bool {
 /// First G5 construct of a checked program -> (line, col) or None: an inout parameter, an inout call argument or a
 /// resolved old(..) expression (smallest line/col; the first one seen on a tie, like Python `min`).
 pub fn first_g5_use(prog: &Program) -> Option<(i64, i64)> {
+    if prog.uses_inout == Some(false) {
+        return None; // the checker already knows there is no inout: skip the whole-program walk
+    }
     let mut cands: Vec<(i64, i64)> = Vec::new();
     for fun in &prog.functions {
         for p in &fun.params {
@@ -764,10 +768,10 @@ pub fn first_g5_use(prog: &Program) -> Option<(i64, i64)> {
 /// PruvError (unsupported_type) for the first G5 construct, or None. Run right after type checking.
 pub fn g5_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diagnostic::PruvError> {
     let (line, col) = first_g5_use(prog)?;
-    // Python builds this error without a file (file-local line), so drop the module file tag here
+    // the tagged line keeps the module file (Python passes the node's `.file`)
     Some(crate::diagnostic::PruvError::new(
         stage,
-        crate::diagnostic::plain_line(line),
+        line,
         col,
         "unsupported_type",
         "G5 inout parameters are not implemented by the verify and codegen layers yet",

@@ -388,6 +388,7 @@ for _cls in (Expr, Stmt, FieldDecl, VariantDecl, FieldInit, MatchArm, Refinement
              TypeParam):
     _cls.file = None
 Function.pub = False        # `pub fn`
+Program.uses_inout = None   # G5 A0: set by the checker (program_uses_inout); None = not checked yet
 TypeDecl.pub = False        # `pub struct` / `pub enum`
 Function.src_name = None    # explicit mode: the name as written; Function.name then holds the resolved identity
 TypeDecl.src_name = None

@@ -431,7 +431,7 @@ def _g9_size_calls(node, out):
     if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
         return
     if isinstance(node, Call) and node.name == "size":
-        out.append((node.line, node.col))
+        out.append((node.line, node.col, getattr(node, "file", None)))
     for fname in node.__dataclass_fields__:
         _g9_size_calls(getattr(node, fname), out)
 
@@ -498,9 +498,11 @@ def _has_inout_node(node) -> bool:
 
 def program_uses_inout(prog) -> bool:
     """True if some parameter has the inout mode or some call argument carries the inout marker"""
+    # signatures first: a cheap scan that settles most inout programs without walking any body
     for fn in prog.functions:
         if any(p.mode is not None for p in fn.params):
             return True
+    for fn in prog.functions:
         if (_has_inout_node(fn.requires) or _has_inout_node(fn.ensures) or _has_inout_node(fn.body)
                 or (fn.decreases is not None and _has_inout_node(fn.decreases))):
             return True
@@ -515,25 +517,27 @@ def _g5_candidates(node, out):
     if not hasattr(node, "__dataclass_fields__") or isinstance(node, Type):
         return
     if isinstance(node, InoutArg) or (isinstance(node, Call) and node.old is not None):
-        out.append((node.line, node.col))
+        out.append((node.line, node.col, getattr(node, "file", None)))
     for fname in node.__dataclass_fields__:
         _g5_candidates(getattr(node, fname), out)
 
 
 def first_g5_use(prog):
-    """first G5 construct of a checked program -> (line, col) or None: an inout parameter, an inout call argument
-    or a resolved old(..) expression (smallest line/col)"""
+    """first G5 construct of a checked program -> (line, col, file) or None: an inout parameter, an inout call
+    argument or a resolved old(..) expression (smallest line/col, first seen on a tie)"""
+    if getattr(prog, "uses_inout", None) is False:
+        return None     # the checker already knows there is no inout: skip the whole-program walk
     cands = []
     for fn in prog.functions:
         for p in fn.params:
             if p.mode is not None and p.mode_pos is not None:
-                cands.append(p.mode_pos)
+                cands.append((p.mode_pos[0], p.mode_pos[1], getattr(p, "file", None)))
         _g5_candidates(fn.requires, cands)
         _g5_candidates(fn.ensures, cands)
         _g5_candidates(fn.body, cands)
         if fn.decreases is not None:
             _g5_candidates(fn.decreases, cands)
-    return min(cands) if cands else None
+    return min(cands, key=lambda c: (c[0], c[1])) if cands else None
 
 
 def g5_unimplemented_error(prog, stage="codegen"):
@@ -543,7 +547,7 @@ def g5_unimplemented_error(prog, stage="codegen"):
         return None
     return PruvError(stage, hit[0], hit[1], "unsupported_type",
                      "G5 inout parameters are not implemented by the verify and codegen layers yet",
-                     "pass and return arrays by value for now")
+                     "pass and return arrays by value for now", file=hit[2])
 
 
 class TypeTable:

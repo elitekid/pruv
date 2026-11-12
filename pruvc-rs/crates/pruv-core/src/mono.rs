@@ -1018,6 +1018,7 @@ impl<'a> Mono<'a> {
             // explicit mode over the Rust stems
             g9: prog.g9.as_ref().map(|m| self.g9_meta(m)),
             explicit,
+            uses_inout: prog.uses_inout,
         };
         Ok(SpecPlan { program, fn_stems, type_stems, roots: root_names })
     }
