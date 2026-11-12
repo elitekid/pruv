@@ -1,0 +1,26 @@
+// G5 A1 proof: in single-file (legacy) mode the ensures of a nonrecursive unit inout call is assumed by the caller;
+// the callee loop keeps the entry length of its inout parameter without a length invariant
+fn clear(inout a: [i64]) -> ()
+  ensures len(a) == len(old(a))
+  ensures forall k in 0..len(a): a[k] == 0
+{
+  let n: i64 = len(a);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant forall k in 0..i: a[k] == 0
+    decreases n - i
+  {
+    a[i] = 0;
+    i = i + 1;
+  }
+}
+
+fn demo() -> i64 ! alloc
+  ensures result == 0
+{
+  let mut d: [i64] = alloc(3, 9);
+  clear(inout d);
+  assert d[1] == 0;
+  return d[0] + d[2];
+}

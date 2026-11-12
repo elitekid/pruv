@@ -1,0 +1,11 @@
+// G5 A1 proof: explicit (module) mode; the ensures of a unit inout call of another module is assumed by the caller
+mod store;
+
+pub fn run(n: i64) -> i64 ! alloc
+  requires 1 <= n && n <= 100
+  ensures result == 42
+{
+  let mut w: [i64] = alloc(n, 0);
+  crate::store::put(inout w, 0, 42);
+  return w[0];
+}

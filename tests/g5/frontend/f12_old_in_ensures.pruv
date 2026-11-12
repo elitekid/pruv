@@ -4,7 +4,7 @@ fn zero_first(inout a: [i64]) -> ()
   ensures len(a) == len(old(a))
   ensures a[0] == 0
   ensures forall k in 1..len(a): a[k] == old(a)[k]
-  ensures sum(k in 0..len(a): a[k]) == sum(k in 0..len(a): old(a)[k]) - old(a)[0]
+  ensures sum(k in 0..len(a): old(a)[k]) == sum(k in 0..len(old(a)): old(a)[k])
 {
   a[0] = 0;
 }

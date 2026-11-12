@@ -410,7 +410,7 @@ impl Parser {
                     "write `inout name`; compute other values into a local first",
                 ));
             }
-            return Ok(Expr::InoutArg(InoutArg { line: t.line, col: t.col, expr: Box::new(e), ty: None }));
+            return Ok(Expr::InoutArg(InoutArg { line: t.line, col: t.col, expr: Box::new(e), ty: None, post_refine: Vec::new() }));
         }
         self.expr()
     }

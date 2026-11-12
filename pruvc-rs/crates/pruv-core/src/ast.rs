@@ -99,7 +99,9 @@ pub struct Move { pub line: i64, pub col: i64, pub name: String, pub ty: Ty }
 /// G5 A0: the call-argument marker `inout <operand>`; line/col = the `inout` token. The operand is kept as written (the
 /// checker requires a plain Var naming a mutable local array or an inout parameter of the caller). Counterpart of vast.InoutArg.
 #[derive(Debug, Clone, PartialEq)]
-pub struct InoutArg { pub line: i64, pub col: i64, pub expr: Box<Expr>, pub ty: Ty }
+/// `post_refine`: G5 A1, set by refine.rs (Python `a.post_refine`): the synthesized assertions of the refined local this
+/// argument names, proved right after the call transition. Not emitted in the dump; empty everywhere else (also in mono copies).
+pub struct InoutArg { pub line: i64, pub col: i64, pub expr: Box<Expr>, pub ty: Ty, pub post_refine: Vec<Assert> }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {

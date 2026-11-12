@@ -350,6 +350,10 @@ class _Mono:
             return node
         new = type(node)(**dict((n, self.cp(getattr(node, n))) for n in fields))
         if isinstance(node, Call):
+            if node.old is not None:
+                # G5 A1: a resolved old(a) keeps its operand-parameter metadata (parameter names survive module
+                # resolution and generic substitution, so the defining parameter is the same name)
+                new.old = dict(node.old)
             if node.name in CATALOG:
                 # G6: the name stays; `args` = lowered concrete type arguments, `src_args` = concrete but not
                 # lowered (source-level spelling and the structural encoding of helper names)

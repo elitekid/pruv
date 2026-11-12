@@ -73,18 +73,22 @@ def g5_load():
 
 
 def g5_entries(group):
-    """[{"name", "root", ...}] of one group ("frontend" | "reject" | "proof" | "runtime") of tests/g5/fixtures.json"""
+    """[{"name", "root", ...}] of one group ("frontend" | "reject" | "proof" | "proof_reject" | "runtime") of
+    tests/g5/fixtures.json"""
     return list(g5_load().get(group, []))
+
+
+G5_GROUPS = GROUPS + ("proof_reject",)     # G5 A1: "proof_reject" = verification rejections (tests/must_reject/g5p_*)
 
 
 def g5_roots():
     """repo-relative roots of every G5 fixture: flat files and project roots (root.pruv)"""
-    return [e["root"] for g in GROUPS for e in g5_entries(g)]
+    return [e["root"] for g in G5_GROUPS for e in g5_entries(g)]
 
 
 def g5_project_roots():
     """the G5 roots that are directory projects ("project": true; companion modules next to them)"""
-    return [e["root"] for g in GROUPS for e in g5_entries(g) if e.get("project")]
+    return [e["root"] for g in G5_GROUPS for e in g5_entries(g) if e.get("project")]
 
 
 def is_companion(rel):

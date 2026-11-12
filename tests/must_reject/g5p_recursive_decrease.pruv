@@ -1,0 +1,11 @@
+// G5 A1 reject: the recursive inout call does not decrease the measure (same index again)
+fn zero_from(inout a: [i64], i: i64) -> ()
+  requires 0 <= i && i <= len(a)
+  ensures len(a) == len(old(a))
+  decreases len(a) - i
+{
+  if i < len(a) {
+    a[i] = 0;
+    zero_from(inout a, i);
+  }
+}

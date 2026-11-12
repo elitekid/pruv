@@ -324,6 +324,77 @@ pub fn assigned(stmts: &[Stmt], out: &mut BTreeSet<String>) {
     }
 }
 
+/// verify.py `_inout_ops` (G5 A1): whole-array operands of the inout call arguments inside expression e.
+fn inout_ops(e: &Expr, out: &mut BTreeSet<String>) {
+    if let Expr::Call(c) = e {
+        for a in &c.args {
+            if let Expr::InoutArg(ia) = a {
+                if let Expr::Var(v) = &*ia.expr {
+                    out.insert(v.name.clone());
+                }
+            }
+        }
+    }
+    for c in kids(e) {
+        inout_ops(c, out);
+    }
+}
+
+/// verify.py `call_writes` (G5 A1): names passed inout to calls in let initializers, assignments, returns and expression
+/// statements, recursively through statement blocks (empty for a program without inout).
+fn call_writes(stmts: &[Stmt], out: &mut BTreeSet<String>) {
+    for st in stmts {
+        match st {
+            Stmt::Let(x) => inout_ops(&x.value, out),
+            Stmt::Assign(x) => inout_ops(&x.value, out),
+            Stmt::FieldAssign(x) => inout_ops(&x.value, out),
+            Stmt::IndexAssign(x) => {
+                inout_ops(&x.index, out);
+                inout_ops(&x.value, out);
+            }
+            Stmt::Return(x) => {
+                if let Some(v) = &x.value {
+                    inout_ops(v, out);
+                }
+            }
+            Stmt::ExprStmt(x) => inout_ops(&x.expr, out),
+            Stmt::If(x) => {
+                call_writes(&x.then, out);
+                call_writes(&x.els, out);
+            }
+            Stmt::While(x) => call_writes(&x.body, out),
+            Stmt::Match(m) => {
+                for a in &m.arms {
+                    call_writes(&a.body, out);
+                }
+            }
+            Stmt::Assert(_) => {}
+        }
+    }
+}
+
+/// verify.py `whole_assigned` (G5 A1): names that a whole-variable assignment in stmts can replace (nested blocks included).
+fn whole_assigned(stmts: &[Stmt], out: &mut BTreeSet<String>) {
+    for st in stmts {
+        match st {
+            Stmt::Assign(a) => {
+                out.insert(a.name.clone());
+            }
+            Stmt::If(x) => {
+                whole_assigned(&x.then, out);
+                whole_assigned(&x.els, out);
+            }
+            Stmt::While(x) => whole_assigned(&x.body, out),
+            Stmt::Match(m) => {
+                for a in &m.arms {
+                    whole_assigned(&a.body, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Values, environment, state
 // ---------------------------------------------------------------------------------------------
@@ -601,6 +672,14 @@ pub struct FnVerifier<'a> {
     /// G4 A1: the file tag of the function being proved (0 in legacy mode). A function of an explicit-mode program has a
     /// nonzero tag, so `fn_tag != 0` is the explicit visibility mode (Python `s.explicit`); legacy programs keep tag 0.
     pub(crate) fn_tag: u32,
+    /// G5 A1 (`s.snap`): immutable entry snapshots {inout parameter name: entry array}; separate from the current
+    /// environment. Empty for a function without inout parameters.
+    pub(crate) snap: Env,
+}
+
+/// G5 A1: the environment key of a frozen pre-call array (Python `("old", name)`); no identifier can contain the byte 1.
+fn old_key(name: &str) -> String {
+    format!("\u{1}old:{}", name)
 }
 
 impl<'a> FnVerifier<'a> {
@@ -653,6 +732,7 @@ impl<'a> FnVerifier<'a> {
             scc_id: HashMap::new(),
             m0: None,
             fn_tag: 0,
+            snap: Env::default(),
         }
     }
 
@@ -1186,7 +1266,9 @@ impl<'a> FnVerifier<'a> {
 
     // ---------- havoc (line 684) ----------
     /// Iterates in name order (byte order = code point order, Python `sorted`) (the 0A sorting of SPEC §6).
-    pub fn havoc_set(&mut self, st: &State, names: &BTreeSet<String>) -> R<State> {
+    /// `keep` (G5 A1): array names whose havoc retains the length term (inout parameters, and locals changed only by inout
+    /// calls); every other array gets an arbitrary well-formed length exactly as before.
+    pub fn havoc_set(&mut self, st: &State, names: &BTreeSet<String>, keep: &BTreeSet<String>) -> R<State> {
         let mut h = st.fork(None);
         for n in names {
             let Some(old) = h.env.try_get(n).cloned() else { continue };
@@ -1198,8 +1280,12 @@ impl<'a> FnVerifier<'a> {
                         _ => old_arr.array_ty(),
                     };
                     let nv = self.try_fresh(n, &fty)?;
-                    let a = nv.try_arr()?.clone();
-                    h.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
+                    let mut a = nv.try_arr()?.clone();
+                    if keep.contains(n) {
+                        a.n = old_arr.n.clone();
+                    } else {
+                        h.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
+                    }
                     if a.elem == Elem::U8 {
                         h.pc.push(self.u8_dom(&a));
                     }
@@ -1239,7 +1325,7 @@ impl<'a> FnVerifier<'a> {
     /// For the prototype: accepts any order and sorts internally. On failure, returns only forks.
     pub fn havoc(&mut self, st: &State, names: &[&str]) -> State {
         let set: BTreeSet<String> = names.iter().map(|s| s.to_string()).collect();
-        self.havoc_set(st, &set).unwrap_or_else(|_| st.fork(None))
+        self.havoc_set(st, &set, &BTreeSet::new()).unwrap_or_else(|_| st.fork(None))
     }
 
     // ---------- quantifier pieces (lines 401-417; for the prototype) ----------
@@ -1681,6 +1767,15 @@ impl<'a> FnVerifier<'a> {
     /// verify.py `call` (line 604).
     fn call(&mut self, e: &Expr, x: &ast::Call, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Val> {
         let n = x.name.as_str();
+        if let Some((param, _)) = &x.old {
+            // G5 A1: old(a) is the frozen entry array. A callee contract being instantiated at a call site supplies its
+            // own pre-call arrays under ("old", name) in its environment; otherwise it is this function's snapshot.
+            let key = old_key(param);
+            return match env.try_get(&key) {
+                Some(v) => Ok(v.clone()),
+                None => self.snap.try_get(param).cloned().ok_or_else(|| format!("'{}'", param)),
+            };
+        }
         let mut args: Vec<Val> = Vec::new();
         for a in &x.args {
             args.push(self.ev(a, st, g, code, env)?);
@@ -1834,6 +1929,13 @@ impl<'a> FnVerifier<'a> {
         for (p, a) in f.params.iter().zip(args.iter()) {
             cenv.set(&p.name, a.clone());
         }
+        // G5 A1 (5.2 step 2): the pre-call arrays freeze as the callee's old bindings (scoped to this contract evaluation:
+        // the caller's own snapshot map is never touched)
+        for (p, a) in f.params.iter().zip(args.iter()) {
+            if p.mode_pos.is_some() {
+                cenv.set(&old_key(&p.name), a.clone());
+            }
+        }
         // G3 A2 (4.4): typed re-interpretation of the callee contract under the checker's recorded substitution
         let theta: Mapping = match &x.inst {
             Some(i) => i.subst.iter().map(|(o, idx, t)| ((o.clone(), *idx), t.clone())).collect(),
@@ -1866,17 +1968,25 @@ impl<'a> FnVerifier<'a> {
             // G9 A1: only a call inside the caller's own recursive SCC
             self.termination(e, f, st, g, &cenv)?;
         }
+        let ios: Vec<usize> = f.params.iter().enumerate().filter(|(_, p)| p.mode_pos.is_some()).map(|(i, _)| i).collect();
+        if !ios.is_empty() {
+            self.inout_finals(e, f, &ios, &mut cenv, st, g)?; // G5 A1 (5.2 step 5): fresh same-length contents
+        }
         let ret = Ty::from_name(&f.ret);
         if ret == Ty::Unit {
             // G6 A1 (11.4): a trusted unit result still assumes its ensures; G9 A1: so does a member of a recursive SCC, after
             // the termination obligations above (also when called from outside the SCC).
             // G4 A1 (G4_SPEC 5): in explicit visibility mode every ordinary unit call assumes its ensures too.
-            if f.foreign.is_some() || self.scc_id.contains_key(n) || self.explicit() {
+            // G5 A1: every inout call applies its ensures, in legacy single-file mode too
+            if !ios.is_empty() || f.foreign.is_some() || self.scc_id.contains_key(n) || self.explicit() {
                 // (legacy ordinary unit functions keep the legacy behaviour)
                 for en in &f.ensures {
                     let v = self.ev_ast(en, st, g, false, &cenv)?;
                     self.assume(st, g, v);
                 }
+            }
+            if !ios.is_empty() {
+                self.post_refine(e, &ios, st, g)?;
             }
             return Ok(Val::Unit);
         }
@@ -1905,7 +2015,89 @@ impl<'a> FnVerifier<'a> {
             let v = self.ev_ast(en, st, g, false, &cenv)?;
             self.assume(st, g, v);
         }
+        if !ios.is_empty() {
+            self.post_refine(e, &ios, st, g)?;
+        }
         Ok(res)
+    }
+
+    /// verify.py `inout_finals` (G5 A1, G5_SPEC 5.2 step 5): for every inout argument in parameter order, fresh contents of
+    /// exactly the pre-call length (same length term, same element type, u8 domain for [u8]). The final array is what the
+    /// callee's ensures denote by the parameter name, and it rebinds the caller's marked place. All finals exist before any
+    /// ensures clause is assumed, so relational ensures may connect several of them.
+    fn inout_finals(
+        &mut self,
+        e: &Expr,
+        f: &'a ast::Function,
+        ios: &[usize],
+        cenv: &mut Env,
+        st: &mut State,
+        g: &[Ast],
+    ) -> R<()> {
+        let call = match e {
+            Expr::Call(c) => c,
+            _ => return Err("inout_finals: not a call".to_string()),
+        };
+        for &i in ios {
+            let pname = f.params[i].name.as_str();
+            let pre: Arr = match cenv.try_get(&old_key(pname)) {
+                Some(v) => v.try_arr()?.clone(),
+                None => return Err(format!("'{}'", pname)),
+            };
+            let name: String = match call.args.get(i) {
+                Some(Expr::InoutArg(ia)) => match &*ia.expr {
+                    Expr::Var(v) => v.name.clone(),
+                    _ => return Err("inout_finals: operand is not a name".to_string()),
+                },
+                _ => return Err("inout_finals: missing inout argument".to_string()),
+            };
+            let fv = self.try_fresh(&name, &pre.array_ty())?;
+            let fa = fv.try_arr()?.clone();
+            let nv = pre.like(fa.a.clone(), pre.n.clone(), &name);
+            if nv.elem == Elem::U8 {
+                let d = self.u8_dom(&nv);
+                self.assume(st, g, d);
+            }
+            cenv.set(pname, Val::Arr(nv.clone()));
+            st.env.set(&name, Val::Arr(nv));
+        }
+        Ok(())
+    }
+
+    /// verify.py `post_refine` (G5 A1, G5_SPEC 5.2 step 8): the refinement of every marked refined local must hold right after
+    /// the call (refinement_assign, proved from the callee ensures and the remaining facts; never assumed beforehand). The
+    /// assertions were attached to the inout argument by refine.rs.
+    fn post_refine(&mut self, e: &Expr, ios: &[usize], st: &mut State, _g: &[Ast]) -> R<()> {
+        let call = match e {
+            Expr::Call(c) => c,
+            _ => return Ok(()),
+        };
+        for &i in ios {
+            if let Some(Expr::InoutArg(ia)) = call.args.get(i) {
+                for a in &ia.post_refine {
+                    let ob = self.check_assert(a, st)?;
+                    st.pc.push(ob);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// verify.py `check_assert` (G5 A1): prove one assertion (user or synthesized by refine.rs) on st; returns its value term.
+    fn check_assert(&mut self, s: &ast::Assert, st: &mut State) -> R<Ast> {
+        let spos = mk_pos(s.line, s.col);
+        self.check_dom_e(st, &[], &s.cond, spos, "variant_field lookups in assertion are defined", None)?;
+        let ob = self.ev0_ast(&s.cond, st, &[], false)?;
+        match &s.origin_code {
+            None => self.prove_core(&st.env, &st.pc, &[], &ob, spos, "assert", "assertion", None),
+            Some(code) => {
+                // An assert synthesized by refine.rs: its own code and the source description. The description also goes into the duplicate-suppression key,
+                // so multiple points of one annotation are all reported.
+                let what = s.origin_what.as_deref().unwrap_or("");
+                self.prove_core(&st.env, &st.pc, &[], &ob, spos, code, what, Some(what));
+            }
+        }
+        Ok(ob)
     }
 
     /// verify.py `termination` (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:
@@ -2294,8 +2486,12 @@ impl<'a> FnVerifier<'a> {
         let f = self.f.ok_or_else(|| "no function".to_string())?;
         let mut env = st.env.clone();
         for p in &f.params {
-            let v = self.params.try_get(&p.name).cloned().ok_or_else(|| format!("'{}'", p.name))?;
-            env.set(&p.name, v);
+            // G5 A1: ordinary parameters denote their entry values; an inout parameter keeps its current (final) value,
+            // and old(a) resolves through s.snap
+            if p.mode_pos.is_none() {
+                let v = self.params.try_get(&p.name).cloned().ok_or_else(|| format!("'{}'", p.name))?;
+                env.set(&p.name, v);
+            }
         }
         if let Some(v) = val {
             if !matches!(v, Val::Unit) {
@@ -2514,17 +2710,7 @@ impl<'a> FnVerifier<'a> {
             }
             Stmt::Assert(s) => {
                 let mut st = st;
-                self.check_dom_e(&mut st, &[], &s.cond, spos, "variant_field lookups in assertion are defined", None)?;
-                let ob = self.ev0_ast(&s.cond, &mut st, &[], false)?;
-                match &s.origin_code {
-                    None => self.prove_core(&st.env, &st.pc, &[], &ob, spos, "assert", "assertion", None),
-                    Some(code) => {
-                        // An assert synthesized by refine.rs: its own code and the source description. The description also goes into the duplicate-suppression key,
-                        // so multiple points of one annotation are all reported.
-                        let what = s.origin_what.as_deref().unwrap_or("");
-                        self.prove_core(&st.env, &st.pc, &[], &ob, spos, code, what, Some(what));
-                    }
-                }
+                let ob = self.check_assert(s, &mut st)?;
                 Ok(vec![st.fork(Some(ob))])
             }
             Stmt::ExprStmt(s) => {
@@ -2586,8 +2772,26 @@ impl<'a> FnVerifier<'a> {
         }
         let mut names: BTreeSet<String> = BTreeSet::new();
         assigned(&w.body, &mut names);
+        // G5 A1 (5.3): inout call arguments are changed too. Inout parameters keep their entry length; a local changed
+        // by inout calls keeps the loop-head length only if no whole assignment in the body can replace it.
+        // Without inout, calls = {} and snap = {}: names/keep (and the SMT) are exactly the old ones.
+        let mut calls: BTreeSet<String> = BTreeSet::new();
+        call_writes(&w.body, &mut calls);
+        let mut keep: BTreeSet<String> = BTreeSet::new();
+        if !calls.is_empty() || !self.snap.0.is_empty() {
+            let mut whole: BTreeSet<String> = BTreeSet::new();
+            if !calls.is_empty() {
+                whole_assigned(&w.body, &mut whole);
+            }
+            names.extend(calls.iter().cloned());
+            for n in &names {
+                if self.snap.contains(n) || (calls.contains(n) && !whole.contains(n)) {
+                    keep.insert(n.clone());
+                }
+            }
+        }
         // An arbitrary single iteration: at the start the invariants held (and were defined)
-        let mut b = self.havoc_set(st, &names)?;
+        let mut b = self.havoc_set(st, &names, &keep)?;
         self.loop_assume_invariants(&invs, &mut b)?;
         let c = self.ev0_ast(&w.cond, &mut b, &[], true)?;
         b.pc.push(c);
@@ -2630,7 +2834,7 @@ impl<'a> FnVerifier<'a> {
             self.prove_core(&end.env, &end.pc, &[], &ob, dpos, "decreases_decrease", "decreases strictly decreases", None);
         }
         // After the loop
-        let mut a = self.havoc_set(st, &names)?;
+        let mut a = self.havoc_set(st, &names, &keep)?;
         self.loop_assume_invariants(&invs, &mut a)?;
         let c = self.ev0_ast(&w.cond, &mut a, &[], true)?;
         a.pc.push(c.not());
@@ -2701,6 +2905,14 @@ impl<'a> FnVerifier<'a> {
             env.set(&p.name, v);
         }
         self.params = env.clone();
+        // G5 A1 (5.1): the immutable entry snapshots of the inout parameters; the executable name starts as the same array
+        // and is rebound by element stores, calls and loop havoc, never the snapshot
+        self.snap = Env(f
+            .params
+            .iter()
+            .filter(|p| p.mode_pos.is_some())
+            .map(|p| (p.name.clone(), env.get(&p.name).clone()))
+            .collect());
         let mut st = State::new(env, pc);
         for r in &f.requires {
             // D(r) is proved from the preceding requires only, then D(r) && r is assumed in declaration order

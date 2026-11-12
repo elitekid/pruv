@@ -244,8 +244,45 @@ pub fn pick_bound_name(names: &HashSet<String>) -> String {
     format!("k_{}", i)
 }
 
+/// refine.py `_inout_operands` (G5 A1): names of the whole-array operands of the inout call arguments inside e.
+fn inout_operands(e: &Expr, out: &mut HashSet<String>) {
+    if let Expr::Call(c) = e {
+        for a in &c.args {
+            if let Expr::InoutArg(ia) = a {
+                if let Expr::Var(v) = &*ia.expr {
+                    out.insert(v.name.clone());
+                }
+            }
+        }
+    }
+    for c in kids(e) {
+        inout_operands(c, out);
+    }
+}
+
+/// refine.py `_stmt_inout` (G5 A1): inout operands of the calls in the own expressions of one statement.
+fn stmt_inout(st: &Stmt, out: &mut HashSet<String>) {
+    match st {
+        Stmt::Let(x) => inout_operands(&x.value, out),
+        Stmt::Assign(x) => inout_operands(&x.value, out),
+        Stmt::FieldAssign(x) => inout_operands(&x.value, out),
+        Stmt::IndexAssign(x) => {
+            inout_operands(&x.index, out);
+            inout_operands(&x.value, out);
+        }
+        Stmt::Return(x) => {
+            if let Some(v) = &x.value {
+                inout_operands(v, out);
+            }
+        }
+        Stmt::ExprStmt(x) => inout_operands(&x.expr, out),
+        _ => {}
+    }
+}
+
 fn assigned(stmts: &[Stmt], out: &mut HashSet<String>) {
     for st in stmts {
+        stmt_inout(st, out); // G5 A1: an inout argument of a call is a changed variable (no-op without inout)
         match st {
             Stmt::Assign(x) => {
                 out.insert(x.name.clone());
@@ -355,10 +392,100 @@ struct Expander {
 }
 
 impl Expander {
+    /// refine.py `_Expander.annotate` (G5 A1): an inout argument naming a refined local carries the synthesized assertions of
+    /// that local's refinement (`post_refine`); verify proves them right after the call transition.
+    fn annotate(&self, e: &mut Expr, scope: &Scope) {
+        if let Expr::Call(c) = e {
+            let call_line = c.line;
+            for a in c.args.iter_mut() {
+                if let Expr::InoutArg(ia) = a {
+                    let name: Option<String> = match &*ia.expr {
+                        Expr::Var(v) => Some(v.name.clone()),
+                        _ => None,
+                    };
+                    if let Some(name) = name {
+                        if let Some(r) = scope_get(scope, &name) {
+                            let mut posts: Vec<Assert> = Vec::new();
+                            for (label, ex) in parts(r, &name, &self.k) {
+                                let what = format!(
+                                    "the {} of local {} after the call on line {}",
+                                    label,
+                                    name,
+                                    crate::diagnostic::plain_line(call_line)
+                                );
+                                posts.push(Assert {
+                                    line: r.line,
+                                    col: r.col,
+                                    cond: ex,
+                                    origin_code: Some("refinement_assign".to_string()),
+                                    origin_what: Some(what),
+                                });
+                            }
+                            ia.post_refine = posts;
+                        }
+                    }
+                }
+            }
+        }
+        match e {
+            Expr::InoutArg(x) => self.annotate(&mut x.expr, scope),
+            Expr::Unary(x) => self.annotate(&mut x.operand, scope),
+            Expr::Binary(x) => {
+                self.annotate(&mut x.left, scope);
+                self.annotate(&mut x.right, scope);
+            }
+            Expr::Index(x) => {
+                self.annotate(&mut x.array, scope);
+                self.annotate(&mut x.index, scope);
+            }
+            Expr::Ctor(x) => {
+                if let Some(a) = x.arg.as_mut() {
+                    self.annotate(a, scope);
+                }
+            }
+            Expr::Quant(x) => {
+                self.annotate(&mut x.lo, scope);
+                self.annotate(&mut x.hi, scope);
+                self.annotate(&mut x.body, scope);
+            }
+            Expr::Call(x) => {
+                for a in x.args.iter_mut() {
+                    self.annotate(a, scope);
+                }
+            }
+            Expr::StructLit(x) => {
+                for f in x.fields.iter_mut() {
+                    self.annotate(&mut f.value, scope);
+                }
+            }
+            Expr::EnumCtor(x) => {
+                for a in x.args.iter_mut() {
+                    self.annotate(a, scope);
+                }
+            }
+            Expr::FieldAccess(x) => self.annotate(&mut x.base, scope),
+            Expr::IsVariant(x) => self.annotate(&mut x.value, scope),
+            Expr::VariantField(x) => self.annotate(&mut x.value, scope),
+            Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+        }
+    }
+
     fn block(&self, stmts: Vec<Stmt>, scope: &mut Scope) -> Vec<Stmt> {
         let mut out: Vec<Stmt> = Vec::with_capacity(stmts.len());
         for mut st in stmts {
             let mut after: Vec<Stmt> = Vec::new();
+            // G5 A1: annotate the inout arguments of the statement's value expression (before the scope update below)
+            match &mut st {
+                Stmt::Let(l) => self.annotate(&mut l.value, scope),
+                Stmt::Assign(a) => self.annotate(&mut a.value, scope),
+                Stmt::Return(r) => {
+                    if let Some(v) = r.value.as_mut() {
+                        self.annotate(v, scope);
+                    }
+                }
+                Stmt::ExprStmt(x) => self.annotate(&mut x.expr, scope),
+                _ => {}
+            }
             match &mut st {
                 Stmt::Let(l) => {
                     if let Some(r) = &l.refine {

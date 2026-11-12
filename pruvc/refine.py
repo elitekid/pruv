@@ -150,8 +150,33 @@ def pick_bound_name(names):
     return "k_%d" % i
 
 
+def _inout_operands(e, out):
+    """G5 A1: names of the whole-array operands of the inout call arguments inside expression e"""
+    if isinstance(e, Call):
+        for a in e.args:
+            if isinstance(a, InoutArg) and isinstance(a.expr, Var):
+                out.add(a.expr.name)
+    for c in _kids(e):
+        _inout_operands(c, out)
+
+
+def _stmt_inout(st, out):
+    """G5 A1: inout operands of the calls in the own expressions of one statement (statement-boundary calls)"""
+    if isinstance(st, (Let, Assign, FieldAssign)):
+        _inout_operands(st.value, out)
+    elif isinstance(st, IndexAssign):
+        _inout_operands(st.index, out)
+        _inout_operands(st.value, out)
+    elif isinstance(st, Return):
+        if st.value is not None:
+            _inout_operands(st.value, out)
+    elif isinstance(st, ExprStmt):
+        _inout_operands(st.expr, out)
+
+
 def _assigned(stmts, out):
     for st in stmts:
+        _stmt_inout(st, out)    # G5 A1: an inout argument of a call is a changed variable (no-op without inout)
         if isinstance(st, (Assign, IndexAssign)):
             out.add(st.name)
         elif isinstance(st, If):
@@ -212,10 +237,30 @@ class _Expander:
         s.f = f
         s.k = pick_bound_name(_fn_names(f))
 
+    def annotate(s, e, scope):
+        """G5 A1: an inout argument naming a refined local carries the synthesized assertions of that local's
+        refinement (`post_refine`); verify proves them right after the call transition (refinement_assign), before
+        the enclosing let/assign/return/expression statement completes, so a `return f(inout a)` cannot skip them"""
+        if isinstance(e, Call):
+            for a in e.args:
+                if isinstance(a, InoutArg) and isinstance(a.expr, Var):
+                    r = scope.get(a.expr.name)
+                    if r is not None:
+                        a.post_refine = [
+                            _synth_assert(r, label, ex, "refinement_assign",
+                                          "the %s of local %s after the call on line %d" % (label, a.expr.name, e.line))
+                            for label, ex in parts(r, a.expr.name, s.k)]
+        for c in _kids(e):
+            s.annotate(c, scope)
+
     def block(s, stmts, scope):
         out = []
         for st in stmts:
             out.append(st)
+            if isinstance(st, (Let, Assign, Return, ExprStmt)):
+                e0 = st.expr if isinstance(st, ExprStmt) else st.value
+                if e0 is not None:
+                    s.annotate(e0, scope)
             if isinstance(st, Let):
                 if st.refine is not None:
                     scope[st.name] = st.refine

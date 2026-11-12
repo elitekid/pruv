@@ -1,0 +1,7 @@
+// G5 A1 reject: entry/final confusion in the callee: ensures names the final a[0], which is not the entry value
+fn bump(inout a: [i64]) -> ()
+  requires len(a) >= 1 && a[0] < 1000
+  ensures a[0] == old(a)[0]
+{
+  a[0] = a[0] + 1;
+}

@@ -841,6 +841,9 @@ class FnVerifier:
                     s.scc_id[n] = i
         s.m0 = None
         s._cex_m = None
+        # G5 A1: immutable entry snapshots {inout parameter name: entry array}; separate from the current environment.
+        # Empty for a function without inout parameters.
+        s.snap = {}
 
     def T(s, ty):
         """type of a checked node under the current contract-instantiation substitution"""
@@ -1195,6 +1198,8 @@ class FnVerifier:
             return env[e.name]
         if isinstance(e, Move):     # G6 A1: the current value of the binding
             return env[e.name]
+        if isinstance(e, InoutArg):     # G5 A1: the marked place's current array (the call transition rebinds it)
+            return s.ev(e.expr, st, g, code, env)
         if isinstance(e, Unary):
             v = s.ev(e.operand, st, g, code, env)
             if e.op == "!":
@@ -1492,6 +1497,11 @@ class FnVerifier:
 
     def call(s, e, st, g, code, env):
         n = e.name
+        if e.old is not None:
+            # G5 A1: old(a) is the frozen entry array. A callee contract being instantiated at a call site supplies its
+            # own pre-call arrays under ("old", name) in its environment; otherwise it is this function's snapshot.
+            key = ("old", e.old["param"])
+            return env[key] if key in env else s.snap[e.old["param"]]
         args = [s.ev(a, st, g, code, env) for a in e.args]
         if n == "len":
             return args[0].n
@@ -1541,6 +1551,11 @@ class FnVerifier:
             return o.is_ok(args[0]) if n == "is_ok" else o.oval(args[0]) if n == "ok_val" else o.eval(args[0])
         f = s.funcs[n]
         cenv = {p.name: a for p, a in zip(f.params, args)}
+        # G5 A1 (5.2 step 2): the pre-call arrays freeze as the callee's old bindings (scoped to this contract
+        # evaluation: the caller's own snapshot map is never touched)
+        ios = [i for i, p in enumerate(f.params) if p.mode is not None]
+        for i in ios:
+            cenv[("old", f.params[i].name)] = args[i]
         # G3 A2 (4.4): typed re-interpretation of the callee contract under the checker's recorded substitution
         theta = e.inst["subst"] if getattr(e, "inst", None) else {}
         saved, s.theta = s.theta, theta
@@ -1553,14 +1568,19 @@ class FnVerifier:
                     ob = s.ev(r, st, g, False, cenv)
                     s.prove(st, g, ob, e, "call_requires", "precondition of %s (line %d)" % (n, r.line))
                 s.termination(e, f, st, g, cenv)    # G9 A1: only a call inside the caller's own recursive SCC
+            if ios:
+                s.inout_finals(e, f, ios, args, cenv, st, g)    # G5 A1 (5.2 step 5): fresh same-length contents
             if f.ret == UNIT:
                 # G6 A1 (11.4): a trusted unit result still assumes its ensures; G9 A1: so does a member of a recursive
                 # SCC, after the termination obligations above (also when called from outside the SCC)
                 # G4 A1 (G4_SPEC 5): in explicit visibility mode every ordinary unit call assumes its ensures, after
                 # the same requires/termination obligations; legacy programs keep their exact old behavior and SMT.
-                if f.foreign is not None or n in s.scc_id or s.explicit:
+                # G5 A1: every inout call applies its ensures, in legacy single-file mode too
+                if ios or f.foreign is not None or n in s.scc_id or s.explicit:
                     for en in f.ensures:
                         s.assume(st, g, s.ev(en, st, g, False, cenv))
+                if ios:
+                    s.post_refine(e, ios, st, g)
                 return None
             rty = substitute(f.ret, theta) if theta else f.ret
             res = s.fresh("ret_" + n, rty)
@@ -1577,9 +1597,34 @@ class FnVerifier:
             cenv["result"] = res
             for en in f.ensures:
                 s.assume(st, g, s.ev(en, st, g, False, cenv))
+            if ios:
+                s.post_refine(e, ios, st, g)
             return res
         finally:
             s.theta = saved
+
+    def inout_finals(s, e, f, ios, args, cenv, st, g):
+        """G5 A1 (G5_SPEC 5.2 step 5): for every inout argument in parameter order, fresh contents of exactly the
+        pre-call length (same length term, same element type, u8 domain for [u8]). The final array is what the
+        callee's ensures denote by the parameter name, and it rebinds the caller's marked place. All finals exist
+        before any ensures clause is assumed, so relational ensures may connect several of them."""
+        for i in ios:
+            pre = args[i]
+            name = e.args[i].expr.name
+            fv = s.fresh(name, arr_type(pre.elem))
+            nv = mk_arr(fv.a, pre.n, name, pre.elem)
+            if nv.elem == U8:
+                s.assume(st, g, u8_dom(nv))
+            cenv[f.params[i].name] = nv
+            st.env[name] = nv
+
+    def post_refine(s, e, ios, st, g):
+        """G5 A1 (G5_SPEC 5.2 step 8): the refinement of every marked refined local must hold right after the call
+        (refinement_assign, proved from the callee ensures and the remaining facts; never assumed beforehand). The
+        assertions were attached to the inout argument by refine.py."""
+        for i in ios:
+            for a in getattr(e.args[i], "post_refine", None) or ():
+                st.pc.append(s.check_assert(a, st))
 
     def termination(s, e, f, st, g, cenv):
         """G9 A1 (G9_SPEC 5): the obligations of a call s.f -> f inside one recursive SCC, after the callee requires:
@@ -1666,7 +1711,8 @@ class FnVerifier:
     def ensures_ok(s, st, val, node):
         env = dict(st.env)
         for p in s.f.params:
-            env[p.name] = s.params[p.name]
+            if p.mode is None:      # G5 A1: ordinary parameters denote their entry values; an inout parameter keeps its
+                env[p.name] = s.params[p.name]      # current (final) value, and old(a) resolves through s.snap
         if val is not None:
             env["result"] = val
         prev = []   # earlier clauses (domain + value) were proven above and may justify later lookups
@@ -1700,7 +1746,56 @@ class FnVerifier:
                     s.assigned(a.body, out)
         return out
 
-    def havoc(s, st, names):
+    # ---------- G5 A1: inout writes in the changed-variable analysis ----------
+    def _inout_ops(s, e, out):
+        """whole-array operands of the inout call arguments inside expression e"""
+        if isinstance(e, Call):
+            for a in e.args:
+                if isinstance(a, InoutArg) and isinstance(a.expr, Var):
+                    out.add(a.expr.name)
+        for c in _kids(e):
+            s._inout_ops(c, out)
+
+    def call_writes(s, stmts, out):
+        """names passed inout to calls in let initializers, assignments, returns and expression statements,
+        recursively through statement blocks (empty for a program without inout)"""
+        for st in stmts:
+            if isinstance(st, (Let, Assign, FieldAssign)):
+                s._inout_ops(st.value, out)
+            elif isinstance(st, IndexAssign):
+                s._inout_ops(st.index, out)
+                s._inout_ops(st.value, out)
+            elif isinstance(st, Return):
+                if st.value is not None:
+                    s._inout_ops(st.value, out)
+            elif isinstance(st, ExprStmt):
+                s._inout_ops(st.expr, out)
+            elif isinstance(st, If):
+                s.call_writes(st.then, out); s.call_writes(st.els, out)
+            elif isinstance(st, While):
+                s.call_writes(st.body, out)
+            elif isinstance(st, Match):
+                for a in st.arms:
+                    s.call_writes(a.body, out)
+        return out
+
+    def whole_assigned(s, stmts, out):
+        """names that a whole-variable assignment in stmts can replace (nested blocks included)"""
+        for st in stmts:
+            if isinstance(st, Assign):
+                out.add(st.name)
+            elif isinstance(st, If):
+                s.whole_assigned(st.then, out); s.whole_assigned(st.els, out)
+            elif isinstance(st, While):
+                s.whole_assigned(st.body, out)
+            elif isinstance(st, Match):
+                for a in st.arms:
+                    s.whole_assigned(a.body, out)
+        return out
+
+    def havoc(s, st, names, keep=frozenset()):
+        """keep: array names whose havoc retains the length term (G5 A1: inout parameters, and locals changed only by
+        inout calls); every other array gets an arbitrary well-formed length exactly as before"""
         h = st.fork()
         for n in sorted(names):
             if n not in h.env:
@@ -1710,7 +1805,10 @@ class FnVerifier:
                 # G6 A1: an element type without a legacy array type (a Vec<X>) is re-created as a Vec
                 legacy = old.elem in (I64, U8, BOOL) or old.elem.owner is not None
                 nv = s.fresh(n, arr_type(old.elem) if legacy else Type("vec", (old.elem,)))
-                h.pc.append(z3.And(nv.n >= 0, nv.n <= MAX_LEN))
+                if n in keep:
+                    nv = mk_arr(nv.a, old.n, nv.name, nv.elem)
+                else:
+                    h.pc.append(z3.And(nv.n >= 0, nv.n <= MAX_LEN))
                 if nv.elem == U8:
                     h.pc.append(u8_dom(nv))
                 h.env[n] = nv
@@ -1733,6 +1831,18 @@ class FnVerifier:
                     if w is not None:
                         h.pc.append(w)
         return h
+
+    def check_assert(s, stmt, st):
+        """prove one assertion (user or synthesized by refine.py) on st; returns its value term"""
+        s.check_dom(st, [], stmt.cond, stmt, "variant_field lookups in assertion are defined")
+        ob = s.ev(stmt.cond, st, [], False)
+        if stmt.origin_code is None:
+            s.prove(st, [], ob, stmt, "assert", "assertion")
+        else:
+            # synthesized by refine.py: own code and a source description; the description also keys
+            # the duplicate suppression, so different sites of one annotation are all reported
+            s.prove(st, [], ob, stmt, stmt.origin_code, stmt.origin_what, stmt.origin_what)
+        return ob
 
     def exec(s, stmt, st):
         if isinstance(stmt, Let) or isinstance(stmt, Assign):
@@ -1816,14 +1926,7 @@ class FnVerifier:
             s.ensures_ok(st, v, stmt)
             return []
         if isinstance(stmt, Assert):
-            s.check_dom(st, [], stmt.cond, stmt, "variant_field lookups in assertion are defined")
-            ob = s.ev(stmt.cond, st, [], False)
-            if stmt.origin_code is None:
-                s.prove(st, [], ob, stmt, "assert", "assertion")
-            else:
-                # synthesized by refine.py: own code and a source description; the description also keys
-                # the duplicate suppression, so different sites of one annotation are all reported
-                s.prove(st, [], ob, stmt, stmt.origin_code, stmt.origin_what, stmt.origin_what)
+            ob = s.check_assert(stmt, st)
             st = st.fork(ob)
             return [st]
         if isinstance(stmt, ExprStmt):
@@ -1852,8 +1955,17 @@ class FnVerifier:
             s.prove(st, [], ob, inv, "invariant_entry", w_ob, cid, cid)
             prev.append(ob)
         names = s.assigned(w.body, set())
+        # G5 A1 (5.3): inout call arguments are changed too. Inout parameters keep their entry length; a local changed
+        # by inout calls keeps the loop-head length only if no whole assignment in the body can replace it.
+        # Without inout, calls = {} and snap = {}: names/keep (and the SMT) are exactly the old ones.
+        calls = s.call_writes(w.body, set())
+        keep = frozenset()
+        if calls or s.snap:
+            whole = s.whole_assigned(w.body, set()) if calls else set()
+            names = names | calls
+            keep = frozenset(n for n in names if n in s.snap or (n in calls and n not in whole))
         # one arbitrary iteration; the invariants held (and were defined) at its start
-        b = s.havoc(st, names)
+        b = s.havoc(st, names, keep)
         for _cid, inv, _text in invs:
             d = s.dom(inv, b, [], b.env, "variant")
             if d is not None:
@@ -1889,7 +2001,7 @@ class FnVerifier:
             s.prove(end, [], s.ev(w.decreases, end, [], False) < d0, w.decreases, "decreases_decrease",
                     "decreases strictly decreases")
         # after the loop
-        a = s.havoc(st, names)
+        a = s.havoc(st, names, keep)
         for _cid, inv, _text in invs:
             d = s.dom(inv, a, [], a.env, "variant")
             if d is not None:
@@ -1940,6 +2052,9 @@ class FnVerifier:
                     pc.append(w)
             env[p.name] = v
         s.params = dict(env)
+        # G5 A1 (5.1): the immutable entry snapshots of the inout parameters; the executable name starts as the same
+        # array and is rebound by element stores, calls and loop havoc, never the snapshot
+        s.snap = {p.name: env[p.name] for p in f.params if p.mode is not None}
         st = State(env, pc)
         for r in f.requires:
             # D(r) is proven from the earlier requires only, then D(r) && r is assumed, in declaration order

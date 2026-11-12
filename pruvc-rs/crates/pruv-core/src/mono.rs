@@ -555,7 +555,7 @@ impl<'a> Mono<'a> {
             Expr::Move(x) => Expr::Move(Move { line: x.line, col: x.col, name: x.name.clone(), ty: self.ty_opt(&x.ty)? }),
             Expr::InoutArg(x) => {
                 let expr = self.bx(&x.expr)?;
-                Expr::InoutArg(InoutArg { line: x.line, col: x.col, expr, ty: self.ty_opt(&x.ty)? })
+                Expr::InoutArg(InoutArg { line: x.line, col: x.col, expr, ty: self.ty_opt(&x.ty)?, post_refine: Vec::new() })
             }
             Expr::Unary(x) => {
                 let operand = self.bx(&x.operand)?;
@@ -593,7 +593,7 @@ impl<'a> Mono<'a> {
                 } else if let Some(r) = self.rfns.get(&x.name) {
                     name = r.clone(); // G4 A2: a nongeneric user function -> its Rust stem
                 }
-                Expr::Call(Call { line: x.line, col: x.col, name, args, ty, targs: None, inst: new_inst, old: None })
+                Expr::Call(Call { line: x.line, col: x.col, name, args, ty, targs: None, inst: new_inst, old: x.old.clone() })
             }
             Expr::Index(x) => {
                 let array = self.bx(&x.array)?;

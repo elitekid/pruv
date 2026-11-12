@@ -1,0 +1,19 @@
+// G5 A1 proof: two inout outputs connected by a relational ensures; the caller needs the relation (no other facts)
+fn spread(inout lo: [i64], inout hi: [i64]) -> ()
+  requires len(lo) >= 1 && len(hi) >= 1
+  ensures len(lo) == len(old(lo))
+  ensures len(hi) == len(old(hi))
+  ensures hi[0] == lo[0] + 1
+{
+  lo[0] = 5;
+  hi[0] = lo[0] + 1;
+}
+
+fn demo() -> i64 ! alloc
+  ensures result == 1
+{
+  let mut x: [i64] = alloc(2, 0);
+  let mut y: [i64] = alloc(2, 0);
+  spread(inout x, inout y);
+  return y[0] - x[0];
+}

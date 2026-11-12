@@ -1,0 +1,13 @@
+// companion module of p12 (not a standalone test root)
+pub fn walk_odd(inout a: [i64], n: i64) -> ()
+  requires n >= 0 && len(a) >= 1
+  ensures len(a) == len(old(a))
+  ensures a[0] == 0
+  decreases n
+{
+  if n == 0 {
+    a[0] = 0;
+  } else {
+    crate::even::walk_even(inout a, n - 1);
+  }
+}

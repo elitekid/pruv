@@ -138,8 +138,50 @@ def _assign_stmts(stmts, out):
     return out
 
 
+def _expr_inout(e, out):
+    """G5 A1: whole-array operands of the inout call arguments inside expression e"""
+    if isinstance(e, Call):
+        for a in e.args:
+            if isinstance(a, InoutArg) and isinstance(a.expr, Var):
+                out.add(a.expr.name)
+    for c in _kids(e):
+        _expr_inout(c, out)
+
+
+def _stmt_inout(st):
+    """G5 A1: names written by inout calls in the own expressions of one statement (statement-boundary calls)"""
+    out = set()
+    if isinstance(st, (Let, Assign, FieldAssign)):
+        _expr_inout(st.value, out)
+    elif isinstance(st, IndexAssign):
+        _expr_inout(st.index, out)
+        _expr_inout(st.value, out)
+    elif isinstance(st, Return):
+        if st.value is not None:
+            _expr_inout(st.value, out)
+    elif isinstance(st, ExprStmt):
+        _expr_inout(st.expr, out)
+    return out
+
+
+def _call_written(stmts, out):
+    """G5 A1: every name written by an inout call, nested blocks included. A call write is an assignment for the
+    changed-variable analysis, but it is neither an initializer nor an element store."""
+    for st in stmts:
+        out |= _stmt_inout(st)
+        if isinstance(st, If):
+            _call_written(st.then, out)
+            _call_written(st.els, out)
+        elif isinstance(st, While):
+            _call_written(st.body, out)
+        elif isinstance(st, Match):
+            for a in st.arms:
+                _call_written(a.body, out)
+    return out
+
+
 def _assigned(stmts):
-    return set(st.name for st in _assign_stmts(stmts, []))
+    return set(st.name for st in _assign_stmts(stmts, [])) | _call_written(stmts, set())
 
 
 def _locals(stmts, out):
@@ -164,6 +206,8 @@ def _init(block, idx, name, skip_index=False):
     earlier if/while/match assigns it first or there is none. skip_index: IndexAssign to it is stepped over."""
     for j in range(idx - 1, -1, -1):
         st = block[j]
+        if name in _stmt_inout(st):     # G5 A1: an inout call write invalidates every earlier initializer/content fact
+            return None
         if isinstance(st, (Let, Assign)) and st.name == name:
             return st.value
         if skip_index and isinstance(st, IndexAssign) and st.name == name:
@@ -440,6 +484,7 @@ def _gen(f, w, block, idx, kname, ranges):
     """[(kind, text, expr)] for loop w (unsorted, may contain duplicates)"""
     B = _B(w, kname)
     M = _assigned(w.body)
+    CW = _call_written(w.body, set())   # G5 A1: names written by inout calls (never counter/store/prefix templates)
     loc = _locals(w.body, set())
     NS = M | loc
     asg = _assign_stmts(w.body, [])
@@ -489,7 +534,7 @@ def _gen(f, w, block, idx, kname, ranges):
     # ---- counters ----
     for v in sorted(M):
         mine = [st for st in asg if st.name == v]
-        if len(mine) != 1 or not isinstance(mine[0], Assign):
+        if v in CW or len(mine) != 1 or not isinstance(mine[0], Assign):
             continue
         st = mine[0]
         pos = None
@@ -604,7 +649,7 @@ def _gen(f, w, block, idx, kname, ranges):
     # ---- arrays written only by element stores (kinds 4, 5) ----
     for b in sorted(M):
         mine = [st for st in asg if st.name == b]
-        if not all(isinstance(st, IndexAssign) for st in mine):
+        if b in CW or not all(isinstance(st, IndexAssign) for st in mine):
             continue
         init = _init(block, idx, b, True)
         if not isinstance(init, Call):
@@ -639,7 +684,7 @@ def _gen(f, w, block, idx, kname, ranges):
     ctr = {}   # CTR: every variable meeting the counter definition of 3.1 -> (pos, lo, step)
     for v in sorted(M):
         mine = [st for st in asg if st.name == v]
-        if len(mine) != 1 or not isinstance(mine[0], Assign):
+        if v in CW or len(mine) != 1 or not isinstance(mine[0], Assign):
             continue
         pos = None
         for j, b_ in enumerate(w.body):
@@ -656,7 +701,7 @@ def _gen(f, w, block, idx, kname, ranges):
 
     # kind 12: value range of a non-counter scalar that only receives plain assignments
     for v in sorted(M):
-        if v in ctr:
+        if v in ctr or v in CW:
             continue
         mine = [st for st in asg if st.name == v]
         if not mine or not all(isinstance(st, Assign) for st in mine):
@@ -687,7 +732,7 @@ def _gen(f, w, block, idx, kname, ranges):
             if isinstance(st3, IndexAssign) and _isvar(st3.index, v):
                 b = st3.name
                 mine = [st for st in asg if st.name == b]
-                if len(mine) != 1 or mine[0] is not st3:
+                if b in CW or len(mine) != 1 or mine[0] is not st3:
                     continue
                 init = _init(block, idx, b, True)
                 if not isinstance(init, Call):

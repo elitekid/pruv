@@ -85,10 +85,6 @@ fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
             };
             match checked {
             Err(e) => errors.push(e.to_json_value()),
-            Ok(_) if pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen").is_some() => {
-                // G5 guard (as tests/diff_py_adapter.py): inout programs stop before verification
-                errors.push(pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen").unwrap().to_json_value());
-            }
             Ok(tt) => {
                 // --no-verify: do not run verification (obligations [], no timeout_ms). G9 A2: the rust backend (the default
                 // code generator here) lowers G9 programs; no guard for legacy programs (as tests/diff_py_adapter.py).
@@ -105,6 +101,13 @@ fn run(path: &std::ffi::OsStr, infer: bool, no_verify: bool) -> String {
                             internal = true;
                             errors.push(internal_err(&msg));
                         }
+                    }
+                }
+                // G5 A1 (as tests/diff_py_adapter.py): the staging guard of pruvc.compile_file runs after verification
+                // (verification errors win), also with --no-verify
+                if errors.is_empty() {
+                    if let Some(e) = pruv_core::typeinfo::g5_unimplemented_error(&prog, "codegen") {
+                        errors.push(e.to_json_value());
                     }
                 }
                 // G4 A2: no guard here (as tests/diff_py_adapter.py): the adapter's code generator is the Rust source backend,

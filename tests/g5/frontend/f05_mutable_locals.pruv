@@ -12,5 +12,5 @@ fn demo() -> i64 ! alloc {
   set_at(inout data, 3, 9);
   data = alloc(2, 5);
   set_at(inout data, 1, 1);
-  return data[0] + data[1];
+  return data[1];
 }

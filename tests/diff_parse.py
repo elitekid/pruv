@@ -8,7 +8,8 @@
 
 Groups: must_reject examples runtime bench edge g6 g9 g4 g5 bytes fuzz mutate
   g6 = tests/g6/frontend, g9 = tests/g9/frontend (the g9_* must_reject sources are part of must_reject).
-  g5 = the roots of tests/g5/fixtures.json (frontend files, the f11 module project, the g5_host_entry rejection project);
+  g5 = the roots of tests/g5/fixtures.json (frontend files, the f11 module project, the g5_host_entry rejection project,
+  and since A1 the proof roots incl. the p10/p12 module projects);
   the flat tests/must_reject/g5_*.pruv sources are part of must_reject (G5 A0: the Rust side is ported later).
   g4 = the project roots listed in tests/g4/fixtures.json (frontend + tests/must_reject/g4_*/root.pruv); companion
   module files are never inputs. The dump tools load the declared children relative to the root file.

@@ -1,0 +1,12 @@
+// G5 A1 reject: `return f(inout buf)` cannot skip the post-call refinement obligation of the refined local buf
+fn clobber(inout a: [i64]) -> i64
+  requires len(a) >= 1
+{
+  a[0] = 50;
+  return 0;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut buf: [i64 | 0..=9; <=8] = alloc(4, 0);
+  return clobber(inout buf);
+}

@@ -1,0 +1,8 @@
+// G5 A1 reject: incorrect frame claim: the body also writes a[i + 1], which the ensures says is untouched
+fn set_two(inout a: [i64], i: i64) -> ()
+  requires 0 <= i && i + 1 < len(a)
+  ensures forall k in 0..len(a): k != i ==> a[k] == old(a)[k]
+{
+  a[i] = 0;
+  a[i + 1] = 0;
+}

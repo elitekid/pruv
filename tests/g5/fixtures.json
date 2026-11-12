@@ -1,6 +1,6 @@
 {
   "schema": "pruv-g5-fixtures-v1",
-  "note": "test-only inventory of the G5 (inout parameters) fixtures; not a language or package manifest. A root with \"project\": true is a directory root.pruv whose companion modules are never standalone roots (tests/g4/projects.py replays them). \"expect\": \"guard\" = a frontend root accepted by parsing and checking that stops at the A0 staging guard codegen/unsupported_type (all G5 programs until A1/A2/A3 remove it); \"ok\" = a G5-free compatibility program that compiles normally. Rejects record the diagnostic stage/code and the modes in which it must hold (all A0 rejections are static: default, --no-verify and --trust-callers).",
+  "note": "test-only inventory of the G5 (inout parameters) fixtures; not a language or package manifest. A root with \"project\": true is a directory root.pruv whose companion modules are never standalone roots (tests/g4/projects.py replays them). \"expect\": \"guard\" = a frontend root accepted by parsing and checking that stops at the A0 staging guard codegen/unsupported_type (all G5 programs until A1/A2/A3 remove it); \"ok\" = a G5-free compatibility program that compiles normally. Rejects record the diagnostic stage/code and the modes in which it must hold (all A0 rejections are static: default, --no-verify and --trust-callers). A1 (\"proof\"): positive roots that must verify completely and then stop at the staging guard (code generation is not implemented yet); \"infer\": true adds a --infer row. \"proof_reject\": verification rejections (stage verify, recorded code) run in default mode as ordinary must_reject rows, plus a --infer row where \"infer\": true; they are not static, so they are not part of the g5_reject group.",
   "frontend": [
     {"name": "f01_i64_set_at", "root": "tests/g5/frontend/f01_i64_set_at.pruv", "expect": "guard"},
     {"name": "f02_u8_store", "root": "tests/g5/frontend/f02_u8_store.pruv", "expect": "guard"},
@@ -55,6 +55,43 @@
     {"name": "g5_old_decl_reserved", "root": "tests/must_reject/g5_old_decl_reserved.pruv", "stage": "type", "code": "reserved", "mode": "static"},
     {"name": "g5_host_entry", "root": "tests/must_reject/g5_host_entry/root.pruv", "project": true, "stage": "type", "code": "entry_signature", "mode": "static"}
   ],
-  "proof": [],
+  "proof": [
+    {"name": "p01_i64_store_frame", "root": "tests/g5/proof/p01_i64_store_frame.pruv"},
+    {"name": "p02_u8_store_domain", "root": "tests/g5/proof/p02_u8_store_domain.pruv"},
+    {"name": "p03_bool_store_frame", "root": "tests/g5/proof/p03_bool_store_frame.pruv"},
+    {"name": "p04_generic_exchange", "root": "tests/g5/proof/p04_generic_exchange.pruv"},
+    {"name": "p05_two_outputs_relation", "root": "tests/g5/proof/p05_two_outputs_relation.pruv"},
+    {"name": "p06_forwarding", "root": "tests/g5/proof/p06_forwarding.pruv"},
+    {"name": "p07_old_across_calls", "root": "tests/g5/proof/p07_old_across_calls.pruv"},
+    {"name": "p08_untouched_locals", "root": "tests/g5/proof/p08_untouched_locals.pruv"},
+    {"name": "p09_legacy_unit_ensures", "root": "tests/g5/proof/p09_legacy_unit_ensures.pruv", "infer": true},
+    {"name": "p10_explicit_unit_post", "root": "tests/g5/proof/p10_explicit_unit_post/root.pruv", "project": true},
+    {"name": "p11_direct_recursion", "root": "tests/g5/proof/p11_direct_recursion.pruv"},
+    {"name": "p12_cross_module_mutual", "root": "tests/g5/proof/p12_cross_module_mutual/root.pruv", "project": true},
+    {"name": "p13_loop_calls_old", "root": "tests/g5/proof/p13_loop_calls_old.pruv", "infer": true},
+    {"name": "p14_refined_local", "root": "tests/g5/proof/p14_refined_local.pruv"},
+    {"name": "p15_old_loop_invariants", "root": "tests/g5/proof/p15_old_loop_invariants.pruv", "infer": true},
+    {"name": "p16_infer_controls", "root": "tests/g5/proof/p16_infer_controls.pruv", "infer": true}
+  ],
+  "proof_reject": [
+    {"name": "g5p_ensures_false_store", "root": "tests/must_reject/g5p_ensures_false_store.pruv", "stage": "verify", "code": "ensures"},
+    {"name": "g5p_entry_final_callee", "root": "tests/must_reject/g5p_entry_final_callee.pruv", "stage": "verify", "code": "ensures"},
+    {"name": "g5p_entry_final_caller", "root": "tests/must_reject/g5p_entry_final_caller.pruv", "stage": "verify", "code": "assert"},
+    {"name": "g5p_stale_contents", "root": "tests/must_reject/g5p_stale_contents.pruv", "stage": "verify", "code": "assert"},
+    {"name": "g5p_call_requires_index", "root": "tests/must_reject/g5p_call_requires_index.pruv", "stage": "verify", "code": "call_requires"},
+    {"name": "g5p_call_requires_accumulated", "root": "tests/must_reject/g5p_call_requires_accumulated.pruv", "stage": "verify", "code": "call_requires"},
+    {"name": "g5p_relation_callee", "root": "tests/must_reject/g5p_relation_callee.pruv", "stage": "verify", "code": "ensures"},
+    {"name": "g5p_relation_caller", "root": "tests/must_reject/g5p_relation_caller.pruv", "stage": "verify", "code": "assert"},
+    {"name": "g5p_loop_forgotten_write", "root": "tests/must_reject/g5p_loop_forgotten_write.pruv", "stage": "verify", "code": "invariant_preserved", "infer": true},
+    {"name": "g5p_loop_forgotten_post", "root": "tests/must_reject/g5p_loop_forgotten_post.pruv", "stage": "verify", "code": "assert", "infer": true},
+    {"name": "g5p_frame_extra_write", "root": "tests/must_reject/g5p_frame_extra_write.pruv", "stage": "verify", "code": "ensures"},
+    {"name": "g5p_frame_wrong_exclusion", "root": "tests/must_reject/g5p_frame_wrong_exclusion.pruv", "stage": "verify", "code": "ensures"},
+    {"name": "g5p_u8_range_store", "root": "tests/must_reject/g5p_u8_range_store.pruv", "stage": "verify", "code": "elem_range"},
+    {"name": "g5p_u8_domain_upper", "root": "tests/must_reject/g5p_u8_domain_upper.pruv", "stage": "verify", "code": "assert"},
+    {"name": "g5p_refine_not_preserved", "root": "tests/must_reject/g5p_refine_not_preserved.pruv", "stage": "verify", "code": "refinement_assign", "infer": true},
+    {"name": "g5p_return_call_refine", "root": "tests/must_reject/g5p_return_call_refine.pruv", "stage": "verify", "code": "refinement_assign", "infer": true},
+    {"name": "g5p_loop_call_replace", "root": "tests/must_reject/g5p_loop_call_replace.pruv", "stage": "verify", "code": "index_oob", "infer": true},
+    {"name": "g5p_recursive_decrease", "root": "tests/must_reject/g5p_recursive_decrease.pruv", "stage": "verify", "code": "recursive_decrease"}
+  ],
   "runtime": []
 }

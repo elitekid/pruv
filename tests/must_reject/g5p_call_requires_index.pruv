@@ -1,0 +1,12 @@
+// G5 A1 reject: the call's requires is not proved (index 2 on a 2-element array)
+fn set_at(inout a: [i64], i: i64, v: i64) -> ()
+  requires 0 <= i && i < len(a)
+  ensures a[i] == v
+{
+  a[i] = v;
+}
+
+fn demo() -> () ! alloc {
+  let mut d: [i64] = alloc(2, 0);
+  set_at(inout d, 2, 1);
+}

@@ -1,0 +1,6 @@
+// G5 A1 reject: an element store into an inout [u8] keeps the u8 range obligation (no requires bounds the value)
+fn put_byte(inout buf: [u8], i: i64, b: i64) -> ()
+  requires 0 <= i && i < len(buf)
+{
+  buf[i] = b;
+}

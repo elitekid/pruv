@@ -1,0 +1,11 @@
+// G5 A1 reject: stale caller contents: an unspecified post-state is arbitrary, even though the callee body writes nothing
+fn scramble(inout a: [i64]) -> () {
+  let n: i64 = len(a);
+}
+
+fn demo() -> i64 ! alloc {
+  let mut d: [i64] = alloc(2, 5);
+  scramble(inout d);
+  assert d[0] == 5;
+  return 0;
+}

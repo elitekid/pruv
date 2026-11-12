@@ -1,0 +1,8 @@
+// G5 A1 reject: the relational ensures of two inout outputs is wrong (the body establishes hi[0] == lo[0] + 1)
+fn spread(inout lo: [i64], inout hi: [i64]) -> ()
+  requires len(lo) >= 1 && len(hi) >= 1
+  ensures hi[0] == lo[0] + 2
+{
+  lo[0] = 5;
+  hi[0] = lo[0] + 1;
+}

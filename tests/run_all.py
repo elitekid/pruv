@@ -1,14 +1,21 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof]
                         [--backend rust|llvm|both]
 
 groups g5_frontend / g5_reject (G5 A0, inventory tests/g5/fixtures.json; rows have backend null): g5_frontend runs the roots of
 tests/g5/frontend (flat files and <name>/root.pruv projects, copied to a new directory first) in modes no-verify and default.
 While G5_GUARD is True every "guard" fixture passes when pruvc exits 1 with codegen/unsupported_type and the message
-"G5 inout parameters are not implemented ..." (the staging guard right after checking: verification and emission never
-run); the G5-free compatibility fixture ("ok") must compile with exit 0. The G5 rejection roots tests/must_reject/g5_*.pruv
+"G5 inout parameters are not implemented ..." (the staging guard; since A1 it runs AFTER verification, so in default mode
+the program must also verify, and with --no-verify the guard stops it before any output); the G5-free compatibility
+fixture ("ok") must compile with exit 0. The G5 rejection roots tests/must_reject/g5_*.pruv
 (sibling .json = stage/code) and tests/must_reject/g5_*/root.pruv are ordinary must_reject rows (default mode); group
 g5_reject repeats every G5 rejection with --no-verify and --trust-callers (exclusivity is static in all modes).
+
+group g5_proof (G5 A1; backend null rows): the "proof" roots of tests/g5/fixtures.json (tests/g5/proof/*.pruv and
+<name>/root.pruv projects, copied first) in default mode, and with --infer where the entry says "infer": true; a row passes
+when verification succeeds completely and pruvc then stops at the G5 staging guard (exit 1, codegen/unsupported_type, no
+verify diagnostic). The verification rejections tests/must_reject/g5p_*.pruv ("proof_reject", sibling .json = stage/code)
+are ordinary must_reject rows (default mode); g5_proof adds a --infer row for each one marked "infer": true.
 
 group g4_proof (G4 A1): tests/g4/proof/*/root.pruv from tests/g4/fixtures.json (default mode, backend null rows, each project
 copied to a new directory first). Since A2 (G4_GUARD False) a row passes when pruvc exits 0 (verification and Rust generation);
@@ -511,8 +518,9 @@ def g9_proof_jobs(group="g9_proof", sub="proof", modes=(("default", []),)):
     return jobs
 
 
-# G5 A0 (docs/G5_SPEC.md 9, 10): until the verify and codegen batches (A1-A3) the driver stops every checked program that
-# uses inout (or the old builtin) at the staging guard, before verification and emission, in every mode. While G5_GUARD is
+# G5 (docs/G5_SPEC.md 9, 10, 11): until the codegen batches (A2, A3) the driver stops every checked program that uses inout
+# (or the old builtin) at the staging guard. A0 placed it before verification; since A1 it runs after verification (a
+# verification error wins; with --no-verify it still stops the run before any output). While G5_GUARD is
 # True a g5_frontend row of a "guard" fixture passes when pruvc exits 1 with codegen/unsupported_type and the G5 message
 # (which also shows that parsing and checking accepted the program); an "ok" fixture (the G5-free identifier
 # compatibility program) must compile with exit 0. The static rejections hold in every mode (group g5_reject rows).
@@ -579,6 +587,65 @@ def g5_reject_jobs(group="g5_reject", modes=(("no-verify", ["--no-verify"]), ("t
                     e["stage"], e["code"], [(d.get("stage"), d.get("code")) for d in diags])
             jobs.append(safe(name, fn, {"sample": e["root"], "backend": None, "flags": list(flags), "mode": mode,
                                          "group": group}))
+    return jobs
+
+
+def g5_proof_jobs(group="g5_proof"):
+    """G5 A1 (tests/g5/fixtures.json "proof" and "proof_reject"; rows have backend null).
+    Positive roots (project roots are copied to a new directory first) run in default mode and, where the entry says
+    "infer": true, also with --infer. Verification runs before the staging guard, so a passing row exits 1 with the
+    G5 guard (codegen/unsupported_type) and NO verify diagnostic; a verification error (or a timeout/unknown) fails it.
+    Negative roots (tests/must_reject/g5p_*.pruv, "proof_reject") are ordinary must_reject rows in default mode; here
+    only their --infer rows (entries marked "infer": true) are added: the recorded stage/code must hold there too."""
+    jobs = []
+    P = _g4()
+    for e, f, proj in _g5_rows("proof"):
+        modes = [("default", [])] + ([("infer", ["--infer"])] if e.get("infer") else [])
+        for mode, flags in modes:
+            name = "%s/%s [%s]" % (group, e["name"], mode)
+
+            def fn(e=e, f=f, proj=proj, flags=flags, mode=mode):
+                stem = "g5pf_%s_%s" % (e["name"], mode)
+                src = P.copy_project(f, os.path.join(WORK, stem)) if proj else f
+                c = pruvc(src, os.path.join(WORK, stem + ".rs"), flags)
+                text = c.stdout + c.stderr
+                diags = []
+                for line in c.stdout.splitlines():
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(d, dict):
+                        diags.append(d)
+                verify_errs = [(d.get("stage"), d.get("code")) for d in diags if d.get("stage") == "verify"]
+                ok = (c.returncode == 1 and not verify_errs and G5_GUARD_CODE in text and G5_GUARD_LAYER in text)
+                return ok, "pruvc exit %d (expected 1 with the G5 guard %s / %r after a complete proof); verify errors %s: %s" % (
+                    c.returncode, G5_GUARD_CODE, G5_GUARD_LAYER, verify_errs, text[-400:])
+            jobs.append(safe(name, fn, {"sample": e["root"], "backend": None, "flags": list(flags), "mode": mode,
+                                         "group": group}))
+    for e, f, proj in _g5_rows("proof_reject"):
+        if not e.get("infer"):
+            continue
+        name = "%s/%s [infer]" % (group, e["name"])
+
+        def fn(e=e, f=f):
+            stem = "g5pf_%s_infer" % e["name"]
+            c = pruvc(f, os.path.join(WORK, stem + ".rs"), ["--infer"])
+            if c.returncode != 1:
+                return False, "exit %d (expected 1) %s" % (c.returncode, c.stdout + c.stderr)
+            diags = []
+            for line in c.stdout.splitlines():
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(d, dict):
+                    diags.append(d)
+            ok = any(d.get("stage") == e["stage"] and d.get("code") == e["code"] for d in diags)
+            return ok, "expected stage=%s code=%s; got %s" % (
+                e["stage"], e["code"], [(d.get("stage"), d.get("code")) for d in diags])
+        jobs.append(safe(name, fn, {"sample": e["root"], "backend": None, "flags": ["--infer"], "mode": "infer",
+                                     "group": group}))
     return jobs
 
 
@@ -838,7 +905,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -926,7 +993,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -961,6 +1028,8 @@ def main():
             jobs += g5_frontend_jobs()
         if only in (None, "g5_reject"):
             jobs += g5_reject_jobs()
+        if only in (None, "g5_proof"):
+            jobs += g5_proof_jobs()
         for b in backends:
             if only in (None, "examples"):
                 jobs += examples_jobs(b)
@@ -1004,7 +1073,7 @@ def main():
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
-                        "g4_proof", "g5_frontend", "g5_reject")
+                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

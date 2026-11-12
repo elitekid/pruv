@@ -341,10 +341,70 @@ fn assign_stmts<'s>(stmts: &'s [Stmt], out: &mut Vec<Asg<'s>>) {
     }
 }
 
+/// infer.py `_expr_inout` (G5 A1): whole-array operands of the inout call arguments inside expression e.
+fn expr_inout(e: &Expr, out: &mut BTreeSet<String>) {
+    if let Expr::Call(c) = e {
+        for a in &c.args {
+            if let Expr::InoutArg(ia) = a {
+                if let Expr::Var(v) = &*ia.expr {
+                    out.insert(v.name.clone());
+                }
+            }
+        }
+    }
+    for c in kids(e) {
+        expr_inout(c, out);
+    }
+}
+
+/// infer.py `_stmt_inout` (G5 A1): names written by inout calls in the own expressions of one statement.
+fn stmt_inout(st: &Stmt) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    match st {
+        Stmt::Let(x) => expr_inout(&x.value, &mut out),
+        Stmt::Assign(x) => expr_inout(&x.value, &mut out),
+        Stmt::FieldAssign(x) => expr_inout(&x.value, &mut out),
+        Stmt::IndexAssign(x) => {
+            expr_inout(&x.index, &mut out);
+            expr_inout(&x.value, &mut out);
+        }
+        Stmt::Return(x) => {
+            if let Some(v) = &x.value {
+                expr_inout(v, &mut out);
+            }
+        }
+        Stmt::ExprStmt(x) => expr_inout(&x.expr, &mut out),
+        _ => {}
+    }
+    out
+}
+
+/// infer.py `_call_written` (G5 A1): every name written by an inout call, nested blocks included.
+fn call_written(stmts: &[Stmt], out: &mut BTreeSet<String>) {
+    for st in stmts {
+        out.extend(stmt_inout(st));
+        match st {
+            Stmt::If(x) => {
+                call_written(&x.then, out);
+                call_written(&x.els, out);
+            }
+            Stmt::While(x) => call_written(&x.body, out),
+            Stmt::Match(m) => {
+                for a in &m.arms {
+                    call_written(&a.body, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn assigned(stmts: &[Stmt]) -> BTreeSet<String> {
     let mut v = Vec::new();
     assign_stmts(stmts, &mut v);
-    v.iter().map(|a| a.name().to_string()).collect()
+    let mut out: BTreeSet<String> = v.iter().map(|a| a.name().to_string()).collect();
+    call_written(stmts, &mut out); // G5 A1
+    out
 }
 
 /// Names declared inside the loop body (let, match binders): not visible at the loop head.
@@ -377,6 +437,9 @@ fn locals(stmts: &[Stmt], out: &mut BTreeSet<String>) {
 fn init<'s>(block: &'s [Stmt], idx: usize, name: &str, skip_index: bool) -> Option<&'s Expr> {
     for j in (0..idx).rev() {
         let st = &block[j];
+        if stmt_inout(st).contains(name) {
+            return None; // G5 A1: an inout call write invalidates every earlier initializer/content fact
+        }
         match st {
             Stmt::Let(x) if x.name == name => return Some(&x.value),
             Stmt::Assign(x) if x.name == name => return Some(&x.value),
@@ -882,6 +945,7 @@ impl Bld {
                 col,
                 expr: Box::new(self.clone_e(&x.expr, sub)),
                 ty: x.ty.clone(),
+                post_refine: x.post_refine.clone(),
             }),
             Expr::Index(x) => Expr::Index(ast::Index {
                 line,
@@ -1185,6 +1249,8 @@ fn gen(
     let b = Bld { line: w.line, col: w.col, k: kname.to_string() };
     let etab = elem_types(f, w); // G2 A5: per-loop-position table
     let m = assigned(&w.body);
+    let mut cw: BTreeSet<String> = BTreeSet::new(); // G5 A1: names written by inout calls (never counter/store/prefix templates)
+    call_written(&w.body, &mut cw);
     let mut loc: BTreeSet<String> = BTreeSet::new();
     locals(&w.body, &mut loc);
     let ns: BTreeSet<String> = m.union(&loc).cloned().collect();
@@ -1202,7 +1268,7 @@ fn gen(
     // ---- counters ----
     for v in &m {
         let mine: Vec<Asg> = asg.iter().filter(|s| s.name() == v.as_str()).copied().collect();
-        if mine.len() != 1 {
+        if cw.contains(v) || mine.len() != 1 {
             continue;
         }
         let st = match mine[0] {
@@ -1437,6 +1503,9 @@ fn gen(
     // Counter set CTR (all 3.1 definitions, in name-sorted order)
     let mut ctr: Vec<(&String, usize, i128, &Expr)> = Vec::new();
     for v in &m {
+        if cw.contains(v) {
+            continue; // G5 A1
+        }
         if let Some((pos, c, lo)) = counter_info(w, &asg, &m, block, idx, v) {
             ctr.push((v, pos, c, lo));
         }
@@ -1444,7 +1513,7 @@ fn gen(
 
     // kind 12: initial range of a scalar that is not a counter
     for v in &m {
-        if ctr.iter().any(|(n, _, _, _)| *n == v) {
+        if ctr.iter().any(|(n, _, _, _)| *n == v) || cw.contains(v) {
             continue;
         }
         if !asg.iter().filter(|s| s.name() == v.as_str()).all(|s| matches!(s, Asg::A(_))) {
@@ -1474,7 +1543,7 @@ fn gen(
                 // 13: output array prefix `b[v] = E;`
                 Stmt::IndexAssign(ia) if is_var(&ia.index, v) => {
                     let bn = ia.name.as_str();
-                    if count_of(bn) != 1 {
+                    if cw.contains(bn) || count_of(bn) != 1 {
                         continue;
                     }
                     if !asg.iter().filter(|s| s.name() == bn).all(|s| matches!(s, Asg::I(_))) {
@@ -1528,7 +1597,7 @@ fn gen(
     // ---- arrays used only for element storage (kinds 4, 5) ----
     for bn in &m {
         let all_index = asg.iter().filter(|s| s.name() == bn.as_str()).all(|s| matches!(s, Asg::I(_)));
-        if !all_index {
+        if cw.contains(bn) || !all_index {
             continue;
         }
         let init_e = match init(block, idx, bn, true) {

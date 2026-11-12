@@ -2,6 +2,7 @@
 fn set_at(inout a: [i64], i: i64, value: i64) -> ()
   requires 0 <= i && i < len(a)
   ensures a[i] == value
+  ensures forall k in 0..len(a): k != i ==> a[k] == old(a)[k]
 {
   a[i] = value;
 }

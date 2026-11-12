@@ -1,0 +1,11 @@
+// G5 A1 reject: fresh post-call [u8] contents are only known to lie in 0..=255, so 254 is not an upper bound
+fn noop(inout b: [u8]) -> () {
+  let n: i64 = len(b);
+}
+
+fn demo(inout b: [u8]) -> ()
+  requires len(b) >= 1
+{
+  noop(inout b);
+  assert b[0] <= 254;
+}

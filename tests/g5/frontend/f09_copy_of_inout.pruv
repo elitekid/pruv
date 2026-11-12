@@ -1,6 +1,6 @@
 // G5 A0 frontend: copy(a) of an inout parameter is an independent owner (needs alloc) and may be stored or returned
 fn bumped_copy(inout a: [i64]) -> [i64] ! alloc
-  requires len(a) >= 1
+  requires len(a) >= 1 && a[0] < 1000
 {
   let mut c: [i64] = copy(a);
   a[0] = 0;

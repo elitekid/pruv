@@ -1,0 +1,14 @@
+// G5 A1 reject: entry/final confusion in the caller: after the call the array holds the final value, not the entry value
+fn bump(inout a: [i64]) -> ()
+  requires len(a) >= 1 && a[0] < 1000
+  ensures a[0] == old(a)[0] + 1
+{
+  a[0] = a[0] + 1;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut d: [i64] = alloc(1, 0);
+  bump(inout d);
+  assert d[0] == 0;
+  return d[0];
+}

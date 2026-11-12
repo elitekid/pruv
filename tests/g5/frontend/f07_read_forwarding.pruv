@@ -1,12 +1,13 @@
 // G5 A0 frontend: an inout parameter passed unmarked to a read-only parameter is a read borrow
 fn first(a: [i64]) -> i64
   requires len(a) >= 1
+  ensures result == a[0]
 {
   return a[0];
 }
 
 fn bump_first(inout a: [i64]) -> ()
-  requires len(a) >= 1
+  requires len(a) >= 1 && a[0] < 1000
   ensures a[0] == old(a)[0] + 1
 {
   let x: i64 = first(a);

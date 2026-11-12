@@ -17,6 +17,8 @@ is the input; the compilers read the declared module files themselves.
 
 G5 (group g5; A0): the frontend roots of tests/g5/fixtures.json (default and --no-verify) plus the g5_host_entry rejection project.
 The flat tests/must_reject/g5_*.pruv rejections are part of group must_reject.
+G5 (A1): the proof roots of tests/g5/fixtures.json (default, and --infer where "infer": true) and the --infer rows of the
+"proof_reject" entries marked "infer"; the tests/must_reject/g5p_*.pruv default rows are part of group must_reject.
 
 Comparison: exit code / stdout JSON lines (count and order; stage, line, col and code must match exactly, and message and fix are compared too,
 normalizing only the work directory, input path and compiler executable name) / bytes of the generated files (.rs, .ll, bindings).
@@ -140,6 +142,16 @@ def build_cases(args):
             for mode, flags in (("default", []), ("no-verify", ["--no-verify"])):
                 cases.append({"name": "g5/%s [%s]" % (e["name"], mode), "src": os.path.join(ROOT, *e["root"].split("/")),
                               "flags": list(flags), "project": bool(e.get("project"))})
+        # G5 A1: the proof roots (default, plus --infer where the entry says so) and the --infer rows of the verification
+        # rejections marked "infer"; the flat tests/must_reject/g5p_*.pruv default rows are in the must_reject group
+        for e in P.g5_entries("proof"):
+            for mode, flags in [("default", [])] + ([("infer", ["--infer"])] if e.get("infer") else []):
+                cases.append({"name": "g5/%s [%s]" % (e["name"], mode), "src": os.path.join(ROOT, *e["root"].split("/")),
+                              "flags": list(flags), "project": bool(e.get("project"))})
+        for e in P.g5_entries("proof_reject"):
+            if e.get("infer"):
+                cases.append({"name": "g5/%s [infer]" % e["name"], "src": os.path.join(ROOT, *e["root"].split("/")),
+                              "flags": ["--infer"], "project": False})
     for f in args.input or []:
         if not os.path.isfile(f):
             errors.append("--input: no such file: %s" % f)

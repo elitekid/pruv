@@ -1,0 +1,17 @@
+// G5 A1 proof: exact store and frame contract of an inout [bool]
+fn set_flag(inout flags: [bool], i: i64, v: bool) -> ()
+  requires 0 <= i && i < len(flags)
+  ensures len(flags) == len(old(flags))
+  ensures flags[i] == v
+  ensures forall k in 0..len(flags): k != i ==> flags[k] == old(flags)[k]
+{
+  flags[i] = v;
+}
+
+fn demo() -> bool ! alloc
+  ensures result
+{
+  let mut marks: [bool] = alloc(3, false);
+  set_flag(inout marks, 2, true);
+  return marks[2] && !marks[0];
+}

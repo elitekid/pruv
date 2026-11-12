@@ -1,0 +1,26 @@
+// G5 A1 proof: old(a) is the function-entry array, never the latest call: two calls add up against the same snapshot
+fn bump(inout a: [i64]) -> ()
+  requires len(a) >= 1 && a[0] < 1000
+  ensures len(a) == len(old(a))
+  ensures a[0] == old(a)[0] + 1
+{
+  a[0] = a[0] + 1;
+}
+
+fn bump_twice(inout a: [i64]) -> ()
+  requires len(a) >= 1 && a[0] < 998
+  ensures len(a) == len(old(a))
+  ensures a[0] == old(a)[0] + 2
+{
+  bump(inout a);
+  bump(inout a);
+  assert a[0] == old(a)[0] + 2;
+}
+
+fn demo() -> i64 ! alloc
+  ensures result == 2
+{
+  let mut d: [i64] = alloc(1, 0);
+  bump_twice(inout d);
+  return d[0];
+}

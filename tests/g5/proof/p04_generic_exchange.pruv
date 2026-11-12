@@ -1,0 +1,32 @@
+// G5 A1 proof: a generic exchange on an inout [T: Element], instantiated for i64 and bool
+fn exchange<T: Element>(inout a: [T], i: i64, j: i64) -> ()
+  requires 0 <= i && i < len(a) && 0 <= j && j < len(a)
+  ensures len(a) == len(old(a))
+  ensures a[i] == old(a)[j]
+  ensures a[j] == old(a)[i]
+  ensures forall k in 0..len(a): k != i && k != j ==> a[k] == old(a)[k]
+{
+  let x: T = a[i];
+  let y: T = a[j];
+  a[i] = y;
+  a[j] = x;
+}
+
+fn demo_i64() -> i64 ! alloc
+  ensures result == 1
+{
+  let mut v: [i64] = alloc(3, 0);
+  v[0] = 1;
+  v[2] = 4;
+  exchange::<i64>(inout v, 0, 2);
+  return v[2];
+}
+
+fn demo_bool() -> bool ! alloc
+  ensures result
+{
+  let mut b: [bool] = alloc(2, false);
+  b[0] = true;
+  exchange::<bool>(inout b, 0, 1);
+  return b[1];
+}

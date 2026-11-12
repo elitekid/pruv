@@ -1,0 +1,17 @@
+// G5 A1 proof: a refined local passed inout keeps its refinement; the proof uses the callee ensures (refinement_assign)
+fn put9(inout a: [i64], i: i64, v: i64) -> ()
+  requires 0 <= i && i < len(a) && 0 <= v && v <= 9
+  ensures len(a) == len(old(a))
+  ensures a[i] == v
+  ensures forall k in 0..len(a): k != i ==> a[k] == old(a)[k]
+{
+  a[i] = v;
+}
+
+fn demo() -> i64 ! alloc
+  ensures result == 7
+{
+  let mut buf: [i64 | 0..=9; <=8] = alloc(4, 0);
+  put9(inout buf, 1, 7);
+  return buf[1];
+}

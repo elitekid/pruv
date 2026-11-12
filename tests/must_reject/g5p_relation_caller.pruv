@@ -1,0 +1,16 @@
+// G5 A1 reject: the caller asserts a relation between the two outputs that the callee's ensures does not give
+fn spread(inout lo: [i64], inout hi: [i64]) -> ()
+  requires len(lo) >= 1 && len(hi) >= 1
+  ensures hi[0] == lo[0] + 1
+{
+  lo[0] = 5;
+  hi[0] = lo[0] + 1;
+}
+
+fn demo() -> i64 ! alloc {
+  let mut x: [i64] = alloc(2, 0);
+  let mut y: [i64] = alloc(2, 0);
+  spread(inout x, inout y);
+  assert y[0] - x[0] == 2;
+  return 0;
+}

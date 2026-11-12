@@ -1,0 +1,12 @@
+// G5 A1 proof: mutually recursive inout functions in two modules; the function SCC spans the files
+mod even;
+mod odd;
+
+pub fn run(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 100
+  ensures result == 0
+{
+  let mut w: [i64] = alloc(1, 5);
+  crate::even::walk_even(inout w, n);
+  return w[0];
+}

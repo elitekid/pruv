@@ -314,10 +314,6 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
     try:
         prog = load_program(path)
         check_mod.check(prog, externs)
-        # G5 A0: the staging guard of pruvc.compile_file (inout programs stop before verification and emission)
-        g5err = g5_unimplemented_error(prog)
-        if g5err is not None:
-            raise g5err
         # G9 A2: the rust backend (the default code generator here) lowers G9 programs; no guard
         # G6 A1: no guard here; G6 programs get real traces (G6_SPEC 11.1)
         if verify_on:
@@ -330,6 +326,11 @@ def trace_result(path, verify_on=True, infer=False, externs=()):
             else:
                 errs = verify.verify_program(prog, rec=rec)
             errors.extend(err_dict(e) for e in errs)
+        # G5 A1: the staging guard of pruvc.compile_file runs after verification (verification errors win)
+        if not errors:
+            g5err = g5_unimplemented_error(prog)
+            if g5err is not None:
+                raise g5err
         # G4 A2: no guard here. pruvc.compile_file keeps its staging guard only for the LLVM backend (--backend llvm /
         # --also-llvm); this adapter's code generator is the Rust source backend, which generates explicit programs.
     except PruvError as e:
