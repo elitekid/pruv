@@ -1,0 +1,1 @@
+fn f() -> i64 cost true { return false; }

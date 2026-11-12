@@ -1,0 +1,1 @@
+fn f() -> i64 cost 0 { let n: i64 = spent; return n; }

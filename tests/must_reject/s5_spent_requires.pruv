@@ -1,0 +1,1 @@
+fn f() -> i64 requires spent == 0 cost 0 { return 0; }

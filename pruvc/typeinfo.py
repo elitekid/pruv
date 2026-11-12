@@ -280,6 +280,7 @@ def first_g2_unimplemented(prog, skip=()):
             return (fn.line, fn.col, fn.ret)
         cands = []
         _g2_candidates(fn.requires, skip, cands)
+        _g2_candidates(fn.cost, skip, cands)
         _g2_candidates(fn.ensures, skip, cands)
         _g2_candidates(fn.body, skip, cands)
         if cands:
@@ -339,7 +340,7 @@ def uses_str(prog):
     if uses_array_type(prog, "str"):
         return True
     for fn in prog.functions:
-        if _has_str_node(fn.requires) or _has_str_node(fn.ensures) or _has_str_node(fn.body):
+        if _has_str_node(fn.cost) or _has_str_node(fn.requires) or _has_str_node(fn.ensures) or _has_str_node(fn.body):
             return True
     return False
 
@@ -401,6 +402,7 @@ def first_g3_use(prog):
         if _g3_type_hit(fn.ret):
             cands.append((fn.line, fn.col, "type %s" % type_name(fn.ret)))
         _g3_candidates(fn.requires, cands)
+        _g3_candidates(fn.cost, cands)
         _g3_candidates(fn.ensures, cands)
         _g3_candidates(fn.body, cands)
     return min(cands, key=lambda c: (c[0], c[1])) if cands else None
@@ -462,6 +464,7 @@ def first_g9_use(prog):
             cands.append((fn.line, fn.col, "recursive function %s" % fn.name))
         sizes = []
         _g9_size_calls(fn.requires, sizes)
+        _g9_size_calls(fn.cost, sizes)
         _g9_size_calls(fn.ensures, sizes)
         _g9_size_calls(fn.body, sizes)
         if fn.decreases is not None:
@@ -503,7 +506,7 @@ def program_uses_inout(prog) -> bool:
         if any(p.mode is not None for p in fn.params):
             return True
     for fn in prog.functions:
-        if (_has_inout_node(fn.requires) or _has_inout_node(fn.ensures) or _has_inout_node(fn.body)
+        if (_has_inout_node(fn.cost) or _has_inout_node(fn.requires) or _has_inout_node(fn.ensures) or _has_inout_node(fn.body)
                 or (fn.decreases is not None and _has_inout_node(fn.decreases))):
             return True
     return False
@@ -609,3 +612,31 @@ class TypeTable:
             if v.name == variant:
                 return i
         raise KeyError("%s::%s" % (ty.name, variant))
+
+
+def s5_unimplemented_error(prog, stage="codegen"):
+    """After static/ownership checks, before verification and emission."""
+    def spent(node):
+        if isinstance(node, Spent):
+            return node
+        if isinstance(node, (list, tuple)):
+            children = node
+        elif hasattr(node, "__dataclass_fields__") and not isinstance(node, Type):
+            children = [getattr(node, k) for k in node.__dataclass_fields__]
+        else:
+            return None
+        for child in children:
+            found = spent(child)
+            if found is not None:
+                return found
+        return None
+    for f in prog.functions:
+        e = f.cost
+        if e is None:
+            e = spent([f.requires, f.ensures, f.decreases, f.body])
+        if e is not None:
+            return PruvError(stage, e.line, e.col, "cost_unavailable",
+                             "Stage 5 cost verification is not implemented yet",
+                             "remove cost/spent until Stage 5 verification is available",
+                             file=getattr(e, "file", None))
+    return None

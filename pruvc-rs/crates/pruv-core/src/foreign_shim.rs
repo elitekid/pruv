@@ -152,7 +152,7 @@ fn walk_stmt(s: &Stmt, f: &mut dyn FnMut(Node<'_>)) {
 fn walk_expr(e: &Expr, f: &mut dyn FnMut(Node<'_>)) {
     f(Node::Expr(e));
     match e {
-        Expr::Move(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
+        Expr::Move(_) | Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
         Expr::InoutArg(x) => walk_expr(&x.expr, f), // G5 A0
         Expr::Unary(x) => walk_expr(&x.operand, f),
         Expr::Binary(x) => {
@@ -272,7 +272,7 @@ fn collect<'a>(prog: &'a Program) -> R<(Cats, Colls, HashMap<String, &'a Functio
             }
         };
         walk_stmts(&f.body, &mut visit);
-        for e in f.requires.iter().chain(f.ensures.iter()) {
+        for e in f.requires.iter().chain(f.ensures.iter()).chain(f.cost.iter()) {
             walk_expr(e, &mut |n| {
                 if let Node::Expr(Expr::Call(c)) = &n {
                     if FILE_OBSERVERS.contains(&c.name.as_str()) {

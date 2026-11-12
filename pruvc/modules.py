@@ -371,6 +371,8 @@ class _Resolver:
         f.ensures = [s.rexpr(e) for e in f.ensures]
         if f.decreases is not None:
             f.decreases = s.rexpr(f.decreases)
+        if f.cost is not None:
+            f.cost = s.rexpr(f.cost)
         s.rstmts(f.body)
         f.name = s.ident(f.mod_path, f.src_name)
 
@@ -530,7 +532,7 @@ class _Resolver:
             for p in it.params:
                 s.iface_type(p.type, it, it, "signature", seen)
             s.iface_type(it.ret, it, it, "signature", seen)
-            for e in it.requires + it.ensures + ([it.decreases] if it.decreases is not None else []):
+            for e in it.requires + it.ensures + ([it.decreases] if it.decreases is not None else []) + ([it.cost] if it.cost is not None else []):
                 s.iface_expr(e, it, seen)
         else:
             for fd in decl_fields(it):

@@ -213,6 +213,7 @@ fn is_tag_fn(n: &str) -> bool {
 /// verify.py `_partial_here` (line 86).
 fn partial_here(e: &Expr, kind: PKind) -> bool {
     match e {
+        Expr::Spent(_) => false,
         Expr::VariantField(_) => kind != PKind::Other,
         _ if kind == PKind::Variant => false,
         Expr::Index(_) => true,
@@ -226,6 +227,7 @@ fn partial_here(e: &Expr, kind: PKind) -> bool {
 /// verify.py `_kids` (line 103).
 fn kids(e: &Expr) -> Vec<&Expr> {
     match e {
+        Expr::Spent(_) => Vec::new(),
         Expr::Unary(x) => vec![&*x.operand],
         Expr::Binary(x) => vec![&*x.left, &*x.right],
         Expr::Index(x) => vec![&*x.array, &*x.index],
@@ -588,6 +590,7 @@ impl State {
 /// verify.py `_expr_text`: source-like text of a contract expression (used to name measures in messages).
 pub(crate) fn expr_text(e: &Expr) -> String {
     match e {
+        Expr::Spent(_) => "spent".to_string(),
         Expr::IntLit(x) => norm_int(&x.value),
         Expr::BoolLit(x) => (if x.value { "true" } else { "false" }).to_string(),
         Expr::Var(x) => x.name.clone(),
@@ -1543,6 +1546,7 @@ impl<'a> FnVerifier<'a> {
     pub(crate) fn ev(&mut self, e: &Expr, st: &mut State, g: &[Ast], code: bool, env: &Env) -> R<Val> {
         let model: &'a Model = self.model;
         match e {
+            Expr::Spent(_) => Err("cost_unavailable: Stage 5 cost verification is not implemented yet".into()),
             Expr::IntLit(x) => Ok(Val::Int(self.z.int_str(&norm_int(&x.value)))),
             Expr::BoolLit(x) => Ok(Val::Bool(self.z.bool_val(x.value))),
             Expr::StrLit(x) => {

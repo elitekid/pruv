@@ -39,6 +39,8 @@ pub struct Inst {
 
 // ---------- expressions ----------
 #[derive(Debug, Clone, PartialEq)]
+pub struct Spent { pub line: i64, pub col: i64, pub ty: Ty }
+#[derive(Debug, Clone, PartialEq)]
 pub struct IntLit { pub line: i64, pub col: i64, pub value: String, pub ty: Ty }
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoolLit { pub line: i64, pub col: i64, pub value: bool, pub ty: Ty }
@@ -105,6 +107,7 @@ pub struct InoutArg { pub line: i64, pub col: i64, pub expr: Box<Expr>, pub ty: 
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    Spent(Spent),
     InoutArg(InoutArg),
     Move(Move),
     IntLit(IntLit),
@@ -129,6 +132,7 @@ impl Expr {
         match self {
             Expr::InoutArg(x) => x.line,
             Expr::Move(x) => x.line,
+            Expr::Spent(x) => x.line,
             Expr::IntLit(x) => x.line,
             Expr::BoolLit(x) => x.line,
             Expr::StrLit(x) => x.line,
@@ -150,6 +154,7 @@ impl Expr {
         match self {
             Expr::InoutArg(x) => x.col,
             Expr::Move(x) => x.col,
+            Expr::Spent(x) => x.col,
             Expr::IntLit(x) => x.col,
             Expr::BoolLit(x) => x.col,
             Expr::StrLit(x) => x.col,
@@ -272,6 +277,7 @@ pub struct Function {
     pub foreign: Option<ForeignInfo>,
     /// G9 A0: the `decreases Expr` clause of the function header (None = absent).
     pub decreases: Option<Expr>,
+    pub cost: Option<Expr>,
 }
 
 /// G9 A0: checker metadata recorded on the program and the type table, only when a G9 feature is present

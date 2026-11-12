@@ -4,7 +4,7 @@ from vast import *
 from typeinfo import decl_owner, fn_owner
 
 KEYWORDS = {"fn", "let", "mut", "if", "else", "while", "return", "match", "true", "false",
-            "invariant", "decreases", "requires", "ensures", "assert", "forall", "exists",
+            "cost", "spent", "invariant", "decreases", "requires", "ensures", "assert", "forall", "exists",
             "in", "Some", "None", "Ok", "Err", "struct", "enum", "is_variant", "variant_field"}
 # Rust keywords that are not Pruv keywords: user names go into the generated Rust unchanged.
 RUST_KEYWORDS = {"as", "async", "await", "break", "const", "continue", "crate", "dyn", "enum", "extern", "for",
@@ -676,6 +676,8 @@ class Parser:
             if not s.at(")"):
                 s.expect(",")
         s.expect(")")
+        if s.at("cost"):
+            s.cost_syntax(s.peek())
         s.expect("->")
         ret, ret_refine = s.type_r(True)
         effects = []
@@ -690,10 +692,17 @@ class Parser:
                     break
                 s.next()
         req, ens = [], []
+        late_req = None   # Stage 5: first requires after an ensures (rejected only in cost headers)
         while s.at("requires") or s.at("ensures"):
-            k = s.next().val
+            kt = s.next()
+            k = kt.val
+            if k == "requires" and ens and late_req is None:
+                late_req = kt
             (req if k == "requires" else ens).append(s.expr())
         decreases = s.decreases_clause()   # G9 A0: at most one measure, after all requires/ensures
+        cost = s.cost_clause()
+        if cost is not None and late_req is not None:
+            s.cost_syntax(late_req)
         info = None
         if foreign is not None:
             if s.at("{"):
@@ -715,9 +724,31 @@ class Parser:
         f.tparams = tparams
         if info is not None:
             f.foreign = info
+        if cost is not None:
+            f.cost = cost
         if decreases is not None:
             f.decreases = decreases
         return f
+
+    def cost_clause(s):
+        if not s.at("cost"):
+            return None
+        t = s.next()
+        bad = s.cost_syntax
+        if s.peek().val in ("{", "=", ";", "cost", "requires", "ensures", "decreases") or s.peek().kind == "eof":
+            bad(t)
+        try:
+            e = s.expr()
+        except PruvError:
+            bad(s.peek())
+        if s.peek().val in ("cost", "requires", "ensures", "decreases", ",", "!", "->"):
+            bad(s.peek())
+        return e
+
+    def cost_syntax(s, tok):
+        raise PruvError("parse", tok.line, tok.col, "cost_syntax",
+                        "cost needs one expression and must be the last header clause",
+                        "write requires* ensures* decreases? cost <i64 expression>")
 
     def decreases_syntax(s, tok, msg, fix):
         raise PruvError("parse", tok.line, tok.col, "decreases_syntax", msg, fix)
@@ -1125,6 +1156,8 @@ class Parser:
             c = Ctor(t.line, t.col, t.val, a)
             c.targs = targs
             return c
+        if s.at("spent"):
+            s.next(); return Spent(t.line, t.col)
         if s.at("result"):
             s.next(); return Var(t.line, t.col, "result")
         if s.at("forall") or s.at("exists"):

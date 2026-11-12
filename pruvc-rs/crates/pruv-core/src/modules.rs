@@ -742,6 +742,7 @@ impl<'a> Rs<'a> {
         for e in f.ensures.iter_mut() {
             self.rexpr(e)?;
         }
+        if let Some(d) = f.cost.as_mut() { self.rexpr(d)?; }
         if let Some(d) = f.decreases.as_mut() {
             self.rexpr(d)?;
         }
@@ -914,7 +915,7 @@ impl<'a> Rs<'a> {
             }
             Expr::FieldAccess(x) => self.rexpr(&mut x.base)?,
             Expr::InoutArg(x) => self.rexpr(&mut x.expr)?, // G5 A0
-            Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+            Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
         }
         Ok(())
     }
@@ -1003,6 +1004,7 @@ fn iface_type(
 /// the expression children in the order of refine.py `_kids`
 fn kids(e: &Expr) -> Vec<&Expr> {
     match e {
+        Expr::Spent(_) => Vec::new(),
         Expr::Unary(x) => vec![&*x.operand],
         Expr::Binary(x) => vec![&*x.left, &*x.right],
         Expr::Index(x) => vec![&*x.array, &*x.index],
@@ -1056,7 +1058,7 @@ fn iface_fn(types: &HashMap<String, TyIface>, f: &Function, seen: &mut HashSet<S
         iface_type(types, &GType::from_key(&p.ty), f.line, f.col, true, &f.name, "signature", seen)?;
     }
     iface_type(types, &GType::from_key(&f.ret), f.line, f.col, true, &f.name, "signature", seen)?;
-    for e in f.requires.iter().chain(f.ensures.iter()).chain(f.decreases.iter()) {
+    for e in f.requires.iter().chain(f.ensures.iter()).chain(f.decreases.iter()).chain(f.cost.iter()) {
         iface_expr(types, e, &f.name, seen)?;
     }
     Ok(())

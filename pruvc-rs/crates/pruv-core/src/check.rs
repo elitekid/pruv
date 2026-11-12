@@ -173,6 +173,7 @@ fn expr_ty(e: &Expr) -> &Ty {
     match e {
         Expr::InoutArg(x) => &x.ty,
         Expr::Move(x) => &x.ty,
+        Expr::Spent(x) => &x.ty,
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
         Expr::StrLit(x) => &x.ty,
@@ -258,6 +259,7 @@ type Scope = HashMap<String, Entry>;
 
 #[derive(Clone)]
 struct FuncInfo {
+    src_name: String,
     line: i64,
     col: i64,
     params: Vec<GType>,
@@ -308,6 +310,8 @@ struct Checker {
     call_log: Vec<(String, i64, i64, Option<Vec<GType>>, String)>,
     /// root variable names of the enclosing match arms on extended scrutinees
     active_roots: Vec<String>,
+    cur_cost: bool,
+    s5_errors: Vec<(String, PruvError)>,
     par_groups: Vec<Vec<Expr>>,
     /// G4 A0: explicit visibility mode (the declaration names are resolved identities)
     explicit: bool,
@@ -366,6 +370,7 @@ fn ends_in_return(stmts: &[Stmt]) -> bool {
 fn set_ty(e: &mut Expr, t: &GType) {
     let v = Some(t.to_key());
     match e {
+        Expr::Spent(x) => x.ty = v,
         Expr::IntLit(x) => x.ty = v,
         Expr::BoolLit(x) => x.ty = v,
         Expr::StrLit(x) => x.ty = v,
@@ -454,6 +459,7 @@ impl Checker {
             funcs.insert(
                 name.clone(),
                 Rc::new(FuncInfo {
+                    src_name: written.to_string(),
                     line: f.line,
                     col: f.col,
                     params: f.params.iter().map(|p| GType::from_key(&p.ty)).collect(),
@@ -488,6 +494,8 @@ impl Checker {
             fn_sccs: Vec::new(),
             call_log: Vec::new(),
             active_roots: Vec::new(),
+            cur_cost: false,
+            s5_errors: Vec::new(),
             par_groups: Vec::new(),
             explicit: false,
             host_entry: Vec::new(),
@@ -541,7 +549,51 @@ impl Checker {
         }
         self.check_fn_sccs(&prog.functions)?; // G9 A0: measures and stable type parameters of recursive call SCCs
         self.check_par_eligibility(&prog.functions)?; // G7 A0: effects, foreign calls, then nested groups
+        self.check_costs(prog)?;
         self.record_g9(prog);
+        Ok(())
+    }
+
+    fn check_costs(&mut self, prog: &mut Program) -> Res<()> {
+        for f in &mut prog.functions {
+            if let Some(cost) = &mut f.cost {
+                self.cur_name = f.name.clone();
+                self.cur_ret = GType::from_key(&f.ret);
+                self.cur_cost = true;
+                self.cur_params = f.params.iter().map(|p| p.name.clone()).collect();
+                self.enter(&fn_owner(&f.name), &f.tparams);
+                self.ckind = "cost";
+                let scope: Scope = f.params.iter().map(|p| (p.name.clone(), Entry {
+                    ty: GType::from_key(&p.ty), mutable: false,
+                    kind: if p.mode_pos.is_some() { "inout" } else { "param" },
+                })).collect();
+                let before = self.s5_errors.len();
+                let ty = self.expr(cost, &scope, true)?;
+                if ty != i64t() && self.s5_errors.len() == before {
+                    self.s5_errors.push((f.name.clone(), terr(cost.line(), cost.col(), "cost_type", "cost expression must have type i64", "")));
+                }
+            }
+        }
+        if let Some((_, e)) = self.s5_errors.iter().min_by_key(|(name, e)| (
+            prog.functions.iter().position(|f| &f.name == name).unwrap(), e.line, e.col)) {
+            return Err(e.clone());
+        }
+        for f in &prog.functions {
+            if f.cost.is_none() { continue; }
+            let mut calls = Vec::new();
+            cost_calls(&f.body, &mut calls);
+            calls.sort_by_key(|c| (c.line, c.col));
+            for c in calls {
+                let callee = prog.functions.iter().find(|f| f.name == c.name);
+                if is_catalog(&c.name) || callee.map_or(false, |f| f.foreign.is_some()) {
+                    return Err(PruvError::new("effect", c.line, c.col, "cost_unsupported", "cost functions cannot call foreign, catalog or file operations", ""));
+                }
+                if callee.map_or(false, |f| f.cost.is_none()) {
+                    let name = self.funcs.get(&c.name).map(|f| f.src_name.as_str()).filter(|n| !n.is_empty()).unwrap_or(&c.name);
+                    return Err(PruvError::new("effect", c.line, c.col, "cost_callee", format!("`{}` has no cost clause, so its work is unbounded here", name), ""));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -682,6 +734,7 @@ impl Checker {
             for e in f.ensures.iter_mut() {
                 self.norm_expr(e);
             }
+            if let Some(d) = f.cost.as_mut() { self.norm_expr(d); }
             if let Some(d) = f.decreases.as_mut() {
                 self.norm_expr(d); // G9 A0
             }
@@ -788,7 +841,7 @@ impl Checker {
             Expr::IsVariant(x) => self.norm_expr(&mut x.value),
             Expr::VariantField(x) => self.norm_expr(&mut x.value),
             Expr::InoutArg(x) => self.norm_expr(&mut x.expr), // G5 A0
-            Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+            Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
         }
     }
 
@@ -1645,6 +1698,7 @@ impl Checker {
         self.enter(&fn_owner(&fname), &f.tparams);
         self.cur_name = fname.clone();
         self.cur_ret = ret.clone();
+        self.cur_cost = f.cost.is_some();
         self.cur_params = f.params.iter().map(|p| p.name.clone()).collect();
         if f.foreign.is_some() {
             check_foreign_decl(f, &self.externs)?; // G6: signature, then path of a trusted rust fn
@@ -2405,7 +2459,25 @@ impl Checker {
     }
 
     fn expr_inner(&mut self, e: &mut Expr, scope: &Scope, c: bool) -> Res<GType> {
+        if self.ckind == "cost" && (matches!(e, Expr::Spent(_))
+            || matches!(e, Expr::Var(v) if v.name == "result")
+            || matches!(e, Expr::Call(v) if v.name == "old")) {
+            self.s5_errors.push((self.cur_name.clone(), terr(e.line(), e.col(), "cost_expr", "cost cannot contain spent, result or old", "")));
+            if let Expr::Call(call) = e {
+                let mut types = Vec::new();
+                for a in &mut call.args { types.push(self.expr(a, scope, c)?); }
+                return Ok(types.into_iter().next().unwrap_or_else(i64t));
+            }
+            return Ok(if matches!(e, Expr::Var(_)) && self.cur_ret != unitt() { self.cur_ret.clone() } else { i64t() });
+        }
+        if let Expr::Spent(_) = e {
+            if !self.cur_cost || !matches!(self.ckind, "invariant" | "assert") {
+                self.s5_errors.push((self.cur_name.clone(), terr(e.line(), e.col(), "spent_context", "spent is only allowed in invariant/assert of a cost function", "")));
+            }
+            return Ok(i64t());
+        }
         match e {
+            Expr::Spent(_) => unreachable!("spent handled above"),
             Expr::IntLit(x) => {
                 if !int_in_range(&x.value) {
                     return Err(terr(x.line, x.col, "int_range", "integer literal out of i64 range", ""));
@@ -3239,6 +3311,7 @@ impl Checker {
                 ));
             }
             Rc::new(FuncInfo {
+                src_name: n.clone(),
                 line: 0,
                 col: 0,
                 params: cf.params.iter().map(|p| p.ty.clone()).collect(),
@@ -3458,4 +3531,31 @@ fn par_witness(start: &str, kind: usize, infos: &HashMap<String, ParInfo>) -> Op
         }
     }
     None
+}
+
+
+// Executable calls only, like Python par_items: assertions and loop contracts do not spend work.
+fn cost_calls(stmts: &[Stmt], out: &mut Vec<Call>) {
+    fn ex(e: &Expr, out: &mut Vec<Call>) {
+        if let Expr::Call(c) = e { out.push(c.clone()); }
+        for k in crate::refine::kids(e) { ex(k, out); }
+    }
+    for st in stmts {
+        match st {
+            Stmt::Let(x) => ex(&x.value, out),
+            Stmt::Assign(x) => ex(&x.value, out),
+            Stmt::FieldAssign(x) => ex(&x.value, out),
+            Stmt::IndexAssign(x) => { ex(&x.index, out); ex(&x.value, out); }
+            Stmt::If(x) => { ex(&x.cond, out); cost_calls(&x.then, out); cost_calls(&x.els, out); }
+            Stmt::While(x) => { ex(&x.cond, out); cost_calls(&x.body, out); }
+            Stmt::Return(x) => if let Some(v) = &x.value { ex(v, out); },
+            Stmt::ExprStmt(x) => ex(&x.expr, out),
+            Stmt::Par(x) => for c in &x.calls { ex(c, out); },
+            Stmt::Match(x) => {
+                ex(&x.scrutinee, out);
+                for a in &x.arms { cost_calls(&a.body, out); }
+            }
+            Stmt::Assert(_) => {},
+        }
+    }
 }

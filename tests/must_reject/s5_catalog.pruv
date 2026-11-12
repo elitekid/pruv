@@ -1,0 +1,1 @@
+fn f() -> () ! alloc cost 1 { let v: Vec<i64> = vec_new::<i64>(); }

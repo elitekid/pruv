@@ -157,6 +157,7 @@ class Checker:
         s.fn_sccs = []            # recursive function SCCs (lists of names in function order)
         s.call_log = []           # (caller Function, Call node, callee Function) of every checked user call
         s.active_roots = []       # root variable names of the enclosing match arms on extended scrutinees
+        s.s5_errors = []
         s.par_groups = []         # G7 A0: (enclosing Function, Par statement, [branch Function]) of every checked group
 
     def run(s):
@@ -178,7 +179,40 @@ class Checker:
             s.fn(f)
         s.check_fn_sccs()      # G9 A0: measures and stable type parameters of recursive call SCCs
         s.check_par_eligibility()   # G7 A0: transitive eligibility of every par branch (effects, foreign, nesting)
+        s.check_costs()
         s.record_g9()
+
+    def check_costs(s):
+        """Ordinary typing wins, followed by cost/spent diagnostics and direct call effects."""
+        for f in s.prog.functions:
+            if f.cost is None:
+                continue
+            s.f = f
+            s.enter(fn_owner(f.name), f.tparams)
+            s.ckind = "cost"
+            scope = {p.name: (p.type, False, "inout" if p.mode else "param") for p in f.params}
+            before = len(s.s5_errors)
+            ty = s.expr(f.cost, scope, True)
+            if ty != I64 and len(s.s5_errors) == before:
+                s.s5_errors.append((f, f.cost, "cost_type", "cost expression must have type i64"))
+        if s.s5_errors:
+            order = {id(f): i for i, f in enumerate(s.prog.functions)}
+            _, e, code, msg = min(s.s5_errors, key=lambda x: (order[id(x[0])], x[1].line, x[1].col))
+            terr(e, code, msg)
+        for f in s.prog.functions:
+            if f.cost is None:
+                continue
+            items = []
+            s.par_items(f.body, items)
+            for kind, e in sorted(items, key=lambda x: (x[1].line, x[1].col)):
+                if kind != "call":
+                    continue
+                callee = s.funcs.get(e.name)
+                if e.name in CATALOG or callee is not None and callee.foreign is not None:
+                    terr(e, "cost_unsupported", "cost functions cannot call foreign, catalog or file operations", stage="effect")
+                if callee is not None and callee.cost is None:
+                    terr(e, "cost_callee", "`%s` has no cost clause, so its work is unbounded here" %
+                         (callee.src_name or callee.name), stage="effect")
 
     # ---- user type declarations ----
     def declare_types(s):
@@ -241,6 +275,8 @@ class Checker:
                 s.norm_expr(e)
             if f.decreases is not None:
                 s.norm_expr(f.decreases)
+            if f.cost is not None:
+                s.norm_expr(f.cost)
             s.norm_stmts(f.body)
 
     def norm_stmts(s, stmts):
@@ -1220,6 +1256,18 @@ class Checker:
         return t
 
     def _expr(s, e, scope, c):
+        if s.ckind == "cost" and (isinstance(e, Spent)
+                or isinstance(e, Var) and e.name == "result"
+                or isinstance(e, Call) and e.name == "old"):
+            s.s5_errors.append((s.f, e, "cost_expr", "cost cannot contain spent, result or old"))
+            if isinstance(e, Call):
+                types = [s.expr(a, scope, c) for a in e.args]
+                return types[0] if types else I64
+            return s.f.ret if isinstance(e, Var) and s.f.ret != UNIT else I64
+        if isinstance(e, Spent):
+            if s.f.cost is None or s.ckind not in ("invariant", "assert"):
+                s.s5_errors.append((s.f, e, "spent_context", "spent is only allowed in invariant/assert of a cost function"))
+            return I64
         if isinstance(e, IntLit):
             if not (-2 ** 63 <= e.value < 2 ** 63):
                 terr(e, "int_range", "integer literal out of i64 range")

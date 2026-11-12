@@ -135,6 +135,7 @@ fn bx(e: &Expr) -> Json {
 
 pub fn expr(e: &Expr) -> Json {
     match e {
+        Expr::Spent(x) => node("Spent", Some((x.line, x.col)), vec![("ty", ty(&x.ty))]),
         Expr::Move(x) => node("Move", Some((x.line, x.col)), vec![("name", js(&x.name)), ("ty", ty(&x.ty))]),
         Expr::IntLit(x) => node("IntLit", Some((x.line, x.col)), vec![("value", js(&x.value)), ("ty", ty(&x.ty))]),
         Expr::BoolLit(x) => node("BoolLit", Some((x.line, x.col)), vec![("value", Json::Bool(x.value)), ("ty", ty(&x.ty))]),
@@ -417,6 +418,7 @@ fn function(f: &Function) -> Json {
             ]),
         ));
     }
+    if let Some(d) = &f.cost { fields.push(("cost", expr(d))); }
     if let Some(d) = &f.decreases {
         fields.push(("decreases", expr(d))); // G9 A0, written only when present
     }

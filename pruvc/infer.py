@@ -880,6 +880,10 @@ class InferResult:
 def infer_function(prog, f, model, rec=None):
     """candidates + Houdini rounds for one function; returns an InferResult (status ok / budget_exhausted /
     timeout). Does not touch any error list."""
+    from typeinfo import s5_unimplemented_error
+    s5err = s5_unimplemented_error(prog)
+    if s5err is not None:
+        raise s5err
     cfg = INFER_CONFIG
     kname = pick_bound_name(_fn_names(f))
     ranges = _elem_ranges(f)

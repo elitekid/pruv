@@ -59,6 +59,7 @@ fn is_quantifier(e: &Expr) -> bool {
 /// infer.py `show`. None = a node the output function does not know (Python `_Skip`).
 pub fn show(e: &Expr) -> Option<String> {
     match e {
+        Expr::Spent(_) => None,
         Expr::IntLit(x) => Some(norm_int(&x.value)),
         Expr::BoolLit(x) => Some(if x.value { "true" } else { "false" }.to_string()),
         Expr::Var(x) => Some(x.name.clone()),
@@ -133,13 +134,14 @@ fn kids(e: &Expr) -> Vec<&Expr> {
         Expr::IsVariant(x) => vec![&*x.value],
         Expr::VariantField(x) => vec![&*x.value],
         Expr::InoutArg(x) => vec![&*x.expr], // G5 A0
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => Vec::new(),
+        Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => Vec::new(),
     }
 }
 
 // refine.py `_expr_names` / `_stmt_names` / `_fn_names` (private in pruv_core::refine, so ported as is)
 fn expr_names(e: &Expr, out: &mut HashSet<String>) {
     match e {
+        Expr::Spent(_) => {},
         Expr::Var(x) => {
             out.insert(x.name.clone());
         }
@@ -216,7 +218,7 @@ fn stmt_names(stmts: &[Stmt], out: &mut HashSet<String>) {
 
 fn fn_names(f: &ast::Function) -> HashSet<String> {
     let mut out: HashSet<String> = f.params.iter().map(|p| p.name.clone()).collect();
-    for e in f.requires.iter().chain(f.ensures.iter()) {
+    for e in f.requires.iter().chain(f.ensures.iter()).chain(f.cost.iter()) {
         expr_names(e, &mut out);
     }
     stmt_names(&f.body, &mut out);
@@ -226,6 +228,7 @@ fn fn_names(f: &ast::Function) -> HashSet<String> {
 /// Is the structure the same (excluding positions and checker types):infer.py `_shape(a) == _shape(b)`.
 fn shape_eq(a: &Expr, b: &Expr) -> bool {
     match (a, b) {
+        (Expr::Spent(_), Expr::Spent(_)) => true,
         (Expr::IntLit(x), Expr::IntLit(y)) => norm_int(&x.value) == norm_int(&y.value),
         (Expr::BoolLit(x), Expr::BoolLit(y)) => x.value == y.value,
         (Expr::StrLit(x), Expr::StrLit(y)) => x.value == y.value,
@@ -644,6 +647,7 @@ fn reads_bool_elem(e: &Expr, tab: &[(String, &'static str)]) -> bool {
 /// The checker type of an expression node (None before checking and on freshly built nodes).
 fn expr_ty(e: &Expr) -> Option<&String> {
     match e {
+        Expr::Spent(x) => x.ty.as_ref(),
         Expr::IntLit(x) => x.ty.as_ref(),
         Expr::BoolLit(x) => x.ty.as_ref(),
         Expr::StrLit(x) => x.ty.as_ref(),
@@ -914,6 +918,7 @@ impl Bld {
                     ty: None,
                 })
             }
+            Expr::Spent(x) => Expr::Spent(ast::Spent { line, col, ty: x.ty.clone() }),
             Expr::IntLit(x) => Expr::IntLit(ast::IntLit { line, col, value: x.value.clone(), ty: x.ty.clone() }),
             Expr::BoolLit(x) => Expr::BoolLit(ast::BoolLit { line, col, value: x.value, ty: x.ty.clone() }),
             Expr::StrLit(x) => Expr::StrLit(ast::StrLit { line, col, value: x.value.clone(), ty: x.ty.clone() }),
@@ -1900,6 +1905,7 @@ pub fn infer_function(
     seq: u32,
     rec: &mut Trace,
 ) -> R<InferResult> {
+    if let Some(e) = pruv_core::typeinfo::s5_unimplemented_error(prog) { return Err(format!("{}: {}", e.code, e.message)); }
     let kname = pick_bound_name(&fn_names(f));
     let ranges = elem_ranges(f);
     let mut loops: Vec<LoopInfo> = Vec::new();

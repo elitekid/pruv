@@ -641,7 +641,7 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
-            decreases: None,
+            cost: None, decreases: None,
         };
         assert_eq!(
             abi_of(&f, &tt, AbiTarget::SysV, &mut Mod::new()).unwrap(),
@@ -668,7 +668,7 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
-            decreases: None,
+            cost: None, decreases: None,
         }
     }
 

@@ -91,6 +91,7 @@ NODE_FIELDS = {
     "FieldInit": ("name", "value"),
     "MatchArm": ("enum_name", "ctor", "binders", "body"),
     "Param": ("name", "type"),
+    "Spent": ("ty",),
     "Function": ("name", "params", "ret", "effects", "requires", "ensures", "body"),
     "Program": ("functions", "types"),
     # statements
@@ -191,6 +192,8 @@ def _g3_extras(v, out):
     # G9 A0, written only when present: Function.decreases (While.decreases is a dataclass field, not this)
     if type(v).__name__ == "Function" and getattr(v, "decreases", None) is not None:
         out["decreases"] = ser(v.decreases)
+    if type(v).__name__ == "Function" and getattr(v, "cost", None) is not None:
+        out["cost"] = ser(v.cost)
     _g4_extras(v, out)
 
 

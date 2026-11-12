@@ -1,0 +1,2 @@
+fn helper<T>(x: T) -> T { return x; }
+fn f() -> i64 cost 1 { return helper::<i64>(0); }

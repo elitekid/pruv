@@ -3278,7 +3278,10 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     propagates).  The generator works on the concrete plan.program only: no type parameter reaches LLVM.
     foreign_checks: G6 boundary check mode of the shim helpers (requires|all|off, docs/G6_SPEC.md 12.3).
     A G6 program outside the supported subset (G6_SPEC 13.1) raises PruvError codegen/unsupported_type."""
-    from typeinfo import g2_unimplemented_error, first_g3_use
+    from typeinfo import g2_unimplemented_error, first_g3_use, s5_unimplemented_error
+    s5err = s5_unimplemented_error(prog)
+    if s5err is not None:
+        raise s5err
     if foreign_checks not in ("requires", "all", "off"):
         raise ValueError("foreign_checks must be requires, all or off")
     if plan is None and (first_g3_use(prog) is not None or prog.explicit):   # G4 A3: explicit mode names via mono

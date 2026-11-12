@@ -124,7 +124,7 @@ fn g2_cand(best: &mut Option<(i64, i64, String)>, line: i64, col: i64, ty: &str)
 /// Takes every StrLit in an expression as a candidate (listing all variants, with no wildcard).
 fn g2_cand_expr(e: &Expr, lits: bool, best: &mut Option<(i64, i64, String)>) {
     match e {
-        Expr::IntLit(_) => {}
+        Expr::Spent(_) | Expr::IntLit(_) => {}
         Expr::BoolLit(_) => {}
         Expr::StrLit(x) => {
             if lits {
@@ -242,7 +242,7 @@ pub fn first_g2_unimplemented(prog: &Program, skip: &[&str]) -> Option<(i64, i64
             return Some((f.line, f.col, f.ret.clone()));
         }
         let mut best: Option<(i64, i64, String)> = None;
-        for e in &f.requires {
+        for e in f.requires.iter().chain(f.cost.iter()) {
             g2_cand_expr(e, lits, &mut best);
         }
         for e in &f.ensures {
@@ -269,7 +269,7 @@ pub fn uses_str(prog: &Program) -> bool {
             return true;
         }
         let mut best: Option<(i64, i64, String)> = None;
-        for e in &f.requires {
+        for e in f.requires.iter().chain(f.cost.iter()) {
             g2_cand_expr(e, true, &mut best);
         }
         for e in &f.ensures {
@@ -339,7 +339,7 @@ fn g3_expr(e: &Expr, out: &mut G3Cands) {
         }
     };
     match e {
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+        Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
         Expr::InoutArg(x) => g3_expr(&x.expr, out), // G5 A0
         Expr::Unary(x) => g3_expr(&x.operand, out),
         Expr::Binary(x) => {
@@ -454,7 +454,7 @@ pub fn first_g3_use(prog: &Program) -> Option<(i64, i64, String)> {
             g3_ty(&mut cands, f.line, f.col, &p.ty);
         }
         g3_ty(&mut cands, f.line, f.col, &f.ret);
-        for e in &f.requires {
+        for e in f.requires.iter().chain(f.cost.iter()) {
             g3_expr(e, &mut cands);
         }
         for e in &f.ensures {
@@ -497,7 +497,7 @@ pub fn g3_unimplemented_error(prog: &Program, stage: &str) -> Option<crate::diag
 /// Collects (line, col) of every `size(..)` call under the expression (Python `_g9_size_calls`: a generic walk).
 fn g9_size_expr(e: &Expr, out: &mut Vec<(i64, i64)>) {
     match e {
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
+        Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) | Expr::Move(_) => {}
         Expr::InoutArg(x) => g9_size_expr(&x.expr, out), // G5 A0
         Expr::Unary(x) => g9_size_expr(&x.operand, out),
         Expr::Binary(x) => {
@@ -621,7 +621,7 @@ pub fn first_g9_use(prog: &Program) -> Option<(i64, i64, String)> {
             cands.push((f.line, f.col, format!("recursive function {}", f.name)));
         }
         let mut sizes: Vec<(i64, i64)> = Vec::new();
-        for e in &f.requires {
+        for e in f.requires.iter().chain(f.cost.iter()) {
             g9_size_expr(e, &mut sizes);
         }
         for e in &f.ensures {
@@ -720,7 +720,7 @@ fn g5_walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
     }
 }
 
-/// Calls `f` on every expression node of a function: requires, ensures, body, decreases (Python order).
+/// Calls `f` on every expression node of a function: requires, ensures, body, cost, decreases.
 fn g5_walk_fn(fun: &Function, f: &mut dyn FnMut(&Expr)) {
     for e in &fun.requires {
         g5_walk_expr(e, f);
@@ -729,6 +729,7 @@ fn g5_walk_fn(fun: &Function, f: &mut dyn FnMut(&Expr)) {
         g5_walk_expr(e, f);
     }
     g5_walk_stmts(&fun.body, f);
+    if let Some(d) = &fun.cost { g5_walk_expr(d, f); }
     if let Some(d) = &fun.decreases {
         g5_walk_expr(d, f);
     }
@@ -954,4 +955,24 @@ mod tests {
         assert_eq!(BUILTIN_TYPE_NAMES.len(), 13);
         assert_eq!(type_name("string"), "String");
     }
+}
+
+/// Stage 5 A0: reject checked cost programs before verification or emission.
+pub fn s5_unimplemented_error(prog: &Program) -> Option<crate::diagnostic::PruvError> {
+    for fun in &prog.functions {
+        let mut pos = fun.cost.as_ref().map(|e| (e.line(), e.col()));
+        if pos.is_none() {
+            let mut visit = |e: &Expr| {
+                if pos.is_none() && matches!(e, Expr::Spent(_)) { pos = Some((e.line(), e.col())); }
+            };
+            for e in fun.requires.iter().chain(fun.ensures.iter()).chain(fun.decreases.iter()) { g5_walk_expr(e, &mut visit); }
+            g5_walk_stmts(&fun.body, &mut visit);
+        }
+        if let Some((line, col)) = pos {
+            return Some(crate::diagnostic::PruvError::new("codegen", line, col, "cost_unavailable",
+                "Stage 5 cost verification is not implemented yet",
+                "remove cost/spent until Stage 5 verification is available"));
+        }
+    }
+    None
 }

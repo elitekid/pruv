@@ -1,5 +1,5 @@
 """Run all regression tests.
-python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof]
+python tests/run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend]
                         [--backend rust|llvm|both]
 
 group g7_frontend / g7_proof: Rust rows generate and compile (run if main exists);
@@ -631,6 +631,38 @@ def g7_frontend_jobs(group="g7_frontend", subdir="frontend",
     return jobs
 
 
+def s5_frontend_jobs():
+    jobs = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "tests", "s5", "frontend", "*.pruv"))):
+        stem = os.path.splitext(os.path.basename(f))[0]
+        source = open(f, encoding="utf-8").read()
+        guarded = re.search(r"\b(cost|spent)\b", source) is not None
+        for mode, flags in (("default", []), ("no-verify", ["--no-verify"]),
+                            ("trust-callers", ["--trust-callers"]), ("infer", ["--infer"])):
+            def fn(f=f, stem=stem, mode=mode, flags=flags, guarded=guarded):
+                out = os.path.join(WORK, "s5_%s_%s" % (stem, mode))
+                for backend in ("rust", "llvm"):
+                    c = (pruvc(f, out + ".rs", flags) if backend == "rust" else
+                         pruvc_llvm(f, out + ".ll", out + "_llvm.rs", flags))
+                    if guarded:
+                        try:
+                            ds = [json.loads(line) for line in c.stdout.splitlines()]
+                        except ValueError:
+                            ds = []
+                        ok = c.returncode == 1 and any(
+                            d.get("stage") == "codegen" and d.get("code") == "cost_unavailable"
+                            and d.get("message") == "Stage 5 cost verification is not implemented yet" for d in ds)
+                    else:
+                        ok = c.returncode == 0
+                    if not ok:
+                        return False, backend + ": " + c.stdout + c.stderr
+                return True, ""
+            jobs.append(safe("s5_frontend/%s [%s]" % (stem, mode), fn,
+                             {"sample": rel_sample(f), "backend": None, "flags": list(flags),
+                              "mode": mode, "group": "s5_frontend"}))
+    return jobs
+
+
 def g7_proof_jobs():
     return g7_frontend_jobs("g7_proof", "proof", (("default", []), ("infer", ["--infer"])))
 
@@ -1020,7 +1052,7 @@ def runtime_jobs(backend):
     return jobs
 
 
-USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof] [--backend rust|llvm|both] "
+USAGE = ("usage: run_all.py [--only must_reject|examples|runtime|g3_proof|g6_frontend|g6_proof|g9_frontend|g9_proof|g4_frontend|g4_proof|g5_frontend|g5_reject|g5_proof|g10_frontend|g10_proof|g7_frontend|g7_proof|s5_frontend] [--backend rust|llvm|both] "
          "[--compiler py|rs] [--compiler-path PATH] [--ir-tool PATH] [--list-rows [FILE]] [--compare-rows FILE]")
 
 
@@ -1108,7 +1140,7 @@ def main():
         i = sys.argv.index("--only")
         only = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
         if only not in ("must_reject", "examples", "runtime", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend",
-                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof"):
+                        "g9_proof", "g4_frontend", "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend"):
             print(USAGE)
             return 2
     backend = "rust"
@@ -1143,6 +1175,8 @@ def main():
             jobs += g10_frontend_jobs()
         if only in (None, "g10_proof"):
             jobs += g10_frontend_jobs("g10_proof", "proof", (("default", []), ("infer", ["--infer"])))
+        if only in (None, "s5_frontend"):
+            jobs += s5_frontend_jobs()
         if only in (None, "g7_frontend"):
             jobs += g7_frontend_jobs()
         if only in (None, "g7_proof"):
@@ -1196,7 +1230,7 @@ def main():
         # scope comes from the arguments (--only/--backend), not from the rows that actually ran
         scope = set()
         null_backend = ("must_reject", "g3_proof", "g6_frontend", "g6_proof", "g9_frontend", "g9_proof", "g4_frontend",
-                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof")
+                        "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend")
         for g in null_backend + ("examples", "runtime"):
             if only in (None, g):
                 for b in ([None] if g in null_backend else backends):

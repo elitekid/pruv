@@ -420,6 +420,8 @@ class _Mono:
                        ret=self.ty(f.ret), effects=list(f.effects), requires=self.cp(f.requires),
                        ensures=self.cp(f.ensures) if f.foreign is not None else [],   # G6: kept for `all` checks
                        body=self.cp(f.body), ret_refine=self.cp(f.ret_refine))
+        if f.cost is not None:
+            new.cost = self.cp(f.cost)
         new.private = private
         new.file = f.file   # explicit mode: later codegen diagnostics keep the source file (Rust: the tagged line)
         if f.foreign is not None:

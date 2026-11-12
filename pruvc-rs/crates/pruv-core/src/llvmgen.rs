@@ -666,6 +666,7 @@ pub enum Fail {
 
 pub(crate) fn expr_ty(e: &Expr) -> &Option<String> {
     match e {
+        Expr::Spent(x) => &x.ty,
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
         Expr::StrLit(x) => &x.ty,
@@ -2066,6 +2067,7 @@ impl<'a> FnGen<'a> {
 
     pub fn ev(&mut self, e: &Expr, owned: bool) -> R<V> {
         match e {
+            Expr::Spent(_) => Err("cost_unavailable: Stage 5 cost verification is not implemented yet".into()),
             Expr::IntLit(x) => Ok(V::new(Kind::I64, x.value.clone())),
             Expr::BoolLit(x) => Ok(V::new(Kind::I1, if x.value { "true" } else { "false" })),
             Expr::StrLit(x) => {
@@ -2819,6 +2821,7 @@ impl<'a> FnGen<'a> {
         let und = |msg: String| Fail::Panic1("pruv_panic_undefined", msg);
         let tt = self.tt;
         match e {
+            Expr::Spent(_) => Err("cost_unavailable: Stage 5 cost verification is not implemented yet".into()),
             Expr::IntLit(x) => Ok(V::new(Kind::I128, x.value.clone())),
             Expr::BoolLit(x) => Ok(V::new(Kind::I1, if x.value { "true" } else { "false" })),
             Expr::StrLit(x) => {
@@ -3360,7 +3363,7 @@ fn dummy_fn() -> Function {
         ret_refine: None,
         tparams: vec![],
         foreign: None,
-        decreases: None,
+        cost: None, decreases: None,
     }
 }
 
@@ -4062,6 +4065,7 @@ pub fn gen_llvm_any_ex_g4(
     foreign_checks: &str,
 ) -> Result<(String, String), crate::codegen::GenError> {
     use crate::codegen::GenError;
+    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
@@ -4094,6 +4098,7 @@ pub fn gen_llvm_concrete_ex(
     foreign_checks: &str,
 ) -> Result<(String, String), crate::codegen::GenError> {
     use crate::codegen::GenError;
+    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
@@ -4368,7 +4373,7 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
-            decreases: None,
+            cost: None, decreases: None,
         };
         let mut m = Mod::new();
         let mut g = FnGen::new(&mut m, &tt, &funcs, &f, false);
@@ -4395,7 +4400,7 @@ mod tests {
                 ret_refine: None,
                 tparams: vec![],
                 foreign: None,
-                decreases: None,
+                cost: None, decreases: None,
             }],
             refined: false,
             g9: None,

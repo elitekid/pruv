@@ -147,13 +147,14 @@ pub(crate) fn kids(e: &Expr) -> Vec<&Expr> {
         Expr::FieldAccess(x) => vec![x.base.as_ref()],
         Expr::IsVariant(x) => vec![x.value.as_ref()],
         Expr::VariantField(x) => vec![x.value.as_ref()],
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::Var(_) => Vec::new(),
+        Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::Var(_) => Vec::new(),
         Expr::StrLit(_) => Vec::new(),
     }
 }
 
 fn expr_names(e: &Expr, out: &mut HashSet<String>) {
     match e {
+        Expr::Spent(_) => {},
         Expr::Var(x) => {
             out.insert(x.name.clone());
         }
@@ -230,7 +231,7 @@ fn stmt_names(stmts: &[Stmt], out: &mut HashSet<String>) {
 
 fn fn_names(f: &Function) -> HashSet<String> {
     let mut out: HashSet<String> = f.params.iter().map(|p| p.name.clone()).collect();
-    for e in f.requires.iter().chain(f.ensures.iter()) {
+    for e in f.requires.iter().chain(f.ensures.iter()).chain(f.cost.iter()) {
         expr_names(e, &mut out);
     }
     stmt_names(&f.body, &mut out);

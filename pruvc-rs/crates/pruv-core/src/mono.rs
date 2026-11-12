@@ -544,6 +544,7 @@ impl<'a> Mono<'a> {
 
     fn cp_e(&mut self, e: &Expr) -> MR<Expr> {
         Ok(match e {
+            Expr::Spent(x) => Expr::Spent(Spent { line: x.line, col: x.col, ty: self.ty_opt(&x.ty)? }),
             Expr::IntLit(x) => {
                 Expr::IntLit(IntLit { line: x.line, col: x.col, value: x.value.clone(), ty: self.ty_opt(&x.ty)? })
             }
@@ -853,7 +854,7 @@ impl<'a> Mono<'a> {
             ret_refine: f.ret_refine.clone(),
             tparams: Vec::new(),
             foreign: f.foreign.clone(),
-            decreases: None, // G9 A0: G9 programs are rejected before specialization
+            cost: f.cost.as_ref().map(|e| self.cp_e(e)).transpose()?, decreases: None, // G9 A0: G9 programs are rejected before specialization
         })
     }
 
@@ -1027,6 +1028,7 @@ impl<'a> Mono<'a> {
 
 fn expr_ty_of(e: &Expr) -> &Option<String> {
     match e {
+        Expr::Spent(x) => &x.ty,
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
         Expr::StrLit(x) => &x.ty,

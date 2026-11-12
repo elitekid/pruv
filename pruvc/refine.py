@@ -137,7 +137,7 @@ def _stmt_names(stmts, out):
 
 def _fn_names(f):
     out = set(p.name for p in f.params)
-    for e in f.requires + f.ensures:
+    for e in f.requires + f.ensures + ([f.cost] if f.cost is not None else []):
         _expr_names(e, out)
     _stmt_names(f.body, out)
     return out

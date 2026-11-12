@@ -732,6 +732,7 @@ impl<'a> Ownership<'a> {
     // ---- expressions ----
     fn expr(&mut self, e: &Expr, st: &mut St) -> Res<()> {
         match e {
+            Expr::Spent(_) => Ok(()),
             Expr::Var(v) => {
                 if is_coll(&v.ty) {
                     self.use_(&v.name, v.line, v.col, st)?;
@@ -895,7 +896,7 @@ fn g6_expr(e: &Expr, out: &mut Cands) {
         Expr::IsVariant(x) => g6_expr(&x.value, out),
         Expr::VariantField(x) => g6_expr(&x.value, out),
         Expr::InoutArg(x) => g6_expr(&x.expr, out), // G5 A0
-        Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
+        Expr::Spent(_) | Expr::IntLit(_) | Expr::BoolLit(_) | Expr::StrLit(_) | Expr::Var(_) => {}
     }
 }
 
@@ -965,6 +966,7 @@ pub fn first_g6_use(prog: &Program) -> Option<(i64, i64, String)> {
             return Some((f.line, f.col, format!("result type of {}", f.name)));
         }
         let mut cands: Cands = Vec::new();
+        if let Some(cost) = &f.cost { g6_expr(cost, &mut cands); }
         g6_stmts(&f.body, &mut cands);
         // min by (line, col); the first one wins on a tie, like Python's min(key=..)
         let mut best: Option<(i64, i64)> = None;
@@ -1013,6 +1015,7 @@ fn ty_has_file(t: &Option<String>) -> bool {
 
 fn g10_expr(e: &Expr) -> bool {
     let own = match e {
+        Expr::Spent(_) => false,
         Expr::Call(c) => (is_catalog(&c.name) && c.name.starts_with("file_")) || ty_has_file(&c.ty),
         Expr::Var(v) => ty_has_file(&v.ty),
         Expr::Move(m) => ty_has_file(&m.ty),
@@ -1046,6 +1049,7 @@ pub fn uses_files(prog: &Program) -> bool {
             || key_has_file(&f.ret)
             || f.requires.iter().any(g10_expr)
             || f.ensures.iter().any(g10_expr)
+            || f.cost.as_ref().map_or(false, g10_expr)
             || f.decreases.as_ref().map_or(false, g10_expr)
             || g10_stmts(&f.body)
     })

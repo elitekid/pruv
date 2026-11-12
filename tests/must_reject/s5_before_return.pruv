@@ -1,0 +1,1 @@
+fn f() cost 0 -> i64 { return 0; }

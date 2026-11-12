@@ -1,0 +1,4 @@
+trusted rust fn low(a: i64, b: i64) -> i64
+  ensures result <= a
+  = "::std::cmp::min";
+fn f() -> i64 cost 1 { return low(0, 1); }

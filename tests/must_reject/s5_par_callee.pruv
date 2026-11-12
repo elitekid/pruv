@@ -1,0 +1,2 @@
+fn helper() -> () {}
+fn f() -> () cost 2 { par { helper(); helper(); } }

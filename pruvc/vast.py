@@ -81,6 +81,10 @@ class StrLit(Expr):
     ty: Optional[Type] = None
 
 @dataclass
+class Spent(Expr):
+    ty: Optional[Type] = None
+
+@dataclass
 class Var(Expr):
     name: str          # also "result" inside ensures
     ty: Optional[Type] = None
@@ -370,6 +374,7 @@ Function.foreign = None    # trusted rust fn: {"path": "::std::cmp::min", "line"
 
 # ---------- G9 A0: recursion, decreases, extended types ----------
 # Same convention: plain class attributes, set on an instance only when a G9 feature is present.
+Function.cost = None      # Stage 5 entry-state work bound
 Function.decreases = None  # the `decreases Expr` clause of a function header (None = absent)
 Program.g9 = None          # checker metadata dict (see check.Checker.g9_meta), only when a G9 feature exists
 

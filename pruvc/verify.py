@@ -2192,7 +2192,10 @@ def verify_program(prog, rec=None, infer=False, report=None):
     """infer=True (STAGE1 B2, --infer): per function, explore template invariant candidates (infer.py), then
     verify the whole function with the survivors as extra loop invariants. report (a list) receives one record
     per loop (docs/STAGE1_B_INFER.md section 5). infer=False: exactly the old path."""
-    from typeinfo import g2_unimplemented_error
+    from typeinfo import g2_unimplemented_error, s5_unimplemented_error
+    s5err = s5_unimplemented_error(prog)
+    if s5err is not None:
+        return [s5err]
     # G3 A2: the verifier handles generics (no guard here); the code generators and pruvc.py still reject them.
     # "array" in skip exempts only the structured [T] (the plain [i64] is never a G2 hit).
     g2err = g2_unimplemented_error(prog, "verify", skip=("array_u8", "array_bool", "str", "array"))  # G2 B1

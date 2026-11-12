@@ -1,0 +1,1 @@
+fn f() -> i64 { assert spent == 0; return 0; }

@@ -983,6 +983,9 @@ impl Parser {
             }
         }
         self.expect(")")?;
+        if self.at("cost", 0) {
+            return Err(cost_syntax(self.peek(0)));
+        }
         self.expect("->")?;
         let (ret, ret_refine) = self.type_r(true)?;
         let mut effects = Vec::new();
@@ -1001,8 +1004,13 @@ impl Parser {
             }
         }
         let (mut req, mut ens) = (Vec::new(), Vec::new());
+        let mut late_req: Option<Tok> = None; // Stage 5: first requires after an ensures (rejected only in cost headers)
         while self.at("requires", 0) || self.at("ensures", 0) {
-            let k = self.next().val;
+            let kt = self.next();
+            let k = kt.val.clone();
+            if k == "requires" && !ens.is_empty() && late_req.is_none() {
+                late_req = Some(kt);
+            }
             let e = self.expr()?;
             if k == "requires" {
                 req.push(e);
@@ -1011,6 +1019,10 @@ impl Parser {
             }
         }
         let decreases = self.decreases_clause()?; // G9 A0: at most one measure, after all requires/ensures
+        let cost = self.cost_clause()?;
+        if let (Some(_), Some(t)) = (&cost, &late_req) {
+            return Err(cost_syntax(t));
+        }
         let mut info: Option<ForeignInfo> = None;
         let body;
         if foreign.is_some() {
@@ -1044,7 +1056,22 @@ impl Parser {
             line: kw.line, col: kw.col, name, params, ret, effects, requires: req, ensures: ens, body, ret_refine, tparams,
             foreign: info,
             decreases,
+            cost,
         })
+    }
+
+    fn cost_clause(&mut self) -> R<Option<Expr>> {
+        if !self.at("cost", 0) { return Ok(None); }
+        let t = self.next();
+        let bad = cost_syntax;
+        if ["{", "=", ";", "cost", "requires", "ensures", "decreases"].contains(&self.peek(0).val.as_str()) || self.peek(0).kind == Kind::Eof {
+            return Err(bad(&t));
+        }
+        let e = self.expr().map_err(|_| bad(self.peek(0)))?;
+        if ["cost", "requires", "ensures", "decreases", ",", "!", "->"].contains(&self.peek(0).val.as_str()) {
+            return Err(bad(self.peek(0)));
+        }
+        Ok(Some(e))
     }
 
     fn decreases_syntax(&self, tok: &Tok, msg: &str, fix: &str) -> PruvError {
@@ -1651,6 +1678,10 @@ impl Parser {
             self.expect(")")?;
             return Ok(Expr::Ctor(Ctor { line, col, name: t.val.clone(), arg: Some(Box::new(a)), ty: None, targs, inst: None }));
         }
+        if self.at("spent", 0) {
+            self.next();
+            return Ok(Expr::Spent(Spent { line: t.line, col: t.col, ty: None }));
+        }
         if self.at("result", 0) {
             self.bump();
             return Ok(Expr::Var(Var { line, col, name: "result".to_string(), ty: None }));
@@ -1835,4 +1866,10 @@ mod tests {
         let e = parse_source("fn f() -> i64 {\r  @").unwrap_err();
         assert_eq!((e.code.as_str(), e.line, e.col), ("bad_char", 2, 3));
     }
+}
+
+fn cost_syntax(t: &Tok) -> PruvError {
+    PruvError::new("parse", t.line, t.col, "cost_syntax",
+        "cost needs one expression and must be the last header clause",
+        "write requires* ensures* decreases? cost <i64 expression>")
 }

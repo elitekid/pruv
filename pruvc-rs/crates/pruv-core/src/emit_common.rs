@@ -384,6 +384,7 @@ fn show_list(xs: &[Expr]) -> String {
 /// Human-readable text of a contract expression (for panic messages).
 pub fn show(e: &Expr) -> String {
     match e {
+        Expr::Spent(_) => "spent".to_string(),
         Expr::IntLit(x) => x.value.clone(),
         Expr::BoolLit(x) => (if x.value { "true" } else { "false" }).to_string(),
         Expr::StrLit(_) => "<str>".to_string(),

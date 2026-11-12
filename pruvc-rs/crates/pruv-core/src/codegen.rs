@@ -301,6 +301,7 @@ fn contract_arith(op: &str) -> Option<&'static str> {
 
 fn expr_ty(e: &Expr) -> &Option<String> {
     match e {
+        Expr::Spent(x) => &x.ty,
         Expr::IntLit(x) => &x.ty,
         Expr::BoolLit(x) => &x.ty,
         Expr::StrLit(x) => &x.ty,
@@ -1178,6 +1179,7 @@ impl<'a> Gen<'a> {
 
     fn c(&mut self, e: &Expr) -> R<String> {
         match e {
+            Expr::Spent(_) => Err("cost_unavailable: Stage 5 cost verification is not implemented yet".into()),
             Expr::IntLit(x) => Ok(if x.value.starts_with('-') {
                 format!("({}i128)", x.value)
             } else {
@@ -2264,6 +2266,7 @@ impl<'a> Gen<'a> {
 
     fn e(&mut self, e: &Expr) -> R<String> {
         match e {
+            Expr::Spent(_) => Err("cost_unavailable: Stage 5 cost verification is not implemented yet".into()),
             Expr::Move(x) => Ok(x.name.clone()), // G6: Rust moves
             // G5 A0: never reaches the generator (the driver's A0 guard stops the program earlier)
             Expr::InoutArg(_) => Err("G5 inout argument reached the Rust generator".to_string()),
@@ -2580,6 +2583,7 @@ pub fn gen_rust_ex_g4(
     foreign_checks: &str,
     externs: &[(String, String)],
 ) -> Result<(String, Option<String>), GenError> {
+    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
@@ -2620,6 +2624,7 @@ pub fn gen_rust_concrete_ex(
     foreign_checks: &str,
     externs: &[(String, String)],
 ) -> Result<(String, Option<String>), GenError> {
+    if let Some(e) = crate::typeinfo::s5_unimplemented_error(prog) { return Err(GenError::Diag(e)); }
     if !matches!(foreign_checks, "requires" | "all" | "off") {
         return Err(GenError::Msg("foreign_checks must be requires, all or off".to_string()));
     }
@@ -2716,7 +2721,7 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
-            decreases: None,
+            cost: None, decreases: None,
         };
         Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None, uses_inout: None }
     }
@@ -2764,7 +2769,7 @@ mod tests {
             ret_refine: None,
             tparams: vec![],
             foreign: None,
-            decreases: None,
+            cost: None, decreases: None,
         };
         Program { functions: vec![f], types: vec![], refined: false, g9: None, explicit: None, uses_inout: None }
     }

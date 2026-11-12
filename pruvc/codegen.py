@@ -1751,7 +1751,10 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
                 externs=()):
     """(rust text, manifest text or None). The manifest (G6_SPEC 12.4) exists only for programs that use G6;
     externs: [(name, path)] as given with --rust-extern."""
-    from typeinfo import g2_unimplemented_error, first_g3_use
+    from typeinfo import g2_unimplemented_error, first_g3_use, s5_unimplemented_error
+    s5err = s5_unimplemented_error(prog)
+    if s5err is not None:
+        raise s5err
     if foreign_checks not in ("requires", "all", "off"):
         raise ValueError("foreign_checks must be requires, all or off")
     if plan is None and (first_g3_use(prog) is not None or prog.explicit):   # G4 A2: explicit mode always names via mono
