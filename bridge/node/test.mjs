@@ -1,6 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize } from './index.mjs';
+import { tokenize as tsTokenize } from '../../bench/l0/tokenize.mjs';
 import { docxParts as tsDocxParts } from '../../bench/l0/docx_parts.mjs';
 import { parseHtml as tsParseHtml } from '../../bench/l0/parse_html.mjs';
 import { textAround as tsTextAround } from '../../bench/l0/text_around.mjs';
@@ -692,6 +693,29 @@ for (const [i, [html, images, want]] of partsRows.entries()) {
 mustThrow('docxPartsRecords number', () => docxPartsRecords(1));
 mustThrow('docxPartsRecords undefined', () => docxPartsRecords());
 
+// tokenize: the token list against the Python oracle (Unicode 17.0), and the glue against the verbatim
+// tokenize. The verbatim one uses this Node's ICU, so its differences fail only on Unicode 17.0.
+const tokenScript = fileURLToPath(new URL('../../bench/l0/run_tokenize.py', import.meta.url));
+const tokenRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [tokenScript, '--emit', '--n', String(Math.ceil(CASES / 10)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let tokenMismatches = 0, tokenTsDiff = 0;
+const tokenUnicode17 = process.versions.unicode === '17.0';
+for (const [i, [text, want]] of tokenRows.entries()) {
+  const got = tokenizeRecords(text);
+  if (got.length !== want.length || got.some((x, k) => x !== want[k])) {
+    tokenMismatches++;
+    if (tokenMismatches <= 5) console.error('token mismatch', JSON.stringify({ i, text: text.slice(0, 200) }));
+  }
+  if (JSON.stringify(tokenize(text)) !== JSON.stringify(tsTokenize(text))) {
+    tokenTsDiff++;
+    if (tokenTsDiff <= 5 && tokenUnicode17) console.error('token ts difference', JSON.stringify({ i, text: text.slice(0, 200) }));
+  }
+}
+if (JSON.stringify(tokenize('a\ud800Σ')) !== JSON.stringify(tokenize('a\ufffdΣ'))) { tokenMismatches++; console.error('token lone surrogate'); }
+mustThrow('tokenizeRecords number', () => tokenizeRecords(1));
+mustThrow('tokenizeRecords undefined', () => tokenizeRecords());
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -756,6 +780,10 @@ console.log(JSON.stringify({
   parts_cases: partsRows.length,
   parts_mismatches: partsMismatches,
   parts_ts_differences: partsTsDiff,
+  token_cases: tokenRows.length,
+  token_mismatches: tokenMismatches,
+  token_ts_differences: tokenTsDiff,
+  token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);

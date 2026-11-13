@@ -40,6 +40,10 @@ on:
       - "bench/l0/run_parse_html.py"
       - "bench/l0/docx_parts.mjs"
       - "bench/l0/run_docx_parts.py"
+      - "bench/l0/tokenize.mjs"
+      - "bench/l0/run_tokenize.py"
+      - "bench/l0/tokenize_ucd.py"
+      - "bench/l0/gen_tokenize_tables.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 

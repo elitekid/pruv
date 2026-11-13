@@ -261,3 +261,19 @@ export function docxParts(html) {
   }
   return { blocks, html: fromCps(out, p + 1, out[p]), images };
 }
+
+export const tokenizeRecords = native.tokenizeRecords;
+
+/** Lair tokenize (src/documents/search.ts): the search tokens of text. The verified Pruv tokenizeRecords
+ *  does the lowercase (Unicode 17.0, ICU 78.2), the letter/number words, the CJK runs and their pairs; this
+ *  only builds the strings. A JS string with lone surrogates reaches Pruv with U+FFFD in their place. */
+export function tokenize(text) {
+  const out = native.tokenizeRecords(text);
+  const tokens = [];
+  let p = 1;
+  for (let t = 0; t < out[0]; t++) {
+    tokens.push(fromCps(out, p + 1, out[p]));
+    p += 1 + out[p];
+  }
+  return tokens;
+}

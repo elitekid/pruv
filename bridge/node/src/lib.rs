@@ -654,3 +654,21 @@ pub fn docx_parts_records(html: String) -> napi::Result<Vec<f64>> {
     out.extend(parts.iter().map(|&x| x as f64));
     Ok(out)
 }
+
+#[path = "../gen/tokenize_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod tokenize_gen;
+
+/// The Pruv token list of Lair tokenize (search.ts) for `text`: [token count, then per token: n, n code
+/// points]. Unicode 17.0 (ICU 78.2) lowercase, letters, numbers and scripts.
+#[napi(js_name = "tokenizeRecords")]
+pub fn tokenize_records(text: String) -> napi::Result<Vec<f64>> {
+    if text.len() as u64 > 274_877_906_944 {
+        return Err(napi::Error::new(napi::Status::InvalidArg, "tokenizeRecords: text must be at most 274877906944 UTF-8 bytes"));
+    }
+    let r = tokenize_gen::tokenize(&text);
+    if r.len() == 1 && r[0] == -1 {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "tokenizeRecords: output passes 1099511627776 slots"));
+    }
+    Ok(r.iter().map(|&x| x as f64).collect())
+}

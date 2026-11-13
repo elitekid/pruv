@@ -40,6 +40,8 @@ Exports (`index.mjs`):
 - `docxPartsRecords(html)` → number[] — `[len(rec), the parseHtmlRecords list, the <img\b count, then nblocks, per block (kind 0 p / 1 h / 2 li / 3 tr, element number, n, text code points), hlen, preview HTML code points]`: the verified Pruv walk of Lair docxParts after its parse.
 - `docxParts(html)` — Lair's `{blocks: [{n, kind, el, text}], html, images}` from docxPartsRecords; `el` is the El object (as parseHtml builds it) of the block's element.
 - `parseHtml(html)` — Lair's El tree `{tag, attrs, children}` built from parseHtmlRecords; `attrs` holds only href, colspan and rowspan, the attributes Lair's DOCX code reads. Lone surrogates in the string reach Pruv as U+FFFD.
+- `tokenizeRecords(text)` → number[] — the verified Pruv tokenize of Lair search.ts (Unicode 17.0 lowercase with Final_Sigma, `[\p{L}\p{N}]+` words, CJK runs as the whole run when 3..=8 characters plus every two-character pair): `[count, per token: n, code points]`.
+- `tokenize(text)` — Lair's token string array from tokenizeRecords. Lone surrogates reach Pruv as U+FFFD.
 
 ## Regenerate
 
@@ -93,6 +95,7 @@ first and throws a JS `Error` (`InvalidArg`) instead:
 | `sheetChunks` | max not an integer in 1..=2^40, a header longer than 2^40, more than 1e11 pieces, or a piece row/column not an integer in 1..=1e15 | `sheetChunks: max must be an integer in 1..=1099511627776` (and similar) |
 | `textAroundPlan` / `textAround` | line not an integer in 1..=1e15, before/after not integers in 0..=1e15, maxBytes not an integer in 0..=2^40, bytes not a Uint8Array/Buffer or longer than 2^40 | `textAroundPlan: line must be an integer in 1..=1000000000000000` (and similar) |
 | `parseHtmlRecords` / `parseHtml` / `docxPartsRecords` / `docxParts` | html not a string or longer than 2^38 UTF-8 bytes | `parseHtmlRecords: html must be at most 274877906944 UTF-8 bytes` |
+| `tokenizeRecords` / `tokenize` | text not a string or longer than 2^38 UTF-8 bytes | `tokenizeRecords: text must be at most 274877906944 UTF-8 bytes` |
 | `rowTextPieces` / `rowPieces` | rowNo not an integer in 1..=1e15, max not an integer in 1..=2^40, or texts joined with newlines > 1.8e11 UTF-8 bytes | `rowTextPieces: rowNo must be an integer in 1..=1000000000000000` (and similar) |
 
 The `colLetters` wrapper accepts an f64 so fractional inputs are rejected before
@@ -124,6 +127,7 @@ macOS arm64, Node v26.4.0, seed 12345, default 20,000 random cases:
 | textAroundPlan / textAround | 9,020 plans + 8,822 glue requests | 0 | 316 (text only) |
 | parseHtmlRecords / parseHtml | 2,074 | 0 | 0 |
 | docxPartsRecords / docxParts | 2,064 | 0 | 0 |
+| tokenizeRecords / tokenize | 2,089 | 0 | 0 |
 
 Version tests use an independent BigInt oracle; column tests use a BigInt
 length-block oracle, dense 0..100000 and power-of-26 boundary cases. TS counts
