@@ -19,6 +19,7 @@ export const jpegOrientation = native.jpegOrientation;
 export const shrinkPixels = native.shrinkPixels;
 export const numberRanges = native.numberRanges;
 export const csvName = native.csvName;
+export const joinRangeParts = native.joinRangeParts;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

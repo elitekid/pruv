@@ -1,0 +1,114 @@
+{
+  "seed": 12345,
+  "random_cases": 20000,
+  "runs": {
+    "py/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/join_ranges_py_rust/join_ranges_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20386,
+      "pruv_oracle_pass": 20386,
+      "ts_oracle_pass": 20386,
+      "pruv_ts_pass": 20386
+    },
+    "py/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/join_ranges_py_llvm/join_ranges_gen.rs",
+        "ll": "bench/l0/work/join_ranges_py_llvm/join_ranges_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20386,
+      "pruv_oracle_pass": 20386,
+      "ts_oracle_pass": 20386,
+      "pruv_ts_pass": 20386
+    },
+    "rs/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/join_ranges_rs_rust/join_ranges_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20386,
+      "pruv_oracle_pass": 20386,
+      "ts_oracle_pass": 20386,
+      "pruv_ts_pass": 20386
+    },
+    "rs/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/join_ranges_rs_llvm/join_ranges_gen.rs",
+        "ll": "bench/l0/work/join_ranges_rs_llvm/join_ranges_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20386,
+      "pruv_oracle_pass": 20386,
+      "ts_oracle_pass": 20386,
+      "pruv_ts_pass": 20386
+    }
+  },
+  "tools": {
+    "commands": {
+      "py": [
+        "python",
+        "pruvc.py"
+      ],
+      "rs": [
+        "pruvc"
+      ]
+    },
+    "rust_source_sha256": "888a5b93a90541ecf793413e97bc9f0e5ecf67bc9f95434a250c7cb5d652aff9",
+    "rust_binary_sha256": "b58519d9ab877bc4ae9fafa7a9f56d8cd46e4f45070eb46303c32bf4c029737d",
+    "node": "v26.4.0"
+  },
+  "edge_cases": 386,
+  "cases": 20386,
+  "oracle_outcomes": {
+    "full": 8632,
+    "cut": 11754,
+    "cut_to_empty": 1045,
+    "full_units_398_to_400": 856,
+    "result_units_396_to_400": 4609,
+    "max_result_units": 400,
+    "max_result_utf8_bytes": 1200
+  },
+  "ts_runtime": {
+    "electron": true,
+    "node": "24.22.2",
+    "electron_version": "44.11.2",
+    "icu": "78.2"
+  },
+  "ts_oracle_pass": 20386,
+  "status": "ok",
+  "difference_records_total": 0,
+  "difference_records_saved": 0,
+  "difference_order": "input size, input, compiler/backend"
+}

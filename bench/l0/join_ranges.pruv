@@ -1,0 +1,132 @@
+// Lair joinRangeParts (src/documents/context.ts), commit 698e1bd1, on general strings.
+// The parts are text[0..ends[0]], text[ends[0]..ends[1]], ... (ends[k] = byte end of part k; the host
+// concatenates the parts into text). The parts are joined with ", ". If the whole text is longer than
+// 400 UTF-16 code units it is cut at a part boundary: kept is built part by part, with no separator
+// while kept is still the empty string (so leading empty parts vanish), and the loop stops at the first
+// part where the next kept text plus 3 would pass 400 units; the result is kept followed by ", …"
+// (U+2026, 3 bytes). Zero parts give "".
+// Lengths are UTF-16 units: 2 for a 4-byte character, else 1.
+// Domain: text at most 10^12 bytes; ends nondecreasing, each on a character boundary, the last one
+// len(text).
+
+// UTF-16 length of the character starting at boundary i: 2 for a 4-byte character, else 1.
+fn width(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 1 <= result && result <= 2
+{
+  if s[i] >= 240 { return 2; }
+  return 1;
+}
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+  ensures forall t in i+1..result: !is_char_boundary(s, t)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    invariant forall t in i+1..j: !is_char_boundary(s, t)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+// UTF-16 length of the boundary range a..b. The verifier does not know that a str is valid UTF-8, so a
+// character longer than 3 * width bytes (impossible for valid UTF-8: 1, 2 or 3 bytes for 1 unit, 4 bytes
+// for 2 units) is counted one unit per byte; this gives the bound b - a <= 3 * result without changing
+// the result on any real string.
+fn units(s: str, a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  ensures 0 <= result && result <= 2 * (b - a)
+  ensures b - a <= 3 * result
+{
+  let mut i: i64 = a;
+  let mut u: i64 = 0;
+  while i < b
+    invariant a <= i && i <= b && is_char_boundary(s, i)
+    invariant 0 <= u && u <= 2 * (i - a)
+    invariant i - a <= 3 * u
+    decreases b - i
+  {
+    let w: i64 = width(s, i);
+    let j: i64 = next(s, i);
+    if j - i > 3 * w {
+      u = u + (j - i);
+    } else {
+      u = u + w;
+    }
+    i = j;
+  }
+  return u;
+}
+
+// full is the parts joined with ", " as long as that stays within 400 units (over: it did not);
+// kept is the cut text (stopped: the TS loop has hit its break). Every kept text is at most 397 units,
+// and a text of u units has at most 3 * u bytes.
+pub fn join_ranges(text: str, ends: [i64]) -> str ! alloc
+  requires len(text) <= 1000000000000
+  requires forall k in 0..len(ends): 0 <= ends[k] && ends[k] <= len(text) && is_char_boundary(text, ends[k])
+  requires forall k in 0..len(ends): k + 1 >= len(ends) || ends[k] <= ends[k + 1]
+  requires len(ends) == 0 || ends[len(ends) - 1] == len(text)
+  ensures len(result) <= 1200
+{
+  let mut full: String = string_new();
+  let mut kept: String = string_new();
+  let mut full_u: i64 = 0;
+  let mut kept_u: i64 = 0;
+  let mut over: bool = false;
+  let mut stopped: bool = false;
+  let mut st: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(ends) && (!over || !stopped)
+    invariant 0 <= i && i <= len(ends)
+    invariant 0 <= st && st <= len(text) && is_char_boundary(text, st)
+    invariant 0 <= full_u && full_u <= 400 && len(full) <= 3 * full_u
+    invariant 0 <= kept_u && kept_u <= 397 && len(kept) <= 3 * kept_u
+    decreases len(ends) - i
+  {
+    // The requires clauses make this check dead code; it only lets the verifier see the range.
+    let mut e: i64 = ends[i];
+    if e < st || e > len(text) || !is_char_boundary(text, e) { e = st; }
+    let u: i64 = units(text, st, e);
+    if !over {
+      let mut nu: i64 = full_u + u;
+      if i > 0 { nu = nu + 2; }
+      if nu > 400 {
+        over = true;
+      } else {
+        if i > 0 {
+          full = string_push_str(move full, ", ");
+        }
+        full = string_push_str(move full, substr(text, st, e));
+        full_u = nu;
+      }
+    }
+    if !stopped {
+      let mut ku: i64 = kept_u + u;
+      if len(kept) > 0 { ku = ku + 2; }
+      if ku + 3 > 400 {
+        stopped = true;
+      } else {
+        if len(kept) > 0 {
+          kept = string_push_str(move kept, ", ");
+        }
+        kept = string_push_str(move kept, substr(text, st, e));
+        kept_u = ku;
+      }
+    }
+    st = e;
+    i = i + 1;
+  }
+  if !over {
+    return string_to_str(full);
+  }
+  kept = string_push_str(move kept, ", …");
+  return string_to_str(kept);
+}

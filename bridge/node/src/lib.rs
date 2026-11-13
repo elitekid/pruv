@@ -16,6 +16,10 @@ mod number_ranges_gen;
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
 
+#[path = "../gen/join_ranges_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod join_ranges_gen;
+
 #[path = "../gen/kind_of_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod kind_of_gen;
@@ -360,6 +364,26 @@ pub fn number_ranges(numbers: Vec<f64>) -> napi::Result<String> {
         v.push(n as i64);
     }
     Ok(number_ranges_gen::number_ranges(&v))
+}
+
+/// Lair joinRangeParts: the parts joined with ", "; past 400 UTF-16 units cut at a part boundary and
+/// followed by ", …". Pruv gets the concatenated parts and the byte end of every part. A lone surrogate
+/// reaches Pruv as U+FFFD (one unit either way, so the length rule is unchanged).
+#[napi(js_name = "joinRangeParts")]
+pub fn join_range_parts(parts: Vec<String>) -> napi::Result<String> {
+    let total: u64 = parts.iter().map(|p| p.len() as u64).sum();
+    if total > 1_000_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "joinRangeParts: parts must be at most 1000000000000 UTF-8 bytes in total"));
+    }
+    let text = parts.concat();
+    let mut ends = Vec::with_capacity(parts.len());
+    let mut at = 0usize;
+    for p in &parts {
+        at += p.len();
+        ends.push(at as i64);
+    }
+    Ok(join_ranges_gen::join_ranges(&text, &ends))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.
