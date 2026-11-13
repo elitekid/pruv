@@ -2392,7 +2392,7 @@ impl<'a> FnGen<'a> {
         };
         if f.foreign.is_some() {
             // G6 A3: trusted rust fn through its bridge adapter
-            return self.trusted_call(f, e);
+            return self.trusted_call(f, e, owned);
         }
         let mut args: Vec<String> = Vec::new();
         for (i, x) in a.iter().enumerate() {
@@ -2569,13 +2569,19 @@ impl<'a> FnGen<'a> {
         Err(format!("llvmgen: unsupported catalog operation {}", n))
     }
 
-    fn trusted_call(&mut self, f: &Function, e: &Call) -> R<V> {
+    fn trusted_call(&mut self, f: &Function, e: &Call, owned: bool) -> R<V> {
         let mut args: Vec<(String, String)> = Vec::new();
         for x in &e.args {
             let v = self.ev(x, false)?;
             args.extend(self.g6_arg(&v)?);
         }
         let sym = crate::foreign_shim::adapter_sym(&f.name);
+        if is_collection(&f.ret) {
+            // G6b: a fresh boxed result; a temporary unless the caller takes it
+            let r = self.g6_call(&sym, "ptr", &args)?;
+            let rv = V { k: Kind::Coll, a: r, b: "None".to_string(), ty: Some(f.ret.clone()), p: None };
+            return self.temp_arr(rv, owned);
+        }
         if f.ret == "unit" {
             self.g6_call(&sym, "void", &args)?;
             return Ok(V::unit());
@@ -4022,7 +4028,9 @@ pub fn g6_llvm_error(prog: &Program) -> Option<crate::diagnostic::PruvError> {
     };
     for f in &prog.functions {
         if f.foreign.is_some() {
-            let ok = matches!(f.ret.as_str(), "i64" | "bool" | "unit")
+            // G6b: catalog String or exactly Vec<i64> results are boxed handles
+            let owned = crate::gtype::GType::try_from_key(&f.ret).map(|t| crate::foreign::owned_result(&t)).unwrap_or(false);
+            let ok = (matches!(f.ret.as_str(), "i64" | "bool" | "unit") || owned)
                 && f.params.iter().all(|p| {
                     matches!(p.ty.as_str(), "i64" | "bool" | "array" | "array_u8" | "array_bool" | "str") && !p.take
                 });

@@ -771,6 +771,11 @@ class Checker:
             s.expect(f.decreases, I64, scope, contract=True)
         s.ckind = "code"
         if f.foreign is not None:
+            if is_collection(f.ret) and "alloc" not in f.effects:   # G6b: an owned result allocates
+                terr(f, "missing_effect", "trusted rust fn %s returns %s and must declare `alloc`" % (
+                    f.name, type_name(f.ret)),
+                     "add `! %s` after the return type" % ", ".join(sorted(set(f.effects) | {"alloc"})),
+                     stage="effect")
             return                       # a trusted rust fn has no body to check
         s.block(f.body, dict(scope))
         if f.ret != UNIT and not s.ends_in_return(f.body):

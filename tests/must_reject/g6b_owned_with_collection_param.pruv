@@ -1,0 +1,4 @@
+// foreign_signature: an owned result does not open collection parameters
+trusted rust fn copy_of(v: Vec<i64>) -> Vec<i64> ! alloc
+  ensures true
+  = "::std::clone::Clone::clone";

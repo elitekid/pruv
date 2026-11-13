@@ -1,0 +1,79 @@
+// G6b runtime: trusted adapters returning owned String / Vec<i64> (multibyte, empty, i64 extremes, spare capacity);
+// a String-only program (no str anywhere); temporaries, return through a helper, reassignment in a loop and a
+// branch, two live results and an early return
+trusted rust fn word() -> String ! alloc
+  ensures len(result) == 4
+  ensures result[0] == 237 && result[1] == 149 && result[2] == 156 && result[3] == 97
+  = "::g6b_adapter::word";
+
+trusted rust fn empty_text() -> String ! alloc
+  ensures len(result) == 0
+  = "::g6b_adapter::empty_text";
+
+trusted rust fn extremes(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 10
+  ensures len(result) == n + 2
+  ensures result[0] < -9223372036854775806 && result[n + 1] == 9223372036854775807
+  ensures forall i in 1..n + 1: result[i] == i
+  = "::g6b_adapter::extremes";
+
+trusted rust fn empty_nums() -> Vec<i64> ! alloc
+  ensures len(result) == 0
+  = "::g6b_adapter::empty_nums";
+
+fn text_bytes() -> i64 ! alloc
+  ensures result == 338
+{
+  let s: String = word();
+  return string_byte(s, 0) + string_byte(s, 3) + len(s) + len(empty_text());
+}
+
+fn make(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 10
+  ensures len(result) == n + 2
+  ensures result[0] < 0
+  ensures forall i in 1..n + 1: result[i] == i
+{
+  return extremes(n);
+}
+
+fn ext_sum(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 10
+{
+  let v: Vec<i64> = make(n);
+  let mut total: i64 = 0;
+  let mut i: i64 = 1;
+  while i <= n
+    invariant 1 <= i && i <= n + 1 && len(v) == n + 2 && total >= 0 && total <= 100 * i
+    decreases n + 1 - i
+  {
+    total = total + vec_get::<i64>(v, i);
+    i = i + 1;
+  }
+  if vec_get::<i64>(v, 0) < 0 {
+    total = total + 1000;
+  }
+  return total;
+}
+
+fn churn(k: i64) -> i64 ! alloc
+  requires 0 <= k && k <= 5
+{
+  let mut v: Vec<i64> = empty_nums();
+  let mut i: i64 = 0;
+  while i < k
+    invariant 0 <= i && i <= k
+    decreases k - i
+  {
+    v = extremes(i);
+    i = i + 1;
+  }
+  if k > 2 {
+    v = empty_nums();
+  }
+  let w: Vec<i64> = extremes(1);
+  if len(w) == 3 {
+    return len(v) + len(w);
+  }
+  return 0;
+}

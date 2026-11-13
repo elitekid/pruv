@@ -1,0 +1,6 @@
+// foreign_signature: a user type named String is not the catalog String
+struct String { n: i64 }
+
+trusted rust fn make() -> String ! alloc
+  ensures true
+  = "::std::default::Default::default";

@@ -266,8 +266,14 @@ fn scalar_opt(t: &GType) -> bool {
         && (t.args.is_empty() || t.args[0] == GType::i64() || t.args[0] == GType::bool())
 }
 
+/// G6b: catalog String or exactly Vec<i64> (structural: no nominal owner)
+pub fn owned_result(t: &GType) -> bool {
+    t.owner.is_none()
+        && (*t == GType::new("string", vec![]) || *t == GType::new("vec", vec![GType::i64()]))
+}
+
 fn allowed_result(t: &GType) -> bool {
-    *t == GType::i64() || *t == GType::bool() || *t == GType::unit() || scalar_opt(t)
+    *t == GType::i64() || *t == GType::bool() || *t == GType::unit() || scalar_opt(t) || owned_result(t)
 }
 
 fn allowed_param(t: &GType) -> bool {
@@ -315,7 +321,7 @@ pub fn check_foreign_decl(f: &Function, externs: &[String]) -> Res<()> {
             fc,
             "foreign_signature",
             format!("result type {} is not allowed on a trusted rust fn", format_type(&ret)),
-            "return i64, bool, (), Option<i64|bool> or Result<i64|bool>; convert other results in a Rust adapter",
+            "return i64, bool, (), Option<i64|bool>, Result<i64|bool>, String or Vec<i64>; convert other results in a Rust adapter",
         ));
     }
     for prm in &f.params {

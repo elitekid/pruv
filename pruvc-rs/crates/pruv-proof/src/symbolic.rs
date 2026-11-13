@@ -158,6 +158,12 @@ fn inv_what(cid: Option<&str>, text: Option<&str>, phase: &str) -> (String, Stri
     }
 }
 
+/// G6b: the catalog type Vec<i64> (no nominal owner).
+fn is_vec_i64(t: &Ty) -> bool {
+    let g = t.to_gtype();
+    g.owner.is_none() && g == GType::new("vec", vec![GType::i64()])
+}
+
 /// verify.py `in_range` (line 168). `x >= I64_MIN` is a comparison with a Python int, so it is not flipped (raw).
 pub fn in_range(z: &Z3, x: &Ast) -> Ast {
     z.and(&[x.raw_ge(&z.int(i64::MIN)), x.raw_le(&z.int(i64::MAX))])
@@ -1397,6 +1403,15 @@ impl<'a> FnVerifier<'a> {
         self.z.forall(std::slice::from_ref(&k), &rng.implies(&body), &[])
     }
 
+    /// G6b: verify.py `i64_dom`: every element of a Vec<i64> returned by a trusted rust fn is an i64
+    /// (`elem!k` bound variable, no patterns).
+    pub fn i64_dom(&self, arr: &Arr) -> Ast {
+        let k = self.z.int_const("elem!k");
+        let rng = self.z.and(&[k.ge_i(0), k.lt(&arr.n)]);
+        let body = in_range(&self.z, &arr.a.select(&k));
+        self.z.forall(std::slice::from_ref(&k), &rng.implies(&body), &[])
+    }
+
     /// G2 B1: is `i` a UTF-8 character boundary of the byte array `arr` (total function, no domain)?
     /// `Or(i == 0, i == n, And(i > 0, i < n, Or(b < 128, b >= 192)))`, `b = Select(arr.a, i)`.
     pub fn str_boundary(&self, arr: &Arr, i: &Ast) -> Ast {
@@ -2042,6 +2057,10 @@ impl<'a> FnVerifier<'a> {
             self.assume(st, g, w);
             if ra.elem == Elem::U8 {
                 let d = self.u8_dom(ra);
+                self.assume(st, g, d);
+            } else if f.foreign.is_some() && is_vec_i64(&rty) {
+                // G6b: a fresh foreign Vec<i64>
+                let d = self.i64_dom(ra);
                 self.assume(st, g, d);
             }
         } else if let Val::File(f) = &res {
@@ -3061,6 +3080,10 @@ impl<'a> FnVerifier<'a> {
                     st.pc.push(self.z.and(&[a.n.ge_i(0), a.n.le_i(MAX_LEN)]));
                     if a.elem == Elem::U8 {
                         let d = self.u8_dom(a);
+                        st.pc.push(d);
+                    } else if is_vec_i64(&rty) {
+                        // G6b: a foreign Vec<i64> result has i64 elements
+                        let d = self.i64_dom(a);
                         st.pc.push(d);
                     }
                 }

@@ -1334,3 +1334,15 @@ Fourth G6 batch (`docs/G6_SPEC.md` §7.5, decisions in §13). Python reference f
 - **Bridge:** `bridge/node` exports `termPlain(state, data)` and `termState(state, data)`. `gen/term_plain_gen.rs` is byte-identical from both compilers (`regen.py --check`). A state that is not an integer in 0..11 throws `InvalidArg`.
 - **Node test (macOS arm64, Node v26.4.0, seed 12345, 20,000 chunked cases including lone surrogates):** 0 mismatches against a JS oracle on the UTF-8 round trip. 4,741 informational TS differences, all from the lone-surrogate domain difference. Error checks pass.
 - **Not done:** nothing is wired into Lair yet. Larger L2 pieces that need third-party Rust crates (parsers, document conversion) come next.
+
+## 74. G6b: owned `String` / `Vec<i64>` results from trusted Rust adapters (2026-11-13)
+
+- **Why:** L2 pieces need third-party crates (for example `encoding_rs`) to hand text or lists back to Pruv. Before G6b a user `trusted rust fn` could return only scalars. Design: `docs/G6B_SPEC.md`.
+- **Surface:** a trusted declaration may also return the catalog `String` or exactly `Vec<i64>`, and must then carry `! alloc` (so must every caller). Contracts may use `len(result)` and guarded `result[i]`. Still rejected: other result types (`Vec<bool>`, `HashMap`, `File`, `str`, a user type named `String`), nested owned types, an owned result together with a collection parameter, `take` or `inout`, and a missing `alloc` on the declaration or a caller.
+- **Proof:** each call gives a fresh, independently owned model (byte array for `String`, i64-bounded array for `Vec<i64>`) constrained only by well-formedness and the declared `ensures`. `requires` are proved before the result is assumed; contract domains are checked in order.
+- **Runtime:** after the adapter returns, the length is compared with 2^40 in every check mode, before any `ensures`. In `--foreign-checks all` the `ensures` run on the returned object; a lying adapter then fails with exit 101, while `requires`/`off` accept the trusted lie as documented.
+- **Backends:** Rust source and LLVM on both compilers. In LLVM the result is boxed once as a `PruvH` and joins the existing ownership, temporary-cleanup and drop paths.
+- **Tests:** 55 new rows: 13 rejection fixtures (`tests/must_reject/g6b_*`), one frontend and one proof fixture under `tests/g6/`, and five runtime fixtures (owned results, a String-only program, three lying adapters) across the check modes and both backends.
+- **Full runs:** Python compiler 3,338/3,338 and Rust compiler 3,350/3,350 on both backends; row comparison: missing 0, extra 0, failed 0 (the 12 rows outside the Python run are Rust-compiler-only).
+- **Audit:** one static audit of both compilers (Codex) found no must-fix or should-fix defects.
+

@@ -1,0 +1,15 @@
+// G6b accept: trusted rust fns returning String and Vec<i64> with alloc; callers propagate alloc
+trusted rust fn greeting() -> String ! alloc
+  ensures len(result) == 6
+  = "::std::string::String::new";
+
+trusted rust fn numbers(text: str) -> Vec<i64> ! alloc, io
+  ensures len(result) == 2
+  ensures result[0] == 7 && result[1] == 9
+  = "::std::vec::Vec::new";
+
+fn total(text: str) -> i64 ! alloc, io {
+  let v: Vec<i64> = numbers(text);
+  let s: String = greeting();
+  return len(v) + len(s);
+}

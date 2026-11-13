@@ -1,0 +1,4 @@
+// missing_effect: a trusted rust fn returning String must declare alloc
+trusted rust fn name() -> String
+  ensures len(result) >= 0
+  = "::std::string::String::new";

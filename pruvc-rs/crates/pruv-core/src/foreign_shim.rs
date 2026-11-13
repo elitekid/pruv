@@ -591,6 +591,10 @@ fn trusted_adapter(f: &Function) -> R<String> {
     let call = format!("{}({})", f.name, args.join(", "));
     let s = adapter_sym(&f.name);
     let ps = params.join(", ");
+    if is_collection(&f.ret) {
+        // G6b: the helper checked the result; box it once, even when empty
+        return Ok(fn_text(&s, &ps, Some("PruvH"), &format!("pruv_g6_guard(|| pruv_g6_new({}))", call)));
+    }
     if f.ret == "unit" {
         return Ok(fn_text(&s, &ps, None, &format!("pruv_g6_guard(|| {{ {}; }})", call)));
     }
@@ -661,7 +665,8 @@ pub fn build_shim(prog: &Program, verified: bool, _trust_callers: bool, budget: 
     if uses_array_type(prog, "array_bool") {
         out.push(CONTRACT_PRELUDE_BOOL.to_string());
     }
-    if uses_str(prog, true) {
+    if uses_str(prog, true) || uses_array_type(prog, "string") {
+        // G6b: a String result indexed in an ensures
         out.push(CONTRACT_PRELUDE_STR.to_string());
     }
     out.push(G6_PRELUDE.to_string());

@@ -45,7 +45,7 @@ import codegen
 from codegen import show
 from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str  # G2 B2: uses_str
 from typeinfo import is_collection, contains_collection, encode  # G6 A3
-from foreign import CATALOG, CATALOG_CONTRACT_ONLY, first_g6_use  # G6 A3
+from foreign import CATALOG, CATALOG_CONTRACT_ONLY, first_g6_use, _owned_result  # G6 A3, G6b
 import foreign_shim  # G6 A3
 import parallel_shim
 from foreign import first_par
@@ -1488,7 +1488,7 @@ class FnGen:
             raise Exception("llvmgen: unsupported call in code: %s" % n)
         f = s.funcs[n]
         if f.foreign is not None:   # G6 A3: trusted rust fn through its bridge adapter
-            return s.trusted_call(f, e)
+            return s.trusted_call(f, e, owned)
         args = []
         for i, x in enumerate(a):
             if s.is_ext(f.params[i].type):   # G9 A3: a read argument is a pointer to valid caller-owned storage
@@ -1596,11 +1596,14 @@ class FnGen:
             return s.temp_arr(V("arr", p, ln, STR), owned)
         raise Exception("llvmgen: unsupported catalog operation %s" % n)
 
-    def trusted_call(s, f, e):
+    def trusted_call(s, f, e, owned):
         args = []
         for x in e.args:
             args += s.g6_arg(s.ev(x))
         sym = foreign_shim.adapter_sym(f.name)
+        if is_collection(f.ret):   # G6b: a fresh boxed result; a temporary unless the caller takes it
+            r = s.g6_call(sym, "ptr", args)
+            return s.temp_arr(V("coll", r, None, f.ret), owned)
         if f.ret == UNIT:
             s.g6_call(sym, "void", args)
             return V("unit")
@@ -3301,7 +3304,7 @@ def g6_llvm_error(prog):
 
     for f in prog.functions:
         if f.foreign is not None:
-            ok = f.ret in (I64, BOOL, UNIT) and all(
+            ok = (f.ret in (I64, BOOL, UNIT) or _owned_result(f.ret)) and all(
                 p.type in (I64, BOOL, ARRAY, ARRAY_U8, ARRAY_BOOL, STR) and not p.take for p in f.params)
             if not ok:
                 return err(f.line, f.col)

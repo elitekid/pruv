@@ -1,0 +1,4 @@
+// foreign_signature: an owned result does not open take parameters
+trusted rust fn grow(take s: String) -> String ! alloc
+  ensures true
+  = "::std::convert::identity";

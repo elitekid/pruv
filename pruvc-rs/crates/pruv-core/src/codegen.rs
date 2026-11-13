@@ -2329,6 +2329,13 @@ impl<'a> Gen<'a> {
         body.push("    Ok(pruv_r) => pruv_r,".to_string());
         body.push(format!("    Err(_) => panic!({}),", rstr(&format!("pruv: foreign panic: {}", disp))));
         body.push("};".to_string());
+        if key_is_collection(&f.ret) {
+            // G6b: an owned result's length fits the 2^40 model in every check mode
+            body.push(format!(
+                "if (result.len() as u128) > (1u128 << 40) {{ pruv_g6_repr({}); }}",
+                rstr(&format!("{}: result length", disp))
+            ));
+        }
         if ens {
             for x in &f.ensures {
                 let code = self.c(x)?;

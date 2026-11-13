@@ -1,0 +1,4 @@
+// foreign_signature: a borrowed str result is not allowed
+trusted rust fn label() -> str ! alloc
+  ensures true
+  = "::std::string::String::new";

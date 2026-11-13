@@ -320,6 +320,8 @@ def _trusted_adapter(f):
             raise Exception("foreign_shim: unsupported trusted parameter type %r" % (t,))
     call = "%s(%s)" % (f.name, ", ".join(args))
     S = adapter_sym(f.name)
+    if is_collection(f.ret):   # G6b: the helper checked the result; box it once, even when empty
+        return _fn(S, ", ".join(params), "PruvH", "pruv_g6_guard(|| pruv_g6_new(%s))" % call)
     if f.ret == UNIT:
         return _fn(S, ", ".join(params), None, "pruv_g6_guard(|| { %s; })" % call)
     if f.ret == BOOL:
@@ -365,7 +367,7 @@ def build_shim(prog, verified=True, trust_callers=False, budget=1 << 30, foreign
         out.append(CONTRACT_PRELUDE_U8)
     if uses_array_type(prog, "array_bool"):
         out.append(CONTRACT_PRELUDE_BOOL)
-    if uses_str(prog):
+    if uses_str(prog) or uses_array_type(prog, "string"):   # G6b: a String result indexed in an ensures
         out.append(CONTRACT_PRELUDE_STR)
     out.append(G6_PRELUDE)
     out.append(BRIDGE_RUNTIME)

@@ -1,0 +1,54 @@
+// G6b proof: fresh String / Vec<i64> results from trusted rust fns; ensures give length and contents,
+// element bounds come from the Vec<i64> result, another owner is preserved across the call
+trusted rust fn word() -> String ! alloc
+  ensures len(result) == 3
+  ensures result[0] == 237 && result[1] == 149 && result[2] == 156
+  = "::std::string::String::new";
+
+trusted rust fn digits(n: i64) -> Vec<i64> ! alloc
+  requires 0 <= n && n <= 100
+  ensures len(result) == n
+  ensures forall i in 0..len(result): result[i] >= 0 && result[i] <= 9
+  = "::std::vec::Vec::new";
+
+trusted rust fn any_ints() -> Vec<i64> ! alloc
+  ensures len(result) >= 1
+  = "::std::vec::Vec::new";
+
+fn first_byte() -> i64 ! alloc
+  ensures result == 237
+{
+  let s: String = word();
+  return string_byte(s, 0) + len(s) - 3;
+}
+
+fn sum_digits(n: i64) -> i64 ! alloc
+  requires 0 <= n && n <= 100
+  ensures result >= 0
+{
+  let mut keep: Vec<i64> = vec_new::<i64>();
+  keep = vec_push::<i64>(move keep, 5);
+  let d: Vec<i64> = digits(n);
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(d)
+    invariant 0 <= i && i <= len(d) && len(d) == n && total >= 0 && total <= 9 * i
+    decreases len(d) - i
+  {
+    total = total + vec_get::<i64>(d, i);
+    i = i + 1;
+  }
+  assert len(keep) == 1;
+  return total;
+}
+
+fn first_or_zero() -> i64 ! alloc
+  ensures result >= 0
+{
+  let v: Vec<i64> = any_ints();
+  let x: i64 = vec_get::<i64>(v, 0);
+  if x < 0 {
+    return 0;
+  }
+  return x;
+}

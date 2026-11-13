@@ -1,0 +1,1 @@
+{"flags_matrix": [[], ["--foreign-checks", "all"], ["--foreign-checks", "off"], ["--no-verify"], ["--no-verify", "--foreign-checks", "all"], ["--trust-callers"]], "rust_externs": {"g6b_adapter": "tests/runtime/g6b_adapter.rs"}, "exit": 0, "stdout_lines": ["0", "195", "542"], "g6_drop_balance": true}

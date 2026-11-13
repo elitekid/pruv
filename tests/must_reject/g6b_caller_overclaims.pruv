@@ -1,0 +1,11 @@
+// ensures: the caller claims a byte value the trusted result's ensures do not give
+trusted rust fn word() -> String ! alloc
+  ensures len(result) == 2
+  = "::std::string::String::new";
+
+fn head() -> i64 ! alloc
+  ensures result == 65
+{
+  let s: String = word();
+  return string_byte(s, 0);
+}

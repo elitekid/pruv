@@ -793,6 +793,12 @@ def u8_dom(arr):
                                      z3.And(z3.Select(A, k) >= 0, z3.Select(A, k) <= 255)))
 
 
+def i64_dom(arr):
+    """G6b: every element of a Vec<i64> returned by a trusted rust fn is an i64 (bound variable `elem!k`)."""
+    k = z3.Int("elem!k")
+    return z3.ForAll([k], z3.Implies(z3.And(k >= 0, k < arr.n), in_range(z3.Select(arr.a, k))))
+
+
 def str_boundary(arr, i):
     """G2 B1 (G2_SPEC 4.4): i is a UTF-8 character boundary of byte array arr (total, no domain)."""
     b = z3.Select(arr.a, i)
@@ -1619,6 +1625,8 @@ class FnVerifier:
                 s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
                 if res.elem == U8:
                     s.assume(st, g, u8_dom(res))
+                elif f.foreign is not None and rty == Type("vec", (I64,)):   # G6b: a fresh foreign Vec<i64>
+                    s.assume(st, g, i64_dom(res))
             elif isinstance(res, Map):
                 s.assume(st, g, z3.And(res.n >= 0, res.n <= MAX_LEN))
             else:
@@ -2162,6 +2170,8 @@ class FnVerifier:
                 st.pc.append(z3.And(res.n >= 0, res.n <= MAX_LEN))
                 if res.elem == U8:
                     st.pc.append(u8_dom(res))
+                elif f.ret == Type("vec", (I64,)):   # G6b: a foreign Vec<i64> result has i64 elements
+                    st.pc.append(i64_dom(res))
             elif isinstance(res, Map):
                 st.pc.append(z3.And(res.n >= 0, res.n <= MAX_LEN))
             else:

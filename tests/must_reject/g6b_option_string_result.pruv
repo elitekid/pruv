@@ -1,0 +1,4 @@
+// foreign_owned_type: an owned type cannot be an Option payload
+trusted rust fn maybe_name() -> Option<String> ! alloc
+  ensures true
+  = "::std::option::Option::None";

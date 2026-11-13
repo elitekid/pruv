@@ -1,0 +1,4 @@
+// contract_domain: an ensures indexes the trusted result before its length is known
+trusted rust fn first() -> Vec<i64> ! alloc
+  ensures result[0] == 7
+  = "::std::vec::Vec::new";

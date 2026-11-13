@@ -1,0 +1,4 @@
+// foreign_signature: a File result is not allowed
+trusted rust fn open_it() -> File ! alloc, fs
+  ensures true
+  = "::std::fs::File::open";

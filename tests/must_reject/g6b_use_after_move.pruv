@@ -1,0 +1,14 @@
+// foreign_move: a trusted result is read after it was moved
+trusted rust fn pair() -> Vec<i64> ! alloc
+  ensures len(result) == 2
+  = "::std::vec::Vec::new";
+
+fn keep(take v: Vec<i64>) -> i64 {
+  return len(v);
+}
+
+fn f() -> i64 ! alloc {
+  let v: Vec<i64> = pair();
+  let n: i64 = keep(move v);
+  return n + len(v);
+}

@@ -17,7 +17,7 @@ or entry, a fresh budget per helper call; exhaustion -> `pruv: foreign contract 
 import json
 
 from vast import *
-from typeinfo import encode, format_type
+from typeinfo import encode, format_type, is_collection
 from codegen import rty, cty, conv, show, rstr
 from modules import safe_type     # G4: nominal identities in helper names use their [0-9A-Za-z_] encoding
 
@@ -316,6 +316,9 @@ class ForeignGen:
             body.append("    Ok(pruv_r) => pruv_r,")
             body.append("    Err(_) => panic!(%s)," % rstr("pruv: foreign panic: " + disp))
             body.append("};")
+            if is_collection(f.ret):    # G6b: an owned result's length fits the 2^40 model in every check mode
+                body.append("if (result.len() as u128) > (1u128 << 40) { pruv_g6_repr(%s); }"
+                            % rstr(disp + ": result length"))
             if s.ens:
                 for x in f.ensures:
                     body.append("if !(%s) { pruv_g6_ens(%s, %s); }" % (g.c(x), rstr(disp), rstr(show(x))))

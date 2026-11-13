@@ -1,0 +1,4 @@
+// foreign_signature: a HashMap result is not allowed
+trusted rust fn table() -> HashMap<i64, i64> ! alloc
+  ensures true
+  = "::std::collections::HashMap::new";

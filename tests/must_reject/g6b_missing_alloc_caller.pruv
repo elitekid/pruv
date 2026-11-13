@@ -1,0 +1,9 @@
+// missing_effect: a caller of a trusted rust fn returning Vec<i64> must declare alloc
+trusted rust fn pair() -> Vec<i64> ! alloc
+  ensures len(result) == 2
+  = "::std::vec::Vec::new";
+
+fn count() -> i64 {
+  let v: Vec<i64> = pair();
+  return len(v);
+}

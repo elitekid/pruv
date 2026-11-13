@@ -1763,6 +1763,20 @@ impl Checker {
         }
         self.ckind = "code";
         if f.foreign.is_some() {
+            if ret.is_collection() && !f.effects.iter().any(|e| e == "alloc") {
+                // G6b: an owned result allocates
+                let mut all: BTreeSet<String> = f.effects.iter().cloned().collect();
+                all.insert("alloc".to_string());
+                let joined = all.into_iter().collect::<Vec<_>>().join(", ");
+                return Err(PruvError::new(
+                    "effect",
+                    f.line,
+                    f.col,
+                    "missing_effect",
+                    format!("trusted rust fn {} returns {} and must declare `alloc`", fname, format_type(&ret)),
+                    format!("add `! {}` after the return type", joined),
+                ));
+            }
             return Ok(()); // a trusted rust fn has no body to check
         }
         let mut body_scope = scope.clone();

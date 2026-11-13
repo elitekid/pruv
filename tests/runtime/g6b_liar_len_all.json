@@ -1,0 +1,1 @@
+{"flags_matrix": [["--foreign-checks", "all"], ["--no-verify", "--foreign-checks", "all"]], "rust_externs": {"g6b_liar": "tests/runtime/g6b_liar.rs"}, "exit": 101, "stdout_lines": [], "stderr_contains": "pruv: foreign ensures violated: short_word: (len(result) == 3)"}

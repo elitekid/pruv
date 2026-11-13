@@ -1,0 +1,4 @@
+// foreign_signature: only Vec<i64> is an allowed vector result
+trusted rust fn flags() -> Vec<bool> ! alloc
+  ensures true
+  = "::std::vec::Vec::new";

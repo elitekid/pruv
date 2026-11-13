@@ -134,8 +134,13 @@ def _scalar_opt(t):
     return t.owner is None and t.name in ("option", "result") and (not t.args or t.args[0] in (I64, BOOL))
 
 
+def _owned_result(t):
+    """G6b: catalog String or exactly Vec<i64> (structural: no nominal owner)"""
+    return t.owner is None and (t == STRING or t == _vec(I64))
+
+
 def _allowed_result(t):
-    return t in (I64, BOOL, UNIT) or _scalar_opt(t)
+    return t in (I64, BOOL, UNIT) or _scalar_opt(t) or _owned_result(t)
 
 
 def _allowed_param(t):
@@ -154,7 +159,7 @@ def check_foreign_decl(f, externs):
              "declare one concrete trusted rust fn per type")
     if not _allowed_result(f.ret):
         _err(f, "foreign_signature", "result type %s is not allowed on a trusted rust fn" % type_name(f.ret),
-             "return i64, bool, (), Option<i64|bool> or Result<i64|bool>; convert other results in a Rust adapter")
+             "return i64, bool, (), Option<i64|bool>, Result<i64|bool>, String or Vec<i64>; convert other results in a Rust adapter")
     for p in f.params:
         if p.mode is not None:     # G5 A0: rejected whether or not the declaration is ever called
             _err(_Pos(p.mode_pos[0], p.mode_pos[1], getattr(p, "file", None) or getattr(f, "file", None)),
