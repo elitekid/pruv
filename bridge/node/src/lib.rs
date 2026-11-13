@@ -626,3 +626,31 @@ pub fn parse_html_records(html: String) -> napi::Result<Vec<f64>> {
     }
     Ok(r.iter().map(|&x| x as f64).collect())
 }
+
+#[path = "../gen/docx_parts_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod docx_parts_gen;
+
+/// Lair docxParts (docx.ts) past its parse for `html`: [len(rec), the parse_html record list, the <img\b
+/// count, then the docx_parts list: nblocks, per block (kind 0 p / 1 h / 2 li / 3 tr, element number, n,
+/// text code points), hlen, preview HTML code points].
+#[napi(js_name = "docxPartsRecords")]
+pub fn docx_parts_records(html: String) -> napi::Result<Vec<f64>> {
+    if html.len() as u64 > 274_877_906_944 {
+        return Err(napi::Error::new(napi::Status::InvalidArg, "docxPartsRecords: html must be at most 274877906944 UTF-8 bytes"));
+    }
+    let rec = parse_html_gen::parse_html(&html);
+    if rec.len() == 1 && rec[0] == -1 {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "docxPartsRecords: output passes 1099511627776 slots"));
+    }
+    let parts = docx_parts_gen::docx_parts(&rec);
+    if parts.len() == 1 && parts[0] == -1 {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "docxPartsRecords: record list passes 68719476736 slots"));
+    }
+    let mut out = Vec::with_capacity(rec.len() + parts.len() + 2);
+    out.push(rec.len() as f64);
+    out.extend(rec.iter().map(|&x| x as f64));
+    out.push(docx_parts_gen::img_count(&html) as f64);
+    out.extend(parts.iter().map(|&x| x as f64));
+    Ok(out)
+}

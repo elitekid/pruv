@@ -1,6 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts } from './index.mjs';
+import { docxParts as tsDocxParts } from '../../bench/l0/docx_parts.mjs';
 import { parseHtml as tsParseHtml } from '../../bench/l0/parse_html.mjs';
 import { textAround as tsTextAround } from '../../bench/l0/text_around.mjs';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -665,6 +666,32 @@ for (const [i, [html, want]] of htmlRows.entries()) {
 mustThrow('parseHtmlRecords number', () => parseHtmlRecords(1));
 mustThrow('parseHtmlRecords undefined', () => parseHtmlRecords());
 
+// docx parts: the docx_parts list (after the parse records and the image count) against the Python oracle,
+// and the glue objects against the verbatim docxParts (block elements compared as subtrees).
+const partsScript = fileURLToPath(new URL('../../bench/l0/run_docx_parts.py', import.meta.url));
+const partsRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [partsScript, '--emit', '--n', String(Math.ceil(CASES / 10)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let partsMismatches = 0, partsTsDiff = 0;
+for (const [i, [html, images, want]] of partsRows.entries()) {
+  const out = docxPartsRecords(html);
+  const got = out.slice(1 + out[0]);
+  if (got.length !== want.length + 1 || got[0] !== images || want.some((x, k) => x !== got[k + 1])) {
+    partsMismatches++;
+    if (partsMismatches <= 5) console.error('parts mismatch', JSON.stringify({ i, html: html.slice(0, 200) }));
+  }
+  const mine = docxParts(html);
+  const ts = tsDocxParts(html);
+  const a = JSON.stringify([mine.blocks.map(x => [x.n, x.kind, htmlCanon(x.el), x.text]), mine.html, mine.images]);
+  const b = JSON.stringify([ts.blocks.map(x => [x.n, x.kind, htmlCanon(x.el), x.text]), ts.html, ts.images]);
+  if (a !== b) {
+    partsTsDiff++;
+    if (partsTsDiff <= 5) console.error('parts ts difference', JSON.stringify({ i, html: html.slice(0, 200) }));
+  }
+}
+mustThrow('docxPartsRecords number', () => docxPartsRecords(1));
+mustThrow('docxPartsRecords undefined', () => docxPartsRecords());
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -726,6 +753,9 @@ console.log(JSON.stringify({
   html_cases: htmlRows.length,
   html_mismatches: htmlMismatches,
   html_ts_differences: htmlTsDiff,
+  parts_cases: partsRows.length,
+  parts_mismatches: partsMismatches,
+  parts_ts_differences: partsTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || !errorOk ? 1 : 0);

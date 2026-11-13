@@ -38,6 +38,8 @@ on:
       - "bench/l0/run_text_around.py"
       - "bench/l0/parse_html.mjs"
       - "bench/l0/run_parse_html.py"
+      - "bench/l0/docx_parts.mjs"
+      - "bench/l0/run_docx_parts.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 

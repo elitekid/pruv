@@ -1,0 +1,838 @@
+// Lair docxParts minus the parse (src/documents/docx.ts at b99c75b6): inlineText, collapse,
+// collectBlocks, renderHtml and inlineRender over the El tree of a parse_html record list
+// (parse_html.pruv), and the <img\b count of the HTML.
+// Input rec: the parse_html records [0, parent, n, cps] (text) and [1, parent, n, tag cps, then for
+// href, colspan, rowspan: -1 or m and m cps] (element), parent the element number (creation order)
+// or -1 for the top level.
+// Output: [block count, then per block: kind (0 p, 1 h, 2 li, 3 tr), element number, n, n text cps,
+// then html length, html cps]. [-1] when rec is malformed (a kind not 0/1, a parent not an earlier
+// element, a length past the list, a code point outside 0..U+10FFFF) or longer than 2^36 slots.
+// The tree is kept in t with 10 slots per node (records in order, node m is the root):
+//   0 kind (0 text, 1 element), 1 tag class, 2 payload start (text or tag cps), 3 payload length,
+//   4 href slot, 5 first child, 6 next sibling, 7 last child, 8 element number, 9 block number
+// (the root's slot 9 counts blocks). Walks use explicit stacks, so deep trees do not recurse.
+// Tag classes: 0 other, 1 p, 2 h1..h6, 3 ul/ol, 4 li, 5 table, 6 thead/tbody/tfoot, 7 tr,
+// 8 td/th, 9 strong/em/u/sup/sub, 10 br, 11 img, 12 a, 13 script/style, 14 div.
+
+fn g(a: [i64], i: i64) -> i64 {
+  if 0 <= i && i < len(a) { return a[i]; }
+  return -1;
+}
+
+fn sv(inout a: [i64], i: i64, v: i64) -> ()
+  ensures len(a) == len(old(a))
+{
+  if 0 <= i && i < len(a) { a[i] = v; }
+}
+
+// out[p] = v when in range; the next slot, held in 0..2^50.
+fn wr(inout out: [i64], p: i64, v: i64) -> i64
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  if 0 <= p && p < len(out) { out[p] = v; }
+  if p < 0 { return 0; }
+  if p < 1125899906842624 { return p + 1; }
+  return 1125899906842624;
+}
+
+// Slot f of node i, or -1.
+fn nf(t: [i64], i: i64, f: i64) -> i64 {
+  if 0 <= i && i <= 1099511627776 && 0 <= f && f <= 9 { return g(t, 10 * i + f); }
+  return -1;
+}
+
+fn nset(inout t: [i64], i: i64, f: i64, v: i64) -> ()
+  ensures len(t) == len(old(t))
+{
+  if 0 <= i && i <= 1099511627776 && 0 <= f && f <= 9 { sv(inout t, 10 * i + f, v); }
+}
+
+// JavaScript whitespace (\s, trim).
+fn dws(c: i64) -> bool {
+  if (9 <= c && c <= 13) || c == 32 || c == 160 || c == 5760 { return true; }
+  if (8192 <= c && c <= 8202) || c == 8232 || c == 8233 || c == 8239 { return true; }
+  return c == 8287 || c == 12288 || c == 65279;
+}
+
+// [ \t\r\f\v]
+fn is_sp(c: i64) -> bool {
+  return c == 32 || c == 9 || c == 11 || c == 12 || c == 13;
+}
+
+fn lowc(x: i64) -> i64 {
+  if 65 <= x && x <= 90 { return x + 32; }
+  return x;
+}
+
+// [A-Za-z0-9_]
+fn wordc(x: i64) -> bool {
+  return (48 <= x && x <= 57) || (65 <= x && x <= 90) || (97 <= x && x <= 122) || x == 95;
+}
+
+// rec[a..a+n] == w
+fn tag_eq(rec: [i64], a: i64, n: i64, w: str) -> bool {
+  if n != len(w) || a < 0 || a > 1099511627776 { return false; }
+  let mut k: i64 = 0;
+  while k < n
+    invariant 0 <= k && k <= n && n == len(w)
+    decreases n - k
+  {
+    let y: i64 = w[k];
+    if g(rec, a + k) != y { return false; }
+    k = k + 1;
+  }
+  return true;
+}
+
+fn classify(rec: [i64], a: i64, n: i64) -> i64 ! alloc {
+  if tag_eq(rec, a, n, "p") { return 1; }
+  if tag_eq(rec, a, n, "h1") || tag_eq(rec, a, n, "h2") || tag_eq(rec, a, n, "h3") { return 2; }
+  if tag_eq(rec, a, n, "h4") || tag_eq(rec, a, n, "h5") || tag_eq(rec, a, n, "h6") { return 2; }
+  if tag_eq(rec, a, n, "ul") || tag_eq(rec, a, n, "ol") { return 3; }
+  if tag_eq(rec, a, n, "li") { return 4; }
+  if tag_eq(rec, a, n, "table") { return 5; }
+  if tag_eq(rec, a, n, "thead") || tag_eq(rec, a, n, "tbody") || tag_eq(rec, a, n, "tfoot") { return 6; }
+  if tag_eq(rec, a, n, "tr") { return 7; }
+  if tag_eq(rec, a, n, "td") || tag_eq(rec, a, n, "th") { return 8; }
+  if tag_eq(rec, a, n, "strong") || tag_eq(rec, a, n, "em") || tag_eq(rec, a, n, "u") { return 9; }
+  if tag_eq(rec, a, n, "sup") || tag_eq(rec, a, n, "sub") { return 9; }
+  if tag_eq(rec, a, n, "br") { return 10; }
+  if tag_eq(rec, a, n, "img") { return 11; }
+  if tag_eq(rec, a, n, "a") { return 12; }
+  if tag_eq(rec, a, n, "script") || tag_eq(rec, a, n, "style") { return 13; }
+  if tag_eq(rec, a, n, "div") { return 14; }
+  return 0;
+}
+
+// Every rec[a..b] in 0..1114111.
+fn cps_ok(rec: [i64], a: i64, b: i64) -> bool
+  requires 0 <= a && a <= b && b <= len(rec)
+{
+  let mut k: i64 = a;
+  while k < b
+    invariant a <= k && k <= b
+    decreases b - k
+  {
+    let c: i64 = rec[k];
+    if c < 0 || c > 1114111 { return false; }
+    k = k + 1;
+  }
+  return true;
+}
+
+// The end of the well-formed record at p when e elements come before it, or -1.
+fn rec_next(rec: [i64], p: i64, e: i64) -> i64
+  requires 0 <= p && p <= len(rec) && 0 <= e
+  ensures result == -1 || (p + 3 <= result && result <= len(rec))
+{
+  let l: i64 = len(rec);
+  if p + 3 > l { return -1; }
+  let kind: i64 = rec[p];
+  let par: i64 = rec[p + 1];
+  let n: i64 = rec[p + 2];
+  if kind != 0 && kind != 1 { return -1; }
+  if par < -1 || par >= e { return -1; }
+  if n < 0 || n > l - p - 3 { return -1; }
+  let mut q: i64 = p + 3;
+  if !cps_ok(rec, q, q + n) { return -1; }
+  q = q + n;
+  if kind == 1 {
+    let mut w: i64 = 0;
+    while w < 3
+      invariant p + 3 <= q && q <= l && 0 <= w && w <= 3
+      decreases 3 - w
+    {
+      if q >= l { return -1; }
+      let m: i64 = rec[q];
+      if m < -1 || m > l - q - 1 { return -1; }
+      q = q + 1;
+      if m > 0 {
+        if !cps_ok(rec, q, q + m) { return -1; }
+        q = q + m;
+      }
+      w = w + 1;
+    }
+  }
+  return q;
+}
+
+// Copy rec[a..a+n] to buf from q.
+fn copy_text(rec: [i64], a: i64, n: i64, inout buf: [i64], q0: i64) -> i64
+  ensures len(buf) == len(old(buf))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout buf, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  if a < 0 || a > 1099511627776 || n < 0 || n > 1099511627776 { return q; }
+  let mut k: i64 = 0;
+  while k < n
+    invariant 0 <= k && k <= n && 0 <= q && q <= 1125899906842624 && len(buf) == len(old(buf))
+    decreases n - k
+  {
+    q = wr(inout buf, q, g(rec, a + k));
+    k = k + 1;
+  }
+  return q;
+}
+
+// inlineText(el, skip ? isList : none) into buf from 0; the end. A frame of ik is [next child,
+// where this element's text starts].
+fn inline_text(rec: [i64], t: [i64], el: i64, skip: i64, inout buf: [i64], inout ik: [i64]) -> i64
+  ensures len(buf) == len(old(buf)) && len(ik) == len(old(ik))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut cur: i64 = 0;
+  let mut d: i64 = 1;
+  sv(inout ik, 0, nf(t, el, 5));
+  sv(inout ik, 1, 0);
+  let mut fuel: i64 = len(t) + 10;
+  while d > 0 && fuel > 0
+    invariant 0 <= d && d <= 1099511627776 && 0 <= fuel && 0 <= cur && cur <= 1125899906842624
+    invariant len(buf) == len(old(buf)) && len(ik) == len(old(ik))
+    decreases fuel
+  {
+    fuel = fuel - 1;
+    let c: i64 = g(ik, 2 * d - 2);
+    if c < 0 {
+      d = d - 1;
+    } else {
+      sv(inout ik, 2 * d - 2, nf(t, c, 6));
+      let kd: i64 = nf(t, c, 0);
+      if kd == 0 {
+        cur = copy_text(rec, nf(t, c, 2), nf(t, c, 3), inout buf, cur);
+      } else if kd == 1 {
+        let tg: i64 = nf(t, c, 1);
+        if skip == 1 && tg == 3 {
+          cur = cur;
+        } else if tg == 10 {
+          cur = wr(inout buf, cur, 10);
+        } else if tg == 11 {
+          cur = wr(inout buf, cur, 91);
+          cur = wr(inout buf, cur, 44536);
+          cur = wr(inout buf, cur, 47548);
+          cur = wr(inout buf, cur, 93);
+        } else {
+          if tg == 1 || tg == 14 || tg == 4 {
+            let st: i64 = g(ik, 2 * d - 1);
+            if cur > st && g(buf, cur - 1) != 10 { cur = wr(inout buf, cur, 32); }
+          }
+          if 2 * d + 1 < len(ik) && d < 1099511627776 {
+            sv(inout ik, 2 * d, nf(t, c, 5));
+            sv(inout ik, 2 * d + 1, cur);
+            d = d + 1;
+          }
+        }
+      }
+    }
+  }
+  return cur;
+}
+
+// collapse(src[0..b]) to out from q0; in cell mode each run of \n then becomes one space.
+fn collapse(src: [i64], b: i64, cell: i64, inout out: [i64], q0: i64) -> i64
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  let mut bb: i64 = b;
+  if bb > len(src) { bb = len(src); }
+  if bb < 0 { bb = 0; }
+  let mut f: i64 = 0;
+  while f < bb && dws(src[f])
+    invariant 0 <= f && f <= bb
+    decreases bb - f
+  {
+    f = f + 1;
+  }
+  let mut l: i64 = bb;
+  while l > f && dws(src[l - 1])
+    invariant f <= l && l <= bb
+    decreases l - f
+  {
+    l = l - 1;
+  }
+  let mut i: i64 = f;
+  let mut nl: i64 = 0;
+  while i < l
+    invariant f <= i && i <= l && 0 <= q && q <= 1125899906842624 && len(out) == len(old(out))
+    decreases l - i
+  {
+    let c: i64 = src[i];
+    if is_sp(c) {
+      let mut j: i64 = i + 1;
+      while j < l && is_sp(src[j])
+        invariant i < j && j <= l
+        decreases l - j
+      {
+        j = j + 1;
+      }
+      if g(src, i - 1) != 10 && g(src, j) != 10 {
+        q = wr(inout out, q, 32);
+        nl = 0;
+      }
+      i = j;
+    } else if c == 10 {
+      if cell == 0 {
+        q = wr(inout out, q, 10);
+      } else {
+        if nl == 0 { q = wr(inout out, q, 32); }
+        nl = 1;
+      }
+      i = i + 1;
+    } else {
+      q = wr(inout out, q, c);
+      nl = 0;
+      i = i + 1;
+    }
+  }
+  return q;
+}
+
+// The cells of tr joined with " | " (each collapse(inlineText(cell)) with \n runs as spaces), ''
+// when that is only separators; the length in row.
+fn row_text(rec: [i64], t: [i64], tr: i64, inout tmp: [i64], inout row: [i64], inout ik: [i64]) -> i64
+  ensures len(tmp) == len(old(tmp)) && len(row) == len(old(row)) && len(ik) == len(old(ik))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut rq: i64 = 0;
+  let mut cells: i64 = 0;
+  let mut c: i64 = nf(t, tr, 5);
+  let mut fuel: i64 = len(t);
+  while c >= 0 && fuel > 0
+    invariant 0 <= fuel && 0 <= rq && rq <= 1125899906842624
+    invariant len(tmp) == len(old(tmp)) && len(row) == len(old(row)) && len(ik) == len(old(ik))
+    decreases fuel
+  {
+    fuel = fuel - 1;
+    if nf(t, c, 0) == 1 && nf(t, c, 1) == 8 {
+      if cells > 0 {
+        rq = wr(inout row, rq, 32);
+        rq = wr(inout row, rq, 124);
+        rq = wr(inout row, rq, 32);
+      }
+      let e: i64 = inline_text(rec, t, c, 0, inout tmp, inout ik);
+      rq = collapse(tmp, e, 1, inout row, rq);
+      cells = 1;
+    }
+    c = nf(t, c, 6);
+  }
+  if rq > 0 && rq % 3 == 0 {
+    let mut k: i64 = 0;
+    let mut seps: i64 = 1;
+    while k < rq
+      invariant 0 <= k && k <= rq + 2
+      decreases rq - k
+    {
+      if g(row, k) != 32 || g(row, k + 1) != 124 || g(row, k + 2) != 32 { seps = 0; }
+      k = k + 3;
+    }
+    if seps == 1 { rq = 0; }
+  }
+  return rq;
+}
+
+// collectBlocks' add: the block (kind, element c, collapse(src[0..b])) at q unless it is empty.
+fn add_block(inout t: [i64], root: i64, c: i64, kind: i64, src: [i64], b: i64, inout out: [i64], q0: i64) -> i64
+  ensures len(t) == len(old(t)) && len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  let h: i64 = q;
+  q = wr(inout out, q, kind);
+  q = wr(inout out, q, nf(t, c, 8));
+  q = wr(inout out, q, 0);
+  let st: i64 = q;
+  q = collapse(src, b, 0, inout out, q);
+  if q == st { return h; }
+  sv(inout out, st - 1, q - st);
+  let mut cnt: i64 = nf(t, root, 9);
+  if cnt < 0 { cnt = 0; }
+  if cnt < 1125899906842624 { cnt = cnt + 1; }
+  nset(inout t, root, 9, cnt);
+  nset(inout t, c, 9, cnt);
+  return q;
+}
+
+// collectBlocks from the root to out from q0. A frame of sk is [type, next child]: type 0 every
+// element child is visited; 1 a list (li children become blocks, others are visited); 2 a list item
+// (only its ul/ol children are visited); 3 a table part (tr children become rows, thead/tbody/tfoot
+// children are walked).
+fn collect(rec: [i64], root: i64, inout t: [i64], inout tmp: [i64], inout row: [i64], inout sk: [i64], inout ik: [i64], inout out: [i64], q0: i64) -> i64
+  ensures len(t) == len(old(t)) && len(tmp) == len(old(tmp)) && len(row) == len(old(row))
+  ensures len(sk) == len(old(sk)) && len(ik) == len(old(ik)) && len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  let mut d: i64 = 1;
+  sv(inout sk, 0, 0);
+  sv(inout sk, 1, nf(t, root, 5));
+  let mut fuel: i64 = len(t) + 10;
+  while d > 0 && fuel > 0
+    invariant 0 <= d && d <= 1099511627776 && 0 <= fuel && 0 <= q && q <= 1125899906842624
+    invariant len(t) == len(old(t)) && len(tmp) == len(old(tmp)) && len(row) == len(old(row))
+    invariant len(sk) == len(old(sk)) && len(ik) == len(old(ik)) && len(out) == len(old(out))
+    decreases fuel
+  {
+    fuel = fuel - 1;
+    let ty: i64 = g(sk, 2 * d - 2);
+    let c: i64 = g(sk, 2 * d - 1);
+    if c < 0 {
+      d = d - 1;
+    } else {
+      sv(inout sk, 2 * d - 1, nf(t, c, 6));
+      if nf(t, c, 0) == 1 {
+        let tg: i64 = nf(t, c, 1);
+        let mut visit: i64 = 0;
+        let mut push: i64 = -1;
+        if ty == 0 {
+          visit = 1;
+        } else if ty == 1 {
+          if tg == 4 {
+            let e: i64 = inline_text(rec, t, c, 1, inout tmp, inout ik);
+            q = add_block(inout t, root, c, 2, tmp, e, inout out, q);
+            push = 2;
+          } else {
+            visit = 1;
+          }
+        } else if ty == 2 {
+          if tg == 3 { visit = 1; }
+        } else {
+          if tg == 7 {
+            let e: i64 = row_text(rec, t, c, inout tmp, inout row, inout ik);
+            q = add_block(inout t, root, c, 3, row, e, inout out, q);
+          } else if tg == 6 {
+            push = 3;
+          }
+        }
+        if visit == 1 {
+          if tg == 1 || tg == 2 {
+            let e: i64 = inline_text(rec, t, c, 0, inout tmp, inout ik);
+            q = add_block(inout t, root, c, tg - 1, tmp, e, inout out, q);
+          } else if tg == 3 {
+            push = 1;
+          } else if tg == 5 {
+            push = 3;
+          } else {
+            push = 0;
+          }
+        }
+        if push >= 0 && 2 * d + 1 < len(sk) && d < 1099511627776 {
+          sv(inout sk, 2 * d, push);
+          sv(inout sk, 2 * d + 1, nf(t, c, 5));
+          d = d + 1;
+        }
+      }
+    }
+  }
+  return q;
+}
+
+fn put_str(inout out: [i64], q0: i64, s: str) -> i64
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  let mut k: i64 = 0;
+  while k < len(s)
+    invariant 0 <= k && k <= len(s) && 0 <= q && q <= 1125899906842624 && len(out) == len(old(out))
+    decreases len(s) - k
+  {
+    q = wr(inout out, q, s[k]);
+    k = k + 1;
+  }
+  return q;
+}
+
+// The decimal digits of v (0 < v <= 2^50).
+fn put_num(inout out: [i64], q0: i64, v: i64) -> i64
+  requires 0 < v && v <= 1125899906842624
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  let mut p: i64 = 1;
+  while p <= v / 10
+    invariant 1 <= p && p <= v
+    decreases v - p
+  {
+    p = p * 10;
+  }
+  while p > 0
+    invariant 0 <= p && p <= v && 0 <= q && q <= 1125899906842624 && len(out) == len(old(out))
+    decreases p
+  {
+    q = wr(inout out, q, 48 + (v / p) % 10);
+    p = p / 10;
+  }
+  return q;
+}
+
+// The slot index of attribute which (0 href, 1 colspan, 2 rowspan) of element c, or -1.
+fn attr_at(rec: [i64], t: [i64], c: i64, which: i64) -> i64
+  ensures -1 <= result && result <= 4398046511107
+{
+  let mut k: i64 = nf(t, c, 4);
+  if k < 0 || k > 1099511627776 { return -1; }
+  let mut w: i64 = 0;
+  while w < which && w < 3
+    invariant 0 <= w && w <= 3 && 0 <= k && k <= 1099511627776 + w * 1099511627777
+    decreases 3 - w
+  {
+    let m: i64 = g(rec, k);
+    if m < -1 || m > 1099511627776 { return -1; }
+    k = k + 1;
+    if m > 0 { k = k + m; }
+    w = w + 1;
+  }
+  return k;
+}
+
+// Escaped code points rec[a..a+n] (& < > and, for an attribute, ").
+fn esc_text(rec: [i64], a: i64, n: i64, attr: i64, inout out: [i64], q0: i64) -> i64 ! alloc
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  if a < 0 || a > 1099511627776 || n < 0 || n > 1099511627776 { return q; }
+  let mut k: i64 = 0;
+  while k < n
+    invariant 0 <= k && k <= n && 0 <= q && q <= 1125899906842624 && len(out) == len(old(out))
+    decreases n - k
+  {
+    let c: i64 = g(rec, a + k);
+    if c == 38 {
+      q = put_str(inout out, q, "&amp;");
+    } else if c == 60 {
+      q = put_str(inout out, q, "&lt;");
+    } else if c == 62 {
+      q = put_str(inout out, q, "&gt;");
+    } else if c == 34 && attr == 1 {
+      q = put_str(inout out, q, "&quot;");
+    } else {
+      q = wr(inout out, q, c);
+    }
+    k = k + 1;
+  }
+  return q;
+}
+
+// '<' tag [data-block mark when bn > 0] [the td/th spans when spans is 1] '>'.
+fn open_tag(rec: [i64], t: [i64], c: i64, bn: i64, spans: i64, inout out: [i64], q0: i64) -> i64 ! alloc
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, q0, 60);
+  q = copy_text(rec, nf(t, c, 2), nf(t, c, 3), inout out, q);
+  if bn > 0 && bn <= 1125899906842624 {
+    q = put_str(inout out, q, " data-block=\"");
+    q = put_num(inout out, q, bn);
+    q = wr(inout out, q, 34);
+  }
+  if spans == 1 {
+    let mut w: i64 = 1;
+    while w <= 2
+      invariant 1 <= w && w <= 3 && 0 <= q && q <= 1125899906842624 && len(out) == len(old(out))
+      decreases 3 - w
+    {
+      let k: i64 = attr_at(rec, t, c, w);
+      let m: i64 = g(rec, k);
+      if m >= 1 && m <= 3 {
+        let mut digits: i64 = 1;
+        let mut j: i64 = 1;
+        while j <= m
+          invariant 1 <= j && j <= m + 1
+          decreases m + 1 - j
+        {
+          let x: i64 = g(rec, k + j);
+          if x < 48 || x > 57 { digits = 0; }
+          j = j + 1;
+        }
+        if digits == 1 {
+          if w == 1 {
+            q = put_str(inout out, q, " colspan=\"");
+          } else {
+            q = put_str(inout out, q, " rowspan=\"");
+          }
+          q = copy_text(rec, k + 1, m, inout out, q);
+          q = wr(inout out, q, 34);
+        }
+      }
+      w = w + 1;
+    }
+  }
+  return wr(inout out, q, 62);
+}
+
+fn close_tag(rec: [i64], t: [i64], c: i64, inout out: [i64], q0: i64) -> i64
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, q0, 60);
+  q = wr(inout out, q, 47);
+  q = copy_text(rec, nf(t, c, 2), nf(t, c, 3), inout out, q);
+  return wr(inout out, q, 62);
+}
+
+// /^https:\/\//i on the href of a, or false when it has none.
+fn https_href(rec: [i64], t: [i64], c: i64) -> bool ! alloc {
+  let k: i64 = attr_at(rec, t, c, 0);
+  let m: i64 = g(rec, k);
+  if m < 8 || k < 0 || k > 3298534883328 { return false; }
+  let w: str = "https://";
+  let mut j: i64 = 0;
+  while j < 8
+    invariant 0 <= j && j <= 8 && len(w) == 8
+    decreases 8 - j
+  {
+    let y: i64 = w[j];
+    if lowc(g(rec, k + 1 + j)) != y { return false; }
+    j = j + 1;
+  }
+  return true;
+}
+
+// renderHtml(tree, numbers) to out from q0. A frame of sk is [element, next child, phase, inCell,
+// close]: phase 2 renders every child; a numbered li renders its non-list children (phase 0), then
+// its ul/ol children (phase 1, also an unnumbered li); close 1 writes </tag> when the frame ends.
+fn render(rec: [i64], root: i64, t: [i64], inout sk: [i64], inout out: [i64], q0: i64) -> i64 ! alloc
+  ensures len(sk) == len(old(sk)) && len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut q: i64 = wr(inout out, -1, 0);
+  q = q0;
+  if q < 0 || q > 1125899906842624 { q = 0; }
+  let mut d: i64 = 1;
+  sv(inout sk, 0, root);
+  sv(inout sk, 1, nf(t, root, 5));
+  sv(inout sk, 2, 2);
+  sv(inout sk, 3, 0);
+  sv(inout sk, 4, 0);
+  let mut fuel: i64 = 2 * len(t) + 10;
+  while d > 0 && fuel > 0
+    invariant 0 <= d && d <= 1099511627776 && 0 <= fuel && 0 <= q && q <= 1125899906842624
+    invariant len(sk) == len(old(sk)) && len(out) == len(old(out))
+    decreases fuel
+  {
+    fuel = fuel - 1;
+    let b: i64 = 5 * d - 5;
+    let nd: i64 = g(sk, b);
+    let c: i64 = g(sk, b + 1);
+    let ph: i64 = g(sk, b + 2);
+    let ic: i64 = g(sk, b + 3);
+    if c < 0 {
+      if ph == 0 {
+        sv(inout sk, b + 1, nf(t, nd, 5));
+        sv(inout sk, b + 2, 1);
+      } else {
+        if g(sk, b + 4) == 1 { q = close_tag(rec, t, nd, inout out, q); }
+        d = d - 1;
+      }
+    } else {
+      sv(inout sk, b + 1, nf(t, c, 6));
+      let kd: i64 = nf(t, c, 0);
+      if kd == 0 {
+        if ph != 1 { q = esc_text(rec, nf(t, c, 2), nf(t, c, 3), 0, inout out, q); }
+      } else if kd == 1 {
+        let tg: i64 = nf(t, c, 1);
+        let mut go: i64 = 1;
+        if ph == 0 && tg == 3 { go = 0; }
+        if ph == 1 && tg != 3 { go = 0; }
+        if tg == 13 { go = 0; }
+        if go == 1 {
+          let bn: i64 = nf(t, c, 9);
+          let mut push: i64 = 1;
+          let mut nph: i64 = 2;
+          let mut nic: i64 = ic;
+          let mut ncl: i64 = 1;
+          if tg == 1 || tg == 2 {
+            if bn > 0 || ic == 1 {
+              q = open_tag(rec, t, c, bn, 0, inout out, q);
+            } else {
+              push = 0;
+            }
+          } else if tg == 4 {
+            nic = 0;
+            if bn > 0 {
+              q = open_tag(rec, t, c, bn, 0, inout out, q);
+              nph = 0;
+            } else {
+              nph = 1;
+              ncl = 0;
+            }
+          } else if tg == 7 {
+            q = open_tag(rec, t, c, bn, 0, inout out, q);
+          } else if tg == 3 || tg == 5 || tg == 6 || tg == 9 {
+            q = open_tag(rec, t, c, 0, 0, inout out, q);
+          } else if tg == 8 {
+            q = open_tag(rec, t, c, 0, 1, inout out, q);
+            nic = 1;
+          } else if tg == 10 {
+            q = put_str(inout out, q, "<br>");
+            push = 0;
+          } else if tg == 11 {
+            q = wr(inout out, q, 91);
+            q = wr(inout out, q, 44536);
+            q = wr(inout out, q, 47548);
+            q = wr(inout out, q, 93);
+            push = 0;
+          } else if tg == 12 {
+            if https_href(rec, t, c) {
+              let k: i64 = attr_at(rec, t, c, 0);
+              q = put_str(inout out, q, "<a href=\"");
+              q = esc_text(rec, k + 1, g(rec, k), 1, inout out, q);
+              q = put_str(inout out, q, "\" rel=\"noopener noreferrer\">");
+            } else {
+              ncl = 0;
+            }
+          } else {
+            ncl = 0;
+          }
+          if push == 1 && 5 * d + 4 < len(sk) && d < 1099511627776 {
+            sv(inout sk, 5 * d, c);
+            sv(inout sk, 5 * d + 1, nf(t, c, 5));
+            sv(inout sk, 5 * d + 2, nph);
+            sv(inout sk, 5 * d + 3, nic);
+            sv(inout sk, 5 * d + 4, ncl);
+            d = d + 1;
+          }
+        }
+      }
+    }
+  }
+  return q;
+}
+
+// The whole output into out (writes past len(out) dropped); its length.
+fn walk(rec: [i64], root: i64, inout t: [i64], inout tmp: [i64], inout row: [i64], inout sk: [i64], inout ik: [i64], inout out: [i64]) -> i64 ! alloc
+  ensures len(t) == len(old(t)) && len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  nset(inout t, root, 9, 0);
+  let mut q: i64 = wr(inout out, 0, 0);
+  q = collect(rec, root, inout t, inout tmp, inout row, inout sk, inout ik, inout out, q);
+  sv(inout out, 0, nf(t, root, 9));
+  let hs: i64 = wr(inout out, q, 0);
+  let he: i64 = render(rec, root, t, inout sk, inout out, hs);
+  sv(inout out, hs - 1, he - hs);
+  return he;
+}
+
+pub fn docx_parts(rec: [i64]) -> [i64] ! alloc {
+  let l: i64 = len(rec);
+  if l > 68719476736 {
+    let bad: [i64] = alloc(1, -1);
+    return bad;
+  }
+  let mut p: i64 = 0;
+  let mut m: i64 = 0;
+  let mut e: i64 = 0;
+  let mut ok: i64 = 1;
+  while ok == 1 && p < l
+    invariant 0 <= p && p <= l && 0 <= m && m <= p && 0 <= e && e <= m && 0 <= ok && ok <= 1
+    decreases l - p + ok
+  {
+    let nxt: i64 = rec_next(rec, p, e);
+    if nxt < 0 {
+      ok = 0;
+    } else {
+      if rec[p] == 1 { e = e + 1; }
+      m = m + 1;
+      p = nxt;
+    }
+  }
+  if ok == 0 {
+    let bad: [i64] = alloc(1, -1);
+    return bad;
+  }
+  let mut t: [i64] = alloc(10 * m + 10, -1);
+  let mut eln: [i64] = alloc(e + 1, -1);
+  p = 0;
+  let mut i: i64 = 0;
+  let mut en: i64 = 0;
+  while p < l
+    invariant 0 <= p && p <= l && 0 <= i && i <= p && 0 <= en && en <= p
+    invariant len(t) == 10 * m + 10
+    decreases l - p
+  {
+    let nxt: i64 = rec_next(rec, p, en);
+    if nxt < 0 || rec[p + 2] < 0 || rec[p + 2] > l {
+      p = l;
+    } else {
+      let kind: i64 = rec[p];
+      let par: i64 = rec[p + 1];
+      let n: i64 = rec[p + 2];
+      let mut pn: i64 = m;
+      if par >= 0 { pn = g(eln, par); }
+      nset(inout t, i, 0, kind);
+      nset(inout t, i, 2, p + 3);
+      nset(inout t, i, 3, n);
+      if kind == 1 {
+        nset(inout t, i, 1, classify(rec, p + 3, n));
+        nset(inout t, i, 4, p + 3 + n);
+        nset(inout t, i, 8, en);
+        sv(inout eln, en, i);
+        en = en + 1;
+      }
+      let lc: i64 = nf(t, pn, 7);
+      if lc < 0 {
+        nset(inout t, pn, 5, i);
+      } else {
+        nset(inout t, lc, 6, i);
+      }
+      nset(inout t, pn, 7, i);
+      i = i + 1;
+      p = nxt;
+    }
+  }
+  let s: i64 = l + 8 * m + 8;
+  let mut tmp: [i64] = alloc(s, 0);
+  let mut row: [i64] = alloc(s, 0);
+  let mut sk: [i64] = alloc(5 * m + 10, 0);
+  let mut ik: [i64] = alloc(2 * m + 4, 0);
+  let mut none: [i64] = alloc(0, 0);
+  let k: i64 = walk(rec, m, inout t, inout tmp, inout row, inout sk, inout ik, inout none);
+  if k > 1099511627776 {
+    let bad: [i64] = alloc(1, -1);
+    return bad;
+  }
+  let mut out: [i64] = alloc(k, 0);
+  let f: i64 = walk(rec, m, inout t, inout tmp, inout row, inout sk, inout ik, inout out);
+  return out;
+}
+
+// The number of matches of /<img\b/gi in s.
+pub fn img_count(s: str) -> i64
+  ensures 0 <= result
+{
+  let n: i64 = len(s);
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i + 4 <= n
+    invariant 0 <= i && i <= n && 0 <= c && c <= i
+    decreases n - i
+  {
+    if s[i] == 60 && lowc(s[i + 1]) == 105 && lowc(s[i + 2]) == 109 && lowc(s[i + 3]) == 103 {
+      let mut hit: bool = true;
+      if i + 4 < n {
+        if wordc(s[i + 4]) { hit = false; }
+      }
+      if hit { c = c + 1; }
+    }
+    i = i + 1;
+  }
+  return c;
+}

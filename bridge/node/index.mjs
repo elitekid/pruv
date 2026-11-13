@@ -222,3 +222,42 @@ export function parseHtml(html) {
   }
   return top;
 }
+
+export const docxPartsRecords = native.docxPartsRecords;
+
+const PART_KINDS = ['p', 'h', 'li', 'tr'];
+
+/** Lair docxParts (src/documents/docx.ts): {blocks: [{n, kind, el, text}], html, images}. The verified Pruv
+ *  parse_html and docx_parts do the parse, the block walk with its text collapse, the preview HTML and the
+ *  image count; this builds the El tree (as parseHtml does) so each block can point at its element. */
+export function docxParts(html) {
+  const out = native.docxPartsRecords(html);
+  const len = out[0];
+  const els = [];
+  const top = [];
+  let p = 1;
+  while (p < 1 + len) {
+    const [kind, parent, n] = [out[p], out[p + 1], out[p + 2]];
+    const into = parent === -1 ? top : els[parent].children;
+    const text = fromCps(out, p + 3, n);
+    p += 3 + n;
+    if (kind === 0) { into.push(text); continue; }
+    const attrs = {};
+    for (const name of ['href', 'colspan', 'rowspan']) {
+      const m = out[p++];
+      if (m >= 0) { attrs[name] = fromCps(out, p, m); p += m; }
+    }
+    const el = { tag: text, attrs, children: [] };
+    els.push(el);
+    into.push(el);
+  }
+  const images = out[p++];
+  const blocks = [];
+  const count = out[p++];
+  for (let b = 0; b < count; b++) {
+    const n = out[p + 2];
+    blocks.push({ n: b + 1, kind: PART_KINDS[out[p]], el: els[out[p + 1]], text: fromCps(out, p + 3, n) });
+    p += 3 + n;
+  }
+  return { blocks, html: fromCps(out, p + 1, out[p]), images };
+}
