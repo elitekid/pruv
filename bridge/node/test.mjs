@@ -1,9 +1,10 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange } from './index.mjs';
 import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { joinRangeParts as tsJoinRangeParts } from '../../bench/l0/join_ranges.mjs';
 import { cutCell as tsCutCell } from '../../bench/l0/cut_cell.mjs';
+import { sheetRange as tsSheetRange } from '../../bench/l0/sheet_range.mjs';
 import { tokenize as tsTokenize } from '../../bench/l0/tokenize.mjs';
 import { docxParts as tsDocxParts } from '../../bench/l0/docx_parts.mjs';
 import { parseHtml as tsParseHtml } from '../../bench/l0/parse_html.mjs';
@@ -551,6 +552,27 @@ for (const [text, want] of cutRows) {
 mustThrow('cutCell number', () => cutCell(12));
 mustThrow('cutCell undefined', () => cutCell());
 
+// ---- sheetRange against the range-intersection oracle (bench/l0/run_sheet_range.py --emit) ----
+const rangeScript = fileURLToPath(new URL('../../bench/l0/run_sheet_range.py', import.meta.url));
+const rangeRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [rangeScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let rangeMismatches = 0, rangeTsDiff = 0;
+for (const [totalRows, totalCols, request, want] of rangeRows) {
+  const got = sheetRange(totalRows, totalCols, request);
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    rangeMismatches++;
+    if (rangeMismatches <= 5) console.error('range mismatch', JSON.stringify({ totalRows, totalCols, request, got, want }));
+  }
+  if (JSON.stringify(tsSheetRange(totalRows, totalCols, request)) !== JSON.stringify(got)) rangeTsDiff++;
+}
+mustInvalidArg('sheetRange row 1.5', () => sheetRange(10, 10, { row: 1.5 }));
+mustInvalidArg('sheetRange rows NaN', () => sheetRange(10, 10, { rows: NaN }));
+mustInvalidArg('sheetRange cols 2^53', () => sheetRange(10, 10, { cols: 2 ** 53 }));
+mustInvalidArg('sheetRange totalRows -1', () => sheetRange(-1, 10));
+mustInvalidArg('sheetRange totalCols 1e12+1', () => sheetRange(10, 1e12 + 1));
+mustThrow('sheetRange row string', () => sheetRange(10, 10, { row: '3' }));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -831,6 +853,9 @@ console.log(JSON.stringify({
   cut_cases: cutRows.length,
   cut_mismatches: cutMismatches,
   cut_ts_differences: cutTsDiff,
+  range_cases: rangeRows.length,
+  range_mismatches: rangeMismatches,
+  range_ts_differences: rangeTsDiff,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -860,4 +885,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);

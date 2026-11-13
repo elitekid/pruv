@@ -1,0 +1,72 @@
+// Lair sheetWindow window arithmetic (src/documents/preview.ts), commit 698e1bd1.
+// From the sheet size and the request fields row, col, rows, cols (each may be absent), compute the first
+// row and column (1-based, at least 1) and how many rows and columns the window shows: the wanted count
+// (default 200 rows / 50 columns, clamped to 1..500 rows / 1..100 columns) cut to what is left of the sheet.
+// given holds one bit per present field: 1 row, 2 col, 4 rows, 8 cols; an absent field takes its default.
+// Domain: integer request fields with |v| <= 2^53 - 1 (Math.floor is then the identity), sheet size
+// 0..10^12. Proved: the window stays inside the sheet (a row index row - 1 + r for r < rowCount is below
+// totalRows), and the counts stay within 0..500 and 0..100.
+
+// Bit k (k = 0..3) of given.
+fn bit(given: i64, k: i64) -> i64
+  requires 0 <= given && given <= 15
+  requires 0 <= k && k <= 3
+  ensures 0 <= result && result <= 1
+{
+  let mut g: i64 = given;
+  if k >= 1 { g = g / 2; }
+  if k >= 2 { g = g / 2; }
+  if k >= 3 { g = g / 2; }
+  return g % 2;
+}
+
+// Math.max(1, Math.floor(v ?? 1)).
+pub fn window_start(v: i64, present: i64) -> i64
+  requires -9007199254740991 <= v && v <= 9007199254740991
+  ensures 1 <= result && result <= 9007199254740991
+{
+  if present == 0 { return 1; }
+  if v < 1 { return 1; }
+  return v;
+}
+
+// Math.max(0, Math.min(Math.min(cap, Math.max(1, Math.floor(want ?? def))), total - start + 1)).
+pub fn window_count(total: i64, start: i64, want: i64, present: i64, cap: i64, def: i64) -> i64
+  requires 0 <= total && total <= 1000000000000
+  requires 1 <= start && start <= 9007199254740991
+  requires -9007199254740991 <= want && want <= 9007199254740991
+  requires 1 <= def && def <= cap && cap <= 1000000
+  ensures 0 <= result && result <= cap
+  ensures result == 0 || start - 1 + result <= total
+{
+  let mut w: i64 = def;
+  if present != 0 { w = want; }
+  if w < 1 { w = 1; }
+  if w > cap { w = cap; }
+  let left: i64 = total - start + 1;
+  let mut n: i64 = w;
+  if left < n { n = left; }
+  if n < 0 { n = 0; }
+  return n;
+}
+
+// [row, col, rowCount, colCount].
+pub fn sheet_range(total_rows: i64, total_cols: i64, row: i64, col: i64, rows: i64, cols: i64, given: i64) -> [i64] ! alloc
+  requires 0 <= total_rows && total_rows <= 1000000000000
+  requires 0 <= total_cols && total_cols <= 1000000000000
+  requires -9007199254740991 <= row && row <= 9007199254740991
+  requires -9007199254740991 <= col && col <= 9007199254740991
+  requires -9007199254740991 <= rows && rows <= 9007199254740991
+  requires -9007199254740991 <= cols && cols <= 9007199254740991
+  requires 0 <= given && given <= 15
+  ensures len(result) == 4
+{
+  let r: i64 = window_start(row, bit(given, 0));
+  let c: i64 = window_start(col, bit(given, 1));
+  let mut out: [i64] = alloc(4, 0);
+  out[0] = r;
+  out[1] = c;
+  out[2] = window_count(total_rows, r, rows, bit(given, 2), 500, 200);
+  out[3] = window_count(total_cols, c, cols, bit(given, 3), 100, 50);
+  return out;
+}

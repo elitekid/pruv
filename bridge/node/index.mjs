@@ -21,6 +21,13 @@ export const numberRanges = native.numberRanges;
 export const csvName = native.csvName;
 export const joinRangeParts = native.joinRangeParts;
 export const cutCell = native.cutCell;
+
+/** The window arithmetic of Lair sheetWindow (src/documents/preview.ts): [row, col, rowCount, colCount] for a
+ *  sheet of totalRows x totalCols and request {row, col, rows, cols}; absent or null fields take the defaults
+ *  (1, 1, 200, 50). Fields must be integers with |v| <= 2^53 - 1 and sizes integers in 0..=1e12 (InvalidArg). */
+export function sheetRange(totalRows, totalCols, request = {}) {
+  return native.sheetRange(totalRows, totalCols, request.row, request.col, request.rows, request.cols);
+}
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

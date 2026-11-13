@@ -16,6 +16,10 @@ mod number_ranges_gen;
 #[allow(dead_code, clippy::all)]
 mod cut_cell_gen;
 
+#[path = "../gen/sheet_range_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod sheet_range_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -401,6 +405,35 @@ pub fn cut_cell(text: String) -> napi::Result<String> {
             "cutCell: text must be at most 1000000000000 UTF-8 bytes"));
     }
     Ok(cut_cell_gen::cut_cell(&text))
+}
+
+fn range_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {
+    if !v.is_finite() || v.fract() != 0.0 || v < lo || v > hi {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("sheetRange: {name} must be an integer in {lo}..={hi}")));
+    }
+    Ok(v as i64)
+}
+
+/// The window arithmetic of Lair sheetWindow: [row, col, rowCount, colCount] for a sheet of
+/// totalRows x totalCols and the request fields row, col, rows, cols (undefined or null takes the
+/// default: 1, 1, 200, 50). The window is proved inside the sheet and the counts within 0..=500 / 0..=100.
+#[napi(js_name = "sheetRange")]
+pub fn sheet_range(total_rows: f64, total_cols: f64, row: Option<f64>, col: Option<f64>, rows: Option<f64>,
+                   cols: Option<f64>) -> napi::Result<Vec<f64>> {
+    const SAFE: f64 = 9007199254740991.0;
+    let tr = range_int("totalRows", total_rows, 0.0, 1e12)?;
+    let tc = range_int("totalCols", total_cols, 0.0, 1e12)?;
+    let mut given = 0i64;
+    let mut v = [0i64; 4];
+    for (k, (name, f)) in [("row", row), ("col", col), ("rows", rows), ("cols", cols)].into_iter().enumerate() {
+        if let Some(x) = f {
+            v[k] = range_int(name, x, -SAFE, SAFE)?;
+            given |= 1 << k;
+        }
+    }
+    let r = sheet_range_gen::sheet_range(tr, tc, v[0], v[1], v[2], v[3], given);
+    Ok(r.iter().map(|&x| x as f64).collect())
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.
