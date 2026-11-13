@@ -503,3 +503,74 @@ pub fn row_text_pieces(texts: Vec<String>, row_no: f64, max: f64) -> napi::Resul
     }
     Ok(out)
 }
+
+#[path = "../gen/sheet_chunks_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod sheet_chunks_gen;
+
+#[napi(object)]
+pub struct SheetChunk {
+    /// The A1 range of the chunk: "B3" for one cell, else "A1:C9".
+    pub range: String,
+    pub row1: f64,
+    pub row2: f64,
+    pub col1: f64,
+    pub col2: f64,
+    pub text: String,
+}
+
+fn cell_int(func: &str, name: &str, v: f64) -> napi::Result<i64> {
+    if !v.is_finite() || v.fract() != 0.0 || !(1.0..=1_000_000_000_000_000.0).contains(&v) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("{func}: {name} must be an integer in 1..=1000000000000000")));
+    }
+    Ok(v as i64)
+}
+
+/// Lair rangeOf.
+#[napi(js_name = "cellRange")]
+pub fn cell_range(row1: f64, row2: f64, col1: f64, col2: f64) -> napi::Result<String> {
+    let f = "cellRange";
+    Ok(sheet_chunks_gen::range_of(cell_int(f, "row1", row1)?, cell_int(f, "row2", row2)?,
+        cell_int(f, "col1", col1)?, cell_int(f, "col2", col2)?).to_string())
+}
+
+/// The extractSheets grouping of one sheet's row pieces (in order): a piece starts a new chunk when the
+/// open chunk is nonempty and either "[시트: {name}]\n" plus the pieces joined with '\n' would pass `max`
+/// UTF-16 units or the piece row is more than 50 rows after the last one. Pruv decides the groups, their
+/// row and column bounds and the range text; only the texts are joined here.
+#[napi(js_name = "sheetChunks")]
+pub fn sheet_chunks(name: String, pieces: Vec<RowPiece>, max: f64) -> napi::Result<Vec<SheetChunk>> {
+    let f = "sheetChunks";
+    if !max.is_finite() || max.fract() != 0.0 || !(1.0..=1_099_511_627_776.0).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg, "sheetChunks: max must be an integer in 1..=1099511627776"));
+    }
+    let header = format!("[시트: {name}]\n");
+    let header_len = header.encode_utf16().count() as i64;
+    if header_len > 1_099_511_627_776 || pieces.len() as u64 > 100_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "sheetChunks: the header must be at most 1099511627776 UTF-16 units and the pieces at most 100000000000"));
+    }
+    let (mut rows, mut col1s, mut col2s, mut lens) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for p in &pieces {
+        rows.push(cell_int(f, "piece.row", p.row)?);
+        col1s.push(cell_int(f, "piece.col1", p.col1)?);
+        col2s.push(cell_int(f, "piece.col2", p.col2)?);
+        lens.push(p.text.encode_utf16().count() as i64);
+    }
+    let r = sheet_chunks_gen::sheet_groups(&rows, &col1s, &col2s, &lens, header_len, max as i64);
+    if r.first() == Some(&-1) {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "sheetChunks: malformed pieces"));
+    }
+    Ok(r.chunks(6).map(|g| {
+        let mut text = header.clone();
+        for (q, p) in pieces[g[0] as usize..=g[1] as usize].iter().enumerate() {
+            if q > 0 {
+                text.push('\n');
+            }
+            text.push_str(&p.text);
+        }
+        SheetChunk { range: sheet_chunks_gen::range_of(g[2], g[3], g[4], g[5]).to_string(),
+            row1: g[2] as f64, row2: g[3] as f64, col1: g[4] as f64, col2: g[5] as f64, text }
+    }).collect())
+}

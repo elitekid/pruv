@@ -32,6 +32,8 @@ on:
       - "bench/l0/run_kind_of.py"
       - "bench/l0/row_pieces.mjs"
       - "bench/l0/run_row_pieces.py"
+      - "bench/l0/sheet_chunks.mjs"
+      - "bench/l0/run_sheet_chunks.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 

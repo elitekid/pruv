@@ -1,6 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks } from './index.mjs';
+import { extractSheets as tsExtractSheets } from '../../bench/l0/sheet_chunks.mjs';
 import { rowPieces as tsRowPieces } from '../../bench/l0/row_pieces.mjs';
 import { kindOf as tsKindOf, extensionOf as tsExtensionOf } from '../../bench/l0/kind_of.mjs';
 import { renderClipSheet as tsRenderClipSheet } from '../../bench/l0/clip_sheet.mjs';
@@ -550,6 +551,43 @@ mustThrow('rowTextPieces max 0', () => rowTextPieces(['a'], 1, 0));
 mustThrow('rowTextPieces max 2^40+1', () => rowTextPieces(['a'], 1, 2 ** 40 + 1));
 mustThrow('rowTextPieces texts numbers', () => rowTextPieces([1, 2], 1, 10));
 
+// sheet chunks: the extractSheets grouping and rangeOf.
+const chunkScript = fileURLToPath(new URL('../../bench/l0/run_sheet_chunks.py', import.meta.url));
+const chunkRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [chunkScript, '--emit', '--n', String(Math.ceil(CASES / 10)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let chunkMismatches = 0, chunkTsDiff = 0, chunkCases = 0, rangeCases = 0;
+const tsCtx = { limits: { chunkChars: 0, cells: Infinity, chars: Infinity }, check() {} };
+for (const item of chunkRows) {
+  if (item[0] === 'range' && item.length === 6) {
+    rangeCases++;
+    const got = cellRange(item[1], item[2], item[3], item[4]);
+    if (got !== item[5]) {
+      chunkMismatches++;
+      if (chunkMismatches <= 5) console.error('range mismatch', JSON.stringify({ item, got }));
+    }
+    continue;
+  }
+  chunkCases++;
+  const [name, rows, max, want] = item;
+  const chunks = extractSheetChunks(name, rows, max);
+  const got = JSON.stringify(chunks.map(c => [c.loc.range, c.loc.row1, c.loc.row2, c.loc.col1, c.loc.col2, c.text]));
+  if (got !== JSON.stringify(want)) {
+    chunkMismatches++;
+    if (chunkMismatches <= 5) console.error('chunk mismatch', JSON.stringify({ name, max, rows: rows.length, got: got.slice(0, 300) }));
+  }
+  tsCtx.limits.chunkChars = max;
+  if (JSON.stringify(tsExtractSheets({ sheets: [{ name, rows }], notes: [] }, tsCtx).chunks) !== JSON.stringify(chunks)) chunkTsDiff++;
+}
+mustThrow('cellRange row1 0', () => cellRange(0, 1, 1, 1));
+mustThrow('cellRange col2 1e15+1', () => cellRange(1, 1, 1, 1e15 + 1));
+mustThrow('cellRange row2 1.5', () => cellRange(1, 1.5, 1, 1));
+mustThrow('sheetChunks max 0', () => sheetChunks('S', [], 0));
+mustThrow('sheetChunks max 2^40+1', () => sheetChunks('S', [], 2 ** 40 + 1));
+mustThrow('sheetChunks piece row 0', () => sheetChunks('S', [{ row: 0, col1: 1, col2: 1, text: 'a' }], 10));
+mustThrow('sheetChunks piece col1 1.5', () => sheetChunks('S', [{ row: 1, col1: 1.5, col2: 2, text: 'a' }], 10));
+mustThrow('sheetChunks piece without text', () => sheetChunks('S', [{ row: 1, col1: 1, col2: 1 }], 10));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -600,6 +638,10 @@ console.log(JSON.stringify({
   row_cases: rowRows.length,
   row_mismatches: rowMismatches,
   row_ts_differences: rowTsDiff,
+  chunk_cases: chunkCases,
+  chunk_range_cases: rangeCases,
+  chunk_mismatches: chunkMismatches,
+  chunk_ts_differences: chunkTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || !errorOk ? 1 : 0);

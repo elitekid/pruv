@@ -136,3 +136,16 @@ function cellText(value) {
 export function rowPieces(row, rowNo, max) {
   return native.rowTextPieces(row.map(cellText), rowNo, max);
 }
+
+export const sheetChunks = native.sheetChunks;
+export const cellRange = native.cellRange;
+
+/** The chunks extractSheets makes from one sheet within its cell and character limits: the rows become
+ *  pieces with rowPieces, and the verified Pruv sheetChunks groups them and names their A1 ranges. */
+export function extractSheetChunks(name, rows, max) {
+  const pieces = rows.flatMap((row, r) => rowPieces(row, r + 1, max));
+  return native.sheetChunks(name, pieces, max).map(c => ({
+    loc: { kind: 'cells', sheet: name, range: c.range, row1: c.row1, row2: c.row2, col1: c.col1, col2: c.col2 },
+    text: c.text,
+  }));
+}
