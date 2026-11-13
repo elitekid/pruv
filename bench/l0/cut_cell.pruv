@@ -1,0 +1,75 @@
+// Lair sheetWindow cell cut (src/documents/preview.ts), commit 698e1bd1, on general strings.
+// A cell text longer than 200 UTF-16 code units is cut to its first 200 units followed by "…" (U+2026,
+// 3 bytes); a text of at most 200 units comes back unchanged.
+// Lengths are UTF-16 units: 2 for a 4-byte character, else 1. When unit 200 is the first half of a
+// 4-byte character, TS keeps a lone high surrogate there; a UTF-8 string cannot hold it, so this version
+// writes U+FFFD (3 bytes) in its place, which is what the TS string turns into when encoded as UTF-8.
+// Domain: text at most 10^12 bytes.
+
+// UTF-16 length of the character starting at boundary i: 2 for a 4-byte character, else 1.
+fn width(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 1 <= result && result <= 2
+{
+  if s[i] >= 240 { return 2; }
+  return 1;
+}
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+// i walks the characters while the units before it stay within 200; go drops to 0 to end the walk.
+// split: the next character is a 4-byte one starting at unit 199, so it straddles unit 200. The
+// verifier does not know that a str is valid UTF-8, so a character longer than 3 * width bytes
+// (impossible for valid UTF-8) ends the walk before it; this gives i <= 3 * u without changing the
+// result on any real string.
+pub fn cut_cell(text: str) -> str ! alloc
+  requires len(text) <= 1000000000000
+  ensures len(result) <= 606
+{
+  let mut i: i64 = 0;
+  let mut u: i64 = 0;
+  let mut split: bool = false;
+  let mut go: i64 = 1;
+  while i < len(text) && u < 200 && go == 1
+    invariant 0 <= i && i <= len(text) && is_char_boundary(text, i)
+    invariant 0 <= u && u <= 200 && i <= 3 * u
+    invariant 0 <= go && go <= 1
+    decreases 2 * (len(text) - i) + go
+  {
+    let w: i64 = width(text, i);
+    let j: i64 = next(text, i);
+    if j - i > 3 * w {
+      go = 0;
+    } else if u + w > 200 {
+      split = true;
+      go = 0;
+    } else {
+      u = u + w;
+      i = j;
+    }
+  }
+  if i >= len(text) {
+    return substr(text, 0, len(text));
+  }
+  let mut out: String = string_new();
+  out = string_push_str(move out, substr(text, 0, i));
+  if split {
+    out = string_push_str(move out, "�");
+  }
+  out = string_push_str(move out, "…");
+  return string_to_str(out);
+}

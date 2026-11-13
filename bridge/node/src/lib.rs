@@ -12,6 +12,10 @@ use napi_derive::napi;
 #[allow(dead_code, clippy::all)]
 mod number_ranges_gen;
 
+#[path = "../gen/cut_cell_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod cut_cell_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -384,6 +388,19 @@ pub fn join_range_parts(parts: Vec<String>) -> napi::Result<String> {
         ends.push(at as i64);
     }
     Ok(join_ranges_gen::join_ranges(&text, &ends))
+}
+
+/// The sheetWindow cell cut in Lair: a text longer than 200 UTF-16 units becomes its first 200 units and
+/// "…". When unit 200 is the first half of a surrogate pair the result has U+FFFD there (TS keeps a lone
+/// high surrogate, which is U+FFFD once encoded as UTF-8). A lone surrogate in the input reaches Pruv as
+/// U+FFFD (one unit either way).
+#[napi(js_name = "cutCell")]
+pub fn cut_cell(text: String) -> napi::Result<String> {
+    if text.len() as u64 > 1_000_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "cutCell: text must be at most 1000000000000 UTF-8 bytes"));
+    }
+    Ok(cut_cell_gen::cut_cell(&text))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

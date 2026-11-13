@@ -30,6 +30,8 @@ on:
       - "bench/l0/run_doc_labels.py"
       - "bench/l0/join_ranges.mjs"
       - "bench/l0/run_join_ranges.py"
+      - "bench/l0/cut_cell.mjs"
+      - "bench/l0/run_cut_cell.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"
