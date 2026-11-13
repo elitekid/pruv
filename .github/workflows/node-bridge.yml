@@ -38,6 +38,8 @@ on:
       - "bench/l0/run_page_ranges.py"
       - "bench/l0/grouped_number.mjs"
       - "bench/l0/run_grouped_number.py"
+      - "bench/l0/under_root.mjs"
+      - "bench/l0/run_under_root.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

@@ -28,6 +28,10 @@ mod page_ranges_gen;
 #[allow(dead_code, clippy::all)]
 mod grouped_number_gen;
 
+#[path = "../gen/under_root_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod under_root_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -472,6 +476,17 @@ pub fn grouped_number(value: f64) -> napi::Result<String> {
             "groupedNumber: value must be an integer in -1000000000000000..=1000000000000000 (not -0)"));
     }
     Ok(grouped_number_gen::grouped_number(value as i64))
+}
+
+/// Lair under (src/documents/archive.ts): path equals root or starts with root plus this platform's
+/// separator (root itself when it already ends with one).
+#[napi(js_name = "under")]
+pub fn under(path: String, root: String) -> napi::Result<bool> {
+    if path.len() as u64 > 1_000_000_000_000 || root.len() as u64 > 1_000_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "under: path and root must be at most 1000000000000 UTF-8 bytes"));
+    }
+    Ok(under_root_gen::under(&path, &root, std::path::MAIN_SEPARATOR as i64))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

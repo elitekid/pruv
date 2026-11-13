@@ -1,0 +1,29 @@
+// Lair under (src/documents/archive.ts): path === root || path.startsWith(root.endsWith(sep) ? root : root + sep),
+// the check that a cached archive path lies inside an ended root. sep is node:path's separator; here it is
+// passed in as an ASCII byte ("/" = 47 on POSIX, "\" = 92 on Windows) so one verified function serves both.
+// On well-formed strings a UTF-16 prefix is a UTF-8 byte prefix, and an ASCII sep byte is only ever that
+// character, so the byte comparison below is the same predicate.
+
+pub fn under(path: str, root: str, sep: i64) -> bool
+  requires len(path) <= 1000000000000 && len(root) <= 1000000000000 && 0 <= sep && sep <= 127
+  ensures result == (len(root) <= len(path) &&
+    (forall t in 0..len(root): path[t] == root[t]) &&
+    (len(root) == len(path) ||
+     (len(root) > 0 && root[len(root)-1] == sep) ||
+     path[len(root)] == sep))
+{
+  let lr: i64 = len(root);
+  if lr > len(path) { return false; }
+  let mut i: i64 = 0;
+  while i < lr
+    invariant 0 <= i && i <= lr
+    invariant forall t in 0..i: path[t] == root[t]
+    decreases lr - i
+  {
+    if path[i] != root[i] { return false; }
+    i = i + 1;
+  }
+  if lr == len(path) { return true; }
+  if lr > 0 && root[lr-1] == sep { return true; }
+  return path[lr] == sep;
+}

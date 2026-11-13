@@ -36,6 +36,10 @@ export const pageRanges = native.pageRanges;
 /** Lair groupedNumber (src/documents/context.ts): an integer as toLocaleString('en-US'), e.g. "1,000,000".
  *  Integers in -1e15..=1e15, not -0 (InvalidArg). */
 export const groupedNumber = native.groupedNumber;
+
+/** Lair under (src/documents/archive.ts): path === root, or path starts with root followed by this platform's
+ *  separator (just root when it already ends with one). Well-formed strings; lone surrogates become U+FFFD. */
+export const under = native.under;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 
