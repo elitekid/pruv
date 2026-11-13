@@ -11,6 +11,18 @@ export const termState = native.termState;
 export const decodeBytes = native.decodeBytes;
 export const looksBinary = native.looksBinary;
 export const zipUncompressedTotal = native.zipUncompressedTotal;
+export const splitText = native.splitText;
+export const groupTexts = native.groupTexts;
+
+/** Lair chunkLines: lines numbered from 1, grouped by the verified Pruv groupTexts. */
+export function chunkLines(lines, max) {
+  return native.groupTexts(lines, max).map(g => ({ loc: { kind: 'lines', from: g.from + 1, to: g.to + 1 }, text: g.text }));
+}
+
+/** Lair chunkBlocks: numbered blocks grouped by the verified Pruv groupTexts. */
+export function chunkBlocks(blocks, max) {
+  return native.groupTexts(blocks.map(b => b.text), max).map(g => ({ loc: { kind: 'block', from: blocks[g.from].n, to: blocks[g.to].n }, text: g.text }));
+}
 export const pngScanlines = native.pngScanlines;
 
 // PNG chunk framing, as in Lair src/documents/png.ts.

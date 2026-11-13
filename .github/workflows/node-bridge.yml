@@ -18,6 +18,10 @@ on:
       - "bench/l0/run_zip_total.py"
       - "bench/l0/encode_png.mjs"
       - "bench/l0/run_encode_png.py"
+      - "bench/l0/split_text.mjs"
+      - "bench/l0/run_split_text.py"
+      - "bench/l0/group_text.mjs"
+      - "bench/l0/run_group_text.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 

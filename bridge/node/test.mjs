@@ -1,5 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks } from './index.mjs';
+import { chunkLines as tsChunkLines, chunkBlocks as tsChunkBlocks } from '../../bench/l0/group_text.mjs';
+import { splitText as tsSplitText } from '../../bench/l0/split_text.mjs';
 import { encodePng as tsEncodePng } from '../../bench/l0/encode_png.mjs';
 import { versionAtLeast as tsVersionAtLeast } from '../../bench/l0/version_at_least.mjs';
 import { colLetters as tsColLetters } from '../../bench/l0/col_letters.mjs';
@@ -343,6 +345,50 @@ if (encodePng({ width: 0, height: 4, kind: 2, data: px }, 10) !== null || encode
   console.error('encodePng null shapes failed'); errorOk = false;
 }
 
+// ---- splitText against the code-point oracle (bench/l0/run_split_text.py --emit) ----
+const splitScript = fileURLToPath(new URL('../../bench/l0/run_split_text.py', import.meta.url));
+const splitRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [splitScript, '--emit', '--n', String(CASES), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let splitMismatches = 0, splitTsDiff = 0;
+for (const [text, max, want] of splitRows) {
+  const got = JSON.stringify(splitText(text, max));
+  if (got !== JSON.stringify(want)) {
+    splitMismatches++;
+    if (splitMismatches <= 5) console.error('split mismatch', JSON.stringify({ text: text.slice(0, 200), max, got: got.slice(0, 300) }));
+  }
+  if (JSON.stringify(tsSplitText(text, max)) !== got) splitTsDiff++;
+}
+mustThrow('splitText max 1', () => splitText('ab', 1));
+mustThrow('splitText max 0', () => splitText('ab', 0));
+mustThrow('splitText max 2.5', () => splitText('ab', 2.5));
+mustThrow('splitText max 2^40+1', () => splitText('ab', 2 ** 40 + 1));
+mustThrow('splitText max NaN', () => splitText('ab', NaN));
+mustThrow('splitText text number', () => splitText(5, 10));
+
+// ---- chunkLines / chunkBlocks against the grouping oracle (bench/l0/run_group_text.py --emit) ----
+const groupScript = fileURLToPath(new URL('../../bench/l0/run_group_text.py', import.meta.url));
+const groupRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [groupScript, '--emit', '--n', String(CASES), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let groupMismatches = 0, groupTsDiff = 0;
+for (const [lines, max, want] of groupRows) {
+  const got = JSON.stringify(chunkLines(lines, max).map(c => [c.loc.from, c.loc.to, c.text]));
+  if (got !== JSON.stringify(want)) {
+    groupMismatches++;
+    if (groupMismatches <= 5) console.error('group mismatch', JSON.stringify({ lines: lines.slice(0, 5), max, got: got.slice(0, 300) }));
+  }
+  if (JSON.stringify(tsChunkLines(lines, max)) !== JSON.stringify(chunkLines(lines, max))) groupTsDiff++;
+  // chunkBlocks with sparse block numbers must match the TS original too.
+  const blocks = lines.map((text, i) => ({ n: 3 * i + 7, text }));
+  if (JSON.stringify(tsChunkBlocks(blocks, max)) !== JSON.stringify(chunkBlocks(blocks, max))) groupTsDiff++;
+}
+mustThrow('groupTexts max 1', () => groupTexts(['ab'], 1));
+mustThrow('groupTexts max 2.5', () => groupTexts(['ab'], 2.5));
+mustThrow('groupTexts max 2^40+1', () => groupTexts(['ab'], 2 ** 40 + 1));
+mustThrow('groupTexts texts string', () => groupTexts('ab', 10));
+mustThrow('groupTexts texts numbers', () => groupTexts([1, 2], 10));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -372,6 +418,12 @@ console.log(JSON.stringify({
   png_cases: pngRows.length,
   png_mismatches: pngMismatches,
   png_ts_differences: pngTsDiff,
+  split_cases: splitRows.length,
+  split_mismatches: splitMismatches,
+  split_ts_differences: splitTsDiff,
+  group_cases: groupRows.length,
+  group_mismatches: groupMismatches,
+  group_ts_differences: groupTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || !errorOk ? 1 : 0);

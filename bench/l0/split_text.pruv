@@ -1,0 +1,218 @@
+// Lair splitText (src/documents/chunker.ts): cut a page's text into pieces of at most max UTF-16 code
+// units, preferring the last newline, then the last space, at or before max (but not before max / 2),
+// never splitting a surrogate pair, and trimming JS whitespace around every piece.
+// Pruv works on the UTF-8 bytes and counts UTF-16 units (a 4-byte character is 2 units). The result
+// is the byte ranges of the pieces, [start0, end0, start1, end1, ...]; the host slices the text.
+// Domain: integer 2 <= max <= 2^40, text at most 5 * 10^11 UTF-8 bytes. With max <= 1 TS can loop forever (max <= 0 on any nonblank text, max 1
+// when the rest starts with a 4-byte character: the cut becomes 0 and the same empty piece repeats).
+
+// JS String.prototype.trim whitespace (WhiteSpace + LineTerminator) at the character starting at i:
+// U+0009..000D, 0020, 00A0, 1680, 2000..200A, 2028, 2029, 202F, 205F, 3000, FEFF.
+fn is_ws(s: str, i: i64) -> bool
+  requires 0 <= i && i < len(s)
+{
+  let b: i64 = s[i];
+  if (9 <= b && b <= 13) || b == 32 { return true; }
+  if b == 194 && i + 1 < len(s) { return s[i + 1] == 160; }
+  if i + 2 >= len(s) { return false; }
+  let c: i64 = s[i + 1];
+  let d: i64 = s[i + 2];
+  if b == 225 { return c == 154 && d == 128; }
+  if b == 226 && c == 128 { return (128 <= d && d <= 138) || d == 168 || d == 169 || d == 175; }
+  if b == 226 && c == 129 { return d == 159; }
+  if b == 227 { return c == 128 && d == 128; }
+  if b == 239 { return c == 187 && d == 191; }
+  return false;
+}
+
+// UTF-16 length of the character starting at boundary i: 2 for a 4-byte character, else 1.
+fn width(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 1 <= result && result <= 2
+{
+  if s[i] >= 240 { return 2; }
+  return 1;
+}
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+  ensures forall t in i+1..result: !is_char_boundary(s, t)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    invariant forall t in i+1..j: !is_char_boundary(s, t)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+// Start of the character ending at boundary j.
+fn prev(s: str, j: i64) -> i64
+  requires 0 < j && j <= len(s)
+  ensures 0 <= result && result < j
+  ensures is_char_boundary(s, result)
+  ensures forall t in result+1..j: !is_char_boundary(s, t)
+{
+  let mut i: i64 = j - 1;
+  while i > 0 && !is_char_boundary(s, i)
+    invariant 0 <= i && i < j
+    invariant forall t in i+1..j: !is_char_boundary(s, t)
+    decreases i
+  {
+    i = i - 1;
+  }
+  return i;
+}
+
+// Skip whitespace characters forward from a, staying at or before b.
+fn trim_start(s: str, a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  ensures a <= result && result <= b && is_char_boundary(s, result)
+{
+  let mut i: i64 = a;
+  while i < b && is_ws(s, i)
+    invariant a <= i && i <= b && is_char_boundary(s, i)
+    decreases b - i
+  {
+    i = next(s, i);
+  }
+  return i;
+}
+
+// Drop whitespace characters backward from b, staying at or after a.
+fn trim_end(s: str, a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  ensures a <= result && result <= b && is_char_boundary(s, result)
+{
+  let mut j: i64 = b;
+  let mut go: i64 = 1;
+  while go == 1 && j > a
+    invariant a <= j && j <= b && is_char_boundary(s, j) && 0 <= go && go <= 1
+    decreases j - a + go
+  {
+    let p: i64 = prev(s, j);
+    if is_ws(s, p) { j = p; } else { go = 0; }
+  }
+  return j;
+}
+
+// UTF-16 length of the boundary range a..b.
+fn units(s: str, a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  ensures 0 <= result && result <= 2 * (b - a)
+{
+  let mut i: i64 = a;
+  let mut u: i64 = 0;
+  while i < b
+    invariant a <= i && i <= b && is_char_boundary(s, i)
+    invariant 0 <= u && u <= 2 * (i - a)
+    decreases b - i
+  {
+    u = u + width(s, i);
+    i = next(s, i);
+  }
+  return u;
+}
+
+// One cut of the rest a..b (longer than max units): the last LF, else the last space, at unit position
+// <= max and >= max / 2; else unit max, moved back one unit if it falls inside a 4-byte character.
+// Unit position u of the character at byte i; the scan stops at the character holding unit max.
+fn cut(s: str, a: i64, b: i64, max: i64) -> i64
+  requires 0 <= a && a < b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  requires 2 <= max && max <= 1099511627776
+  ensures a < result && result <= b && is_char_boundary(s, result)
+{
+  let mut i: i64 = a;
+  let mut u: i64 = 0;
+  let mut nl: i64 = -1;
+  let mut nlu: i64 = 0;
+  let mut sp: i64 = -1;
+  let mut spu: i64 = 0;
+  let mut at: i64 = b;
+  let mut go: i64 = 1;
+  while go == 1 && i < b
+    invariant a <= i && i <= b && is_char_boundary(s, i)
+    invariant 0 <= u && u <= max && (i > a || u == 0)
+    invariant 0 <= nlu && nlu <= max && 0 <= spu && spu <= max
+    invariant nl == -1 || (a < nl && nl < b && is_char_boundary(s, nl))
+    invariant sp == -1 || (a < sp && sp < b && is_char_boundary(s, sp))
+    invariant a < at && at <= b && is_char_boundary(s, at) && 0 <= go && go <= 1
+    decreases b - i + go
+  {
+    let c: i64 = s[i];
+    if i > a && c == 10 { nl = i; nlu = u; }
+    if i > a && c == 32 { sp = i; spu = u; }
+    let w: i64 = width(s, i);
+    if u + w > max {
+      at = i;
+      go = 0;
+    } else {
+      u = u + w;
+      i = next(s, i);
+    }
+  }
+  if nl >= 0 && 2 * nlu >= max { return nl; }
+  if sp >= 0 && 2 * spu >= max { return sp; }
+  return at;
+}
+
+// The whole split. Writes piece k's byte range to out[2k], out[2k+1] while there is room and returns
+// the number of pieces, so a first call with an empty out counts and a second one fills.
+fn split_into(s: str, max: i64, inout out: [i64]) -> i64
+  requires 2 <= max && max <= 1099511627776
+  requires len(s) <= 500000000000
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= len(s)
+{
+  let b: i64 = trim_end(s, 0, len(s));
+  let mut a: i64 = trim_start(s, 0, b);
+  let mut rest: i64 = units(s, a, b);
+  let mut k: i64 = 0;
+  while a < b && rest > max
+    invariant 0 <= a && a <= b && is_char_boundary(s, a)
+    invariant 0 <= k && k <= a && len(out) == len(old(out))
+    invariant 0 <= rest && rest <= 2 * len(s)
+    decreases b - a
+  {
+    let c: i64 = cut(s, a, b, max);
+    let e: i64 = trim_end(s, a, c);
+    if 2 * k + 1 < len(out) {
+      out[2 * k] = a;
+      out[2 * k + 1] = e;
+    }
+    k = k + 1;
+    let n: i64 = trim_start(s, c, b);
+    rest = rest - units(s, a, n);
+    if rest < 0 { rest = 0; }
+    a = n;
+  }
+  if a < b {
+    if 2 * k + 1 < len(out) {
+      out[2 * k] = a;
+      out[2 * k + 1] = b;
+    }
+    k = k + 1;
+  }
+  return k;
+}
+
+pub fn split_bounds(s: str, max: i64) -> [i64] ! alloc
+  requires 2 <= max && max <= 1099511627776
+  requires len(s) <= 500000000000
+{
+  let mut none: [i64] = alloc(0, 0);
+  let k: i64 = split_into(s, max, inout none);
+  let mut out: [i64] = alloc(2 * k, 0);
+  let filled: i64 = split_into(s, max, inout out);
+  return out;
+}

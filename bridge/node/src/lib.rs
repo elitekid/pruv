@@ -40,6 +40,14 @@ mod zip_total_gen;
 #[allow(dead_code, clippy::all)]
 mod encode_png_gen;
 
+#[path = "../gen/split_text_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod split_text_gen;
+
+#[path = "../gen/group_text_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod group_text_gen;
+
 fn term_args(name: &str, state: f64, data: &str) -> napi::Result<i64> {
     if !state.is_finite() || state.fract() != 0.0 || !(0.0..=11.0).contains(&state) {
         return Err(napi::Error::new(napi::Status::InvalidArg,
@@ -206,4 +214,61 @@ pub fn png_scanlines(
     }
     let step = encode_png_gen::png_step(w, h, mx);
     Ok(Some(PngScanlines { width: (w / step) as f64, height: (h / step) as f64, raw: raw.into() }))
+}
+
+/// Lair splitText: pieces of at most `max` UTF-16 code units, cut at the last newline, else the last
+/// space, at or after max / 2, else at max (never inside a surrogate pair), each trimmed of JS
+/// whitespace. Pruv returns the byte ranges; this slices them. `max` is an integer in 2..=2^40
+/// (TS can loop forever below 2).
+#[napi(js_name = "splitText")]
+pub fn split_text(text: String, max: f64) -> napi::Result<Vec<String>> {
+    if !max.is_finite() || max.fract() != 0.0 || !(2.0..=1_099_511_627_776.0).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "splitText: max must be an integer in 2..=1099511627776"));
+    }
+    if text.len() as u64 > 500_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "splitText: text must be at most 500000000000 UTF-8 bytes"));
+    }
+    let r = split_text_gen::split_bounds(&text, max as i64);
+    Ok(r.chunks(2).map(|p| text[p[0] as usize..p[1] as usize].to_string()).collect())
+}
+
+#[napi(object)]
+pub struct GroupPiece {
+    /// Index (0-based) of the first and last item in the piece.
+    pub from: f64,
+    pub to: f64,
+    pub text: String,
+}
+
+/// Lair groupNumbered (behind chunkLines and chunkBlocks): gather items from the top into pieces of at
+/// most `max` UTF-16 units (each item counts its length + 1), an item longer than `max` split alone by
+/// splitText. Pruv returns item indexes and byte ranges into the items joined with '\n'.
+#[napi(js_name = "groupTexts")]
+pub fn group_texts(texts: Vec<String>, max: f64) -> napi::Result<Vec<GroupPiece>> {
+    if !max.is_finite() || max.fract() != 0.0 || !(2.0..=1_099_511_627_776.0).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "groupTexts: max must be an integer in 2..=1099511627776"));
+    }
+    let joined = texts.join("\n");
+    if joined.len() as u64 > 250_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "groupTexts: texts joined with newlines must be at most 250000000000 UTF-8 bytes"));
+    }
+    let mut ends = Vec::with_capacity(texts.len());
+    let mut at = 0usize;
+    for (k, t) in texts.iter().enumerate() {
+        at += usize::from(k > 0) + t.len();
+        ends.push(at as i64);
+    }
+    let r = group_text_gen::group_bounds(&joined, &ends, max as i64);
+    if r.len() % 4 != 0 {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "groupTexts: malformed item ends"));
+    }
+    Ok(r.chunks(4).map(|p| GroupPiece {
+        from: p[0] as f64,
+        to: p[1] as f64,
+        text: joined[p[2] as usize..p[3] as usize].to_string(),
+    }).collect())
 }
