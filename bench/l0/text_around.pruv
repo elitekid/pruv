@@ -1,0 +1,241 @@
+// Lair textAround (src/documents/preview.ts): the bytes shown around a target line of a large text
+// file. The host reads the file, hashes it and decodes the chosen bytes; this plans which bytes. Lair
+// finds the line offsets in one pass; here separate scans find the start of the first shown line
+// (from = max(1, target - before)), the start and end of the target line and the end of the last shown
+// line (to = target + after). The byte budget maxBytes is split so
+// that the target line is always shown (cut to maxBytes when longer, then cut back to a whole UTF-8
+// character), half of the rest before it and half after, the unused half of one side going to the
+// other. A side cut by the budget is trimmed to whole lines (the before side to a line start, the after
+// side to a line end).
+// Result: [0, totalLines] when the first shown line is past the end of the file, else
+// [1, totalLines, shown target, beforeStart, beforeEnd, targetStart, targetEnd, afterStart, afterEnd,
+//  newlines in the before bytes, truncated, target cut]: the shown bytes are buf[beforeStart..beforeEnd]
+// ++ buf[targetStart..targetEnd] ++ buf[afterStart..afterEnd]. [-2] would mean an ordering of the
+// line offsets that the scan cannot produce; the tests check that it never appears.
+
+// The end of buf[s..e] without a UTF-8 character cut at the end (Lair whole()).
+fn whole_end(b: [u8], s: i64, e: i64) -> i64
+  requires 0 <= s && s <= e && e <= len(b)
+  ensures s <= result && result <= e
+{
+  let mut back: i64 = 0;
+  let mut stop: i64 = 0;
+  let mut k: i64 = 0;
+  while k < 4
+    invariant 0 <= k && k <= 4 && 0 <= back && back <= k && back <= e - s
+    decreases 4 - k
+  {
+    if stop == 0 && e - 1 - k >= s {
+      let x: i64 = b[e - 1 - k];
+      if x >= 128 && x < 192 { back = k + 1; } else { stop = 1; }
+    } else {
+      stop = 1;
+    }
+    k = k + 1;
+  }
+  let lead_at: i64 = e - 1 - back;
+  if lead_at >= s {
+    let lead: i64 = b[lead_at];
+    if lead >= 192 {
+      let mut need: i64 = 2;
+      if lead >= 224 { need = 3; }
+      if lead >= 240 { need = 4; }
+      if back + 1 < need { return lead_at; }
+    }
+  }
+  return e;
+}
+
+// The first newline in buf[s..e], or -1.
+fn first_newline(b: [u8], s: i64, e: i64) -> i64
+  requires 0 <= s && s <= e && e <= len(b)
+  ensures result == -1 || (s <= result && result < e)
+{
+  let mut i: i64 = s;
+  while i < e
+    invariant s <= i && i <= e
+    decreases e - i
+  {
+    let x: i64 = b[i];
+    if x == 10 { return i; }
+    i = i + 1;
+  }
+  return -1;
+}
+
+// The last newline in buf[s..e], or -1.
+fn last_newline(b: [u8], s: i64, e: i64) -> i64
+  requires 0 <= s && s <= e && e <= len(b)
+  ensures result == -1 || (s <= result && result < e)
+{
+  let mut i: i64 = e;
+  while i > s
+    invariant s <= i && i <= e
+    decreases i - s
+  {
+    let x: i64 = b[i - 1];
+    if x == 10 { return i - 1; }
+    i = i - 1;
+  }
+  return -1;
+}
+
+fn count_newlines(b: [u8], s: i64, e: i64) -> i64
+  requires 0 <= s && s <= e && e <= len(b)
+  ensures 0 <= result && result <= e - s
+{
+  let mut c: i64 = 0;
+  let mut i: i64 = s;
+  while i < e
+    invariant s <= i && i <= e && 0 <= c && c <= i - s
+    decreases e - i
+  {
+    let x: i64 = b[i];
+    if x == 10 { c = c + 1; }
+    i = i + 1;
+  }
+  return c;
+}
+
+// The offset just after the k-th newline (k >= 1), or -1 when buf has fewer newlines.
+fn after_newline(b: [u8], k: i64) -> i64
+  requires 1 <= k
+  ensures result == -1 || (1 <= result && result <= len(b))
+{
+  let n: i64 = len(b);
+  let mut c: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n && 0 <= c && c < k
+    decreases n - i
+  {
+    let x: i64 = b[i];
+    if x == 10 {
+      c = c + 1;
+      if c == k { return i + 1; }
+    }
+    i = i + 1;
+  }
+  return -1;
+}
+
+pub fn around_plan(buf: [u8], target: i64, before: i64, after: i64, max_bytes: i64) -> [i64] ! alloc
+  requires len(buf) <= 1099511627776
+  requires 1 <= target && target <= 1000000000000000
+  requires 0 <= before && before <= 1000000000000000
+  requires 0 <= after && after <= 1000000000000000
+  requires 0 <= max_bytes && max_bytes <= 1099511627776
+{
+  let n: i64 = len(buf);
+  let mut from: i64 = target - before;
+  if from < 1 { from = 1; }
+  let to: i64 = target + after;
+  let newlines: i64 = count_newlines(buf, 0, n);
+  let mut last: i64 = 0;
+  if n > 0 { last = buf[n - 1]; }
+  let mut total: i64 = 0;
+  if n > 0 {
+    total = newlines + 1;
+    if last == 10 { total = newlines; }
+  }
+  let mut start_offset: i64 = 0;
+  if from > 1 { start_offset = after_newline(buf, from - 1); }
+  if total == 0 || from > total || start_offset < 0 {
+    let mut past: [i64] = alloc(2, 0);
+    past[1] = total;
+    return past;
+  }
+  let mut shown: i64 = target;
+  if total < shown { shown = total; }
+  let mut target_start: i64 = 0;
+  if target > 1 { target_start = after_newline(buf, target - 1); }
+  let mut target_end: i64 = after_newline(buf, target);
+  if target_start < 0 || target > total {
+    // The last line: it starts after the last newline, or after the one before it when the file
+    // ends with a newline.
+    let lastnl: i64 = last_newline(buf, 0, n);
+    target_start = lastnl + 1;
+    if last == 10 && lastnl >= 0 { target_start = last_newline(buf, 0, lastnl) + 1; }
+  }
+  if target_end < 0 || target > total { target_end = n; }
+  let mut end: i64 = after_newline(buf, to);
+  if end < 0 { end = n; }
+  if start_offset > target_start || target_start > target_end {
+    let odd: [i64] = alloc(1, -2);
+    return odd;
+  }
+  return window(buf, start_offset, target_start, target_end, end, max_bytes, total, shown);
+}
+
+// The budget split and the trims, once the line offsets are known.
+fn window(buf: [u8], start_offset: i64, target_start: i64, target_end: i64, end: i64, max_bytes: i64, total: i64, shown: i64) -> [i64] ! alloc
+  requires 0 <= start_offset && start_offset <= target_start && target_start <= target_end
+  requires target_end <= len(buf) && 0 <= end && end <= len(buf)
+  requires 0 <= max_bytes && max_bytes <= 1099511627776
+{
+  let target_bytes: i64 = target_end - target_start;
+  let mut cut: i64 = 0;
+  let mut target_len: i64 = target_bytes;
+  if target_bytes > max_bytes { cut = 1; target_len = max_bytes; }
+  let before_need: i64 = target_start - start_offset;
+  let mut after_need: i64 = end - target_end;
+  if after_need < 0 { after_need = 0; }
+  let budgets: [i64] = split_budget(max_bytes - target_len, before_need, after_need);
+  let before_len: i64 = budgets[0];
+  let after_len: i64 = budgets[1];
+  let mut truncated: i64 = cut;
+  let mut b_start: i64 = target_start - before_len;
+  if before_len < before_need {
+    let edge: i64 = buf[b_start - 1];
+    if edge != 10 {
+      let found: i64 = first_newline(buf, b_start, target_start);
+      if found >= 0 { b_start = found + 1; } else { b_start = target_start; }
+    }
+    truncated = 1;
+  }
+  let mut a_end: i64 = target_end + after_len;
+  if after_len < after_need {
+    let found: i64 = last_newline(buf, target_end, a_end);
+    if found >= 0 { a_end = found + 1; } else { a_end = target_end; }
+    truncated = 1;
+  }
+  let mut t_end: i64 = target_start + target_len;
+  if cut == 1 { t_end = whole_end(buf, target_start, t_end); }
+  let lines: i64 = count_newlines(buf, b_start, target_start);
+  let mut out: [i64] = alloc(12, 0);
+  out[0] = 1;
+  out[1] = total;
+  out[2] = shown;
+  out[3] = b_start;
+  out[4] = target_start;
+  out[5] = target_start;
+  out[6] = t_end;
+  out[7] = target_end;
+  out[8] = a_end;
+  out[9] = lines;
+  out[10] = truncated;
+  out[11] = cut;
+  return out;
+}
+
+// [before length, after length]: half of rest each (the odd byte after), the unused part of one side
+// going to the other, each side capped by what it needs.
+fn split_budget(rest: i64, before_need: i64, after_need: i64) -> [i64] ! alloc
+  requires 0 <= rest && 0 <= before_need && 0 <= after_need
+  ensures len(result) == 2
+  ensures 0 <= result[0] && result[0] <= before_need && 0 <= result[1] && result[1] <= after_need
+{
+  let mut before_budget: i64 = rest / 2;
+  let mut after_budget: i64 = rest - before_budget;
+  if before_need < before_budget {
+    after_budget = after_budget + before_budget - before_need;
+  } else {
+    if after_need < after_budget { before_budget = before_budget + after_budget - after_need; }
+  }
+  let mut out: [i64] = alloc(2, 0);
+  out[0] = before_need;
+  if before_budget < before_need { out[0] = before_budget; }
+  out[1] = after_need;
+  if after_budget < after_need { out[1] = after_budget; }
+  return out;
+}

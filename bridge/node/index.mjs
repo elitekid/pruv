@@ -1,5 +1,7 @@
 import { createRequire } from 'node:module';
 import { crc32, deflateSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
+import { open } from 'node:fs/promises';
 const require = createRequire(import.meta.url);
 const native = require('./pruv_bridge.node');
 export const clipBytes = native.clipBytes;
@@ -148,4 +150,40 @@ export function extractSheetChunks(name, rows, max) {
     loc: { kind: 'cells', sheet: name, range: c.range, row1: c.row1, row2: c.row2, col1: c.col1, col2: c.col2 },
     text: c.text,
   }));
+}
+
+export const textAroundPlan = native.textAroundPlan;
+
+// failAround verbatim from Lair src/documents/preview.ts.
+const failAround = (reason, extra = {}) =>
+  ({ ok: false, reason, totalLines: 0, from: 0, to: 0, target: 0, text: '', truncated: false, bytes: 0, ...extra });
+
+/** Lair textAround: the text around a target line of a file, within the byte budget. The file is read
+ *  whole (Lair reads it in 1 MiB blocks); the verified Pruv textAroundPlan picks the shown bytes, and the
+ *  hash, the decode and the line count are the same tail steps as Lair. Defaults and line flooring are
+ *  Lair's; before, after and maxBytes must then be integers in the textAroundPlan domain (InvalidArg). */
+export async function textAround(request) {
+  const before = Math.max(0, request.before ?? 200);
+  const after = Math.max(0, request.after ?? 200);
+  const maxBytes = request.maxBytes ?? 256 * 1024;
+  let file;
+  try { file = await open(request.path, 'r'); } catch (error) {
+    return error.code === 'ENOENT'
+      ? failAround('파일이 없어', { reasonI18n: { key: 'wireWork.documents.preview.fileMissing' } })
+      : failAround('파일을 열지 못했어', { reasonI18n: { key: 'wireWork.documents.preview.openFailed' } });
+  }
+  let buf;
+  try { buf = await file.readFile(); } finally { await file.close(); }
+  const target = Math.max(1, Math.floor(request.line));
+  const sourceVersion = createHash('sha256').update(buf).digest('hex');
+  if (request.expectSource && request.expectSource !== sourceVersion) return failAround('changed', { sourceVersion });
+  const plan = native.textAroundPlan(buf, target, before, after, maxBytes);
+  if (plan[0] === 0) return failAround('그 줄이 파일 끝을 넘었어', { sourceVersion, totalLines: plan[1], reasonI18n: { key: 'wireWork.documents.preview.linePastEnd' } });
+  const [, totalLines, shown, b1, b2, t1, t2, a1, a2, beforeLines, truncated, targetCut] = plan;
+  const used = Buffer.concat([buf.subarray(b1, b2), buf.subarray(t1, t2), buf.subarray(a1, a2)]);
+  let text = native.decodeBytes(used).text.replace(/\r\n/g, '\n');
+  if (text.endsWith('\n')) text = text.slice(0, -1);
+  const lines = text === '' && used.length === 0 ? 0 : text.split('\n').length;
+  const from0 = shown - beforeLines;
+  return { ok: true, sourceVersion, totalLines, from: from0, to: Math.min(from0 + lines - 1, totalLines), target: shown, text, truncated: truncated === 1, bytes: used.length, targetIncluded: true, ...(targetCut ? { targetTruncated: true } : {}) };
 }

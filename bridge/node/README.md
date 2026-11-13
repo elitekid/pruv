@@ -34,6 +34,8 @@ Exports (`index.mjs`):
 - `cellRange(row1, row2, col1, col2)` → string — Lair's rangeOf: `"A1"` for a single cell, else `"A1:C9"`.
 - `sheetChunks(name, pieces, max)` → `{range, row1, row2, col1, col2, text}[]` — Lair's extractSheets grouping: pieces join the open chunk until the size (header `"[시트: name]\n"` plus each piece and a newline, in UTF-16 units) would pass `max` or the row is more than 50 rows after the last one.
 - `extractSheetChunks(name, rows, max)` — rowPieces on every row, then sheetChunks, as Lair's chunk objects `{loc: {kind: 'cells', sheet, range, row1, row2, col1, col2}, text}`. The cell and character limits of extractSheets stay with the caller.
+- `textAroundPlan(bytes, line, before, after, maxBytes)` → number[] — the verified Pruv plan of Lair textAround over the bytes of a whole file: `[0, totalLines]` when the first shown line (`max(1, line - before)`) is past the end, else `[1, totalLines, shownTarget, beforeStart, beforeEnd, targetStart, targetEnd, afterStart, afterEnd, newlinesBefore, truncated, targetCut]`, the shown bytes being the three slices in order.
+- `textAround(request)` (async) — Lair's textAround result for `{path, line, before?, after?, maxBytes?, expectSource?}` (defaults 200, 200, 256 KiB, line floored and at least 1, failure records with the same `reasonI18n` keys). Unlike Lair it reads the whole file into memory instead of 1 MiB blocks; the byte choice is textAroundPlan, the decode is decodeBytes. After Lair's defaults, before/after/maxBytes outside the textAroundPlan domain throw InvalidArg.
 
 ## Regenerate
 
@@ -85,6 +87,7 @@ first and throws a JS `Error` (`InvalidArg`) instead:
 | `kindCode` / `extensionAt` / `kindOf` / `extensionOf` | name > 1e12 UTF-8 bytes | `kindCode: name must be at most 1000000000000 UTF-8 bytes` (or `extensionAt: ...`) |
 | `cellRange` | a row or column not an integer in 1..=1e15 | `cellRange: row1 must be an integer in 1..=1000000000000000` (and similar) |
 | `sheetChunks` | max not an integer in 1..=2^40, a header longer than 2^40, more than 1e11 pieces, or a piece row/column not an integer in 1..=1e15 | `sheetChunks: max must be an integer in 1..=1099511627776` (and similar) |
+| `textAroundPlan` / `textAround` | line not an integer in 1..=1e15, before/after not integers in 0..=1e15, maxBytes not an integer in 0..=2^40, bytes not a Uint8Array/Buffer or longer than 2^40 | `textAroundPlan: line must be an integer in 1..=1000000000000000` (and similar) |
 | `rowTextPieces` / `rowPieces` | rowNo not an integer in 1..=1e15, max not an integer in 1..=2^40, or texts joined with newlines > 1.8e11 UTF-8 bytes | `rowTextPieces: rowNo must be an integer in 1..=1000000000000000` (and similar) |
 
 The `colLetters` wrapper accepts an f64 so fractional inputs are rejected before
@@ -113,10 +116,11 @@ macOS arm64, Node v26.4.0, seed 12345, default 20,000 random cases:
 | kindOf / extensionOf | 20,576 | 0 | 0 |
 | rowPieces | 23,069 | 0 | 0 |
 | sheetChunks / cellRange | 6,230 sheets + 4,489 ranges | 0 | 0 |
+| textAroundPlan / textAround | 9,020 plans + 8,822 glue requests | 0 | 316 (text only) |
 
 Version tests use an independent BigInt oracle; column tests use a BigInt
 length-block oracle, dense 0..100000 and power-of-26 boundary cases. TS counts
-are informational; the termPlain TS differences all come from lone surrogates (TS drops them, Node-API turns them into U+FFFD). All error checks passed. `node build.mjs`, `node test.mjs`
+are informational; the termPlain TS differences all come from lone surrogates (TS drops them, Node-API turns them into U+FFFD). The textAround TS differences are all in `text` (every other field matches; a field difference fails the test): this Node's TextDecoder decodes the EUC-KR and invalid bytes there differently from decodeBytes, the same cause as the decodeBytes TS count; in Lair's Electron the bench runner `run_text_around.py` finds no difference. All error checks passed. `node build.mjs`, `node test.mjs`
 and `python3 regen.py --check` exited 0 (commands run from this directory or
 with the equivalent repository-relative paths). An initial test expected
 InvalidArg for wrong JS types; correcting that expectation resolved the failure.

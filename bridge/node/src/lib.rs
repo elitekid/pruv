@@ -574,3 +574,35 @@ pub fn sheet_chunks(name: String, pieces: Vec<RowPiece>, max: f64) -> napi::Resu
             row1: g[2] as f64, row2: g[3] as f64, col1: g[4] as f64, col2: g[5] as f64, text }
     }).collect())
 }
+
+#[path = "../gen/text_around_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod text_around_gen;
+
+/// The Pruv around_plan record of Lair textAround for the bytes of a whole file: [0, totalLines] when the
+/// first shown line is past the end, else [1, totalLines, shown target, beforeStart, beforeEnd, targetStart,
+/// targetEnd, afterStart, afterEnd, newlines before, truncated, target cut] (byte offsets into `data`).
+#[napi(js_name = "textAroundPlan")]
+pub fn text_around_plan(data: napi::bindgen_prelude::Uint8Array, line: f64, before: f64, after: f64, max_bytes: f64)
+    -> napi::Result<Vec<f64>> {
+    let f = "textAroundPlan";
+    let int = |name: &str, v: f64, lo: f64, hi: f64| -> napi::Result<i64> {
+        if !v.is_finite() || v.fract() != 0.0 || !(lo..=hi).contains(&v) {
+            return Err(napi::Error::new(napi::Status::InvalidArg,
+                format!("{f}: {name} must be an integer in {lo}..={hi}")));
+        }
+        Ok(v as i64)
+    };
+    let line = int("line", line, 1.0, 1e15)?;
+    let before = int("before", before, 0.0, 1e15)?;
+    let after = int("after", after, 0.0, 1e15)?;
+    let max_bytes = int("maxBytes", max_bytes, 0.0, 1_099_511_627_776.0)?;
+    if data.len() as u64 > 1_099_511_627_776 {
+        return Err(napi::Error::new(napi::Status::InvalidArg, "textAroundPlan: data must be at most 1099511627776 bytes"));
+    }
+    let r = text_around_gen::around_plan(&data, line, before, after, max_bytes);
+    if r.first() == Some(&-2) {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "textAroundPlan: unexpected line offsets"));
+    }
+    Ok(r.iter().map(|&x| x as f64).collect())
+}

@@ -1,6 +1,10 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround } from './index.mjs';
+import { textAround as tsTextAround } from '../../bench/l0/text_around.mjs';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { extractSheets as tsExtractSheets } from '../../bench/l0/sheet_chunks.mjs';
 import { rowPieces as tsRowPieces } from '../../bench/l0/row_pieces.mjs';
 import { kindOf as tsKindOf, extensionOf as tsExtensionOf } from '../../bench/l0/kind_of.mjs';
@@ -588,6 +592,54 @@ mustThrow('sheetChunks piece row 0', () => sheetChunks('S', [{ row: 0, col1: 1, 
 mustThrow('sheetChunks piece col1 1.5', () => sheetChunks('S', [{ row: 1, col1: 1.5, col2: 2, text: 'a' }], 10));
 mustThrow('sheetChunks piece without text', () => sheetChunks('S', [{ row: 1, col1: 1, col2: 1 }], 10));
 
+// text around: the textAround byte window plan, and the glue against the verbatim textAround.
+const aroundScript = fileURLToPath(new URL('../../bench/l0/run_text_around.py', import.meta.url));
+const aroundRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [aroundScript, '--emit', '--n', String(Math.ceil(CASES / 10)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let aroundMismatches = 0, aroundTsDiff = 0, aroundGlueCases = 0;
+// Every field but text must match the verbatim textAround; text can differ only where this Node's
+// TextDecoder differs from the verified decodeBytes (counted, as decode_ts_differences).
+function aroundCompare(request, got, want) {
+  if (JSON.stringify({ ...got, text: '' }) !== JSON.stringify({ ...want, text: '' })) {
+    aroundMismatches++;
+    if (aroundMismatches <= 5) console.error('around glue mismatch', JSON.stringify({ request, got, want }).slice(0, 600));
+  } else if (got.text !== want.text) aroundTsDiff++;
+}
+const aroundDir = mkdtempSync(join(tmpdir(), 'pruv-around-'));
+try {
+  const aroundPath = join(aroundDir, 'f.txt');
+  for (const [i, [hex, line, before, after, maxBytes, want]] of aroundRows.entries()) {
+    const buf = Buffer.from(hex, 'hex');
+    const got = textAroundPlan(buf, line, before, after, maxBytes);
+    if (JSON.stringify(got) !== JSON.stringify(want)) {
+      aroundMismatches++;
+      if (aroundMismatches <= 5) console.error('around mismatch', JSON.stringify({ i, line, before, after, maxBytes, got, want }));
+    }
+    // The glue on a file: every case with a small file, every 20th otherwise.
+    if (buf.length > 4096 && i % 20) continue;
+    aroundGlueCases++;
+    writeFileSync(aroundPath, buf);
+    aroundCompare({ path: aroundPath, line, before, after, maxBytes }, await textAround({ path: aroundPath, line, before, after, maxBytes }),
+      await tsTextAround({ path: aroundPath, line, before, after, maxBytes }));
+  }
+  // Defaults, a fractional line, expectSource and a missing file go through the glue as in Lair.
+  writeFileSync(aroundPath, 'a\nb\nc\n');
+  for (const request of [{ path: aroundPath, line: 2 }, { path: aroundPath, line: 2.7, before: -3 },
+    { path: aroundPath, line: 0 }, { path: aroundPath, line: 2, expectSource: 'x' },
+    { path: join(aroundDir, 'missing.txt'), line: 1 }]) {
+    aroundGlueCases++;
+    aroundCompare(request, await textAround(request), await tsTextAround(request));
+  }
+} finally { rmSync(aroundDir, { recursive: true, force: true }); }
+mustThrow('textAroundPlan line 0', () => textAroundPlan(Buffer.from('a'), 0, 0, 0, 10));
+mustThrow('textAroundPlan line 1e15+1', () => textAroundPlan(Buffer.from('a'), 1e15 + 1, 0, 0, 10));
+mustThrow('textAroundPlan before -1', () => textAroundPlan(Buffer.from('a'), 1, -1, 0, 10));
+mustThrow('textAroundPlan after 0.5', () => textAroundPlan(Buffer.from('a'), 1, 0, 0.5, 10));
+mustThrow('textAroundPlan maxBytes 2^40+1', () => textAroundPlan(Buffer.from('a'), 1, 0, 0, 2 ** 40 + 1));
+mustThrow('textAroundPlan maxBytes NaN', () => textAroundPlan(Buffer.from('a'), 1, 0, 0, NaN));
+mustThrow('textAroundPlan data string', () => textAroundPlan('a', 1, 0, 0, 10));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -642,6 +694,10 @@ console.log(JSON.stringify({
   chunk_range_cases: rangeCases,
   chunk_mismatches: chunkMismatches,
   chunk_ts_differences: chunkTsDiff,
+  around_cases: aroundRows.length,
+  around_mismatches: aroundMismatches,
+  around_glue_cases: aroundGlueCases,
+  around_ts_differences: aroundTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || !errorOk ? 1 : 0);
