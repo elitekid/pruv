@@ -48,6 +48,10 @@ mod split_text_gen;
 #[allow(dead_code, clippy::all)]
 mod group_text_gen;
 
+#[path = "../gen/image_shrink_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod image_shrink_gen;
+
 fn term_args(name: &str, state: f64, data: &str) -> napi::Result<i64> {
     if !state.is_finite() || state.fract() != 0.0 || !(0.0..=11.0).contains(&state) {
         return Err(napi::Error::new(napi::Status::InvalidArg,
@@ -271,4 +275,59 @@ pub fn group_texts(texts: Vec<String>, max: f64) -> napi::Result<Vec<GroupPiece>
         to: p[1] as f64,
         text: joined[p[2] as usize..p[3] as usize].to_string(),
     }).collect())
+}
+
+/// Lair readOrientation: the EXIF orientation (1..=8) from the first APP1 Exif segment of a JPEG,
+/// 1 when there is none or it is malformed. At most 2^40 bytes.
+#[napi(js_name = "jpegOrientation")]
+pub fn jpeg_orientation(bytes: napi::bindgen_prelude::Uint8Array) -> napi::Result<i64> {
+    if bytes.len() as u64 > 1_099_511_627_776 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "jpegOrientation: data must be at most 1099511627776 bytes"));
+    }
+    Ok(image_shrink_gen::jpeg_orientation(&bytes))
+}
+
+/// Upright, shrunk RGBA pixels (alpha 255).
+#[napi(object)]
+pub struct ShrunkPixels {
+    pub width: f64,
+    pub height: f64,
+    pub data: napi::bindgen_prelude::Buffer,
+}
+
+fn shrink_int(name: &str, v: f64, hi: f64) -> napi::Result<i64> {
+    if !v.is_finite() || v.fract() != 0.0 || v < 1.0 || v > hi {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("shrinkPixels: {name} must be an integer in 1..={hi}")));
+    }
+    Ok(v as i64)
+}
+
+/// The pixel part of Lair shrinkJpeg between jpeg-js decode and encode: long side cut to 2000 by box
+/// averaging, then the EXIF orientation applied. null where TS returns undefined (long side at most
+/// 2000 and orientation 1). width, height 1..=65535 (every JPEG), orientation 1..=8, data 4 * w * h bytes.
+#[napi(js_name = "shrinkPixels")]
+pub fn shrink_pixels(
+    data: napi::bindgen_prelude::Uint8Array,
+    width: f64,
+    height: f64,
+    orientation: f64,
+) -> napi::Result<Option<ShrunkPixels>> {
+    let w = shrink_int("width", width, 65535.0)?;
+    let h = shrink_int("height", height, 65535.0)?;
+    let o = shrink_int("orientation", orientation, 8.0)?;
+    if data.len() as u64 != 4 * (w as u64) * (h as u64) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "shrinkPixels: data must be 4 * width * height bytes"));
+    }
+    let out = image_shrink_gen::shrink_pixels(&data, w, h, o);
+    if out.is_empty() {
+        return Ok(None);
+    }
+    let (mut sw, mut sh) = (image_shrink_gen::shrink_width(w, h), image_shrink_gen::shrink_height(w, h));
+    if o >= 5 {
+        std::mem::swap(&mut sw, &mut sh);
+    }
+    Ok(Some(ShrunkPixels { width: sw as f64, height: sh as f64, data: out.into() }))
 }

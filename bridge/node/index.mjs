@@ -13,6 +13,27 @@ export const looksBinary = native.looksBinary;
 export const zipUncompressedTotal = native.zipUncompressedTotal;
 export const splitText = native.splitText;
 export const groupTexts = native.groupTexts;
+export const jpegOrientation = native.jpegOrientation;
+export const shrinkPixels = native.shrinkPixels;
+
+/** Lair shrinkJpeg: `jpeg` is the jpeg-js module ({decode, encode}); the orientation and the pixels come
+ *  from the verified Pruv jpegOrientation and shrinkPixels. undefined where TS returns undefined (the
+ *  caller keeps the original). */
+export function shrinkJpeg(bytes, jpeg) {
+  if (!(bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)) return undefined;
+  let decoded;
+  try {
+    decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true });
+  } catch {
+    return undefined;
+  }
+  const { width, height } = decoded;
+  if (!(width > 0 && height > 0)) return undefined;
+  const s = native.shrinkPixels(decoded.data, width, height, native.jpegOrientation(bytes));
+  if (s === null) return undefined;
+  const encoded = jpeg.encode({ data: s.data, width: s.width, height: s.height }, 85);
+  return Buffer.from(encoded.data);
+}
 
 /** Lair chunkLines: lines numbered from 1, grouped by the verified Pruv groupTexts. */
 export function chunkLines(lines, max) {

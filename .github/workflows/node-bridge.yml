@@ -22,6 +22,8 @@ on:
       - "bench/l0/run_split_text.py"
       - "bench/l0/group_text.mjs"
       - "bench/l0/run_group_text.py"
+      - "bench/l0/image_shrink.mjs"
+      - "bench/l0/run_image_shrink.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 

@@ -1,5 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg } from './index.mjs';
+import { shrinkDecoded as tsShrinkDecoded, readOrientation as tsReadOrientation } from '../../bench/l0/image_shrink.mjs';
 import { chunkLines as tsChunkLines, chunkBlocks as tsChunkBlocks } from '../../bench/l0/group_text.mjs';
 import { splitText as tsSplitText } from '../../bench/l0/split_text.mjs';
 import { encodePng as tsEncodePng } from '../../bench/l0/encode_png.mjs';
@@ -389,6 +390,69 @@ mustThrow('groupTexts max 2^40+1', () => groupTexts(['ab'], 2 ** 40 + 1));
 mustThrow('groupTexts texts string', () => groupTexts('ab', 10));
 mustThrow('groupTexts texts numbers', () => groupTexts([1, 2], 10));
 
+// ---- jpegOrientation / shrinkPixels against the struct/Fraction oracle (bench/l0/run_image_shrink.py --emit) ----
+const shrinkScript = fileURLToPath(new URL('../../bench/l0/run_image_shrink.py', import.meta.url));
+const shrinkRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [shrinkScript, '--emit', '--n', String(Math.min(CASES, 6000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let shrinkMismatches = 0, shrinkTsDiff = 0;
+// Stub jpeg-js: decode hands back fixed pixels, encode echoes its input, so shrinkJpeg's glue is compared too.
+const stubJpeg = (decoded) => ({
+  decode: () => decoded,
+  encode: (img, q) => ({ data: Buffer.from(JSON.stringify([img.width, img.height, q, Buffer.from(img.data).toString('hex')])) }),
+});
+for (const row of shrinkRows) {
+  let got, ts;
+  if (row[0] === 'o') {
+    const buf = Uint8Array.from(Buffer.from(row[1], 'hex'));
+    got = jpegOrientation(buf);
+    ts = tsReadOrientation(buf);
+  } else {
+    const [, w, h, o, hx] = row;
+    const data = Uint8Array.from(Buffer.from(hx, 'hex'));
+    const s = shrinkPixels(data, w, h, o);
+    got = s === null ? null : [s.width, s.height, s.data.toString('hex')];
+    const t = tsShrinkDecoded({ width: w, height: h, data }, o);
+    ts = t === undefined ? null : [t.width, t.height, Buffer.from(t.data).toString('hex')];
+  }
+  const want = row[row.length - 1];
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    shrinkMismatches++;
+    if (shrinkMismatches <= 5) console.error('shrink mismatch', JSON.stringify({ row: row.slice(0, 4), got: JSON.stringify(got).slice(0, 200) }));
+  }
+  if (JSON.stringify(ts) !== JSON.stringify(got)) shrinkTsDiff++;
+}
+{
+  // shrinkJpeg glue: a JPEG head with EXIF orientation 6 around a 3x2 image, and the undefined paths.
+  const tiff = Buffer.from('4d4d002a000000080001011200030000000100060000', 'hex');
+  const app1 = Buffer.concat([Buffer.from([0xff, 0xe1, 0, tiff.length + 8]), Buffer.from('Exif\0\0', 'latin1'), tiff]);
+  const jpg = Uint8Array.from(Buffer.concat([Buffer.from([0xff, 0xd8]), app1, Buffer.from([0xff, 0xda])]));
+  const data = Uint8Array.from({ length: 24 }, (_, i) => (i * 37) % 256);
+  const t = tsShrinkDecoded({ width: 3, height: 2, data }, tsReadOrientation(jpg));
+  const want = JSON.stringify([t.width, t.height, 85, Buffer.from(t.data).toString('hex')]);
+  const mine = shrinkJpeg(jpg, stubJpeg({ width: 3, height: 2, data }));
+  if (tsReadOrientation(jpg) !== 6 || !mine || mine.toString() !== want) { console.error('shrinkJpeg glue failed'); errorOk = false; }
+  const plain = Uint8Array.from([0xff, 0xd8, 0xff, 0xda]);
+  const throwing = { decode: () => { throw new Error('bad'); }, encode: () => { throw new Error('unreachable'); } };
+  if (shrinkJpeg(plain, stubJpeg({ width: 3, height: 2, data })) !== undefined
+    || shrinkJpeg(plain, throwing) !== undefined
+    || shrinkJpeg(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]), throwing) !== undefined
+    || shrinkJpeg(jpg, stubJpeg({ width: 0, height: 2, data })) !== undefined) {
+    console.error('shrinkJpeg undefined paths failed'); errorOk = false;
+  }
+}
+const one = new Uint8Array(4);
+mustInvalidArg('shrinkPixels width 0', () => shrinkPixels(one, 0, 1, 1));
+mustInvalidArg('shrinkPixels width 65536', () => shrinkPixels(new Uint8Array(4 * 65536), 65536, 1, 2));
+mustInvalidArg('shrinkPixels height 1.5', () => shrinkPixels(one, 1, 1.5, 1));
+mustInvalidArg('shrinkPixels orientation 0', () => shrinkPixels(one, 1, 1, 0));
+mustInvalidArg('shrinkPixels orientation 9', () => shrinkPixels(one, 1, 1, 9));
+mustInvalidArg('shrinkPixels orientation NaN', () => shrinkPixels(one, 1, 1, NaN));
+mustInvalidArg('shrinkPixels short data', () => shrinkPixels(new Uint8Array(3), 1, 1, 2));
+mustInvalidArg('shrinkPixels long data', () => shrinkPixels(new Uint8Array(5), 1, 1, 2));
+mustThrow('shrinkPixels data string', () => shrinkPixels('abcd', 1, 1, 2));
+mustThrow('jpegOrientation string', () => jpegOrientation('abc'));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -424,6 +488,9 @@ console.log(JSON.stringify({
   group_cases: groupRows.length,
   group_mismatches: groupMismatches,
   group_ts_differences: groupTsDiff,
+  shrink_cases: shrinkRows.length,
+  shrink_mismatches: shrinkMismatches,
+  shrink_ts_differences: shrinkTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || !errorOk ? 1 : 0);
