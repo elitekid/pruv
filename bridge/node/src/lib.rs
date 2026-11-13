@@ -32,6 +32,10 @@ mod term_plain_gen;
 #[allow(dead_code, clippy::all)]
 mod decode_bytes_gen;
 
+#[path = "../gen/zip_total_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod zip_total_gen;
+
 fn term_args(name: &str, state: f64, data: &str) -> napi::Result<i64> {
     if !state.is_finite() || state.fract() != 0.0 || !(0.0..=11.0).contains(&state) {
         return Err(napi::Error::new(napi::Status::InvalidArg,
@@ -140,4 +144,17 @@ pub fn decode_bytes(data: napi::bindgen_prelude::Uint8Array) -> napi::Result<Dec
 pub fn looks_binary(data: napi::bindgen_prelude::Uint8Array) -> napi::Result<bool> {
     decode_input("looksBinary", &data)?;
     Ok(decode_bytes_gen::looks_binary(&data))
+}
+
+/// Lair zipUncompressedTotal: the uncompressed-size sum from the zip central directory, read before
+/// inflating. null = not a zip or unreadable directory, Infinity = zip64-shaped (size unknown).
+/// Totals are at most 65534 * (2^32 - 2) < 2^53, so the f64 is exact.
+#[napi(js_name = "zipUncompressedTotal")]
+pub fn zip_uncompressed_total(data: napi::bindgen_prelude::Uint8Array) -> napi::Result<Option<f64>> {
+    decode_input("zipUncompressedTotal", &data)?;
+    Ok(match zip_total_gen::zip_uncompressed_total(&data) {
+        -1 => None,
+        -2 => Some(f64::INFINITY),
+        total => Some(total as f64),
+    })
 }

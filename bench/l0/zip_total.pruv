@@ -1,0 +1,76 @@
+// Lair zipUncompressedTotal (src/documents/zip.ts): the sum of the uncompressed sizes in a zip
+// central directory, read before inflating anything (zip-bomb guard).
+// Result: -1 = not a zip or unreadable central directory (TS null),
+//         -2 = zip64-shaped, size unknown (TS Infinity), otherwise the total (>= 0).
+// Every read is proved in bounds, so a hostile archive cannot make the guard itself fault.
+
+fn u16le(b: [u8], at: i64) -> i64
+  requires 0 <= at && at + 2 <= len(b)
+  ensures 0 <= result && result <= 65535
+{
+  let x0: i64 = b[at];
+  let x1: i64 = b[at + 1];
+  return x0 + 256 * x1;
+}
+
+fn u32le(b: [u8], at: i64) -> i64
+  requires 0 <= at && at + 4 <= len(b)
+  ensures 0 <= result && result <= 4294967295
+{
+  let x0: i64 = b[at];
+  let x1: i64 = b[at + 1];
+  let x2: i64 = b[at + 2];
+  let x3: i64 = b[at + 3];
+  return x0 + 256 * x1 + 65536 * x2 + 16777216 * x3;
+}
+
+// Last end-of-central-directory signature within the final 65535 + 22 bytes, or -1.
+fn find_eocd(buf: [u8]) -> i64
+  requires len(buf) <= 1_000_000_000_000
+  ensures result == -1 || (0 <= result && result + 22 <= len(buf))
+  ensures len(buf) < 22 ==> result == -1
+{
+  let n: i64 = len(buf);
+  let mut min: i64 = n - 65535 - 22;
+  if min < 0 { min = 0; }
+  let mut i: i64 = n - 22;
+  while i >= min
+    invariant i <= n - 22 && min >= 0
+    decreases i + 1
+  {
+    if u32le(buf, i) == 101010256 { return i; }
+    i = i - 1;
+  }
+  return -1;
+}
+
+fn zip_uncompressed_total(buf: [u8]) -> i64
+  requires len(buf) <= 1_000_000_000_000
+  ensures -2 <= result
+  ensures result <= 65534 * 4294967294
+  ensures len(buf) < 22 ==> result == -1
+{
+  let n: i64 = len(buf);
+  let eocd: i64 = find_eocd(buf);
+  if eocd < 0 { return -1; }
+  let count: i64 = u16le(buf, eocd + 10);
+  let mut at: i64 = u32le(buf, eocd + 16);
+  if count == 65535 || at == 4294967295 { return -2; }
+  let mut total: i64 = 0;
+  let mut k: i64 = 0;
+  while k < count
+    invariant 0 <= k && k <= count && count <= 65534
+    invariant 0 <= at && at <= 4294967295 + n + 196605
+    invariant 0 <= total && total <= k * 4294967294
+    decreases count - k
+  {
+    if at + 46 > n { return -1; }
+    if u32le(buf, at) != 33639248 { return -1; }
+    let size: i64 = u32le(buf, at + 24);
+    if size == 4294967295 { return -2; }
+    total = total + size;
+    at = at + 46 + u16le(buf, at + 28) + u16le(buf, at + 30) + u16le(buf, at + 32);
+    k = k + 1;
+  }
+  return total;
+}

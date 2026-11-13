@@ -1,9 +1,10 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal } from './index.mjs';
 import { versionAtLeast as tsVersionAtLeast } from '../../bench/l0/version_at_least.mjs';
 import { colLetters as tsColLetters } from '../../bench/l0/col_letters.mjs';
 import { plainFromAnsi, applyCrLf, fromState, toState } from '../../bench/l0/term_plain.mjs';
 import { decodeBytes as tsDecodeBytes, looksBinary as tsLooksBinary } from '../../bench/l0/decode_bytes.mjs';
+import { zipUncompressedTotal as tsZipTotal } from '../../bench/l0/zip_total.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -292,6 +293,24 @@ mustThrow('looksBinary number', () => looksBinary(1));
   if (r.text !== 'a' || r.encoding !== 'utf-8') { console.error('decodeBytes Buffer input failed'); errorOk = false; }
 }
 
+// ---- zipUncompressedTotal against the struct/rfind oracle (bench/l0/run_zip_total.py --emit) ----
+const zipScript = fileURLToPath(new URL('../../bench/l0/run_zip_total.py', import.meta.url));
+const zipRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [zipScript, '--emit', '--n', String(CASES), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let zipMismatches = 0, zipTsDiff = 0;
+const zipShow = (r) => (r === Infinity ? 'Infinity' : r);
+for (const [h, want] of zipRows) {
+  const buf = Buffer.from(h, 'hex');
+  const got = zipShow(zipUncompressedTotal(Uint8Array.from(buf)));
+  if (got !== want) {
+    zipMismatches++;
+    if (zipMismatches <= 5) console.error('zip mismatch', JSON.stringify({ hex: h.slice(0, 200), got, want }));
+  }
+  if (zipShow(tsZipTotal(buf)) !== got) zipTsDiff++;
+}
+mustThrow('zipUncompressedTotal string', () => zipUncompressedTotal('PK'));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -315,6 +334,9 @@ console.log(JSON.stringify({
   decode_cases: decodeRows.length,
   decode_mismatches: decodeMismatches,
   decode_ts_differences: decodeTsDiff,
+  zip_cases: zipRows.length,
+  zip_mismatches: zipMismatches,
+  zip_ts_differences: zipTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || !errorOk ? 1 : 0);

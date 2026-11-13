@@ -9,3 +9,4 @@ export const termPlain = native.termPlain;
 export const termState = native.termState;
 export const decodeBytes = native.decodeBytes;
 export const looksBinary = native.looksBinary;
+export const zipUncompressedTotal = native.zipUncompressedTotal;
