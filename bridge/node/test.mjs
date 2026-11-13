@@ -1,6 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList } from './index.mjs';
+import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { tokenize as tsTokenize } from '../../bench/l0/tokenize.mjs';
 import { docxParts as tsDocxParts } from '../../bench/l0/docx_parts.mjs';
 import { parseHtml as tsParseHtml } from '../../bench/l0/parse_html.mjs';
@@ -486,6 +487,32 @@ mustInvalidArg('numberRanges 1e15+1', () => numberRanges([1e15 + 1]));
 mustInvalidArg('numberRanges -Infinity', () => numberRanges([-Infinity]));
 mustThrow('numberRanges string', () => numberRanges('12'));
 
+// ---- csvName and countList against the Python oracle (bench/l0/run_doc_labels.py --emit) ----
+const labelsScript = fileURLToPath(new URL('../../bench/l0/run_doc_labels.py', import.meta.url));
+const labelsRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [labelsScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let labelsMismatches = 0, labelsTsDiff = 0;
+for (const row of labelsRows) {
+  // ["csvName", name, want] or ["countList", items, max, want]
+  const isName = row[0] === 'csvName';
+  const got = isName ? csvName(row[1]) : countList(row[1], row[2]);
+  const want = isName ? row[2] : row[3];
+  const ts = isName ? tsCsvName(row[1]) : tsCountList(row[1], row[2]);
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    labelsMismatches++;
+    if (labelsMismatches <= 5) console.error('labels mismatch', JSON.stringify({ row: row.slice(0, 3).map(x => (Array.isArray(x) ? x.slice(0, 5) : x)), got, want }));
+  }
+  if (JSON.stringify(ts) !== JSON.stringify(got)) labelsTsDiff++;
+}
+mustInvalidArg('countList page 1.5', () => countList([{ page: 1.5, count: 1 }]));
+mustInvalidArg('countList count NaN', () => countList([{ page: 1, count: NaN }]));
+mustInvalidArg('countList page 1e15+1', () => countList([{ page: 1e15 + 1, count: 1 }]));
+mustInvalidArg('countList max -1', () => countList([{ page: 1, count: 1 }], -1));
+mustInvalidArg('countList max 1.5', () => countList([{ page: 1, count: 1 }], 1.5));
+mustInvalidArg('countList max 1e9+1', () => countList([], 1e9 + 1));
+mustThrow('csvName number', () => csvName(12));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -757,6 +784,9 @@ console.log(JSON.stringify({
   ranges_cases: rangesRows.length,
   ranges_mismatches: rangesMismatches,
   ranges_ts_differences: rangesTsDiff,
+  labels_cases: labelsRows.length,
+  labels_mismatches: labelsMismatches,
+  labels_ts_differences: labelsTsDiff,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -786,4 +816,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);

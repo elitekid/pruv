@@ -12,6 +12,10 @@ use napi_derive::napi;
 #[allow(dead_code, clippy::all)]
 mod number_ranges_gen;
 
+#[path = "../gen/doc_labels_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod doc_labels_gen;
+
 #[path = "../gen/kind_of_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod kind_of_gen;
@@ -356,6 +360,54 @@ pub fn number_ranges(numbers: Vec<f64>) -> napi::Result<String> {
         v.push(n as i64);
     }
     Ok(number_ranges_gen::number_ranges(&v))
+}
+
+/// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.
+#[napi(js_name = "csvName")]
+pub fn csv_name(name: String) -> String {
+    doc_labels_gen::csv_name(&name)
+}
+
+fn count_max(name: &str, max: f64) -> napi::Result<i64> {
+    if !max.is_finite() || max.fract() != 0.0 || !(0.0..=1e9).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("{name}: max must be an integer in 0..=1000000000")));
+    }
+    Ok(max as i64)
+}
+
+/// Lair countList's list text: the first max items as "3 (2), 5 (1)".
+#[napi(js_name = "countListText")]
+pub fn count_list_text(pages: Vec<f64>, counts: Vec<f64>, max: f64) -> napi::Result<String> {
+    if pages.len() != counts.len() {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "countListText: pages and counts must have the same length"));
+    }
+    let max = count_max("countListText", max)?;
+    let mut p = Vec::with_capacity(pages.len());
+    let mut c = Vec::with_capacity(counts.len());
+    for (a, b) in pages.into_iter().zip(counts) {
+        for x in [a, b] {
+            if !x.is_finite() || x.fract() != 0.0 || !(-1e15..=1e15).contains(&x) {
+                return Err(napi::Error::new(napi::Status::InvalidArg,
+                    "countListText: pages and counts must be integers in -1000000000000000..=1000000000000000"));
+            }
+        }
+        p.push(a as i64);
+        c.push(b as i64);
+    }
+    Ok(doc_labels_gen::count_list(&p, &c, max))
+}
+
+/// Lair countList's more: max(0, n - max) for n items.
+#[napi(js_name = "countListMore")]
+pub fn count_list_more(n: f64, max: f64) -> napi::Result<f64> {
+    if !n.is_finite() || n.fract() != 0.0 || !(0.0..=1e12).contains(&n) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "countListMore: n must be an integer in 0..=1000000000000"));
+    }
+    let max = count_max("countListMore", max)?;
+    Ok(doc_labels_gen::count_list_more(n as i64, max) as f64)
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {

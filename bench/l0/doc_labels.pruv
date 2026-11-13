@@ -1,0 +1,124 @@
+// Lair csvName (src/documents/sheets.ts) and countList (src/documents/context.ts), commit 698e1bd1.
+// csvName: the part of a file name after the last '/' or '\', without its extension (the text from the
+// LAST '.' on, if that dot is not the last character), or "표" when nothing is left. '/', '\' and '.' are
+// ASCII and never occur inside a multibyte UTF-8 sequence, so working on bytes equals the JS UTF-16
+// behaviour for well-formed strings. In /\.[^.]+$/ the class [^.] also matches newlines (no m flag).
+// countList: the first max "page (count)" items joined with ", ", plus the number of items left out.
+// Domain: pages and counts integers in -10^15..10^15, max an integer in 0..10^9.
+
+// Decimal digits of n, no leading zeros ("0" for 0).
+fn digits(n: i64) -> str ! alloc
+  requires 0 <= n && n <= 1000000000000000
+  ensures len(result) <= 16
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 1000000000000000;
+  let mut k: i64 = 0;
+  while k < 16
+    invariant 0 <= k && k <= 16
+    invariant 0 <= p && p <= 1000000000000000
+    invariant len(out) <= k
+    decreases 16 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      if len(out) > 0 || d != 0 || p == 1 {
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+// JS String(n) for an integer n.
+fn num(n: i64) -> str ! alloc
+  requires -1000000000000000 <= n && n <= 1000000000000000
+  ensures len(result) <= 17
+{
+  let mut out: String = string_new();
+  if n < 0 {
+    out = string_push_str(move out, "-");
+    out = string_push_str(move out, digits(-n));
+  } else {
+    out = string_push_str(move out, digits(n));
+  }
+  return string_to_str(out);
+}
+
+// (name.split(/[\\/]/).pop() ?? name).replace(/\.[^.]+$/, '') || '표'
+pub fn csv_name(name: str) -> str ! alloc
+  requires len(name) <= 1000000000000
+  ensures len(result) <= len(name) + 3
+{
+  // base: first byte after the last separator; dot: the last '.' at or after base, or -1.
+  let mut base: i64 = 0;
+  let mut dot: i64 = -1;
+  let mut i: i64 = 0;
+  while i < len(name)
+    invariant 0 <= i && i <= len(name)
+    invariant 0 <= base && base <= i
+    invariant dot == -1 || (base <= dot && dot < i && name[dot] == 46)
+    decreases len(name) - i
+  {
+    let c: i64 = name[i];
+    if c == 47 || c == 92 {
+      base = i + 1;
+      dot = -1;
+    } else {
+      if c == 46 { dot = i; }
+    }
+    i = i + 1;
+  }
+  // The regex removes from the last '.' only if at least one byte follows it.
+  let mut end: i64 = len(name);
+  if dot >= 0 && dot + 1 < len(name) { end = dot; }
+  // Both cut points are character boundaries for any str (separator and '.' are ASCII); the checks
+  // only let the verifier see it.
+  if base < end && is_char_boundary(name, base) && is_char_boundary(name, end) {
+    return substr(name, base, end);
+  }
+  return "표";
+}
+
+// countList text: the first max items as "page (count)" joined with ", ". Each item is at most
+// 17 + 2 + 17 + 1 = 37 bytes plus a 2-byte separator, so 39 bytes per item bound the text.
+pub fn count_list(pages: [i64], counts: [i64], max: i64) -> str ! alloc
+  requires len(pages) == len(counts)
+  requires forall k in 0..len(pages): -1000000000000000 <= pages[k] && pages[k] <= 1000000000000000
+  requires forall k in 0..len(counts): -1000000000000000 <= counts[k] && counts[k] <= 1000000000000000
+  requires 0 <= max && max <= 1000000000
+  ensures len(result) <= 39 * max
+  ensures len(result) <= 39 * len(pages)
+{
+  let mut out: String = string_new();
+  let mut i: i64 = 0;
+  while i < len(pages) && i < max
+    invariant 0 <= i && i <= len(pages) && i <= max
+    invariant len(out) <= 39 * i
+    decreases len(pages) - i
+  {
+    if i > 0 {
+      out = string_push_str(move out, ", ");
+    }
+    out = string_push_str(move out, num(pages[i]));
+    out = string_push_str(move out, " (");
+    out = string_push_str(move out, num(counts[i]));
+    out = string_push_str(move out, ")");
+    i = i + 1;
+  }
+  return string_to_str(out);
+}
+
+// countList's more: max(0, n - max) for n items.
+pub fn count_list_more(n: i64, max: i64) -> i64
+  requires 0 <= n && n <= 1000000000000
+  requires 0 <= max && max <= 1000000000
+  ensures 0 <= result && result <= n
+  ensures (n > max && result == n - max) || (n <= max && result == 0)
+{
+  if n > max { return n - max; }
+  return 0;
+}

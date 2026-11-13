@@ -26,6 +26,8 @@ on:
       - "bench/l0/run_image_shrink.py"
       - "bench/l0/number_ranges.mjs"
       - "bench/l0/run_number_ranges.py"
+      - "bench/l0/doc_labels.mjs"
+      - "bench/l0/run_doc_labels.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

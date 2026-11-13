@@ -18,6 +18,19 @@ export const groupTexts = native.groupTexts;
 export const jpegOrientation = native.jpegOrientation;
 export const shrinkPixels = native.shrinkPixels;
 export const numberRanges = native.numberRanges;
+export const csvName = native.csvName;
+export const countListText = native.countListText;
+export const countListMore = native.countListMore;
+
+/** Lair countList (src/documents/context.ts): the first max "page (count)" items as text and the number of
+ *  items left out. The text and the count come from the verified Pruv countListText and countListMore; pages,
+ *  counts and max must be integers in their domains (InvalidArg). */
+export function countList(items, max = 20) {
+  return {
+    list: native.countListText(items.map(item => item.page), items.map(item => item.count), max),
+    more: native.countListMore(items.length, max),
+  };
+}
 
 /** Lair shrinkJpeg: `jpeg` is the jpeg-js module ({decode, encode}); the orientation and the pixels come
  *  from the verified Pruv jpegOrientation and shrinkPixels. undefined where TS returns undefined (the
