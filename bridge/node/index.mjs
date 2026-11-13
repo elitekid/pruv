@@ -51,6 +51,11 @@ export const capKeep = native.capKeep;
  *  deletable versions before it. bytes: sizes in walk order, integers 0..1e9 (at most 1e7); free[k]: bytes[k]
  *  if version k may be deleted, 0 if it is pinned or kept; limit: integer -1e15..1e15. */
 export const evictStop = native.evictStop;
+
+/** The integer part of Lair buildIndex (src/documents/search.ts) for one chunk: indexTerms(tok, vocab) is
+ *  [m, id_1, count_1, ..., id_m, count_m], the distinct token ids in order of first appearance with their counts.
+ *  tok: token ids, integers 0..vocab-1 (at most 1e7); vocab: integer 1..1e7. The host numbers the token strings. */
+export const indexTerms = native.indexTerms;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

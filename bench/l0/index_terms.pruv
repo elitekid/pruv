@@ -1,0 +1,60 @@
+// Lair buildIndex (src/documents/search.ts), its integer part: for one chunk's tokens, the term frequencies in
+// the order the tf Map holds them (first appearance). buildIndex then appends (chunk, count) to each term's
+// posting list, pushes tokens.length to lens and adds it to total; that bookkeeping and avg (a float division)
+// stay in the host, and the host numbers the token strings.
+// Input: tok[k] is the id of token k of the chunk (0 <= id < vocab).
+// Result: [m, id_1, count_1, ..., id_m, count_m], the distinct ids in order of first appearance with their counts.
+// Domain: at most 10^7 tokens, vocab at most 10^7. The ensures prove the shape, that every id is a token of the
+// chunk and in range, that ids are pairwise distinct and that every count is between 1 and the token count.
+// Exact counts and first-appearance order are not proved (a count tied to a quantified id does not instantiate
+// in the solver); the oracle runner checks them against an independent recount.
+
+pub fn index_terms(tok: [i64], vocab: i64) -> [i64] ! alloc
+  requires 1 <= vocab && vocab <= 10000000
+  requires len(tok) <= 10000000
+  requires forall k in 0..len(tok): 0 <= tok[k] && tok[k] < vocab
+  ensures 0 <= result[0] && result[0] <= len(tok)
+  ensures len(result) == 1 + 2 * result[0]
+  ensures forall p in 0..result[0]: 0 <= result[1 + 2 * p] && result[1 + 2 * p] < vocab
+  ensures forall p in 0..result[0]: 1 <= result[2 + 2 * p] && result[2 + 2 * p] <= len(tok)
+  ensures forall p in 0..result[0]: forall q in 0..p: result[1 + 2 * q] != result[1 + 2 * p]
+  ensures forall p in 0..result[0]: exists j in 0..len(tok): tok[j] == result[1 + 2 * p]
+{
+  let n: i64 = len(tok);
+  let mut cnt: [i64] = alloc(vocab, 0);
+  let mut at: [i64] = alloc(n, 0);
+  let mut m: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant len(cnt) == vocab && len(at) == n
+    invariant forall v in 0..vocab: 0 <= cnt[v] && cnt[v] <= i
+    invariant 0 <= m && m <= i
+    invariant forall p in 0..m: 0 <= at[p] && at[p] < i && cnt[tok[at[p]]] >= 1
+    invariant forall p in 0..m: forall q in 0..p: tok[at[q]] != tok[at[p]]
+    decreases n - i
+  {
+    let t: i64 = tok[i];
+    if cnt[t] == 0 { at[m] = i; m = m + 1; }
+    cnt[t] = cnt[t] + 1;
+    i = i + 1;
+  }
+  let mut out: [i64] = alloc(1 + 2 * m, 0);
+  out[0] = m;
+  let mut p: i64 = 0;
+  while p < m
+    invariant 0 <= p && p <= m && m <= n
+    invariant len(out) == 1 + 2 * m && out[0] == m
+    invariant forall v in 0..vocab: 0 <= cnt[v] && cnt[v] <= n
+    invariant forall q in 0..m: 0 <= at[q] && at[q] < n && cnt[tok[at[q]]] >= 1
+    invariant forall a in 0..m: forall b in 0..a: tok[at[b]] != tok[at[a]]
+    invariant forall q in 0..p: out[1 + 2 * q] == tok[at[q]] && 1 <= out[2 + 2 * q] && out[2 + 2 * q] <= n
+    decreases m - p
+  {
+    let t: i64 = tok[at[p]];
+    out[1 + 2 * p] = t;
+    out[2 + 2 * p] = cnt[t];
+    p = p + 1;
+  }
+  return out;
+}

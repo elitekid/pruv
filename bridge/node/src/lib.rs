@@ -40,6 +40,10 @@ mod cap_keep_gen;
 #[allow(dead_code, clippy::all)]
 mod evict_stop_gen;
 
+#[path = "../gen/index_terms_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod index_terms_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -549,6 +553,28 @@ pub fn evict_stop(bytes: Vec<f64>, free: Vec<f64>, limit: f64) -> napi::Result<i
         f.push(y as i64);
     }
     Ok(evict_stop_gen::evict_stop(&b, &f, limit as i64))
+}
+
+/// The integer part of Lair buildIndex (src/documents/search.ts) for one chunk: tok[k] is the id of token k
+/// (0 <= id < vocab). The result is [m, id_1, count_1, ..., id_m, count_m], the distinct ids in order of first
+/// appearance (the order of buildIndex's tf Map) with their counts.
+#[napi(js_name = "indexTerms")]
+pub fn index_terms(tok: Vec<f64>, vocab: f64) -> napi::Result<Vec<f64>> {
+    let bad = |m: &str| Err(napi::Error::new(napi::Status::InvalidArg, format!("indexTerms: {m}")));
+    if tok.len() > 10_000_000 {
+        return bad("at most 10000000 tokens");
+    }
+    if !vocab.is_finite() || vocab.fract() != 0.0 || !(1.0..=1e7).contains(&vocab) {
+        return bad("vocab must be an integer in 1..=10000000");
+    }
+    let mut t = Vec::with_capacity(tok.len());
+    for x in tok {
+        if !x.is_finite() || x.fract() != 0.0 || !(0.0..vocab).contains(&x) {
+            return bad("ids must be integers in 0..vocab");
+        }
+        t.push(x as i64);
+    }
+    Ok(index_terms_gen::index_terms(&t, vocab as i64).into_iter().map(|x| x as f64).collect())
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

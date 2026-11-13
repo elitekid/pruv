@@ -1,6 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms } from './index.mjs';
 import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { joinRangeParts as tsJoinRangeParts } from '../../bench/l0/join_ranges.mjs';
 import { cutCell as tsCutCell } from '../../bench/l0/cut_cell.mjs';
@@ -10,6 +10,7 @@ import { groupedNumber as tsGroupedNumber } from '../../bench/l0/grouped_number.
 import { under as tsUnder } from '../../bench/l0/under_root.mjs';
 import { capChars as tsCapChars } from '../../bench/l0/cap_keep.mjs';
 import { evictFolder as tsEvictFolder } from '../../bench/l0/evict_stop.mjs';
+import { buildIndex as tsBuildIndex } from '../../bench/l0/index_terms.mjs';
 import { sep as pathSep } from 'node:path';
 import { tokenize as tsTokenize } from '../../bench/l0/tokenize.mjs';
 import { docxParts as tsDocxParts } from '../../bench/l0/docx_parts.mjs';
@@ -694,6 +695,47 @@ mustThrow('evictStop length mismatch', () => evictStop([5, 6], [5], 0));
 mustThrow('evictStop fractional limit', () => evictStop([1], [1], 0.5));
 mustThrow('evictStop limit over 1e15', () => evictStop([1], [1], 1e15 + 2));
 
+// ---- indexTerms against the Counter oracle (bench/l0/run_index_terms.py --emit) ----
+// Each row is a corpus: the oracle's token strings by id, each chunk's ids and the oracle's per-chunk result.
+// The bridge results are assembled into buildIndex's terms/lens/count/avg and compared with the verbatim TS
+// buildIndex (its tokenizer follows the runtime's Unicode tables, so TS differences count only on Unicode 17.0).
+const indexScript = fileURLToPath(new URL('../../bench/l0/run_index_terms.py', import.meta.url));
+const indexRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [indexScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let indexMismatches = 0, indexTsDiff = 0;
+const indexUnicode17 = process.versions.unicode === '17.0';
+const sortKeys = o => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+for (const [vocab, names, chunks, want, texts] of indexRows) {
+  const terms = new Map();
+  chunks.forEach((tok, i) => {
+    const got = indexTerms(tok, vocab);
+    if (JSON.stringify(got) !== JSON.stringify(want[i])) {
+      indexMismatches++;
+      if (indexMismatches <= 5) console.error('indexTerms mismatch', JSON.stringify({ tok: tok.slice(0, 20), got: got.slice(0, 21), want: want[i].slice(0, 21) }));
+    }
+    for (let p = 0; p < got[0]; p++) {
+      const name = names[got[1 + 2 * p]];
+      if (!terms.has(name)) terms.set(name, []);
+      terms.get(name).push(i, got[2 + 2 * p]);
+    }
+  });
+  const lens = chunks.map(tok => tok.length);
+  const total = lens.reduce((a, b) => a + b, 0);
+  const n = chunks.length;
+  const ts = tsBuildIndex(texts);
+  if (ts.count !== n || ts.avg !== (n ? Math.max(total / n, 1) : 1) || JSON.stringify(ts.lens) !== JSON.stringify(lens)
+      || sortKeys(ts.terms) !== sortKeys(Object.fromEntries(terms))) {
+    indexTsDiff++;
+    if (indexTsDiff <= 5 && indexUnicode17) console.error('indexTerms ts difference', JSON.stringify({ texts: texts.map(t => t.slice(0, 80)) }));
+  }
+}
+mustThrow('indexTerms id at vocab', () => indexTerms([0, 3], 3));
+mustThrow('indexTerms negative id', () => indexTerms([-1], 3));
+mustThrow('indexTerms fractional id', () => indexTerms([0.5], 3));
+mustThrow('indexTerms vocab zero', () => indexTerms([], 0));
+mustThrow('indexTerms vocab over 1e7', () => indexTerms([], 1e7 + 1));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -994,6 +1036,9 @@ console.log(JSON.stringify({
   evict_stop_mismatches: evictMismatches,
   evict_stop_ts_cases: evictTsCases,
   evict_stop_ts_differences: evictTsDiff,
+  index_terms_cases: indexRows.length,
+  index_terms_mismatches: indexMismatches,
+  index_terms_ts_differences: indexTsDiff,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -1023,4 +1068,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
