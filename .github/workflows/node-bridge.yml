@@ -32,6 +32,8 @@ jobs:
           python-version: "3.9"
       - run: python -m pip install -q "z3-solver==${Z3_SOLVER_VERSION}"
         shell: bash
+      # regen.py builds pruvc-rs with --offline to compare both compilers; fetch crates first.
+      - run: cargo fetch --locked --manifest-path pruvc-rs/Cargo.toml
       - run: python bridge/node/regen.py --check
 
   build:
