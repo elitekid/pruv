@@ -113,3 +113,26 @@ export function extensionOf(name) {
 export function kindOf(name) {
   return KINDS[native.kindCode(name)];
 }
+
+export const rowTextPieces = native.rowTextPieces;
+
+// pad and cellText verbatim from Lair src/documents/sheets.ts.
+const pad = (n) => String(n).padStart(2, '0');
+function cellText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value.replace(/\r?\n/g, ' ').trim();
+  if (typeof value === 'number') return Number.isFinite(value) ? String(Number(value.toPrecision(15))) : '';
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const date = `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`;
+    const time = value.getUTCHours() || value.getUTCMinutes() || value.getUTCSeconds() ? ` ${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}` : '';
+    return date + time;
+  }
+  return String(value);
+}
+
+/** Lair rowPieces: the cell values become text with Lair's cellText (JS); the pieces, the labels and the
+ *  cuts come from the verified Pruv rowTextPieces. */
+export function rowPieces(row, rowNo, max) {
+  return native.rowTextPieces(row.map(cellText), rowNo, max);
+}

@@ -1,6 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces } from './index.mjs';
+import { rowPieces as tsRowPieces } from '../../bench/l0/row_pieces.mjs';
 import { kindOf as tsKindOf, extensionOf as tsExtensionOf } from '../../bench/l0/kind_of.mjs';
 import { renderClipSheet as tsRenderClipSheet } from '../../bench/l0/clip_sheet.mjs';
 import { numberRanges as tsNumberRanges } from '../../bench/l0/number_ranges.mjs';
@@ -527,6 +528,28 @@ for (const [name, at, ext, kind] of kindRows) {
 mustThrow('kindOf number', () => kindCode(5));
 mustThrow('extensionAt null', () => extensionAt(null));
 
+// ---- rowPieces against the sheet-row oracle (bench/l0/run_row_pieces.py --emit) ----
+const rowScript = fileURLToPath(new URL('../../bench/l0/run_row_pieces.py', import.meta.url));
+const rowRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [rowScript, '--emit', '--n', String(CASES), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let rowMismatches = 0, rowTsDiff = 0;
+for (const [cells, rowNo, max, want] of rowRows) {
+  const pieces = rowPieces(cells, rowNo, max);
+  const got = JSON.stringify(pieces.map(p => [p.row, p.col1, p.col2, p.text]));
+  if (got !== JSON.stringify(want)) {
+    rowMismatches++;
+    if (rowMismatches <= 5) console.error('row mismatch', JSON.stringify({ cells: cells.slice(0, 5), rowNo, max, got: got.slice(0, 300) }));
+  }
+  if (JSON.stringify(tsRowPieces(cells, rowNo, max)) !== JSON.stringify(pieces)) rowTsDiff++;
+}
+mustThrow('rowTextPieces rowNo 0', () => rowTextPieces(['a'], 0, 10));
+mustThrow('rowTextPieces rowNo 1.5', () => rowTextPieces(['a'], 1.5, 10));
+mustThrow('rowTextPieces rowNo 1e15+1', () => rowTextPieces(['a'], 1e15 + 1, 10));
+mustThrow('rowTextPieces max 0', () => rowTextPieces(['a'], 1, 0));
+mustThrow('rowTextPieces max 2^40+1', () => rowTextPieces(['a'], 1, 2 ** 40 + 1));
+mustThrow('rowTextPieces texts numbers', () => rowTextPieces([1, 2], 1, 10));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -574,6 +597,9 @@ console.log(JSON.stringify({
   kind_cases: kindRows.length,
   kind_mismatches: kindMismatches,
   kind_ts_differences: kindTsDiff,
+  row_cases: rowRows.length,
+  row_mismatches: rowMismatches,
+  row_ts_differences: rowTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || !errorOk ? 1 : 0);

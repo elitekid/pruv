@@ -436,3 +436,70 @@ pub fn extension_at(name: String) -> napi::Result<i64> {
     name_ok("extensionAt", &name)?;
     Ok(kind_of_gen::extension_at(&name))
 }
+
+#[path = "../gen/row_pieces_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod row_pieces_gen;
+
+#[napi(object)]
+pub struct RowPiece {
+    pub row: f64,
+    /// First and last column (1-based) whose text is in the piece.
+    pub col1: f64,
+    pub col2: f64,
+    pub text: String,
+}
+
+/// Lair rowPieces (behind extractSheets) on the cellText of every cell: "행 {rowNo}: " followed by the
+/// non-empty cells joined with " | ", a cell labelled "{letters}=" unless it continues the previous or
+/// next column (column 1 is never labelled at the start of a piece), each piece at most `max` UTF-16
+/// units of text after the head, a long cell split by splitText first. Pruv returns columns and byte
+/// ranges into the texts joined with '\n'; only the head and the column letters are formatted here.
+#[napi(js_name = "rowTextPieces")]
+pub fn row_text_pieces(texts: Vec<String>, row_no: f64, max: f64) -> napi::Result<Vec<RowPiece>> {
+    if !row_no.is_finite() || row_no.fract() != 0.0 || !(1.0..=1_000_000_000_000_000.0).contains(&row_no) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "rowTextPieces: rowNo must be an integer in 1..=1000000000000000"));
+    }
+    if !max.is_finite() || max.fract() != 0.0 || !(1.0..=1_099_511_627_776.0).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "rowTextPieces: max must be an integer in 1..=1099511627776"));
+    }
+    let joined = texts.join("\n");
+    if joined.len() as u64 > 180_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "rowTextPieces: texts joined with newlines must be at most 180000000000 UTF-8 bytes"));
+    }
+    let mut ends = Vec::with_capacity(texts.len());
+    let mut at = 0usize;
+    for (k, t) in texts.iter().enumerate() {
+        at += usize::from(k > 0) + t.len();
+        ends.push(at as i64);
+    }
+    let row = row_no as i64;
+    let r = row_pieces_gen::row_bounds(&joined, &ends, row, max as i64);
+    if r.first() == Some(&-1) {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "rowTextPieces: malformed item ends"));
+    }
+    let head = format!("행 {row}: ");
+    let mut out = Vec::new();
+    let mut k = 0usize;
+    while k + 3 <= r.len() {
+        let nseg = r[k + 2] as usize;
+        let mut text = head.clone();
+        for q in 0..nseg {
+            let p = &r[k + 3 + 3 * q..k + 6 + 3 * q];
+            if q > 0 {
+                text.push_str(" | ");
+            }
+            if p[0] > 0 {
+                text.push_str(&col_letters_gen::col_letters(p[0]));
+                text.push('=');
+            }
+            text.push_str(&joined[p[1] as usize..p[2] as usize]);
+        }
+        out.push(RowPiece { row: row_no, col1: r[k] as f64, col2: r[k + 1] as f64, text });
+        k += 3 + 3 * nseg;
+    }
+    Ok(out)
+}

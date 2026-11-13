@@ -1,0 +1,333 @@
+// Lair rowPieces (src/documents/sheets.ts, behind extractSheets): one sheet row's cell texts (already
+// passed through cellText) cut into pieces of at most max UTF-16 code units including the head
+// "행 N: ". Each nonempty cell is split by splitText(value, max(max - head - 12, 100)); a part gets the
+// label "<column letters>=" unless it continues the previous column or the next column of the same
+// piece (or, starting a piece, unless it is column 1); parts are joined with " | "; a piece is closed
+// when the next part would pass max - head (text + 3 + part), and the part is then relabelled as the
+// start of a new piece.
+// The host passes the cells joined with '\n' as s and ends[j] = byte end of cell j (cell j, column
+// j + 1, starts one byte after cell j - 1 ends). The result is per piece [col1, col2, nseg] followed by
+// nseg segments [label, start, end]: label is the column whose letters prefix the segment (0 for none),
+// start..end the byte range of the part in s. A malformed ends array gives the single record [-1].
+// Domain: integer 1 <= max <= 2^40, 1 <= rowNo <= 10^15, s at most 1.8 * 10^11 UTF-8 bytes
+// (so the 6 slots per byte stay within an alloc of 2^40).
+
+// JS String.prototype.trim whitespace (WhiteSpace + LineTerminator) at the character starting at i:
+// U+0009..000D, 0020, 00A0, 1680, 2000..200A, 2028, 2029, 202F, 205F, 3000, FEFF.
+fn is_ws(s: str, i: i64) -> bool
+  requires 0 <= i && i < len(s)
+{
+  let b: i64 = s[i];
+  if (9 <= b && b <= 13) || b == 32 { return true; }
+  if b == 194 && i + 1 < len(s) { return s[i + 1] == 160; }
+  if i + 2 >= len(s) { return false; }
+  let c: i64 = s[i + 1];
+  let d: i64 = s[i + 2];
+  if b == 225 { return c == 154 && d == 128; }
+  if b == 226 && c == 128 { return (128 <= d && d <= 138) || d == 168 || d == 169 || d == 175; }
+  if b == 226 && c == 129 { return d == 159; }
+  if b == 227 { return c == 128 && d == 128; }
+  if b == 239 { return c == 187 && d == 191; }
+  return false;
+}
+
+// UTF-16 length of the character starting at boundary i: 2 for a 4-byte character, else 1.
+fn width(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 1 <= result && result <= 2
+{
+  if s[i] >= 240 { return 2; }
+  return 1;
+}
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+  ensures forall t in i+1..result: !is_char_boundary(s, t)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    invariant forall t in i+1..j: !is_char_boundary(s, t)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+// Start of the character ending at boundary j.
+fn prev(s: str, j: i64) -> i64
+  requires 0 < j && j <= len(s)
+  ensures 0 <= result && result < j
+  ensures is_char_boundary(s, result)
+  ensures forall t in result+1..j: !is_char_boundary(s, t)
+{
+  let mut i: i64 = j - 1;
+  while i > 0 && !is_char_boundary(s, i)
+    invariant 0 <= i && i < j
+    invariant forall t in i+1..j: !is_char_boundary(s, t)
+    decreases i
+  {
+    i = i - 1;
+  }
+  return i;
+}
+
+// Skip whitespace characters forward from a, staying at or before b.
+fn trim_start(s: str, a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  ensures a <= result && result <= b && is_char_boundary(s, result)
+{
+  let mut i: i64 = a;
+  while i < b && is_ws(s, i)
+    invariant a <= i && i <= b && is_char_boundary(s, i)
+    decreases b - i
+  {
+    i = next(s, i);
+  }
+  return i;
+}
+
+// Drop whitespace characters backward from b, staying at or after a.
+fn trim_end(s: str, a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  ensures a <= result && result <= b && is_char_boundary(s, result)
+{
+  let mut j: i64 = b;
+  let mut go: i64 = 1;
+  while go == 1 && j > a
+    invariant a <= j && j <= b && is_char_boundary(s, j) && 0 <= go && go <= 1
+    decreases j - a + go
+  {
+    let p: i64 = prev(s, j);
+    if is_ws(s, p) { j = p; } else { go = 0; }
+  }
+  return j;
+}
+
+// UTF-16 length of the boundary range a..b.
+fn units(s: str, a: i64, b: i64) -> i64
+  requires 0 <= a && a <= b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  ensures 0 <= result && result <= 2 * (b - a)
+{
+  let mut i: i64 = a;
+  let mut u: i64 = 0;
+  while i < b
+    invariant a <= i && i <= b && is_char_boundary(s, i)
+    invariant 0 <= u && u <= 2 * (i - a)
+    decreases b - i
+  {
+    u = u + width(s, i);
+    i = next(s, i);
+  }
+  return u;
+}
+
+// One cut of the rest a..b (longer than max units): the last LF, else the last space, at unit position
+// <= max and >= max / 2; else unit max, moved back one unit if it falls inside a 4-byte character.
+// Unit position u of the character at byte i; the scan stops at the character holding unit max.
+fn cut(s: str, a: i64, b: i64, max: i64) -> i64
+  requires 0 <= a && a < b && b <= len(s)
+  requires is_char_boundary(s, a) && is_char_boundary(s, b)
+  requires 2 <= max && max <= 1099511627776
+  ensures a < result && result <= b && is_char_boundary(s, result)
+{
+  let mut i: i64 = a;
+  let mut u: i64 = 0;
+  let mut nl: i64 = -1;
+  let mut nlu: i64 = 0;
+  let mut sp: i64 = -1;
+  let mut spu: i64 = 0;
+  let mut at: i64 = b;
+  let mut go: i64 = 1;
+  while go == 1 && i < b
+    invariant a <= i && i <= b && is_char_boundary(s, i)
+    invariant 0 <= u && u <= max && (i > a || u == 0)
+    invariant 0 <= nlu && nlu <= max && 0 <= spu && spu <= max
+    invariant nl == -1 || (a < nl && nl < b && is_char_boundary(s, nl))
+    invariant sp == -1 || (a < sp && sp < b && is_char_boundary(s, sp))
+    invariant a < at && at <= b && is_char_boundary(s, at) && 0 <= go && go <= 1
+    decreases b - i + go
+  {
+    let c: i64 = s[i];
+    if i > a && c == 10 { nl = i; nlu = u; }
+    if i > a && c == 32 { sp = i; spu = u; }
+    let w: i64 = width(s, i);
+    if u + w > max {
+      at = i;
+      go = 0;
+    } else {
+      u = u + w;
+      i = next(s, i);
+    }
+  }
+  if nl >= 0 && 2 * nlu >= max { return nl; }
+  if sp >= 0 && 2 * spu >= max { return sp; }
+  return at;
+}
+
+// UTF-16 length of the label "<colLetters(col)>=": one letter per step of n -> (n - 1) / 26, plus '='.
+fn label_units(col: i64) -> i64
+  requires 1 <= col && col <= 1000000000000000
+  ensures 1 <= result && result <= col + 1
+{
+  let mut n: i64 = col;
+  let mut c: i64 = 1;
+  while n > 0
+    invariant 0 <= n && n <= col && 1 <= c && c + n <= col + 1
+    decreases n
+  {
+    n = (n - 1) / 26;
+    c = c + 1;
+  }
+  return c;
+}
+
+// UTF-16 length of the head "행 N: ": '행', ' ', the decimal digits of row_no, ':', ' '.
+fn head_units(row_no: i64) -> i64
+  requires 1 <= row_no && row_no <= 1000000000000000
+  ensures 5 <= result && result <= 20
+{
+  let mut c: i64 = 5;
+  let mut p: i64 = 10;
+  while p <= row_no && c < 20
+    invariant 5 <= c && c <= 20 && 10 <= p && p <= 10000000000000000
+    decreases 20 - c
+  {
+    p = p * 10;
+    c = c + 1;
+  }
+  return c;
+}
+
+// The whole row. Writes slots while there is room and returns their number (or -1 for a malformed
+// ends), so a first call with an empty out counts and a second one fills. At most 6 slots per byte.
+fn row_into(s: str, ends: [i64], hl: i64, max: i64, inout out: [i64]) -> i64
+  requires 1 <= max && max <= 1099511627776
+  requires 5 <= hl && hl <= 20
+  requires len(s) <= 180000000000
+  ensures len(out) == len(old(out))
+  ensures -1 <= result && result <= 6 * len(s) + 6
+{
+  let lim: i64 = max - hl;
+  let mut im: i64 = max - hl - 12;
+  if im < 100 { im = 100; }
+  let mut n: i64 = 0;
+  let mut active: i64 = 0;
+  let mut tu: i64 = 0;
+  let mut h: i64 = 0;
+  let mut nseg: i64 = 0;
+  let mut col1: i64 = 0;
+  let mut prev: i64 = 0;
+  let mut st: i64 = 0;
+  let mut j: i64 = 0;
+  while j < len(ends)
+    invariant 0 <= j && j <= st && st <= len(s) + 1 && len(out) == len(old(out))
+    invariant 0 <= n && n <= 6 * st
+    invariant 0 <= active && active <= 1 && 0 <= tu && tu <= 2199023255552
+    invariant 0 <= h && h <= n && 0 <= nseg && nseg <= n
+    invariant 0 <= prev && prev <= j && 0 <= col1 && col1 <= j
+    decreases len(ends) - j
+  {
+    let e: i64 = ends[j];
+    if e < st || e > len(s) { return -1; }
+    if !is_char_boundary(s, st) || !is_char_boundary(s, e) { return -1; }
+    let col: i64 = j + 1;
+    let lu: i64 = label_units(col);
+    let b: i64 = trim_end(s, st, e);
+    let mut a: i64 = trim_start(s, st, b);
+    let mut rest: i64 = units(s, a, b);
+    while a < b
+      invariant st <= a && a <= b && b <= e && is_char_boundary(s, a) && is_char_boundary(s, b)
+      invariant 0 <= n && n <= 6 * a && len(out) == len(old(out))
+      invariant 0 <= rest && rest <= 2 * len(s)
+      invariant 0 <= active && active <= 1 && 0 <= tu && tu <= 2199023255552
+      invariant 0 <= h && h <= n && 0 <= nseg && nseg <= n
+      invariant 0 <= prev && prev <= col && 0 <= col1 && col1 <= col
+      decreases b - a
+    {
+      let mut pe: i64 = b;
+      let mut na: i64 = b;
+      if rest > im {
+        let c: i64 = cut(s, a, b, im);
+        pe = trim_end(s, a, c);
+        na = trim_start(s, c, b);
+      }
+      let pu: i64 = units(s, a, pe);
+      let mut lab: i64 = 0;
+      if active == 1 {
+        if prev != col && col != prev + 1 { lab = col; }
+      } else {
+        if col != 1 { lab = col; }
+      }
+      let mut su: i64 = pu;
+      if lab > 0 { su = pu + lu; }
+      if active == 1 && tu + su + 3 > lim {
+        if h + 2 < len(out) {
+          out[h] = col1;
+          out[h + 1] = prev;
+          out[h + 2] = nseg;
+        }
+        active = 0;
+        lab = 0;
+        if col != 1 { lab = col; }
+        su = pu;
+        if lab > 0 { su = pu + lu; }
+      }
+      if active == 0 {
+        h = n;
+        n = n + 3;
+        nseg = 0;
+        col1 = col;
+        tu = su;
+        active = 1;
+      } else {
+        tu = tu + 3 + su;
+      }
+      if n + 2 < len(out) {
+        out[n] = lab;
+        out[n + 1] = a;
+        out[n + 2] = pe;
+      }
+      n = n + 3;
+      nseg = nseg + 1;
+      prev = col;
+      rest = rest - units(s, a, na);
+      if rest < 0 { rest = 0; }
+      a = na;
+    }
+    st = e + 1;
+    j = j + 1;
+  }
+  if active == 1 {
+    if h + 2 < len(out) {
+      out[h] = col1;
+      out[h + 1] = prev;
+      out[h + 2] = nseg;
+    }
+  }
+  return n;
+}
+
+pub fn row_bounds(s: str, ends: [i64], row_no: i64, max: i64) -> [i64] ! alloc
+  requires 1 <= max && max <= 1099511627776
+  requires 1 <= row_no && row_no <= 1000000000000000
+  requires len(s) <= 180000000000
+{
+  let hl: i64 = head_units(row_no);
+  let mut none: [i64] = alloc(0, 0);
+  let k: i64 = row_into(s, ends, hl, max, inout none);
+  if k < 0 {
+    let bad: [i64] = alloc(1, -1);
+    return bad;
+  }
+  let mut out: [i64] = alloc(k, 0);
+  let filled: i64 = row_into(s, ends, hl, max, inout out);
+  return out;
+}

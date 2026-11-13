@@ -30,6 +30,8 @@ on:
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"
       - "bench/l0/run_kind_of.py"
+      - "bench/l0/row_pieces.mjs"
+      - "bench/l0/run_row_pieces.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 
