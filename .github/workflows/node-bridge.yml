@@ -1,6 +1,6 @@
 # Node-API bridge (stage L1). Deliberately path-filtered and manual-dispatchable
 # only: it builds on four OS runners, so it runs just when the bridge, the L0
-# Pruv sources it is generated from, or this file change. No schedule and no
+# Pruv sources it is generated from (with the decode adapter and oracle), or this file change. No schedule and no
 # pull_request trigger, to keep CI rare. ci.yml and windows-abi.yml are unchanged.
 name: node-bridge
 
@@ -11,6 +11,10 @@ on:
     paths:
       - "bridge/node/**"
       - "bench/l0/*.pruv"
+      - "bench/l0/decode_adapter/**"
+      - "bench/l0/decode_oracle.py"
+      - "bench/l0/decode_bytes.mjs"
+      - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 
 env:
@@ -25,7 +29,8 @@ jobs:
   regen:
     runs-on: ubuntu-24.04
     # Builds pruvc-rs and proves every bridge source with both compilers.
-    timeout-minutes: 25
+    # The first run builds vendored z3 and links static LLVM (slow); later runs hit the cargo cache.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -33,8 +38,23 @@ jobs:
           python-version: "3.9"
       - run: python -m pip install -q "z3-solver==${Z3_SOLVER_VERSION}"
         shell: bash
-      # regen.py builds pruvc-rs with --offline to compare both compilers; fetch crates first.
-      - run: cargo fetch --locked --manifest-path pruvc-rs/Cargo.toml
+      # pruvc-rs links LLVM 22 through llvm-sys; same packages as the Linux job of ci.yml.
+      - name: Install LLVM 22
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
+          sudo apt-get update -q
+          sudo apt-get install -y -q llvm-22-dev libpolly-22-dev clang-22 lld-22 libzstd-dev zlib1g-dev libxml2-dev
+          echo "LLVM_SYS_221_PREFIX=/usr/lib/llvm-22" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-22/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pruvc-rs
+          cache-on-failure: true
+      # Build in pruvc-rs/target, which regen.py uses directly (and the cache keeps).
+      - name: Build pruvc-rs
+        working-directory: pruvc-rs
+        run: cargo build --release --locked
       - run: python bridge/node/regen.py --check
 
   build:

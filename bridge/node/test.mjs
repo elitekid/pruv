@@ -1,8 +1,11 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary } from './index.mjs';
 import { versionAtLeast as tsVersionAtLeast } from '../../bench/l0/version_at_least.mjs';
 import { colLetters as tsColLetters } from '../../bench/l0/col_letters.mjs';
 import { plainFromAnsi, applyCrLf, fromState, toState } from '../../bench/l0/term_plain.mjs';
+import { decodeBytes as tsDecodeBytes, looksBinary as tsLooksBinary } from '../../bench/l0/decode_bytes.mjs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -264,6 +267,31 @@ if (clipBytes('', 0) !== '') {
   errorOk = false;
 }
 
+// ---- decodeBytes / looksBinary against the independent WHATWG oracle (bench/l0/decode_oracle.py) ----
+// TS differences are informational: plain Node's TextDecoder('euc-kr') is not WHATWG on every build.
+const oracleScript = fileURLToPath(new URL('../../bench/l0/decode_oracle.py', import.meta.url));
+const decodeRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [oracleScript, '--cases', String(CASES), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let decodeMismatches = 0, decodeTsDiff = 0;
+for (const [h, want] of decodeRows) {
+  const buf = Uint8Array.from(Buffer.from(h, 'hex'));
+  const r = decodeBytes(buf);
+  const got = [r.text, r.encoding, looksBinary(buf)];
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    decodeMismatches++;
+    if (decodeMismatches <= 5) console.error('decode mismatch', JSON.stringify({ hex: h, got, want }));
+  }
+  const t = tsDecodeBytes(buf);
+  if (JSON.stringify([t.text, t.encoding, tsLooksBinary(buf)]) !== JSON.stringify(got)) decodeTsDiff++;
+}
+mustThrow('decodeBytes string', () => decodeBytes('abc'));
+mustThrow('looksBinary number', () => looksBinary(1));
+{
+  const r = decodeBytes(Buffer.from([0xef, 0xbb, 0xbf, 0x61]));
+  if (r.text !== 'a' || r.encoding !== 'utf-8') { console.error('decodeBytes Buffer input failed'); errorOk = false; }
+}
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -284,6 +312,9 @@ console.log(JSON.stringify({
   term_cases: CASES,
   term_mismatches: termMismatches,
   term_ts_differences: termTsDiff,
+  decode_cases: decodeRows.length,
+  decode_mismatches: decodeMismatches,
+  decode_ts_differences: decodeTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || !errorOk ? 1 : 0);

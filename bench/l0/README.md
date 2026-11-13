@@ -90,3 +90,21 @@ independent whole-text Python oracle (a mode machine and a regex CR/LF fold), so
 Recorded seed 12345: 8,748 edge cases plus 20,000 random chunked cases = 28,748. All four
 compiler/backend combinations verified (exit 0). Pruv and TS both matched 28,748/28,748 in text and
 final state. `results/term_plain_summary.json` records the counts; `results/term_plain_differences.jsonl` is empty.
+
+## decodeBytes + looksBinary (L2 second bundle)
+
+Run: `python3 bench/l0/run_decode_bytes.py --seed 12345 --n 20000`.
+Target: Lair `src/documents/decode.ts` (BOM sniffing, strict UTF-8, else EUC-KR via
+`TextDecoder`; binary = a NUL byte in the first 8 KiB). `decode_bytes.mjs` holds the body verbatim.
+`decode_bytes.pruv` proves the BOM checks, a strict UTF-8 validator and `looks_binary` exactly,
+and calls four trusted adapters in `decode_adapter/` (crate `pruv_decode`, built on `encoding_rs`)
+that return owned `String` (G6b). `run.py:build_decode_adapter` builds the crate under `work/`.
+Oracle: `decode_oracle.py`, written from the WHATWG Encoding Standard without Python codecs;
+it reads `data/index-euc-kr.txt` (official index, SHA-256 checked, `-text` in `.gitattributes`).
+The TS copy runs in Lair's Electron when available (`LAIR_ELECTRON`, then an installed Lair
+Preview), because Homebrew Node 26's EUC-KR decoder is not WHATWG (0x80 gives U+0080).
+
+Recorded seed 12345: 1,939 edge + 20,000 random byte strings = 21,939 cases. All four
+compiler/backend combinations verified (exit 0). Pruv, the TS original (Electron 44.11.2,
+Node 24.22.2, ICU 78.2) and the oracle agree on `[text, encoding, binary]` in 21,939/21,939.
+`results/decode_bytes_summary.json` records counts; `decode_bytes_differences.jsonl` is empty.

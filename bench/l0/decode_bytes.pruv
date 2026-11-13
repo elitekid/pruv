@@ -1,0 +1,127 @@
+// Lair decodeBytes + looksBinary (src/documents/decode.ts). Pruv decides the encoding: BOM checks
+// and a strict UTF-8 validator are proved here; the decoders themselves are encoding_rs behind
+// trusted adapters in the pruv_decode crate (bench/l0/decode_adapter), which return owned String.
+// Encoding kinds: 0 utf-8 with BOM, 1 utf-16le BOM, 2 utf-16be BOM, 3 valid utf-8, 4 cp949.
+
+trusted rust fn utf8_lossy(data: [u8], from: i64) -> String ! alloc
+  requires 0 <= from && from <= len(data)
+  ensures len(result) <= 3 * (len(data) - from)
+  = "::pruv_decode::utf8_lossy";
+
+trusted rust fn utf16(data: [u8], from: i64, big: bool) -> String ! alloc
+  requires 0 <= from && from <= len(data)
+  ensures len(result) <= 2 * (len(data) - from) + 3
+  = "::pruv_decode::utf16";
+
+trusted rust fn euc_kr(data: [u8]) -> String ! alloc
+  ensures len(result) <= 3 * len(data)
+  = "::pruv_decode::euc_kr";
+
+// Valid UTF-8 is copied byte for byte; anything else gives an empty string.
+trusted rust fn utf8_copy(data: [u8]) -> String ! alloc
+  ensures len(result) == 0 || len(result) == len(data)
+  ensures len(result) == len(data) ==> (forall i in 0..len(data): result[i] == data[i])
+  = "::pruv_decode::utf8_copy";
+
+// Strict UTF-8 (the WHATWG decoder in fatal mode): no overlongs, surrogates or code points
+// above U+10FFFF, and no truncated sequence at the end.
+fn utf8_ok(a: [u8]) -> bool
+  requires len(a) <= 1_000_000_000_000
+{
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a)
+    decreases len(a) - i
+  {
+    let b: i64 = a[i];
+    if b <= 127 {
+      i = i + 1;
+    } else {
+      let mut need: i64 = 0;
+      let mut lo: i64 = 128;
+      let mut hi: i64 = 191;
+      if 194 <= b && b <= 223 { need = 1; }
+      if 224 <= b && b <= 239 {
+        need = 2;
+        if b == 224 { lo = 160; }
+        if b == 237 { hi = 159; }
+      }
+      if 240 <= b && b <= 244 {
+        need = 3;
+        if b == 240 { lo = 144; }
+        if b == 244 { hi = 143; }
+      }
+      if need == 0 { return false; }
+      if i + need >= len(a) { return false; }
+      let c: i64 = a[i + 1];
+      if c < lo || c > hi { return false; }
+      let mut k: i64 = 2;
+      while k <= need
+        invariant 2 <= k && k <= need + 1 && need <= 3 && i + need < len(a)
+        decreases need + 1 - k
+      {
+        let d: i64 = a[i + k];
+        if d < 128 || d > 191 { return false; }
+        k = k + 1;
+      }
+      i = i + need + 1;
+    }
+  }
+  return true;
+}
+
+fn decode_kind(data: [u8]) -> i64
+  requires len(data) <= 1_000_000_000_000
+  ensures 0 <= result && result <= 4
+  ensures result == 0 ==> (len(data) >= 3 && data[0] == 239 && data[1] == 187 && data[2] == 191)
+  ensures (len(data) >= 3 && data[0] == 239 && data[1] == 187 && data[2] == 191) ==> result == 0
+  ensures result == 1 ==> (len(data) >= 2 && data[0] == 255 && data[1] == 254)
+  ensures (len(data) >= 2 && data[0] == 255 && data[1] == 254) ==> result == 1
+  ensures result == 2 ==> (len(data) >= 2 && data[0] == 254 && data[1] == 255)
+  ensures (len(data) >= 2 && data[0] == 254 && data[1] == 255) ==> result == 2
+{
+  if len(data) >= 3 && data[0] == 239 && data[1] == 187 && data[2] == 191 { return 0; }
+  if len(data) >= 2 && data[0] == 255 && data[1] == 254 { return 1; }
+  if len(data) >= 2 && data[0] == 254 && data[1] == 255 { return 2; }
+  if utf8_ok(data) { return 3; }
+  return 4;
+}
+
+fn decode_text(data: [u8]) -> str ! alloc
+  requires len(data) <= 1_000_000_000_000
+  ensures len(result) <= 3 * len(data)
+{
+  let k: i64 = decode_kind(data);
+  if k == 0 {
+    let s: String = utf8_lossy(data, 3);
+    return string_to_str(s);
+  }
+  if k == 1 || k == 2 {
+    let s: String = utf16(data, 2, k == 2);
+    return string_to_str(s);
+  }
+  if k == 3 {
+    let s: String = utf8_copy(data);
+    return string_to_str(s);
+  }
+  let s: String = euc_kr(data);
+  return string_to_str(s);
+}
+
+// A NUL byte in the first 8 KiB.
+fn looks_binary(data: [u8]) -> bool
+  requires len(data) <= 1_000_000_000_000
+  ensures result ==> (exists i in 0..len(data): i < 8192 && data[i] == 0)
+  ensures !result ==> (forall i in 0..len(data): i < 8192 ==> data[i] != 0)
+{
+  let mut i: i64 = 0;
+  while i < len(data) && i < 8192
+    invariant 0 <= i && i <= len(data) && i <= 8192
+    invariant forall j in 0..i: data[j] != 0
+    decreases len(data) - i
+  {
+    if data[i] == 0 { return true; }
+    i = i + 1;
+  }
+  return false;
+}

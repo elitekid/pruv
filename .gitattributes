@@ -4,3 +4,5 @@ tests/must_reject/g2b_unterminated_escape.pruv -text
 tests/parse_edge/str_err_unterminated.pruv -text
 tests/parse_edge/str_err_escape_quote_at_eof.pruv -text
 tests/parse_edge/str_err_del.pruv -text
+# L2: the WHATWG EUC-KR index is checked by SHA-256, so keep its bytes on every checkout
+bench/l0/data/index-euc-kr.txt -text

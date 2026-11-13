@@ -28,6 +28,10 @@ mod col_letters_gen;
 #[allow(dead_code, clippy::all)]
 mod term_plain_gen;
 
+#[path = "../gen/decode_bytes_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod decode_bytes_gen;
+
 fn term_args(name: &str, state: f64, data: &str) -> napi::Result<i64> {
     if !state.is_finite() || state.fract() != 0.0 || !(0.0..=11.0).contains(&state) {
         return Err(napi::Error::new(napi::Status::InvalidArg,
@@ -98,4 +102,42 @@ pub fn host_within(host: String, site: String) -> napi::Result<bool> {
         ));
     }
     Ok(host_within_gen::host_within(&host, &site))
+}
+
+const DECODE_MAX: usize = 1_000_000_000_000;
+// Index = decode_kind result: 0 UTF-8 BOM, 1 UTF-16LE BOM, 2 UTF-16BE BOM, 3 valid UTF-8, 4 EUC-KR.
+const ENCODINGS: [&str; 5] = ["utf-8", "utf-16le", "utf-16be", "utf-8", "cp949"];
+
+fn decode_input(name: &str, data: &[u8]) -> napi::Result<()> {
+    if data.len() > DECODE_MAX {
+        return Err(napi::Error::new(
+            napi::Status::InvalidArg,
+            format!("{name}: data must be at most 1000000000000 bytes"),
+        ));
+    }
+    Ok(())
+}
+
+#[napi(object)]
+pub struct Decoded {
+    pub text: String,
+    pub encoding: String,
+}
+
+/// Lair decodeBytes: BOM, then strict UTF-8, else EUC-KR (WHATWG decoders via encoding_rs).
+#[napi(js_name = "decodeBytes")]
+pub fn decode_bytes(data: napi::bindgen_prelude::Uint8Array) -> napi::Result<Decoded> {
+    decode_input("decodeBytes", &data)?;
+    let kind = decode_bytes_gen::decode_kind(&data);
+    Ok(Decoded {
+        text: decode_bytes_gen::decode_text(&data),
+        encoding: ENCODINGS[kind as usize].to_string(),
+    })
+}
+
+/// A NUL byte in the first 8 KiB.
+#[napi(js_name = "looksBinary")]
+pub fn looks_binary(data: napi::bindgen_prelude::Uint8Array) -> napi::Result<bool> {
+    decode_input("looksBinary", &data)?;
+    Ok(decode_bytes_gen::looks_binary(&data))
 }

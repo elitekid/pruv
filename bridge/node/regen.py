@@ -11,22 +11,26 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 GEN = Path(__file__).resolve().parent / "gen"
-NAMES = ["clip_bytes", "host_within", "version_at_least", "col_letters", "term_plain"]
+NAMES = ["clip_bytes", "host_within", "version_at_least", "col_letters", "term_plain", "decode_bytes"]
+# Sources with trusted adapters need the adapter crate to verify against.
+EXTERN = {"decode_bytes": "decode"}
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT / 'bench' / 'l0'))
-from run import configure, WORK
+from run import build_decode_adapter, configure, WORK
 
 
 def main() -> int:
     check = "--check" in sys.argv[1:]
     stale = []
     g2, _ = configure()
+    flags = {"decode": build_decode_adapter()[0]}
     with tempfile.TemporaryDirectory(dir=WORK) as tmp:
         for name in NAMES:
             out = Path(tmp) / f"{name}_gen.rs"
             src = ROOT / "bench" / "l0" / f"{name}.pruv"
+            extra = flags[EXTERN[name]] if name in EXTERN else []
             r = subprocess.run(
-                g2.COMPILERS['py'] + [str(src), "-o", str(out)],
+                g2.COMPILERS['py'] + [str(src), "-o", str(out)] + extra,
                 cwd=str(ROOT),
             )
             if r.returncode != 0:
@@ -35,7 +39,7 @@ def main() -> int:
             dest = GEN / f"{name}_gen.rs"
             new = out.read_bytes()
             rs_out = Path(tmp) / f"{name}_rs.rs"
-            r = subprocess.run(g2.COMPILERS['rs'] + [str(src), '-o', str(rs_out)], cwd=ROOT)
+            r = subprocess.run(g2.COMPILERS['rs'] + [str(src), '-o', str(rs_out)] + extra, cwd=ROOT)
             if r.returncode:
                 return r.returncode
             if rs_out.read_bytes() != new:

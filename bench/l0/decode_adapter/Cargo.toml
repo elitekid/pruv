@@ -1,0 +1,15 @@
+[package]
+name = "pruv-decode-adapter"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Trusted encoding_rs adapters for bench/l0/decode_bytes.pruv"
+
+[lib]
+name = "pruv_decode"
+path = "src/lib.rs"
+
+[dependencies]
+encoding_rs = "=0.8.44"
+
+[workspace]

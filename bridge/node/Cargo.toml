@@ -10,6 +10,8 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "3", default-features = false, features = ["napi4"] }
 napi-derive = "3"
+# Trusted encoding_rs adapters that decode_bytes.pruv calls (crate name pruv_decode).
+pruv_decode = { package = "pruv-decode-adapter", path = "../../bench/l0/decode_adapter" }
 
 [build-dependencies]
 napi-build = "2"

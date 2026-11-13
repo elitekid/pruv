@@ -1346,3 +1346,13 @@ Fourth G6 batch (`docs/G6_SPEC.md` §7.5, decisions in §13). Python reference f
 - **Full runs:** Python compiler 3,338/3,338 and Rust compiler 3,350/3,350 on both backends; row comparison: missing 0, extra 0, failed 0 (the 12 rows outside the Python run are Rust-compiler-only).
 - **Audit:** one static audit of both compilers (Codex) found no must-fix or should-fix defects.
 
+## 75. L2 second bundle: byte decoding with a third-party crate (`decodeBytes` + `looksBinary`) (2026-11-13)
+
+- **Target:** Lair `src/documents/decode.ts` `decodeBytes` (UTF-8/UTF-16LE/UTF-16BE BOM, otherwise strict UTF-8, otherwise EUC-KR, all through `TextDecoder`) and `looksBinary` (a NUL byte in the first 8 KiB). Copied verbatim to `bench/l0/decode_bytes.mjs`; Lair is not changed.
+- **Pruv version:** `bench/l0/decode_bytes.pruv`, the first L2 piece that uses a third-party crate. Pruv decides the encoding: the BOM checks (both directions), a strict UTF-8 validator (no overlongs, surrogates or code points above U+10FFFF) and `looks_binary` (exact `exists`/`forall` contract) are proved on both compilers. The decoders are `encoding_rs` behind four G6b trusted adapters in `bench/l0/decode_adapter` that return owned `String` with length bounds; the valid-UTF-8 path promises a byte-for-byte copy.
+- **Oracle:** `bench/l0/decode_oracle.py`, written from the WHATWG Encoding Standard algorithms without Python codecs, using the official EUC-KR index (`bench/l0/data/index-euc-kr.txt`, SHA-256 checked).
+- **Results (seed 12345, 1,939 edge + 20,000 random = 21,939 byte strings, identical on py/rust, py/llvm, rs/rust, rs/llvm):** Pruv, the TS original run in Lair's Electron (44.11.2, Node 24.22.2, ICU 78.2) and the oracle agree on text, encoding and binary flag in all 21,939 cases.
+- **Finding:** plain Homebrew Node 26 (macOS) `TextDecoder('euc-kr')` is not WHATWG: byte 0x80 gives U+0080 instead of U+FFFD, which gives 6,571 informational TS differences in the bridge test. Lair is not affected, because it runs in Electron.
+- **Bridge:** `bridge/node` exports `decodeBytes(Uint8Array) -> {text, encoding}` and `looksBinary(Uint8Array)`; `gen/decode_bytes_gen.rs` is byte-identical from both compilers (`regen.py --check`). Node test (macOS arm64, Node v26.4.0): 0 mismatches against the oracle in 21,939 cases; error checks pass. CI paths now include the adapter, oracle and data.
+- **Finding:** the addon cannot be loaded into the installed Lair Preview on macOS ("different Team IDs"): Lair's hardened runtime enables library validation, so a bridge shipped with Lair must be signed with Lair's signing identity.
+- **Not done:** nothing is wired into Lair yet.

@@ -90,6 +90,18 @@ def configure():
                 'node': run(['node', '--version']).strip()}
 
 
+def build_decode_adapter():
+    """Build the pruv_decode rlib (decode_adapter/, encoding_rs) for decode_bytes.pruv.
+    Returns the pruvc flags and the matching final rustc flags."""
+    cargo = shutil.which('cargo') or str(Path.home() / '.cargo/bin/cargo')
+    target = WORK / 'decode-adapter'
+    run([cargo, 'build', '--release', '--locked', '--quiet', '--manifest-path',
+         HERE / 'decode_adapter/Cargo.toml', '--target-dir', target], timeout=900)
+    rlib, deps = target / 'release/libpruv_decode.rlib', target / 'release/deps'
+    return (['--rust-extern', f'pruv_decode={rlib}', '--rust-search', str(deps)],
+            ['--extern', f'pruv_decode={rlib}', '-L', f'dependency={deps}'])
+
+
 def cases(n, seed):
     edges = []
     for s in ['', 'a', '\ufffd', '\ufffda', '\ufffd\ufffd', '\ufffdé',
