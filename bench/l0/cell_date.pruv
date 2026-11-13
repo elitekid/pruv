@@ -1,0 +1,89 @@
+// Lair cellText (src/documents/sheets.ts), the Date branch: a spreadsheet date cell becomes
+// "YYYY-MM-DD" from the UTC calendar fields, plus " HH:MM" when the UTC hour, minute or second is nonzero.
+// The year is String(getUTCFullYear()) with no padding (so "-5", "0", "275760"); month, day, hour and
+// minute are padded to two digits. Milliseconds alone never add the time part.
+// Domain: every valid Date, that is integer milliseconds t since 1970-01-01 with |t| <= 8.64e15
+// (years -271821..275760). The result is at most 19 bytes ("-271821-04-21 23:59"); the proof keeps the
+// cruder bound of 6 digits per number field plus separators, 35 bytes.
+//
+// Calendar: days since the epoch, shifted by 685 whole 400-year cycles (100,076,445 days) so that every
+// division below is on nonnegative numbers, then the usual March-based civil-from-days walk.
+
+// Decimal text of n with no leading zeros ("0" for 0), at least `width` digits (zero padded).
+fn dec(n: i64, width: i64) -> str ! alloc
+  requires 0 <= n && n <= 999999
+  requires 1 <= width && width <= 6
+  ensures len(result) <= 6
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 100000;
+  let mut k: i64 = 0;
+  while k < 6
+    invariant 0 <= k && k <= 6
+    invariant 0 <= p && p <= 100000
+    invariant len(out) <= k
+    decreases 6 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      // Digit place 5 - k is written once a digit was written, the digit is nonzero, or the place is
+      // inside the padding width.
+      if len(out) > 0 || d != 0 || 6 - k <= width {
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+pub fn cell_date(t: i64) -> str ! alloc
+  requires -8640000000000000 <= t && t <= 8640000000000000
+  ensures len(result) <= 35
+{
+  let day: i64 = 86400000;
+  // 685 cycles of 146097 days: 100,076,445 days, more than the 10^8 days of the domain.
+  let shifted: i64 = t + 100076445 * day;
+  let days: i64 = shifted / day;
+  let ms: i64 = shifted - days * day;
+  // Days since 0000-03-01 of the shifted calendar (719468 days before 1970-01-01).
+  let z: i64 = days + 719468;
+  let era: i64 = z / 146097;
+  let doe: i64 = z - era * 146097;
+  let yoe: i64 = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  let doy: i64 = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  let mp: i64 = (5 * doy + 2) / 153;
+  let d: i64 = doy - (153 * mp + 2) / 5 + 1;
+  let mut m: i64 = mp + 3;
+  if mp >= 10 {
+    m = mp - 9;
+  }
+  // Undo the shift of 685 * 400 = 274000 years.
+  let mut y: i64 = yoe + era * 400 - 274000;
+  if m <= 2 {
+    y = y + 1;
+  }
+  let mut out: String = string_new();
+  if y < 0 {
+    out = string_push_str(move out, "-");
+    out = string_push_str(move out, dec(-y, 1));
+  } else {
+    out = string_push_str(move out, dec(y, 1));
+  }
+  out = string_push_str(move out, "-");
+  out = string_push_str(move out, dec(m, 2));
+  out = string_push_str(move out, "-");
+  out = string_push_str(move out, dec(d, 2));
+  let h: i64 = ms / 3600000;
+  let mi: i64 = (ms / 60000) % 60;
+  let s: i64 = (ms / 1000) % 60;
+  if h != 0 || mi != 0 || s != 0 {
+    out = string_push_str(move out, " ");
+    out = string_push_str(move out, dec(h, 2));
+    out = string_push_str(move out, ":");
+    out = string_push_str(move out, dec(mi, 2));
+  }
+  return string_to_str(out);
+}

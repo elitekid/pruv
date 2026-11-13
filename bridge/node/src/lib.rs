@@ -48,6 +48,10 @@ mod index_terms_gen;
 #[allow(dead_code, clippy::all)]
 mod note_pairs_gen;
 
+#[path = "../gen/cell_date_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod cell_date_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -608,6 +612,17 @@ pub fn note_pairs(n0: f64, has: f64, pre: Vec<f64>, keys: Vec<f64>) -> napi::Res
         }
     }
     Ok(note_pairs_gen::note_pairs(n0 as i64, has as i64, &p, &k).into_iter().map(|x| x as f64).collect())
+}
+
+/// Lair cellText (src/documents/sheets.ts), the Date branch: "YYYY-MM-DD" in UTC, plus " HH:MM" when the
+/// hour, minute or second is nonzero. ms is the Date's time value.
+#[napi(js_name = "cellDate")]
+pub fn cell_date(ms: f64) -> napi::Result<String> {
+    if !ms.is_finite() || ms.fract() != 0.0 || !(-8.64e15..=8.64e15).contains(&ms) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "cellDate: ms must be an integer in -8640000000000000..=8640000000000000"));
+    }
+    Ok(cell_date_gen::cell_date(ms as i64))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

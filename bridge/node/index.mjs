@@ -62,6 +62,11 @@ export const indexTerms = native.indexTerms;
  *  has: 1 when the key list exists, its entries in pre (0 = null, k = key k), else 0 with pre empty; keys[j]: the
  *  key of call j (0 = none). The host numbers the keys; entries and keys are integers 0..1e9, at most 1e7 each. */
 export const notePairs = native.notePairs;
+
+/** Lair cellText (src/documents/sheets.ts), the Date branch: cellDate(ms) is "YYYY-MM-DD" from the UTC fields
+ *  (year unpadded, may be negative), plus " HH:MM" when the UTC hour, minute or second is nonzero. ms: a valid
+ *  Date's time value, an integer in -8.64e15..=8.64e15 (date.getTime()). */
+export const cellDate = native.cellDate;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 
