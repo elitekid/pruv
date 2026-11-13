@@ -1,0 +1,162 @@
+// Lair kindOf and extensionOf (src/documents/kinds.ts). extensionOf takes the last path segment (split on
+// '/' and '\'), and the text after its last '.' if that dot is not the first character, lowercased with JS
+// toLowerCase. kindOf maps the extension to a document kind by fixed ASCII word sets.
+// The only characters whose JS toLowerCase is all ASCII are ASCII itself and U+212A KELVIN SIGN ("k");
+// U+0130 lowercases to "i" + U+0307, which never matches a word. So kindOf needs no Unicode tables: ASCII
+// is lowercased here and the Kelvin sign (UTF-8 E2 84 AA) is read as 'k'.
+// Kinds: 0 unknown, 1 pdf, 2 docx, 3 xlsx, 4 csv, 5 image, 6 text, 7 unsupported.
+
+// Byte index of the first extension byte (after the last '.' of the last segment), or -1 if none.
+fn ext_from(name: str) -> i64
+  ensures result == -1 || (1 <= result && result <= len(name))
+{
+  let mut base: i64 = 0;
+  let mut dot: i64 = -1;
+  let mut i: i64 = 0;
+  while i < len(name)
+    invariant 0 <= i && i <= len(name)
+    invariant 0 <= base && base <= i
+    invariant dot == -1 || (base <= dot && dot < i)
+    decreases len(name) - i
+  {
+    let c: i64 = name[i];
+    if c == 47 || c == 92 {
+      base = i + 1;
+      dot = -1;
+    } else {
+      if c == 46 { dot = i; }
+    }
+    i = i + 1;
+  }
+  if dot > base { return dot + 1; }
+  return -1;
+}
+
+// UTF-16 units in name[0..end) (end on a character boundary).
+fn units_to(name: str, end: i64) -> i64
+  requires 0 <= end && end <= len(name)
+  ensures 0 <= result && result <= 2 * end
+{
+  let mut n: i64 = 0;
+  let mut i: i64 = 0;
+  while i < end
+    invariant 0 <= i && i <= end && 0 <= n && n <= 2 * i
+    decreases end - i
+  {
+    let c: i64 = name[i];
+    if c < 128 || c >= 192 { n = n + 1; }
+    if c >= 240 { n = n + 1; }
+    i = i + 1;
+  }
+  return n;
+}
+
+// UTF-16 index where extensionOf's text starts, or -1 when extensionOf is "". The host returns
+// name.slice(index).toLowerCase().
+pub fn extension_at(name: str) -> i64
+  requires len(name) <= 1000000000000
+  ensures -1 <= result && result <= 2 * len(name)
+{
+  let at: i64 = ext_from(name);
+  if at < 0 { return -1; }
+  return units_to(name, at);
+}
+
+// Word key: each lowercased ASCII character c as a base-129 digit c + 1, at most 8 characters, so a key
+// is below 129^8 < 2^63 and equal keys mean equal words. cap is 129^(characters so far); 129^7 = 594467302491009.
+// Key of an ASCII word literal of at most 8 bytes (-2 if longer; no literal here is).
+fn word(w: str) -> i64
+  ensures result == -2 || result >= 0
+{
+  let mut k: i64 = 0;
+  let mut cap: i64 = 1;
+  let mut i: i64 = 0;
+  while i < len(w)
+    invariant 0 <= i && i <= len(w)
+    invariant 1 <= cap && cap <= 76686282021340161 && 0 <= k && k < cap
+    decreases len(w) - i
+  {
+    if cap > 594467302491009 { return -2; }
+    let c: i64 = w[i];
+    k = k * 129 + c % 128 + 1;
+    cap = cap * 129;
+    i = i + 1;
+  }
+  return k;
+}
+
+// Key of the lowercased extension starting at byte at, or -1 if it has a character other than ASCII and
+// the Kelvin sign, or more than 8 characters (no word is longer).
+fn ext_key(name: str, at: i64) -> i64
+  requires 0 <= at && at <= len(name)
+  ensures result >= -1
+{
+  let mut k: i64 = 0;
+  let mut cap: i64 = 1;
+  let mut i: i64 = at;
+  while i < len(name)
+    invariant at <= i && i <= len(name)
+    invariant 1 <= cap && cap <= 76686282021340161 && 0 <= k && k < cap
+    decreases len(name) - i
+  {
+    if cap > 594467302491009 { return -1; }
+    let c: i64 = name[i];
+    let mut lc: i64 = c;
+    if c < 128 {
+      if 65 <= c && c <= 90 { lc = c + 32; }
+      i = i + 1;
+    } else {
+      if c == 226 && i + 2 < len(name) && name[i + 1] == 132 && name[i + 2] == 170 {
+        lc = 107;
+        i = i + 3;
+      } else {
+        return -1;
+      }
+    }
+    k = k * 129 + lc + 1;
+    cap = cap * 129;
+  }
+  return k;
+}
+
+fn is_image(k: i64) -> bool ! alloc {
+  return k == word("png") || k == word("jpg") || k == word("jpeg") || k == word("webp") || k == word("gif")
+    || k == word("bmp") || k == word("tif") || k == word("tiff");
+}
+
+fn is_text(k: i64) -> bool ! alloc {
+  return k == word("txt") || k == word("md") || k == word("markdown") || k == word("log") || k == word("json")
+    || k == word("jsonl") || k == word("yaml") || k == word("yml") || k == word("xml") || k == word("html")
+    || k == word("htm") || k == word("css") || k == word("ini") || k == word("toml") || k == word("cfg")
+    || k == word("conf") || k == word("env") || k == word("rst") || k == word("tex") || k == word("srt")
+    || k == word("vtt")
+    || k == word("js") || k == word("mjs") || k == word("cjs") || k == word("ts") || k == word("tsx")
+    || k == word("jsx") || k == word("py") || k == word("rb") || k == word("go") || k == word("rs")
+    || k == word("java") || k == word("kt") || k == word("swift") || k == word("c") || k == word("h")
+    || k == word("cc") || k == word("cpp") || k == word("hpp") || k == word("cs") || k == word("php")
+    || k == word("sh") || k == word("bat") || k == word("ps1") || k == word("sql") || k == word("svg");
+}
+
+fn is_unsupported(k: i64) -> bool ! alloc {
+  return k == word("pptx") || k == word("ppt") || k == word("hwp") || k == word("hwpx") || k == word("doc")
+    || k == word("xls") || k == word("odt") || k == word("ods") || k == word("odp") || k == word("rtf")
+    || k == word("pages") || k == word("numbers") || k == word("key") || k == word("zip") || k == word("epub");
+}
+
+pub fn kind_of(name: str) -> i64 ! alloc
+  requires len(name) <= 1000000000000
+  ensures 0 <= result && result <= 7
+{
+  let at: i64 = ext_from(name);
+  if at < 0 { return 0; }
+  let k: i64 = ext_key(name, at);
+  if k < 0 { return 0; }
+  if k == word("pdf") { return 1; }
+  if k == word("docx") { return 2; }
+  if k == word("xlsx") { return 3; }
+  if k == word("csv") || k == word("tsv") { return 4; }
+  if is_image(k) { return 5; }
+  if is_text(k) { return 6; }
+  if is_unsupported(k) { return 7; }
+  return 0;
+}

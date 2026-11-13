@@ -1,6 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt } from './index.mjs';
+import { kindOf as tsKindOf, extensionOf as tsExtensionOf } from '../../bench/l0/kind_of.mjs';
 import { renderClipSheet as tsRenderClipSheet } from '../../bench/l0/clip_sheet.mjs';
 import { numberRanges as tsNumberRanges } from '../../bench/l0/number_ranges.mjs';
 import { shrinkDecoded as tsShrinkDecoded, readOrientation as tsReadOrientation } from '../../bench/l0/image_shrink.mjs';
@@ -509,6 +510,23 @@ mustInvalidArg('clipSheetCell data length', () => clipSheetCell(blankSheet, 0, o
 mustInvalidArg('clipSheetCell long number', () => clipSheetCell(blankSheet, 0, onePixel, 1, 1, 1, 1, '', '9'.repeat(4097)));
 mustInvalidArg('clipSheetCell long label', () => clipSheetCell(blankSheet, 0, onePixel, 1, 1, 1, 1, 'x'.repeat(1000001), '1'));
 
+// ---- kindOf / extensionOf against the re.split oracle (bench/l0/run_kind_of.py --emit) ----
+const kindScript = fileURLToPath(new URL('../../bench/l0/run_kind_of.py', import.meta.url));
+const kindRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [kindScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let kindMismatches = 0, kindTsDiff = 0;
+for (const [name, at, ext, kind] of kindRows) {
+  const got = [extensionAt(name), extensionOf(name), kindOf(name)];
+  if (got[0] !== at || got[1] !== ext || got[2] !== kind) {
+    kindMismatches++;
+    if (kindMismatches <= 5) console.error('kind mismatch', JSON.stringify({ name, got, want: [at, ext, kind] }));
+  }
+  if (tsKindOf(name) !== got[2] || tsExtensionOf(name) !== got[1]) kindTsDiff++;
+}
+mustThrow('kindOf number', () => kindCode(5));
+mustThrow('extensionAt null', () => extensionAt(null));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -553,6 +571,9 @@ console.log(JSON.stringify({
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
+  kind_cases: kindRows.length,
+  kind_mismatches: kindMismatches,
+  kind_ts_differences: kindTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || !errorOk ? 1 : 0);

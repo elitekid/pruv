@@ -98,3 +98,18 @@ export function renderClipSheet(cells, jpeg) {
   });
   return Buffer.from(jpeg.encode({ data: sheet, width: 1560, height: 920 }, 80).data);
 }
+
+export const kindCode = native.kindCode;
+export const extensionAt = native.extensionAt;
+const KINDS = ['unknown', 'pdf', 'docx', 'xlsx', 'csv', 'image', 'text', 'unsupported'];
+
+/** Lair extensionOf: the start index comes from the verified Pruv extensionAt; the Unicode lowercasing is JS. */
+export function extensionOf(name) {
+  const at = native.extensionAt(name);
+  return at < 0 ? '' : name.slice(at).toLowerCase();
+}
+
+/** Lair kindOf, decided by the verified Pruv kindCode. */
+export function kindOf(name) {
+  return KINDS[native.kindCode(name)];
+}

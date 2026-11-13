@@ -28,6 +28,8 @@ on:
       - "bench/l0/run_number_ranges.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
+      - "bench/l0/kind_of.mjs"
+      - "bench/l0/run_kind_of.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 

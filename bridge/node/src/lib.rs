@@ -12,6 +12,10 @@ use napi_derive::napi;
 #[allow(dead_code, clippy::all)]
 mod number_ranges_gen;
 
+#[path = "../gen/kind_of_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod kind_of_gen;
+
 #[path = "../gen/clip_sheet_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod clip_sheet_gen;
@@ -407,4 +411,28 @@ pub fn clip_sheet_cell(
             "clipSheetCell: number must be at most 4096 UTF-8 bytes"));
     }
     Ok(clip_sheet_gen::clip_sheet_cell(&sheet, i, &data, w, h, ow, oh, &label, &number).into())
+}
+
+const NAME_MAX: usize = 1_000_000_000_000;
+
+fn name_ok(func: &str, name: &str) -> napi::Result<()> {
+    if name.len() > NAME_MAX {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("{func}: name must be at most 1000000000000 UTF-8 bytes")));
+    }
+    Ok(())
+}
+
+/// Lair kindOf as a code: 0 unknown, 1 pdf, 2 docx, 3 xlsx, 4 csv, 5 image, 6 text, 7 unsupported.
+#[napi(js_name = "kindCode")]
+pub fn kind_code(name: String) -> napi::Result<i64> {
+    name_ok("kindCode", &name)?;
+    Ok(kind_of_gen::kind_of(&name))
+}
+
+/// UTF-16 index where Lair extensionOf's text starts, or -1 when it is empty.
+#[napi(js_name = "extensionAt")]
+pub fn extension_at(name: String) -> napi::Result<i64> {
+    name_ok("extensionAt", &name)?;
+    Ok(kind_of_gen::extension_at(&name))
 }
