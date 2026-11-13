@@ -1,0 +1,699 @@
+// Lair parseHtml (src/documents/docx.ts): the small HTML parser over mammoth output, with its entity
+// decode. Tokens, in the order of Lair's token regex:
+//   <!--...-->            a comment up to the first "-->" (skipped);
+//   <tag ...> </tag ...>  a letter then letters/digits, then either '>' or '/>' right after the name,
+//                         or whitespace followed by anything up to the first '>' with no '<' before it;
+//   text                  a run up to the next '<';
+//   '<'                   a lone '<' as text when nothing above matches.
+// A closing tag cuts the open stack back to below its last element of that name (root never
+// matches); an opening tag adds an element under the top; it is pushed unless it is br, img, hr or
+// written '/>'. Top-level texts that are blank (JS trim) after decoding are dropped.
+// Result: one flat [i64] of records in creation order (elements numbered 0, 1, ... in that order):
+//   text     [0, parent, n, cp1..cpn]
+//   element  [1, parent, n, lowercased tag cps, then for href, colspan, rowspan: -1 when absent, else
+//            n and the decoded value's cps]  (the last attribute of that name wins, as in Lair; Lair
+//            reads no other attribute)
+// parent is the element number, -1 for the root. A decoded &#..; can be a lone surrogate code
+// point; the host builds strings with String.fromCodePoint per code point, so adjacent surrogates
+// join as in JS. Domain: s at most 2^38 UTF-8 bytes. [-1] would mean the output passed 2^40 slots.
+
+// JS whitespace (\s and trim) at byte i: its byte length, or 0.
+fn ws_len(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 0 <= result && result <= 3 && i + result <= len(s)
+{
+  let b: i64 = s[i];
+  if (9 <= b && b <= 13) || b == 32 { return 1; }
+  if b == 194 {
+    if i + 1 < len(s) {
+      if s[i + 1] == 160 { return 2; }
+    }
+    return 0;
+  }
+  if i + 2 >= len(s) { return 0; }
+  let c: i64 = s[i + 1];
+  let d: i64 = s[i + 2];
+  if b == 225 && c == 154 && d == 128 { return 3; }
+  if b == 226 && c == 128 {
+    if (128 <= d && d <= 138) || d == 168 || d == 169 || d == 175 { return 3; }
+  }
+  if b == 226 && c == 129 && d == 159 { return 3; }
+  if b == 227 && c == 128 && d == 128 { return 3; }
+  if b == 239 && c == 187 && d == 191 { return 3; }
+  return 0;
+}
+
+fn ws_cp(c: i64) -> bool {
+  if (9 <= c && c <= 13) || c == 32 || c == 160 || c == 5760 { return true; }
+  if (8192 <= c && c <= 8202) || c == 8232 || c == 8233 || c == 8239 { return true; }
+  return c == 8287 || c == 12288 || c == 65279;
+}
+
+// Byte length of the UTF-8 character at i, cut to b.
+fn clen(s: str, i: i64, b: i64) -> i64
+  requires 0 <= i && i < b && b <= len(s)
+  ensures 1 <= result && result <= 4 && i + result <= b
+{
+  let x: i64 = s[i];
+  let mut l: i64 = 1;
+  if x >= 192 { l = 2; }
+  if x >= 224 { l = 3; }
+  if x >= 240 { l = 4; }
+  if i + l > b { l = b - i; }
+  return l;
+}
+
+// The code point of the l bytes at i.
+fn cp_at(s: str, i: i64, l: i64) -> i64
+  requires 0 <= i && 1 <= l && l <= 4 && i + l <= len(s)
+{
+  let x: i64 = s[i];
+  if l == 1 { return x; }
+  let mut v: i64 = x % 32;
+  if l == 3 { v = x % 16; }
+  if l == 4 { v = x % 8; }
+  let mut k: i64 = 1;
+  while k < l
+    invariant 1 <= k && k <= l && 0 <= v && v < 2097152
+    decreases l - k
+  {
+    let y: i64 = s[i + k];
+    v = (v * 64 + y % 64) % 2097152;
+    k = k + 1;
+  }
+  return v;
+}
+
+fn lower(x: i64) -> i64 {
+  if 65 <= x && x <= 90 { return x + 32; }
+  return x;
+}
+
+// Byte classes: 0 hex digit, 1 decimal digit, 2 ASCII letter, 3 letter or digit, 4 attribute name
+// ([\w:.-]), 5 attribute name start ([a-zA-Z_:]).
+fn is_cls(x: i64, cls: i64) -> bool {
+  let digit: bool = 48 <= x && x <= 57;
+  let letter: bool = (65 <= x && x <= 90) || (97 <= x && x <= 122);
+  if cls == 0 { return digit || (65 <= x && x <= 70) || (97 <= x && x <= 102); }
+  if cls == 1 { return digit; }
+  if cls == 2 { return letter; }
+  if cls == 3 { return digit || letter; }
+  if cls == 4 { return digit || letter || x == 95 || x == 58 || x == 46 || x == 45; }
+  return letter || x == 95 || x == 58;
+}
+
+// The end of the run of class cls from k, before b.
+fn run_cls(s: str, k: i64, b: i64, cls: i64) -> i64
+  requires 0 <= k && k <= b && b <= len(s)
+  ensures k <= result && result <= b
+{
+  let mut i: i64 = k;
+  while i < b && is_cls(s[i], cls)
+    invariant k <= i && i <= b
+    decreases b - i
+  {
+    i = i + 1;
+  }
+  return i;
+}
+
+// The end of the whitespace run from k, before b.
+fn skip_ws(s: str, k: i64, b: i64) -> i64
+  requires 0 <= k && k <= b && b <= len(s)
+  ensures k <= result && result <= b
+{
+  let mut i: i64 = k;
+  let mut go: i64 = 1;
+  while go == 1 && i < b
+    invariant k <= i && i <= b && 0 <= go && go <= 1
+    decreases b - i + go
+  {
+    let l: i64 = ws_len(s, i);
+    if l == 0 {
+      go = 0;
+    } else {
+      i = i + l;
+      if i > b { i = b; }
+    }
+  }
+  return i;
+}
+
+// lower(s[a..b]) == w
+fn word_is(s: str, a: i64, b: i64, w: str) -> bool
+  requires 0 <= a && a <= b && b <= len(s)
+{
+  if b - a != len(w) { return false; }
+  let mut k: i64 = 0;
+  while k < len(w)
+    invariant 0 <= k && k <= len(w) && a + len(w) == b
+    decreases len(w) - k
+  {
+    let x: i64 = s[a + k];
+    let y: i64 = w[k];
+    if lower(x) != y { return false; }
+    k = k + 1;
+  }
+  return true;
+}
+
+// The end of the entity &...; at i (s[i] is '&') within b, or -1: &#x<hex>; (x either case),
+// &#<digits>; or &<letters>;.
+fn ent_end(s: str, i: i64, b: i64) -> i64
+  requires 0 <= i && i < b && b <= len(s)
+  ensures result == -1 || (i + 3 <= result && result <= b)
+{
+  let j: i64 = i + 1;
+  if j >= b { return -1; }
+  if s[j] == 35 {
+    if j + 1 >= b { return -1; }
+    let y: i64 = s[j + 1];
+    if y == 120 || y == 88 {
+      let h: i64 = run_cls(s, j + 2, b, 0);
+      if h > j + 2 && h < b {
+        if s[h] == 59 { return h + 1; }
+      }
+      return -1;
+    }
+    let d: i64 = run_cls(s, j + 1, b, 1);
+    if d > j + 1 && d < b {
+      if s[d] == 59 { return d + 1; }
+    }
+    return -1;
+  }
+  let l: i64 = run_cls(s, j, b, 2);
+  if l > j && l < b {
+    if s[l] == 59 { return l + 1; }
+  }
+  return -1;
+}
+
+// What the entity s[i..e] decodes to: a code point, 1114112 for nothing (a number 0 or past
+// U+10FFFF), 1114113 for "constructor" (Lair's lookup finds Object.prototype.constructor and the
+// replacement becomes its source text), -1 for an unknown name (left as written).
+fn ent_code(s: str, i: i64, e: i64) -> i64 ! alloc
+  requires 0 <= i && i + 3 <= e && e <= len(s)
+{
+  if s[i + 1] == 35 {
+    let mut k: i64 = i + 2;
+    let mut base: i64 = 10;
+    let y: i64 = s[i + 2];
+    if (y == 120 || y == 88) && i + 3 < e { base = 16; k = i + 3; }
+    let mut v: i64 = 0;
+    while k < e - 1
+      invariant i + 2 <= k && k <= e - 1 && 0 <= v && v <= 1114112
+      decreases e - 1 - k
+    {
+      let x: i64 = s[k];
+      let mut dv: i64 = 0;
+      if 48 <= x && x <= 57 { dv = x - 48; }
+      if 65 <= x && x <= 70 { dv = x - 55; }
+      if 97 <= x && x <= 102 { dv = x - 87; }
+      v = v * base + dv;
+      if v > 1114112 { v = 1114112; }
+      k = k + 1;
+    }
+    if v == 0 || v > 1114111 { return 1114112; }
+    return v;
+  }
+  let a: i64 = i + 1;
+  let b: i64 = e - 1;
+  if word_is(s, a, b, "amp") { return 38; }
+  if word_is(s, a, b, "lt") { return 60; }
+  if word_is(s, a, b, "gt") { return 62; }
+  if word_is(s, a, b, "quot") { return 34; }
+  if word_is(s, a, b, "apos") { return 39; }
+  if word_is(s, a, b, "nbsp") { return 32; }
+  if word_is(s, a, b, "constructor") { return 1114113; }
+  return -1;
+}
+
+// out[p] = v when in range; the next slot, held at 2^50.
+fn put(inout out: [i64], p: i64, v: i64) -> i64
+  requires 0 <= p && p <= 1125899906842624
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  if p < len(out) { out[p] = v; }
+  if p < 1125899906842624 { return p + 1; }
+  return p;
+}
+
+fn set(inout out: [i64], at: i64, v: i64) -> ()
+  ensures len(out) == len(old(out))
+{
+  if 0 <= at && at < len(out) { out[at] = v; }
+}
+
+// Write the code points of decode(s[a..b]) from p.
+fn decode_into(s: str, a: i64, b: i64, inout out: [i64], p: i64) -> i64 ! alloc
+  requires 0 <= a && a <= b && b <= len(s)
+  requires 0 <= p && p <= 1125899906842624
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let ctor: str = "function Object() { [native code] }";
+  let mut i: i64 = a;
+  let mut q: i64 = p;
+  while i < b
+    invariant a <= i && i <= b && 0 <= q && q <= 1125899906842624 && len(out) == len(old(out))
+    decreases b - i
+  {
+    let mut nx: i64 = -1;
+    if s[i] == 38 {
+      let e: i64 = ent_end(s, i, b);
+      if e > i {
+        let c: i64 = ent_code(s, i, e);
+        if c >= 0 {
+          if c == 1114113 {
+            let mut k: i64 = 0;
+            while k < len(ctor)
+              invariant 0 <= k && k <= len(ctor) && 0 <= q && q <= 1125899906842624 && len(out) == len(old(out))
+              decreases len(ctor) - k
+            {
+              q = put(inout out, q, ctor[k]);
+              k = k + 1;
+            }
+          } else {
+            if c != 1114112 { q = put(inout out, q, c); }
+          }
+          nx = e;
+        }
+      }
+    }
+    if nx < 0 {
+      let l: i64 = clen(s, i, b);
+      q = put(inout out, q, cp_at(s, i, l));
+      nx = i + l;
+    }
+    i = nx;
+  }
+  return q;
+}
+
+// decode(s[a..b]).trim() == ''
+fn decoded_blank(s: str, a: i64, b: i64) -> bool ! alloc
+  requires 0 <= a && a <= b && b <= len(s)
+{
+  let mut i: i64 = a;
+  while i < b
+    invariant a <= i && i <= b
+    decreases b - i
+  {
+    let mut nx: i64 = -1;
+    if s[i] == 38 {
+      let e: i64 = ent_end(s, i, b);
+      if e > i {
+        let c: i64 = ent_code(s, i, e);
+        if c == 1114113 { return false; }
+        if c >= 0 && c != 1114112 {
+          if !ws_cp(c) { return false; }
+        }
+        if c >= 0 { nx = e; }
+      }
+    }
+    if nx < 0 {
+      let l: i64 = ws_len(s, i);
+      if l == 0 { return false; }
+      nx = i + l;
+      if nx > b { nx = b; }
+    }
+    i = nx;
+  }
+  return true;
+}
+
+// A text record for s[a..b] under par; nothing for a blank text at the top.
+fn text_rec(s: str, a: i64, b: i64, par: i64, inout out: [i64], p: i64) -> i64 ! alloc
+  requires 0 <= a && a <= b && b <= len(s)
+  requires 0 <= p && p <= 1125899906842624
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  if par == -1 {
+    if decoded_blank(s, a, b) { return p; }
+  }
+  let mut q: i64 = put(inout out, p, 0);
+  q = put(inout out, q, par);
+  q = put(inout out, q, 0);
+  let st: i64 = q;
+  q = decode_into(s, a, b, inout out, q);
+  set(inout out, st - 1, q - st);
+  return q;
+}
+
+// The first index >= k of a '<' or '>', or -1.
+fn find_angle(s: str, k: i64) -> i64
+  requires 0 <= k && k <= len(s)
+  ensures result == -1 || (k <= result && result < len(s))
+{
+  let mut i: i64 = k;
+  while i < len(s)
+    invariant k <= i && i <= len(s)
+    decreases len(s) - i
+  {
+    let x: i64 = s[i];
+    if x == 60 || x == 62 { return i; }
+    i = i + 1;
+  }
+  return -1;
+}
+
+// The first "-->" at or after k, or -1.
+fn find_close(s: str, k: i64) -> i64
+  requires 0 <= k && k <= len(s)
+  ensures result == -1 || (k <= result && result + 3 <= len(s))
+{
+  let mut i: i64 = k;
+  while i + 3 <= len(s)
+    invariant k <= i && i <= len(s)
+    decreases len(s) - i
+  {
+    if s[i] == 45 && s[i + 1] == 45 && s[i + 2] == 62 { return i; }
+    i = i + 1;
+  }
+  return -1;
+}
+
+// The first '"' in [k, b), or -1.
+fn find_quote(s: str, k: i64, b: i64) -> i64
+  requires 0 <= k && k <= b && b <= len(s)
+  ensures result == -1 || (k <= result && result < b)
+{
+  let mut i: i64 = k;
+  while i < b
+    invariant k <= i && i <= b
+    decreases b - i
+  {
+    let x: i64 = s[i];
+    if x == 34 { return i; }
+    i = i + 1;
+  }
+  return -1;
+}
+
+// The end of the last non-whitespace character in [w, r), or w.
+fn last_solid(s: str, w: i64, r: i64) -> i64
+  requires 0 <= w && w <= r && r <= len(s)
+  ensures w <= result && result <= r
+{
+  let mut k: i64 = w;
+  let mut q: i64 = w;
+  while k < r
+    invariant w <= k && k <= r && w <= q && q <= k
+    decreases r - k
+  {
+    let l: i64 = ws_len(s, k);
+    if l > 0 {
+      k = k + l;
+      if k > r { k = r; }
+    } else {
+      k = k + clen(s, k, r);
+      q = k;
+    }
+  }
+  return q;
+}
+
+// The tag at s[i] == '<': [end, closing, name start, name end, attribute text end, self-closing],
+// end -1 when no tag matches. The attribute text is s[name end..attribute text end].
+fn tag_info(s: str, i: i64) -> [i64] ! alloc
+  requires 0 <= i && i < len(s)
+  ensures len(result) == 6
+  ensures result[0] == -1 || (i < result[2] && result[2] < result[3] && result[3] <= result[4] && result[4] < result[0] && result[0] <= len(s))
+{
+  let n: i64 = len(s);
+  let mut r: [i64] = alloc(6, 0);
+  r[0] = -1;
+  let mut ns: i64 = i + 1;
+  let mut cl: i64 = 0;
+  if ns < n {
+    if s[ns] == 47 { ns = ns + 1; cl = 1; }
+  }
+  if ns >= n { return r; }
+  if !is_cls(s[ns], 2) { return r; }
+  let ne: i64 = run_cls(s, ns + 1, n, 3);
+  if ne >= n { return r; }
+  let mut end: i64 = -1;
+  let mut q: i64 = ne;
+  let mut sc: i64 = 0;
+  if ws_len(s, ne) == 0 {
+    if s[ne] == 62 {
+      end = ne + 1;
+    } else {
+      if s[ne] == 47 && ne + 1 < n {
+        if s[ne + 1] == 62 { end = ne + 2; sc = 1; }
+      }
+    }
+  } else {
+    let w: i64 = skip_ws(s, ne, n);
+    let e: i64 = find_angle(s, w);
+    if e >= 0 {
+      if s[e] == 62 {
+        let mut rr: i64 = e;
+        if e - 1 >= w {
+          if s[e - 1] == 47 { rr = e - 1; sc = 1; }
+        }
+        q = last_solid(s, w, rr);
+        end = e + 1;
+      }
+    }
+  }
+  if end < 0 { return r; }
+  r[0] = end;
+  r[1] = cl;
+  r[2] = ns;
+  r[3] = ne;
+  r[4] = q;
+  r[5] = sc;
+  return r;
+}
+
+fn wanted(s: str, a: i64, b: i64, which: i64) -> bool ! alloc
+  requires 0 <= a && a <= b && b <= len(s)
+{
+  if which == 0 { return word_is(s, a, b, "href"); }
+  if which == 1 { return word_is(s, a, b, "colspan"); }
+  return word_is(s, a, b, "rowspan");
+}
+
+// The value start of the last attribute name="value" in s[a..q] named href (which 0), colspan (1)
+// or rowspan (2), or -1; the value ends at the next '"'. Matches are found left to right without
+// overlap, as by Lair's attribute regex.
+fn last_attr(s: str, a: i64, q: i64, which: i64) -> i64 ! alloc
+  requires 0 <= a && a <= q && q <= len(s)
+  ensures result == -1 || (a <= result && result <= q)
+{
+  let mut k: i64 = a;
+  let mut res: i64 = -1;
+  let mut nq: i64 = q + 1;
+  while k < q
+    invariant a <= k && k <= q && (res == -1 || (a <= res && res <= q))
+    decreases q - k
+  {
+    let mut nx: i64 = k + 1;
+    if is_cls(s[k], 5) {
+      let ke: i64 = run_cls(s, k + 1, q, 4);
+      nx = ke;
+      let m: i64 = skip_ws(s, ke, q);
+      if m < q {
+        if s[m] == 61 {
+          let m2: i64 = skip_ws(s, m + 1, q);
+          if m2 < q {
+            if s[m2] == 34 {
+              let vs: i64 = m2 + 1;
+              if vs < nq {
+                let c: i64 = find_quote(s, vs, q);
+                if c >= 0 {
+                  if wanted(s, k, ke, which) { res = vs; }
+                  nx = c + 1;
+                } else {
+                  nq = vs;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    k = nx;
+  }
+  return res;
+}
+
+// An element record for the tag name s[ns..ne] with attribute text s[ne..q] under par.
+fn elem_rec(s: str, ns: i64, ne: i64, q: i64, par: i64, inout out: [i64], p: i64) -> i64 ! alloc
+  requires 0 <= ns && ns <= ne && ne <= q && q <= len(s)
+  requires 0 <= p && p <= 1125899906842624
+  ensures len(out) == len(old(out))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let mut r: i64 = put(inout out, p, 1);
+  r = put(inout out, r, par);
+  r = put(inout out, r, ne - ns);
+  let mut k: i64 = ns;
+  while k < ne
+    invariant ns <= k && k <= ne && 0 <= r && r <= 1125899906842624 && len(out) == len(old(out))
+    decreases ne - k
+  {
+    r = put(inout out, r, lower(s[k]));
+    k = k + 1;
+  }
+  let mut which: i64 = 0;
+  while which < 3
+    invariant 0 <= which && which <= 3 && 0 <= r && r <= 1125899906842624 && len(out) == len(old(out))
+    decreases 3 - which
+  {
+    let vs: i64 = last_attr(s, ne, q, which);
+    if vs < 0 {
+      r = put(inout out, r, -1);
+    } else {
+      let mut ve: i64 = find_quote(s, vs, q);
+      if ve < 0 { ve = vs; }
+      r = put(inout out, r, 0);
+      let st: i64 = r;
+      r = decode_into(s, vs, ve, inout out, r);
+      set(inout out, st - 1, r - st);
+    }
+    which = which + 1;
+  }
+  return r;
+}
+
+// Names s[a1..b1] and s[a2..b2] equal ignoring ASCII case (false for ranges outside s).
+fn same_name(s: str, a1: i64, b1: i64, a2: i64, b2: i64) -> bool {
+  if a1 < 0 || b1 < a1 || b1 > len(s) || a2 < 0 || b2 < a2 || b2 > len(s) { return false; }
+  if b1 - a1 != b2 - a2 { return false; }
+  let mut k: i64 = 0;
+  while k < b1 - a1
+    invariant 0 <= k && k <= b1 - a1
+    decreases b1 - a1 - k
+  {
+    let x: i64 = s[a1 + k];
+    let y: i64 = s[a2 + k];
+    if lower(x) != lower(y) { return false; }
+    k = k + 1;
+  }
+  return true;
+}
+
+// The stack depth after a closing tag s[a..b]: below its last open element of that name, else d.
+fn close_to(s: str, stk: [i64], d: i64, a: i64, b: i64) -> i64
+  requires 0 <= d && 3 * d <= len(stk)
+  ensures 0 <= result && result <= d
+{
+  let mut k: i64 = d;
+  while k > 0
+    invariant 0 <= k && k <= d
+    decreases k
+  {
+    if same_name(s, stk[3 * k - 2], stk[3 * k - 1], a, b) { return k - 1; }
+    k = k - 1;
+  }
+  return d;
+}
+
+fn is_void(s: str, a: i64, b: i64) -> bool ! alloc
+  requires 0 <= a && a <= b && b <= len(s)
+{
+  return word_is(s, a, b, "br") || word_is(s, a, b, "img") || word_is(s, a, b, "hr");
+}
+
+// The records of s into out (writes past len(out) dropped); the open stack is kept in stk as
+// [element number, name start, name end] per open element. Returns the record length.
+fn parse_into(s: str, inout out: [i64], inout stk: [i64]) -> i64 ! alloc
+  ensures len(out) == len(old(out)) && len(stk) == len(old(stk))
+  ensures 0 <= result && result <= 1125899906842624
+{
+  let n: i64 = len(s);
+  let mut i: i64 = 0;
+  let mut p: i64 = 0;
+  let mut d: i64 = 0;
+  let mut ne: i64 = 0;
+  let mut noclose: i64 = n + 1;
+  while i < n
+    invariant 0 <= i && i <= n && 0 <= p && p <= 1125899906842624
+    invariant 0 <= d && 3 * d <= len(stk) && 0 <= ne && ne <= 1125899906842624
+    invariant len(out) == len(old(out)) && len(stk) == len(old(stk))
+    decreases n - i
+  {
+    let mut par: i64 = -1;
+    if d > 0 { par = stk[3 * d - 3]; }
+    if s[i] != 60 {
+      let mut t: i64 = i + 1;
+      while t < n && s[t] != 60
+        invariant i < t && t <= n
+        decreases n - t
+      {
+        t = t + 1;
+      }
+      p = text_rec(s, i, t, par, inout out, p);
+      i = t;
+    } else {
+      let mut done: i64 = 0;
+      if i + 3 < n {
+        if s[i + 1] == 33 && s[i + 2] == 45 && s[i + 3] == 45 {
+          if i + 4 < noclose {
+            let c: i64 = find_close(s, i + 4);
+            if c >= 0 {
+              i = c + 3;
+              done = 1;
+            } else {
+              noclose = i + 4;
+            }
+          }
+        }
+      }
+      if done == 0 {
+        let r: [i64] = tag_info(s, i);
+        if r[0] < 0 {
+          p = text_rec(s, i, i + 1, par, inout out, p);
+          i = i + 1;
+        } else {
+          if r[1] == 1 {
+            d = close_to(s, stk, d, r[2], r[3]);
+          } else {
+            p = elem_rec(s, r[2], r[3], r[4], par, inout out, p);
+            let me: i64 = ne;
+            if ne < 1125899906842624 { ne = ne + 1; }
+            if r[5] == 0 && !is_void(s, r[2], r[3]) {
+              if 3 * d + 2 < len(stk) {
+                stk[3 * d] = me;
+                stk[3 * d + 1] = r[2];
+                stk[3 * d + 2] = r[3];
+                d = d + 1;
+              }
+            }
+          }
+          i = r[0];
+        }
+      }
+    }
+  }
+  return p;
+}
+
+pub fn parse_html(s: str) -> [i64] ! alloc
+  requires len(s) <= 274877906944
+{
+  let n: i64 = len(s);
+  let mut lts: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n && 0 <= lts && lts <= i
+    decreases n - i
+  {
+    if s[i] == 60 { lts = lts + 1; }
+    i = i + 1;
+  }
+  let mut stk: [i64] = alloc(3 * lts + 3, 0);
+  let mut none: [i64] = alloc(0, 0);
+  let k: i64 = parse_into(s, inout none, inout stk);
+  if k > 1099511627776 {
+    let bad: [i64] = alloc(1, -1);
+    return bad;
+  }
+  let mut out: [i64] = alloc(k, 0);
+  let f: i64 = parse_into(s, inout out, inout stk);
+  return out;
+}

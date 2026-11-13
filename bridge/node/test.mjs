@@ -1,6 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml } from './index.mjs';
+import { parseHtml as tsParseHtml } from '../../bench/l0/parse_html.mjs';
 import { textAround as tsTextAround } from '../../bench/l0/text_around.mjs';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -640,6 +641,30 @@ mustThrow('textAroundPlan maxBytes 2^40+1', () => textAroundPlan(Buffer.from('a'
 mustThrow('textAroundPlan maxBytes NaN', () => textAroundPlan(Buffer.from('a'), 1, 0, 0, NaN));
 mustThrow('textAroundPlan data string', () => textAroundPlan('a', 1, 0, 0, 10));
 
+// parse html: the parseHtml record list against the Python oracle, and the El tree glue against the
+// verbatim parseHtml (own href, colspan and rowspan attributes only, the ones Lair reads).
+const htmlScript = fileURLToPath(new URL('../../bench/l0/run_parse_html.py', import.meta.url));
+const htmlRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [htmlScript, '--emit', '--n', String(Math.ceil(CASES / 10)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let htmlMismatches = 0, htmlTsDiff = 0;
+const htmlCanon = (node) => typeof node === 'string' ? node : [node.tag,
+  Object.fromEntries(['href', 'colspan', 'rowspan'].filter(k => Object.hasOwn(node.attrs, k)).map(k => [k, node.attrs[k]])),
+  node.children.map(htmlCanon)];
+for (const [i, [html, want]] of htmlRows.entries()) {
+  const got = parseHtmlRecords(html);
+  if (got.length !== want.length || got.some((x, k) => x !== want[k])) {
+    htmlMismatches++;
+    if (htmlMismatches <= 5) console.error('html mismatch', JSON.stringify({ i, html: html.slice(0, 200) }));
+  }
+  if (JSON.stringify(parseHtml(html).map(htmlCanon)) !== JSON.stringify(tsParseHtml(html).map(htmlCanon))) {
+    htmlTsDiff++;
+    if (htmlTsDiff <= 5) console.error('html ts difference', JSON.stringify({ i, html: html.slice(0, 200) }));
+  }
+}
+mustThrow('parseHtmlRecords number', () => parseHtmlRecords(1));
+mustThrow('parseHtmlRecords undefined', () => parseHtmlRecords());
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -698,6 +723,9 @@ console.log(JSON.stringify({
   around_mismatches: aroundMismatches,
   around_glue_cases: aroundGlueCases,
   around_ts_differences: aroundTsDiff,
+  html_cases: htmlRows.length,
+  html_mismatches: htmlMismatches,
+  html_ts_differences: htmlTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || !errorOk ? 1 : 0);

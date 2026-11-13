@@ -187,3 +187,38 @@ export async function textAround(request) {
   const from0 = shown - beforeLines;
   return { ok: true, sourceVersion, totalLines, from: from0, to: Math.min(from0 + lines - 1, totalLines), target: shown, text, truncated: truncated === 1, bytes: used.length, targetIncluded: true, ...(targetCut ? { targetTruncated: true } : {}) };
 }
+
+export const parseHtmlRecords = native.parseHtmlRecords;
+
+const fromCps = (rec, at, n) => {
+  let s = '';
+  for (let k = 0; k < n; k += 4096) s += String.fromCodePoint(...rec.slice(at + k, at + Math.min(n, k + 4096)));
+  return s;
+};
+
+/** Lair parseHtml (src/documents/docx.ts): the El tree { tag, attrs, children } of mammoth HTML. The
+ *  verified Pruv parseHtmlRecords does the tokens, entity decoding, the open element stack and the blank
+ *  top text filter; this only builds the objects. attrs holds the attributes Lair's DOCX code reads (href,
+ *  colspan, rowspan). A JS string with lone surrogates reaches Pruv with U+FFFD in their place. */
+export function parseHtml(html) {
+  const rec = native.parseHtmlRecords(html);
+  const top = [];
+  const els = [];
+  let p = 0;
+  while (p < rec.length) {
+    const [kind, parent, n] = [rec[p], rec[p + 1], rec[p + 2]];
+    const into = parent === -1 ? top : els[parent].children;
+    const text = fromCps(rec, p + 3, n);
+    p += 3 + n;
+    if (kind === 0) { into.push(text); continue; }
+    const attrs = {};
+    for (const name of ['href', 'colspan', 'rowspan']) {
+      const m = rec[p++];
+      if (m >= 0) { attrs[name] = fromCps(rec, p, m); p += m; }
+    }
+    const el = { tag: text, attrs, children: [] };
+    els.push(el);
+    into.push(el);
+  }
+  return top;
+}

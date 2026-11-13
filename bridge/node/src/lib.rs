@@ -606,3 +606,23 @@ pub fn text_around_plan(data: napi::bindgen_prelude::Uint8Array, line: f64, befo
     }
     Ok(r.iter().map(|&x| x as f64).collect())
 }
+
+#[path = "../gen/parse_html_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod parse_html_gen;
+
+/// The Pruv parse_html record list of Lair parseHtml (docx.ts) for `html`: per node in document order a text
+/// record [0, parent, n, code points] or an element record [1, parent, n, lowercase tag code points, then
+/// for href, colspan and rowspan -1 or m followed by the decoded value code points]. parent is the element
+/// number (elements count from 0 in creation order) or -1 for the top level.
+#[napi(js_name = "parseHtmlRecords")]
+pub fn parse_html_records(html: String) -> napi::Result<Vec<f64>> {
+    if html.len() as u64 > 274_877_906_944 {
+        return Err(napi::Error::new(napi::Status::InvalidArg, "parseHtmlRecords: html must be at most 274877906944 UTF-8 bytes"));
+    }
+    let r = parse_html_gen::parse_html(&html);
+    if r.len() == 1 && r[0] == -1 {
+        return Err(napi::Error::new(napi::Status::GenericFailure, "parseHtmlRecords: output passes 1099511627776 slots"));
+    }
+    Ok(r.iter().map(|&x| x as f64).collect())
+}

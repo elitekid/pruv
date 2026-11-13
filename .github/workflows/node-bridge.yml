@@ -36,6 +36,8 @@ on:
       - "bench/l0/run_sheet_chunks.py"
       - "bench/l0/text_around.mjs"
       - "bench/l0/run_text_around.py"
+      - "bench/l0/parse_html.mjs"
+      - "bench/l0/run_parse_html.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 
