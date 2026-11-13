@@ -5,3 +5,5 @@ export const clipBytes = native.clipBytes;
 export const hostWithin = native.hostWithin;
 export const versionAtLeast = native.versionAtLeast;
 export const colLetters = native.colLetters;
+export const termPlain = native.termPlain;
+export const termState = native.termState;

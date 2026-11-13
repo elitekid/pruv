@@ -24,7 +24,8 @@ concurrency:
 jobs:
   regen:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Builds pruvc-rs and proves every bridge source with both compilers.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

@@ -1,0 +1,133 @@
+// Streaming terminal-text cleaner: drop CSI, OSC/DCS/SOS/PM/APC strings and C0/C1/DEL
+// controls, keep tab/LF/CR, then fold CR and CRLF to a single LF.
+// State: 0 plain, 1 ESC, 2 ESC + intermediate, 3 CSI, 4 control string, 5 control string
+// after ESC (possible ST); plus 6 when an LF right after a CR must be skipped.
+fn pack(a: i64, skip: bool, e: i64) -> i64
+  requires 0 <= a && a < 6 && 0 <= e && e < 3
+  ensures 0 <= result && result < 48
+{
+  let mut s: i64 = a;
+  if skip { s = a + 6; }
+  return s * 4 + e;
+}
+// Emit one kept character c through the CR/LF fold. e: 0 none, 1 the character, 2 a LF.
+fn emit(skip: bool, c: i64) -> i64
+  requires 0 <= c && c <= 256
+  ensures 0 <= result && result < 48
+{
+  if skip && c == 10 { return pack(0, false, 0); }
+  if c == 13 { return pack(0, true, 2); }
+  return pack(0, false, 1);
+}
+// One step for character class c: an ASCII or U+0080..U+009F code, or 256 for anything else.
+// Result is next_state * 4 + emission.
+fn trans(st: i64, c: i64) -> i64
+  requires 0 <= st && st < 12 && 0 <= c && c <= 256
+  ensures 0 <= result && result < 48
+{
+  let skip: bool = st >= 6;
+  let mut a: i64 = st % 6;
+  if a == 5 {
+    if c == 92 { return pack(0, skip, 0); }
+    a = 4;
+  }
+  if a == 1 || a == 2 {
+    if 32 <= c && c <= 47 { return pack(2, skip, 0); }
+    if a == 1 {
+      if c == 91 { return pack(3, skip, 0); }
+      if c == 93 || c == 80 || c == 88 || c == 94 || c == 95 { return pack(4, skip, 0); }
+    }
+    if 48 <= c && c <= 126 { return pack(0, skip, 0); }
+    a = 0;
+  }
+  if a == 3 {
+    if 64 <= c && c <= 126 { return pack(0, skip, 0); }
+    return pack(3, skip, 0);
+  }
+  if a == 4 {
+    if c == 7 || c == 156 { return pack(0, skip, 0); }
+    if c == 27 { return pack(5, skip, 0); }
+    return pack(4, skip, 0);
+  }
+  if c == 27 { return pack(1, skip, 0); }
+  if c == 155 { return pack(3, skip, 0); }
+  if c == 157 || c == 144 || c == 159 || c == 158 || c == 152 { return pack(4, skip, 0); }
+  if c == 9 || c == 10 || c == 13 { return emit(skip, c); }
+  if c < 32 || c == 127 || (128 <= c && c <= 159) { return pack(0, skip, 0); }
+  return emit(skip, c);
+}
+// Class of the character starting at byte i.
+fn class(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 0 <= result && result <= 256
+{
+  let b: i64 = s[i];
+  if b < 128 { return b; }
+  if b == 194 && i + 1 < len(s) {
+    if s[i + 1] < 160 { return s[i + 1]; }
+  }
+  return 256;
+}
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+fn term_plain(state: i64, data: str) -> str ! alloc
+  requires 0 <= state && state < 12
+  requires len(data) <= 1_000_000_000_000
+  ensures len(result) <= len(data)
+{
+  let mut st: i64 = state;
+  let mut out: String = string_new();
+  let mut i: i64 = 0;
+  while i < len(data)
+    invariant 0 <= i && i <= len(data)
+    invariant 0 <= st && st < 12
+    invariant is_char_boundary(data, i)
+    invariant len(out) <= i
+    decreases len(data) - i
+  {
+    let j: i64 = next(data, i);
+    let t: i64 = trans(st, class(data, i));
+    st = t / 4;
+    let e: i64 = t % 4;
+    if e == 1 {
+      let piece: str = substr(data, i, j);
+      out = string_push_str(move out, piece);
+    }
+    if e == 2 {
+      out = string_push_str(move out, "\n");
+    }
+    i = j;
+  }
+  return string_to_str(out);
+}
+fn term_state(state: i64, data: str) -> i64
+  requires 0 <= state && state < 12
+  requires len(data) <= 1_000_000_000_000
+  ensures 0 <= result && result < 12
+{
+  let mut st: i64 = state;
+  let mut i: i64 = 0;
+  while i < len(data)
+    invariant 0 <= i && i <= len(data)
+    invariant 0 <= st && st < 12
+    invariant is_char_boundary(data, i)
+    decreases len(data) - i
+  {
+    st = trans(st, class(data, i)) / 4;
+    i = next(data, i);
+  }
+  return st;
+}

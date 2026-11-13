@@ -1309,3 +1309,28 @@ Fourth G6 batch (`docs/G6_SPEC.md` §7.5, decisions in §13). Python reference f
 - **Bridge:** `bridge/node` now also exports `versionAtLeast(a, b)` and `colLetters(col)`. The generated files `gen/version_at_least_gen.rs` and `gen/col_letters_gen.rs` are byte-identical from both compilers (`regen.py --check`). `requires` violations (strings over 4,096 UTF-8 bytes, `col` outside `0..=10^15` or not an integer) throw `InvalidArg`.
 - **Node test (macOS arm64, Node v26.4.0, seed 12345):** 0 mismatches for all four functions (`versionAtLeast` 20,139 cases with 3,580 informational TS differences, `colLetters` 120,073 cases with 0); error checks pass.
 - **Not done:** as in section 71, nothing is wired into Lair yet.
+
+## 73. L2 first bundle: terminal-text cleaning (`plainFromAnsi` + `applyCrLf`) (2026-11-13)
+
+- **Target:** Lair `src/backend/engine-install.ts` `plainFromAnsi` and `applyCrLf` (with `C1_KIND`, `AnsState`, `resetAns`, `charStep`, `tryStEnd`). This streaming cleaner turns raw installer terminal output into plain text: it drops CSI sequences, OSC/DCS/SOS/PM/APC strings (ended by BEL, ST or ESC `\\`), other ESC sequences and C0/C1/DEL controls. It keeps tab, LF and CR, then folds CR and CRLF to a single LF, with state carried across chunks. The code is copied verbatim (TypeScript types removed) to `bench/l0/term_plain.mjs`; Lair is not changed.
+- **Pruv version:** `bench/l0/term_plain.pruv`. The streaming state is one integer 0..11: six escape modes, plus 6 when an LF right after a CR must be skipped.
+  - `term_plain(state, data) -> str ! alloc` builds the output with the G6 `String` builder.
+  - `term_state(state, data)` returns the next state.
+  - Proved on both compilers:
+    - every slice cuts on a UTF-8 character boundary
+    - `len(result) <= len(data)`
+    - the state stays in 0..11
+    - arithmetic safety and termination
+  - Exact behaviour is not an `ensures`; it rests on the cross-check below.
+  - No third-party crate is needed for this piece.
+- **Driver:** `bench/l0/run_term_plain.py`, seed 12345.
+  - Inputs: 8,748 edge cases (every initial state × pairs of 27 tricky chunks, such as ESC at the end of a chunk inside a string, or CR at the end of one chunk with LF at the start of the next) and 20,000 random cases of up to 40 characters, split into up to four chunks.
+  - Pruv runs chunk by chunk.
+  - The independent Python oracle processes the joined text in one pass: a mode machine plus a regex CR/LF fold. It therefore also checks that chunking does not change the result.
+- **Results (identical on py/rust, py/llvm, rs/rust, rs/llvm):**
+  - 28,748/28,748 cases match the oracle in both text and final state, and so does the TS original.
+  - All 12 final states occur.
+  - Domain note: TS walks UTF-16 and drops lone surrogates, while Pruv strings are valid UTF-8. Through the bridge, Node-API turns a lone surrogate into U+FFFD, which is kept. That is the only source of difference.
+- **Bridge:** `bridge/node` exports `termPlain(state, data)` and `termState(state, data)`. `gen/term_plain_gen.rs` is byte-identical from both compilers (`regen.py --check`). A state that is not an integer in 0..11 throws `InvalidArg`.
+- **Node test (macOS arm64, Node v26.4.0, seed 12345, 20,000 chunked cases including lone surrogates):** 0 mismatches against a JS oracle on the UTF-8 round trip. 4,741 informational TS differences, all from the lone-surrogate domain difference. Error checks pass.
+- **Not done:** nothing is wired into Lair yet. Larger L2 pieces that need third-party Rust crates (parsers, document conversion) come next.

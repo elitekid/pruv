@@ -24,6 +24,36 @@ mod version_at_least_gen;
 #[allow(dead_code, clippy::all)]
 mod col_letters_gen;
 
+#[path = "../gen/term_plain_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod term_plain_gen;
+
+fn term_args(name: &str, state: f64, data: &str) -> napi::Result<i64> {
+    if !state.is_finite() || state.fract() != 0.0 || !(0.0..=11.0).contains(&state) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("{name}: state must be an integer in 0..=11")));
+    }
+    if data.len() as u64 > 1_000_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("{name}: data must be at most 1000000000000 UTF-8 bytes")));
+    }
+    Ok(state as i64)
+}
+
+/// Cleaned text of one chunk; feed the next chunk with `termState` of this one.
+#[napi(js_name = "termPlain")]
+pub fn term_plain(state: f64, data: String) -> napi::Result<String> {
+    let st = term_args("termPlain", state, &data)?;
+    Ok(term_plain_gen::term_plain(st, &data))
+}
+
+/// Streaming state after one chunk (0..=11).
+#[napi(js_name = "termState")]
+pub fn term_state(state: f64, data: String) -> napi::Result<i64> {
+    let st = term_args("termState", state, &data)?;
+    Ok(term_plain_gen::term_state(st, &data))
+}
+
 #[napi(js_name = "versionAtLeast")]
 pub fn version_at_least(a: String, b: String) -> napi::Result<bool> {
     if a.len() > 4096 || b.len() > 4096 {

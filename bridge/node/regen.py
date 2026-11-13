@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 GEN = Path(__file__).resolve().parent / "gen"
-NAMES = ["clip_bytes", "host_within", "version_at_least", "col_letters"]
+NAMES = ["clip_bytes", "host_within", "version_at_least", "col_letters", "term_plain"]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT / 'bench' / 'l0'))
 from run import configure, WORK

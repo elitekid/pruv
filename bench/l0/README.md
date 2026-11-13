@@ -74,3 +74,19 @@ $C bench/l0/NAME.pruv -o bench/l0/work/NAME_COMPILER_llvm/NAME_gen.ll --backend 
 
 Use `PRUV_PYTHON` and `PRUVC_RS` to select installed tools; add Cargo's bin directory
 to PATH. No bypass flags, full suites, compiler edits or Lair edits were used.
+
+## termPlain (L2 first bundle)
+
+Run: `python3 bench/l0/run_term_plain.py --seed 12345 --n 20000`.
+Source: Lair `src/backend/engine-install.ts` `plainFromAnsi` + `applyCrLf`, copied with types
+removed to `term_plain.mjs`. The streaming state is an integer 0..11
+(0 plain, 1 ESC, 2 ESC + intermediate, 3 CSI, 4 control string, 5 control string after ESC;
+plus 6 while an LF right after a CR is skipped).
+`term_plain(state, data) -> str ! alloc` and `term_state(state, data)` both require
+`0 <= state < 12` and `len(data) <= 10^12`. Proved: UTF-8 boundary slicing, `len(result) <= len(data)`,
+the state stays in 0..11, arithmetic safety and termination. Exact behaviour is checked against an
+independent whole-text Python oracle (a mode machine and a regex CR/LF fold), so chunking is also checked.
+
+Recorded seed 12345: 8,748 edge cases plus 20,000 random chunked cases = 28,748. All four
+compiler/backend combinations verified (exit 0). Pruv and TS both matched 28,748/28,748 in text and
+final state. `results/term_plain_summary.json` records the counts; `results/term_plain_differences.jsonl` is empty.

@@ -1,0 +1,98 @@
+{
+  "seed": 12345,
+  "random_cases": 20000,
+  "runs": {
+    "py/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/term_plain_py_rust/term_plain_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 28748,
+      "pruv_oracle_pass": 28748,
+      "ts_oracle_pass": 28748,
+      "pruv_ts_pass": 28748
+    },
+    "py/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/term_plain_py_llvm/term_plain_gen.rs",
+        "ll": "bench/l0/work/term_plain_py_llvm/term_plain_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 28748,
+      "pruv_oracle_pass": 28748,
+      "ts_oracle_pass": 28748,
+      "pruv_ts_pass": 28748
+    },
+    "rs/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/term_plain_rs_rust/term_plain_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 28748,
+      "pruv_oracle_pass": 28748,
+      "ts_oracle_pass": 28748,
+      "pruv_ts_pass": 28748
+    },
+    "rs/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/term_plain_rs_llvm/term_plain_gen.rs",
+        "ll": "bench/l0/work/term_plain_rs_llvm/term_plain_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 28748,
+      "pruv_oracle_pass": 28748,
+      "ts_oracle_pass": 28748,
+      "pruv_ts_pass": 28748
+    }
+  },
+  "tools": {
+    "commands": {
+      "py": [
+        "python",
+        "pruvc.py"
+      ],
+      "rs": [
+        "pruvc"
+      ]
+    },
+    "rust_source_sha256": "f35d77adb6a2c267a8123df8809f21a7bb46e8d550c5553c9ecdec81fb2da819",
+    "rust_binary_sha256": "0c6a873fafff14f8770fecbb1084c307e62d7f125b8507d31cd708f016a4d7d2",
+    "node": "v26.4.0"
+  },
+  "edge_cases": 8748,
+  "cases": 28748,
+  "status": "ok",
+  "difference_records_total": 0,
+  "difference_records_saved": 0,
+  "difference_order": "input bytes, serialized input, compiler/backend"
+}

@@ -1,7 +1,8 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState } from './index.mjs';
 import { versionAtLeast as tsVersionAtLeast } from '../../bench/l0/version_at_least.mjs';
 import { colLetters as tsColLetters } from '../../bench/l0/col_letters.mjs';
+import { plainFromAnsi, applyCrLf, fromState, toState } from '../../bench/l0/term_plain.mjs';
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -165,6 +166,66 @@ for (const col of colInputs) {
   colTsDiff += tsColLetters(col) !== want;
 }
 
+// ---- termPlain / termState ----
+// Whole-text oracle on the UTF-8 round trip (lone surrogates become U+FFFD, as in Node-API):
+// a mode machine over code points, then a regex CR/LF fold.
+const MODES = ['text', 'esc', 'escint', 'csi', 'str', 'strend'];
+function termOracle(state, chunks) {
+  const text = Buffer.from(chunks.join(''), 'utf8').toString('utf8');
+  let mode = MODES[state % 6];
+  let raw = '';
+  const cps = Array.from(text);
+  for (let i = 0; i < cps.length; ) {
+    const ch = cps[i], o = ch.codePointAt(0);
+    if (mode === 'strend') {
+      mode = ch === '\\' ? 'text' : 'str';
+      if (mode === 'text') { i++; continue; }
+    }
+    if (mode === 'esc' || mode === 'escint') {
+      if (o >= 0x20 && o <= 0x2f) mode = 'escint';
+      else if (mode === 'esc' && ch === '[') mode = 'csi';
+      else if (mode === 'esc' && ']PX^_'.includes(ch)) mode = 'str';
+      else { mode = 'text'; if (!(o >= 0x30 && o <= 0x7e)) continue; }
+      i++;
+      continue;
+    }
+    if (mode === 'csi') { if (o >= 0x40 && o <= 0x7e) mode = 'text'; }
+    else if (mode === 'str') { if (o === 0x07 || o === 0x9c) mode = 'text'; else if (o === 0x1b) mode = 'strend'; }
+    else if (o === 0x1b) mode = 'esc';
+    else if (o === 0x9b) mode = 'csi';
+    else if ([0x90, 0x98, 0x9d, 0x9e, 0x9f].includes(o)) mode = 'str';
+    else if (o === 9 || o === 10 || o === 13 || !(o < 0x20 || (o >= 0x7f && o <= 0x9f))) raw += ch;
+    i++;
+  }
+  const skipOut = raw.endsWith('\r') || (raw === '' && state >= 6);
+  if (state >= 6 && raw.startsWith('\n')) raw = raw.slice(1);
+  return [raw.replace(/\r\n?/g, '\n'), MODES.indexOf(mode) + (skipOut ? 6 : 0)];
+}
+const TERM_CHARS = ['\x1b', '\x1b', '\x1b', '[', ']', 'P', 'X', '^', '_', '\\', '\x07', '\r', '\r', '\n', '\n',
+  '\t', '0', '1', ';', 'm', 'A', '~', '@', ' ', '#', '(', '/', '\x7f', '\x00', '\x08',
+  '\x9b', '\x9c', '\x9d', '\x90', '\x98', '\x9e', '\x9f', '\x85', '\xa0', 'é', '한', '😀', 'a', '\ud800', '\udc00'];
+let termMismatches = 0, termTsDiff = 0;
+for (let i = 0; i < CASES; i++) {
+  const n = ri(41);
+  let text = '';
+  for (let k = 0; k < n; k++) text += pick(TERM_CHARS);
+  const cps = Array.from(text);
+  const cuts = Array.from({ length: ri(4) }, () => ri(cps.length + 1)).sort((a, b) => a - b);
+  const bounds = [0, ...cuts, cps.length];
+  const chunks = bounds.slice(1).map((b, k) => cps.slice(bounds[k], b).join(''));
+  const state = ri(12);
+  let st = state, out = '';
+  for (const c of chunks) { out += termPlain(st, c); st = termState(st, c); }
+  const want = termOracle(state, chunks);
+  if (out !== want[0] || st !== want[1]) {
+    termMismatches++;
+    if (termMismatches <= 5) console.error('term mismatch', JSON.stringify({ state, chunks, got: [out, st], want }));
+  }
+  let { state: s, skipLf } = fromState(state), tsOut = '';
+  for (const c of chunks) { const r = applyCrLf(skipLf, plainFromAnsi(s, c)); tsOut += r.text; skipLf = r.skipLf; }
+  if (tsOut !== out || toState(s, skipLf) !== st) termTsDiff++;
+}
+
 // ---- c) error path ----
 let errorOk = true;
 function mustThrow(name, fn) {
@@ -193,6 +254,11 @@ mustInvalidArg('versionAtLeast long a', () => versionAtLeast('x'.repeat(4097), '
 mustInvalidArg('versionAtLeast long b', () => versionAtLeast('0.0.0', 'é'.repeat(2049)));
 for (const col of ['1', null, undefined]) mustThrow('colLetters non-number', () => colLetters(col));
 mustThrow('versionAtLeast non-string', () => versionAtLeast(1, '0.0.0'));
+for (const st of [-1, 12, 0.5, NaN, Infinity]) {
+  mustInvalidArg(`termPlain(${String(st)})`, () => termPlain(st, 'a'));
+  mustInvalidArg(`termState(${String(st)})`, () => termState(st, 'a'));
+}
+mustThrow('termPlain non-string', () => termPlain(0, 1));
 if (clipBytes('', 0) !== '') {
   console.error("clipBytes('', 0) !== ''");
   errorOk = false;
@@ -215,6 +281,9 @@ console.log(JSON.stringify({
   col_cases: colInputs.length,
   col_mismatches: colMismatches,
   col_ts_differences: colTsDiff,
+  term_cases: CASES,
+  term_mismatches: termMismatches,
+  term_ts_differences: termTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || !errorOk ? 1 : 0);
