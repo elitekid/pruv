@@ -1,0 +1,60 @@
+// Lair cellText (src/documents/sheets.ts), the number branch on integers:
+// String(Number(value.toPrecision(15))). An integer with at most 15 digits prints unchanged; a 16-digit
+// integer is rounded to 15 significant digits, a tie going away from zero (toPrecision picks the larger
+// n on a tie, after taking the sign off), and prints with a trailing zero ("9007199254740991" ->
+// "9007199254740990", "1000000000000005" -> "1000000000000010").
+// Domain: the safe integers, |n| <= 2^53 - 1 = 9007199254740991. The rounded magnitude is at most
+// 9007199254740990, below 10^16, so the result is at most 17 bytes (sign and 16 digits).
+
+// Decimal text of n with no leading zeros ("0" for 0).
+fn dec(n: i64) -> str ! alloc
+  requires 0 <= n && n <= 9999999999999999
+  ensures len(result) <= 16
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 1000000000000000;
+  let mut k: i64 = 0;
+  while k < 16
+    invariant 0 <= k && k <= 16
+    invariant 0 <= p && p <= 1000000000000000
+    invariant len(out) <= k
+    decreases 16 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      // The last place (k = 15) is always written, so 0 prints as "0".
+      if len(out) > 0 || d != 0 || k == 15 {
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+pub fn cell_int(n: i64) -> str ! alloc
+  requires -9007199254740991 <= n && n <= 9007199254740991
+  ensures len(result) <= 17
+{
+  let mut a: i64 = n;
+  if n < 0 {
+    a = -n;
+  }
+  let mut m: i64 = a;
+  if a >= 1000000000000000 {
+    // 16 digits: keep 15 significant digits, rounding the last one half away from zero.
+    let mut q: i64 = a / 10;
+    if a % 10 >= 5 {
+      q = q + 1;
+    }
+    m = q * 10;
+  }
+  let mut out: String = string_new();
+  if n < 0 {
+    out = string_push_str(move out, "-");
+  }
+  out = string_push_str(move out, dec(m));
+  return string_to_str(out);
+}

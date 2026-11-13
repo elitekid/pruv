@@ -51,6 +51,7 @@ on:
       - "bench/l0/cell_date.mjs"
       - "bench/l0/run_cell_date.py"
       - "bench/l0/run_cell_str.py"
+      - "bench/l0/run_cell_int.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

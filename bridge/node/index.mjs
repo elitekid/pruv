@@ -71,6 +71,10 @@ export const cellDate = native.cellDate;
 /** Lair cellText (src/documents/sheets.ts), the string branch: cellStr(text) is
  *  text.replace(/\r?\n/g, ' ').trim() for a well-formed string. */
 export const cellStr = native.cellStr;
+
+/** Lair cellText (src/documents/sheets.ts), the number branch on safe integers: cellInt(n) is
+ *  String(Number(n.toPrecision(15))). */
+export const cellInt = native.cellInt;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

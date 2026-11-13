@@ -56,6 +56,10 @@ mod cell_date_gen;
 #[allow(dead_code, clippy::all)]
 mod cell_str_gen;
 
+#[path = "../gen/cell_int_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod cell_int_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -638,6 +642,18 @@ pub fn cell_str(text: String) -> napi::Result<String> {
             "cellStr: text must be at most 1000000000000 UTF-8 bytes"));
     }
     Ok(cell_str_gen::cell_str(&text))
+}
+
+/// Lair cellText (src/documents/sheets.ts), the number branch on safe integers:
+/// String(Number(n.toPrecision(15))), so a 16-digit integer is rounded to 15 significant digits (ties away
+/// from zero). -0 gives "0", as in the TS.
+#[napi(js_name = "cellInt")]
+pub fn cell_int_text(n: f64) -> napi::Result<String> {
+    if !n.is_finite() || n.fract() != 0.0 || n.abs() > 9_007_199_254_740_991.0 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "cellInt: n must be an integer in -9007199254740991..=9007199254740991"));
+    }
+    Ok(cell_int_gen::cell_int(n as i64))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.
