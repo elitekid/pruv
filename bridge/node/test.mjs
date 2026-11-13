@@ -1,5 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges } from './index.mjs';
+import { crc32 } from 'node:zlib';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet } from './index.mjs';
+import { renderClipSheet as tsRenderClipSheet } from '../../bench/l0/clip_sheet.mjs';
 import { numberRanges as tsNumberRanges } from '../../bench/l0/number_ranges.mjs';
 import { shrinkDecoded as tsShrinkDecoded, readOrientation as tsReadOrientation } from '../../bench/l0/image_shrink.mjs';
 import { chunkLines as tsChunkLines, chunkBlocks as tsChunkBlocks } from '../../bench/l0/group_text.mjs';
@@ -474,6 +476,39 @@ mustInvalidArg('numberRanges 1e15+1', () => numberRanges([1e15 + 1]));
 mustInvalidArg('numberRanges -Infinity', () => numberRanges([-Infinity]));
 mustThrow('numberRanges string', () => numberRanges('12'));
 
+// ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
+// A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
+const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
+const sheetScript = fileURLToPath(new URL('../../bench/l0/run_clip_sheet.py', import.meta.url));
+const sheetRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [sheetScript, '--emit', '--n', String(Math.min(CASES, 20)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+const sheetCells = (row) => row.map(([width, height, hex, number, label]) => (
+  { jpeg: { width, height, data: new Uint8Array(Buffer.from(hex, 'hex')) }, number, label }));
+const crcHex = (buf) => (crc32(buf) >>> 0).toString(16).padStart(8, '0');
+let sheetMismatches = 0, sheetTsDiff = 0;
+for (const [row, want] of sheetRows) {
+  const got = crcHex(renderClipSheet(sheetCells(row), passJpeg));
+  if (got !== want) {
+    sheetMismatches++;
+    if (sheetMismatches <= 5) console.error('clip sheet mismatch', JSON.stringify({ sizes: row.map(c => [c[0], c[1], c[3]]), got, want }));
+  }
+  if (crcHex(tsRenderClipSheet(sheetCells(row))) !== got) sheetTsDiff++;
+}
+const blankSheet = clipSheetBackground();
+const onePixel = new Uint8Array([1, 2, 3, 255]);
+mustThrow('renderClipSheet 0 cells', () => renderClipSheet([], passJpeg));
+mustThrow('renderClipSheet 5 cells', () => renderClipSheet(Array(5).fill({ jpeg: { width: 1, height: 1, data: onePixel }, number: 1, label: '' }), passJpeg));
+mustThrow('renderClipSheet zero size', () => renderClipSheet([{ jpeg: { width: 0, height: 1, data: onePixel }, number: 1, label: '' }], passJpeg));
+mustInvalidArg('clipSheetCell short sheet', () => clipSheetCell(blankSheet.subarray(1), 0, onePixel, 1, 1, 1, 1, '', '1'));
+mustInvalidArg('clipSheetCell index 4', () => clipSheetCell(blankSheet, 4, onePixel, 1, 1, 1, 1, '', '1'));
+mustInvalidArg('clipSheetCell width 65536', () => clipSheetCell(blankSheet, 0, onePixel, 65536, 1, 1, 1, '', '1'));
+mustInvalidArg('clipSheetCell out_w 769', () => clipSheetCell(blankSheet, 0, onePixel, 1, 1, 769, 1, '', '1'));
+mustInvalidArg('clipSheetCell out_h 0.5', () => clipSheetCell(blankSheet, 0, onePixel, 1, 1, 1, 0.5, '', '1'));
+mustInvalidArg('clipSheetCell data length', () => clipSheetCell(blankSheet, 0, onePixel, 2, 1, 1, 1, '', '1'));
+mustInvalidArg('clipSheetCell long number', () => clipSheetCell(blankSheet, 0, onePixel, 1, 1, 1, 1, '', '9'.repeat(4097)));
+mustInvalidArg('clipSheetCell long label', () => clipSheetCell(blankSheet, 0, onePixel, 1, 1, 1, 1, 'x'.repeat(1000001), '1'));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -515,6 +550,9 @@ console.log(JSON.stringify({
   ranges_cases: rangesRows.length,
   ranges_mismatches: rangesMismatches,
   ranges_ts_differences: rangesTsDiff,
+  sheet_cases: sheetRows.length,
+  sheet_mismatches: sheetMismatches,
+  sheet_ts_differences: sheetTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || sheetMismatches || sheetTsDiff || !errorOk ? 1 : 0);

@@ -12,6 +12,10 @@ use napi_derive::napi;
 #[allow(dead_code, clippy::all)]
 mod number_ranges_gen;
 
+#[path = "../gen/clip_sheet_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod clip_sheet_gen;
+
 #[path = "../gen/clip_bytes_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod clip_bytes_gen;
@@ -348,4 +352,59 @@ pub fn number_ranges(numbers: Vec<f64>) -> napi::Result<String> {
         v.push(n as i64);
     }
     Ok(number_ranges_gen::number_ranges(&v))
+}
+
+fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {
+    if !v.is_finite() || v.fract() != 0.0 || v < lo || v > hi {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("clipSheetCell: {name} must be an integer in {lo}..={hi}")));
+    }
+    Ok(v as i64)
+}
+
+/// Lair renderClipSheet's blank 1560 x 920 RGBA board (dark grey).
+#[napi(js_name = "clipSheetBackground")]
+pub fn clip_sheet_background() -> napi::bindgen_prelude::Buffer {
+    clip_sheet_gen::clip_sheet_background().into()
+}
+
+/// One cell of Lair renderClipSheet drawn onto a copy of `sheet`: the picture box-fitted to
+/// out_w x out_h and centred in the 768 x 432 cell, the label strip and the number box.
+/// sheet 5740800 bytes, index 0..=3, width/height 1..=65535, data 4 * width * height bytes,
+/// out_w 1..=768, out_h 1..=432, label at most 1000000 and number at most 4096 UTF-8 bytes.
+#[napi(js_name = "clipSheetCell")]
+#[allow(clippy::too_many_arguments)]
+pub fn clip_sheet_cell(
+    sheet: napi::bindgen_prelude::Uint8Array,
+    index: f64,
+    data: napi::bindgen_prelude::Uint8Array,
+    width: f64,
+    height: f64,
+    out_w: f64,
+    out_h: f64,
+    label: String,
+    number: String,
+) -> napi::Result<napi::bindgen_prelude::Buffer> {
+    if sheet.len() != 5740800 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "clipSheetCell: sheet must be 5740800 bytes"));
+    }
+    let i = sheet_int("index", index, 0.0, 3.0)?;
+    let w = sheet_int("width", width, 1.0, 65535.0)?;
+    let h = sheet_int("height", height, 1.0, 65535.0)?;
+    let ow = sheet_int("out_w", out_w, 1.0, 768.0)?;
+    let oh = sheet_int("out_h", out_h, 1.0, 432.0)?;
+    if data.len() as u64 != 4 * (w as u64) * (h as u64) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "clipSheetCell: data must be 4 * width * height bytes"));
+    }
+    if label.len() > 1000000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "clipSheetCell: label must be at most 1000000 UTF-8 bytes"));
+    }
+    if number.len() > 4096 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "clipSheetCell: number must be at most 4096 UTF-8 bytes"));
+    }
+    Ok(clip_sheet_gen::clip_sheet_cell(&sheet, i, &data, w, h, ow, oh, &label, &number).into())
 }

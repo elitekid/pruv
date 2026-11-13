@@ -1,0 +1,112 @@
+{
+  "seed": 12345,
+  "random_cases": 300,
+  "runs": {
+    "py/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/clip_sheet_py_rust/clip_sheet_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 347,
+      "pruv_oracle_pass": 347,
+      "ts_oracle_pass": 347,
+      "pruv_ts_pass": 347
+    },
+    "py/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/clip_sheet_py_llvm/clip_sheet_gen.rs",
+        "ll": "bench/l0/work/clip_sheet_py_llvm/clip_sheet_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 347,
+      "pruv_oracle_pass": 347,
+      "ts_oracle_pass": 347,
+      "pruv_ts_pass": 347
+    },
+    "rs/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/clip_sheet_rs_rust/clip_sheet_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 347,
+      "pruv_oracle_pass": 347,
+      "ts_oracle_pass": 347,
+      "pruv_ts_pass": 347
+    },
+    "rs/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/clip_sheet_rs_llvm/clip_sheet_gen.rs",
+        "ll": "bench/l0/work/clip_sheet_rs_llvm/clip_sheet_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 347,
+      "pruv_oracle_pass": 347,
+      "ts_oracle_pass": 347,
+      "pruv_ts_pass": 347
+    }
+  },
+  "tools": {
+    "commands": {
+      "py": [
+        "python",
+        "pruvc.py"
+      ],
+      "rs": [
+        "pruvc"
+      ]
+    },
+    "rust_source_sha256": "888a5b93a90541ecf793413e97bc9f0e5ecf67bc9f95434a250c7cb5d652aff9",
+    "rust_binary_sha256": "b58519d9ab877bc4ae9fafa7a9f56d8cd46e4f45070eb46303c32bf4c029737d",
+    "node": "v26.4.0"
+  },
+  "edge_cases": 47,
+  "cases": 347,
+  "cells": 867,
+  "cell_outcomes": {
+    "double_size_differs_from_exact": 3,
+    "label_wider_than_cell": 222,
+    "label_without_glyph_chars": 515,
+    "max_label_units": 5000
+  },
+  "ts_runtime": {
+    "electron": true,
+    "node": "24.22.2",
+    "electron_version": "44.11.2",
+    "icu": "78.2"
+  },
+  "ts_oracle_pass": 347,
+  "status": "ok",
+  "difference_records_total": 0,
+  "difference_records_saved": 0,
+  "difference_order": "case index, compiler/backend"
+}

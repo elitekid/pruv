@@ -1,0 +1,309 @@
+// Lair renderClipSheet (src/documents/clip-sheet.ts): the pixels of the 1560 x 920 RGBA scene sheet
+// before the JPEG encode. clip_sheet_background fills the sheet; clip_sheet_cell draws one cell on a
+// copy of it: the decoded picture fitted into its 768 x 432 box by area average, the black time strip
+// with the centered label, and the black number box with the number text, in the 5 x 7 font at 2x.
+// JPEG decoding and encoding stay in the host (jpeg-js). The fitted size out_w x out_h comes from the
+// host too: TS computes it with doubles (Math.round(side * Math.min(768 / w, 432 / h))), which differs
+// from exact rounding when the product is an exact half in rationals but not in doubles.
+// Writes mirror a JS Uint8Array: a write outside the sheet is ignored (long labels run past the sheet
+// edge and wrap into the next row, exactly as the TS linear index does). Every read is in bounds.
+
+// The sheet: 1560 x 920 pixels, 4 bytes each.
+fn sheet_bytes() -> i64
+  ensures result == 5740800
+{
+  return 5740800;
+}
+
+// Write one RGBA pixel (alpha 255) at byte offset at, unless it falls outside the sheet. at is a
+// multiple of 4 in every call and the sheet length is too, so the four bytes are all in or all out.
+fn put(inout s: [u8], at: i64, r: i64, g: i64, b: i64) -> ()
+  requires 0 <= r && r <= 255 && 0 <= g && g <= 255 && 0 <= b && b <= 255
+  ensures len(s) == len(old(s))
+{
+  if 0 <= at && at < len(s) - 3 {
+    s[at] = r;
+    s[at + 1] = g;
+    s[at + 2] = b;
+    s[at + 3] = 255;
+  }
+}
+
+// fillRect: rows y .. y + h - 1, each from linear pixel row * 1560 + x for w pixels.
+fn fill_rect(inout s: [u8], x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64) -> ()
+  requires -1000000000 <= x && x <= 1000000000 && 0 <= y && y <= 2000
+  requires 0 <= w && w <= 1000000000 && 0 <= h && h <= 1000
+  requires 0 <= r && r <= 255 && 0 <= g && g <= 255 && 0 <= b && b <= 255
+  ensures len(s) == len(old(s))
+{
+  let mut row: i64 = y;
+  while row < y + h
+    invariant y <= row && row <= y + h && len(s) == len(old(s))
+    decreases y + h - row
+  {
+    let mut at: i64 = (row * 1560 + x) * 4;
+    let mut col: i64 = 0;
+    while col < w
+      invariant 0 <= col && col <= w && len(s) == len(old(s))
+      invariant at == (row * 1560 + x) * 4 + 4 * col
+      decreases w - col
+    {
+      put(inout s, at, r, g, b);
+      at = at + 4;
+      col = col + 1;
+    }
+    row = row + 1;
+  }
+}
+
+// UTF-16 length (JS text.length): one unit per character, two for a 4-byte character.
+fn units(t: str) -> i64
+  ensures 0 <= result && result <= 2 * len(t)
+{
+  let mut n: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(t)
+    invariant 0 <= i && i <= len(t) && 0 <= n && n <= 2 * i
+    decreases len(t) - i
+  {
+    let c: i64 = t[i];
+    if c < 128 || c >= 192 { n = n + 1; }
+    if c >= 240 { n = n + 1; }
+    i = i + 1;
+  }
+  return n;
+}
+
+// Row k (0..6) of the 5 x 7 glyph for ASCII byte c, the left pixel in the high bit; -1 if c has no glyph.
+fn glyph(c: i64, k: i64) -> i64
+  requires 0 <= k && k < 7
+  ensures -1 <= result && result < 32
+{
+  if c == 48 {
+    if k == 0 { return 14; } if k == 1 { return 17; } if k == 2 { return 19; } if k == 3 { return 21; }
+    if k == 4 { return 25; } if k == 5 { return 17; } return 14;
+  }
+  if c == 49 {
+    if k == 0 { return 4; } if k == 1 { return 12; } if k == 6 { return 14; } return 4;
+  }
+  if c == 50 {
+    if k == 0 { return 14; } if k == 1 { return 17; } if k == 2 { return 1; } if k == 3 { return 2; }
+    if k == 4 { return 4; } if k == 5 { return 8; } return 31;
+  }
+  if c == 51 {
+    if k == 0 { return 30; } if k == 3 { return 14; } if k == 6 { return 30; } return 1;
+  }
+  if c == 52 {
+    if k == 0 { return 2; } if k == 1 { return 6; } if k == 2 { return 10; } if k == 3 { return 18; }
+    if k == 4 { return 31; } return 2;
+  }
+  if c == 53 {
+    if k == 0 { return 31; } if k == 1 { return 16; } if k == 2 { return 30; } if k == 5 { return 17; }
+    if k == 6 { return 14; } return 1;
+  }
+  if c == 54 {
+    if k == 0 { return 6; } if k == 1 { return 8; } if k == 2 { return 16; } if k == 3 { return 30; }
+    if k == 6 { return 14; } return 17;
+  }
+  if c == 55 {
+    if k == 0 { return 31; } if k == 1 { return 1; } if k == 2 { return 2; } if k == 3 { return 4; }
+    return 8;
+  }
+  if c == 56 {
+    if k == 0 || k == 3 || k == 6 { return 14; } return 17;
+  }
+  if c == 57 {
+    if k == 0 { return 14; } if k == 3 { return 15; } if k == 4 { return 1; }
+    if k == 5 { return 2; } if k == 6 { return 12; } return 17;
+  }
+  if c == 58 {
+    if k == 0 || k == 3 || k == 6 { return 0; } return 4;
+  }
+  if c == 46 {
+    if k == 5 || k == 6 { return 12; } return 0;
+  }
+  return -1;
+}
+
+// drawText: white glyphs at 2x from (x, y), one 12-pixel advance per character (code point);
+// characters without a glyph (everything but 0-9, ':' and '.') leave a gap.
+fn draw_text(inout s: [u8], x: i64, y: i64, t: str) -> ()
+  requires -100000000 <= x && x <= 100000000 && 0 <= y && y <= 1000 && len(t) <= 1000000
+  ensures len(s) == len(old(s))
+{
+  let mut left: i64 = x;
+  let mut i: i64 = 0;
+  while i < len(t)
+    invariant 0 <= i && i <= len(t) && x <= left && left <= x + 12 * i && len(s) == len(old(s))
+    decreases len(t) - i
+  {
+    let c: i64 = t[i];
+    if c < 128 || c >= 192 {
+      if glyph(c, 0) >= 0 {
+        let mut row: i64 = 0;
+        while row < 7
+          invariant 0 <= row && row <= 7 && len(s) == len(old(s))
+          decreases 7 - row
+        {
+          let bits: i64 = glyph(c, row);
+          let mut col: i64 = 0;
+          while col < 5
+            invariant 0 <= col && col <= 5 && len(s) == len(old(s))
+            decreases 5 - col
+          {
+            let mut p: i64 = 16;
+            if col == 1 { p = 8; }
+            if col == 2 { p = 4; }
+            if col == 3 { p = 2; }
+            if col == 4 { p = 1; }
+            if bits >= 0 && (bits / p) % 2 == 1 {
+              fill_rect(inout s, left + col * 2, y + row * 2, 2, 2, 255, 255, 255);
+            }
+            col = col + 1;
+          }
+          row = row + 1;
+        }
+      }
+      left = left + 12;
+    }
+    i = i + 1;
+  }
+}
+
+// The low box edge floor(o * size / out) and the high one max(lo + 1, floor((o + 1) * size / out)).
+fn edge_lo(o: i64, size: i64, out: i64) -> i64
+  requires 0 <= o && o < out && out <= 768 && 1 <= size && size <= 65535
+  ensures 0 <= result && result < size
+{
+  let mut v: i64 = (o * size) / out;
+  if v > size - 1 { v = size - 1; }
+  return v;
+}
+
+fn edge_hi(o: i64, size: i64, out: i64, lo: i64) -> i64
+  requires 0 <= o && o < out && out <= 768 && 1 <= size && size <= 65535 && 0 <= lo && lo < size
+  ensures lo < result && result <= size
+{
+  let mut v: i64 = ((o + 1) * size) / out;
+  if v < lo + 1 { v = lo + 1; }
+  if v > size { v = size; }
+  return v;
+}
+
+// The source byte at i, or 0 past the data (the host passes exactly 4 * width * height bytes).
+fn at(data: [u8], i: i64) -> i64
+  requires 0 <= i
+  ensures 0 <= result && result <= 255
+{
+  if i < len(data) { return data[i]; }
+  return 0;
+}
+
+// Math.round(s / n) for 0 <= s <= 255 * n: half rounds up.
+fn avg(s: i64, n: i64) -> i64
+  requires 0 <= s && s <= 1099511627776 && 1 <= n && n <= 4294967296
+  ensures 0 <= result && result <= 255
+{
+  let v: i64 = (2 * s + n) / (2 * n);
+  if v > 255 { return 255; }
+  return v;
+}
+
+// drawFitted: the width x height RGBA picture shrunk or grown by area average to out_w x out_h,
+// centered in the 768 x 432 box at (left, top).
+fn draw_fitted(inout s: [u8], data: [u8], width: i64, height: i64, out_w: i64, out_h: i64, left: i64, top: i64) -> ()
+  requires 1 <= width && width <= 65535 && 1 <= height && height <= 65535
+  requires 1 <= out_w && out_w <= 768 && 1 <= out_h && out_h <= 432
+  requires 0 <= left && left <= 784 && 0 <= top && top <= 468
+  ensures len(s) == len(old(s))
+{
+  let origin_x: i64 = left + (768 - out_w) / 2;
+  let origin_y: i64 = top + (432 - out_h) / 2;
+  let mut oy: i64 = 0;
+  while oy < out_h
+    invariant 0 <= oy && oy <= out_h && len(s) == len(old(s))
+    decreases out_h - oy
+  {
+    let y0: i64 = edge_lo(oy, height, out_h);
+    let y1: i64 = edge_hi(oy, height, out_h, y0);
+    let mut write: i64 = ((origin_y + oy) * 1560 + origin_x) * 4;
+    let mut ox: i64 = 0;
+    while ox < out_w
+      invariant 0 <= ox && ox <= out_w && len(s) == len(old(s))
+      invariant write == ((origin_y + oy) * 1560 + origin_x) * 4 + 4 * ox
+      decreases out_w - ox
+    {
+      let x0: i64 = edge_lo(ox, width, out_w);
+      let x1: i64 = edge_hi(ox, width, out_w, x0);
+      let mut r: i64 = 0;
+      let mut g: i64 = 0;
+      let mut b: i64 = 0;
+      let mut y: i64 = y0;
+      while y < y1
+        invariant y0 <= y && y <= y1
+        invariant 0 <= r && r <= 16711425 * (y - y0)
+        invariant 0 <= g && g <= 16711425 * (y - y0)
+        invariant 0 <= b && b <= 16711425 * (y - y0)
+        decreases y1 - y
+      {
+        let mut read: i64 = (y * width + x0) * 4;
+        let mut x: i64 = x0;
+        while x < x1
+          invariant x0 <= x && x <= x1 && 0 <= read
+          invariant 0 <= r && r <= 16711425 * (y - y0) + 255 * (x - x0)
+          invariant 0 <= g && g <= 16711425 * (y - y0) + 255 * (x - x0)
+          invariant 0 <= b && b <= 16711425 * (y - y0) + 255 * (x - x0)
+          invariant read <= (y * width + x) * 4
+          decreases x1 - x
+        {
+          r = r + at(data, read);
+          g = g + at(data, read + 1);
+          b = b + at(data, read + 2);
+          read = read + 4;
+          x = x + 1;
+        }
+        y = y + 1;
+      }
+      let n: i64 = (y1 - y0) * (x1 - x0);
+      put(inout s, write, avg(r, n), avg(g, n), avg(b, n));
+      write = write + 4;
+      ox = ox + 1;
+    }
+    oy = oy + 1;
+  }
+}
+
+// The empty sheet: every pixel the background (13, 17, 23).
+pub fn clip_sheet_background() -> [u8] ! alloc
+  ensures len(result) == 5740800
+{
+  let mut s: [u8] = alloc(sheet_bytes(), 0);
+  fill_rect(inout s, 0, 0, 1560, 920, 13, 17, 23);
+  return s;
+}
+
+// The sheet with cell index (0..3, left to right then top to bottom) drawn on it. number is the
+// host's String(cell.number).
+pub fn clip_sheet_cell(sheet: [u8], index: i64, data: [u8], width: i64, height: i64, out_w: i64, out_h: i64,
+                       label: str, number: str) -> [u8] ! alloc
+  requires len(sheet) == 5740800 && 0 <= index && index <= 3
+  requires 1 <= width && width <= 65535 && 1 <= height && height <= 65535
+  requires 1 <= out_w && out_w <= 768 && 1 <= out_h && out_h <= 432
+  requires len(label) <= 1000000 && len(number) <= 4096
+  ensures len(result) == 5740800
+{
+  let mut s: [u8] = copy(sheet);
+  let mut left: i64 = 8;
+  if index % 2 == 1 { left = 784; }
+  let mut top: i64 = 8;
+  if index >= 2 { top = 468; }
+  draw_fitted(inout s, data, width, height, out_w, out_h, left, top);
+  let strip_top: i64 = top + 432;
+  fill_rect(inout s, left, strip_top, 768, 20, 0, 0, 0);
+  // left + floor((768 - textWidth) / 2) with textWidth = 12 * units - 2: the numerator 770 - 12 * units
+  // is even, so this is exact.
+  draw_text(inout s, left + 385 - 6 * units(label), strip_top + 3, label);
+  fill_rect(inout s, left, top, 12 * units(number) - 2 + 8, 22, 0, 0, 0);
+  draw_text(inout s, left + 4, top + 4, number);
+  return s;
+}

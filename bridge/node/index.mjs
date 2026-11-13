@@ -77,3 +77,24 @@ export function encodePng(image, maxPixels) {
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }
+
+export const clipSheetBackground = native.clipSheetBackground;
+export const clipSheetCell = native.clipSheetCell;
+
+/** Lair renderClipSheet: `jpeg` is the jpeg-js module ({decode, encode}). The board, the fitted pictures,
+ *  the label strips and the number boxes come from the verified Pruv clipSheetBackground and clipSheetCell;
+ *  only the JPEG decode/encode and the JS-rounded fit size are JS (same doubles as TS). Throws the TS errors. */
+export function renderClipSheet(cells, jpeg) {
+  if (cells.length < 1 || cells.length > 4) throw new Error(`장면 판 칸은 1~4개여야 해(받은 ${cells.length}개).`);
+  let sheet = native.clipSheetBackground();
+  cells.forEach((cell, index) => {
+    const decoded = jpeg.decode(cell.jpeg, { useTArray: true, formatAsRGBA: true });
+    const { width, height } = decoded;
+    if (!(width > 0 && height > 0)) throw new Error('장면 사진 크기를 읽지 못했어.');
+    const ratio = Math.min(768 / width, 432 / height);
+    const outW = Math.max(1, Math.min(768, Math.round(width * ratio)));
+    const outH = Math.max(1, Math.min(432, Math.round(height * ratio)));
+    sheet = native.clipSheetCell(sheet, index, decoded.data, width, height, outW, outH, cell.label, String(cell.number));
+  });
+  return Buffer.from(jpeg.encode({ data: sheet, width: 1560, height: 920 }, 80).data);
+}
