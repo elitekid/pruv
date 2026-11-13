@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 GEN = Path(__file__).resolve().parent / "gen"
-NAMES = ["clip_bytes", "host_within", "version_at_least", "col_letters", "term_plain", "decode_bytes", "zip_total", "encode_png", "split_text", "group_text", "image_shrink", "number_ranges", "clip_sheet", "kind_of", "row_pieces", "sheet_chunks", "text_around", "parse_html", "docx_parts", "tokenize", "doc_labels", "join_ranges", "cut_cell", "sheet_range", "page_ranges", "grouped_number", "under_root", "cap_keep", "evict_stop", "index_terms"]
+NAMES = ["clip_bytes", "host_within", "version_at_least", "col_letters", "term_plain", "decode_bytes", "zip_total", "encode_png", "split_text", "group_text", "image_shrink", "number_ranges", "clip_sheet", "kind_of", "row_pieces", "sheet_chunks", "text_around", "parse_html", "docx_parts", "tokenize", "doc_labels", "join_ranges", "cut_cell", "sheet_range", "page_ranges", "grouped_number", "under_root", "cap_keep", "evict_stop", "index_terms", "note_pairs"]
 # Sources with trusted adapters need the adapter crate to verify against.
 EXTERN = {"decode_bytes": "decode"}
 sys.dont_write_bytecode = True

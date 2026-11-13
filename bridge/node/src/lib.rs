@@ -44,6 +44,10 @@ mod evict_stop_gen;
 #[allow(dead_code, clippy::all)]
 mod index_terms_gen;
 
+#[path = "../gen/note_pairs_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod note_pairs_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -575,6 +579,35 @@ pub fn index_terms(tok: Vec<f64>, vocab: f64) -> napi::Result<Vec<f64>> {
         t.push(x as i64);
     }
     Ok(index_terms_gen::index_terms(&t, vocab as i64).into_iter().map(|x| x as f64).collect())
+}
+
+/// Lair addNote / addMissing (src/documents/context.ts): the key list beside a draft list after a run of calls.
+#[napi(js_name = "notePairs")]
+pub fn note_pairs(n0: f64, has: f64, pre: Vec<f64>, keys: Vec<f64>) -> napi::Result<Vec<f64>> {
+    let bad = |m: &str| Err(napi::Error::new(napi::Status::InvalidArg, format!("notePairs: {m}")));
+    if !n0.is_finite() || n0.fract() != 0.0 || !(0.0..=1e7).contains(&n0) {
+        return bad("n0 must be an integer in 0..=10000000");
+    }
+    if has != 0.0 && has != 1.0 {
+        return bad("has must be 0 or 1");
+    }
+    if pre.len() > 10_000_000 || keys.len() > 10_000_000 {
+        return bad("at most 10000000 entries and 10000000 calls");
+    }
+    if has == 0.0 && !pre.is_empty() {
+        return bad("pre must be empty when has is 0");
+    }
+    let mut p = Vec::with_capacity(pre.len());
+    let mut k = Vec::with_capacity(keys.len());
+    for (src, dst) in [(&pre, &mut p), (&keys, &mut k)] {
+        for &x in src.iter() {
+            if !x.is_finite() || x.fract() != 0.0 || !(0.0..=1e9).contains(&x) {
+                return bad("entries and keys must be integers in 0..=1000000000");
+            }
+            dst.push(x as i64);
+        }
+    }
+    Ok(note_pairs_gen::note_pairs(n0 as i64, has as i64, &p, &k).into_iter().map(|x| x as f64).collect())
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

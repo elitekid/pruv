@@ -1,6 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms, notePairs } from './index.mjs';
 import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { joinRangeParts as tsJoinRangeParts } from '../../bench/l0/join_ranges.mjs';
 import { cutCell as tsCutCell } from '../../bench/l0/cut_cell.mjs';
@@ -11,6 +11,7 @@ import { under as tsUnder } from '../../bench/l0/under_root.mjs';
 import { capChars as tsCapChars } from '../../bench/l0/cap_keep.mjs';
 import { evictFolder as tsEvictFolder } from '../../bench/l0/evict_stop.mjs';
 import { buildIndex as tsBuildIndex } from '../../bench/l0/index_terms.mjs';
+import { runCalls as tsRunCalls } from '../../bench/l0/note_pairs.mjs';
 import { sep as pathSep } from 'node:path';
 import { tokenize as tsTokenize } from '../../bench/l0/tokenize.mjs';
 import { docxParts as tsDocxParts } from '../../bench/l0/docx_parts.mjs';
@@ -736,6 +737,36 @@ mustThrow('indexTerms fractional id', () => indexTerms([0.5], 3));
 mustThrow('indexTerms vocab zero', () => indexTerms([], 0));
 mustThrow('indexTerms vocab over 1e7', () => indexTerms([], 1e7 + 1));
 
+// ---- notePairs against the closed-form oracle (bench/l0/run_note_pairs.py --emit) ----
+// Each row is [n0, has, pre, keys, oracle result]; the same calls also run through the verbatim TS addNote /
+// addMissing (alternating), whose final text list and key list must match.
+const noteScript = fileURLToPath(new URL('../../bench/l0/run_note_pairs.py', import.meta.url));
+const noteRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [noteScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let noteMismatches = 0, noteTsDiff = 0;
+noteRows.forEach(([n0, has, pre, keys, want], i) => {
+  const got = notePairs(n0, has, pre, keys);
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    noteMismatches++;
+    if (noteMismatches <= 5) console.error('notePairs mismatch', JSON.stringify({ n0, has, pre: pre.slice(0, 20), keys: keys.slice(0, 20), got: got.slice(0, 21), want: want.slice(0, 21) }));
+  }
+  const key = k => (k ? { key: 'k' + k } : null);
+  const list = Array.from({ length: n0 }, (_, k) => 't' + k);
+  const ts = tsRunCalls(i % 2 ? 'addMissing' : 'addNote', list, has ? pre.map(key) : null, keys.map((k, j) => ['c' + j, key(k)]));
+  const tsFlat = ts.pairs === null ? [0] : [1, ...ts.pairs.map(x => (x ? Number(x.key.slice(1)) : 0))];
+  if (ts.list.length !== n0 + keys.length || JSON.stringify(tsFlat) !== JSON.stringify(got)) {
+    noteTsDiff++;
+    if (noteTsDiff <= 5) console.error('notePairs ts difference', JSON.stringify({ n0, has, pre: pre.slice(0, 20), keys: keys.slice(0, 20) }));
+  }
+});
+mustThrow('notePairs n0 negative', () => notePairs(-1, 0, [], []));
+mustThrow('notePairs n0 over 1e7', () => notePairs(1e7 + 1, 0, [], []));
+mustThrow('notePairs has 2', () => notePairs(0, 2, [], []));
+mustThrow('notePairs pre without has', () => notePairs(0, 0, [1], []));
+mustThrow('notePairs fractional key', () => notePairs(0, 0, [], [0.5]));
+mustThrow('notePairs key over 1e9', () => notePairs(0, 1, [1e9 + 1], []));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -1039,6 +1070,9 @@ console.log(JSON.stringify({
   index_terms_cases: indexRows.length,
   index_terms_mismatches: indexMismatches,
   index_terms_ts_differences: indexTsDiff,
+  note_pairs_cases: noteRows.length,
+  note_pairs_mismatches: noteMismatches,
+  note_pairs_ts_differences: noteTsDiff,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -1068,4 +1102,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || noteMismatches || noteTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);

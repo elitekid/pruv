@@ -56,6 +56,12 @@ export const evictStop = native.evictStop;
  *  [m, id_1, count_1, ..., id_m, count_m], the distinct token ids in order of first appearance with their counts.
  *  tok: token ids, integers 0..vocab-1 (at most 1e7); vocab: integer 1..1e7. The host numbers the token strings. */
 export const indexTerms = native.indexTerms;
+
+/** Lair addNote / addMissing (src/documents/context.ts): notePairs(n0, has, pre, keys) is [0] when the key list
+ *  stays absent after the calls, else [1, final key list...]. n0: texts already in the list (integer 0..1e7);
+ *  has: 1 when the key list exists, its entries in pre (0 = null, k = key k), else 0 with pre empty; keys[j]: the
+ *  key of call j (0 = none). The host numbers the keys; entries and keys are integers 0..1e9, at most 1e7 each. */
+export const notePairs = native.notePairs;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 
