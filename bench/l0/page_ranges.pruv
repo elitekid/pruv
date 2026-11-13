@@ -1,0 +1,79 @@
+// Lair rangeText (src/documents/pdf.ts): page numbers as Korean page ranges "3~5쪽, 8쪽" (a run of
+// consecutive numbers becomes "first~last쪽", a single number "n쪽"), joined with ", ". No length cap.
+// Domain: every number an integer in -10^15..10^15 (JS prints these in plain decimal), at most 10^7
+// numbers. Each range adds at most 40 UTF-8 bytes (", " + two 17-byte numbers + "~" + 3-byte "쪽").
+
+// Decimal digits of n, no leading zeros ("0" for 0).
+fn digits(n: i64) -> str ! alloc
+  requires 0 <= n && n <= 1000000000000000
+  ensures len(result) <= 16
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 1000000000000000;
+  let mut k: i64 = 0;
+  while k < 16
+    invariant 0 <= k && k <= 16
+    invariant 0 <= p && p <= 1000000000000000
+    invariant len(out) <= k
+    decreases 16 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      if len(out) > 0 || d != 0 || p == 1 {
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+// JS String(n) for an integer n.
+fn num(n: i64) -> str ! alloc
+  requires -1000000000000000 <= n && n <= 1000000000000000
+  ensures len(result) <= 17
+{
+  let mut out: String = string_new();
+  if n < 0 {
+    out = string_push_str(move out, "-");
+    out = string_push_str(move out, digits(-n));
+  } else {
+    out = string_push_str(move out, digits(n));
+  }
+  return string_to_str(out);
+}
+
+pub fn page_ranges(pages: [i64]) -> str ! alloc
+  requires len(pages) <= 10000000
+  requires forall k in 0..len(pages): -1000000000000000 <= pages[k] && pages[k] <= 1000000000000000
+  ensures len(result) <= 40 * len(pages)
+{
+  let mut out: String = string_new();
+  let mut i: i64 = 0;
+  while i < len(pages)
+    invariant 0 <= i && i <= len(pages)
+    invariant len(out) <= 40 * i
+    decreases len(pages) - i
+  {
+    let mut j: i64 = i;
+    while j + 1 < len(pages) && pages[j + 1] == pages[j] + 1
+      invariant i <= j && j < len(pages)
+      decreases len(pages) - j
+    {
+      j = j + 1;
+    }
+    if i > 0 {
+      out = string_push_str(move out, ", ");
+    }
+    out = string_push_str(move out, num(pages[i]));
+    if j > i {
+      out = string_push_str(move out, "~");
+      out = string_push_str(move out, num(pages[j]));
+    }
+    out = string_push_str(move out, "쪽");
+    i = j + 1;
+  }
+  return string_to_str(out);
+}

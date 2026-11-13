@@ -20,6 +20,10 @@ mod cut_cell_gen;
 #[allow(dead_code, clippy::all)]
 mod sheet_range_gen;
 
+#[path = "../gen/page_ranges_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod page_ranges_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -434,6 +438,24 @@ pub fn sheet_range(total_rows: f64, total_cols: f64, row: Option<f64>, col: Opti
     }
     let r = sheet_range_gen::sheet_range(tr, tc, v[0], v[1], v[2], v[3], given);
     Ok(r.iter().map(|&x| x as f64).collect())
+}
+
+/// Lair rangeText (src/documents/pdf.ts): page numbers as "3~5쪽, 8쪽", no length cap.
+#[napi(js_name = "pageRanges")]
+pub fn page_ranges(pages: Vec<f64>) -> napi::Result<String> {
+    if pages.len() > 10_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "pageRanges: at most 10000000 pages"));
+    }
+    let mut v = Vec::with_capacity(pages.len());
+    for n in pages {
+        if !n.is_finite() || n.fract() != 0.0 || !(-1e15..=1e15).contains(&n) {
+            return Err(napi::Error::new(napi::Status::InvalidArg,
+                "pageRanges: pages must be integers in -1000000000000000..=1000000000000000"));
+        }
+        v.push(n as i64);
+    }
+    Ok(page_ranges_gen::page_ranges(&v))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

@@ -28,6 +28,10 @@ export const cutCell = native.cutCell;
 export function sheetRange(totalRows, totalCols, request = {}) {
   return native.sheetRange(totalRows, totalCols, request.row, request.col, request.rows, request.cols);
 }
+
+/** Lair rangeText (src/documents/pdf.ts): page numbers as "3~5쪽, 8쪽" (consecutive runs joined with "~"),
+ *  no length cap. At most 10^7 integers in -1e15..=1e15 (InvalidArg). */
+export const pageRanges = native.pageRanges;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

@@ -34,6 +34,8 @@ on:
       - "bench/l0/run_cut_cell.py"
       - "bench/l0/sheet_range.mjs"
       - "bench/l0/run_sheet_range.py"
+      - "bench/l0/page_ranges.mjs"
+      - "bench/l0/run_page_ranges.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"
