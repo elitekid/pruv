@@ -52,6 +52,10 @@ mod note_pairs_gen;
 #[allow(dead_code, clippy::all)]
 mod cell_date_gen;
 
+#[path = "../gen/cell_str_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod cell_str_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -623,6 +627,17 @@ pub fn cell_date(ms: f64) -> napi::Result<String> {
             "cellDate: ms must be an integer in -8640000000000000..=8640000000000000"));
     }
     Ok(cell_date_gen::cell_date(ms as i64))
+}
+
+/// Lair cellText (src/documents/sheets.ts), the string branch: every "\r\n" and "\n" becomes a space, then
+/// ECMAScript trim white space is cut from both ends. A lone surrogate in the input reaches Pruv as U+FFFD.
+#[napi(js_name = "cellStr")]
+pub fn cell_str(text: String) -> napi::Result<String> {
+    if text.len() as u64 > 1_000_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "cellStr: text must be at most 1000000000000 UTF-8 bytes"));
+    }
+    Ok(cell_str_gen::cell_str(&text))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

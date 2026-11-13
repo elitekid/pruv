@@ -67,6 +67,10 @@ export const notePairs = native.notePairs;
  *  (year unpadded, may be negative), plus " HH:MM" when the UTC hour, minute or second is nonzero. ms: a valid
  *  Date's time value, an integer in -8.64e15..=8.64e15 (date.getTime()). */
 export const cellDate = native.cellDate;
+
+/** Lair cellText (src/documents/sheets.ts), the string branch: cellStr(text) is
+ *  text.replace(/\r?\n/g, ' ').trim() for a well-formed string. */
+export const cellStr = native.cellStr;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 
