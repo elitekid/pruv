@@ -45,6 +45,12 @@ export const under = native.under;
  *  character counts (text.length) are added from the front and the first one whose running total goes over
  *  max is dropped with everything after it. lens: integers 0..1e9 (at most 1e7), max: integer -1e15..1e15. */
 export const capKeep = native.capKeep;
+
+/** The choice Lair evict makes (src/documents/archive.ts): evictStop(bytes, free, limit) is the index where the
+ *  oldest-first walk over the stored versions stops because the total left is within limit; evict deletes the
+ *  deletable versions before it. bytes: sizes in walk order, integers 0..1e9 (at most 1e7); free[k]: bytes[k]
+ *  if version k may be deleted, 0 if it is pinned or kept; limit: integer -1e15..1e15. */
+export const evictStop = native.evictStop;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

@@ -42,6 +42,8 @@ on:
       - "bench/l0/run_under_root.py"
       - "bench/l0/cap_keep.mjs"
       - "bench/l0/run_cap_keep.py"
+      - "bench/l0/evict_stop.mjs"
+      - "bench/l0/run_evict_stop.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

@@ -36,6 +36,10 @@ mod under_root_gen;
 #[allow(dead_code, clippy::all)]
 mod cap_keep_gen;
 
+#[path = "../gen/evict_stop_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod evict_stop_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -515,6 +519,36 @@ pub fn cap_keep(lens: Vec<f64>, max: f64) -> napi::Result<i64> {
         v.push(n as i64);
     }
     Ok(cap_keep_gen::cap_keep(&v, max as i64))
+}
+
+/// The choice Lair evict makes (src/documents/archive.ts): over the stored versions oldest first, the index
+/// where the walk stops because the total left is within the limit. free[k] is bytes[k] for a deletable
+/// version and 0 for a pinned one or the one to keep; evict deletes the deletable versions before the index.
+#[napi(js_name = "evictStop")]
+pub fn evict_stop(bytes: Vec<f64>, free: Vec<f64>, limit: f64) -> napi::Result<i64> {
+    let bad = |m: &str| Err(napi::Error::new(napi::Status::InvalidArg, format!("evictStop: {m}")));
+    if bytes.len() > 10_000_000 {
+        return bad("at most 10000000 versions");
+    }
+    if free.len() != bytes.len() {
+        return bad("bytes and free must have the same length");
+    }
+    if !limit.is_finite() || limit.fract() != 0.0 || !(-1e15..=1e15).contains(&limit) {
+        return bad("limit must be an integer in -1000000000000000..=1000000000000000");
+    }
+    let mut b = Vec::with_capacity(bytes.len());
+    let mut f = Vec::with_capacity(free.len());
+    for (x, y) in bytes.into_iter().zip(free) {
+        if !x.is_finite() || x.fract() != 0.0 || !(0.0..=1e9).contains(&x) {
+            return bad("sizes must be integers in 0..=1000000000");
+        }
+        if y != 0.0 && y != x {
+            return bad("each free entry must be 0 or the size");
+        }
+        b.push(x as i64);
+        f.push(y as i64);
+    }
+    Ok(evict_stop_gen::evict_stop(&b, &f, limit as i64))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

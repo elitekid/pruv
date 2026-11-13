@@ -1,0 +1,119 @@
+{
+  "seed": 12345,
+  "random_cases": 20000,
+  "runs": {
+    "py/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/evict_stop_py_rust/evict_stop_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20035,
+      "pruv_oracle_pass": 20035,
+      "ts_cases": 20031,
+      "ts_oracle_pass": 20031,
+      "pruv_ts_pass": 20031
+    },
+    "py/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/evict_stop_py_llvm/evict_stop_gen.rs",
+        "ll": "bench/l0/work/evict_stop_py_llvm/evict_stop_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20035,
+      "pruv_oracle_pass": 20035,
+      "ts_cases": 20031,
+      "ts_oracle_pass": 20031,
+      "pruv_ts_pass": 20031
+    },
+    "rs/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/evict_stop_rs_rust/evict_stop_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20035,
+      "pruv_oracle_pass": 20035,
+      "ts_cases": 20031,
+      "ts_oracle_pass": 20031,
+      "pruv_ts_pass": 20031
+    },
+    "rs/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/evict_stop_rs_llvm/evict_stop_gen.rs",
+        "ll": "bench/l0/work/evict_stop_rs_llvm/evict_stop_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 20035,
+      "pruv_oracle_pass": 20035,
+      "ts_cases": 20031,
+      "ts_oracle_pass": 20031,
+      "pruv_ts_pass": 20031
+    }
+  },
+  "tools": {
+    "commands": {
+      "py": [
+        "python",
+        "pruvc.py"
+      ],
+      "rs": [
+        "pruvc"
+      ]
+    },
+    "rust_source_sha256": "888a5b93a90541ecf793413e97bc9f0e5ecf67bc9f95434a250c7cb5d652aff9",
+    "rust_binary_sha256": "b58519d9ab877bc4ae9fafa7a9f56d8cd46e4f45070eb46303c32bf4c029737d",
+    "node": "v26.4.0"
+  },
+  "edge_cases": 35,
+  "cases": 20035,
+  "oracle_outcomes": {
+    "delete_none": 9093,
+    "stop_inside": 11538,
+    "walk_to_end": 6705,
+    "skipped_some": 6541,
+    "max_versions": 10000,
+    "max_total": 10000000000000,
+    "max_deleted": 5000
+  },
+  "ts_runtime": {
+    "electron": true,
+    "node": "24.22.2",
+    "electron_version": "44.11.2",
+    "icu": "78.2"
+  },
+  "ts_cases": 20031,
+  "ts_oracle_pass": 20031,
+  "status": "ok",
+  "difference_records_total": 0,
+  "difference_records_saved": 0,
+  "difference_order": "version count, walk, limit, compiler/backend"
+}

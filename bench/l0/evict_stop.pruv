@@ -1,0 +1,49 @@
+// Lair evict (src/documents/archive.ts), the choice it makes: walk the stored versions oldest first, stop as soon
+// as the stored total is within the limit, skip pinned versions and the one to keep, delete the rest. Only that
+// walk is here; reading the folder, stale temp folders and the deletes are not.
+// Inputs, in the walk order (mtime ascending, ties in folder order): bytes[k] is the stored size of version k and
+// free[k] is what deleting it frees, bytes[k] for a deletable version and 0 for a pinned one or the one to keep.
+// The result is the stop index s: evict deletes exactly the deletable versions among the first s.
+// Domain: at most 10^7 versions, each 0..10^9 bytes (every total stays within 10^16 and is exact in a JS
+// double), limit in -10^15..10^15. The two ensures pin s down: before every index below s the total left was
+// still over the limit, and at s it is within the limit unless the walk ran off the end.
+
+pub fn evict_stop(bytes: [i64], free: [i64], limit: i64) -> i64
+  requires len(bytes) <= 10000000
+  requires len(free) == len(bytes)
+  requires forall k in 0..len(bytes): 0 <= bytes[k] && bytes[k] <= 1000000000
+  requires forall k in 0..len(bytes): free[k] == 0 || free[k] == bytes[k]
+  requires -1000000000000000 <= limit && limit <= 1000000000000000
+  ensures 0 <= result && result <= len(bytes)
+  ensures forall j in 0..result: sum(k in 0..len(bytes): bytes[k]) - sum(k in 0..j: free[k]) > limit
+  ensures result == len(bytes) || sum(k in 0..len(bytes): bytes[k]) - sum(k in 0..result: free[k]) <= limit
+{
+  let n: i64 = len(bytes);
+  let mut total: i64 = 0;
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant total == sum(k in 0..i: bytes[k])
+    invariant 0 <= total && total <= 1000000000 * i
+    decreases n - i
+  {
+    total = total + bytes[i];
+    i = i + 1;
+  }
+  let mut left: i64 = total;
+  let mut s: i64 = 0;
+  while s < n
+    invariant 0 <= s && s <= n
+    invariant total == sum(k in 0..n: bytes[k])
+    invariant 0 <= total && total <= 1000000000 * n
+    invariant left == total - sum(k in 0..s: free[k])
+    invariant total - 1000000000 * s <= left && left <= total
+    invariant forall j in 0..s: total - sum(k in 0..j: free[k]) > limit
+    decreases n - s
+  {
+    if left <= limit { return s; }
+    left = left - free[s];
+    s = s + 1;
+  }
+  return n;
+}

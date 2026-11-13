@@ -1,6 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop } from './index.mjs';
 import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { joinRangeParts as tsJoinRangeParts } from '../../bench/l0/join_ranges.mjs';
 import { cutCell as tsCutCell } from '../../bench/l0/cut_cell.mjs';
@@ -9,6 +9,7 @@ import { rangeText as tsRangeText } from '../../bench/l0/page_ranges.mjs';
 import { groupedNumber as tsGroupedNumber } from '../../bench/l0/grouped_number.mjs';
 import { under as tsUnder } from '../../bench/l0/under_root.mjs';
 import { capChars as tsCapChars } from '../../bench/l0/cap_keep.mjs';
+import { evictFolder as tsEvictFolder } from '../../bench/l0/evict_stop.mjs';
 import { sep as pathSep } from 'node:path';
 import { tokenize as tsTokenize } from '../../bench/l0/tokenize.mjs';
 import { docxParts as tsDocxParts } from '../../bench/l0/docx_parts.mjs';
@@ -662,6 +663,37 @@ mustThrow('capKeep length over 1e9', () => capKeep([1e9 + 1], 5));
 mustThrow('capKeep fractional max', () => capKeep([1], 0.5));
 mustThrow('capKeep max over 1e15', () => capKeep([1], 1e15 + 2));
 
+// ---- evictStop against the bisect oracle (bench/l0/run_evict_stop.py --emit) ----
+// The verbatim TS evict runs on rows the oracle marks (at most 2,000 entries) over an in-memory folder built
+// from the row: version k has mtime k and is pinned when free[k] differs from bytes[k].
+const evictScript = fileURLToPath(new URL('../../bench/l0/run_evict_stop.py', import.meta.url));
+const evictRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [evictScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let evictMismatches = 0, evictTsDiff = 0, evictTsCases = 0;
+const hexName = k => k.toString(16).padStart(64, '0');
+for (const [bytes, free, limit, want, tsRuns] of evictRows) {
+  const got = evictStop(bytes, free, limit);
+  if (got !== want) {
+    evictMismatches++;
+    if (evictMismatches <= 5) console.error('evictStop mismatch', JSON.stringify({ bytes: bytes.slice(0, 20), free: free.slice(0, 20), limit, got, want }));
+  }
+  if (tsRuns) {
+    evictTsCases++;
+    const entries = bytes.map((b, k) => ({ name: hexName(k), mtime: k, bytes: b }));
+    const pinned = entries.filter((_, k) => free[k] !== bytes[k]).map(e => e.name);
+    const [, names] = await tsEvictFolder(entries, limit, pinned, '');
+    const expectNames = entries.slice(0, got).filter((_, k) => free[k] === bytes[k]).map(e => e.name);
+    if (JSON.stringify(names) !== JSON.stringify(expectNames)) evictTsDiff++;
+  }
+}
+mustThrow('evictStop negative size', () => evictStop([1, -1], [1, -1], 5));
+mustThrow('evictStop size over 1e9', () => evictStop([1e9 + 1], [0], 5));
+mustThrow('evictStop free not 0 or size', () => evictStop([5], [3], 0));
+mustThrow('evictStop length mismatch', () => evictStop([5, 6], [5], 0));
+mustThrow('evictStop fractional limit', () => evictStop([1], [1], 0.5));
+mustThrow('evictStop limit over 1e15', () => evictStop([1], [1], 1e15 + 2));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -958,6 +990,10 @@ console.log(JSON.stringify({
   cap_keep_mismatches: capMismatches,
   cap_keep_ts_cases: capTsCases,
   cap_keep_ts_differences: capTsDiff,
+  evict_stop_cases: evictRows.length,
+  evict_stop_mismatches: evictMismatches,
+  evict_stop_ts_cases: evictTsCases,
+  evict_stop_ts_differences: evictTsDiff,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -987,4 +1023,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
