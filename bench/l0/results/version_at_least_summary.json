@@ -1,0 +1,118 @@
+{
+  "seed": 12345,
+  "random_cases": 20000,
+  "runs": {
+    "py/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/version_at_least_py_rust/version_at_least_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 21089,
+      "pruv_oracle_pass": 21089,
+      "ts_oracle_pass": 16452,
+      "counts": {
+        "equal": 16452,
+        "unicode_whitespace": 3615,
+        "number_precision": 1022,
+        "other": 0
+      }
+    },
+    "py/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/version_at_least_py_llvm/version_at_least_gen.rs",
+        "ll": "bench/l0/work/version_at_least_py_llvm/version_at_least_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 21089,
+      "pruv_oracle_pass": 21089,
+      "ts_oracle_pass": 16452,
+      "counts": {
+        "equal": 16452,
+        "unicode_whitespace": 3615,
+        "number_precision": 1022,
+        "other": 0
+      }
+    },
+    "rs/rust": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/version_at_least_rs_rust/version_at_least_gen.rs",
+        "ll": null,
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 21089,
+      "pruv_oracle_pass": 21089,
+      "ts_oracle_pass": 16452,
+      "counts": {
+        "equal": 16452,
+        "unicode_whitespace": 3615,
+        "number_precision": 1022,
+        "other": 0
+      }
+    },
+    "rs/llvm": {
+      "status": "ok",
+      "verification": {
+        "rc": 0,
+        "errors": [
+          {
+            "ok": true
+          }
+        ],
+        "rs": "bench/l0/work/version_at_least_rs_llvm/version_at_least_gen.rs",
+        "ll": "bench/l0/work/version_at_least_rs_llvm/version_at_least_gen.ll",
+        "stderr": "{\"ok\": true}\n"
+      },
+      "cases": 21089,
+      "pruv_oracle_pass": 21089,
+      "ts_oracle_pass": 16452,
+      "counts": {
+        "equal": 16452,
+        "unicode_whitespace": 3615,
+        "number_precision": 1022,
+        "other": 0
+      }
+    }
+  },
+  "tools": {
+    "commands": {
+      "py": [
+        "python",
+        "pruvc.py"
+      ],
+      "rs": [
+        "pruvc"
+      ]
+    },
+    "rust_source_sha256": "f35d77adb6a2c267a8123df8809f21a7bb46e8d550c5553c9ecdec81fb2da819",
+    "rust_binary_sha256": "0c6a873fafff14f8770fecbb1084c307e62d7f125b8507d31cd708f016a4d7d2",
+    "node": "v26.4.0"
+  },
+  "edge_cases": 1089,
+  "cases": 21089,
+  "status": "ok",
+  "difference_records_total": 18548,
+  "difference_records_saved": 50,
+  "difference_order": "input bytes, serialized input, compiler/backend"
+}

@@ -1,0 +1,50 @@
+{"compiler_backend": "py/llvm", "case_index": 62, "input": ["0.0.0", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 62, "input": ["0.0.0", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 62, "input": ["0.0.0", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 62, "input": ["0.0.0", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 95, "input": ["1.2.3", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 95, "input": ["1.2.3", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 95, "input": ["1.2.3", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 95, "input": ["1.2.3", "\u00a00.0.0\u00a0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 958, "input": ["\u00a00.0.0\u00a0", "0.0.0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 958, "input": ["\u00a00.0.0\u00a0", "0.0.0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 958, "input": ["\u00a00.0.0\u00a0", "0.0.0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 958, "input": ["\u00a00.0.0\u00a0", "0.0.0"], "input_bytes": 14, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 953, "input": [" 0.0.0 ", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 953, "input": [" 0.0.0 ", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 953, "input": [" 0.0.0 ", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 953, "input": [" 0.0.0 ", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 64, "input": ["0.0.0", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 64, "input": ["0.0.0", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 64, "input": ["0.0.0", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 64, "input": ["0.0.0", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 65, "input": ["0.0.0", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 65, "input": ["0.0.0", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 65, "input": ["0.0.0", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 65, "input": ["0.0.0", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 63, "input": ["0.0.0", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 63, "input": ["0.0.0", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 63, "input": ["0.0.0", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 63, "input": ["0.0.0", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 97, "input": ["1.2.3", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 97, "input": ["1.2.3", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 97, "input": ["1.2.3", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 97, "input": ["1.2.3", "\u20280.0.0\u2028"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 98, "input": ["1.2.3", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 98, "input": ["1.2.3", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 98, "input": ["1.2.3", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 98, "input": ["1.2.3", "\u30000.0.0\u3000"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 96, "input": ["1.2.3", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 96, "input": ["1.2.3", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 96, "input": ["1.2.3", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 96, "input": ["1.2.3", "\ufeff0.0.0\ufeff"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 887, "input": ["\f0.0.0\f", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 887, "input": ["\f0.0.0\f", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 887, "input": ["\f0.0.0\f", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 887, "input": ["\f0.0.0\f", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 821, "input": ["\n0.0.0\n", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 821, "input": ["\n0.0.0\n", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/llvm", "case_index": 821, "input": ["\n0.0.0\n", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "rs/rust", "case_index": 821, "input": ["\n0.0.0\n", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/llvm", "case_index": 920, "input": ["\r0.0.0\r", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}
+{"compiler_backend": "py/rust", "case_index": 920, "input": ["\r0.0.0\r", "\u00a00.0.0\u00a0"], "input_bytes": 16, "classification": "unicode_whitespace", "pruv": false, "ts": true, "expected": false}

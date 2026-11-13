@@ -1,0 +1,29 @@
+// Build most-significant letters first using recursive bijective division.
+fn col_letters(col: i64) -> str ! alloc
+  requires 0 <= col && col <= 1000000000000000
+  ensures forall i in 0..len(result): 65 <= result[i] && result[i] <= 90
+  ensures (len(result) == 0) == (col == 0)
+  ensures len(result) <= col
+  ensures col < 26 ==> len(result) <= 1
+  ensures col < 676 ==> len(result) <= 2
+  ensures col < 17576 ==> len(result) <= 3
+  ensures col < 456976 ==> len(result) <= 4
+  ensures col < 11881376 ==> len(result) <= 5
+  ensures col < 308915776 ==> len(result) <= 6
+  ensures col < 8031810176 ==> len(result) <= 7
+  ensures col < 208827064576 ==> len(result) <= 8
+  ensures col < 5429503678976 ==> len(result) <= 9
+  ensures col < 141167095653376 ==> len(result) <= 10
+  ensures col < 3670344486987776 ==> len(result) <= 11
+  decreases col
+{
+  if col == 0 { return ""; }
+  let prefix: str = col_letters((col-1)/26);
+  let alphabet: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let digit: i64 = (col-1)%26;
+  let letter: str = substr(alphabet, digit, digit+1);
+  let mut out: String = string_new();
+  out = string_push_str(move out, prefix);
+  out = string_push_str(move out, letter);
+  return string_to_str(out);
+}

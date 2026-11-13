@@ -1291,3 +1291,21 @@ Fourth G6 batch (`docs/G6_SPEC.md` §7.5, decisions in §13). Python reference f
   - Error checks pass on both.
 - **CI:** `.github/workflows/node-bridge.yml` runs `regen.py --check` on Ubuntu, then builds and tests on macOS arm64, macOS x64 (`macos-15-intel`), Windows x64 and Linux x64 (`ubuntu-24.04`, pinned like `ci.yml` because `ubuntu-latest` no longer offers Python 3.9). It uses only free standard runners. It runs only on manual dispatch and on pushes to `main` that touch `bridge/node/**`, `bench/l0/*.pruv` or the workflow (user decision 2026-11-13: keep CI rare). `ci.yml` and `windows-abi.yml` are unchanged.
 - **Not done:** the module is not wired into Lair, and there is no prebuilt-binary packaging for Electron apps yet. Both wait for a user decision on touching the Lair product.
+
+## 72. L1 second bundle: `versionAtLeast` and `colLetters` (2026-11-13)
+
+- **Targets:** Lair `src/remote/cloudflare-route.ts` `versionAtLeast(a, b)` (with its helper `versionParts`: trim, match `^(\d+)\.(\d+)\.(\d+)$`, compare the three numbers; false if either side is malformed) and `src/documents/sheets.ts` `colLetters(col)` (1-based column number to spreadsheet letters, `0` gives `""`). Bodies are copied verbatim to `bench/l0/version_at_least.mjs` and `bench/l0/col_letters.mjs`; Lair itself is not changed.
+- **Pruv versions:**
+  - `bench/l0/version_at_least.pruv` (inputs up to 4,096 bytes) compares the digit runs as arbitrary-length decimal strings (leading zeros ignored), so it has no precision limit. Proved: memory and arithmetic safety and termination. The exact comparison semantics are *not* stated as an `ensures`; correctness rests on the cross-check below.
+  - `bench/l0/col_letters.pruv`: `fn col_letters(col: i64) -> str ! alloc`, `requires 0 <= col <= 10^15`. Proved: every byte is `A`..`Z`, the result is empty exactly when `col = 0`, `len(result) <= col`, and `col < 26^k` implies `len(result) <= k` for k = 1..11.
+  - Both verify on both compilers.
+- **Driver:** `bench/l0/run_second_bundle.py` (shared), with `run_version_at_least.py` and `run_col_letters.py`. It reuses the L0 harness on both compilers and both backends with independent Python oracles (seed 12345).
+- **Results (identical on py/rust, py/llvm, rs/rust, rs/llvm):**
+  - `versionAtLeast`: Pruv matches the oracle in all 21,089 cases. The TS original differs in 4,637 of them, in two classes:
+    - 3,615 Unicode whitespace: JS `trim()` strips non-ASCII spaces such as U+00A0. Minimal example: `a = "0.0.0"`, `b = " 0.0.0 "` gives TS `true`, Pruv `false`.
+    - 1,022 numeric precision: `Number()` rounds parts above 2^53, so for example `9007199254740992.0.0` is "at least" `9007199254740993.0.0` in TS.
+    - Lair's input comes from `parseCloudflaredVersion` on `cloudflared --version` output, so both are latent rather than live bugs.
+  - `colLetters`: 120,073 cases (every column 0..100,000, ±3 around each power of 26, the 10^15 limit, and 20,000 random columns up to 10^15). 0 mismatches against the oracle, and 0 differences from the TS original.
+- **Bridge:** `bridge/node` now also exports `versionAtLeast(a, b)` and `colLetters(col)`. The generated files `gen/version_at_least_gen.rs` and `gen/col_letters_gen.rs` are byte-identical from both compilers (`regen.py --check`). `requires` violations (strings over 4,096 UTF-8 bytes, `col` outside `0..=10^15` or not an integer) throw `InvalidArg`.
+- **Node test (macOS arm64, Node v26.4.0, seed 12345):** 0 mismatches for all four functions (`versionAtLeast` 20,139 cases with 3,580 informational TS differences, `colLetters` 120,073 cases with 0); error checks pass.
+- **Not done:** as in section 71, nothing is wired into Lair yet.

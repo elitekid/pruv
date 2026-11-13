@@ -1,5 +1,7 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters } from './index.mjs';
+import { versionAtLeast as tsVersionAtLeast } from '../../bench/l0/version_at_least.mjs';
+import { colLetters as tsColLetters } from '../../bench/l0/col_letters.mjs';
 
 function arg(name, def) {
   const i = process.argv.indexOf(name);
@@ -114,6 +116,55 @@ for (let i = 0; i < CASES; i++) {
   if (tsHostWithin(host, [site]) !== got) hostTsDiff++;
 }
 
+// Exact BigInt oracle with ASCII-only trimming.
+function versionOracle(a, b) {
+  const parts = [a, b].map(s => s.replace(/^[\x09-\x0d ]+|[\x09-\x0d ]+$/g, ''));
+  if (!parts.every(s => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(s))) return false;
+  const [left, right] = parts.map(s => s.split('.').map(BigInt));
+  for (let i = 0; i < 3; i++) {
+    if (left[i] !== right[i]) return left[i] > right[i];
+  }
+  return true;
+}
+function colOracle(col) {
+  let n = BigInt(col), block = 1n, width = 0;
+  while (n >= block) { n -= block; block *= 26n; width++; }
+  let out = '';
+  for (let i = width - 1; i >= 0; i--) out += String.fromCharCode(65 + Number(n / 26n**BigInt(i) % 26n));
+  return out;
+}
+const versionEdges = ['', '0.0.0', '1.2.3', '0001.02.003', '1..2', '.1.2', '1.2.',
+  '1.2.3.4', '+1.2.3', '-1.2.3', '١.2.3', '１.2.3', '9'.repeat(4092)+'.0.0',
+  '0'.repeat(4092)+'.0.0', '9007199254740992.0.0', '9007199254740993.0.0',
+  '\t\n\v\f\r 0.0.0 \r', '\u00a00.0.0', '\ufeff0.0.0', '\u20280.0.0', '\u30000.0.0'];
+const versionInputs = versionEdges.flatMap(a => versionEdges.map(b => [a, b]));
+for (let i = 0; i < CASES; i++) {
+  const x = 9007199254740992n + BigInt(ri(40)-20);
+  const a = pick([`${x}.0.0`, `000${ri(100)}.${ri(100)}.${ri(100)}`, pick(versionEdges),
+    Array.from({length: ri(20)}, () => pick(['x', '.', '1', ' ', '😀'])).join('')]);
+  versionInputs.push([pick(['', '', '\u00a0', '\ufeff', ' \t'])+a, pick([a, `${x+1n}.0.0`, pick(versionEdges)])]);
+}
+// Keep generated inputs within the byte precondition after adding whitespace.
+const validVersions = versionInputs.filter(pair => pair.every(s => Buffer.byteLength(s) <= 4096));
+let versionMismatches = 0, versionTsDiff = 0;
+for (const [a,b] of validVersions) {
+  const want = versionOracle(a,b);
+  versionMismatches += versionAtLeast(a,b) !== want;
+  versionTsDiff += tsVersionAtLeast(a,b) !== want;
+}
+const colInputs = Array.from({length: 100001}, (_,i) => i);
+for (let k = 1; 26**k <= 1e15; k++) {
+  for (let d = -3; d <= 3; d++) colInputs.push(26**k+d);
+}
+colInputs.push(1e15-1, 1e15);
+for (let i = 0; i < CASES; i++) colInputs.push(ri(1e15+1));
+let colMismatches = 0, colTsDiff = 0;
+for (const col of colInputs) {
+  const want = colOracle(col);
+  colMismatches += colLetters(col) !== want;
+  colTsDiff += tsColLetters(col) !== want;
+}
+
 // ---- c) error path ----
 let errorOk = true;
 function mustThrow(name, fn) {
@@ -128,6 +179,20 @@ function mustThrow(name, fn) {
 mustThrow("clipBytes('a', -1)", () => clipBytes('a', -1));
 mustThrow("clipBytes('a', 1000001)", () => clipBytes('a', 1000001));
 mustThrow("hostWithin('x'.repeat(4097), 'a')", () => hostWithin('x'.repeat(4097), 'a'));
+function mustInvalidArg(name, fn) {
+  try { fn(); } catch (e) {
+    if (e instanceof Error && e.code === 'InvalidArg') return;
+  }
+  console.error(`expected InvalidArg from ${name}`);
+  errorOk = false;
+}
+for (const col of [-1, 0.5, 1e15+1, NaN, Infinity, -Infinity]) {
+  mustInvalidArg(`colLetters(${String(col)})`, () => colLetters(col));
+}
+mustInvalidArg('versionAtLeast long a', () => versionAtLeast('x'.repeat(4097), '0.0.0'));
+mustInvalidArg('versionAtLeast long b', () => versionAtLeast('0.0.0', 'é'.repeat(2049)));
+for (const col of ['1', null, undefined]) mustThrow('colLetters non-number', () => colLetters(col));
+mustThrow('versionAtLeast non-string', () => versionAtLeast(1, '0.0.0'));
 if (clipBytes('', 0) !== '') {
   console.error("clipBytes('', 0) !== ''");
   errorOk = false;
@@ -144,6 +209,12 @@ console.log(JSON.stringify({
   host_cases: CASES,
   host_mismatches: hostMismatches,
   host_ts_differences: hostTsDiff,
+  version_cases: validVersions.length,
+  version_mismatches: versionMismatches,
+  version_ts_differences: versionTsDiff,
+  col_cases: colInputs.length,
+  col_mismatches: colMismatches,
+  col_ts_differences: colTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || !errorOk ? 1 : 0);

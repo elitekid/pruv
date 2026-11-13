@@ -1,0 +1,102 @@
+// Compare decimal components without machine-integer conversion.
+fn space(c: i64) -> bool { return c == 32 || (9 <= c && c <= 13); }
+fn start(s: str) -> i64
+  requires len(s) <= 4096
+  ensures 0 <= result && result <= len(s)
+{
+  let mut i: i64 = 0;
+  while i < len(s) invariant 0 <= i && i <= len(s) decreases len(s)-i {
+    if !space(s[i]) { return i; }
+    i = i+1;
+  }
+  return i;
+}
+fn end(s: str) -> i64
+  requires len(s) <= 4096
+  ensures 0 <= result && result <= len(s)
+{
+  let mut i: i64 = len(s);
+  while i > 0 invariant 0 <= i && i <= len(s) decreases i {
+    if !space(s[i-1]) { return i; }
+    i = i-1;
+  }
+  return i;
+}
+fn digits(s: str, lo: i64, hi: i64) -> i64
+  requires 0 <= lo && lo <= hi && hi <= len(s) && len(s) <= 4096
+  ensures lo <= result && result <= hi
+{
+  let mut i: i64 = lo;
+  while i < hi invariant lo <= i && i <= hi decreases hi-i {
+    if s[i] < 48 || s[i] > 57 { return i; }
+    i = i+1;
+  }
+  return i;
+}
+fn valid(s: str) -> bool
+  requires len(s) <= 4096
+{
+  let mut i: i64 = start(s);
+  let hi: i64 = end(s);
+  if i >= hi { return false; }
+  let mut part: i64 = 0;
+  while part < 3
+    invariant 0 <= part && part <= 3
+    invariant 0 <= i && i <= hi
+    decreases 3-part
+  {
+    let j: i64 = digits(s, i, hi);
+    if j == i { return false; }
+    if part == 2 { return j == hi; }
+    if j == hi { return false; }
+    if s[j] != 46 { return false; }
+    i = j+1;
+    part = part+1;
+  }
+  return false;
+}
+fn significant(s: str, lo: i64, hi: i64) -> i64
+  requires 0 <= lo && lo <= hi && hi <= len(s) && len(s) <= 4096
+  ensures lo <= result && result <= hi
+{
+  let mut i: i64 = lo;
+  while i < hi invariant lo <= i && i <= hi decreases hi-i {
+    if s[i] != 48 { return i; }
+    i = i+1;
+  }
+  return i;
+}
+fn version_at_least(a: str, b: str) -> bool
+  requires len(a) <= 4096 && len(b) <= 4096
+{
+  if !valid(a) || !valid(b) { return false; }
+  let mut i: i64 = start(a);
+  let mut j: i64 = start(b);
+  let mut part: i64 = 0;
+  while part < 3
+    invariant 0 <= part && part <= 3
+    invariant 0 <= i && i <= len(a)
+    invariant 0 <= j && j <= len(b)
+    decreases 3-part
+  {
+    let ai: i64 = digits(a, i, len(a));
+    let bj: i64 = digits(b, j, len(b));
+    i = significant(a, i, ai);
+    j = significant(b, j, bj);
+    if ai-i != bj-j { return ai-i > bj-j; }
+    while i < ai
+      invariant 0 <= i && i <= ai
+      invariant 0 <= j && j <= bj
+      invariant ai-i == bj-j
+      decreases ai-i
+    {
+      if a[i] != b[j] { return a[i] > b[j]; }
+      i = i+1;
+      j = j+1;
+    }
+    if i < len(a) { i = i+1; }
+    if j < len(b) { j = j+1; }
+    part = part+1;
+  }
+  return true;
+}

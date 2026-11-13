@@ -25,3 +25,52 @@ JS Unicode lowercase maps Kelvin sign to ASCII k; the intended ASCII-only fold p
 Real path: all 12,147 equal, both difference classes zero; `https://K/` normalizes to host `k` and both return true.
 Pruv matched the independent oracle in all 32,167 tested cases per combination; no difference reached the tested real path.
 `results/host_within_summary.json` records counts; `host_within_differences.jsonl` stores the shortest 50 differences, without absolute paths.
+
+## versionAtLeast (L1 second bundle)
+
+Run: `python3 bench/l0/run_version_at_least.py --seed 12345 --n 20000`.
+The JS function bodies are verbatim Lair code, with TypeScript signature annotations removed.
+Pruv trims only ASCII TAB/LF/VT/FF/CR/SPACE, accepts three nonempty ASCII decimal
+components, and compares significant digit lengths and bytes without integer conversion.
+Precondition: each UTF-8 input length <= 4096. Both compilers prove byte access
+safety, arithmetic safety, helper index bounds, call preconditions and termination.
+There is no functional postcondition for this function: well-formedness and exact
+ordering are cross-checked, not claimed as a formal proof.
+
+Recorded seed 12345: 1,089 edge pairs + 20,000 random pairs = 21,089 cases.
+All four compiler/backend combinations verified (exit 0); Pruv matched the Python
+big-integer oracle in 21,089/21,089 cases per combination. TS matched 16,452;
+3,615 differences were Unicode whitespace, 1,022 were Number precision, other 0.
+Shortest observed difference: `a="0.0.0"`, `b="\u00a00.0.0\u00a0"` (14 total UTF-8
+bytes): TS true, Pruv/oracle false. Shortest means within the sampled corpus.
+`results/version_at_least_summary.json` records counts and verification exit codes;
+`results/version_at_least_differences.jsonl` holds the shortest 50 case/build records.
+
+## colLetters (L1 second bundle)
+
+Run: `python3 bench/l0/run_col_letters.py --seed 12345 --n 20000`.
+Precondition: `0 <= col <= 1000000000000000`; allocation effect: `! alloc`.
+Both compilers prove every result byte is 65..90, `(len(result)==0)==(col==0)`,
+`len(result)<=col`, and `col<26^k ==> len(result)<=k` for every k from 1 through 11.
+Byte access, UTF-8 substring boundaries, allocation call preconditions, arithmetic
+safety and recursive termination (`decreases col`) also verify. The exact bijective
+base-26 value is checked against an independent length-block Python integer oracle.
+
+Recorded seed 12345: dense 0..100000, 70 power-boundary cases, two upper-limit
+cases and 20,000 random inputs = 120,073 cases. All four compiler/backend
+combinations verified (exit 0); both Pruv and TS matched 120,073/120,073.
+All difference classes are zero; there is no differing input.
+`results/col_letters_summary.json` records counts and verification exit codes;
+`results/col_letters_differences.jsonl` is empty.
+
+Both drivers reuse the G2 harness and run JS once per driver. Each driver exited 0.
+With compiler command `$C` (Python interpreter plus `pruvc/pruvc.py`, or the Rust
+compiler binary), G2 ran the following for each `NAME` and compiler, all exit 0:
+
+```sh
+$C bench/l0/NAME.pruv -o bench/l0/work/NAME_COMPILER_rust/NAME_gen.rs
+$C bench/l0/NAME.pruv -o bench/l0/work/NAME_COMPILER_llvm/NAME_gen.ll --backend llvm --rust-bindings bench/l0/work/NAME_COMPILER_llvm/NAME_gen.rs
+```
+
+Use `PRUV_PYTHON` and `PRUVC_RS` to select installed tools; add Cargo's bin directory
+to PATH. No bypass flags, full suites, compiler edits or Lair edits were used.
