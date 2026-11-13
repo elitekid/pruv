@@ -40,6 +40,11 @@ export const groupedNumber = native.groupedNumber;
 /** Lair under (src/documents/archive.ts): path === root, or path starts with root followed by this platform's
  *  separator (just root when it already ends with one). Well-formed strings; lone surrogates become U+FFFD. */
 export const under = native.under;
+
+/** The cut of Lair capChars (src/documents/extract.ts): capKeep(lens, max) is how many chunks stay when their
+ *  character counts (text.length) are added from the front and the first one whose running total goes over
+ *  max is dropped with everything after it. lens: integers 0..1e9 (at most 1e7), max: integer -1e15..1e15. */
+export const capKeep = native.capKeep;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

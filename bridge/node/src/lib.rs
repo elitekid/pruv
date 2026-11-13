@@ -32,6 +32,10 @@ mod grouped_number_gen;
 #[allow(dead_code, clippy::all)]
 mod under_root_gen;
 
+#[path = "../gen/cap_keep_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod cap_keep_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -487,6 +491,30 @@ pub fn under(path: String, root: String) -> napi::Result<bool> {
             "under: path and root must be at most 1000000000000 UTF-8 bytes"));
     }
     Ok(under_root_gen::under(&path, &root, std::path::MAIN_SEPARATOR as i64))
+}
+
+/// The cut of Lair capChars (src/documents/extract.ts): how many chunks to keep when their character
+/// counts are added from the front and the first chunk whose running total goes over max is dropped
+/// with everything after it.
+#[napi(js_name = "capKeep")]
+pub fn cap_keep(lens: Vec<f64>, max: f64) -> napi::Result<i64> {
+    if lens.len() > 10_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "capKeep: at most 10000000 chunks"));
+    }
+    if !max.is_finite() || max.fract() != 0.0 || !(-1e15..=1e15).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "capKeep: max must be an integer in -1000000000000000..=1000000000000000"));
+    }
+    let mut v = Vec::with_capacity(lens.len());
+    for n in lens {
+        if !n.is_finite() || n.fract() != 0.0 || !(0.0..=1e9).contains(&n) {
+            return Err(napi::Error::new(napi::Status::InvalidArg,
+                "capKeep: lengths must be integers in 0..=1000000000"));
+        }
+        v.push(n as i64);
+    }
+    Ok(cap_keep_gen::cap_keep(&v, max as i64))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

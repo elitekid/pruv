@@ -1,0 +1,31 @@
+// Lair capChars (src/documents/extract.ts), the cut it makes: add up the chunks' character counts
+// (text.length) from the front and keep the chunks before the first one whose running total goes over max;
+// keep all of them if the total never does. Only that count is here; the dropped-range note text is not.
+// Domain: at most 10^7 chunks, each 0..10^9 characters (so every running total stays within 10^16 and is
+// exact in a JS double), max in -10^15..10^15. Lengths are nonnegative, so the running total never falls
+// and the two ensures below pin the result down: the total through the kept chunks is within max, and the
+// total through one more chunk is not.
+
+pub fn cap_keep(lens: [i64], max: i64) -> i64
+  requires len(lens) <= 10000000
+  requires forall k in 0..len(lens): 0 <= lens[k] && lens[k] <= 1000000000
+  requires -1000000000000000 <= max && max <= 1000000000000000
+  ensures 0 <= result && result <= len(lens)
+  ensures result == 0 || sum(k in 0..result: lens[k]) <= max
+  ensures result == len(lens) || sum(k in 0..result + 1: lens[k]) > max
+{
+  let mut used: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(lens)
+    invariant 0 <= i && i <= len(lens)
+    invariant used == sum(k in 0..i: lens[k])
+    invariant 0 <= used && used <= 1000000000 * i
+    invariant i == 0 || used <= max
+    decreases len(lens) - i
+  {
+    used = used + lens[i];
+    if used > max { return i; }
+    i = i + 1;
+  }
+  return len(lens);
+}
