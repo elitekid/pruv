@@ -1,0 +1,100 @@
+// Lair numberRanges (src/documents/context.ts, with joinRangeParts): ascending page, line or block
+// numbers as "3-5, 8" (a run of consecutive numbers becomes "first-last"), joined with ", ". If the
+// whole text is longer than 400 characters it is cut at a range boundary: the longest prefix of
+// ranges whose length + 3 is at most 400, followed by ", …". All characters are ASCII except the
+// final U+2026, so UTF-8 bytes equal UTF-16 units before it.
+// Domain: every number an integer in -10^15..10^15 (JS prints these in plain decimal).
+
+// Decimal digits of n, no leading zeros ("0" for 0).
+fn digits(n: i64) -> str ! alloc
+  requires 0 <= n && n <= 1000000000000000
+  ensures len(result) <= 16
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 1000000000000000;
+  let mut k: i64 = 0;
+  while k < 16
+    invariant 0 <= k && k <= 16
+    invariant 0 <= p && p <= 1000000000000000
+    invariant len(out) <= k
+    decreases 16 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      if len(out) > 0 || d != 0 || p == 1 {
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+// JS String(n) for an integer n.
+fn num(n: i64) -> str ! alloc
+  requires -1000000000000000 <= n && n <= 1000000000000000
+  ensures len(result) <= 17
+{
+  let mut out: String = string_new();
+  if n < 0 {
+    out = string_push_str(move out, "-");
+    out = string_push_str(move out, digits(-n));
+  } else {
+    out = string_push_str(move out, digits(n));
+  }
+  return string_to_str(out);
+}
+
+pub fn number_ranges(numbers: [i64]) -> str ! alloc
+  requires forall k in 0..len(numbers): -1000000000000000 <= numbers[k] && numbers[k] <= 1000000000000000
+  ensures len(result) <= 402
+{
+  let mut full: String = string_new();
+  let mut kept: String = string_new();
+  let mut over: bool = false;
+  let mut i: i64 = 0;
+  while i < len(numbers) && !over
+    invariant 0 <= i && i <= len(numbers)
+    invariant len(full) <= 437
+    invariant !over ==> len(full) <= 400
+    invariant len(kept) <= len(full) && len(kept) <= 397
+    decreases len(numbers) - i
+  {
+    let mut j: i64 = i;
+    while j + 1 < len(numbers) && numbers[j + 1] == numbers[j] + 1
+      invariant i <= j && j < len(numbers)
+      decreases len(numbers) - j
+    {
+      j = j + 1;
+    }
+    let mut part: String = string_new();
+    part = string_push_str(move part, num(numbers[i]));
+    if j > i {
+      part = string_push_str(move part, "-");
+      part = string_push_str(move part, num(numbers[j]));
+    }
+    let p: str = string_to_str(part);
+    let had: bool = len(full) > 0;
+    if had {
+      full = string_push_str(move full, ", ");
+    }
+    full = string_push_str(move full, p);
+    if len(full) + 3 <= 400 {
+      if had {
+        kept = string_push_str(move kept, ", ");
+      }
+      kept = string_push_str(move kept, p);
+    }
+    if len(full) > 400 {
+      over = true;
+    }
+    i = j + 1;
+  }
+  if !over {
+    return string_to_str(full);
+  }
+  kept = string_push_str(move kept, ", …");
+  return string_to_str(kept);
+}

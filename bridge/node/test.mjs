@@ -1,5 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges } from './index.mjs';
+import { numberRanges as tsNumberRanges } from '../../bench/l0/number_ranges.mjs';
 import { shrinkDecoded as tsShrinkDecoded, readOrientation as tsReadOrientation } from '../../bench/l0/image_shrink.mjs';
 import { chunkLines as tsChunkLines, chunkBlocks as tsChunkBlocks } from '../../bench/l0/group_text.mjs';
 import { splitText as tsSplitText } from '../../bench/l0/split_text.mjs';
@@ -453,6 +454,26 @@ mustInvalidArg('shrinkPixels long data', () => shrinkPixels(new Uint8Array(5), 1
 mustThrow('shrinkPixels data string', () => shrinkPixels('abcd', 1, 1, 2));
 mustThrow('jpegOrientation string', () => jpegOrientation('abc'));
 
+// ---- numberRanges against the groupby oracle (bench/l0/run_number_ranges.py --emit) ----
+const rangesScript = fileURLToPath(new URL('../../bench/l0/run_number_ranges.py', import.meta.url));
+const rangesRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [rangesScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let rangesMismatches = 0, rangesTsDiff = 0;
+for (const [nums, want] of rangesRows) {
+  const got = numberRanges(nums);
+  if (got !== want) {
+    rangesMismatches++;
+    if (rangesMismatches <= 5) console.error('ranges mismatch', JSON.stringify({ nums: nums.slice(0, 10), got, want }));
+  }
+  if (tsNumberRanges(nums) !== got) rangesTsDiff++;
+}
+mustInvalidArg('numberRanges 1.5', () => numberRanges([1.5]));
+mustInvalidArg('numberRanges NaN', () => numberRanges([1, NaN]));
+mustInvalidArg('numberRanges 1e15+1', () => numberRanges([1e15 + 1]));
+mustInvalidArg('numberRanges -Infinity', () => numberRanges([-Infinity]));
+mustThrow('numberRanges string', () => numberRanges('12'));
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -491,6 +512,9 @@ console.log(JSON.stringify({
   shrink_cases: shrinkRows.length,
   shrink_mismatches: shrinkMismatches,
   shrink_ts_differences: shrinkTsDiff,
+  ranges_cases: rangesRows.length,
+  ranges_mismatches: rangesMismatches,
+  ranges_ts_differences: rangesTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || !errorOk ? 1 : 0);

@@ -8,6 +8,10 @@
 
 use napi_derive::napi;
 
+#[path = "../gen/number_ranges_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod number_ranges_gen;
+
 #[path = "../gen/clip_bytes_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod clip_bytes_gen;
@@ -330,4 +334,18 @@ pub fn shrink_pixels(
         std::mem::swap(&mut sw, &mut sh);
     }
     Ok(Some(ShrunkPixels { width: sw as f64, height: sh as f64, data: out.into() }))
+}
+
+/// Lair numberRanges: "3-5, 8", cut at a range boundary with ", …" past 400 characters.
+#[napi(js_name = "numberRanges")]
+pub fn number_ranges(numbers: Vec<f64>) -> napi::Result<String> {
+    let mut v = Vec::with_capacity(numbers.len());
+    for n in numbers {
+        if !n.is_finite() || n.fract() != 0.0 || !(-1e15..=1e15).contains(&n) {
+            return Err(napi::Error::new(napi::Status::InvalidArg,
+                "numberRanges: numbers must be integers in -1000000000000000..=1000000000000000"));
+        }
+        v.push(n as i64);
+    }
+    Ok(number_ranges_gen::number_ranges(&v))
 }

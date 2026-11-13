@@ -15,6 +15,7 @@ export const splitText = native.splitText;
 export const groupTexts = native.groupTexts;
 export const jpegOrientation = native.jpegOrientation;
 export const shrinkPixels = native.shrinkPixels;
+export const numberRanges = native.numberRanges;
 
 /** Lair shrinkJpeg: `jpeg` is the jpeg-js module ({decode, encode}); the orientation and the pixels come
  *  from the verified Pruv jpegOrientation and shrinkPixels. undefined where TS returns undefined (the
