@@ -24,6 +24,10 @@ mod sheet_range_gen;
 #[allow(dead_code, clippy::all)]
 mod page_ranges_gen;
 
+#[path = "../gen/grouped_number_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod grouped_number_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -456,6 +460,18 @@ pub fn page_ranges(pages: Vec<f64>) -> napi::Result<String> {
         v.push(n as i64);
     }
     Ok(page_ranges_gen::page_ranges(&v))
+}
+
+/// Lair groupedNumber (src/documents/context.ts): an integer as toLocaleString('en-US'), e.g. "1,000,000".
+#[napi(js_name = "groupedNumber")]
+pub fn grouped_number(value: f64) -> napi::Result<String> {
+    // -0 is refused: toLocaleString gives "-0" there, which no i64 carries.
+    if !value.is_finite() || value.fract() != 0.0 || !(-1e15..=1e15).contains(&value)
+        || (value == 0.0 && value.is_sign_negative()) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "groupedNumber: value must be an integer in -1000000000000000..=1000000000000000 (not -0)"));
+    }
+    Ok(grouped_number_gen::grouped_number(value as i64))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

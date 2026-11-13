@@ -32,6 +32,10 @@ export function sheetRange(totalRows, totalCols, request = {}) {
 /** Lair rangeText (src/documents/pdf.ts): page numbers as "3~5쪽, 8쪽" (consecutive runs joined with "~"),
  *  no length cap. At most 10^7 integers in -1e15..=1e15 (InvalidArg). */
 export const pageRanges = native.pageRanges;
+
+/** Lair groupedNumber (src/documents/context.ts): an integer as toLocaleString('en-US'), e.g. "1,000,000".
+ *  Integers in -1e15..=1e15, not -0 (InvalidArg). */
+export const groupedNumber = native.groupedNumber;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

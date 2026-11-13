@@ -1,0 +1,50 @@
+// Lair groupedNumber (src/documents/context.ts): value.toLocaleString('en-US'), used on integer limits
+// such as 1,000,000. For an integer this is the decimal text with a "," between each group of three
+// digits counted from the right and a leading "-" for negatives.
+// Domain: integers in -10^15..10^15. The result is at most 22 bytes ("-1,000,000,000,000,000"); the
+// proof keeps the cruder bound of 2 bytes per digit place plus the sign.
+
+// Grouped decimal digits of n, no leading zeros ("0" for 0).
+fn grouped_digits(n: i64) -> str ! alloc
+  requires 0 <= n && n <= 1000000000000000
+  ensures len(result) <= 32
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 1000000000000000;
+  let mut k: i64 = 0;
+  while k < 16
+    invariant 0 <= k && k <= 16
+    invariant 0 <= p && p <= 1000000000000000
+    invariant len(out) <= 2 * k
+    decreases 16 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      if len(out) > 0 || d != 0 || p == 1 {
+        // Digit place e = 15 - k; a new group starts at e = 2, 5, 8, 11, 14.
+        if len(out) > 0 && (15 - k) % 3 == 2 {
+          out = string_push_str(move out, ",");
+        }
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+pub fn grouped_number(value: i64) -> str ! alloc
+  requires -1000000000000000 <= value && value <= 1000000000000000
+  ensures len(result) <= 33
+{
+  let mut out: String = string_new();
+  if value < 0 {
+    out = string_push_str(move out, "-");
+    out = string_push_str(move out, grouped_digits(-value));
+  } else {
+    out = string_push_str(move out, grouped_digits(value));
+  }
+  return string_to_str(out);
+}
