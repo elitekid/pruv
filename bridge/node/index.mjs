@@ -75,6 +75,12 @@ export const cellStr = native.cellStr;
 /** Lair cellText (src/documents/sheets.ts), the number branch on safe integers: cellInt(n) is
  *  String(Number(n.toPrecision(15))). */
 export const cellInt = native.cellInt;
+
+/** Lair sha256 (src/documents/versions.ts) on a string: 64 lowercase hex digits of SHA-256 over UTF-8. */
+export const sha256Hex = native.sha256Hex;
+
+/** Lair extractVersionOf (src/documents/versions.ts): extractVersionOf(sourceVersion, kind, variant = ''). */
+export const extractVersionOf = native.extractVersionOf;
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

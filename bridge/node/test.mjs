@@ -1,9 +1,10 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms, notePairs, cellDate, cellStr, cellInt } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms, notePairs, cellDate, cellStr, cellInt, sha256Hex, extractVersionOf } from './index.mjs';
 import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { joinRangeParts as tsJoinRangeParts } from '../../bench/l0/join_ranges.mjs';
 import { cutCell as tsCutCell } from '../../bench/l0/cut_cell.mjs';
+import { sha256 as tsSha256, extractVersionOf as tsExtractVersionOf } from '../../bench/l0/extract_version.mjs';
 import { sheetRange as tsSheetRange } from '../../bench/l0/sheet_range.mjs';
 import { rangeText as tsRangeText } from '../../bench/l0/page_ranges.mjs';
 import { groupedNumber as tsGroupedNumber } from '../../bench/l0/grouped_number.mjs';
@@ -826,6 +827,27 @@ mustInvalidArg('cellInt 2^53', () => cellInt(2 ** 53));
 mustInvalidArg('cellInt -Infinity', () => cellInt(-Infinity));
 mustThrow('cellInt string', () => cellInt('1'));
 
+// ---- sha256Hex / extractVersionOf against the hashlib oracle (bench/l0/run_extract_version.py --emit) ----
+const extractScript = fileURLToPath(new URL('../../bench/l0/run_extract_version.py', import.meta.url));
+const extractRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [extractScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let extractMismatches = 0, extractTsDiff = 0;
+for (const [c, want] of extractRows) {
+  let got, ts;
+  if (c[0] === 's') { got = sha256Hex(c[1]); ts = tsSha256(c[1]); }
+  else if (c[3] === null) { got = extractVersionOf(c[1], c[2]); ts = tsExtractVersionOf(c[1], c[2]); }
+  else { got = extractVersionOf(c[1], c[2], c[3]); ts = tsExtractVersionOf(c[1], c[2], c[3]); }
+  if (got !== want) {
+    extractMismatches++;
+    if (extractMismatches <= 5) console.error('extractVersion mismatch', JSON.stringify({ c: c.map(p => p === null ? p : p.slice(0, 60)), got, want }));
+  }
+  if (ts !== got) extractTsDiff++;
+}
+if (sha256Hex('abc') !== 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad') extractMismatches++;
+mustThrow('sha256Hex number', () => sha256Hex(1));
+mustThrow('extractVersionOf missing kind', () => extractVersionOf('a'));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -1141,6 +1163,9 @@ console.log(JSON.stringify({
   cell_int_cases: cellIntRows.length,
   cell_int_mismatches: cellIntMismatches,
   cell_int_ts_differences: cellIntTsDiff,
+  extract_version_cases: extractRows.length,
+  extract_version_mismatches: extractMismatches,
+  extract_version_ts_differences: extractTsDiff,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -1170,4 +1195,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || noteMismatches || noteTsDiff || cellDateMismatches || cellDateTsDiff || cellStrMismatches || cellStrTsDiff || cellIntMismatches || cellIntTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || noteMismatches || noteTsDiff || cellDateMismatches || cellDateTsDiff || cellStrMismatches || cellStrTsDiff || cellIntMismatches || cellIntTsDiff || extractMismatches || extractTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);

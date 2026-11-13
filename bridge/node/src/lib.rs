@@ -60,6 +60,10 @@ mod cell_str_gen;
 #[allow(dead_code, clippy::all)]
 mod cell_int_gen;
 
+#[path = "../gen/extract_version_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod extract_version_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -654,6 +658,29 @@ pub fn cell_int_text(n: f64) -> napi::Result<String> {
             "cellInt: n must be an integer in -9007199254740991..=9007199254740991"));
     }
     Ok(cell_int_gen::cell_int(n as i64))
+}
+
+/// Lair sha256 (src/documents/versions.ts) on a string: SHA-256 of its UTF-8 bytes as 64 lowercase hex
+/// digits. A lone surrogate in the input reaches Pruv as U+FFFD.
+#[napi(js_name = "sha256Hex")]
+pub fn sha256_hex(text: String) -> napi::Result<String> {
+    if text.len() > 536_870_912 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "sha256Hex: text must be at most 536870912 UTF-8 bytes"));
+    }
+    Ok(extract_version_gen::sha256_hex(&text))
+}
+
+/// Lair extractVersionOf (src/documents/versions.ts): SHA-256 hex of
+/// `${sourceVersion}\n${kind}\n${variant}\n${EXTRACTOR_VERSION}`; variant left out (or null) is ''.
+#[napi(js_name = "extractVersionOf")]
+pub fn extract_version_of(source_version: String, kind: String, variant: Option<String>) -> napi::Result<String> {
+    let variant = variant.unwrap_or_default();
+    if source_version.len() > 134_217_728 || kind.len() > 134_217_728 || variant.len() > 134_217_728 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "extractVersionOf: each part must be at most 134217728 UTF-8 bytes"));
+    }
+    Ok(extract_version_gen::extract_version_of(&source_version, &kind, &variant))
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

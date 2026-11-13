@@ -1,0 +1,284 @@
+// Lair extractVersionOf (src/documents/versions.ts): the extraction version key is the SHA-256 of
+// `${sourceVersion}\n${kind}\n${variant}\n${EXTRACTOR_VERSION}` (UTF-8), as 64 lowercase hex digits.
+// EXTRACTOR_VERSION is the fixed text built from the part versions and DOC_LIMITS at commit 698e1bd1.
+// SHA-256 is written out here (FIPS 180-4). Pruv has no bit operators, so a 32-bit word is an integer in
+// 0..2^32-1 and every bit operation is arithmetic: rotations and shifts are division and remainder by
+// powers of two, and xor / choose / majority walk the 32 bits one at a time.
+// Domain: any strings whose UTF-8 lengths add up to at most 2^29 bytes.
+
+// Value of a lowercase hex digit byte (0 for any other byte; the tables below hold only hex digits).
+fn hv(b: i64) -> i64
+  ensures 0 <= result && result <= 15
+{
+  if 48 <= b && b <= 57 {
+    return b - 48;
+  }
+  if 97 <= b && b <= 102 {
+    return b - 87;
+  }
+  return 0;
+}
+
+// The 32-bit word written as 8 hex digits at s[at..at+8].
+fn word8(s: str, at: i64) -> i64
+  requires 0 <= at && at + 8 <= len(s)
+  ensures 0 <= result && result <= 4294967295
+{
+  return hv(s[at]) * 268435456 + hv(s[at + 1]) * 16777216 + hv(s[at + 2]) * 1048576 + hv(s[at + 3]) * 65536
+    + hv(s[at + 4]) * 4096 + hv(s[at + 5]) * 256 + hv(s[at + 6]) * 16 + hv(s[at + 7]);
+}
+
+// Round constant K[t]: the first 32 bits of the fractional parts of the cube roots of the first 64 primes.
+fn kconst(t: i64) -> i64 ! alloc
+  requires 0 <= t && t < 64
+  ensures 0 <= result && result <= 4294967295
+{
+  let k: str = "428a2f9871374491b5c0fbcfe9b5dba53956c25b59f111f1923f82a4ab1c5ed5d807aa9812835b01243185be550c7dc372be5d7480deb1fe9bdc06a7c19bf174e49b69c1efbe47860fc19dc6240ca1cc2de92c6f4a7484aa5cb0a9dc76f988da983e5152a831c66db00327c8bf597fc7c6e00bf3d5a7914706ca63511429296727b70a852e1b21384d2c6dfc53380d13650a7354766a0abb81c2c92e92722c85a2bfe8a1a81a664bc24b8b70c76c51a3d192e819d6990624f40e3585106aa07019a4c1161e376c082748774c34b0bcb5391c0cb34ed8aa4a5b9cca4f682e6ff3748f82ee78a5636f84c878148cc7020890befffaa4506cebbef9a3f7c67178f2";
+  return word8(k, 8 * t);
+}
+
+// Bitwise function of three words, bit by bit: mode 0 = x xor y xor z, mode 1 = choose (z where x is 0,
+// y where x is 1), otherwise majority.
+fn bits(x: i64, y: i64, z: i64, mode: i64) -> i64
+  requires 0 <= x && x <= 4294967295 && 0 <= y && y <= 4294967295 && 0 <= z && z <= 4294967295
+  ensures 0 <= result && result <= 4294967295
+{
+  let mut a: i64 = x;
+  let mut b: i64 = y;
+  let mut c: i64 = z;
+  let mut r: i64 = 0;
+  let mut p: i64 = 1;
+  while p < 4294967296
+    invariant 1 <= p && p <= 8589934592 && 0 <= r && r < p
+    invariant 0 <= a && a <= 4294967295 && 0 <= b && b <= 4294967295 && 0 <= c && c <= 4294967295
+    decreases 8589934592 - p
+  {
+    let i: i64 = a % 2;
+    let j: i64 = b % 2;
+    let k: i64 = c % 2;
+    let mut v: i64 = 0;
+    if mode == 0 {
+      v = (i + j + k) % 2;
+    } else if mode == 1 {
+      if i == 1 {
+        v = j;
+      } else {
+        v = k;
+      }
+    } else if i + j + k >= 2 {
+      v = 1;
+    }
+    r = r + v * p;
+    p = p * 2;
+    a = a / 2;
+    b = b / 2;
+    c = c / 2;
+  }
+  return r % 4294967296;
+}
+
+// SIGMA0(x) = rotr 2 xor rotr 13 xor rotr 22.
+fn big0(x: i64) -> i64
+  requires 0 <= x && x <= 4294967295
+  ensures 0 <= result && result <= 4294967295
+{
+  let r2: i64 = (x / 4 + (x % 4) * 1073741824) % 4294967296;
+  let r13: i64 = (x / 8192 + (x % 8192) * 524288) % 4294967296;
+  let r22: i64 = (x / 4194304 + (x % 4194304) * 1024) % 4294967296;
+  return bits(r2, r13, r22, 0);
+}
+
+// SIGMA1(x) = rotr 6 xor rotr 11 xor rotr 25.
+fn big1(x: i64) -> i64
+  requires 0 <= x && x <= 4294967295
+  ensures 0 <= result && result <= 4294967295
+{
+  let r6: i64 = (x / 64 + (x % 64) * 67108864) % 4294967296;
+  let r11: i64 = (x / 2048 + (x % 2048) * 2097152) % 4294967296;
+  let r25: i64 = (x / 33554432 + (x % 33554432) * 128) % 4294967296;
+  return bits(r6, r11, r25, 0);
+}
+
+// sigma0(x) = rotr 7 xor rotr 18 xor shr 3.
+fn small0(x: i64) -> i64
+  requires 0 <= x && x <= 4294967295
+  ensures 0 <= result && result <= 4294967295
+{
+  let r7: i64 = (x / 128 + (x % 128) * 33554432) % 4294967296;
+  let r18: i64 = (x / 262144 + (x % 262144) * 16384) % 4294967296;
+  return bits(r7, r18, x / 8, 0);
+}
+
+// sigma1(x) = rotr 17 xor rotr 19 xor shr 10.
+fn small1(x: i64) -> i64
+  requires 0 <= x && x <= 4294967295
+  ensures 0 <= result && result <= 4294967295
+{
+  let r17: i64 = (x / 131072 + (x % 131072) * 32768) % 4294967296;
+  let r19: i64 = (x / 524288 + (x % 524288) * 8192) % 4294967296;
+  return bits(r17, r19, x / 1024, 0);
+}
+
+// Byte i of the padded message for an n-byte input: the input, then 0x80, zeros, and the bit length as
+// a 64-bit big-endian number in the last 8 of the `total` bytes.
+fn msg_byte(s: str, i: i64, total: i64) -> i64
+  requires len(s) <= 536870912 && 0 <= i && i < total && total >= len(s) + 9
+  ensures 0 <= result && result <= 255
+{
+  let n: i64 = len(s);
+  if i < n {
+    let b: i64 = s[i];
+    if b < 0 || b > 255 {
+      return 0;
+    }
+    return b;
+  }
+  if i == n {
+    return 128;
+  }
+  let j: i64 = i - (total - 8);
+  let bitlen: i64 = 8 * n;
+  if j == 4 {
+    return (bitlen / 16777216) % 256;
+  }
+  if j == 5 {
+    return (bitlen / 65536) % 256;
+  }
+  if j == 6 {
+    return (bitlen / 256) % 256;
+  }
+  if j == 7 {
+    return bitlen % 256;
+  }
+  return 0;
+}
+
+// x as 8 lowercase hex digits.
+fn hex8(x: i64) -> str ! alloc
+  requires 0 <= x && x <= 4294967295
+  ensures len(result) == 8
+{
+  let hex: str = "0123456789abcdef";
+  let mut o: String = string_new();
+  let mut v: i64 = x;
+  let mut k: i64 = 0;
+  while k < 8
+    invariant 0 <= k && k <= 8 && len(o) == k
+    invariant 0 <= v && v <= 4294967295
+    decreases 8 - k
+  {
+    let d: i64 = v / 268435456;
+    o = string_push_str(move o, substr(hex, d, d + 1));
+    v = (v % 268435456) * 16;
+    k = k + 1;
+  }
+  return string_to_str(o);
+}
+
+// SHA-256 of the UTF-8 bytes of s, as 64 lowercase hex digits.
+pub fn sha256_hex(s: str) -> str ! alloc
+  requires len(s) <= 536870912
+  ensures len(result) == 64
+{
+  let total: i64 = ((len(s) + 8) / 64 + 1) * 64;
+  let mut h0: i64 = 1779033703;
+  let mut h1: i64 = 3144134277;
+  let mut h2: i64 = 1013904242;
+  let mut h3: i64 = 2773480762;
+  let mut h4: i64 = 1359893119;
+  let mut h5: i64 = 2600822924;
+  let mut h6: i64 = 528734635;
+  let mut h7: i64 = 1541459225;
+  let mut w: [i64] = alloc(64, 0);
+  let mut base: i64 = 0;
+  while base < total
+    invariant 0 <= base && base <= total && base % 64 == 0 && total % 64 == 0
+    invariant len(w) == 64
+    invariant 0 <= h0 && h0 <= 4294967295 && 0 <= h1 && h1 <= 4294967295
+    invariant 0 <= h2 && h2 <= 4294967295 && 0 <= h3 && h3 <= 4294967295
+    invariant 0 <= h4 && h4 <= 4294967295 && 0 <= h5 && h5 <= 4294967295
+    invariant 0 <= h6 && h6 <= 4294967295 && 0 <= h7 && h7 <= 4294967295
+    decreases total - base
+  {
+    let mut t: i64 = 0;
+    while t < 64
+      invariant 0 <= t && t <= 64 && len(w) == 64
+      invariant forall q in 0..t: 0 <= w[q] && w[q] <= 4294967295
+      decreases 64 - t
+    {
+      if t < 16 {
+        let at: i64 = base + 4 * t;
+        w[t] = msg_byte(s, at, total) * 16777216 + msg_byte(s, at + 1, total) * 65536
+          + msg_byte(s, at + 2, total) * 256 + msg_byte(s, at + 3, total);
+      } else {
+        w[t] = (small1(w[t - 2]) + w[t - 7] + small0(w[t - 15]) + w[t - 16]) % 4294967296;
+      }
+      t = t + 1;
+    }
+    let mut a: i64 = h0;
+    let mut b: i64 = h1;
+    let mut c: i64 = h2;
+    let mut d: i64 = h3;
+    let mut e: i64 = h4;
+    let mut f: i64 = h5;
+    let mut g: i64 = h6;
+    let mut h: i64 = h7;
+    t = 0;
+    while t < 64
+      invariant 0 <= t && t <= 64 && len(w) == 64
+      invariant forall q in 0..64: 0 <= w[q] && w[q] <= 4294967295
+      invariant 0 <= a && a <= 4294967295 && 0 <= b && b <= 4294967295
+      invariant 0 <= c && c <= 4294967295 && 0 <= d && d <= 4294967295
+      invariant 0 <= e && e <= 4294967295 && 0 <= f && f <= 4294967295
+      invariant 0 <= g && g <= 4294967295 && 0 <= h && h <= 4294967295
+      decreases 64 - t
+    {
+      let t1: i64 = (h + big1(e) + bits(e, f, g, 1) + kconst(t) + w[t]) % 4294967296;
+      let t2: i64 = (big0(a) + bits(a, b, c, 2)) % 4294967296;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + t1) % 4294967296;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) % 4294967296;
+      t = t + 1;
+    }
+    h0 = (h0 + a) % 4294967296;
+    h1 = (h1 + b) % 4294967296;
+    h2 = (h2 + c) % 4294967296;
+    h3 = (h3 + d) % 4294967296;
+    h4 = (h4 + e) % 4294967296;
+    h5 = (h5 + f) % 4294967296;
+    h6 = (h6 + g) % 4294967296;
+    h7 = (h7 + h) % 4294967296;
+    base = base + 64;
+  }
+  let mut out: String = string_new();
+  out = string_push_str(move out, hex8(h0));
+  out = string_push_str(move out, hex8(h1));
+  out = string_push_str(move out, hex8(h2));
+  out = string_push_str(move out, hex8(h3));
+  out = string_push_str(move out, hex8(h4));
+  out = string_push_str(move out, hex8(h5));
+  out = string_push_str(move out, hex8(h6));
+  out = string_push_str(move out, hex8(h7));
+  return string_to_str(out);
+}
+
+// Lair extractVersionOf(sourceVersion, kind, variant).
+pub fn extract_version_of(source: str, kind: str, variant: str) -> str ! alloc
+  requires len(source) <= 134217728 && len(kind) <= 134217728 && len(variant) <= 134217728
+  ensures len(result) == 64
+{
+  let mut m: String = string_new();
+  m = string_push_str(move m, source);
+  m = string_push_str(move m, "\n");
+  m = string_push_str(move m, kind);
+  m = string_push_str(move m, "\n");
+  m = string_push_str(move m, variant);
+  m = string_push_str(move m, "\n");
+  m = string_push_str(move m, "rev2;pdfjs6.3.289;tesseract7.0.0;kor+eng 4.0.0_best_int;mammoth1.13.0;rxl9.3.10;papaparse5.7.0;chunk1500;scan100");
+  return sha256_hex(string_to_str(m));
+}
