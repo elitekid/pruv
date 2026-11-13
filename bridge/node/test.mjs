@@ -1,5 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng } from './index.mjs';
+import { encodePng as tsEncodePng } from '../../bench/l0/encode_png.mjs';
 import { versionAtLeast as tsVersionAtLeast } from '../../bench/l0/version_at_least.mjs';
 import { colLetters as tsColLetters } from '../../bench/l0/col_letters.mjs';
 import { plainFromAnsi, applyCrLf, fromState, toState } from '../../bench/l0/term_plain.mjs';
@@ -311,6 +312,37 @@ for (const [h, want] of zipRows) {
 }
 mustThrow('zipUncompressedTotal string', () => zipUncompressedTotal('PK'));
 
+// ---- encodePng against the exact-integer oracle (bench/l0/run_encode_png.py --emit) ----
+// Scanlines must equal the oracle; the whole PNG must be byte-identical to the verbatim TS encodePng.
+const pngScript = fileURLToPath(new URL('../../bench/l0/run_encode_png.py', import.meta.url));
+const pngRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [pngScript, '--emit', '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let pngMismatches = 0, pngTsDiff = 0;
+for (const [w, h, kind, hex, max, want] of pngRows) {
+  const data = Uint8Array.from(Buffer.from(hex, 'hex'));
+  const s = pngScanlines(data, w, h, kind, max);
+  const got = s === null ? null : [s.width, s.height, kind === 1 ? 0 : 2, s.raw.toString('hex')];
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    pngMismatches++;
+    if (pngMismatches <= 5) console.error('png mismatch', JSON.stringify({ w, h, kind, max, got: got && got.slice(0, 3), want: want && want.slice(0, 3) }));
+  }
+  const mine = encodePng({ width: w, height: h, kind, data }, max);
+  const ts = tsEncodePng({ width: w, height: h, kind, data }, max);
+  if ((mine === null) !== (ts === null) || (mine !== null && !mine.equals(ts))) pngTsDiff++;
+}
+const px = new Uint8Array(12);
+mustThrow('pngScanlines width 0', () => pngScanlines(px, 0, 1, 2, 10));
+mustThrow('pngScanlines fractional height', () => pngScanlines(px, 1, 1.5, 2, 10));
+mustThrow('pngScanlines kind 4', () => pngScanlines(px, 1, 1, 4, 10));
+mustThrow('pngScanlines maxPixels 0', () => pngScanlines(px, 1, 1, 2, 0));
+mustThrow('pngScanlines maxPixels 2^36+1', () => pngScanlines(px, 1, 1, 2, 2 ** 36 + 1));
+mustThrow('pngScanlines area 2^40+1', () => pngScanlines(px, 2 ** 20 + 1, 2 ** 20, 2, 10));
+mustThrow('pngScanlines data string', () => pngScanlines('abc', 1, 1, 2, 10));
+if (encodePng({ width: 0, height: 4, kind: 2, data: px }, 10) !== null || encodePng({ width: 2, height: 2, kind: 5, data: px }, 10) !== null) {
+  console.error('encodePng null shapes failed'); errorOk = false;
+}
+
 // ---- d) summary ----
 console.log(JSON.stringify({
   node: process.version,
@@ -337,6 +369,9 @@ console.log(JSON.stringify({
   zip_cases: zipRows.length,
   zip_mismatches: zipMismatches,
   zip_ts_differences: zipTsDiff,
+  png_cases: pngRows.length,
+  png_mismatches: pngMismatches,
+  png_ts_differences: pngTsDiff,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || !errorOk ? 1 : 0);
+process.exit(clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || !errorOk ? 1 : 0);

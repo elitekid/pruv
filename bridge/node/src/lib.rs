@@ -36,6 +36,10 @@ mod decode_bytes_gen;
 #[allow(dead_code, clippy::all)]
 mod zip_total_gen;
 
+#[path = "../gen/encode_png_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod encode_png_gen;
+
 fn term_args(name: &str, state: f64, data: &str) -> napi::Result<i64> {
     if !state.is_finite() || state.fract() != 0.0 || !(0.0..=11.0).contains(&state) {
         return Err(napi::Error::new(napi::Status::InvalidArg,
@@ -157,4 +161,49 @@ pub fn zip_uncompressed_total(data: napi::bindgen_prelude::Uint8Array) -> napi::
         -2 => Some(f64::INFINITY),
         total => Some(total as f64),
     })
+}
+
+/// Downsampled PNG scanlines (filter byte 0 + samples per row) for encodePng.
+#[napi(object)]
+pub struct PngScanlines {
+    pub width: f64,
+    pub height: f64,
+    pub raw: napi::bindgen_prelude::Buffer,
+}
+
+const PNG_DIM_MAX: f64 = 1_099_511_627_776.0; // 2^40
+const PNG_MAX_PIXELS: f64 = 68_719_476_736.0; // 2^36: scanlines stay at most 4 * 2^36 bytes
+
+fn png_int(name: &str, v: f64, hi: f64) -> napi::Result<i64> {
+    if !v.is_finite() || v.fract() != 0.0 || v < 1.0 || v > hi {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            format!("pngScanlines: {name} must be an integer in 1..={hi}")));
+    }
+    Ok(v as i64)
+}
+
+/// The pixel part of Lair encodePng: null where TS returns null (no pixels after downsampling).
+/// width, height >= 1 with width * height <= 2^40, kind 1..=3, maxPixels 1..=2^36 (integers).
+#[napi(js_name = "pngScanlines")]
+pub fn png_scanlines(
+    data: napi::bindgen_prelude::Uint8Array,
+    width: f64,
+    height: f64,
+    kind: f64,
+    max_pixels: f64,
+) -> napi::Result<Option<PngScanlines>> {
+    let w = png_int("width", width, PNG_DIM_MAX)?;
+    let h = png_int("height", height, PNG_DIM_MAX)?;
+    if (w as i128) * (h as i128) > PNG_DIM_MAX as i128 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "pngScanlines: width * height must be at most 1099511627776"));
+    }
+    let k = png_int("kind", kind, 3.0)?;
+    let mx = png_int("maxPixels", max_pixels, PNG_MAX_PIXELS)?;
+    let raw = encode_png_gen::png_scanlines(&data, w, h, k, mx);
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let step = encode_png_gen::png_step(w, h, mx);
+    Ok(Some(PngScanlines { width: (w / step) as f64, height: (h / step) as f64, raw: raw.into() }))
 }

@@ -1,0 +1,187 @@
+// Lair encodePng (src/documents/png.ts), the pixel part: pick the downsampling step, then write the
+// PNG scanlines (filter byte 0 + samples) for a pdf.js page image into a caller-sized buffer.
+// kind: 1 = 1-bit black/white (MSB first, rows padded to a byte), 2 = RGB, 3 = RGBA (blended onto white).
+// The host (bridge) allocates `raw`, deflates it and writes the PNG chunks; Pruv proves every pixel read
+// and every scanline write in bounds, and copies TS's tolerance of short data (a missing byte reads as
+// undefined in TS, which becomes 0).
+// Domain: 1 <= width, height; width * height <= 2^40; 1 <= max_pixels <= 2^40 (integers). In that domain
+// the exact integer forms below equal TS's float ceil(sqrt(w*h/max)) and Math.round(d*a/255 + 255*(1-a/255)).
+
+// Downsampling step: 1 if the image fits, else the smallest s with s * s >= ceil(w * h / max).
+pub fn png_step(width: i64, height: i64, max_pixels: i64) -> i64
+  requires 1 <= width && 1 <= height && width <= 1099511627776 && height <= 1099511627776
+  requires width * height <= 1099511627776
+  requires 1 <= max_pixels && max_pixels <= 1099511627776
+  ensures 1 <= result && result <= 1048577
+{
+  let wh: i64 = width * height;
+  if wh <= max_pixels { return 1; }
+  let q: i64 = (wh + max_pixels - 1) / max_pixels;
+  let mut s: i64 = 1;
+  while s < 1048577 && s * s < q
+    invariant 1 <= s && s <= 1048577
+    decreases 1048577 - s
+  {
+    s = s + 1;
+  }
+  return s;
+}
+
+// The bit (0 or 1) at position bit (0 = most significant) of byte b.
+fn bit_at(b: i64, bit: i64) -> i64
+  requires 0 <= b && b <= 255 && 0 <= bit && bit <= 7
+  ensures 0 <= result && result <= 1
+{
+  let mut v: i64 = b;
+  let mut k: i64 = 7 - bit;
+  while k > 0
+    invariant 0 <= v && v <= 255 && 0 <= k && k <= 7
+    decreases k
+  {
+    v = v / 2;
+    k = k - 1;
+  }
+  return v % 2;
+}
+
+// Round(c * a / 255 + 255 * (1 - a / 255)) exactly: N / 255 is never a half, so round = floor((2N + 255) / 510).
+fn blend(c: i64, a: i64) -> i64
+  requires 0 <= c && c <= 255 && 0 <= a && a <= 255
+  ensures 0 <= result && result <= 255
+{
+  let n: i64 = c * a + 255 * (255 - a);
+  return (2 * n + 255) / 510;
+}
+
+// Fill raw (out_h rows of 1 + out_w * channels bytes) and return the number of white samples (kind 1).
+// Rows are written while a whole row still fits, pixels while the next source column is inside the
+// image, so with len(raw) == (1 + out_w * channels) * out_h this is exactly TS's y < outH, x < outW.
+fn png_fill(data: [u8], width: i64, kind: i64, step: i64, out_w: i64, inout raw: [u8]) -> i64
+  requires 1 <= width && width <= 1099511627776 && 1 <= step && step <= width
+  requires 1 <= kind && kind <= 3 && 1 <= out_w && out_w <= width
+  ensures len(raw) == len(old(raw))
+  ensures 0 <= result && result <= len(raw)
+{
+  let mut ch: i64 = 3;
+  if kind == 1 { ch = 1; }
+  let row_bytes: i64 = 1 + out_w * ch;
+  let n: i64 = len(data);
+  let bit_row: i64 = (width + 7) / 8;
+  // Index of the first source byte (kind 1) or pixel (kind 2, 3) of the current source row. Once it is
+  // past the data every read misses, so it is capped at n + 1 to stay small without changing a read.
+  let mut base: i64 = 0;
+  let mut row: i64 = 0;
+  let mut white: i64 = 0;
+  while row + row_bytes <= len(raw)
+    invariant 0 <= row && row <= len(raw) && len(raw) == len(old(raw))
+    invariant 0 <= base && base <= n + 1
+    invariant 0 <= white && white <= row
+    decreases len(raw) - row
+  {
+    raw[row] = 0;
+    let mut at: i64 = row + 1;
+    let mut sx: i64 = 0;
+    while sx + step <= width + step - 1 && at + ch <= row + row_bytes
+      invariant row + 1 <= at && at <= row + row_bytes
+      invariant 0 <= sx && sx <= width + step
+      invariant 0 <= white && white <= at - 1
+      decreases row + row_bytes - at
+    {
+      if kind == 1 {
+        let from: i64 = base + sx / 8;
+        let mut bit: i64 = 0;
+        if from < n { bit = bit_at(data[from], sx % 8); }
+        raw[at] = 255 * bit;
+        white = white + bit;
+      } else if kind == 2 {
+        let from: i64 = (base + sx) * 3;
+        let mut c0: i64 = 0;
+        let mut c1: i64 = 0;
+        let mut c2: i64 = 0;
+        if from < n { c0 = data[from]; }
+        if from + 1 < n { c1 = data[from + 1]; }
+        if from + 2 < n { c2 = data[from + 2]; }
+        raw[at] = c0;
+        raw[at + 1] = c1;
+        raw[at + 2] = c2;
+      } else {
+        let from: i64 = (base + sx) * 4;
+        let mut c0: i64 = 0;
+        let mut c1: i64 = 0;
+        let mut c2: i64 = 0;
+        if from + 3 < n {
+          let a: i64 = data[from + 3];
+          c0 = blend(data[from], a);
+          c1 = blend(data[from + 1], a);
+          c2 = blend(data[from + 2], a);
+        }
+        raw[at] = c0;
+        raw[at + 1] = c1;
+        raw[at + 2] = c2;
+      }
+      at = at + ch;
+      sx = sx + step;
+    }
+    row = row + row_bytes;
+    let mut j: i64 = 0;
+    while j < step
+      invariant 0 <= j && j <= step && 0 <= base && base <= n + 1
+      decreases step - j
+    {
+      if kind == 1 { base = base + bit_row; } else { base = base + width; }
+      if base > n { base = n + 1; }
+      j = j + 1;
+    }
+  }
+  return white;
+}
+
+// 1-bit pages should be mostly white paper; if not, the mask was read inverted, so flip the samples.
+fn png_invert(inout raw: [u8], out_w: i64) -> ()
+  requires 1 <= out_w && out_w <= 1099511627776
+  ensures len(raw) == len(old(raw))
+{
+  let row_bytes: i64 = 1 + out_w;
+  let mut row: i64 = 0;
+  while row + row_bytes <= len(raw)
+    invariant 0 <= row && row <= len(raw) && len(raw) == len(old(raw))
+    decreases len(raw) - row
+  {
+    let mut at: i64 = row + 1;
+    while at < row + row_bytes
+      invariant row + 1 <= at && at <= row + row_bytes
+      decreases row + row_bytes - at
+    {
+      let v: i64 = raw[at];
+      raw[at] = 255 - v;
+      at = at + 1;
+    }
+    row = row + row_bytes;
+  }
+}
+
+// The whole pixel part of encodePng: the PNG scanlines (before deflate), or an empty array where TS returns
+// null (no pixels after downsampling). The host takes out_w = width / step, out_h = height / step from
+// png_step. A result larger than 2^40 bytes is also empty; with max_pixels <= 2^36 that cannot happen
+// (out_w * out_h <= max_pixels, so the scanlines take at most 4 * 2^36 bytes).
+pub fn png_scanlines(data: [u8], width: i64, height: i64, kind: i64, max_pixels: i64) -> [u8] ! alloc
+  requires 1 <= width && 1 <= height && width <= 1099511627776 && height <= 1099511627776
+  requires width * height <= 1099511627776
+  requires 1 <= max_pixels && max_pixels <= 1099511627776
+  requires 1 <= kind && kind <= 3
+{
+  let step: i64 = png_step(width, height, max_pixels);
+  let out_w: i64 = width / step;
+  let out_h: i64 = height / step;
+  if out_w < 1 || out_h < 1 { return alloc(0, 0); }
+  let mut ch: i64 = 3;
+  if kind == 1 { ch = 1; }
+  let row_bytes: i64 = 1 + out_w * ch;
+  if out_h > 1099511627776 / row_bytes { return alloc(0, 0); }
+  let mut raw: [u8] = alloc(row_bytes * out_h, 0);
+  let white: i64 = png_fill(data, width, kind, step, out_w, inout raw);
+  if kind == 1 && 2 * white < out_w * out_h {
+    png_invert(inout raw, out_w);
+  }
+  return raw;
+}

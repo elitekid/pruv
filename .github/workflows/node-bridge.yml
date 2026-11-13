@@ -16,6 +16,8 @@ on:
       - "bench/l0/decode_bytes.mjs"
       - "bench/l0/zip_total.mjs"
       - "bench/l0/run_zip_total.py"
+      - "bench/l0/encode_png.mjs"
+      - "bench/l0/run_encode_png.py"
       - "bench/l0/data/**"
       - ".github/workflows/node-bridge.yml"
 
