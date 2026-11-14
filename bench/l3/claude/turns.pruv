@@ -4,9 +4,9 @@
 //   sl  [1600] 200 slots x 8: +0 prompt_len +1 reply_len +2 reply budget (saturating counter) +3 tools +4 clipped
 //              +5 created present +6 completed present +7 draft ordinal (-1 = never written)
 //   buf [65584 per slot in use] slot s at 65584*s: prompt +0, reply +32768, created stamp +65536, completed
-//              stamp +65560. The owner grows buf (grow) so that slot begun % 200 fits before every begin; begin
-//              requires that fit and answer requires the current slot to fit, so a small window zeroes only the
-//              slots it uses instead of all 200. new_buffer starts with 16 slots (1 MiB).
+//              stamp +65560. new_buffer starts with 16 slots (1 MiB); before a begin whose slot does not fit, the
+//              owner grows buf straight to all 200 slots (grow). begin requires that fit and answer requires the
+//              current slot to fit, so a window of at most 16 turns zeroes 1 MiB instead of 13 MiB.
 // Draft k (0-based begin ordinal) lives in slot k % 200, so the ring always holds the newest min(begun,200)
 // drafts. Timestamps are `str` of length 0 (absent) or 24.
 //
@@ -48,18 +48,15 @@ pub fn new_buffer() -> [u8] ! alloc
   return alloc(1049344, 0);
 }
 
-// A copy of buf at least doubled (capped at 200 slots) and big enough for slot begun % 200; the old bytes are kept.
+// A copy of buf at the full 200 slots, so it fits slot begun % 200; the old bytes are kept. It jumps straight to the
+// full size: doubling through 32, 64 and 128 slots zeroed and copied about 40 MiB on a full ring, against 13 MiB here.
 pub fn grow(buf: [u8], begun: i64) -> [u8] ! alloc
   requires 0 <= begun && len(buf) <= 13116800
   ensures len(buf) <= len(result) && len(result) <= 13116800
   ensures 65584 * (begun % 200) + 65584 <= len(result)
   ensures forall k in 0..len(buf): result[k] == buf[k]
 {
-  let need: i64 = 65584 * (begun % 200) + 65584;
-  let mut n: i64 = 2 * len(buf);
-  if n < need { n = need; }
-  if n > 13116800 { n = 13116800; }
-  let mut nb: [u8] = alloc(n, 0);
+  let mut nb: [u8] = alloc(13116800, 0);
   crate::boundary::copy_span(inout nb, 0, buf, 0, len(buf));
   return nb;
 }
