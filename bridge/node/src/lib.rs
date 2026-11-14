@@ -80,6 +80,10 @@ mod text_lines_gen;
 #[allow(dead_code, clippy::all)]
 mod luhn_gen;
 
+#[path = "../gen/chat_ref_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod chat_ref_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -831,6 +835,17 @@ pub fn luhn(text: String) -> napi::Result<bool> {
             "luhn: text must be at most 10000000000 UTF-8 bytes"));
     }
     Ok(luhn_gen::luhn(&text))
+}
+
+/// Lair chatRefText (src/shared/chat-ref.ts): the chat reference text `@[title](chat:id)`, each whitespace
+/// run of the title holding a CR or LF folded to one space and `\`, `[`, `]` escaped with `\`.
+#[napi(js_name = "chatRefText")]
+pub fn chat_ref_text(title: String, id: String) -> napi::Result<String> {
+    if title.len() as u64 > 100_000_000_000 || id.len() as u64 > 100_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "chatRefText: title and id must each be at most 100000000000 UTF-8 bytes"));
+    }
+    Ok(chat_ref_gen::chat_ref_text(&title, &id))
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {

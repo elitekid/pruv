@@ -1,0 +1,95 @@
+// chatRefText of Lair src/shared/chat-ref.ts: build the chat reference text `@[title](chat:id)`.
+// Each maximal run of JavaScript whitespace (\s) that holds a CR or LF becomes one space; that is what
+// replace(/\s*[\r\n]+\s*/g, ' ') does, since a match at the start of a run takes the whole run and no
+// match can start inside a run without CR or LF. Then `\`, `[` and `]` get a `\` in front.
+// Whitespace class of the character starting at byte i: 0 other, 1 whitespace, 2 CR or LF.
+fn space(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 0 <= result && result <= 2
+{
+  let b: i64 = s[i];
+  if b == 10 || b == 13 { return 2; }
+  if b == 9 || b == 11 || b == 12 || b == 32 { return 1; }
+  if i + 1 >= len(s) { return 0; }
+  let c: i64 = s[i + 1];
+  if b == 194 && c == 160 { return 1; }
+  if i + 2 >= len(s) { return 0; }
+  let d: i64 = s[i + 2];
+  if b == 225 && c == 154 && d == 128 { return 1; }
+  if b == 226 && c == 128 && ((128 <= d && d <= 138) || d == 168 || d == 169 || d == 175) { return 1; }
+  if b == 226 && c == 129 && d == 159 { return 1; }
+  if b == 227 && c == 128 && d == 128 { return 1; }
+  if b == 239 && c == 187 && d == 191 { return 1; }
+  return 0;
+}
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+pub fn chat_ref_text(title: str, id: str) -> str ! alloc
+  requires len(title) <= 100_000_000_000
+  requires len(id) <= 100_000_000_000
+  ensures len(result) <= 2 * len(title) + len(id) + 10
+{
+  let mut out: String = string_new();
+  out = string_push_str(move out, "@[");
+  // run: start of the pending whitespace run (i when there is none); nl: the run holds CR or LF.
+  let mut run: i64 = 0;
+  let mut nl: bool = false;
+  let mut i: i64 = 0;
+  while i < len(title)
+    invariant 0 <= run && run <= i && i <= len(title)
+    invariant is_char_boundary(title, i)
+    invariant is_char_boundary(title, run)
+    invariant len(out) <= 2 * run + 2
+    invariant !nl || run < i
+    decreases len(title) - i
+  {
+    let j: i64 = next(title, i);
+    let k: i64 = space(title, i);
+    if k > 0 {
+      if k == 2 { nl = true; }
+    } else {
+      if run < i {
+        if nl {
+          out = string_push_str(move out, " ");
+        } else {
+          let gap: str = substr(title, run, i);
+          out = string_push_str(move out, gap);
+        }
+      }
+      let b: i64 = title[i];
+      if b == 92 || b == 91 || b == 93 {
+        out = string_push_str(move out, "\\");
+      }
+      let piece: str = substr(title, i, j);
+      out = string_push_str(move out, piece);
+      run = j;
+      nl = false;
+    }
+    i = j;
+  }
+  if run < i {
+    if nl {
+      out = string_push_str(move out, " ");
+    } else {
+      let gap: str = substr(title, run, i);
+      out = string_push_str(move out, gap);
+    }
+  }
+  out = string_push_str(move out, "](chat:");
+  out = string_push_str(move out, id);
+  out = string_push_str(move out, ")");
+  return string_to_str(out);
+}

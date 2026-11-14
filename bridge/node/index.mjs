@@ -115,6 +115,12 @@ export function textLines(text, chars) {
  *  the verified Pruv luhn (text at most 1e10 UTF-8 bytes, InvalidArg otherwise). */
 export const luhn = native.luhn;
 
+/** Lair chatRefText (src/shared/chat-ref.ts): `@[title](chat:id)` with each JavaScript whitespace run of
+ *  title that holds a CR or LF folded to one space and backslash and square brackets escaped by a
+ *  backslash, from the verified Pruv chat_ref_text (title and id at most 1e11 UTF-8 bytes each,
+ *  InvalidArg otherwise). */
+export const chatRefText = native.chatRefText;
+
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 
