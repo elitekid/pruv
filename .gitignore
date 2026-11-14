@@ -8,3 +8,4 @@ __pycache__/
 target/
 bench/fuzz/out/
 tests/_diff_fail/
+bench/perf/work/
