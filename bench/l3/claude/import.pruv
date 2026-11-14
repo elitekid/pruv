@@ -1,0 +1,311 @@
+// L3-1 A2 import cores (mirror of claude.ts readHead and tailInfo): head metadata and tail title/lastAt over
+// already-read byte windows, published through boundary::ImportResult.
+// Head/tail share the edge framing of framing::edge_next. A2 parts are self-contained; consume_entry and
+// read_window may be added next to them in A4.
+// Selection rules (tested through the helpers and the whole results):
+//   head: cwd/entrypoint = first string value (empty counts); title = one_line(first human text, 120);
+//         stop once all three exist (unobservable apart from skipped work).
+//   tail: lastAt = last accepted timestamp in input order; title = last maximum rank, ties to the later line.
+
+// ---- selection helpers ----
+
+// A candidate of `rank` replaces the current best (0 = none yet) when nothing is held or its rank is >=.
+pub fn replaces(best: i64, rank: i64) -> bool
+  requires 0 <= best && best <= 3 && 1 <= rank && rank <= 3
+  ensures result ==> (best == 0 || rank >= best)
+  ensures (best == 0 || rank >= best) ==> result
+{
+  if best == 0 { return true; }
+  return rank >= best;
+}
+
+// Index of the last maximum of ranks 1..3 (-1 for none): every rank is <= it, every later one is smaller.
+pub fn last_max(ranks: [u8]) -> i64
+  requires forall i in 0..len(ranks): (1 <= ranks[i] && ranks[i] <= 3)
+  ensures len(ranks) == 0 ==> result == -1
+  ensures len(ranks) > 0 ==> (0 <= result && result < len(ranks))
+  ensures len(ranks) > 0 ==> (forall i in 0..len(ranks): ranks[i] <= ranks[result])
+  ensures len(ranks) > 0 ==> (forall i in result + 1..len(ranks): ranks[i] < ranks[result])
+{
+  let mut best: i64 = -1;
+  let mut i: i64 = 0;
+  while i < len(ranks)
+    invariant 0 <= i && i <= len(ranks)
+    invariant forall t in 0..len(ranks): (1 <= ranks[t] && ranks[t] <= 3)
+    invariant i == 0 ==> best == -1
+    invariant i > 0 ==> (0 <= best && best < i)
+    invariant i > 0 ==> (forall t in 0..i: ranks[t] <= ranks[best])
+    invariant i > 0 ==> (forall t in best + 1..i: ranks[t] < ranks[best])
+    decreases len(ranks) - i
+  {
+    let r: i64 = ranks[i];
+    if best == -1 {
+      best = i;
+    } else {
+      let b: i64 = ranks[best];
+      if replaces(b, r) { best = i; }
+    }
+    i = i + 1;
+  }
+  return best;
+}
+
+// Index of the first nonzero flag (a defined candidate), -1 when none: every earlier flag is zero.
+pub fn first_present(flags: [u8]) -> i64
+  ensures result >= -1
+  ensures result == -1 ==> (forall i in 0..len(flags): flags[i] == 0)
+  ensures result >= 0 ==> (result < len(flags) && flags[result] != 0 && (forall i in 0..result: flags[i] == 0))
+{
+  let mut i: i64 = 0;
+  while i < len(flags)
+    invariant 0 <= i && i <= len(flags)
+    invariant forall t in 0..i: flags[t] == 0
+    decreases len(flags) - i
+  {
+    if flags[i] != 0 { return i; }
+    i = i + 1;
+  }
+  return -1;
+}
+
+// ---- output assembly ----
+
+// Position inside [start, end] for a parser defect offset p of the line (start when p is out of range).
+fn fail_at(start: i64, end: i64, p: i64) -> crate::boundary::ImportResult
+  requires 0 <= start && start <= end
+{
+  if p >= 0 && p <= end - start {
+    return crate::boundary::ImportResult::Failed(crate::boundary::code_internal_invariant(), start + p);
+  }
+  return crate::boundary::ImportResult::Failed(crate::boundary::code_internal_invariant(), start);
+}
+
+fn fail_zero() -> crate::boundary::ImportResult
+{
+  return crate::boundary::ImportResult::Failed(crate::boundary::code_internal_invariant(), 0);
+}
+
+// 14 slots: version 1, the mode, everything else absent/zero.
+fn meta_new(mode: i64) -> [i64] ! alloc
+  requires 0 <= mode && mode <= 2
+  ensures len(result) == 14 && result[0] == 1 && result[1] == mode && result[2] == 0 && result[3] == 0
+  ensures result[4] == -1 && result[5] == 0 && result[6] == -1 && result[7] == 0 && result[8] == -1 && result[9] == 0
+  ensures result[10] == -1 && result[11] == 0 && result[12] == -1 && result[13] == 0
+{
+  let mut m: [i64] = alloc(14, 0);
+  m[0] = 1;
+  m[1] = mode;
+  m[4] = -1;
+  m[6] = -1;
+  m[8] = -1;
+  m[10] = -1;
+  m[12] = -1;
+  return m;
+}
+
+// Copy the bytes of s into dst at `at`; every other byte is unchanged.
+fn put_str(inout dst: [u8], at: i64, s: str) -> ()
+  requires 0 <= at && at <= len(dst) && len(s) <= len(dst) - at
+  ensures len(dst) == len(old(dst))
+  ensures forall k in 0..len(s): dst[at + k] == s[k]
+  ensures forall k in 0..len(dst): ((k < at || k >= at + len(s)) ==> dst[k] == old(dst)[k])
+{
+  let n: i64 = len(s);
+  let mut j: i64 = 0;
+  while j < n
+    invariant 0 <= j && j <= n && n == len(s) && 0 <= at && at <= len(dst) && n <= len(dst) - at && len(dst) == len(old(dst))
+    invariant forall k in 0..j: dst[at + k] == s[k]
+    invariant forall k in 0..len(dst): ((k < at || k >= at + j) ==> dst[k] == old(dst)[k])
+    decreases n - j
+  {
+    let b: i64 = s[j];
+    dst[at + j] = b;
+    j = j + 1;
+  }
+}
+
+// Checked publication of a turn-free record.
+fn publish(meta: [i64], text: [u8]) -> crate::boundary::ImportResult ! alloc
+{
+  let turns: [i64] = alloc(0, 0);
+  if !crate::boundary::check_output(meta, turns, text) { return fail_zero(); }
+  let o: crate::boundary::ImportOutput = crate::boundary::make_output(meta, turns, text);
+  return crate::boundary::ImportResult::Imported(o);
+}
+
+// Head record: text is title, cwd, entrypoint (absent values are empty and take no space).
+fn head_result(title: str, has_title: bool, cwd: str, has_cwd: bool, ep: str, has_ep: bool) -> crate::boundary::ImportResult ! alloc
+{
+  let tl: i64 = len(title);
+  let cl: i64 = len(cwd);
+  let el: i64 = len(ep);
+  if tl > 5646080 || cl > 5646080 || el > 5646080 { return fail_zero(); }
+  let total: i64 = tl + cl + el;
+  if total > 5646080 { return fail_zero(); }
+  let mut text: [u8] = alloc(total, 0);
+  put_str(inout text, 0, title);
+  put_str(inout text, tl, cwd);
+  put_str(inout text, tl + cl, ep);
+  let mut m: [i64] = meta_new(0);
+  if has_title { m[4] = 0; m[5] = tl; }
+  if has_cwd { m[6] = tl; m[7] = cl; }
+  if has_ep { m[8] = tl + cl; m[9] = el; }
+  return publish(m, text);
+}
+
+// Tail record: text is title, lastAt (24 bytes).
+fn tail_result(title: str, has_title: bool, last: [u8], has_at: bool) -> crate::boundary::ImportResult ! alloc
+{
+  let tl: i64 = len(title);
+  if tl > 5646080 { return fail_zero(); }
+  let mut extra: i64 = 0;
+  if has_at {
+    if len(last) != 24 { return fail_zero(); }
+    extra = 24;
+  }
+  let total: i64 = tl + extra;
+  let mut text: [u8] = alloc(total, 0);
+  put_str(inout text, 0, title);
+  let mut m: [i64] = meta_new(1);
+  if has_title { m[4] = 0; m[5] = tl; }
+  if has_at {
+    crate::boundary::copy_span(inout text, tl, last, 0, 24);
+    m[10] = tl;
+    m[11] = 24;
+  }
+  return publish(m, text);
+}
+
+// ---- head ----
+
+// claude.ts readHead over at most 65536 bytes read at offset 0; cut_after: the file extends beyond them.
+pub fn read_head(data: [u8], cut_after: bool) -> crate::boundary::ImportResult ! alloc
+{
+  if len(data) > crate::boundary::limit_edge_bytes() {
+    return crate::boundary::ImportResult::Failed(crate::boundary::code_input_too_large(), 0);
+  }
+  let mut cwd: str = "";
+  let mut ep: str = "";
+  let mut title: str = "";
+  let mut has_cwd: bool = false;
+  let mut has_ep: bool = false;
+  let mut has_title: bool = false;
+  let mut idle: bool = false;
+  let mut offset: i64 = 0;
+  while offset < len(data)
+    invariant 0 <= offset && offset <= len(data)
+    decreases len(data) - offset
+  {
+    let step: crate::framing::Frame = crate::framing::edge_next(data, offset, !cut_after);
+    match step {
+      crate::framing::Frame::Entry(start, end, next) => {
+        let line: crate::entry::Line = crate::entry::parse_line(data, start, end);
+        match line {
+          crate::entry::Line::Object(d) => {
+            let root: i64 = crate::access::root(d);
+            if !has_cwd {
+              let f: crate::entry::Field = crate::entry::string_field(d, root, "cwd");
+              match f {
+                crate::entry::Field::Value(v) => { cwd = copy(v); has_cwd = true; }
+                crate::entry::Field::Missing => { idle = true; }
+                crate::entry::Field::Defect(e) => { return fail_at(start, end, 0); }
+              }
+            }
+            if !has_ep {
+              let g: crate::entry::Field = crate::entry::string_field(d, root, "entrypoint");
+              match g {
+                crate::entry::Field::Value(v) => { ep = copy(v); has_ep = true; }
+                crate::entry::Field::Missing => { idle = true; }
+                crate::entry::Field::Defect(e) => { return fail_at(start, end, 0); }
+              }
+            }
+            if !has_title {
+              let h: crate::entry::Field = crate::entry::human_text(d);
+              match h {
+                crate::entry::Field::Value(t) => {
+                  if len(t) > 50331648 { return fail_at(start, end, 0); }
+                  title = crate::text::one_line(t, 120);
+                  has_title = true;
+                }
+                crate::entry::Field::Missing => { idle = true; }
+                crate::entry::Field::Defect(e) => { return fail_at(start, end, 0); }
+              }
+            }
+          }
+          crate::entry::Line::Skip => { idle = true; }
+          crate::entry::Line::Defect(p) => { return fail_at(start, end, p); }
+        }
+        offset = next;
+        if has_cwd && has_ep && has_title { offset = len(data); }
+      }
+      crate::framing::Frame::Dropped(s, e, n) => { offset = len(data); }
+      crate::framing::Frame::Done => { offset = len(data); }
+    }
+  }
+  return head_result(title, has_title, cwd, has_cwd, ep, has_ep);
+}
+
+// ---- tail ----
+
+// claude.ts tailInfo over at most 65536 bytes of the file tail; cut_before: the window starts after offset 0
+// (the first range through its first LF is then discarded). A final unterminated range is accepted.
+pub fn tail_info(data: [u8], cut_before: bool) -> crate::boundary::ImportResult ! alloc
+{
+  if len(data) > crate::boundary::limit_edge_bytes() {
+    return crate::boundary::ImportResult::Failed(crate::boundary::code_input_too_large(), 0);
+  }
+  let mut best: str = "";
+  let mut best_rank: i64 = 0;
+  let mut last: [u8] = alloc(0, 0);
+  let mut has_at: bool = false;
+  let mut idle: bool = false;
+  let mut offset: i64 = crate::framing::skip_first(data, cut_before);
+  while offset < len(data)
+    invariant 0 <= offset && offset <= len(data)
+    invariant 0 <= best_rank && best_rank <= 3
+    decreases len(data) - offset
+  {
+    let step: crate::framing::Frame = crate::framing::edge_next(data, offset, true);
+    match step {
+      crate::framing::Frame::Entry(start, end, next) => {
+        let line: crate::entry::Line = crate::entry::parse_line(data, start, end);
+        match line {
+          crate::entry::Line::Object(d) => {
+            let root: i64 = crate::access::root(d);
+            let tf: i64 = crate::access::field(d, root, "timestamp");
+            if tf < -1 { return fail_at(start, end, 0); }
+            if tf >= 0 {
+              let iso: crate::time::Iso = crate::time::iso_of(d, tf);
+              if iso.status < 0 { return fail_at(start, end, 0); }
+              if iso.status == 0 {
+                last = copy(iso.text);
+                has_at = true;
+              }
+            }
+            let t: crate::entry::Title = crate::entry::title_of(d);
+            match t {
+              crate::entry::Title::Ranked(rank, text) => {
+                if rank < 1 || rank > 3 { return fail_at(start, end, 0); }
+                if len(text) > 50331648 { return fail_at(start, end, 0); }
+                if replaces(best_rank, rank) {
+                  best_rank = rank;
+                  best = copy(text);
+                }
+              }
+              crate::entry::Title::NoTitle => { idle = true; }
+              crate::entry::Title::Defect(e) => { return fail_at(start, end, 0); }
+            }
+          }
+          crate::entry::Line::Skip => { idle = true; }
+          crate::entry::Line::Defect(p) => { return fail_at(start, end, p); }
+        }
+        offset = next;
+      }
+      crate::framing::Frame::Dropped(s, e, n) => { offset = len(data); }
+      crate::framing::Frame::Done => { offset = len(data); }
+    }
+  }
+  if len(best) > 100000000000 { return fail_zero(); }
+  let title: str = crate::text::one_line(best, 120);
+  return tail_result(title, best_rank > 0, last, has_at);
+}

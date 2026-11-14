@@ -1,0 +1,290 @@
+// L3-1 A2 timestamps (mirror of tail.ts isoOf under the restricted domain of spec P4):
+//   * JSON integer numbers with has_integer (|v| <= 9007199254740991, "-0" included);
+//   * strings whose trim is nonempty ASCII digits (value <= 9007199254740991);
+//   * strings that are exactly 24 ASCII bytes of canonical UTC ISO text YYYY-MM-DDTHH:mm:ss.sssZ.
+// Integer v: ms = v * 1000 when v < 100000000000 (signed comparison), else ms = v; the result must lie in
+// -62167219200000 (0000-01-01T00:00:00.000Z) .. 253402300799999 (9999-12-31T23:59:59.999Z).
+// Everything else is absent (status 1). Decoder/tape defects are status -4, never "absent".
+// Civil calendar: days shifted by 5 whole 400-year cycles (63113904000000 ms) so every division is on
+// nonnegative numbers, then the March-based civil-from-days walk (as bench/l0/cell_date.pruv).
+// The shape of the 24-byte text is proved; the calendar arithmetic itself is guarded and tested.
+
+// Result: status 0 present (text is the 24 timestamp bytes), 1 absent, -4 defect; text empty otherwise.
+pub struct Iso { status: i64, text: [u8] }
+
+pub fn time_none() -> i64 ensures result == 9223372036854775807 { return 9223372036854775807; }
+pub fn time_min_ms() -> i64 ensures result == -62167219200000 { return -62167219200000; }
+pub fn time_max_ms() -> i64 ensures result == 253402300799999 { return 253402300799999; }
+
+// Seconds-or-milliseconds rule on a safe integer; time_none() when the milliseconds are out of range.
+pub fn integer_time(v: i64) -> i64
+  requires -9007199254740991 <= v && v <= 9007199254740991
+  ensures result == 9223372036854775807 || (-62167219200000 <= result && result <= 253402300799999)
+  ensures (v < 100000000000 && v >= -62167219200) ==> result == v * 1000
+  ensures (v >= 100000000000 && v <= 253402300799999) ==> result == v
+  ensures v < -62167219200 ==> result == 9223372036854775807
+  ensures v > 253402300799999 ==> result == 9223372036854775807
+{
+  if v < 100000000000 {
+    if v < -62167219200 { return 9223372036854775807; }
+    return v * 1000;
+  }
+  if v > 253402300799999 { return 9223372036854775807; }
+  return v;
+}
+
+fn leap(y: i64) -> bool
+  requires 0 <= y
+{
+  if y % 400 == 0 { return true; }
+  if y % 100 == 0 { return false; }
+  return y % 4 == 0;
+}
+
+fn month_days(y: i64, m: i64) -> i64
+  requires 0 <= y && 1 <= m && m <= 12
+  ensures 28 <= result && result <= 31
+{
+  if m == 2 {
+    if leap(y) { return 29; }
+    return 28;
+  }
+  if m == 4 || m == 6 || m == 9 || m == 11 { return 30; }
+  return 31;
+}
+
+// Value of the ASCII digit at byte i, else -1.
+fn dig(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures -1 <= result && result <= 9
+  ensures result >= 0 ==> (result == s[i] - 48 && 48 <= s[i] && s[i] <= 57)
+{
+  let c: i64 = s[i];
+  if c < 48 || c > 57 { return -1; }
+  return c - 48;
+}
+
+// The text is exactly 24 ASCII bytes of a valid canonical UTC timestamp (year 0000 allowed, Gregorian rules).
+pub fn canonical_iso(s: str) -> bool
+  ensures result ==> len(s) == 24
+  ensures result ==> (s[4] == 45 && s[7] == 45 && s[10] == 84 && s[13] == 58 && s[16] == 58 && s[19] == 46 && s[23] == 90)
+  ensures result ==> (forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= s[i] && s[i] <= 57)))
+{
+  if len(s) != 24 { return false; }
+  let c4: i64 = s[4];
+  let c7: i64 = s[7];
+  let c10: i64 = s[10];
+  let c13: i64 = s[13];
+  let c16: i64 = s[16];
+  let c19: i64 = s[19];
+  let c23: i64 = s[23];
+  if c4 != 45 || c7 != 45 || c10 != 84 || c13 != 58 || c16 != 58 || c19 != 46 || c23 != 90 { return false; }
+  let y0: i64 = dig(s, 0);
+  let y1: i64 = dig(s, 1);
+  let y2: i64 = dig(s, 2);
+  let y3: i64 = dig(s, 3);
+  let m0: i64 = dig(s, 5);
+  let m1: i64 = dig(s, 6);
+  let d0: i64 = dig(s, 8);
+  let d1: i64 = dig(s, 9);
+  let h0: i64 = dig(s, 11);
+  let h1: i64 = dig(s, 12);
+  let n0: i64 = dig(s, 14);
+  let n1: i64 = dig(s, 15);
+  let s0: i64 = dig(s, 17);
+  let s1: i64 = dig(s, 18);
+  let f0: i64 = dig(s, 20);
+  let f1: i64 = dig(s, 21);
+  let f2: i64 = dig(s, 22);
+  if y0 < 0 || y1 < 0 || y2 < 0 || y3 < 0 || m0 < 0 || m1 < 0 || d0 < 0 || d1 < 0 { return false; }
+  if h0 < 0 || h1 < 0 || n0 < 0 || n1 < 0 || s0 < 0 || s1 < 0 || f0 < 0 || f1 < 0 || f2 < 0 { return false; }
+  let y: i64 = y0 * 1000 + y1 * 100 + y2 * 10 + y3;
+  let m: i64 = m0 * 10 + m1;
+  let d: i64 = d0 * 10 + d1;
+  if m < 1 || m > 12 { return false; }
+  if d < 1 || d > month_days(y, m) { return false; }
+  if h0 * 10 + h1 > 23 { return false; }
+  if n0 * 10 + n1 > 59 { return false; }
+  if s0 * 10 + s1 > 59 { return false; }
+  return true;
+}
+
+// 24-byte canonical text of integer milliseconds in the supported range. An empty array is returned only if
+// the (tested) calendar arithmetic left its guarded ranges; callers treat that as a defect.
+pub fn format_iso(ms: i64) -> [u8] ! alloc
+  requires -62167219200000 <= ms && ms <= 253402300799999
+  ensures len(result) == 24 || len(result) == 0
+  ensures len(result) == 24 ==> (result[4] == 45 && result[7] == 45 && result[10] == 84 && result[13] == 58 && result[16] == 58 && result[19] == 46 && result[23] == 90)
+  ensures len(result) == 24 ==> (forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= result[i] && result[i] <= 57)))
+{
+  let day: i64 = 86400000;
+  // 5 cycles of 146097 days: 730485 days = 63113904000000 ms.
+  let shifted: i64 = ms + 63113904000000;
+  let days: i64 = shifted / day;
+  let rem: i64 = shifted - days * day;
+  let z: i64 = days + 719468;
+  let era: i64 = z / 146097;
+  let doe: i64 = z - era * 146097;
+  let yoe: i64 = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  let doy: i64 = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  let mp: i64 = (5 * doy + 2) / 153;
+  let d: i64 = doy - (153 * mp + 2) / 5 + 1;
+  let mut m: i64 = mp + 3;
+  if mp >= 10 { m = mp - 9; }
+  let mut y: i64 = yoe + era * 400 - 2000;
+  if m <= 2 { y = y + 1; }
+  let h: i64 = rem / 3600000;
+  let mi: i64 = (rem / 60000) % 60;
+  let sec: i64 = (rem / 1000) % 60;
+  let f: i64 = rem % 1000;
+  if y < 0 || y > 9999 || m < 1 || m > 12 || d < 1 || d > 31 || rem < 0 || h < 0 || h > 23 {
+    let none: [u8] = alloc(0, 0);
+    return none;
+  }
+  let mut out: [u8] = alloc(24, 0);
+  out[0] = 48 + (y / 1000) % 10;
+  out[1] = 48 + (y / 100) % 10;
+  out[2] = 48 + (y / 10) % 10;
+  out[3] = 48 + y % 10;
+  out[4] = 45;
+  out[5] = 48 + (m / 10) % 10;
+  out[6] = 48 + m % 10;
+  out[7] = 45;
+  out[8] = 48 + (d / 10) % 10;
+  out[9] = 48 + d % 10;
+  out[10] = 84;
+  out[11] = 48 + (h / 10) % 10;
+  out[12] = 48 + h % 10;
+  out[13] = 58;
+  out[14] = 48 + (mi / 10) % 10;
+  out[15] = 48 + mi % 10;
+  out[16] = 58;
+  out[17] = 48 + (sec / 10) % 10;
+  out[18] = 48 + sec % 10;
+  out[19] = 46;
+  out[20] = 48 + (f / 100) % 10;
+  out[21] = 48 + (f / 10) % 10;
+  out[22] = 48 + f % 10;
+  out[23] = 90;
+  return out;
+}
+
+fn absent() -> Iso ! alloc
+  ensures result.status == 1 && len(result.text) == 0
+{
+  let e: [u8] = alloc(0, 0);
+  return Iso { status: 1, text: copy(e) };
+}
+
+fn defect() -> Iso ! alloc
+  ensures result.status == -4 && len(result.text) == 0
+{
+  let e: [u8] = alloc(0, 0);
+  return Iso { status: -4, text: copy(e) };
+}
+
+fn present(t: [u8]) -> Iso ! alloc
+  requires len(t) == 24 && t[4] == 45 && t[7] == 45 && t[10] == 84 && t[13] == 58 && t[16] == 58 && t[19] == 46 && t[23] == 90
+  requires forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= t[i] && t[i] <= 57))
+  ensures result.status == 0 && len(result.text) == 24 && result.text[4] == 45 && result.text[7] == 45 && result.text[10] == 84 && result.text[13] == 58 && result.text[16] == 58 && result.text[19] == 46 && result.text[23] == 90
+  ensures forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= result.text[i] && result.text[i] <= 57))
+{
+  return Iso { status: 0, text: copy(t) };
+}
+
+fn bytes24(s: str) -> [u8] ! alloc
+  requires len(s) == 24
+  ensures len(result) == 24
+  ensures forall k in 0..24: result[k] == s[k]
+{
+  let mut out: [u8] = alloc(24, 0);
+  let mut j: i64 = 0;
+  while j < 24
+    invariant 0 <= j && j <= 24 && len(out) == 24 && len(s) == 24
+    invariant forall k in 0..j: out[k] == s[k]
+    decreases 24 - j
+  {
+    let b: i64 = s[j];
+    out[j] = b;
+    j = j + 1;
+  }
+  return out;
+}
+
+fn from_integer(v: i64) -> Iso ! alloc
+  requires -9007199254740991 <= v && v <= 9007199254740991
+  ensures result.status == 0 ==> (len(result.text) == 24 && result.text[4] == 45 && result.text[7] == 45 && result.text[10] == 84 && result.text[13] == 58 && result.text[16] == 58 && result.text[19] == 46 && result.text[23] == 90)
+  ensures result.status == 0 ==> (forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= result.text[i] && result.text[i] <= 57)))
+  ensures result.status != 0 ==> len(result.text) == 0
+{
+  let ms: i64 = integer_time(v);
+  if ms == 9223372036854775807 { return absent(); }
+  let f: [u8] = format_iso(ms);
+  if len(f) != 24 { return defect(); }
+  return present(f);
+}
+
+// All of t is ASCII digits (and t is nonempty): the value; -1 otherwise; -2 when digit-only but above 2^53-1.
+fn digit_value(t: str) -> i64
+  ensures -2 <= result && result <= 9007199254740991
+{
+  if len(t) == 0 { return -1; }
+  let mut v: i64 = 0;
+  let mut over: bool = false;
+  let mut i: i64 = 0;
+  while i < len(t)
+    invariant 0 <= i && i <= len(t)
+    invariant 0 <= v && v <= 9007199254740991
+    decreases len(t) - i
+  {
+    let c: i64 = t[i];
+    if c < 48 || c > 57 { return -1; }
+    let d: i64 = c - 48;
+    if v > (9007199254740991 - d) / 10 { over = true; }
+    else { v = v * 10 + d; }
+    i = i + 1;
+  }
+  if over { return -2; }
+  return v;
+}
+
+fn from_string(v: str) -> Iso ! alloc
+  ensures result.status == 0 ==> (len(result.text) == 24 && result.text[4] == 45 && result.text[7] == 45 && result.text[10] == 84 && result.text[13] == 58 && result.text[16] == 58 && result.text[19] == 46 && result.text[23] == 90)
+  ensures result.status == 0 ==> (forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= result.text[i] && result.text[i] <= 57)))
+  ensures result.status != 0 ==> len(result.text) == 0
+{
+  let t: str = crate::text::trim(v);
+  let n: i64 = digit_value(t);
+  if n >= 0 { return from_integer(n); }
+  if n == -2 { return absent(); }
+  if canonical_iso(v) {
+    let b: [u8] = bytes24(v);
+    return present(b);
+  }
+  return absent();
+}
+
+// tail.ts isoOf for the value with tape id `id` of doc.
+pub fn iso_of(doc: crate::json::JsonDocument, id: i64) -> Iso ! alloc
+  ensures result.status == 0 ==> (len(result.text) == 24 && result.text[4] == 45 && result.text[7] == 45 && result.text[10] == 84 && result.text[13] == 58 && result.text[16] == 58 && result.text[19] == 46 && result.text[23] == 90)
+  ensures result.status == 0 ==> (forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= result.text[i] && result.text[i] <= 57)))
+  ensures result.status != 0 ==> len(result.text) == 0
+{
+  let k: i64 = crate::access::kind(doc, id);
+  if k < 0 { return defect(); }
+  if k == 3 {
+    let n: crate::access::Number = crate::access::number(doc, id);
+    if n.status != 0 { return defect(); }
+    if !n.has_integer { return absent(); }
+    if n.integer < -9007199254740991 || n.integer > 9007199254740991 { return defect(); }
+    return from_integer(n.integer);
+  }
+  if k == 4 {
+    let t: crate::jstr::Text = crate::access::string_text(doc, id);
+    match t {
+      crate::jstr::Text::InternalInvariant(e) => { return defect(); }
+      crate::jstr::Text::Decoded(v) => { return from_string(v); }
+    }
+  }
+  return absent();
+}

@@ -1,0 +1,122 @@
+// L3-1 A2 root: plain-array host wrappers for time.pruv and import.pruv fixtures (root pub fns take [u8]/i64
+// and return [i64]). Flags are i64 (nonzero = true). Byte inputs become str through the checked UTF-8
+// adapter; invalid UTF-8 gives [-1].
+//   head_packet / tail_packet: the A0 packet [0, 14, turn_slots, byte_len, ...meta, ...turns, ...text] or
+//     [code, position].
+//   iso_w(line, key): [0, ...24 bytes] present, [1] absent or missing key, [2, status] iso defect,
+//     [9] line is not an object, [8, position] line defect.
+//   integer_time_w(v): [ms] (9223372036854775807 when unsupported) or [-2] for |v| above 9007199254740991.
+//   format_iso_w(ms): [0, ...24 bytes], [-2] out of range, [-3] empty (arithmetic left its guards).
+//   canonical_w(text): [1] / [0].  last_max_w(ranks): [index]; first_present_w(flags): [index].
+mod json;
+mod lex;
+mod parse;
+mod lines;
+mod jstr;
+mod access;
+mod boundary;
+mod framing;
+mod text;
+mod entry;
+mod time;
+mod import;
+
+fn lead1(a: i64) -> [i64] ! alloc
+{
+  let mut out: [i64] = alloc(1, 0);
+  out[0] = a;
+  return out;
+}
+
+fn lead2(a: i64, b: i64) -> [i64] ! alloc
+{
+  let mut out: [i64] = alloc(2, 0);
+  out[0] = a; out[1] = b;
+  return out;
+}
+
+// [0] followed by the bytes widened to i64.
+fn widen_bytes(t: [u8]) -> [i64] ! alloc
+{
+  if len(t) > 1000000000 { return lead1(-3); }
+  let mut out: [i64] = alloc(1 + len(t), 0);
+  let mut i: i64 = 0;
+  while i < len(t)
+    invariant 0 <= i && i <= len(t) && len(out) == 1 + len(t)
+    decreases len(t) - i
+  { out[1 + i] = t[i]; i = i + 1; }
+  return out;
+}
+
+pub fn head_packet(data: [u8], cut_after: i64) -> [i64] ! alloc
+{
+  let r: crate::boundary::ImportResult = crate::import::read_head(data, cut_after != 0);
+  return crate::boundary::pack_result(r);
+}
+
+pub fn tail_packet(data: [u8], cut_before: i64) -> [i64] ! alloc
+{
+  let r: crate::boundary::ImportResult = crate::import::tail_info(data, cut_before != 0);
+  return crate::boundary::pack_result(r);
+}
+
+pub fn iso_w(line: [u8], key: [u8]) -> [i64] ! alloc
+{
+  let k: str = crate::jstr::adapter_probe(key);
+  if len(k) != len(key) { return lead1(-1); }
+  let l: crate::entry::Line = crate::entry::parse_line(line, 0, len(line));
+  match l {
+    crate::entry::Line::Object(d) => {
+      let f: i64 = crate::access::field(d, crate::access::root(d), k);
+      if f == -1 { return lead1(1); }
+      if f < 0 { return lead2(2, f); }
+      let r: crate::time::Iso = crate::time::iso_of(d, f);
+      if r.status == 0 { return widen_bytes(r.text); }
+      if r.status == 1 { return lead1(1); }
+      return lead2(2, r.status);
+    }
+    crate::entry::Line::Skip => { return lead1(9); }
+    crate::entry::Line::Defect(p) => { return lead2(8, p); }
+  }
+}
+
+pub fn integer_time_w(v: i64) -> [i64] ! alloc
+{
+  if v < -9007199254740991 || v > 9007199254740991 { return lead1(-2); }
+  return lead1(crate::time::integer_time(v));
+}
+
+pub fn format_iso_w(ms: i64) -> [i64] ! alloc
+{
+  if ms < -62167219200000 || ms > 253402300799999 { return lead1(-2); }
+  let t: [u8] = crate::time::format_iso(ms);
+  if len(t) != 24 { return lead1(-3); }
+  return widen_bytes(t);
+}
+
+pub fn canonical_w(data: [u8]) -> [i64] ! alloc
+{
+  let s: str = crate::jstr::adapter_probe(data);
+  if len(s) != len(data) { return lead1(-1); }
+  if crate::time::canonical_iso(s) { return lead1(1); }
+  return lead1(0);
+}
+
+pub fn last_max_w(ranks: [u8]) -> [i64] ! alloc
+{
+  let mut i: i64 = 0;
+  while i < len(ranks)
+    invariant 0 <= i && i <= len(ranks)
+    invariant forall t in 0..i: (1 <= ranks[t] && ranks[t] <= 3)
+    decreases len(ranks) - i
+  {
+    if ranks[i] < 1 || ranks[i] > 3 { return lead1(-2); }
+    i = i + 1;
+  }
+  return lead1(crate::import::last_max(ranks));
+}
+
+pub fn first_present_w(flags: [u8]) -> [i64] ! alloc
+{
+  return lead1(crate::import::first_present(flags));
+}
