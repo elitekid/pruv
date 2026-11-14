@@ -1,0 +1,6 @@
+// only i + 3 <= len(s) is known, the last byte s[i + 3] needs i + 4 <= len(s)
+fn f(inout s: [u8], i: i64, w: i64) -> ()
+  requires 0 <= i && i + 3 <= len(s)
+{
+  store_be(inout s, i, w, 4);
+}

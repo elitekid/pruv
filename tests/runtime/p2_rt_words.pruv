@@ -1,0 +1,119 @@
+// load_be / store_be: big-endian byte words of 1..8 bytes at a nonzero offset; n = 8 is two's complement,
+// n < 8 is zero-extended; a store keeps only the low 8n bits of w and leaves the neighbours alone.
+fn rd1(s: [u8], i: i64) -> i64
+  requires 0 <= i && i + 1 <= len(s)
+{ return load_be(s, i, 1); }
+fn rd2(s: [u8], i: i64) -> i64
+  requires 0 <= i && i + 2 <= len(s)
+{ return load_be(s, i, 2); }
+fn rd4(s: [u8], i: i64) -> i64
+  requires 0 <= i && i + 4 <= len(s)
+{ return load_be(s, i, 4); }
+fn rd6(s: [u8], i: i64) -> i64
+  requires 0 <= i && i + 6 <= len(s)
+{ return load_be(s, i, 6); }
+fn rd8(s: [u8], i: i64) -> i64
+  requires 0 <= i && i + 8 <= len(s)
+{ return load_be(s, i, 8); }
+// bytes 01 02 83 94 A5 B6 C7 D8 E9 FA
+fn mk_a() -> [u8] ! alloc
+  ensures len(result) == 10
+{
+  let mut b: [u8] = alloc(10, 0);
+  b[0] = 1; b[1] = 2; b[2] = 131; b[3] = 148; b[4] = 165;
+  b[5] = 182; b[6] = 199; b[7] = 216; b[8] = 233; b[9] = 250;
+  return b;
+}
+// bytes 09 80 00 00 00 00 00 00 01 FF
+fn mk_b() -> [u8] ! alloc
+  ensures len(result) == 10
+{
+  let mut b: [u8] = alloc(10, 0);
+  b[0] = 9; b[1] = 128; b[8] = 1; b[9] = 255;
+  return b;
+}
+fn mk_c() -> [u8] ! alloc
+  ensures len(result) == 8
+{ return alloc(8, 255); }
+fn st1() -> [u8] ! alloc
+  ensures len(result) == 10
+{ let mut z: [u8] = alloc(10, 0); store_be(inout z, 1, 511, 1); return z; }
+fn st2() -> [u8] ! alloc
+  ensures len(result) == 10
+{ let mut z: [u8] = alloc(10, 0); store_be(inout z, 2, 4660, 2); return z; }
+fn st3() -> [u8] ! alloc
+  ensures len(result) == 10
+{ let mut z: [u8] = alloc(10, 0); store_be(inout z, 3, 168496141, 3); return z; }
+fn st6() -> [u8] ! alloc
+  ensures len(result) == 10
+{ let mut z: [u8] = alloc(10, 0); store_be(inout z, 1, -2, 6); return z; }
+fn st8() -> [u8] ! alloc
+  ensures len(result) == 10
+{ let mut z: [u8] = alloc(10, 0); store_be(inout z, 1, -9223372036854775807, 8); return z; }
+fn rt8(w: i64, i: i64) -> i64 ! alloc
+  requires 0 <= i && i + 8 <= 10
+{
+  let mut z: [u8] = alloc(10, 0);
+  store_be(inout z, i, w, 8);
+  return load_be(z, i, 8);
+}
+fn rt5(w: i64, i: i64) -> i64 ! alloc
+  requires 0 <= i && i + 5 <= 10
+{
+  let mut z: [u8] = alloc(10, 0);
+  store_be(inout z, i, w, 5);
+  return load_be(z, i, 5);
+}
+// return truncate of a mutable local: shortened in place, same observable result
+fn tr(m: i64) -> [u8] ! alloc
+  requires 0 <= m && m <= 6
+  ensures len(result) == m
+{
+  let mut b: [u8] = alloc(6, 7);
+  b[0] = 10; b[1] = 20; b[2] = 30;
+  return truncate(b, m);
+}
+fn dump(s: [u8]) -> () ! io {
+  let mut i: i64 = 0;
+  while i < len(s) invariant 0 <= i && i <= len(s) decreases len(s) - i
+  { print(s[i]); i = i + 1; }
+}
+fn run() -> () ! io, alloc {
+  let a: [u8] = mk_a();
+  let b: [u8] = mk_b();
+  let c: [u8] = mk_c();
+  print(rd1(a, 2));
+  print(rd2(a, 2));
+  print(rd4(a, 2));
+  print(rd6(a, 2));
+  print(rd8(b, 1));
+  print(rd4(b, 1));
+  print(rd1(b, 9));
+  print(rd8(c, 0));
+  print(rd4(c, 0));
+  let s1: [u8] = st1();
+  dump(s1);
+  let s2: [u8] = st2();
+  dump(s2);
+  let s3: [u8] = st3();
+  dump(s3);
+  let s6: [u8] = st6();
+  dump(s6);
+  let s8: [u8] = st8();
+  dump(s8);
+  print(rt8(-2, 2));
+  print(rt8(9223372036854775807, 1));
+  print(rt5(4328719365, 3));
+  print(rt5(-1, 0));
+  let t4: [u8] = tr(4);
+  print(len(t4));
+  dump(t4);
+  let t2: [u8] = tr(2);
+  print(len(t2));
+  dump(t2);
+  let t0: [u8] = tr(0);
+  print(len(t0));
+  let t6: [u8] = tr(6);
+  print(len(t6));
+  dump(t6);
+}

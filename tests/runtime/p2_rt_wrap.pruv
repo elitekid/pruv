@@ -1,0 +1,59 @@
+// wrapping_add / wrapping_mul: low 64 bits of the exact sum / product as a two's-complement i64; no overflow obligation.
+fn w1() -> i64
+  ensures result == -9223372036854775807 - 1
+{ return wrapping_add(9223372036854775807, 1); }
+fn w2() -> i64
+  ensures result == 9223372036854775807
+{ return wrapping_add(-9223372036854775807 - 1, -1); }
+fn w3() -> i64
+  ensures result == -9223372036854775807 - 1
+{ return wrapping_mul(-9223372036854775807 - 1, -1); }
+fn w4() -> i64
+  ensures result == -2
+{ return wrapping_mul(9223372036854775807, 2); }
+fn w5() -> i64
+  ensures result == 1
+{ return wrapping_mul(-1, -1); }
+// u32 masking of constant expressions (decided exactly)
+fn m1() -> i64
+  ensures result == 0
+{ return band(wrapping_add(4294967295, 1), 4294967295); }
+fn m2() -> i64
+  ensures result == 1
+{ return band(wrapping_mul(4294967295, 4294967295), 4294967295); }
+// the band fact alone proves the u32 range of a masked wrapping_mul
+fn masked_mul(x: i64, y: i64) -> i64
+  ensures 0 <= result && result <= 4294967295
+{ return band(wrapping_mul(x, y), 4294967295); }
+// the contract value equals the runtime value
+fn add_c(x: i64, y: i64) -> i64
+  ensures result == wrapping_add(x, y)
+{ return wrapping_add(x, y); }
+fn mul_c(x: i64, y: i64) -> i64
+  ensures result == wrapping_mul(x, y)
+{ return wrapping_mul(x, y); }
+fn cc() -> i64
+  ensures result == wrapping_add(9223372036854775807, 1)
+{ return -9223372036854775807 - 1; }
+fn run() -> () ! io {
+  print(w1());
+  print(w2());
+  print(w3());
+  print(w4());
+  print(w5());
+  print(m1());
+  print(m2());
+  print(masked_mul(65537, 65537));
+  print(masked_mul(-1, 3));
+  print(masked_mul(65536, 65536));
+  print(add_c(9223372036854775807, 1));
+  print(add_c(-9223372036854775807 - 1, -1));
+  print(add_c(5, 7));
+  print(mul_c(-9223372036854775807 - 1, 2));
+  print(mul_c(9223372036854775807, 9223372036854775807));
+  print(mul_c(-3, 4));
+  print(mul_c(-9223372036854775807 - 1, -9223372036854775807 - 1));
+  print(cc());
+  print(wrapping_add(9223372036854775807, 1));
+  print(wrapping_mul(4611686018427387904, 4));
+}

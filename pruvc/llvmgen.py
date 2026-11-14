@@ -55,7 +55,8 @@ G6_UNSUPPORTED_FIX = "avoid trusted rust fn, Vec, HashMap, String, take and move
 G6_BRIDGE_DECL = "@pruv_g6_bridge_v1 = external global i8\n"
 
 SIGNED_MIN128 = -170141183460469231731687303715884105728
-BIT_LLVM = {"band": "and", "bor": "or", "bxor": "xor", "wrapping_shl": "shl", "ushr": "lshr"}   # P2: bit builtin -> LLVM instruction; later batches add entries
+BIT_LLVM = {"band": "and", "bor": "or", "bxor": "xor", "wrapping_shl": "shl", "ushr": "lshr",
+             "wrapping_add": "add", "wrapping_mul": "mul"}   # P2: bit builtin -> LLVM instruction; later batches add entries
 OPT = "{ i1, i64 }"
 COPT = "{ i1, i128 }"       # Option/Result stored inside a contract aggregate (%pruv_c_*)
 ARR = "{ ptr, i64 }"
@@ -330,6 +331,8 @@ class Mod:
         s.g6_decls = {}         # G6 A3: shim symbol -> declare line
         s.g6_v2 = False         # G6 A3: string_to_str needs the v2 copy/free declarations
         s.g6_bridge = False     # G6 A3: some function references @pruv_g6_bridge_v1
+        s.bswap = set()         # P2 batch 4: widths of the llvm.bswap declarations the byte-word accesses used
+        s.shrink = False        # P2 batch 4: some in-place `return truncate` calls @pruv_shrink_v2
         s.need_size = set()     # G9 A3: types whose runtime-contract size / equality helpers are needed
         s.need_eq = set()
         s.explicit = False      # G4 A3: explicit visibility mode (set by gen_llvm); Pruv calls use the Rust-backend routing
@@ -1120,7 +1123,22 @@ class FnGen:
         elif isinstance(st, Return):
             s.begin_temps()
             v = V("unit")
-            if st.value is not None:
+            if st.value is not None and s.truncate_move(st.value) is not None:
+                # P2 batch 4: `return truncate(x, m)` of an owned local array: the same pointer with length m moves out
+                sl = s.truncate_move(st.value)
+                src = s.load(sl)
+                m = s.ev(st.value.args[1])
+                if not s.verified:
+                    ok = s.op("icmp ule i64 %s, %s" % (m.a, src.b))
+                    s.guard(ok, s.panic1("pruv_panic_arith", "truncate length outside 0..len"), False)
+                # the runtime shrinks the block to m elements so the later free gets its real layout
+                sz = 1 if is_bytes(src) else 8
+                s.m.shrink = True
+                p = s.op("call ptr @pruv_shrink_v2(ptr %s, i64 %s, i64 %s, i64 %d, i64 %d)" % (src.a, src.b, m.a, sz, sz))
+                v = V("arr", p, m.a, src.ty)
+                s.ins("store ptr null, ptr %s" % sl.a)
+                s.ins("store i64 0, ptr %s" % sl.b)
+            elif st.value is not None:
                 v = s.ev(st.value, True)
                 if v.k == "arr" and isinstance(st.value, Var):
                     # moving a local array out: empty its slot so the cleanup below does not free it
@@ -1286,6 +1304,78 @@ class FnGen:
             ok = s.op("icmp ult i64 %s, %s" % (i.a, a.b))
             s.guard(ok, lambda: s.ins("call void @pruv_panic_oob(i64 %s, i64 %s)" % (i.a, a.b)), False)
         return s.op("getelementptr inbounds %s, ptr %s, i64 %s" % ("i8" if is_bytes(a) else "i64", a.a, i.a))  # G2 A5: bytes = u8|bool
+
+    def truncate_move(s, e):
+        """P2 batch 4: the slot of x when e is `truncate(x, m)` with x an owned local array (not a parameter or binder)
+        and m does not name x; None otherwise"""
+        if not (not s.cost and isinstance(e, Call) and e.name == "truncate" and len(e.args) == 2
+                and isinstance(e.args[0], Var)):
+            return None
+        names = set()
+        codegen._expr_names(e.args[1], names)
+        if e.args[0].name in names:
+            return None
+        kind, sl = s.lookup(e.args[0].name)
+        if kind != "slot" or sl.k != "arr":
+            return None
+        return sl
+
+    def word_ptr(s, a, i, nb):
+        """P2 batch 4: pointer to a[i]; --no-verify first checks 0 <= i && i + nb <= len(a) (stop as for a[i])"""
+        if not s.verified:
+            t = s.op("sub i64 %s, %d" % (a.b, nb))
+            c1 = s.op("icmp sge i64 %s, 0" % i.a)
+            c2 = s.op("icmp sle i64 %s, %s" % (i.a, t))
+            ok = s.op("and i1 %s, %s" % (c1, c2))
+            s.guard(ok, lambda: s.ins("call void @pruv_panic_oob(i64 %s, i64 %s)" % (i.a, a.b)), False)
+        return s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (a.a, i.a))
+
+    def bswap(s, bits, x):
+        s.m.bswap.add(bits)
+        return s.op("call i%d @llvm.bswap.i%d(i%d %s)" % (bits, bits, bits, x))
+
+    def byte_at(s, g, k):
+        """pointer to byte k of the word at g"""
+        return g if k == 0 else s.op("getelementptr inbounds i8, ptr %s, i64 %d" % (g, k))
+
+    def load_word(s, g, nb):
+        """big-endian i64 of the nb bytes at g"""
+        if nb in (2, 4, 8):
+            x = s.op("load i%d, ptr %s, align 1" % (8 * nb, g))
+            x = s.bswap(8 * nb, x)
+            return x if nb == 8 else s.op("zext i%d %s to i64" % (8 * nb, x))
+        acc = None
+        for k in range(nb):
+            p = s.byte_at(g, k)
+            b = s.op("load i8, ptr %s" % p)
+            b = s.op("zext i8 %s to i64" % b)
+            if acc is not None:
+                acc = s.op("shl i64 %s, 8" % acc)
+                b = s.op("or i64 %s, %s" % (acc, b))
+            acc = b
+        return acc
+
+    def store_word(s, g, w, nb):
+        """the low 8*nb bits of w, big-endian, at g: one store for nb in {1,2,4,8}, else pieces of 4/2/1 bytes high to low"""
+        off = 0
+        while off < nb:
+            left = nb - off
+            p = 4 if left >= 4 else 2 if left >= 2 else 1
+            if nb in (1, 2, 4, 8):
+                p = nb
+            sh = 8 * (left - p)
+            x = w if sh == 0 else s.op("lshr i64 %s, %d" % (w, sh))
+            if p == 8:
+                x = s.bswap(64, x)
+                s.ins("store i64 %s, ptr %s, align 1" % (x, s.byte_at(g, off)))
+            elif p == 1:
+                x = s.op("trunc i64 %s to i8" % x)
+                s.ins("store i8 %s, ptr %s" % (x, s.byte_at(g, off)))
+            else:
+                x = s.op("trunc i64 %s to i%d" % (x, 8 * p))
+                x = s.bswap(8 * p, x)
+                s.ins("store i%d %s, ptr %s, align 1" % (8 * p, x, s.byte_at(g, off)))
+            off += p
 
     def checked(s, ty, name, sym, a, b):
         r = s.op("call { %s, i1 } @llvm.%s.with.overflow.%s(%s %s, %s %s)" % (ty, name, ty, ty, a, ty, b))
@@ -1483,6 +1573,20 @@ class FnGen:
                 ok = s.op("icmp ult i64 %s, 64" % y.a)
                 s.guard(ok, s.panic1("pruv_panic_arith", "shift count outside 0..64"), False)
             return V("i64", s.op("%s i64 %s, %s" % (BIT_LLVM[n], x.a, y.a)))
+        if n == "load_be":   # P2 batch 4: array, then index
+            arr = s.ev(a[0])
+            i = s.ev(a[1])
+            nb = a[2].value
+            g = s.word_ptr(arr, i, nb)
+            return V("i64", s.load_word(g, nb))
+        if n == "store_be":   # P2 batch 4: index, value, then the array
+            i = s.ev(a[1])
+            w = s.ev(a[2])
+            arr = s.ev(a[0].expr)
+            nb = a[3].value
+            g = s.word_ptr(arr, i, nb)
+            s.store_word(g, w.a, nb)
+            return V("unit")
         if n == "substr":  # G2 B2: s, lo, hi in order
             sv = s.ev(a[0])
             lo = s.ev(a[1])
@@ -1975,6 +2079,19 @@ class FnGen:
                 u = s.op("select i1 %s, i64 %s, i64 -1" % (ok, t))
                 r = s.op("call i32 @pruv_str_boundary(ptr %s, i64 %s, i64 %s)" % (sv.a, sv.b, u))
                 return V("i1", s.op("icmp ne i32 %s, 0" % r))
+            if n == "load_be":   # P2 batch 4: 0 <= i && i + nb <= len(a) in i128, then the word
+                arr = s.cev(a[0])
+                i = s.cev(a[1])
+                nb = a[2].value
+                ln = s.op("zext i64 %s to i128" % arr.b)
+                t = s.op("sub i128 %s, %d" % (ln, nb))
+                c1 = s.op("icmp sge i128 %s, 0" % i.a)
+                c2 = s.op("icmp sle i128 %s, %s" % (i.a, t))
+                ok = s.op("and i1 %s, %s" % (c1, c2))
+                s.guard(ok, und("array index out of range"), False)
+                ii = s.op("trunc i128 %s to i64" % i.a)
+                g = s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (arr.a, ii))
+                return V("i128", s.op("sext i64 %s to i128" % s.load_word(g, nb)))
             if n in BIT_LLVM:   # P2: both i128 arguments must be inside i64; then the op on i128 is exact
                 x = s.cev(a[0])
                 y = s.cev(a[1])
@@ -1982,10 +2099,11 @@ class FnGen:
                     t = s.op("add i128 %s, 9223372036854775808" % v.a)
                     ok = s.op("icmp ult i128 %s, 18446744073709551616" % t)
                     s.guard(ok, und("argument outside i64 in " + n), False)
-                if n in ("wrapping_shl", "ushr"):   # P2 batch 2: count in 0..64 (unsigned compare covers negatives);
-                    # shifts are not exact on i128, so shift on i64 and widen
-                    ok = s.op("icmp ult i128 %s, 64" % y.a)
-                    s.guard(ok, und("shift count outside 0..64 in " + n), False)
+                if n in ("wrapping_shl", "ushr", "wrapping_add", "wrapping_mul"):
+                    # P2 batch 2/3: shifts and wrapping add/mul are not exact on i128, so truncate to i64, op, widen
+                    if n in ("wrapping_shl", "ushr"):   # count in 0..64 (unsigned compare covers negatives)
+                        ok = s.op("icmp ult i128 %s, 64" % y.a)
+                        s.guard(ok, und("shift count outside 0..64 in " + n), False)
                     tx = s.op("trunc i128 %s to i64" % x.a)
                     ty = s.op("trunc i128 %s to i64" % y.a)
                     r = s.op("%s i64 %s, %s" % (BIT_LLVM[n], tx, ty))
@@ -3184,6 +3302,18 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
         unsafe { ::std::alloc::dealloc(data, layout) };
     }
 }""")
+    o.append(ALLOW)
+    o.append("""\
+#[no_mangle]
+pub extern "C" fn pruv_host_realloc_v2(data: *mut u8, len: i64, m: i64, size: i64, align: i64) -> *mut u8 {
+    let layout = match (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        Some(l) => l,
+        None => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<u8>()),
+    };
+    let p = unsafe { ::std::alloc::realloc(data, layout, (m as usize) * (size as usize)) };
+    if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
+    p
+}""")
     # G3: specializations of generic functions are private (no ABI symbol, not callable from the bindings)
     # G6 A3: trusted declarations and collection-bearing functions have no binding
     # G9 A3: a function with an extended type in its signature has no binding either
@@ -3461,7 +3591,10 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         DECLS_BOOL if uses_array_type(prog, "array_bool") else "") + (
         DECLS_STR if has_str else "") + (
         DECLS_REPR if m.uses_repr else "") + (
-        DECLS_NODE if tt.g9_boxed else "") + g6decls + "\n" + "\n".join(chunks)  # G2 A5/B2, G3, G6 A3, G9 A3
+        DECLS_NODE if tt.g9_boxed else "") + "".join(
+        "declare i%d @llvm.bswap.i%d(i%d)\n" % (w, w, w) for w in (16, 32, 64) if w in m.bswap) + (
+        "declare ptr @pruv_shrink_v2(ptr, i64, i64, i64, i64) nounwind\n" if m.shrink else "") + (
+        g6decls + "\n" + "\n".join(chunks))  # G2 A5/B2, G3, G6 A3, G9 A3; P2 batch 4: llvm.bswap when used
     if m.par_trampolines:
         ir = "%pruv_g7_job = type { ptr, ptr }\n" + "\n".join(m.par_types) + "\n" + ir
         ir += "declare void @pruv_g7_v1_run(ptr, i64) nounwind\n"

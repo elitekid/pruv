@@ -261,7 +261,23 @@ SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div"
 CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
 # P2: bit builtin -> Rust operator (same names as check.BIT_BUILTINS); later batches add entries. The contract helper
 # pruv_c<name> is emitted only when a contract uses the builtin.
-BIT_RUST = {"band": "&", "bor": "|", "bxor": "^", "wrapping_shl": "<<", "ushr": ">>"}
+BIT_RUST = {"band": "&", "bor": "|", "bxor": "^", "wrapping_shl": "<<", "ushr": ">>",
+            "wrapping_add": "wrapping_add", "wrapping_mul": "wrapping_mul"}
+# P2 batch 3: wrapping arithmetic is an i64 method call instead of an operator
+WRAP_RUST = ("wrapping_add", "wrapping_mul")
+CONTRACT_WRAP_HELPER = (
+    "#[allow(dead_code)]\n"
+    "#[inline]\n"
+    "fn pruv_c%s(a: i128, b: i128) -> i128 { if a < (i64::MIN as i128) || a > (i64::MAX as i128) || "
+    "b < (i64::MIN as i128) || b > (i64::MAX as i128) { pruv_ud(\"argument outside i64 in %s\") } "
+    "((a as i64).%s(b as i64)) as i128 }\n")
+# P2 batch 4: load_be in a runtime contract (included only when used)
+CONTRACT_LOAD_HELPER = (
+    "#[allow(dead_code)]\n"
+    "#[inline]\n"
+    "fn pruv_cload_be(a: &[u8], i: i128, n: usize) -> i128 { if i < 0 || i > (a.len() as i128) - (n as i128) "
+    "{ pruv_ud(\"array index out of range\") } let mut w: u64 = 0; "
+    "for k in 0..n { w = (w << 8) | (a[(i as usize) + k] as u64); } ((w as i64) as i128) }\n")
 # P2 batch 2: shifts need 0 <= k < 64; --no-verify uses these helpers (included only when used, table order)
 SHIFT_SAFE = {"wrapping_shl": "pruv_shl", "ushr": "pruv_ushr"}
 SAFE_SHIFT_HELPER = (
@@ -697,6 +713,7 @@ class Gen:
         s.need_eq = set()
         s.need_bits = set()  # P2: band/bor/bxor used in a runtime contract (filled while contracts are generated)
         s.need_shift = set()  # P2 batch 2: shifts used in code under --no-verify (pruv_shl / pruv_ushr helpers)
+        s.need_load_be = False  # P2 batch 4: load_be used in a runtime contract (pruv_cload_be helper)
         # G6 (section 12): only a program that uses G6 gets any of the following
         from foreign import first_g6_use, uses_files
         s.g10 = uses_files(prog)
@@ -1256,6 +1273,9 @@ class Gen:
                                                                   s.c(a[2]), s.c(a[3]))
             if n == "is_char_boundary":  # G2 B2
                 return "pruv_cboundary(%s, %s)" % (s.carr(a[0]), s.c(a[1]))
+            if n == "load_be":   # P2 batch 4: bounds checked inside the helper
+                s.need_load_be = True
+                return "pruv_cload_be(%s, %s, %d)" % (s.carr(a[0]), s.c(a[1]), a[2].value)
             if n in BIT_RUST:   # P2: i128 arguments checked inside i64 by the helper
                 s.need_bits.add(n)
                 return "pruv_c%s(%s, %s)" % (n, s.c(a[0]), s.c(a[1]))
@@ -1474,7 +1494,17 @@ class Gen:
         """names of owned extended locals that the returned expression e may move instead of clone: a return is the
         last use of every local, so a local named exactly once in e (no other move or borrow of it in e) that is not a
         reference (parameter / payload view) and not the scrutinee of an enclosing match arm moves."""
-        if e is None or not s.ext:
+        if e is None:
+            return set()
+        if not s.ext:
+            # P2 batch 4: `return truncate(x, m)` of an owned local array shortens x in place in every program
+            if (not s.cost and isinstance(e, Call) and e.name == "truncate" and len(e.args) == 2
+                    and isinstance(e.args[0], Var) and e.args[0].name in s.vt and e.args[0].name not in s.params
+                    and e.args[0].name not in s.refs and e.args[0].name not in s.pinned):
+                m_names = set()
+                _expr_names(e.args[1], m_names)
+                if e.args[0].name not in m_names:
+                    return {e.args[0].name}
             return set()
         counts = {}
         def walk(x):
@@ -1912,6 +1942,27 @@ class Gen:
                             "{ pruv_oob(pruv_m, pruv_a.len()) } pruv_a[..(pruv_m as usize)].to_vec() }" % (s.arr_ref(a[0]), s.e(a[1])))
                 return ("{ let pruv_a = %s; let pruv_m: i64 = %s; unsafe { pruv_a.get_unchecked(..(pruv_m as usize)) }.to_vec() }"
                         % (s.arr_ref(a[0]), s.e(a[1])))
+            if n == "load_be":   # P2 batch 4: big-endian word of a[i..i+nb]; unchecked slice when verified
+                nb = a[2].value
+                chk = "" if s.verified else ("if pruv_i < 0 || (pruv_i as u64) + %d > (pruv_a.len() as u64) "
+                                             "{ pruv_oob(pruv_i, pruv_a.len()) } " % nb)
+                rng = "(pruv_i as usize)..((pruv_i as usize) + %d)" % nb
+                sl = "unsafe { pruv_a.get_unchecked(%s) }" % rng if s.verified else "&pruv_a[%s]" % rng
+                if nb == 8:
+                    word = ("i64::from_be_bytes(<[u8; 8] as ::std::convert::TryFrom<&[u8]>>::try_from(%s).unwrap())" % sl)
+                    tail = word
+                else:
+                    tail = ("let mut pruv_w = [0u8; 8]; pruv_w[%d..].copy_from_slice(%s); u64::from_be_bytes(pruv_w) as i64"
+                            % (8 - nb, sl))
+                return "{ let pruv_a: &[u8] = %s; let pruv_i: i64 = %s; %s%s }" % (s.arr_ref(a[0]), s.e(a[1]), chk, tail)
+            if n == "store_be":  # P2 batch 4: low 8*nb bits of w, big-endian, into a[i..i+nb]
+                nb, name = a[3].value, a[0].expr.name
+                chk = "" if s.verified else ("if pruv_i < 0 || (pruv_i as u64) + %d > (%s.len() as u64) "
+                                             "{ pruv_oob(pruv_i, %s.len()) } " % (nb, name, name))
+                rng = "(pruv_i as usize)..((pruv_i as usize) + %d)" % nb
+                dst = "unsafe { %s.get_unchecked_mut(%s) }" % (name, rng) if s.verified else "%s[%s]" % (name, rng)
+                return ("{ let pruv_i: i64 = %s; let pruv_w: i64 = %s; %s%s.copy_from_slice(&(pruv_w as u64).to_be_bytes()[%d..]); }"
+                        % (s.e(a[1]), s.e(a[2]), chk, dst, 8 - nb))
             if n == "print":
                 return 'println!("{}", %s)' % s.e(a[0])
             if n == "is_char_boundary":  # G2 B2
@@ -1921,6 +1972,8 @@ class Gen:
                     s.need_shift.add(n)
                     return "%s(%s, %s)" % (SHIFT_SAFE[n], s.e(a[0]), s.e(a[1]))
                 return "((((%s) as u64) %s ((%s) as u32)) as i64)" % (s.e(a[0]), BIT_RUST[n], s.e(a[1]))
+            if n in WRAP_RUST:  # P2 batch 3: wraps by definition, same text with and without --no-verify
+                return "(%s).%s(%s)" % (s.e(a[0]), n, s.e(a[1]))
             if n in BIT_RUST:  # P2: no overflow possible, same text with and without --no-verify
                 return "(%s %s %s)" % (s.e(a[0]), BIT_RUST[n], s.e(a[1]))
             if n == "substr":  # G2 B2
@@ -1996,9 +2049,13 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
     g.out[mark:mark] = g.g9_helper_texts()
     # P2: contract helpers of the bit builtins the requires checks used, in table order
     g.out[mark:mark] = [CONTRACT_SHIFT_HELPER % (n, n, n, BIT_RUST[n]) if n in SHIFT_SAFE
+                        else CONTRACT_WRAP_HELPER % (n, n, n) if n in WRAP_RUST
                         else CONTRACT_BIT_HELPER % (n, n, BIT_RUST[n]) for n in BIT_RUST if n in g.need_bits]
     # P2 batch 2: --no-verify shift helpers used by the code, in table order
     g.out[mark:mark] = [SAFE_SHIFT_HELPER % (SHIFT_SAFE[n], BIT_RUST[n]) for n in SHIFT_SAFE if n in g.need_shift]
+    # P2 batch 4: the load_be contract helper, when a runtime contract used it
+    if g.need_load_be:
+        g.out[mark:mark] = [CONTRACT_LOAD_HELPER]
     manifest = None
     if g.g6:
         # helpers are discovered while the functions are generated; they go in front of them, in first-use order

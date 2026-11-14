@@ -17,8 +17,11 @@ CONTRACT_ONLY = {"is_some": ("option", BOOL), "some_val": ("option", "payload"),
                  "size": ("size", I64)}   # G9 A0: structural size of a non-generic nominal value
 # P2: pure (i64, i64) -> i64 bit builtins: name -> (Rust operator, LLVM instruction); later batches add entries here
 BIT_BUILTINS = {"band": ("&", "and"), "bor": ("|", "or"), "bxor": ("^", "xor"),
-                "wrapping_shl": ("<<", "shl"), "ushr": (">>", "lshr")}
-BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate") + tuple(BIT_BUILTINS)
+                "wrapping_shl": ("<<", "shl"), "ushr": (">>", "lshr"),
+                "wrapping_add": ("wrapping_add", "add"), "wrapping_mul": ("wrapping_mul", "mul")}
+# P2 batch 4: byte-word access on [u8]: load_be(a, i, n) and the statement-only store_be(inout a, i, w, n)
+WORD_BUILTINS = ("load_be", "store_be")
+BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate") + tuple(BIT_BUILTINS) + WORD_BUILTINS
 RESERVED_TYPE_NAMES = ("Option", "Result", "Some", "None", "Ok", "Err")
 TYPE_NAME_RE = re.compile(r"[A-Z][A-Za-z0-9_]*\Z")
 FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
@@ -1577,6 +1580,57 @@ class Checker:
                  "assignment value or return value",
                  "bind the result first: `let r: T = f(inout a);` and use r afterwards")
 
+    def word_call(s, e, scope, c):
+        """P2 batch 4: load_be(a: [u8], i, n) -> i64 (code and contracts) and the statement-only
+        store_be(inout a, i, w, n) -> (); n is an integer literal 1..=8 (a non-literal or out-of-range n is
+        type/type_mismatch, a wrong argument count type/arity)"""
+        n, a = e.name, e.args
+        store = n == "store_be"
+        k = 4 if store else 3
+        if len(a) != k:
+            terr(e, "arity", "%s takes %d argument(s), got %d" % (n, k, len(a)))
+        if store:
+            if c: terr(e, "effect_in_contract", "store_be not allowed in contracts")
+            arg = a[0]
+            if not isinstance(arg, InoutArg):
+                terr(arg, "inout_argument", "the array of store_be needs the `inout` marker",
+                     "write `store_be(inout name, i, w, n)` with a `let mut` local array or an inout parameter")
+            op = arg.expr
+            if not isinstance(op, Var):
+                terr(arg, "inout_argument", "an inout argument must be the whole name of a local array or an inout "
+                     "parameter", "name a `let mut` local array or an inout parameter of this function")
+            v = s.lookup(op, op.name, scope)
+            if v[2] == "local" and not v[1]:
+                terr(arg, "inout_argument", "%s is not mutable: it cannot be passed inout" % op.name,
+                     "declare it with `let mut`")
+            if v[2] not in ("inout", "local"):
+                terr(arg, "inout_argument", "%s is a read-only %s: it cannot be passed inout" % (
+                    op.name, "parameter" if v[2] == "param" else "binding"),
+                     "declare the parameter `inout %s: ...`, or copy into a `let mut` local" % op.name)
+            if v[0] != ARRAY_U8:
+                terr(arg, "type_mismatch", "expected %s, found %s" % (type_name(ARRAY_U8), type_name(v[0])))
+            if op.name in s.active_roots:
+                terr(arg, "recursive_borrow", "cannot pass %s inout while a match on it is active" % op.name,
+                     "finish the match before the call")
+            op.ty = v[0]
+            arg.ty = v[0]
+            s.expect(a[1], I64, scope, c)
+            s.expect(a[2], I64, scope, c)
+            if any(_mentions(x, op.name) for x in a[1:]):
+                terr(arg, "inout_alias", "%s is passed inout and also used elsewhere in the arguments of this call" % op.name,
+                     "compute the other value first, e.g. `let n: i64 = len(%s);`, then pass n" % op.name)
+            if e is not s.boundary:
+                terr(e, "inout_context", "store_be must be a whole expression statement", "write `store_be(inout a, i, w, n);` as a statement")
+        else:
+            s.expect(a[0], ARRAY_U8, scope, c)
+            s.expect(a[1], I64, scope, c)
+        w = a[-1]
+        if not (isinstance(w, IntLit) and 1 <= w.value <= 8):
+            terr(w, "type_mismatch", "the width argument of %s must be an integer literal 1..=8" % n,
+                 "write the byte count as a literal such as 8")
+        w.ty = I64
+        return UNIT if store else I64
+
     def old_call(s, e, scope):
         """the contextual builtin old(a): context first, then arity and operand"""
         if s.ckind not in ("ensures", "invariant", "assert"):
@@ -1632,6 +1686,8 @@ class Checker:
         if n in BIT_BUILTINS:   # P2: pure i64 bit operation, allowed in code and contracts
             arity(2); s.expect(a[0], I64, scope, c); s.expect(a[1], I64, scope, c)
             return I64
+        if n in WORD_BUILTINS:  # P2 batch 4
+            return s.word_call(e, scope, c)
         if n == "substr":   # G2 B0
             if c: terr(e, "effect_in_contract", "substr not allowed in contracts")
             arity(3); s.expect(a[0], STR, scope, c); s.expect(a[1], I64, scope, c); s.expect(a[2], I64, scope, c)

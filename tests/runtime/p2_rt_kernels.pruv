@@ -1,0 +1,189 @@
+// Small kernels written with the P2 builtins the way the perf benchmarks use them (nqueen, base64, bedcov).
+
+// ---- nqueen: the published mask loop (bench/perf/nqueen/nqueen.pruv), returns the solution count or -1 ----
+fn bit(i: i64) -> i64
+  requires 0 <= i && i < 64
+{ return wrapping_shl(1, i); }
+fn free_mask(l: i64, c: i64, r: i64, y0: i64) -> i64 { return band(bor(bor(l, c), r), y0); }
+fn has_free(y: i64, y0: i64, s: i64) -> bool
+  requires 0 <= s && s < 64
+{ return ushr(bxor(y, y0), s) != 0; }
+fn taken(y: i64, i: i64) -> bool
+  requires 0 <= i && i < 64
+{ return band(y, wrapping_shl(1, i)) != 0; }
+fn left(m: i64, z: i64) -> i64 { return wrapping_shl(bor(m, z), 1); }
+fn orb(m: i64, z: i64) -> i64 { return bor(m, z); }
+fn right(m: i64, z: i64) -> i64 { return ushr(bor(m, z), 1); }
+fn solve(n: i64) -> i64 ! alloc
+  requires 1 <= n && n <= 15
+{
+  let top: i64 = wrapping_shl(1, n);
+  if top < 2 || top > 32768 { return -1; }
+  let y0: i64 = top - 1;
+  let mut a: [i64 | -1..=14] = alloc(n, -1);
+  let mut l: [i64] = alloc(n, 0);
+  let mut c: [i64] = alloc(n, 0);
+  let mut r: [i64] = alloc(n, 0);
+  let mut m: i64 = 0;
+  let mut k: i64 = 0;
+  let mut fuel: i64 = 1000000000000;
+  while k >= 0 && fuel > 0
+    invariant len(a) == n && len(l) == n && len(c) == n && len(r) == n
+    invariant 1 <= y0 && y0 <= 32767
+    invariant -1 <= k && k < n
+    invariant 0 <= fuel && fuel <= 1000000000000
+    invariant 0 <= m && m + fuel <= 1000000000000
+    decreases fuel
+  {
+    fuel = fuel - 1;
+    let y: i64 = free_mask(l[k], c[k], r[k], y0);
+    if has_free(y, y0, a[k] + 1) {
+      let mut i: i64 = a[k] + 1;
+      while i < n && taken(y, i)
+        invariant 0 <= i && i <= 15
+        decreases 15 - i
+      {
+        i = i + 1;
+      }
+      if i >= n { return -1; }
+      if k < n - 1 {
+        let z: i64 = bit(i);
+        a[k] = i;
+        k = k + 1;
+        l[k] = left(l[k - 1], z);
+        c[k] = orb(c[k - 1], z);
+        r[k] = right(r[k - 1], z);
+      } else {
+        m = m + 1;
+        k = k - 1;
+      }
+    } else {
+      a[k] = -1;
+      k = k - 1;
+    }
+  }
+  return m;
+}
+
+// ---- base64: big-endian u64 word path and the tail sextets (bench/perf/base64/base64.pruv) ----
+fn read_u64(s: [u8], i: i64) -> i64
+  requires 0 <= i && i + 8 <= len(s)
+{
+  let hi: i64 = bor(bor(wrapping_shl(s[i], 56), wrapping_shl(s[i + 1], 48)), bor(wrapping_shl(s[i + 2], 40), wrapping_shl(s[i + 3], 32)));
+  let lo: i64 = bor(bor(wrapping_shl(s[i + 4], 24), wrapping_shl(s[i + 5], 16)), bor(wrapping_shl(s[i + 6], 8), s[i + 7]));
+  return bor(hi, lo);
+}
+fn sx(w: i64, k: i64) -> i64
+  requires 0 <= k && k < 64
+  ensures 0 <= result && result <= 63
+{ return band(ushr(w, k), 63); }
+fn group() -> i64 ! alloc
+{
+  let mut s: [u8] = alloc(8, 0);
+  s[0] = 255;
+  s[1] = 254;
+  s[2] = 253;
+  s[3] = 252;
+  s[4] = 251;
+  s[5] = 250;
+  s[6] = 249;
+  s[7] = 248;
+  return read_u64(s, 0);
+}
+fn s_hi(b0: i64) -> i64
+  ensures 0 <= result && result <= 63
+{ return band(ushr(b0, 2), 63); }
+fn s_mid(a: i64, b: i64, sa: i64, sb: i64) -> i64
+  requires 0 <= sa && sa < 64 && 0 <= sb && sb < 64
+  ensures 0 <= result && result <= 63
+{ return band(bor(wrapping_shl(a, sa), ushr(b, sb)), 63); }
+fn s_lo2(b1: i64) -> i64
+  ensures 0 <= result && result <= 63
+{ return band(wrapping_shl(b1, 2), 63); }
+fn s_lo1(b0: i64) -> i64
+  ensures 0 <= result && result <= 63
+{ return band(wrapping_shl(b0, 4), 63); }
+fn pad_of(written: i64) -> i64
+  requires 0 <= written && written <= 1000
+{ return (4 - written % 4) % 4; }
+
+// ---- bedcov: SplitMix32 (seed 11) and the interval-tree shift expressions (bench/perf/bedcov/bedcov.pruv) ----
+fn step(s: i64) -> i64
+  requires 0 <= s && s <= 4294967295
+  ensures 0 <= result && result <= 4294967295
+{ return band(wrapping_add(s, 2654435769), 4294967295); }
+fn mix(s: i64) -> i64
+  requires 0 <= s && s <= 4294967295
+  ensures 0 <= result && result <= 8589934590
+{
+  let mut z: i64 = s;
+  z = band(wrapping_mul(bxor(z, ushr(z, 16)), 569420461), 4294967295);
+  z = band(wrapping_mul(bxor(z, ushr(z, 15)), 1935289751), 4294967295);
+  return bxor(z, ushr(z, 15));
+}
+// (1 << k) - 1 as built in query_all (the mask keeps the value for k <= 19)
+fn mask_bits(k: i64) -> i64
+  requires 1 <= k && k <= 20
+{ return band(wrapping_shl(1, k), 1048575) - 1; }
+// i0 = x >> k << k
+fn align_down(zx: i64, zk: i64) -> i64
+  requires 0 <= zk && zk <= 3
+  ensures 0 <= result && result <= 4194303
+{ return band(wrapping_shl(ushr(zx, zk), zk), 4194303); }
+// i1 = i0 + (1 << (k + 1)) - 1
+fn i1_of(i0: i64, zk: i64) -> i64
+  requires 0 <= i0 && i0 <= 4194303 && 0 <= zk && zk <= 3
+{ return i0 + (band(wrapping_shl(1, zk + 1), 31) - 1); }
+fn level_bit(last_i: i64, k: i64) -> i64
+  requires 0 <= k && k < 64
+{ return band(ushr(last_i, k), 1); }
+// iit_index level step: last_i = if last_i >> k & 1 != 0 { last_i - x } else { last_i + x }, x = 1 << (k - 1)
+fn step_last(last_i: i64, k: i64) -> i64
+  requires 0 <= last_i && last_i <= 2000000 && 1 <= k && k <= 19
+{
+  let x: i64 = band(wrapping_shl(1, k - 1), 1048575);
+  if band(ushr(last_i, k), 1) != 0 { return last_i - x; }
+  return last_i + x;
+}
+
+fn run() -> () ! io, alloc {
+  print(solve(6));
+  print(solve(8));
+  let w: i64 = group();
+  print(sx(w, 58));
+  print(sx(w, 52));
+  print(sx(w, 46));
+  print(sx(w, 40));
+  print(sx(w, 34));
+  print(sx(w, 28));
+  print(sx(w, 22));
+  print(sx(w, 16));
+  print(s_hi(255));
+  print(s_mid(255, 254, 4, 4));
+  print(s_lo2(254));
+  print(pad_of(3));
+  print(s_hi(255));
+  print(s_lo1(255));
+  print(pad_of(2));
+  let mut s: i64 = 11;
+  s = step(s);
+  print(mix(s));
+  s = step(s);
+  print(mix(s));
+  s = step(s);
+  print(mix(s));
+  s = step(s);
+  print(mix(s));
+  s = step(s);
+  print(mix(s));
+  print(mask_bits(5));
+  print(mask_bits(10));
+  print(align_down(1013, 3));
+  print(i1_of(align_down(1013, 3), 3));
+  print(align_down(1013, 2));
+  print(i1_of(align_down(1013, 2), 2));
+  print(step_last(12345, 5));
+  print(step_last(12345, 6));
+  print(level_bit(12345, 5));
+  print(level_bit(12345, 6));
+}

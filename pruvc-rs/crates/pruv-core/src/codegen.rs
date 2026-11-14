@@ -299,12 +299,35 @@ fn contract_arith(op: &str) -> Option<&'static str> {
 
 /// P2: bit builtin -> Rust operator (Python BIT_RUST, same order); later batches add entries. The contract helper
 /// pruv_c<name> is emitted only when a contract uses the builtin.
-const BIT_RUST: [(&str, &str); 5] =
-    [("band", "&"), ("bor", "|"), ("bxor", "^"), ("wrapping_shl", "<<"), ("ushr", ">>")];
+const BIT_RUST: [(&str, &str); 7] = [
+    ("band", "&"),
+    ("bor", "|"),
+    ("bxor", "^"),
+    ("wrapping_shl", "<<"),
+    ("ushr", ">>"),
+    ("wrapping_add", "wrapping_add"),
+    ("wrapping_mul", "wrapping_mul"),
+];
+
+/// P2 batch 3: wrapping arithmetic is an i64 method call instead of an operator (Python WRAP_RUST).
+fn is_wrap_rust(n: &str) -> bool {
+    n == "wrapping_add" || n == "wrapping_mul"
+}
+
+/// Python CONTRACT_WRAP_HELPER % (name, name, name)
+fn contract_wrap_helper(n: &str) -> String {
+    format!(
+        "#[allow(dead_code)]\n#[inline]\nfn pruv_c{n}(a: i128, b: i128) -> i128 {{ if a < (i64::MIN as i128) || a > (i64::MAX as i128) || b < (i64::MIN as i128) || b > (i64::MAX as i128) {{ pruv_ud(\"argument outside i64 in {n}\") }} ((a as i64).{n}(b as i64)) as i128 }}\n",
+        n = n
+    )
+}
 
 fn bit_rust(n: &str) -> Option<&'static str> {
     BIT_RUST.iter().find(|(k, _)| *k == n).map(|(_, op)| *op)
 }
+
+/// P2 batch 4: Python CONTRACT_LOAD_HELPER (load_be in a runtime contract, included only when used)
+const CONTRACT_LOAD_HELPER: &str = "#[allow(dead_code)]\n#[inline]\nfn pruv_cload_be(a: &[u8], i: i128, n: usize) -> i128 { if i < 0 || i > (a.len() as i128) - (n as i128) { pruv_ud(\"array index out of range\") } let mut w: u64 = 0; for k in 0..n { w = (w << 8) | (a[(i as usize) + k] as u64); } ((w as i64) as i128) }\n";
 
 /// P2 batch 2: --no-verify helper name of a shift builtin (Python SHIFT_SAFE); None for the other bit builtins.
 fn shift_safe(n: &str) -> Option<&'static str> {
@@ -512,6 +535,8 @@ struct Gen<'a> {
     need_bits: HashSet<String>,
     /// P2 batch 2: shifts used in code under --no-verify (pruv_shl / pruv_ushr helpers)
     need_shift: HashSet<String>,
+    /// P2 batch 4: load_be used in a runtime contract (pruv_cload_be helper)
+    need_load_be: bool,
     /// G9 A2: the diagnostic raised by g9_unsupported (the R error is only a marker)
     diag: Option<PruvError>,
     /// G4 A2 (explicit visibility mode, docs/G4_SPEC.md 4): only host entries are `pub`. Verified: just the entries that have
@@ -613,6 +638,7 @@ impl<'a> Gen<'a> {
             need_eq: HashSet::new(),
             need_bits: HashSet::new(),
             need_shift: HashSet::new(),
+            need_load_be: false,
             diag: None,
         }
     }
@@ -1588,6 +1614,14 @@ impl<'a> Gen<'a> {
                     let i0 = self.c(arg(a, 1)?)?;
                     return Ok(format!("pruv_cboundary({}, {})", s0, i0));
                 }
+                if n == "load_be" {
+                    // P2 batch 4: bounds checked inside the helper
+                    self.need_load_be = true;
+                    let nb = crate::check::word_width(arg(a, 2)?).unwrap_or(0);
+                    let a0 = self.carr(arg(a, 0)?)?;
+                    let a1 = self.c(arg(a, 1)?)?;
+                    return Ok(format!("pruv_cload_be({}, {}, {})", a0, a1, nb));
+                }
                 if bit_rust(n).is_some() {
                     // P2: i128 arguments checked inside i64 by the helper
                     self.need_bits.insert(n.to_string());
@@ -2002,9 +2036,32 @@ impl<'a> Gen<'a> {
     fn return_movable(&self, e: Option<&Expr>) -> HashSet<String> {
         let mut out = HashSet::new();
         let e = match e {
-            Some(e) if !self.ext.is_empty() => e,
-            _ => return out,
+            Some(e) => e,
+            None => return out,
         };
+        if self.ext.is_empty() {
+            // P2 batch 4: `return truncate(x, m)` of an owned local array shortens x in place in every program
+            if !self.cost {
+                if let Expr::Call(c) = e {
+                    if c.name == "truncate" && c.args.len() == 2 {
+                        if let Expr::Var(v) = &c.args[0] {
+                            if self.vars.contains_key(&v.name)
+                                && !self.params.contains(&v.name)
+                                && !self.refs.contains(&v.name)
+                                && !self.pinned.contains(&v.name)
+                            {
+                                let mut m_names = HashSet::new();
+                                crate::refine::expr_names(&c.args[1], &mut m_names);
+                                if !m_names.contains(&v.name) {
+                                    out.insert(v.name.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return out;
+        }
         fn walk(x: &Expr, counts: &mut HashMap<String, usize>) {
             match x {
                 Expr::Var(v) => *counts.entry(v.name.clone()).or_insert(0) += 1,
@@ -2803,6 +2860,68 @@ impl<'a> Gen<'a> {
                     };
                     return Ok(self.cost_buffer(result));
                 }
+                if n == "load_be" {
+                    // P2 batch 4: big-endian word of a[i..i+nb]; unchecked slice when verified
+                    let nb = crate::check::word_width(arg(a, 2)?).unwrap_or(0);
+                    let chk = if self.verified {
+                        String::new()
+                    } else {
+                        format!("if pruv_i < 0 || (pruv_i as u64) + {} > (pruv_a.len() as u64) {{ pruv_oob(pruv_i, pruv_a.len()) }} ", nb)
+                    };
+                    let rng = format!("(pruv_i as usize)..((pruv_i as usize) + {})", nb);
+                    let sl = if self.verified {
+                        format!("unsafe {{ pruv_a.get_unchecked({}) }}", rng)
+                    } else {
+                        format!("&pruv_a[{}]", rng)
+                    };
+                    let tail = if nb == 8 {
+                        format!("i64::from_be_bytes(<[u8; 8] as ::std::convert::TryFrom<&[u8]>>::try_from({}).unwrap())", sl)
+                    } else {
+                        format!(
+                            "let mut pruv_w = [0u8; 8]; pruv_w[{}..].copy_from_slice({}); u64::from_be_bytes(pruv_w) as i64",
+                            8 - nb,
+                            sl
+                        )
+                    };
+                    let a0 = self.arr_ref(arg(a, 0)?)?;
+                    let a1 = self.e(arg(a, 1)?)?;
+                    return Ok(format!("{{ let pruv_a: &[u8] = {}; let pruv_i: i64 = {}; {}{} }}", a0, a1, chk, tail));
+                }
+                if n == "store_be" {
+                    // P2 batch 4: low 8*nb bits of w, big-endian, into a[i..i+nb]
+                    let nb = crate::check::word_width(arg(a, 3)?).unwrap_or(0);
+                    let name = match arg(a, 0)? {
+                        Expr::InoutArg(ia) => match ia.expr.as_ref() {
+                            Expr::Var(v) => v.name.clone(),
+                            other => return Err(format!("codegen: inout operand is not a variable: {:?}", other)),
+                        },
+                        other => return Err(format!("codegen: inout operand is not a variable: {:?}", other)),
+                    };
+                    let chk = if self.verified {
+                        String::new()
+                    } else {
+                        format!(
+                            "if pruv_i < 0 || (pruv_i as u64) + {} > ({}.len() as u64) {{ pruv_oob(pruv_i, {}.len()) }} ",
+                            nb, name, name
+                        )
+                    };
+                    let rng = format!("(pruv_i as usize)..((pruv_i as usize) + {})", nb);
+                    let dst = if self.verified {
+                        format!("unsafe {{ {}.get_unchecked_mut({}) }}", name, rng)
+                    } else {
+                        format!("{}[{}]", name, rng)
+                    };
+                    let a1 = self.e(arg(a, 1)?)?;
+                    let a2 = self.e(arg(a, 2)?)?;
+                    return Ok(format!(
+                        "{{ let pruv_i: i64 = {}; let pruv_w: i64 = {}; {}{}.copy_from_slice(&(pruv_w as u64).to_be_bytes()[{}..]); }}",
+                        a1,
+                        a2,
+                        chk,
+                        dst,
+                        8 - nb
+                    ));
+                }
                 if n == "print" {
                     return Ok(format!("println!(\"{{}}\", {})", self.e(arg(a, 0)?)?));
                 }
@@ -2821,6 +2940,12 @@ impl<'a> Gen<'a> {
                         return Ok(format!("{}({}, {})", helper, a0, a1));
                     }
                     return Ok(format!("(((({}) as u64) {} (({}) as u32)) as i64)", a0, op, a1));
+                }
+                if is_wrap_rust(n) {
+                    // P2 batch 3: wraps by definition, same text with and without --no-verify
+                    let a0 = self.e(arg(a, 0)?)?;
+                    let a1 = self.e(arg(a, 1)?)?;
+                    return Ok(format!("({}).{}({})", a0, n, a1));
                 }
                 if let Some(op) = bit_rust(n) {
                     // P2: no overflow possible, same text with and without --no-verify
@@ -3054,7 +3179,15 @@ pub fn gen_rust_concrete_ex(
     let bit_texts: Vec<String> = BIT_RUST
         .iter()
         .filter(|(k, _)| g.need_bits.contains(*k))
-        .map(|(k, op)| if shift_safe(k).is_some() { contract_shift_helper(k, op) } else { contract_bit_helper(k, op) })
+        .map(|(k, op)| {
+            if shift_safe(k).is_some() {
+                contract_shift_helper(k, op)
+            } else if is_wrap_rust(k) {
+                contract_wrap_helper(k)
+            } else {
+                contract_bit_helper(k, op)
+            }
+        })
         .collect();
     drop(g.out.splice(mark..mark, bit_texts));
     // P2 batch 2: --no-verify shift helpers used by the code, in table order
@@ -3064,6 +3197,10 @@ pub fn gen_rust_concrete_ex(
         .filter_map(|(k, op)| shift_safe(k).map(|h| safe_shift_helper(h, op)))
         .collect();
     drop(g.out.splice(mark..mark, shift_texts));
+    // P2 batch 4: the load_be contract helper, when a runtime contract used it
+    if g.need_load_be {
+        drop(g.out.splice(mark..mark, vec![CONTRACT_LOAD_HELPER.to_string()]));
+    }
     let mut manifest: Option<String> = None;
     if g.g6 {
         // helpers are discovered while the functions are generated; they go in front of them, in first-use order

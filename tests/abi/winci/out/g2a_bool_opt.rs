@@ -74,6 +74,17 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
     }
 }
 #[allow(dead_code, non_snake_case, unused)]
+#[no_mangle]
+pub extern "C" fn pruv_host_realloc_v2(data: *mut u8, len: i64, m: i64, size: i64, align: i64) -> *mut u8 {
+    let layout = match (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        Some(l) => l,
+        None => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<u8>()),
+    };
+    let p = unsafe { ::std::alloc::realloc(data, layout, (m as usize) * (size as usize)) };
+    if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
+    p
+}
+#[allow(dead_code, non_snake_case, unused)]
 extern "C" {
     fn pruv_abi_count_opt__typed(p0: *const u8, p1: i64) -> Pruv__Tagged;
 }

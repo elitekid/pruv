@@ -1,0 +1,6 @@
+// the byte count is a literal but outside 1..=8
+fn f(s: [u8]) -> i64
+  requires 16 <= len(s)
+{
+  return load_be(s, 0, 9);
+}

@@ -574,7 +574,8 @@ def _imp(c, d):
 _TAG_FNS = ("some_val", "ok_val", "err_val")
 # P2: bit builtin name -> z3 bit-vector operator (same names as check.BIT_BUILTINS); later batches add entries
 BIT_Z3 = {"band": lambda a, b: a & b, "bor": lambda a, b: a | b, "bxor": lambda a, b: a ^ b,
-          "wrapping_shl": lambda a, b: a << b, "ushr": z3.LShR}
+          "wrapping_shl": lambda a, b: a << b, "ushr": z3.LShR,
+          "wrapping_add": lambda a, b: a + b, "wrapping_mul": lambda a, b: a * b}
 
 
 def _partial_here(e, kind):
@@ -588,7 +589,7 @@ def _partial_here(e, kind):
     if isinstance(e, Binary):
         return e.op in ("/", "%")
     if isinstance(e, Call):
-        return e.name in _TAG_FNS or e.name == "file_byte" or e.name in BIT_Z3
+        return e.name in _TAG_FNS or e.name == "file_byte" or e.name in BIT_Z3 or e.name == "load_be"
     if isinstance(e, Quant):
         return e.kind in ("max", "min")
     return False
@@ -1396,6 +1397,10 @@ class FnVerifier:
                 f = s.ev(e.args[0], st, g, False, env)
                 i = s.ev(e.args[1], st, g, False, env)
                 parts.append(z3.And(i >= 0, i < f.buf.n))
+            if wo and e.name == "load_be":      # P2 batch 4: the word lies inside the array
+                arr = s.ev(e.args[0], st, g, False, env)
+                i = s.ev(e.args[1], st, g, False, env)
+                parts.append(z3.And(i >= 0, i + e.args[2].value <= arr.n))
             if wo and e.name in BIT_Z3:     # P2: both arguments inside i64
                 x = s.ev(e.args[0], st, g, False, env)
                 y = s.ev(e.args[1], st, g, False, env)
@@ -1577,6 +1582,29 @@ class FnVerifier:
                     "truncate length 0 <= m <= len(%s)" % av.name)
             s.spend(st, g, 1 + m)
             return mk_arr(av.a, m, "truncate", av.elem)
+        if n == "load_be":      # P2 batch 4: big-endian word of the n bytes a[i..i+n]
+            av, i = args[0], args[1]
+            nb = e.args[2].value
+            if code:
+                s.prove(st, g, z3.And(i >= 0, i + nb <= av.n), e, "index_oob",
+                        "word in bounds for %s[i..i+%d]" % (av.name, nb))
+            bs = [z3.Int2BV(z3.Select(av.a, i + k), 8) for k in range(nb)]
+            u = z3.BV2Int(bs[0] if nb == 1 else z3.Concat(*bs))
+            return z3.If(u < 2 ** 63, u, u - 2 ** 64) if nb == 8 else u
+        if n == "store_be":     # P2 batch 4: nb array stores a[i+k] := band(ushr(w, 8*(nb-1-k)), 255)
+            av, i, w = args[0], args[1], args[2]
+            nb = e.args[3].value
+            s.prove(st, g, z3.And(i >= 0, i + nb <= av.n), e, "index_oob",
+                    "word in bounds for %s[i..i+%d]" % (av.name, nb))
+            wb = z3.Int2BV(w, 64)
+            arr = av.a
+            for k in range(nb):
+                sh = 8 * (nb - 1 - k)
+                arr = z3.Store(arr, i + k, z3.BV2Int(z3.Extract(sh + 7, sh, wb)))
+            name = e.args[0].expr.name
+            st.env[name] = mk_arr(arr, av.n, name, av.elem)
+            s.post_refine(e, [0], st, g)
+            return None
         if n == "is_char_boundary":
             return str_boundary(args[0], args[1])
         if n in BIT_Z3:     # P2: exact 64-bit two's-complement result as a signed Int
@@ -1600,7 +1628,7 @@ class FnVerifier:
                     if c is not None and 0 < c < 64:    # literal shift count
                         s.assume(st, g, r <= 2 ** (64 - c) - 1)
                         s.assume(st, g, r == z3.If(x < 0, x + 2 ** 64, x) / 2 ** c)
-                else:
+                elif n in ("bor", "bxor"):    # P2 batch 3: wrapping_add / wrapping_mul get no extra facts
                     s.assume(st, g, z3.Implies(z3.And(x >= 0, y >= 0), z3.And(r >= 0, r <= x + y)))
             return r
         if n == "substr":   # G2 B1 (G2_SPEC 4.4): range -> boundary -> fresh result

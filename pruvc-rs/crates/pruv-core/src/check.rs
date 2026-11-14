@@ -43,10 +43,25 @@ pub(crate) enum CRes {
 }
 
 /// P2: pure (i64, i64) -> i64 bit builtins (check.py BIT_BUILTINS); later batches add names here.
-pub(crate) const BIT_BUILTINS: [&str; 5] = ["band", "bor", "bxor", "wrapping_shl", "ushr"];
+pub(crate) const BIT_BUILTINS: [&str; 7] = ["band", "bor", "bxor", "wrapping_shl", "ushr", "wrapping_add", "wrapping_mul"];
 
 pub(crate) fn is_bit_builtin(n: &str) -> bool {
     BIT_BUILTINS.contains(&n)
+}
+
+/// P2 batch 4: byte-word access on [u8] (check.py WORD_BUILTINS).
+pub(crate) const WORD_BUILTINS: [&str; 2] = ["load_be", "store_be"];
+
+pub(crate) fn is_word_builtin(n: &str) -> bool {
+    WORD_BUILTINS.contains(&n)
+}
+
+/// P2 batch 4: the value of an integer literal width argument n of load_be / store_be, 1..=8 (None otherwise).
+pub(crate) fn word_width(e: &Expr) -> Option<i64> {
+    match e {
+        Expr::IntLit(l) => l.value.parse::<i64>().ok().filter(|v| (1..=8).contains(v)),
+        _ => None,
+    }
 }
 
 /// Built-ins used only in contracts: name -> (argument kind, result).
@@ -448,6 +463,7 @@ impl Checker {
             }
             if matches!(name.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr" | "truncate")
                 || is_bit_builtin(&name)
+                || is_word_builtin(&name)
                 || contract_only(&name).is_some()
                 || is_catalog(&name)
             {
@@ -2091,6 +2107,7 @@ impl Checker {
             }
         } else if ["len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate"].contains(&n.as_str())
             || is_bit_builtin(n)
+            || is_word_builtin(n)
             || contract_only(n).is_some() || is_catalog(n) || (n == "old" && self.uses_inout)
         {
             return Err(terr(c.line, c.col, "parallel_call",
@@ -3125,6 +3142,133 @@ impl Checker {
         Ok(())
     }
 
+    /// P2 batch 4: load_be(a: [u8], i, n) -> i64 (code and contracts) and the statement-only store_be(inout a, i, w, n);
+    /// n is an integer literal 1..=8 (check.py word_call).
+    fn word_call(&mut self, e: &mut Call, scope: &Scope, c: bool) -> Res<GType> {
+        let n = e.name.clone();
+        let (line, col) = (e.line, e.col);
+        let store = n == "store_be";
+        let k = if store { 4 } else { 3 };
+        if e.args.len() != k {
+            return Err(terr(line, col, "arity", format!("{} takes {} argument(s), got {}", n, k, e.args.len()), ""));
+        }
+        if store {
+            if c {
+                return Err(terr(line, col, "effect_in_contract", "store_be not allowed in contracts", ""));
+            }
+            let (aline, acol) = (e.args[0].line(), e.args[0].col());
+            let name: String;
+            {
+                let arg: &mut InoutArg = match &mut e.args[0] {
+                    Expr::InoutArg(a) => a,
+                    _ => {
+                        return Err(terr(
+                            aline,
+                            acol,
+                            "inout_argument",
+                            "the array of store_be needs the `inout` marker",
+                            "write `store_be(inout name, i, w, n)` with a `let mut` local array or an inout parameter",
+                        ))
+                    }
+                };
+                let op: &mut Var = match &mut *arg.expr {
+                    Expr::Var(v) => v,
+                    _ => {
+                        return Err(terr(
+                            aline,
+                            acol,
+                            "inout_argument",
+                            "an inout argument must be the whole name of a local array or an inout parameter",
+                            "name a `let mut` local array or an inout parameter of this function",
+                        ))
+                    }
+                };
+                let v = self.lookup(op.line, op.col, &op.name, scope)?;
+                if v.kind == "local" && !v.mutable {
+                    return Err(terr(
+                        aline,
+                        acol,
+                        "inout_argument",
+                        format!("{} is not mutable: it cannot be passed inout", op.name),
+                        "declare it with `let mut`",
+                    ));
+                }
+                if v.kind != "inout" && v.kind != "local" {
+                    return Err(terr(
+                        aline,
+                        acol,
+                        "inout_argument",
+                        format!(
+                            "{} is a read-only {}: it cannot be passed inout",
+                            op.name,
+                            if v.kind == "param" { "parameter" } else { "binding" }
+                        ),
+                        format!("declare the parameter `inout {}: ...`, or copy into a `let mut` local", op.name),
+                    ));
+                }
+                if v.ty != GType::array_u8() {
+                    return Err(terr(
+                        aline,
+                        acol,
+                        "type_mismatch",
+                        format!("expected {}, found {}", tn(&GType::array_u8()), tn(&v.ty)),
+                        "",
+                    ));
+                }
+                if self.active_roots.iter().any(|r| *r == op.name) {
+                    return Err(terr(
+                        aline,
+                        acol,
+                        "recursive_borrow",
+                        format!("cannot pass {} inout while a match on it is active", op.name),
+                        "finish the match before the call",
+                    ));
+                }
+                op.ty = Some(v.ty.to_key());
+                arg.ty = Some(v.ty.to_key());
+                name = op.name.clone();
+            }
+            self.expect(&mut e.args[1], &i64t(), scope, c, None)?;
+            self.expect(&mut e.args[2], &i64t(), scope, c, None)?;
+            if e.args[1..].iter().any(|x| mentions(x, &name)) {
+                return Err(terr(
+                    aline,
+                    acol,
+                    "inout_alias",
+                    format!("{} is passed inout and also used elsewhere in the arguments of this call", name),
+                    format!("compute the other value first, e.g. `let n: i64 = len({});`, then pass n", name),
+                ));
+            }
+            if self.boundary != Some(&*e as *const Call as usize) {
+                return Err(terr(
+                    line,
+                    col,
+                    "inout_context",
+                    "store_be must be a whole expression statement",
+                    "write `store_be(inout a, i, w, n);` as a statement",
+                ));
+            }
+        } else {
+            self.expect(&mut e.args[0], &GType::array_u8(), scope, c, None)?;
+            self.expect(&mut e.args[1], &i64t(), scope, c, None)?;
+        }
+        let wi = e.args.len() - 1;
+        if word_width(&e.args[wi]).is_none() {
+            let (wl, wc) = (e.args[wi].line(), e.args[wi].col());
+            return Err(terr(
+                wl,
+                wc,
+                "type_mismatch",
+                format!("the width argument of {} must be an integer literal 1..=8", n),
+                "write the byte count as a literal such as 8",
+            ));
+        }
+        if let Expr::IntLit(l) = &mut e.args[wi] {
+            l.ty = Some(i64t().to_key());
+        }
+        Ok(if store { unitt() } else { i64t() })
+    }
+
     /// The contextual builtin old(a): context first, then arity and operand.
     fn old_call(&mut self, e: &mut Call, scope: &Scope) -> Res<GType> {
         let (line, col) = (e.line, e.col);
@@ -3184,7 +3328,8 @@ impl Checker {
             Ok(())
         };
         let is_builtin = matches!(n.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr" | "truncate")
-            || is_bit_builtin(&n);
+            || is_bit_builtin(&n)
+            || is_word_builtin(&n);
         let is_old = n == "old" && self.uses_inout && !self.funcs.contains_key(&n); // G5 A0: contextual builtin
         if targs.is_some() && !self.funcs.contains_key(&n) && (is_builtin || contract_only(&n).is_some() || is_old) {
             return Err(terr(line, col, "type_arity", format!("builtin {} takes no type arguments", n), "remove the `::<...>`"));
@@ -3251,6 +3396,8 @@ impl Checker {
                 self.expect(&mut e.args[1], &i64t(), scope, c, None)?;
                 return Ok(i64t());
             }
+            // P2 batch 4: load_be / store_be
+            _ if is_word_builtin(&n) => return self.word_call(e, scope, c),
             "substr" => {
                 if c {
                     return Err(terr(line, col, "effect_in_contract", "substr not allowed in contracts", ""));

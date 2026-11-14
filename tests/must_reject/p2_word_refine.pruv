@@ -1,0 +1,4 @@
+fn f() -> () ! alloc {
+    let mut b: [u8 | 0..=127; <=16] = alloc(4, 0);
+    store_be(inout b, 0, 128, 1);
+}

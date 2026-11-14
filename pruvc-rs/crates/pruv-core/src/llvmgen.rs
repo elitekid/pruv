@@ -49,8 +49,15 @@ pub fn contains_collection(t: &str) -> bool {
 
 pub const SIGNED_MIN128: i128 = i128::MIN;
 /// P2: bit builtin -> LLVM instruction (Python BIT_LLVM); later batches add entries.
-const BIT_LLVM: [(&str, &str); 5] =
-    [("band", "and"), ("bor", "or"), ("bxor", "xor"), ("wrapping_shl", "shl"), ("ushr", "lshr")];
+const BIT_LLVM: [(&str, &str); 7] = [
+    ("band", "and"),
+    ("bor", "or"),
+    ("bxor", "xor"),
+    ("wrapping_shl", "shl"),
+    ("ushr", "lshr"),
+    ("wrapping_add", "add"),
+    ("wrapping_mul", "mul"),
+];
 
 fn bit_llvm(n: &str) -> Option<&'static str> {
     BIT_LLVM.iter().find(|(k, _)| *k == n).map(|(_, ins)| *ins)
@@ -537,6 +544,10 @@ pub struct Mod {
     /// G9 A3: types whose runtime-contract size / equality helpers are needed
     pub need_size: BTreeSet<String>,
     pub need_eq: BTreeSet<String>,
+    /// P2 batch 4: widths of the llvm.bswap declarations the byte-word accesses used
+    pub bswap: BTreeSet<u32>,
+    /// P2 batch 4: some in-place `return truncate` calls @pruv_shrink_v2
+    pub shrink: bool,
     /// G4 A3: explicit visibility mode (Pruv calls use the Rust-backend routing)
     pub explicit: bool,
     /// G4 A3: function name (stem) -> source-qualified identity (Python `f.disp`), explicit mode only
@@ -556,6 +567,8 @@ impl Mod {
             g6_bridge: false,
             need_size: BTreeSet::new(),
             need_eq: BTreeSet::new(),
+            bswap: BTreeSet::new(),
+            shrink: false,
             explicit: false,
             fn_disp: HashMap::new(),
         }
@@ -1944,7 +1957,31 @@ impl<'a> FnGen<'a> {
             Stmt::Return(x) => {
                 self.begin_temps();
                 let mut v = V::unit();
-                if let Some(val) = &x.value {
+                let tm = match &x.value {
+                    Some(val) => self.truncate_move(val)?,
+                    None => None,
+                };
+                if let (Some(sl), Some(Expr::Call(c))) = (tm, x.value.as_ref()) {
+                    // P2 batch 4: `return truncate(x, m)` of an owned local array: the same pointer with length m moves out
+                    let src = self.load(&sl)?;
+                    let m = self.ev(arg(&c.args, 1)?, false)?;
+                    if !self.verified {
+                        let ok = self.op(format!("icmp ule i64 {}, {}", m.a, src.b))?;
+                        self.guard(&ok, Fail::Panic1("pruv_panic_arith", "truncate length outside 0..len".to_string()), false)?;
+                    }
+                    // the runtime shrinks the block to m elements so the later free gets its real layout
+                    let sz = if is_bytes_ty(&src.ty) { 1 } else { 8 };
+                    self.m.shrink = true;
+                    let p = self.op(format!(
+                        "call ptr @pruv_shrink_v2(ptr {}, i64 {}, i64 {}, i64 {}, i64 {})",
+                        src.a, src.b, m.a, sz, sz
+                    ))?;
+                    let mut rv = V::with_b(Kind::Arr, p, m.a.clone());
+                    rv.ty = src.ty.clone();
+                    v = rv;
+                    self.ins(format!("store ptr null, ptr {}", sl.a))?;
+                    self.ins(format!("store i64 0, ptr {}", sl.b))?;
+                } else if let Some(val) = &x.value {
                     v = self.ev(val, true)?;
                     if v.k == Kind::Arr {
                         if let Expr::Var(var) = val {
@@ -2082,6 +2119,107 @@ impl<'a> FnGen<'a> {
             self.guard(&ok, Fail::Oob(i.a.clone(), a.b.clone()), false)?;
         }
         self.op(format!("getelementptr inbounds {}, ptr {}, i64 {}", elem_ir(a), a.a, i.a))
+    }
+
+    /// P2 batch 4 (Python truncate_move): the slot of x when e is `truncate(x, m)` with x an owned local array (not a
+    /// parameter or binder) and m does not name x
+    fn truncate_move(&self, e: &Expr) -> R<Option<Slot>> {
+        let c = match e {
+            Expr::Call(c) if !self.cost && c.name == "truncate" && c.args.len() == 2 => c,
+            _ => return Ok(None),
+        };
+        let v = match &c.args[0] {
+            Expr::Var(v) => v,
+            _ => return Ok(None),
+        };
+        let mut names: HashSet<String> = HashSet::new();
+        crate::refine::expr_names(&c.args[1], &mut names);
+        if names.contains(&v.name) {
+            return Ok(None);
+        }
+        match self.lookup(&v.name)? {
+            Bind::Slot(sl) if sl.k == Kind::Arr => Ok(Some(sl)),
+            _ => Ok(None),
+        }
+    }
+
+    /// P2 batch 4: pointer to a[i]; --no-verify first checks 0 <= i && i + nb <= len(a) (stop as for a[i])
+    fn word_ptr(&mut self, a: &V, i: &V, nb: i64) -> R<String> {
+        if !self.verified {
+            let t = self.op(format!("sub i64 {}, {}", a.b, nb))?;
+            let c1 = self.op(format!("icmp sge i64 {}, 0", i.a))?;
+            let c2 = self.op(format!("icmp sle i64 {}, {}", i.a, t))?;
+            let ok = self.op(format!("and i1 {}, {}", c1, c2))?;
+            self.guard(&ok, Fail::Oob(i.a.clone(), a.b.clone()), false)?;
+        }
+        self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", a.a, i.a))
+    }
+
+    fn bswap(&mut self, bits: u32, x: &str) -> R<String> {
+        self.m.bswap.insert(bits);
+        self.op(format!("call i{b} @llvm.bswap.i{b}(i{b} {x})", b = bits, x = x))
+    }
+
+    /// pointer to byte k of the word at g
+    fn byte_at(&mut self, g: &str, k: i64) -> R<String> {
+        if k == 0 {
+            Ok(g.to_string())
+        } else {
+            self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", g, k))
+        }
+    }
+
+    /// big-endian i64 of the nb bytes at g
+    fn load_word(&mut self, g: &str, nb: i64) -> R<String> {
+        if nb == 2 || nb == 4 || nb == 8 {
+            let bits = (8 * nb) as u32;
+            let x = self.op(format!("load i{}, ptr {}, align 1", bits, g))?;
+            let x = self.bswap(bits, &x)?;
+            return if nb == 8 { Ok(x) } else { self.op(format!("zext i{} {} to i64", bits, x)) };
+        }
+        let mut acc: Option<String> = None;
+        for k in 0..nb {
+            let p = self.byte_at(g, k)?;
+            let b = self.op(format!("load i8, ptr {}", p))?;
+            let mut b = self.op(format!("zext i8 {} to i64", b))?;
+            if let Some(a) = acc {
+                let sh = self.op(format!("shl i64 {}, 8", a))?;
+                b = self.op(format!("or i64 {}, {}", sh, b))?;
+            }
+            acc = Some(b);
+        }
+        acc.ok_or_else(|| IDX_ERR.to_string())
+    }
+
+    /// the low 8*nb bits of w, big-endian, at g: one store for nb in {1,2,4,8}, else pieces of 4/2/1 bytes high to low
+    fn store_word(&mut self, g: &str, w: &str, nb: i64) -> R<()> {
+        let mut off: i64 = 0;
+        while off < nb {
+            let left = nb - off;
+            let mut p: i64 = if left >= 4 { 4 } else if left >= 2 { 2 } else { 1 };
+            if nb == 1 || nb == 2 || nb == 4 || nb == 8 {
+                p = nb;
+            }
+            let sh = 8 * (left - p);
+            let x = if sh == 0 { w.to_string() } else { self.op(format!("lshr i64 {}, {}", w, sh))? };
+            if p == 8 {
+                let x = self.bswap(64, &x)?;
+                let ptr = self.byte_at(g, off)?;
+                self.ins(format!("store i64 {}, ptr {}, align 1", x, ptr))?;
+            } else if p == 1 {
+                let x = self.op(format!("trunc i64 {} to i8", x))?;
+                let ptr = self.byte_at(g, off)?;
+                self.ins(format!("store i8 {}, ptr {}", x, ptr))?;
+            } else {
+                let bits = (8 * p) as u32;
+                let x = self.op(format!("trunc i64 {} to i{}", x, bits))?;
+                let x = self.bswap(bits, &x)?;
+                let ptr = self.byte_at(g, off)?;
+                self.ins(format!("store i{} {}, ptr {}, align 1", bits, x, ptr))?;
+            }
+            off += p;
+        }
+        Ok(())
     }
 
     pub fn checked(&mut self, ty: &str, name: &str, sym: &str, a: &str, b: &str) -> R<String> {
@@ -2406,6 +2544,29 @@ impl<'a> FnGen<'a> {
             }
             let r = self.op(format!("{} i64 {}, {}", ins, x.a, y.a))?;
             return Ok(V::new(Kind::I64, r));
+        }
+        if n == "load_be" {
+            // P2 batch 4: array, then index
+            let arr = self.ev(arg(a, 0)?, false)?;
+            let i = self.ev(arg(a, 1)?, false)?;
+            let nb = crate::check::word_width(arg(a, 2)?).unwrap_or(0);
+            let g = self.word_ptr(&arr, &i, nb)?;
+            let r = self.load_word(&g, nb)?;
+            return Ok(V::new(Kind::I64, r));
+        }
+        if n == "store_be" {
+            // P2 batch 4: index, value, then the array
+            let i = self.ev(arg(a, 1)?, false)?;
+            let w = self.ev(arg(a, 2)?, false)?;
+            let target = match arg(a, 0)? {
+                Expr::InoutArg(ia) => ia.expr.as_ref(),
+                other => other,
+            };
+            let arr = self.ev(target, false)?;
+            let nb = crate::check::word_width(arg(a, 3)?).unwrap_or(0);
+            let g = self.word_ptr(&arr, &i, nb)?;
+            self.store_word(&g, &w.a, nb)?;
+            return Ok(V::unit());
         }
         if n == "substr" {
             // G2 B2: argument order s -> lo -> hi
@@ -3182,6 +3343,23 @@ impl<'a> FnGen<'a> {
                     let c = self.op(format!("icmp ne i32 {}, 0", r))?;
                     return Ok(V::new(Kind::I1, c));
                 }
+                if n == "load_be" {
+                    // P2 batch 4: 0 <= i && i + nb <= len(a) in i128, then the word
+                    let arr = self.cev(arg(a, 0)?)?;
+                    let i = self.cev(arg(a, 1)?)?;
+                    let nb = crate::check::word_width(arg(a, 2)?).unwrap_or(0);
+                    let ln = self.op(format!("zext i64 {} to i128", arr.b))?;
+                    let t = self.op(format!("sub i128 {}, {}", ln, nb))?;
+                    let c1 = self.op(format!("icmp sge i128 {}, 0", i.a))?;
+                    let c2 = self.op(format!("icmp sle i128 {}, {}", i.a, t))?;
+                    let ok = self.op(format!("and i1 {}, {}", c1, c2))?;
+                    self.guard(&ok, und("array index out of range".to_string()), false)?;
+                    let ii = self.op(format!("trunc i128 {} to i64", i.a))?;
+                    let g = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", arr.a, ii))?;
+                    let w = self.load_word(&g, nb)?;
+                    let r = self.op(format!("sext i64 {} to i128", w))?;
+                    return Ok(V::new(Kind::I128, r));
+                }
                 if let Some(ins) = bit_llvm(n) {
                     // P2: both i128 arguments must be inside i64; then the op on i128 is exact
                     let x = self.cev(arg(a, 0)?)?;
@@ -3191,11 +3369,13 @@ impl<'a> FnGen<'a> {
                         let ok = self.op(format!("icmp ult i128 {}, 18446744073709551616", t))?;
                         self.guard(&ok, und(format!("argument outside i64 in {}", n)), false)?;
                     }
-                    if n == "wrapping_shl" || n == "ushr" {
-                        // P2 batch 2: count in 0..64 (unsigned compare covers negatives); shifts are not exact on
-                        // i128, so shift on i64 and widen
-                        let ok = self.op(format!("icmp ult i128 {}, 64", y.a))?;
-                        self.guard(&ok, und(format!("shift count outside 0..64 in {}", n)), false)?;
+                    if n == "wrapping_shl" || n == "ushr" || n == "wrapping_add" || n == "wrapping_mul" {
+                        // P2 batch 2/3: shifts and wrapping add/mul are not exact on i128, so truncate to i64, op, widen
+                        if n == "wrapping_shl" || n == "ushr" {
+                            // count in 0..64 (unsigned compare covers negatives)
+                            let ok = self.op(format!("icmp ult i128 {}, 64", y.a))?;
+                            self.guard(&ok, und(format!("shift count outside 0..64 in {}", n)), false)?;
+                        }
                         let tx = self.op(format!("trunc i128 {} to i64", x.a))?;
                         let ty = self.op(format!("trunc i128 {} to i64", y.a))?;
                         let r = self.op(format!("{} i64 {}, {}", ins, tx, ty))?;
@@ -4438,7 +4618,7 @@ fn gen_llvm_body(
         }
     }
     let mut ir = format!(
-        "{}{}\n{}{}{}{}{}{}{}{}{}\n{}",
+        "{}{}\n{}{}{}{}{}{}{}{}{}{}{}\n{}",
         if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
         type_defs(&tt),
@@ -4457,6 +4637,9 @@ fn gen_llvm_body(
         if has_str { DECLS_STR } else { "" },
         if m.uses_repr { DECLS_REPR } else { "" }, // G3
         if !tt.g9_boxed.is_empty() { DECLS_NODE } else { "" }, // G9 A3
+        // P2 batch 4: llvm.bswap declarations of the widths used, ascending
+        m.bswap.iter().map(|w| format!("declare i{w} @llvm.bswap.i{w}(i{w})\n", w = w)).collect::<String>(),
+        if m.shrink { "declare ptr @pruv_shrink_v2(ptr, i64, i64, i64, i64) nounwind\n" } else { "" },
         g6decls,
         chunks.join("\n")
     );

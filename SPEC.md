@@ -89,7 +89,7 @@ it can never be silently dropped.
 - `copy(a)`: new array equal to a. Needs `alloc`.
 - `truncate(a, m)`: new array holding the first m elements of `a` (`0 <= m <= len(a)` must be proven, `verify`
   error `index_oob`). Needs `alloc`. Arrays only (`str` is a type error). When `a` is a local at its last use the
-  generated Rust shortens it in place instead of copying.
+  generated code (Rust and LLVM) shortens it in place instead of copying; this is not observable.
 - `band(a, b)`, `bor(a, b)`, `bxor(a, b)`: `(i64, i64) -> i64`, bitwise and/or/xor on the 64-bit two's-complement
   representation. Negative operands are allowed (`band(-1, 255) == 255`); the complement of `x` is `bxor(x, -1)`
   (`== -x - 1`). No overflow obligation on the result. Pure, allowed in code and contracts; the names are reserved
@@ -102,6 +102,17 @@ it can never be silently dropped.
   names reserved. Known facts (code): `ushr(x, 0) == x`, `wrapping_shl(x, 0) == x`; `x >= 0 ==> 0 <= ushr(x, k) <= x`;
   `k > 0 ==> ushr(x, k) >= 0`; for a literal `c` in 1..63, `ushr(x, c) <= 2^(64-c) - 1`, so `t[ushr(x, 60)]` is in
   bounds for `len(t) >= 16`. Concrete constant expressions are decided exactly.
+- `wrapping_add(a, b)`, `wrapping_mul(a, b)`: `(i64, i64) -> i64`, the low 64 bits of the exact sum / product as a
+  two's-complement i64 (`wrapping_add(9223372036854775807, 1) == -9223372036854775808`). No overflow obligation on the
+  result (ordinary `+ - *` inside the arguments keep theirs). Pure, allowed in code and contracts, names reserved. Known
+  fact (code): the result is in i64; concrete constant expressions are decided exactly.
+- `load_be(a, i, n)`: `a: [u8]`, `i: i64`, `n` an integer literal in 1..=8; an `i64`, the bytes `a[i..i+n]` read
+  big-endian. For `n < 8` the value is in `0..2^(8n)`; for `n = 8` the 64 bits are read as two's complement. Allowed in
+  code and contracts. A non-literal `n`, or a literal outside 1..=8, is `type_mismatch`. In code the verifier must prove
+  `0 <= i && i + n <= len(a)` (`verify` error `index_oob`).
+- `store_be(inout a, i, w, n);`: a statement (a mutating call in the section 6g positions; `a` a mutable `[u8]`). It
+  writes the low `8n` bits of `w: i64` big-endian into `a[i..i+n]` and leaves the other elements unchanged. `n` and the
+  obligation are as for `load_be`. Not allowed in contracts.
 - Evaluation order: code evaluates left to right in source order, the same in every compile mode; call arguments left to right, and in `a[i] = v` the index is evaluated before the value.
 - Precedence (high to low): unary `- !`; `* / %`; `+ -`; comparisons (non-associative); `&&`; `||`; `==>`.
 
@@ -119,7 +130,7 @@ Allowed only in `requires`, `ensures`, `invariant`, `assert`:
   `some_val(o)` needs `is_some(o)`, `ok_val(r)` needs `is_ok(r)`, `err_val(r)` needs `!is_ok(r)`, `max`/`min` need
   `lo < hi`, and each argument of `band`/`bor`/`bxor` must be inside i64 (contract integers are unbounded and are
   never truncated: `band(9223372036854775807 + 1, 255)` is outside the domain); `wrapping_shl`/`ushr` need both
-  arguments inside i64 and `k` in `0..64` (guard with `k >= 0 && k < 64 && ushr(x, k) >= 0`). The builtins have the same 64-bit
+  arguments inside i64 and `k` in `0..64` (guard with `k >= 0 && k < 64 && ushr(x, k) >= 0`). `wrapping_add`/`wrapping_mul` need both arguments inside i64; `load_be(a, i, n)` needs `0 <= i && i + n <= len(a)`. The builtins have the same 64-bit
   two's-complement meaning in contracts as in code. Evaluation is left to right with short-circuit `&&` `||` `==>`; `forall`/`exists` go up from `lo` and stop
   at the first false/true k, so only the k they reach need a defined body; aggregates need it for every k in range.
   This holds in `requires` (each clause from the earlier ones only: write `requires 0 <= i && i < len(a)` before

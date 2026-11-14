@@ -34,7 +34,8 @@
  * v2 (u8 arrays, G2 A4): pruv_alloc_u8(len, value), pruv_copy_v2(src, len, size,
  * align) and pruv_free_v2(data, len, size, align) handle element sizes 1, 4, 8
  * (size == align). In -DPRUV_RUST_ALLOCATOR mode they call the extern v2 host
- * helpers pruv_host_alloc_v2 / pruv_host_alloc_zeroed_v2 / pruv_host_free_v2 and
+ * helpers pruv_host_alloc_v2 / pruv_host_alloc_zeroed_v2 / pruv_host_free_v2 /
+ * pruv_host_realloc_v2 (pruv_shrink_v2) and
  * the runtime defines the no-op marker pruv_runtime_rust_allocator_v2, which
  * the bindings reference; a v1 runtime with v2 bindings, or v1 bindings with
  * this runtime, fails to link. The v1 helpers and marker are unchanged.
@@ -98,6 +99,7 @@ void pruv_runtime_rust_allocator_v1(void) {}
 extern void *pruv_host_alloc_v2(int64_t len, int64_t size, int64_t align);
 extern void *pruv_host_alloc_zeroed_v2(int64_t len, int64_t size, int64_t align);
 extern void pruv_host_free_v2(void *data, int64_t len, int64_t size, int64_t align);
+extern void *pruv_host_realloc_v2(void *data, int64_t len, int64_t m, int64_t size, int64_t align);
 void pruv_runtime_rust_allocator_v2(void) {}
 #define PRUV_HOST_FLUSH() pruv_host_flush()
 #else
@@ -261,6 +263,26 @@ void pruv_free_v2(void *data, int64_t len, int64_t size, int64_t align) {
     (void)size;
     (void)align;
     free(data);
+#endif
+}
+
+/* P2 batch 4: in-place `return truncate(x, m)`. Returns a block of m elements holding the first m
+ * elements of data (len elements, layout size/align), so the later pruv_free_v2 / pruv_free with
+ * length m uses the block's real layout. m == len keeps data; m == 0 frees it and returns NULL.
+ * Default mode: realloc (keeps data if the shrinking realloc fails). -DPRUV_RUST_ALLOCATOR: the host
+ * helper pruv_host_realloc_v2 (std::alloc::realloc with the block's own layout). */
+void *pruv_shrink_v2(void *data, int64_t len, int64_t m, int64_t size, int64_t align) {
+    if (!data || m >= len) return data;
+    if (m <= 0) {
+        pruv_free_v2(data, len, size, align);
+        return NULL;
+    }
+#ifdef PRUV_RUST_ALLOCATOR
+    return pruv_host_realloc_v2(data, len, m, size, align);
+#else
+    (void)align;
+    void *p = realloc(data, (size_t)m * (size_t)size);
+    return p ? p : data;
 #endif
 }
 

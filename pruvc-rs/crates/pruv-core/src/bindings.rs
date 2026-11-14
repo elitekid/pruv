@@ -61,6 +61,17 @@ pub extern "C" fn pruv_host_free_v2(data: *mut u8, len: i64, size: i64, align: i
     }
 }"##;
 
+const HOST_REALLOC_V2: &str = r##"#[no_mangle]
+pub extern "C" fn pruv_host_realloc_v2(data: *mut u8, len: i64, m: i64, size: i64, align: i64) -> *mut u8 {
+    let layout = match (len as usize).checked_mul(size as usize).and_then(|b| ::std::alloc::Layout::from_size_align(b, align as usize).ok()) {
+        Some(l) => l,
+        None => ::std::alloc::handle_alloc_error(::std::alloc::Layout::new::<u8>()),
+    };
+    let p = unsafe { ::std::alloc::realloc(data, layout, (m as usize) * (size as usize)) };
+    if p.is_null() { ::std::alloc::handle_alloc_error(layout); }
+    p
+}"##;
+
 const HOST_FLUSH: &str = r##"#[no_mangle]
 pub extern "C" fn pruv_host_flush() {
     let _ = ::std::io::Write::flush(&mut ::std::io::stdout());
@@ -342,7 +353,7 @@ pub fn gen_bindings_with(prog: &Program, shim: Option<&str>, verified: bool) -> 
     }
     o.push(ALLOW.to_string());
     o.push("#[repr(C)]\npub struct Pruv__Tagged { pub tag: i64, pub value: i64 }".to_string());
-    for h in [HOST_ALLOC, HOST_ALLOC_ZEROED, HOST_FLUSH, HOST_FREE, HOST_ALLOC_V2, HOST_ALLOC_ZEROED_V2, HOST_FREE_V2] {
+    for h in [HOST_ALLOC, HOST_ALLOC_ZEROED, HOST_FLUSH, HOST_FREE, HOST_ALLOC_V2, HOST_ALLOC_ZEROED_V2, HOST_FREE_V2, HOST_REALLOC_V2] {
         o.push(ALLOW.to_string());
         o.push(h.to_string());
     }

@@ -218,10 +218,18 @@ fn is_tag_fn(n: &str) -> bool {
 
 /// P2: bit builtins evaluated as 64-bit bit-vector operations (verify.py BIT_Z3); later batches add names here.
 fn is_bit_z3(n: &str) -> bool {
-    matches!(n, "band" | "bor" | "bxor" | "wrapping_shl" | "ushr")
+    matches!(n, "band" | "bor" | "bxor" | "wrapping_shl" | "ushr" | "wrapping_add" | "wrapping_mul")
 }
 
 /// verify.py `_partial_here` (line 86).
+/// P2 batch 4: the integer literal width argument of load_be / store_be (the checker guarantees 1..=8).
+fn lit_width(e: &Expr) -> i64 {
+    match e {
+        Expr::IntLit(l) => l.value.parse::<i64>().unwrap_or(0),
+        _ => 0,
+    }
+}
+
 fn partial_here(e: &Expr, kind: PKind) -> bool {
     match e {
         Expr::Spent(_) => false,
@@ -229,7 +237,7 @@ fn partial_here(e: &Expr, kind: PKind) -> bool {
         _ if kind == PKind::Variant => false,
         Expr::Index(_) => true,
         Expr::Binary(b) => b.op == "/" || b.op == "%",
-        Expr::Call(c) => is_tag_fn(&c.name) || c.name == "file_byte" || is_bit_z3(&c.name),
+        Expr::Call(c) => is_tag_fn(&c.name) || c.name == "file_byte" || is_bit_z3(&c.name) || c.name == "load_be",
         Expr::Quant(q) => q.kind == "max" || q.kind == "min",
         _ => false,
     }
@@ -1935,6 +1943,76 @@ impl<'a> FnVerifier<'a> {
                 let i = arg(1)?.try_ast()?;
                 return Ok(Val::Bool(self.str_boundary(sv, i)));
             }
+            "load_be" => {
+                // P2 batch 4: big-endian word of the nb bytes a[i..i+nb]
+                let av = arg(0)?.try_arr()?.clone();
+                let i = arg(1)?.try_ast()?.clone();
+                let nb = lit_width(&x.args[2]);
+                if code {
+                    let ob = self.z.and(&[i.ge_i(0), i.add_i(nb).le(&av.n)]);
+                    self.prove_core(
+                        &st.env,
+                        &st.pc,
+                        g,
+                        &ob,
+                        pos(e),
+                        "index_oob",
+                        &format!("word in bounds for {}[i..i+{}]", av.name, nb),
+                        None,
+                    );
+                }
+                let mut cat = av.a.select(&i.add_i(0)).int2bv(8);
+                for k in 1..nb {
+                    let b = av.a.select(&i.add_i(k)).int2bv(8);
+                    cat = cat.concat(&b);
+                }
+                let u = cat.bv2int(false);
+                let r = if nb == 8 {
+                    self.z.ite(
+                        &u.raw_lt(&self.z.int_str("9223372036854775808")),
+                        &u,
+                        &u.sub(&self.z.int_str("18446744073709551616")),
+                    )
+                } else {
+                    u
+                };
+                return Ok(Val::Int(r));
+            }
+            "store_be" => {
+                // P2 batch 4: nb array stores a[i+k] := band(ushr(w, 8*(nb-1-k)), 255)
+                let av = arg(0)?.try_arr()?.clone();
+                let i = arg(1)?.try_ast()?.clone();
+                let w = arg(2)?.try_ast()?.clone();
+                let nb = lit_width(&x.args[3]);
+                let ob = self.z.and(&[i.ge_i(0), i.add_i(nb).le(&av.n)]);
+                self.prove_core(
+                    &st.env,
+                    &st.pc,
+                    g,
+                    &ob,
+                    pos(e),
+                    "index_oob",
+                    &format!("word in bounds for {}[i..i+{}]", av.name, nb),
+                    None,
+                );
+                let wb = w.int2bv(64);
+                let mut arr = av.a.clone();
+                for k in 0..nb {
+                    let sh = (8 * (nb - 1 - k)) as u32;
+                    let byte = wb.extract(sh + 7, sh).bv2int(false);
+                    arr = arr.store(&i.add_i(k), &byte);
+                }
+                let name = match &x.args[0] {
+                    Expr::InoutArg(ia) => match &*ia.expr {
+                        Expr::Var(v) => v.name.clone(),
+                        _ => return Err("'NoneType' object has no attribute 'name'".to_string()),
+                    },
+                    _ => return Err("'NoneType' object has no attribute 'expr'".to_string()),
+                };
+                st.env.set(&name, Val::Arr(av.like(arr, av.n.clone(), &name)));
+                self.post_refine(e, &[0], st, g)?;
+                return Ok(Val::Unit);
+            }
             _ if is_bit_z3(n) => {
                 // P2: exact 64-bit two's-complement result as a signed Int (Python BIT_Z3)
                 let x0 = arg(0)?.try_ast()?.clone();
@@ -1946,6 +2024,8 @@ impl<'a> FnVerifier<'a> {
                     "bor" => bx.bvor(&by),
                     "wrapping_shl" => bx.bvshl(&by),
                     "ushr" => bx.bvlshr(&by),
+                    "wrapping_add" => bx.bvadd(&by),
+                    "wrapping_mul" => bx.bvmul(&by),
                     _ => bx.bvxor(&by),
                 }
                 .bv2int(false);
@@ -1989,7 +2069,8 @@ impl<'a> FnVerifier<'a> {
                             let f = r.eq(&wide.div(&self.z.int_str(&(1i128 << c).to_string())));
                             self.assume(st, g, f);
                         }
-                    } else {
+                    } else if n == "bor" || n == "bxor" {
+                        // P2 batch 3: wrapping_add / wrapping_mul get no extra facts
                         let f = self
                             .z
                             .and(&[x0.ge_i(0), y0.ge_i(0)])
@@ -2639,6 +2720,13 @@ impl<'a> FnVerifier<'a> {
                     let f = self.ev(&x.args[0], st, g, false, env)?;
                     let i = self.ev_ast(&x.args[1], st, g, false, env)?;
                     parts.push(Some(self.z.and(&[i.ge_i(0), i.lt(&f.try_file()?.buf.n)])));
+                }
+                if wo && x.name == "load_be" {
+                    // P2 batch 4: the word lies inside the array
+                    let arr = self.ev(&x.args[0], st, g, false, env)?;
+                    let arr = arr.try_arr()?.clone();
+                    let i = self.ev_ast(&x.args[1], st, g, false, env)?;
+                    parts.push(Some(self.z.and(&[i.ge_i(0), i.add_i(lit_width(&x.args[2])).le(&arr.n)])));
                 }
                 if wo && is_bit_z3(&x.name) {
                     // P2: both arguments inside i64

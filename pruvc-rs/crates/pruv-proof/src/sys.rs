@@ -7,7 +7,7 @@
 //! - Patterns: a single-term `Z3_mk_pattern` (z3py `_to_pattern` → `MultiPattern`)
 //! - Datatype: `Z3_mk_constructor(name, "is-"+name, ...)` + `Z3_mk_datatypes` (z3py `CreateDatatypes`)
 //! - Arithmetic: `+ - *` are two-argument `Z3_mk_add/sub/mul`, `!=` is `Z3_mk_distinct` (Python `__ne__`)
-//! - Bit-vectors (P2): `Int2BV` → `Z3_mk_int2bv(ctx, bits, a)`, `BV2Int` → `Z3_mk_bv2int(ctx, a, is_signed)`, `& | ^` → `Z3_mk_bvand/bvor/bvxor`, `<<` / `LShR` → `Z3_mk_bvshl/bvlshr`
+//! - Bit-vectors (P2): `Int2BV` → `Z3_mk_int2bv(ctx, bits, a)`, `BV2Int` → `Z3_mk_bv2int(ctx, a, is_signed)`, `& | ^` → `Z3_mk_bvand/bvor/bvxor`, `<<` / `LShR` → `Z3_mk_bvshl/bvlshr`, `+` / `*` → `Z3_mk_bvadd/bvmul`
 //! - Solver: `Z3_mk_solver`; the timeout is `Z3_params_set_uint("timeout", ms)` followed by `Z3_solver_set_params`
 //!
 //! # Common safety rationale (cited by number from each unsafe block's `SAFETY:`)
@@ -559,11 +559,23 @@ impl Ast {
     // Each expands through `bin_ast!`, whose unsafe block carries the SAFETY comment (S1 S2, same-context debug_assert).
     bin_ast!(bvshl, Z3_mk_bvshl);
     bin_ast!(bvlshr, Z3_mk_bvlshr);
+    // P2 batch 3: z3py `a + b` and `a * b` on bit-vectors (`BitVecRef.__add__` / `__mul__` → bvadd / bvmul).
+    // Each expands through `bin_ast!`, whose unsafe block carries the SAFETY comment (S1 S2, same-context debug_assert).
+    bin_ast!(bvadd, Z3_mk_bvadd);
+    bin_ast!(bvmul, Z3_mk_bvmul);
+    // P2 batch 4: z3py `Concat(a, b)` on two bit-vectors (`Z3_mk_concat`); z3py folds more arguments from the left.
+    // Expands through `bin_ast!`, whose unsafe block carries the SAFETY comment (S1 S2, same-context debug_assert).
+    bin_ast!(concat, Z3_mk_concat);
 
     /// z3py `Int2BV(self, bits)`: `Z3_mk_int2bv(ctx, bits, a)`.
     pub fn int2bv(&self, bits: u32) -> Ast {
         // SAFETY: S1 S2 — self is an Int expression of this context.
         unsafe { self.z.wrap(nn(z::Z3_mk_int2bv(self.z.raw(), bits as c_uint, self.raw))) }
+    }
+    /// P2 batch 4: z3py `Extract(high, low, self)`: `Z3_mk_extract(ctx, high, low, a)`.
+    pub fn extract(&self, high: u32, low: u32) -> Ast {
+        // SAFETY: S1 S2 — self is a bit-vector expression of this context.
+        unsafe { self.z.wrap(nn(z::Z3_mk_extract(self.z.raw(), high as c_uint, low as c_uint, self.raw))) }
     }
     /// z3py `BV2Int(self, is_signed)`: `Z3_mk_bv2int(ctx, a, is_signed)` (z3py default is unsigned).
     pub fn bv2int(&self, is_signed: bool) -> Ast {

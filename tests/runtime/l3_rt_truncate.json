@@ -1,1 +1,1 @@
-{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["45", "6", "4", "1", "9", "8", "1", "1"], "alloc_balance": true, "gen_contains": ["pruv_t.truncate(pruv_m as usize)"], "llvm_fn_contains": {"build": ["@pruv_copy("], "keep": ["@pruv_copy_v2("]}}
+{"flags_matrix": [[], ["--no-verify"]], "exit": 0, "stdout_lines": ["45", "6", "4", "1", "9", "8", "1", "1"], "alloc_balance": true, "gen_contains": ["pruv_t.truncate(pruv_m as usize)"], "llvm_fn_contains": {"build": ["@pruv_shrink_v2("], "keep": ["@pruv_copy_v2("]}}
