@@ -1,0 +1,346 @@
+// plb2 bedcov with the algorithm of reference.rs: SplitMix32 (seed 11), two sets of n - 1 random intervals
+// (28-bit starts, 14-bit lengths), set 1 sorted by start and indexed as an implicit interval tree
+// (iit_index / iit_overlap with the explicit stack), set 2 queried; the result is the total coverage.
+// n = number of intervals. Result: [tot_cov].
+//
+// Representation (Pruv has no struct arrays):
+//  * a1 / a2 are generated as packed words p = st * 16384 + len (st < 2^28, len < 2^14, so p < 2^42);
+//    u32 RNG values are i64 in 0..=4294967295 (the state step is an add with one conditional subtract of 2^32; mix uses
+//    wrapping_mul followed by band(.., 4294967295)).
+//  * the tree array is one [i64] with a stride of 4 per interval: [st, en, max, 0], the same 32 bytes per element and
+//    the same locality as the reference's Interval (the `data` field is never read, it stays 0).
+//  * the overlap list b keeps only (st, en) of the pushed intervals (max / data are never read from b); it has room for
+//    every interval, and the guard `cnt < n` plays the role of Vec::push's capacity check.
+//  * the traversal stack is three arrays (x, k, w) allocated once, not refilled for each query.
+//
+// Sorting: the reference uses the stable sort_by on st. Here a stable bottom-up merge sort compares only the start
+// (ushr(p, 14)) and takes the left run on ties, so the sorted order is exactly the reference's (a stable sort of the
+// same sequence by the same key is unique).
+//
+// Never-taken guards, only there so the verifier can prove indexes and ranges (wrapping_shl has no range fact):
+// `root < 0`, `level < 1`, `x < 1` and `last_i < 0` in iit_index, `y >= 0` / `t > 60` / `cnt < n` in the query.
+// Each is an unreachable state of the published algorithm. tot_cov accumulates with wrapping_add (the true total is
+// below 2^35, the prover has no per-query bound).
+
+fn mix(s: i64) -> i64
+  requires 0 <= s && s <= 4294967295
+  ensures 0 <= result && result <= 8589934590
+{
+  let mut z: i64 = s;
+  z = band(wrapping_mul(bxor(z, ushr(z, 16)), 569420461), 4294967295);
+  z = band(wrapping_mul(bxor(z, ushr(z, 15)), 1935289751), 4294967295);
+  return bxor(z, ushr(z, 15));
+}
+
+// gen_intv: m intervals, two RNG calls each (start, then length). Returns the RNG state.
+fn gen_intv(m: i64, state0: i64, inout p: [i64 | 0..=4398046511103]) -> i64
+  requires 0 <= state0 && state0 <= 4294967295
+  requires 0 <= m && len(p) == m
+  ensures 0 <= result && result <= 4294967295
+  ensures forall z in 0..len(p): 0 <= p[z] && p[z] <= 4398046511103
+{
+  let mut s: i64 = state0;
+  let mut i: i64 = 0;
+  while i < m
+    invariant 0 <= i && i <= m && len(p) == m && 0 <= s && s <= 4294967295
+    invariant forall z in 0..len(p): 0 <= p[z] && p[z] <= 4398046511103
+    decreases m - i
+  {
+    s = s + 2654435769;
+    if s > 4294967295 { s = s - 4294967296; }
+    let r1: i64 = mix(s);
+    let st: i64 = band(r1, 268435455);
+    s = s + 2654435769;
+    if s > 4294967295 { s = s - 4294967296; }
+    let r2: i64 = mix(s);
+    let ln: i64 = band(r2, 16383);
+    p[i] = st * 16384 + ln;
+    i = i + 1;
+  }
+  return s;
+}
+
+// One pass of the stable bottom-up merge sort: merge neighbouring runs of `width` from src into dst.
+fn merge_pass(src: [i64 | 0..=4398046511103], inout dst: [i64 | 0..=4398046511103], width: i64, m: i64) -> ()
+  requires 0 <= m && m <= 1048576 && 1 <= width && width <= 1048576
+  requires len(src) == m && len(dst) == m
+  ensures forall z in 0..len(dst): 0 <= dst[z] && dst[z] <= 4398046511103
+{
+  let mut lo: i64 = 0;
+  while lo < m
+    invariant 0 <= lo && lo <= m + 2 * width && len(dst) == m
+    invariant forall z in 0..len(dst): 0 <= dst[z] && dst[z] <= 4398046511103
+    decreases m + 2 * width - lo
+  {
+    let mut mid: i64 = lo + width;
+    if mid > m { mid = m; }
+    let mut hi: i64 = lo + 2 * width;
+    if hi > m { hi = m; }
+    let mut i: i64 = lo;
+    let mut j: i64 = mid;
+    let mut o: i64 = lo;
+    while o < hi
+      invariant 0 <= lo && lo <= i && i <= mid && mid <= j && j <= hi && hi <= m && o == i + j - mid
+      invariant len(dst) == m
+      invariant forall z in 0..len(dst): 0 <= dst[z] && dst[z] <= 4398046511103
+      decreases hi - o
+    {
+      if i < mid && (j >= hi || ushr(src[i], 14) <= ushr(src[j], 14)) {
+        dst[o] = src[i];
+        i = i + 1;
+      } else {
+        dst[o] = src[j];
+        j = j + 1;
+      }
+      o = o + 1;
+    }
+    lo = lo + 2 * width;
+  }
+}
+
+// Unpack the sorted words into the stride-4 tree array: [st, en, max = 0, data = 0].
+fn build_into(src: [i64 | 0..=4398046511103], inout a: [i64 | 0..=536870911], m: i64) -> ()
+  requires 0 <= m && m <= 1048576 && len(src) == m && len(a) == 4 * m
+  ensures forall z in 0..len(a): 0 <= a[z] && a[z] <= 536870911
+{
+  let mut i: i64 = 0;
+  while i < m
+    invariant 0 <= i && i <= m && len(a) == 4 * m
+    invariant forall z in 0..len(a): 0 <= a[z] && a[z] <= 536870911
+    decreases m - i
+  {
+    let v: i64 = src[i];
+    let st: i64 = v / 16384;
+    a[4 * i] = st;
+    a[4 * i + 1] = st + v % 16384;
+    i = i + 1;
+  }
+}
+
+// iit_index: fill the max field of the implicit tree, return the top level (k - 1 of the reference).
+fn iit_index(inout a: [i64 | 0..=536870911], n: i64) -> i64
+  requires 2 <= n && n <= 1048575 && len(a) == 4 * n
+  ensures -1 <= result && result <= 19
+  ensures forall z in 0..len(a): 0 <= a[z] && a[z] <= 536870911
+{
+  let mut last_i: i64 = 0;
+  let mut last: i64 = 0;
+  let mut e0: i64 = 0;
+  while e0 < n
+    invariant 0 <= e0 && e0 <= n + 1 && 0 <= last_i && last_i < n && 0 <= last && last <= 536870911
+    invariant len(a) == 4 * n
+    invariant forall z in 0..len(a): 0 <= a[z] && a[z] <= 536870911
+    decreases n + 2 - e0
+  {
+    last_i = e0;
+    a[4 * e0 + 2] = a[4 * e0 + 1];
+    last = a[4 * e0 + 2];
+    e0 = e0 + 2;
+  }
+  let mut k: i64 = 1;
+  while k <= 19 && wrapping_shl(1, k) <= n
+    invariant 1 <= k && k <= 20 && 0 <= last_i && last_i <= 1048576 + 1048575 * k
+    invariant 0 <= last && last <= 536870911 && len(a) == 4 * n
+    invariant forall z in 0..len(a): 0 <= a[z] && a[z] <= 536870911
+    decreases 20 - k
+  {
+    // x = 1 << (k - 1); the mask keeps the value (x <= 2^18) and gives the prover 0 <= x <= 1048575.
+    let x: i64 = band(wrapping_shl(1, k - 1), 1048575);
+    if x < 1 { return -1; }
+    let i0: i64 = 2 * x - 1;
+    let step: i64 = 4 * x;
+    let mut pos: i64 = i0;
+    while pos < n
+      invariant i0 <= pos && pos <= n + step && 1 <= x && x <= 1048575 && i0 == 2 * x - 1 && step == 4 * x
+      invariant 0 <= last && last <= 536870911 && len(a) == 4 * n
+      invariant forall z in 0..len(a): 0 <= a[z] && a[z] <= 536870911
+      decreases n + step - pos
+    {
+      let el: i64 = a[4 * (pos - x) + 2];
+      let mut er: i64 = last;
+      if pos + x < n { er = a[4 * (pos + x) + 2]; }
+      let mut e: i64 = a[4 * pos + 1];
+      if e < el { e = el; }
+      if e < er { e = er; }
+      a[4 * pos + 2] = e;
+      pos = pos + step;
+    }
+    if band(ushr(last_i, k), 1) != 0 { last_i = last_i - x; } else { last_i = last_i + x; }
+    if last_i < 0 { return -1; }
+    if last_i < n && a[4 * last_i + 2] > last { last = a[4 * last_i + 2]; }
+    k = k + 1;
+  }
+  return k - 1;
+}
+
+// Coverage union of the cnt hits [bs[i], be[i]) clipped to [st0, en0), the reference's main loop.
+fn coverage(bs: [i64 | 0..=536870911], be: [i64 | 0..=536870911], n: i64, cnt: i64, st0: i64, en0: i64) -> i64
+  requires 1 <= cnt && cnt <= n && n <= 1048575 && len(bs) == n && len(be) == n
+  requires 0 <= st0 && st0 <= 536870911 && 0 <= en0 && en0 <= 536870911
+{
+  let mut cov_st: i64 = bs[0];
+  if cov_st < st0 { cov_st = st0; }
+  let mut cov_en: i64 = be[0];
+  if cov_en > en0 { cov_en = en0; }
+  let mut cov: i64 = 0;
+  let mut bi: i64 = 0;
+  while bi < cnt
+    invariant 0 <= bi && bi <= cnt && cnt <= n && len(bs) == n && len(be) == n
+    invariant 0 <= st0 && st0 <= 536870911 && 0 <= en0 && en0 <= 536870911
+    invariant 0 <= cov_st && cov_st <= 536870911 && 0 <= cov_en && cov_en <= 536870911
+    invariant -bi * 536870912 <= cov && cov <= bi * 536870912
+    decreases cnt - bi
+  {
+    let mut st1: i64 = bs[bi];
+    if st1 < st0 { st1 = st0; }
+    let mut en1: i64 = be[bi];
+    if en1 > en0 { en1 = en0; }
+    if st1 > cov_en {
+      cov = cov + (cov_en - cov_st);
+      cov_st = st1;
+      cov_en = en1;
+    } else {
+      if cov_en < en1 { cov_en = en1; }
+    }
+    bi = bi + 1;
+  }
+  cov = cov + (cov_en - cov_st);
+  return cov;
+}
+
+// iit_overlap for every query of set 2 plus the coverage union of the reference's main loop.
+fn query_all(a: [i64 | 0..=536870911], n: i64, max_level: i64, q: [i64 | 0..=4398046511103]) -> i64 ! alloc
+  requires 2 <= n && n <= 1048575
+  requires len(a) == 4 * n && len(q) == n
+  requires 1 <= max_level && max_level <= 19
+{
+  let mut bs: [i64 | 0..=536870911] = alloc(n, 0);
+  let mut be: [i64 | 0..=536870911] = alloc(n, 0);
+  let mut sx: [i64 | 0..=2097151] = alloc(64, 0);
+  let mut sk: [i64 | 0..=19] = alloc(64, 0);
+  let mut sw: [i64 | 0..=1] = alloc(64, 0);
+  // root x = (1 << max_level) - 1
+  let root: i64 = band(wrapping_shl(1, max_level), 1048575) - 1;
+  if root < 0 { return -1; }
+  let mut tot: i64 = 0;
+  let mut j: i64 = 0;
+  while j < n
+    invariant 0 <= j && j <= n && 0 <= root && root <= 1048574
+    invariant len(bs) == n && len(be) == n && len(sx) == 64 && len(sk) == 64 && len(sw) == 64
+    decreases n - j
+  {
+    let v: i64 = q[j];
+    let st0: i64 = v / 16384;
+    let en0: i64 = st0 + v % 16384;
+    let mut cnt: i64 = 0;
+    sx[0] = root;
+    sk[0] = max_level;
+    sw[0] = 0;
+    let mut t: i64 = 1;
+    // Termination witness; one query pops far fewer than 2^25 cells.
+    let mut fuel: i64 = 33554432;
+    while t > 0 && fuel > 0
+      invariant 0 <= t && t <= 62 && 0 <= cnt && cnt <= n && 0 <= fuel && fuel <= 33554432
+      invariant 0 <= st0 && st0 <= 536870911 && 0 <= en0 && en0 <= 536870911
+      invariant len(bs) == n && len(be) == n && len(sx) == 64 && len(sk) == 64 && len(sw) == 64
+      decreases fuel
+    {
+      fuel = fuel - 1;
+      t = t - 1;
+      if t > 60 { return -1; }
+      let zx: i64 = sx[t];
+      let zk: i64 = sk[t];
+      let zw: i64 = sw[t];
+      if zk <= 3 {
+        // i0 = z.x >> z.k << z.k (the mask keeps the value, x < 2^21); i1 = min(i0 + (1 << (k + 1)) - 1, n)
+        let i0: i64 = band(wrapping_shl(ushr(zx, zk), zk), 4194303);
+        let mut i1: i64 = i0 + (band(wrapping_shl(1, zk + 1), 31) - 1);
+        if i1 >= n { i1 = n; }
+        let mut i: i64 = i0;
+        while i < i1 && a[4 * i] < en0
+          invariant 0 <= i && i <= 4194304 && i1 <= n && 0 <= cnt && cnt <= n
+          invariant len(bs) == n && len(be) == n && 0 <= st0 && st0 <= 536870911
+          decreases 4194304 - i
+        {
+          if st0 < a[4 * i + 1] {
+            if cnt < n {
+              bs[cnt] = a[4 * i];
+              be[cnt] = a[4 * i + 1];
+              cnt = cnt + 1;
+            }
+          }
+          i = i + 1;
+        }
+      } else if zw == 0 {
+        let h: i64 = band(wrapping_shl(1, zk - 1), 1048575);
+        let y: i64 = zx - h;
+        sx[t] = zx;
+        sk[t] = zk;
+        sw[t] = 1;
+        t = t + 1;
+        if y >= n || (y >= 0 && a[4 * y + 2] > st0) {
+          sx[t] = y;
+          sk[t] = zk - 1;
+          sw[t] = 0;
+          t = t + 1;
+        }
+      } else if zx < n && a[4 * zx] < en0 {
+        if st0 < a[4 * zx + 1] {
+          if cnt < n {
+            bs[cnt] = a[4 * zx];
+            be[cnt] = a[4 * zx + 1];
+            cnt = cnt + 1;
+          }
+        }
+        sx[t] = zx + band(wrapping_shl(1, zk - 1), 1048575);
+        sk[t] = zk - 1;
+        sw[t] = 0;
+        t = t + 1;
+      }
+    }
+    if cnt > 0 {
+      tot = wrapping_add(tot, coverage(bs, be, n, cnt, st0, en0));
+    }
+    j = j + 1;
+  }
+  return tot;
+}
+
+pub fn bench(data: [u8], n: i64) -> [i64] ! alloc
+  requires 3 <= n && n <= 1000000
+{
+  let mut out: [i64] = alloc(1, 0);
+  let m: i64 = n - 1;
+  let mut p1: [i64 | 0..=4398046511103] = alloc(m, 0);
+  let mut p2: [i64 | 0..=4398046511103] = alloc(m, 0);
+  let mut state: i64 = 11;
+  state = gen_intv(m, state, inout p1);
+  state = gen_intv(m, state, inout p2);
+  // a1.sort_by(st): stable bottom-up merge sort, ping-ponging between p1 and tmp.
+  let mut tmp: [i64 | 0..=4398046511103] = alloc(m, 0);
+  let mut width: i64 = 1;
+  let mut in_p1: bool = true;
+  while width < m
+    invariant 1 <= width && width <= 2097152 && len(p1) == m && len(tmp) == m && len(out) == 1
+    decreases 2097152 - width
+  {
+    if in_p1 {
+      merge_pass(p1, inout tmp, width, m);
+    } else {
+      merge_pass(tmp, inout p1, width, m);
+    }
+    in_p1 = !in_p1;
+    width = width * 2;
+  }
+  let mut a: [i64 | 0..=536870911] = alloc(4 * m, 0);
+  if in_p1 {
+    build_into(p1, inout a, m);
+  } else {
+    build_into(tmp, inout a, m);
+  }
+  let level: i64 = iit_index(inout a, m);
+  if level < 1 { return out; }
+  let tot: i64 = query_all(a, m, level, p2);
+  out[0] = tot;
+  return out;
+}

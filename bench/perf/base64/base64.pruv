@@ -1,0 +1,388 @@
+// kostya base64, ported from the algorithm of the base64 0.22.1 general-purpose engine (STANDARD alphabet, padding on,
+// canonical padding required, trailing bits rejected). The .pruv port does the same work per byte as the crate:
+//  * encode: 4x unrolled loop over big-endian u64 words (8 bytes read, 6 consumed, 8 symbols out), then the 3-byte
+//    tail loop, then the 1-2 byte remainder, then '=' padding (internal_encode + add_padding);
+//  * decode: complete_quads_len, 32-byte unrolled loop of four decode_chunk_8 (u64 accumulator, 6 bytes out), 4-byte
+//    decode_chunk_4 loop (u32 accumulator), then decode_suffix (u32 shifts, canonical padding / trailing bit checks).
+// Each encode / decode allocates a fresh output buffer, like the crate's String / Vec (decode allocates the
+// conservative estimate and truncates). The crate's String::from_utf8 validation is not ported (no str result).
+// Error payloads (byte positions) are dropped: every error is the result -1, which a correct run never produces.
+//
+// u64 words are i64 with the same bits: reads are built with wrapping_shl / bor, symbols extracted with ushr / band.
+// u32 values are kept in 0..=4294967295 with band(.., 4294967295) where the crate's u32 shift drops bits.
+//
+// bench(data, n): input = 131072 bytes of 'a' built here, n = TRIES. One encode first (the driver's `output`), then
+// n encodes (summing encoded lengths), then n decodes of that text (summing decoded lengths).
+// Result: [sum_encoded, sum_decoded, checksum]; checksum = byte sum of the last encoded buffer + byte sum of the
+// last decoded buffer. For any n >= 1: [174764 * n, 131072 * n, 28005790].
+
+// Big-endian u64 read of s[i..i+8].
+fn read_u64(s: [u8], i: i64) -> i64
+  requires 0 <= i && i + 8 <= len(s)
+{
+  return load_be(s, i, 8);
+}
+
+// Eight symbols from one u64 word (the crate's output_chunk[o..o+8]).
+fn put8(table: [u8], w: i64, inout out: [u8], o: i64) -> ()
+  requires len(table) == 64
+  requires 0 <= o && o + 8 <= len(out)
+{
+  out[o] = table[band(ushr(w, 58), 63)];
+  out[o + 1] = table[band(ushr(w, 52), 63)];
+  out[o + 2] = table[band(ushr(w, 46), 63)];
+  out[o + 3] = table[band(ushr(w, 40), 63)];
+  out[o + 4] = table[band(ushr(w, 34), 63)];
+  out[o + 5] = table[band(ushr(w, 28), 63)];
+  out[o + 6] = table[band(ushr(w, 22), 63)];
+  out[o + 7] = table[band(ushr(w, 16), 63)];
+}
+
+// Sextet index helpers for the 3-byte loop (bit-vector terms inside its body made the invariant check time out).
+fn sextet_hi(b0: i64) -> i64
+  ensures 0 <= result && result <= 63
+{ return band(ushr(b0, 2), 63); }
+fn sextet_mid(a: i64, b: i64, sa: i64, sb: i64) -> i64
+  requires 0 <= sa && sa < 64 && 0 <= sb && sb < 64
+  ensures 0 <= result && result <= 63
+{ return band(bor(wrapping_shl(a, sa), ushr(b, sb)), 63); }
+fn sextet_lo(b2: i64) -> i64
+  ensures 0 <= result && result <= 63
+{ return band(b2, 63); }
+
+// internal_encode: returns the number of symbols written (without padding).
+fn encode_into(input: [u8], table: [u8], inout output: [u8]) -> i64
+  requires len(table) == 64
+  requires 0 <= len(input) && len(input) <= 1073741824
+  requires len(output) == (len(input) + 2) / 3 * 4
+  ensures 0 <= result && len(output) - 2 <= result && result <= len(output)
+{
+  let n: i64 = len(input);
+  let mut input_index: i64 = 0;
+  let mut output_index: i64 = 0;
+  // input.len().saturating_sub(4 * 6 + 2)
+  let mut last_fast_index: i64 = 0;
+  if n > 26 { last_fast_index = n - 26; }
+  if last_fast_index > 0 {
+    while input_index <= last_fast_index
+      invariant 0 <= input_index && input_index <= last_fast_index + 24
+      invariant last_fast_index == n - 26
+      invariant input_index % 3 == 0 && output_index % 4 == 0 && output_index * 3 == input_index * 4
+      invariant len(output) == (n + 2) / 3 * 4 && 0 <= output_index && output_index <= len(output)
+      decreases last_fast_index + 24 - input_index
+    {
+      assert output_index + 32 <= len(output);
+      let w0: i64 = read_u64(input, input_index);
+      put8(table, w0, inout output, output_index);
+      let w1: i64 = read_u64(input, input_index + 6);
+      put8(table, w1, inout output, output_index + 8);
+      let w2: i64 = read_u64(input, input_index + 12);
+      put8(table, w2, inout output, output_index + 16);
+      let w3: i64 = read_u64(input, input_index + 18);
+      put8(table, w3, inout output, output_index + 24);
+      output_index = output_index + 32;
+      input_index = input_index + 24;
+    }
+  }
+  let rem: i64 = n % 3;
+  let start_of_rem: i64 = n - rem;
+  while input_index < start_of_rem
+    invariant 0 <= input_index && input_index <= start_of_rem
+    invariant input_index % 3 == 0 && output_index % 4 == 0 && output_index * 3 == input_index * 4
+    invariant len(output) == (n + 2) / 3 * 4 && 0 <= output_index && output_index <= len(output)
+    decreases start_of_rem - input_index
+  {
+    let b0: i64 = input[input_index];
+    let b1: i64 = input[input_index + 1];
+    let b2: i64 = input[input_index + 2];
+    output[output_index] = table[sextet_hi(b0)];
+    output[output_index + 1] = table[sextet_mid(b0, b1, 4, 4)];
+    output[output_index + 2] = table[sextet_mid(b1, b2, 2, 6)];
+    output[output_index + 3] = table[sextet_lo(b2)];
+    input_index = input_index + 3;
+    output_index = output_index + 4;
+  }
+  if rem == 2 {
+    output[output_index] = table[band(ushr(input[start_of_rem], 2), 63)];
+    output[output_index + 1] = table[band(bor(wrapping_shl(input[start_of_rem], 4), ushr(input[start_of_rem + 1], 4)), 63)];
+    output[output_index + 2] = table[band(wrapping_shl(input[start_of_rem + 1], 2), 63)];
+    output_index = output_index + 3;
+  } else if rem == 1 {
+    output[output_index] = table[band(ushr(input[start_of_rem], 2), 63)];
+    output[output_index + 1] = table[band(wrapping_shl(input[start_of_rem], 4), 63)];
+    output_index = output_index + 2;
+  }
+  return output_index;
+}
+
+// Engine::encode: fresh zeroed buffer of the padded size, internal_encode, add_padding.
+fn encode(input: [u8], table: [u8]) -> [u8] ! alloc
+  requires len(table) == 64
+  requires 0 <= len(input) && len(input) <= 1073741824
+  ensures len(result) == (len(input) + 2) / 3 * 4
+{
+  let size: i64 = (len(input) + 2) / 3 * 4;
+  let mut buf: [u8] = alloc(size, 0);
+  let written: i64 = encode_into(input, table, inout buf);
+  let pad: i64 = (4 - written % 4) % 4;
+  assert written + pad <= size;
+  let mut p: i64 = 0;
+  while p < pad
+    invariant len(buf) == size && 0 <= p && p <= pad && written + pad <= size
+    decreases pad - p
+  {
+    buf[written + p] = 61;
+    p = p + 1;
+  }
+  return buf;
+}
+
+// decode_chunk_8: 8 symbols -> 6 bytes through a u64 accumulator. false = invalid symbol.
+fn decode_chunk_8(input: [u8], i: i64, dt: [u8], inout out: [u8], o: i64) -> bool
+  requires len(dt) == 256
+  requires 0 <= i && i + 8 <= len(input)
+  requires 0 <= o && o + 6 <= len(out)
+{
+  let m0: i64 = dt[input[i]];
+  if m0 == 255 { return false; }
+  let m1: i64 = dt[input[i + 1]];
+  if m1 == 255 { return false; }
+  let m2: i64 = dt[input[i + 2]];
+  if m2 == 255 { return false; }
+  let m3: i64 = dt[input[i + 3]];
+  if m3 == 255 { return false; }
+  let m4: i64 = dt[input[i + 4]];
+  if m4 == 255 { return false; }
+  let m5: i64 = dt[input[i + 5]];
+  if m5 == 255 { return false; }
+  let m6: i64 = dt[input[i + 6]];
+  if m6 == 255 { return false; }
+  let m7: i64 = dt[input[i + 7]];
+  if m7 == 255 { return false; }
+  let accum: i64 = bor(bor(bor(wrapping_shl(m0, 58), wrapping_shl(m1, 52)), bor(wrapping_shl(m2, 46), wrapping_shl(m3, 40))), bor(bor(wrapping_shl(m4, 34), wrapping_shl(m5, 28)), bor(wrapping_shl(m6, 22), wrapping_shl(m7, 16))));
+  store_be(inout out, o, ushr(accum, 16), 6);
+  return true;
+}
+
+// decode_chunk_4: 4 symbols -> 3 bytes through a u32 accumulator.
+fn decode_chunk_4(input: [u8], i: i64, dt: [u8], inout out: [u8], o: i64) -> bool
+  requires len(dt) == 256
+  requires 0 <= i && i + 4 <= len(input)
+  requires 0 <= o && o + 3 <= len(out)
+{
+  let m0: i64 = dt[input[i]];
+  if m0 == 255 { return false; }
+  let m1: i64 = dt[input[i + 1]];
+  if m1 == 255 { return false; }
+  let m2: i64 = dt[input[i + 2]];
+  if m2 == 255 { return false; }
+  let m3: i64 = dt[input[i + 3]];
+  if m3 == 255 { return false; }
+  let accum: i64 = band(bor(bor(wrapping_shl(m0, 26), wrapping_shl(m1, 20)), bor(wrapping_shl(m2, 14), wrapping_shl(m3, 8))), 4294967295);
+  store_be(inout out, o, ushr(accum, 8), 3);
+  return true;
+}
+
+// decode_suffix: the last 0-4 symbols, canonical padding, no trailing bits. Returns the decoded length or -1.
+fn decode_suffix(input: [u8], input_index: i64, inout output: [u8], output_index: i64, dt: [u8]) -> i64 ! alloc
+  requires len(dt) == 256
+  requires 0 <= input_index && input_index <= len(input) && len(input) - input_index <= 4
+  requires 0 <= output_index && output_index <= len(output)
+  ensures -1 <= result && result <= len(output)
+{
+  let leftover: i64 = len(input) - input_index;
+  let mut morsels: [u8] = alloc(4, 0);
+  let mut morsels_in_leftover: i64 = 0;
+  let mut padding_bytes_count: i64 = 0;
+  let mut li: i64 = 0;
+  while li < leftover
+    invariant len(morsels) == 4 && 0 <= li && li <= leftover
+    invariant 0 <= morsels_in_leftover && morsels_in_leftover <= li
+    invariant 0 <= padding_bytes_count && padding_bytes_count <= li
+    decreases leftover - li
+  {
+    let b: i64 = input[input_index + li];
+    if b == 61 {
+      if li < 2 { return -1; }
+      padding_bytes_count = padding_bytes_count + 1;
+    } else {
+      if padding_bytes_count > 0 { return -1; }
+      let morsel: i64 = dt[b];
+      if morsel == 255 { return -1; }
+      morsels[morsels_in_leftover] = morsel;
+      morsels_in_leftover = morsels_in_leftover + 1;
+    }
+    li = li + 1;
+  }
+  if len(input) > 0 && morsels_in_leftover < 2 { return -1; }
+  if (padding_bytes_count + morsels_in_leftover) % 4 != 0 { return -1; }
+  let leftover_bytes_to_append: i64 = morsels_in_leftover * 6 / 8;
+  let mut leftover_num: i64 = band(bor(bor(wrapping_shl(morsels[0], 26), wrapping_shl(morsels[1], 20)), bor(wrapping_shl(morsels[2], 14), wrapping_shl(morsels[3], 8))), 4294967295);
+  let mask: i64 = ushr(4294967295, leftover_bytes_to_append * 8);
+  if band(leftover_num, mask) != 0 { return -1; }
+  let mut oi: i64 = output_index;
+  let mut k: i64 = 0;
+  while k < leftover_bytes_to_append
+    invariant 0 <= k && k <= leftover_bytes_to_append
+    invariant output_index <= oi && oi <= len(output)
+    decreases leftover_bytes_to_append - k
+  {
+    let hi_byte: i64 = band(ushr(leftover_num, 24), 255);
+    leftover_num = band(wrapping_shl(leftover_num, 8), 4294967295);
+    if oi >= len(output) { return -1; }
+    output[oi] = hi_byte;
+    oi = oi + 1;
+    k = k + 1;
+  }
+  return oi;
+}
+
+// decode_helper: returns the decoded length or -1.
+fn decode_helper(input: [u8], rem: i64, dt: [u8], inout output: [u8]) -> i64 ! alloc
+  requires len(dt) == 256
+  requires 0 <= len(input) && len(input) <= 1073741824
+  requires rem == len(input) % 4
+  requires len(output) == (len(input) + 3) / 4 * 3
+  ensures -1 <= result && result <= len(output)
+{
+  let n: i64 = len(input);
+  // complete_quads_len
+  if rem == 1 {
+    let last_byte: i64 = input[n - 1];
+    if last_byte != 61 && dt[last_byte] == 255 { return -1; }
+  }
+  let mut ncq: i64 = n - rem;
+  if rem == 0 {
+    if ncq >= 4 { ncq = ncq - 4; } else { ncq = 0; }
+  }
+  if len(output) < ncq / 4 * 3 { return -1; }
+  assert 0 <= ncq && ncq <= n && ncq % 4 == 0 && n - ncq <= 4 && ncq / 4 * 3 <= len(output);
+  // chunks of 32 input bytes (input_complete_nonterminal_quads_len - len % 32 = chunks * 32)
+  let chunks: i64 = ncq / 32;
+  let unrolled_len: i64 = chunks * 32;
+  let mut ci: i64 = 0;
+  while ci < chunks
+    invariant 0 <= ci && ci <= chunks && len(output) == (n + 3) / 4 * 3
+    decreases chunks - ci
+  {
+    let ii: i64 = ci * 32;
+    let oo: i64 = ci * 24;
+    let ok0: bool = decode_chunk_8(input, ii, dt, inout output, oo);
+    if !ok0 { return -1; }
+    let ok1: bool = decode_chunk_8(input, ii + 8, dt, inout output, oo + 6);
+    if !ok1 { return -1; }
+    let ok2: bool = decode_chunk_8(input, ii + 16, dt, inout output, oo + 12);
+    if !ok2 { return -1; }
+    let ok3: bool = decode_chunk_8(input, ii + 24, dt, inout output, oo + 18);
+    if !ok3 { return -1; }
+    ci = ci + 1;
+  }
+  // remaining complete quads, except for the last possibly partial one
+  let output_unrolled_loop_len: i64 = unrolled_len / 4 * 3;
+  let quads: i64 = (ncq - unrolled_len) / 4;
+  assert (ncq - unrolled_len) % 4 == 0 && output_unrolled_loop_len + quads * 3 == ncq / 4 * 3;
+  let mut qi: i64 = 0;
+  while qi < quads
+    invariant 0 <= qi && qi <= quads && len(output) == (n + 3) / 4 * 3
+    decreases quads - qi
+  {
+    let ok: bool = decode_chunk_4(input, unrolled_len + qi * 4, dt, inout output, output_unrolled_loop_len + qi * 3);
+    if !ok { return -1; }
+    qi = qi + 1;
+  }
+  let output_complete_quad_len: i64 = ncq / 4 * 3;
+  return decode_suffix(input, ncq, inout output, output_complete_quad_len, dt);
+}
+
+// Engine::decode: zeroed buffer of the conservative estimate, decode_helper, truncate to the bytes written.
+fn decode(input: [u8], dt: [u8]) -> [u8] ! alloc
+  requires len(dt) == 256
+  requires 0 <= len(input) && len(input) <= 1073741824
+  ensures len(result) <= (len(input) + 3) / 4 * 3
+{
+  let rem: i64 = len(input) % 4;
+  let mut quads: i64 = len(input) / 4;
+  if rem > 0 { quads = quads + 1; }
+  let mut buffer: [u8] = alloc(quads * 3, 0);
+  let written: i64 = decode_helper(input, rem, dt, inout buffer);
+  if written < 0 { return alloc(0, 0); }
+  return truncate(buffer, written);
+}
+
+pub fn bench(data: [u8], n: i64) -> [i64] ! alloc
+  requires 1 <= n && n <= 1000000
+{
+  let mut out: [i64] = alloc(3, 0);
+  // STANDARD alphabet: A-Z, a-z, 0-9, '+', '/'
+  let mut table: [u8] = alloc(64, 0);
+  let mut i: i64 = 0;
+  while i < 64
+    invariant len(table) == 64 && len(out) == 3 && 0 <= i && i <= 64
+    decreases 64 - i
+  {
+    if i < 26 { table[i] = 65 + i; }
+    else if i < 52 { table[i] = 71 + i; }
+    else if i < 62 { table[i] = i - 4; }
+    else if i == 62 { table[i] = 43; }
+    else { table[i] = 47; }
+    i = i + 1;
+  }
+  // decode table: 255 = invalid, else the 6-bit value
+  let mut dt: [u8] = alloc(256, 255);
+  i = 0;
+  while i < 64
+    invariant len(table) == 64 && len(dt) == 256 && len(out) == 3 && 0 <= i && i <= 64
+    decreases 64 - i
+  {
+    dt[table[i]] = i;
+    i = i + 1;
+  }
+  let input: [u8] = alloc(131072, 97);
+  let output: [u8] = encode(input, table);
+  let mut sum_enc: i64 = 0;
+  let mut last_enc: [u8] = alloc(0, 0);
+  let mut rep: i64 = 0;
+  while rep < n
+    invariant len(table) == 64 && len(dt) == 256 && len(out) == 3 && len(input) == 131072
+    invariant 0 <= rep && rep <= n && 0 <= sum_enc && sum_enc <= rep * 174764 && len(last_enc) <= 174764
+    decreases n - rep
+  {
+    last_enc = encode(input, table);
+    sum_enc = sum_enc + len(last_enc);
+    rep = rep + 1;
+  }
+  let mut sum_dec: i64 = 0;
+  let mut last_dec: [u8] = alloc(0, 0);
+  rep = 0;
+  while rep < n
+    invariant len(table) == 64 && len(dt) == 256 && len(out) == 3 && len(output) == 174764
+    invariant 0 <= rep && rep <= n && 0 <= sum_dec && sum_dec <= rep * 131073 && len(last_dec) <= 131073
+    decreases n - rep
+  {
+    last_dec = decode(output, dt);
+    sum_dec = sum_dec + len(last_dec);
+    rep = rep + 1;
+  }
+  let mut cs_e: i64 = 0;
+  i = 0;
+  while i < len(last_enc)
+    invariant len(out) == 3 && len(last_enc) <= 174764 && 0 <= i && i <= len(last_enc) && 0 <= cs_e && cs_e <= i * 255
+    decreases len(last_enc) - i
+  {
+    cs_e = cs_e + last_enc[i];
+    i = i + 1;
+  }
+  let mut cs_d: i64 = 0;
+  i = 0;
+  while i < len(last_dec)
+    invariant len(out) == 3 && len(last_dec) <= 131073 && 0 <= i && i <= len(last_dec) && 0 <= cs_d && cs_d <= i * 255
+    decreases len(last_dec) - i
+  {
+    cs_d = cs_d + last_dec[i];
+    i = i + 1;
+  }
+  out[0] = sum_enc;
+  out[1] = sum_dec;
+  out[2] = cs_e + cs_d;
+  return out;
+}

@@ -1829,3 +1829,42 @@ First full run of `bench/perf/run.py` under `docs/PERF_SPEC.md`: rustc 1.99.1, m
 - **Pass rule:** all 24 program/pair cells pass (upper bound at most 1.05); 18 are faster.
 - **brainfuck baseline:** Pruv has no arrays of enum values, so the port is a flat dense-opcode interpreter (fuel spent only on taken backward jumps), and `matched.rs` is the same flat interpreter. The published tree-of-`Box<[Op]>` algorithm (`secondary.rs`) measures 0.878 [0.864, 0.893] of matched Rust, so Pruv is about 8–14% slower than the published Rust algorithm on this program. Closing it needs arrays of enum values (PERF_SPEC status table).
 - **sudoku:** equal but closest to the bound (1.045 on the rust backend). Not investigated in this batch.
+
+## 118. P2 performance standard: nine programs, peak memory and build time (2026-11-15)
+
+Second full run of `bench/perf/run.py` after the P2 bit and wrapping builtins: rustc 1.99.1, macOS arm64, 30 interleaved rounds after 3 warm-ups, timed inputs. Three programs are new (n-queens, base64, bedcov) and sudoku was rewritten with the P2 bit builtins. Each cell is the mean Pruv/Rust ratio with its 95% interval.
+
+| Program | Rust ms | py/rust | py/llvm | rs/rust | rs/llvm |
+|---|---|---|---|---|---|
+| fannkuch-redux (n=12) | 15028 | 0.954 [0.950, 0.957] faster | 0.950 [0.949, 0.951] faster | 0.952 [0.950, 0.953] faster | 0.952 [0.948, 0.955] faster |
+| binary-trees (depth 21) | 697 | 0.988 [0.983, 0.992] faster | 1.009 [1.004, 1.014] equal | 0.991 [0.987, 0.996] faster | 1.009 [1.004, 1.014] equal |
+| reverse-complement (25M) | 159 | 0.889 [0.871, 0.908] faster | 0.872 [0.857, 0.887] faster | 0.890 [0.872, 0.909] faster | 0.867 [0.850, 0.884] faster |
+| brainfuck (bench.b) | 942 | 1.004 [0.999, 1.010] equal | 0.948 [0.943, 0.954] faster | 1.008 [1.001, 1.015] equal | 0.960 [0.946, 0.974] faster |
+| primes (5,000,000) | 17.1 | 0.960 [0.953, 0.968] faster | 0.929 [0.922, 0.936] faster | 0.958 [0.951, 0.965] faster | 0.934 [0.928, 0.940] faster |
+| sudoku (4000 puzzles) | 1311 | 0.970 [0.960, 0.980] faster | 0.960 [0.953, 0.966] faster | 0.968 [0.957, 0.979] faster | 0.964 [0.957, 0.972] faster |
+| n-queens (n=15) | 2071 | 0.946 [0.941, 0.951] faster | 0.932 [0.923, 0.941] faster | 0.958 [0.948, 0.967] faster | 0.939 [0.929, 0.948] faster |
+| base64 (8192 rounds) | 475 | 1.008 [1.006, 1.010] equal | 1.001 [1.000, 1.003] equal | 1.005 [1.003, 1.006] equal | 1.001 [1.000, 1.003] equal |
+| bedcov (1M intervals, 1M queries) | 727 | 0.955 [0.943, 0.967] faster | 0.953 [0.943, 0.963] faster | 0.952 [0.940, 0.965] faster | 0.951 [0.942, 0.960] faster |
+| geometric mean (9 programs) | | 0.963 | 0.950 | 0.964 | 0.952 |
+
+Peak resident set size (median of 3 interleaved rounds; max RSS is stable to one 16 KiB page) as the Pruv/Rust ratio:
+
+| Program | Rust MiB | py/rust | py/llvm | rs/rust | rs/llvm |
+|---|---|---|---|---|---|
+| fannkuch-redux | 1.5 | 1.000 | 0.990 | 1.000 | 1.000 |
+| binary-trees | 118.7 | 1.000 | 1.000 | 1.000 | 1.000 |
+| reverse-complement | 486.4 | 1.000 | 1.000 | 1.000 | 1.000 |
+| brainfuck | 1.5 | 1.000 | 1.000 | 1.000 | 0.990 |
+| primes | 62.7 | 0.925 | 0.925 | 0.925 | 0.924 |
+| sudoku | 1.5 | 1.082 FAIL | 1.082 FAIL | 1.102 FAIL | 1.082 FAIL |
+| n-queens | 1.5 | 1.010 | 1.000 | 1.010 | 1.010 |
+| base64 | 2.3 | 1.007 | 1.000 | 1.000 | 1.000 |
+| bedcov | 78.0 | 0.707 | 0.707 | 0.707 | 0.707 |
+| geometric mean | | 0.964 | 0.961 | 0.965 | 0.962 |
+
+Build time (seconds, Pruv compiler including verification + rustc) is recorded per variant in `bench/perf/work/results_full.json`; it is watched, not gated. Verification dominates: bedcov 9.5–10.1 s, sudoku 2.2–3.1 s, every other program under 2.2 s; rustc adds 0.1–0.3 s and matched Rust builds in 0.1–0.7 s.
+
+- **Pass rule:** time passes on all 36 program/pair cells (upper bound at most 1.05; worst rs/rust brainfuck 1.015), 28 of them faster. Memory passes on 8 of 9 programs and fails on sudoku (about 144 KiB over a 1.5 MiB process). Cause: Pruv stores the 0..=728 row and 0..=323 column tables as heap `i64` arrays, the matched Rust as `u16` arrays on the stack; the same Rust with `i64` tables measures 1.67 MiB (ratio about 1.05 against Pruv), so element width is about half the gap and heap placement the rest. P3 fixes it with storage width narrowing from refinement ranges, not by changing the matched Rust.
+- **sudoku:** moved from 1.045 (section 117) to about 0.97 after the rewrite with `band`/`bor`/`wrapping_shl` candidate masks, the same bitboard algorithm as `matched.rs`.
+- **bedcov:** the first full run failed verification of `query_all` (Python checker, solver timeout on the loop invariant). The coverage-union loop moved into its own function `coverage`, which splits the query; it needs `n <= 1048575` in its precondition so the sum cannot overflow. Both checkers verify it.
+- **Noise:** a 3-round dev check showed binary-trees rs/llvm at 1.020 [0.966, 1.078]; the 30-round run gives 1.009 [1.004, 1.014]. Benchmarks must not run concurrently: one overlapping run inflated sudoku timings.

@@ -1,42 +1,21 @@
-// Bounded wrap helpers avoid signed remainder correction in generated Rust.
-fn wrap256(x: i64) -> i64
-  requires 0 <= x && x <= 511
-  ensures 0 <= result && result <= 255
-{
-  if x >= 256 { return x-256; }
-  return x;
-}
-
-fn wrap65536(x: i64) -> i64
-  requires 0 <= x && x <= 131070
-  ensures 0 <= result && result <= 65535
-{
-  if x >= 65536 { return x-65536; }
-  return x;
-}
-
 // Flattened exact-cover incidence tables, in reference row/column order.
-// The nonnegative modulo operations express the reference's narrow counters.
+// Byte counters with band(.., 255) are the reference's wrapping u8/i8 counters.
 fn forward(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
-          inout sr: [i64 | 0..=65535], inout sc: [i64 | 0..=255],
+          inout sr: [u8], inout sc: [u8],
           r: i64) -> i64
   requires len(rows) == 2916 && len(cols) == 2916
   requires len(sr) == 729 && len(sc) == 324
   requires 0 <= r && r < 729
   ensures 0 <= result && result <= 655683
   ensures result%65536 < 324
-  ensures forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-  ensures forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
 {
   let mut t: i64 = 0;
   while t < 4
     invariant 0 <= t && t <= 4
-    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
     decreases 4-t
   {
     let c: i64 = cols[r*4+t];
-    sc[c] = wrap256(sc[c]+128);
+    sc[c] = band(sc[c]+128, 255);
     t = t+1;
   }
   let mut best: i64 = 10;
@@ -45,8 +24,6 @@ fn forward(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
   while t < 4
     invariant 0 <= t && t <= 4
     invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
-    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
     decreases 4-t
   {
     let c: i64 = cols[r*4+t];
@@ -54,22 +31,19 @@ fn forward(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
     while j < 9
       invariant 0 <= j && j <= 9
       invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
-      invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-      invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
-      decreases 9-j
+          decreases 9-j
     {
       let rr: i64 = rows[c*9+j];
-      sr[rr] = wrap65536(sr[rr]+1);
+      sr[rr] = band(sr[rr]+1, 255);
       if sr[rr] == 1 {
         let mut k: i64 = 0;
         while k < 4
           invariant 0 <= k && k <= 4
           invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
-          invariant forall z in 0..324: 0 <= sc[z] && sc[z] <= 255
           decreases 4-k
         {
           let cc: i64 = cols[rr*4+k];
-          sc[cc] = wrap256(sc[cc]+255);
+          sc[cc] = band(sc[cc]+255, 255);
           if sc[cc] < best { best = sc[cc]; bc = cc; }
           k = k+1;
         }
@@ -82,27 +56,23 @@ fn forward(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
 }
 
 // Flattened exact-cover incidence tables, in reference row/column order.
-// The nonnegative modulo operations express the reference's narrow counters.
+// Byte counters with band(.., 255) are the reference's wrapping u8/i8 counters.
 fn revert(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
-          inout sr: [i64 | 0..=65535], inout sc: [i64 | 0..=255],
+          inout sr: [u8], inout sc: [u8],
           r: i64) -> i64
   requires len(rows) == 2916 && len(cols) == 2916
   requires len(sr) == 729 && len(sc) == 324
   requires 0 <= r && r < 729
   ensures 0 <= result && result <= 655683
   ensures result%65536 < 324
-  ensures forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-  ensures forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
 {
   let mut t: i64 = 0;
   while t < 4
     invariant 0 <= t && t <= 4
-    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
     decreases 4-t
   {
     let c: i64 = cols[r*4+t];
-    sc[c] = wrap256(sc[c]+128);
+    sc[c] = band(sc[c]+128, 255);
     t = t+1;
   }
   let mut best: i64 = 10;
@@ -111,8 +81,6 @@ fn revert(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
   while t < 4
     invariant 0 <= t && t <= 4
     invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
-    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
     decreases 4-t
   {
     let c: i64 = cols[r*4+t];
@@ -120,22 +88,19 @@ fn revert(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
     while j < 9
       invariant 0 <= j && j <= 9
       invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
-      invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
-      invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
-      decreases 9-j
+          decreases 9-j
     {
       let rr: i64 = rows[c*9+j];
-      sr[rr] = wrap65536(sr[rr]+65535);
+      sr[rr] = band(sr[rr]+255, 255);
       if sr[rr] == 0 {
         let mut k: i64 = 0;
         while k < 4
           invariant 0 <= k && k <= 4
           invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
-          invariant forall z in 0..324: 0 <= sc[z] && sc[z] <= 255
           decreases 4-k
         {
           let cc: i64 = cols[rr*4+k];
-          sc[cc] = wrap256(sc[cc]+1);
+          sc[cc] = band(sc[cc]+1, 255);
           
           k = k+1;
         }
@@ -155,8 +120,8 @@ fn solve(rows: [i64 | 0..=728], cols: [i64 | 0..=323], data: [u8], offset: i64) 
   ensures 0 <= result.solutions && result.solutions <= 1000000000
   ensures 0 <= result.checksum && result.checksum <= 100000000000000
 {
-  let mut sr: [i64 | 0..=65535] = alloc(729,0);
-  let mut sc: [i64 | 0..=255] = alloc(324,9);
+  let mut sr: [u8] = alloc(729,0);
+  let mut sc: [u8] = alloc(324,9);
   let mut cr: [i64 | -1..=8] = alloc(81,-1);
   let mut cc: [i64 | 0..=323] = alloc(81,0);
   let mut grid: [i64 | 0..=9] = alloc(81,0);
@@ -235,7 +200,7 @@ fn solve(rows: [i64 | 0..=728], cols: [i64 | 0..=323], data: [u8], offset: i64) 
       forward = false;
     } else {
       if forward {
-        let mut best: i64 = cand/65536;
+        let mut best: i64 = ushr(cand,16);
         cc[depth] = cand%65536;
         if best > 1 {
           let mut c: i64 = 0;

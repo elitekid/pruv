@@ -9,11 +9,13 @@ published reference when matched.rs had to change its algorithm; timed and repor
 Builds matched Rust and the four Pruv pairs (py/rust, py/llvm, rs/rust, rs/llvm), checks every variant prints the
 same digest, then times: 3 warm-up processes per variant, then ROUNDS rounds that run every variant once in a shuffled
 order. Each process times one bench() call in-process (input read excluded). Reports mean ms per variant and the
-Pruv/Rust ratio with a 95% t-interval on per-round log ratios.
+Pruv/Rust ratio with a 95% t-interval on per-round log ratios, plus the median peak resident set size (max RSS of the
+whole process, from wait4) per variant and its Pruv/Rust ratio, and the build time per variant (Pruv compiler, which
+verifies and generates code, then rustc/clang).
 
 Usage: python3 bench/perf/run.py [--dev] [--rounds N] [--pairs rs/rust,rs/llvm] [program ...]
 """
-import argparse, json, math, os, platform, random, shutil, statistics, subprocess, sys
+import argparse, json, math, os, platform, random, shutil, statistics, subprocess, sys, time
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -31,6 +33,9 @@ PROGRAMS = {
     'brainfuck': (0, 0),
     'primes': (50000, 5000000),
     'sudoku': (2, 200),
+    'nqueen': (12, 15),
+    'base64': (64, 8192),
+    'bedcov': (10000, 1000000),
 }
 PAIRS = ['py/rust', 'py/llvm', 'rs/rust', 'rs/llvm']
 ARM = platform.machine().lower() in ('arm64', 'aarch64')
@@ -91,19 +96,24 @@ def build(prog, pairs):
     src = HERE / prog
     work = WORK / prog
     work.mkdir(parents=True, exist_ok=True)
+    t0 = time.perf_counter()
     exes = {'rust': build_harness(src / 'matched.rs', work / 'rust')}
+    ctime = {'rust': {'rustc_s': time.perf_counter() - t0}}
     if (src / 'secondary.rs').exists():
         exes['secondary'] = build_harness(src / 'secondary.rs', work / 'secondary')
     for pair in pairs:
         compiler, backend = pair.split('/')
         w = work / f'{compiler}_{backend}'
         w.mkdir(exist_ok=True)
+        t0 = time.perf_counter()
         c = g2.compile_pruv(compiler, str(src / f'{prog}.pruv'), str(w), backend)
+        t1 = time.perf_counter()
         if c['rc'] != 0:
             raise RuntimeError(f'{prog} {pair}: compile/verify failed: {c["errors"] or c["stderr"]}')
         extra = llvm_objects(c['ll'], w) if c['ll'] else []
         exes[pair] = build_harness(c['rs'], w / 'runner', extra)
-    return exes
+        ctime[pair] = {'pruvc_s': t1 - t0, 'rustc_s': time.perf_counter() - t1}
+    return exes, ctime
 
 
 def make_input(prog, mode):
@@ -116,9 +126,20 @@ def make_input(prog, mode):
     return str(out)
 
 
+RSS_UNIT = 1 if platform.system() == 'Darwin' else 1024  # ru_maxrss: bytes on macOS, KiB on Linux
+
+
 def once(exe, inp, n):
-    line = sh([exe, inp, n]).strip().split(' ', 1)
-    return float(line[0]), line[1]
+    """Run one process: (bench ms, digest, peak resident set size in bytes of the whole process)."""
+    p = subprocess.Popen([str(exe), str(inp), str(n)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    out = p.stdout.read()  # output is one short line; read to EOF, then reap ourselves to get the child's rusage
+    p.stdout.close()
+    _, status, ru = os.wait4(p.pid, 0)
+    p.returncode = os.waitstatus_to_exitcode(status)
+    if p.returncode:
+        raise RuntimeError(f'{exe} exit {p.returncode}')
+    line = out.strip().split(' ', 1)
+    return float(line[0]), line[1], ru.ru_maxrss * RSS_UNIT
 
 
 T975 = {4: 2.776, 9: 2.262, 19: 2.093, 29: 2.045}
@@ -139,12 +160,19 @@ def measure(prog, exes, inp, n, rounds):
         for v in names:
             once(exes[v], inp, n)
     times = {v: [] for v in names}
+    rss = {v: [] for v in names}
     for _ in range(rounds):
         order = names[:]
         random.shuffle(order)
         for v in order:
-            times[v].append(once(exes[v], inp, n)[0])
-    res = {'digest': want, 'mean_ms': {v: statistics.mean(t) for v, t in times.items()}, 'ratio': {}}
+            ms, _, peak = once(exes[v], inp, n)
+            times[v].append(ms)
+            rss[v].append(peak)
+    res = {'digest': want, 'mean_ms': {v: statistics.mean(t) for v, t in times.items()}, 'ratio': {},
+           'max_rss': {v: statistics.median(r) for v, r in rss.items()}, 'rss_ratio': {}}
+    for v in names:
+        if v != 'rust':
+            res['rss_ratio'][v] = res['max_rss'][v] / res['max_rss']['rust']
     for v in names:
         if v == 'rust':
             continue
@@ -175,22 +203,31 @@ def main():
     results, failed = {}, False
     for prog in progs:
         try:
-            exes = build(prog, pairs)
+            exes, ctime = build(prog, pairs)
             n = PROGRAMS[prog][0 if a.dev else 1]
             r = measure(prog, exes, make_input(prog, mode), n, rounds)
         except Exception as exc:
             failed = True
             print(f'{prog}: ERROR {exc}', flush=True)
             continue
+        r['compile'] = ctime
         results[prog] = r
         cells = [f'rust {r["mean_ms"]["rust"]:.2f} ms']
         for v, (m, lo, hi) in r['ratio'].items():
             cells.append(f'{v} {m:.3f} [{lo:.3f},{hi:.3f}]' + ('' if v == 'secondary' else f' {verdict(hi)}'))
         print(f'{prog}: ' + ' | '.join(cells), flush=True)
+        mem = [f'rust {r["max_rss"]["rust"] / 2**20:.1f} MiB']
+        for v, q in r['rss_ratio'].items():
+            mem.append(f'{v} {q:.3f}' + ('' if v == 'secondary' else f' {verdict(q)}'))
+        print(f'{prog} max RSS: ' + ' | '.join(mem), flush=True)
+        print(f'{prog} compile s: ' + ' | '.join(f'{v} ' + '+'.join(f'{x:.2f}' for x in t.values()) for v, t in ctime.items()), flush=True)
     for pair in pairs:
         rs = [results[p]['ratio'][pair][0] for p in results if pair in results[p]['ratio']]  # matched baseline only
         if rs:
             print(f'geomean {pair}: {math.exp(statistics.mean(math.log(x) for x in rs)):.3f} over {len(rs)}')
+        qs = [results[p]['rss_ratio'][pair] for p in results if pair in results[p]['rss_ratio']]
+        if qs:
+            print(f'geomean max RSS {pair}: {math.exp(statistics.mean(math.log(x) for x in qs)):.3f} over {len(qs)}')
     WORK.mkdir(exist_ok=True)
     (WORK / f'results_{mode}.json').write_text(json.dumps({'rustc': rustc, 'rounds': rounds, 'results': results}, indent=1))
     return int(failed)

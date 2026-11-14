@@ -21,11 +21,11 @@ feature is built and the program ported later. Nothing is dropped for being hard
 | reverse-complement | Benchmarks Game | - | P1 |
 | brainfuck | kostya | - (flat opcode array; the published `Box<[Op]>` tree needs arrays of enum values) | P1 |
 | primes | kostya | - (trie as an arena with an i64 map) | P1 |
-| sudoku | plb2 | - (shifts by 16 written as `* 65536`, `/ 65536`, `% 65536` on non-negative values) | P1 |
-| nqueen | plb2 | bitwise `& \| ^ << >>` on i64 | P2 |
-| bedcov | plb2 | bitwise operators, wrapping u32/u64 arithmetic (hash RNG) | P2 |
+| sudoku | plb2 | - (wrapping u8 counters as `[u8]` with `band(.., 255)`, the shift by 16 as `ushr`; P2 builtins) | P1 time; memory fails (1.08–1.10) until P3 storage width narrowing |
+| nqueen | plb2 | - (`band`, `bor`, `bxor`, `wrapping_shl`, `ushr`) | P2 |
+| bedcov | plb2 | - (bit builtins, `wrapping_add`/`wrapping_mul` for the hash RNG) | P2 |
 | k-nucleotide | Benchmarks Game | map keyed by byte strings (or packed i64 keys) | P2 |
-| base64 | kostya | bitwise operators | P2 |
+| base64 | kostya | - (bit builtins, `load_be`/`store_be` word access, in-place `return truncate`) | P2 |
 | json | kostya, nativejson (twitter, citm_catalog) | - for parse+walk (L3 JSON parser exists); f64 for canada.json and number values | P2 |
 | fasta | Benchmarks Game | f64 | P3 |
 | n-body | Benchmarks Game | f64, sqrt | P3 |
@@ -49,11 +49,12 @@ checked against the Java output.
 | 1 | fannkuch-redux | Benchmarks Game | small arrays, permutations, branches | n=12 | n=10 | [fannkuchredux-rust-4](https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/fannkuchredux-rust-4.html) (rayon loop made sequential) |
 | 2 | binary-trees | Benchmarks Game | allocation, recursion | depth 21 | 18 | [binarytrees-rust-1](https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/binarytrees-rust-1.html) (the Rust side may use the same Vec arena as Pruv) |
 | 3 | reverse-complement | Benchmarks Game | byte scans, table lookup, large buffers | FASTA n=25,000,000 | 250,000 | [revcomp-rust-3](https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/revcomp-rust-3.html) (sequential) |
-| 4 | nqueen (P2) | plb2 | bit operations, backtracking | n=15 | 12 | [plb2 nqueen.rs](https://github.com/attractivechaos/plb2/blob/master/src/rust/nqueen.rs) |
+| 4 | nqueen | plb2 | bit operations, backtracking | n=15 | 12 | [plb2 nqueen.rs](https://github.com/attractivechaos/plb2/blob/master/src/rust/nqueen.rs) |
 | 5 | sudoku | plb2 | small fixed arrays, search | hard20 x 200 = 4000 puzzles | hard20 x 2 | [plb2 sudoku.rs](https://github.com/attractivechaos/plb2/blob/master/src/rust/sudoku.rs) |
-| 6 | bedcov (P2) | plb2 | sorting, interval index, i64 arithmetic | n=1,000,000, seed 11 | 10,000 | [plb2 bedcov.rs](https://github.com/attractivechaos/plb2/blob/master/src/rust/bedcov.rs) |
+| 6 | bedcov | plb2 | sorting, interval index, i64 arithmetic | n=1,000,000, seed 11 | 10,000 | [plb2 bedcov.rs](https://github.com/attractivechaos/plb2/blob/master/src/rust/bedcov.rs) |
 | 7 | brainfuck | kostya/benchmarks | interpreter loop, byte dispatch | bench.b | bench.b (short program) | [kostya bf.rs](https://github.com/kostya/benchmarks/blob/master/brainfuck/bf.rs/src/main.rs) (QUIET=1) |
 | 8 | primes | kostya/benchmarks | sieve, trie of digit strings, collections | limit 5,000,000, prefix 32338 | 50,000 | [kostya primes.rs](https://github.com/kostya/benchmarks/blob/master/primes/primes.rs/src/main.rs) |
+| 9 | base64 | kostya/benchmarks | 64-bit word loads/stores, table lookup, large buffers | 131,072 bytes, 8192 tries | 64 tries | [kostya base64.rs](https://github.com/kostya/benchmarks/blob/master/base64/base64.rs/src/main.rs) (matched.rs is a self-contained copy of the base64 0.22.1 engine it calls, from `upstream/`) |
 
 Plus the project workload already measured in RESULTS.md (L3-1 Claude window import against the hand-written Rust in
 `bench/l3/claude/handrust`).
@@ -84,11 +85,17 @@ program's on the dev and timed inputs before any time is recorded.
   Jones (ISMM 2013) on rigorous timing: repeated independent runs and an interval, not a single number.
 - Summary: geometric mean of the ratios over the ported programs, per pair, with the count of
   programs still waiting for a feature next to it.
+- Memory: every timed process is reaped with `wait4`, and its peak resident set size (max RSS of the whole process,
+  harness included) is recorded. Per variant the median over the rounds, per Pruv pair the ratio Pruv/Rust.
+- Compile time is recorded per program and variant, split into the Pruv compiler (verify and code generation)
+  and rustc/clang. It is watched for large regressions between commits; there is no parity goal against rustc, since Pruv
+  verifies at compile time and rustc does not.
 
 ## Pass rule
 
 - Equal or better: the upper end of the 95% interval is at most 1.05 (no worse than 5%, with confidence).
 - Faster: the upper end is below 1.00.
+- Memory: the max RSS ratio Pruv/Rust is at most 1.05 on every program and pair.
 - A pair that misses on a program is a defect of the compiler or of the port, not an accepted result. Each miss is
   fixed, or recorded in RESULTS.md with the measured numbers and the cause.
 
@@ -100,3 +107,13 @@ program's on the dev and timed inputs before any time is recorded.
 the input generator if one is needed. `bench/perf/run.py` builds all
 variants, checks outputs and runs the timing above; `bench/perf/run.py --dev` uses the dev inputs and 5 rounds for a
 quick check.
+
+## Next
+
+- Linux x86-64: the same suite on a Linux x86-64 machine (the CI runner is too noisy for timing; a quiet machine
+  is needed). Until then all numbers are Apple silicon (aarch64, macOS).
+- Real workloads: the suites above are kernels. More programs that look like real use (parsers, a JSON
+  round-trip, compression, a small interpreter with a heap) are added the same way, each with a matched Rust program.
+- Published-reference gaps: where matched.rs had to change the published algorithm, the published version
+  (`secondary.rs`) is still timed. A Pruv pair slower than the published Rust there (brainfuck: secondary 0.90
+  of matched Rust while the Pruv pairs are 0.95 to 1.01) is on the list to fix, though it is outside the pass rule.
