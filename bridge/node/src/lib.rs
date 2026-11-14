@@ -68,6 +68,10 @@ mod extract_version_gen;
 #[allow(dead_code, clippy::all)]
 mod chunk_page_gen;
 
+#[path = "../gen/image_counts_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod image_counts_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -770,6 +774,29 @@ pub fn count_list_more(n: f64, max: f64) -> napi::Result<f64> {
     }
     let max = count_max("countListMore", max)?;
     Ok(doc_labels_gen::count_list_more(n as i64, max) as f64)
+}
+
+/// Lair listOf in extractPdf (src/documents/pdf.ts): the first 20 items as "3쪽 2개, 5쪽 1개" and
+/// " 외 N쪽" for the items past 20.
+#[napi(js_name = "imageCountText")]
+pub fn image_count_text(pages: Vec<f64>, counts: Vec<f64>) -> napi::Result<String> {
+    if pages.len() != counts.len() {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "imageCountText: pages and counts must have the same length"));
+    }
+    let mut p = Vec::with_capacity(pages.len());
+    let mut c = Vec::with_capacity(counts.len());
+    for (a, b) in pages.into_iter().zip(counts) {
+        for x in [a, b] {
+            if !x.is_finite() || x.fract() != 0.0 || !(-1e15..=1e15).contains(&x) {
+                return Err(napi::Error::new(napi::Status::InvalidArg,
+                    "imageCountText: pages and counts must be integers in -1000000000000000..=1000000000000000"));
+            }
+        }
+        p.push(a as i64);
+        c.push(b as i64);
+    }
+    Ok(image_counts_gen::image_counts(&p, &c))
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {

@@ -91,6 +91,15 @@ export function chunkPage(page, text, max, ocr) {
 export function chunkImage(text, max, ocr) {
   return native.chunkImagePieces(text, max).map(piece => ({ loc: { kind: 'image' }, text: piece, ...(ocr ? { ocr } : {}) }));
 }
+export const imageCountText = native.imageCountText;
+
+/** Lair listOf in extractPdf (src/documents/pdf.ts): the first 20 { page, count } items as "3쪽 2개, 5쪽 1개"
+ *  and " 외 N쪽" for the rest, from the verified Pruv imageCountText (pages and counts must be integers in
+ *  -1e15..=1e15, InvalidArg otherwise). */
+export function imageCounts(items) {
+  return native.imageCountText(items.map(item => item.page), items.map(item => item.count));
+}
+
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

@@ -1,0 +1,80 @@
+// Lair listOf in src/documents/pdf.ts (extractPdf), commit 698e1bd1, and the same expression written inline
+// there as `shown` + the " 외 ..." suffix: the first 20 items as "<page>쪽 <count>개" joined with ", ",
+// then " 외 <n - 20>쪽" when there are more than 20 items.
+// Domain: pages and counts integers in -10^15..10^15, at most 10^12 items.
+
+// Decimal digits of n, no leading zeros ("0" for 0).
+fn digits(n: i64) -> str ! alloc
+  requires 0 <= n && n <= 1000000000000000
+  ensures len(result) <= 16
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 1000000000000000;
+  let mut k: i64 = 0;
+  while k < 16
+    invariant 0 <= k && k <= 16
+    invariant 0 <= p && p <= 1000000000000000
+    invariant len(out) <= k
+    decreases 16 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      if len(out) > 0 || d != 0 || p == 1 {
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+// JS String(n) for an integer n.
+fn num(n: i64) -> str ! alloc
+  requires -1000000000000000 <= n && n <= 1000000000000000
+  ensures len(result) <= 17
+{
+  let mut out: String = string_new();
+  if n < 0 {
+    out = string_push_str(move out, "-");
+    out = string_push_str(move out, digits(-n));
+  } else {
+    out = string_push_str(move out, digits(n));
+  }
+  return string_to_str(out);
+}
+
+// Each shown item is at most 17 + 3 ("쪽") + 1 + 17 + 3 ("개") = 41 bytes plus a 2-byte separator, so
+// 43 bytes per item; the suffix " 외 <n>쪽" is at most 1 + 3 + 1 + 17 + 3 = 25 bytes.
+pub fn image_counts(pages: [i64], counts: [i64]) -> str ! alloc
+  requires len(pages) == len(counts)
+  requires len(pages) <= 1000000000000
+  requires forall k in 0..len(pages): -1000000000000000 <= pages[k] && pages[k] <= 1000000000000000
+  requires forall k in 0..len(counts): -1000000000000000 <= counts[k] && counts[k] <= 1000000000000000
+  ensures len(result) <= 43 * 20 + 25
+  ensures len(result) <= 43 * len(pages)
+{
+  let mut out: String = string_new();
+  let mut i: i64 = 0;
+  while i < len(pages) && i < 20
+    invariant 0 <= i && i <= len(pages) && i <= 20
+    invariant len(out) <= 43 * i
+    decreases len(pages) - i
+  {
+    if i > 0 {
+      out = string_push_str(move out, ", ");
+    }
+    out = string_push_str(move out, num(pages[i]));
+    out = string_push_str(move out, "쪽 ");
+    out = string_push_str(move out, num(counts[i]));
+    out = string_push_str(move out, "개");
+    i = i + 1;
+  }
+  if len(pages) > 20 {
+    out = string_push_str(move out, " 외 ");
+    out = string_push_str(move out, num(len(pages) - 20));
+    out = string_push_str(move out, "쪽");
+  }
+  return string_to_str(out);
+}
