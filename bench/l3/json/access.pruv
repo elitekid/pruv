@@ -13,6 +13,7 @@ pub fn kind(doc: crate::json::JsonDocument, id: i64) -> i64
 { if !valid(doc, id) { return -3; } return doc.tape[6 * id]; }
 pub struct Span { status: i64, start: i64, end: i64 }
 pub fn raw_span(doc: crate::json::JsonDocument, id: i64) -> Span
+  ensures result.status == 0 || result.status == -3 || result.status == -4
   ensures result.status == 0 ==> (0 <= result.start && result.start <= result.end && result.end <= len(doc.source) && result.end <= 16777216)
   ensures result.status == 0 ==> (0 <= id && id < len(doc.tape) / 6 && result.start == doc.tape[6 * id + 1] && result.end == doc.tape[6 * id + 2])
 {
@@ -73,10 +74,43 @@ pub fn field_units(doc: crate::json::JsonDocument, id: i64, key: [i64]) -> i64 !
   ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
 { return find(doc, id, key, len(key)); }
 // str indexing exposes UTF-8 bytes. Decode scalars without interpreting escapes.
+// Member lookup for an ASCII key given as str bytes; no allocation.
+fn find_ascii(doc: crate::json::JsonDocument, id: i64, key: str) -> i64
+  ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
+{
+  if !valid(doc, id) { return -3; } if doc.tape[6 * id] != 6 { return -2; }
+  let stop: i64 = doc.tape[6 * id + 3];
+  if stop <= id || stop > len(doc.tape) / 6 { return -4; }
+  let mut j: i64 = id + 1; let mut found: i64 = -1;
+  while j < stop
+    invariant 0 <= id && id < j && j <= stop && stop <= len(doc.tape) / 6 && len(doc.tape) <= 6291456
+    invariant found == -1 || (0 <= found && found < len(doc.tape) / 6 && doc.tape[6 * found + 4] == id)
+    decreases stop - j
+  {
+    if doc.tape[6 * j] != 7 || doc.tape[6 * j + 4] != id || doc.tape[6 * j + 3] != j + 1 { return -4; }
+    let v: i64 = j + 1; if v >= stop || !valid(doc, v) { return -4; }
+    let next: i64 = doc.tape[6 * v + 3];
+    if next <= v || next > stop || doc.tape[6 * v + 4] != id { return -4; }
+    let s: i64 = doc.tape[6 * j + 1]; let e: i64 = doc.tape[6 * j + 2];
+    if s < 0 || e < s || e > len(doc.source) || e > 16777216 { return -4; }
+    if crate::jstr::ascii_equal(doc.source, s, e, key) { found = v; } j = next;
+  }
+  return found;
+}
+fn is_ascii(key: str) -> bool
+{
+  let mut i: i64 = 0;
+  while i < len(key)
+    invariant 0 <= i && i <= len(key)
+    decreases len(key) - i
+  { if key[i] >= 128 { return false; } i = i + 1; }
+  return true;
+}
 pub fn field(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
   ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
 {
   if len(key) > 16777216 { return -1; }
+  if is_ascii(key) { return find_ascii(doc, id, key); }
   let mut units: [i64] = alloc(len(key), 0); let mut p: i64 = 0; let mut used: i64 = 0;
   while p < len(key)
     invariant 0 <= used && used <= p && p <= len(key) && len(key) <= 16777216 && len(units) == len(key)
@@ -126,14 +160,30 @@ pub fn string_text(doc: crate::json::JsonDocument, id: i64) -> crate::jstr::Text
   if k != 4 { if k < 0 { return crate::jstr::Text::InternalInvariant(k); } return crate::jstr::Text::InternalInvariant(-2); }
   let s: Span = raw_span(doc, id);
   if s.status != 0 { return crate::jstr::Text::InternalInvariant(s.status); }
-  let decoded: crate::jstr::Text = crate::jstr::string_text(doc.source, s.start, s.end);
-  match decoded {
-    crate::jstr::Text::InternalInvariant(error) => { return crate::jstr::Text::InternalInvariant(error); }
-    crate::jstr::Text::Decoded(text) => {
-      if len(text) > 3 * (s.end - s.start) { return crate::jstr::Text::InternalInvariant(-4); }
-      return crate::jstr::Text::Decoded(copy(text));
-    }
+  return crate::jstr::string_text(doc.source, s.start, s.end);
+}
+// 1 when id is a string whose value equals lit, 0 when it is another string or another kind, negative on a
+// bad ID or corrupt tape. ASCII literals are compared without decoding.
+pub fn string_is(doc: crate::json::JsonDocument, id: i64, lit: str) -> i64 ! alloc
+  ensures result <= 1
+{
+  let k: i64 = kind(doc, id);
+  if k < 0 { return k; }
+  if k != 4 { return 0; }
+  let s: Span = raw_span(doc, id);
+  if s.status != 0 { return s.status; }
+  if len(lit) <= 16777216 && is_ascii(lit) {
+    if crate::jstr::ascii_equal(doc.source, s.start, s.end, lit) { return 1; }
+    return 0;
   }
+  let b: [u8] = crate::jstr::string_utf8(doc.source, s.start, s.end);
+  if len(b) != len(lit) { return 0; }
+  let mut i: i64 = 0;
+  while i < len(b)
+    invariant 0 <= i && i <= len(b) && len(b) == len(lit)
+    decreases len(b) - i
+  { if b[i] != lit[i] { return 0; } i = i + 1; }
+  return 1;
 }
 pub fn boolean(doc: crate::json::JsonDocument, id: i64) -> i64
 { let k: i64 = kind(doc, id); if k < 0 { return k; } if k == 1 { return 0; } if k == 2 { return 1; } return -2; }

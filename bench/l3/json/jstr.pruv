@@ -124,63 +124,185 @@ pub fn units_equal(source: [u8], start: i64, end: i64, key: [i64], klen: i64) ->
   return q == klen;
 }
 
+// units_equal for an ASCII key given as str bytes (ASCII bytes are their own UTF-16 units); no allocation.
+pub fn ascii_equal(source: [u8], start: i64, end: i64, key: str) -> bool
+  requires 0 <= start && start <= end && end <= len(source) && end <= 16777216
+{
+  let klen: i64 = len(key);
+  let mut p: i64 = start;
+  let mut stop: i64 = start;
+  if end - start >= 2 { p = start + 1; stop = end - 1; }
+  // Fast path: no escapes and no high bytes, so the units are the raw bytes.
+  if stop - p == klen {
+    let mut i: i64 = 0; let mut plain: bool = true;
+    while i < klen
+      invariant 0 <= i && i <= klen && klen == len(key) && p + klen == stop && stop <= end && end <= len(source) && start <= p
+      decreases klen - i
+    {
+      let c: i64 = source[p + i];
+      if c == 92 || c >= 128 { plain = false; i = klen; }
+      else { if c != key[i] { return false; } i = i + 1; }
+    }
+    if plain { return true; }
+  }
+  let mut q: i64 = 0;
+  while p < stop
+    invariant start <= p && p <= end && start <= stop && stop <= end
+    invariant end <= len(source) && end <= 16777216
+    invariant 0 <= q && q <= klen && klen == len(key)
+    decreases stop - p
+  {
+    let s: Step = step(source, p, stop);
+    let v: i64 = s.value;
+    if v > 65535 { return false; }
+    if q >= klen || key[q] != v { return false; }
+    q = q + 1;
+    p = s.next;
+  }
+  return q == klen;
+}
+
+// Scalar at p after recombining a high+low surrogate pair; lone surrogates become U+FFFD.
+struct Scalar { next: i64, value: i64 }
+fn scalar(a: [u8], p: i64, stop: i64) -> Scalar
+  requires 0 <= p && p < stop && stop <= len(a) && stop <= 16777216
+  ensures p < result.next && result.next <= stop
+  ensures 0 <= result.value && result.value <= 1114111
+  ensures result.value > 65535 ==> result.next >= p + 2
+{
+  let s: Step = step(a, p, stop);
+  let mut v: i64 = s.value;
+  let mut np: i64 = s.next;
+  if 55296 <= v && v <= 56319 && np < stop {
+    let s2: Step = step(a, np, stop);
+    if 56320 <= s2.value && s2.value <= 57343 {
+      v = 65536 + (v - 55296) * 1024 + s2.value - 56320; np = s2.next;
+    }
+  }
+  if 55296 <= v && v <= 57343 { v = 65533; }
+  return Scalar { next: np, value: v };
+}
+fn width(v: i64) -> i64
+  ensures 1 <= result && result <= 4
+  ensures v <= 127 ==> result == 1
+  ensures (127 < v && v <= 2047) ==> result == 2
+  ensures (2047 < v && v <= 65535) ==> result == 3
+  ensures v > 65535 ==> result == 4
+{
+  if v <= 127 { return 1; }
+  if v <= 2047 { return 2; }
+  if v <= 65535 { return 3; }
+  return 4;
+}
+// Two passes: count the UTF-8 length, then fill an exactly sized buffer.
 pub fn string_utf8(source: [u8], start: i64, end: i64) -> [u8] ! alloc
   requires 0 <= start && start <= end && end <= len(source) && end <= 16777216
   ensures len(result) <= 3 * (end - start)
   ensures forall i in 0..len(result): (0 <= result[i] && result[i] <= 255)
 {
-  let mut buf: [u8] = alloc(3 * (end - start), 0);
   let mut p: i64 = start;
   let mut stop: i64 = start;
   if end - start >= 2 { p = start + 1; stop = end - 1; }
+  let first: i64 = p;
+  let mut need: i64 = 0;
+  let mut plain: bool = true;
+  // Count 16-byte blocks of plain ASCII (no high byte, no backslash) at once.
+  // The block index always advances and steps back once after a failing block, so the
+  // loop exit is a predicted branch rather than a data dependency on the reduction.
+  let mut ok: bool = true;
+  while ok && p + 16 <= stop
+    invariant start <= first && first <= p && p <= stop && start <= stop && stop <= end
+    invariant end <= len(source) && end <= 16777216
+    invariant ok || first + 16 <= p
+    decreases stop - p
+  {
+    let mut mh: i64 = 255;
+    let mut mb: i64 = 255;
+    let mut k: i64 = 0;
+    while k < 16
+      invariant 0 <= k && k <= 16 && p + 16 <= stop && stop <= end && end <= len(source) && 0 <= p
+      decreases 16 - k
+    { let r: i64 = 255 - source[p + k]; if r < mh { mh = r; } k = k + 1; }
+    k = 0;
+    while k < 16
+      invariant 0 <= k && k <= 16 && p + 16 <= stop && stop <= end && end <= len(source) && 0 <= p
+      decreases 16 - k
+    {
+      let b: i64 = source[p + k];
+      let mut hi: i64 = b; if hi < 92 { hi = 92; }
+      let mut lo: i64 = b; if lo > 92 { lo = 92; }
+      if hi - lo < mb { mb = hi - lo; }
+      k = k + 1;
+    }
+    ok = mh >= 128 && mb != 0;
+    p = p + 16;
+  }
+  if !ok { p = p - 16; }
+  need = p - first;
+  while p < stop
+    invariant start <= first && first <= p && p <= end && start <= stop && stop <= end
+    invariant end <= len(source) && end <= 16777216
+    invariant 0 <= need && need <= 3 * (p - start)
+    decreases stop - p
+  {
+    let c: i64 = source[p];
+    if c < 128 && c != 92 { need = need + 1; p = p + 1; }
+    else {
+      plain = false;
+      let s: Scalar = scalar(source, p, stop);
+      need = need + width(s.value);
+      p = s.next;
+    }
+  }
+  // Only plain ASCII bytes: the UTF-8 text is the raw span.
+  let mut out: [u8] = alloc(need, 0);
+  if plain && need == stop - first {
+    let mut i: i64 = 0;
+    while i < need
+      invariant 0 <= i && i <= need && need == stop - first && len(out) == need && 0 <= first && stop <= len(source)
+      invariant forall j in 0..i: (0 <= out[j] && out[j] <= 255)
+      decreases need - i
+    { out[i] = source[first + i]; i = i + 1; }
+    return out;
+  }
+  p = first;
   let mut used: i64 = 0;
   while p < stop
     invariant start <= p && p <= end && start <= stop && stop <= end
     invariant end <= len(source) && end <= 16777216
-    invariant len(buf) == 3 * (end - start)
-    invariant 0 <= used && used <= 3 * (p - start)
+    invariant len(out) == need && need <= 3 * (end - start)
+    invariant 0 <= used && used <= need
     decreases stop - p
   {
-    let s: Step = step(source, p, stop);
-    let mut v: i64 = s.value;
-    let mut np: i64 = s.next;
-    // High surrogate followed by a low surrogate step: recombine.
-    if 55296 <= v && v <= 56319 && np < stop {
-      let s2: Step = step(source, np, stop);
-      if 56320 <= s2.value && s2.value <= 57343 {
-        v = 65536 + (v - 55296) * 1024 + s2.value - 56320; np = s2.next;
-      }
+    let c: i64 = source[p];
+    if c < 128 && c != 92 {
+      if used >= need { return out; }
+      out[used] = c; used = used + 1; p = p + 1;
+    } else {
+    let s: Scalar = scalar(source, p, stop);
+    let v: i64 = s.value;
+    let w: i64 = width(v);
+    if used + w > need { return out; }
+    if w == 1 { out[used] = v; }
+    if w == 2 { out[used] = 192 + v / 64; out[used + 1] = 128 + v % 64; }
+    if w == 3 {
+      out[used] = 224 + v / 4096; out[used + 1] = 128 + (v / 64) % 64; out[used + 2] = 128 + v % 64;
     }
-    if 55296 <= v && v <= 57343 { v = 65533; }
-    if v <= 127 { buf[used] = v; used = used + 1; }
-    else {
-      if v <= 2047 {
-        buf[used] = 192 + v / 64; buf[used + 1] = 128 + v % 64; used = used + 2;
-      } else {
-        if v <= 65535 {
-          buf[used] = 224 + v / 4096; buf[used + 1] = 128 + (v / 64) % 64;
-          buf[used + 2] = 128 + v % 64; used = used + 3;
-        } else {
-          buf[used] = 240 + v / 262144; buf[used + 1] = 128 + (v / 4096) % 64;
-          buf[used + 2] = 128 + (v / 64) % 64; buf[used + 3] = 128 + v % 64; used = used + 4;
-        }
-      }
+    if w == 4 {
+      out[used] = 240 + v / 262144; out[used + 1] = 128 + (v / 4096) % 64;
+      out[used + 2] = 128 + (v / 64) % 64; out[used + 3] = 128 + v % 64;
     }
-    p = np;
+    used = used + w;
+    p = s.next;
+    }
   }
-  let mut out: [u8] = alloc(used, 0);
-  let mut j: i64 = 0;
-  while j < used
-    invariant 0 <= j && j <= used && used <= len(buf)
-    invariant len(out) == used
-    decreases used - j
-  { out[j] = buf[j]; j = j + 1; }
   return out;
 }
 
 pub enum Text { Decoded(text: str), InternalInvariant(kind: i64) }
 pub fn string_text(source: [u8], start: i64, end: i64) -> Text ! alloc
   requires 0 <= start && start <= end && end <= len(source) && end <= 16777216
+  ensures is_variant(result, Text::Decoded) ==> len(variant_field(result, Text::Decoded, text)) <= 3 * (end - start)
 {
   let bytes: [u8] = string_utf8(source, start, end);
   let owned: String = utf8_to_string(bytes);

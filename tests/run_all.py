@@ -1370,8 +1370,8 @@ def main():
                         "g4_proof", "g5_frontend", "g5_reject", "g5_proof", "g10_frontend", "g10_proof", "g7_frontend", "g7_proof", "s5_frontend", "s5_proof", "g8_frontend")
         for g in null_backend + ("examples", "runtime", "g8_proof"):
             if only in (None, g):
-                # g8_proof mixes per-backend proof rows with one backend-free bundle row.
-                for b in ([None] if g in null_backend else list(backends) + ([None] if g == "g8_proof" else [])):
+                # g8_proof always runs both backends (whatever --backend says) plus one backend-free bundle row.
+                for b in ([None] if g in null_backend else ["rust", "llvm", None] if g == "g8_proof" else list(backends)):
                     scope.add((g, b))
         in_scope = [r for r in saved_rows if (r.get("group"), r.get("backend")) in scope
                     and r.get("only_compiler") in (None, DRIVER.name)]

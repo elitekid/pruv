@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 type Res<T> = Result<T, PruvError>;
 
 /// vparser / check names that a function may not carry (check.py BUILTIN_FNS).
-const BUILTIN_FNS: [&str; 6] = ["len", "alloc", "copy", "print", "is_char_boundary", "substr"];
+const BUILTIN_FNS: [&str; 7] = ["len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate"];
 
 /// Display form of a module path: crate, crate::a, crate::a::b.
 pub fn disp(path: &[String]) -> String {

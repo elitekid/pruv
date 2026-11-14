@@ -15,7 +15,7 @@ from foreign import (CATALOG, CATALOG_NAMES, CATALOG_CONTRACT_ONLY, FILE_OBSERVE
 CONTRACT_ONLY = {"is_some": ("option", BOOL), "some_val": ("option", "payload"), "is_ok": ("result", BOOL),
                  "ok_val": ("result", "payload"), "err_val": ("result", I64),
                  "size": ("size", I64)}   # G9 A0: structural size of a non-generic nominal value
-BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr")
+BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate")
 RESERVED_TYPE_NAMES = ("Option", "Result", "Some", "None", "Ok", "Err")
 TYPE_NAME_RE = re.compile(r"[A-Z][A-Za-z0-9_]*\Z")
 FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
@@ -1615,6 +1615,13 @@ class Checker:
         if n == "copy":
             if c: terr(e, "effect_in_contract", "copy not allowed in contracts")
             arity(1); at = s.expect_array(a[0], scope, c)
+            s.used_effects.add("alloc"); return at
+        if n == "truncate":   # the first m elements of an array as a new array (moves the array at its last use)
+            if c: terr(e, "effect_in_contract", "truncate not allowed in contracts")
+            arity(2); at = s.expect_array(a[0], scope, c)
+            if at == STR:
+                terr(a[0], "type_mismatch", "truncate takes an array, found str", "use substr(s, 0, m) for a str")
+            s.expect(a[1], I64, scope, c)
             s.used_effects.add("alloc"); return at
         if n == "is_char_boundary":   # G2 B0
             arity(2); s.expect(a[0], STR, scope, c); s.expect(a[1], I64, scope, c)

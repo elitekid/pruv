@@ -39,7 +39,19 @@ pub fn parse_range(data: [u8], lo: i64, hi: i64) -> crate::json::JsonParse ! all
     invariant forall j in 0..i: owned[j] == data[lo + j]
     decreases n - i
   { owned[i] = data[lo + i]; i = i + 1; }
-  return crate::parse::parse(owned);
+  // parse(owned) inlined so the document takes owned and the tape by move.
+  let invalid: i64 = crate::lex::validate_utf8(owned, 0, n);
+  if invalid >= 0 { return crate::json::JsonParse::Failed(crate::json::make_error(invalid, 4)); }
+  let checked: crate::parse::Checked = crate::parse::scan(owned);
+  match checked {
+    crate::parse::Checked::Rejected(position, kind) => {
+      return crate::json::JsonParse::Failed(crate::json::make_error(position, kind));
+    }
+    crate::parse::Checked::Tape(tape) => {
+      if !crate::json::check_tape(tape, n) { return crate::json::JsonParse::Failed(crate::json::make_error(0, 18)); }
+      return crate::json::JsonParse::Parsed(crate::json::JsonDocument { source: copy(owned), tape: copy(tape) });
+    }
+  }
 }
 
 // -1 denotes negative input or an unrepresentable absolute offset.

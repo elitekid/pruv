@@ -59,30 +59,56 @@ pub fn is_blank(s: str) -> bool
   return true;
 }
 
+// Start of the character ending at boundary k (the previous boundary, not below lo).
+fn prev(s: str, k: i64, lo: i64) -> i64
+  requires 0 <= lo && lo < k && k <= len(s) && is_char_boundary(s, lo)
+  ensures lo <= result && result < k && is_char_boundary(s, result)
+{
+  let mut j: i64 = k - 1;
+  while j > lo && !is_char_boundary(s, j)
+    invariant lo <= j && j < k
+    decreases j
+  {
+    j = j - 1;
+  }
+  return j;
+}
+
+// Bounds of trim(s): skip leading whitespace forward and trailing whitespace backward.
+pub struct Span { lo: i64, hi: i64 }
+pub fn trim_span(s: str) -> Span
+  ensures 0 <= result.lo && result.lo <= result.hi && result.hi <= len(s)
+  ensures is_char_boundary(s, result.lo) && is_char_boundary(s, result.hi)
+{
+  let n: i64 = len(s);
+  let mut i: i64 = 0;
+  let mut lo: i64 = n;
+  while i < n
+    invariant 0 <= i && i <= n && is_char_boundary(s, i)
+    invariant 0 <= lo && lo <= n && is_char_boundary(s, lo)
+    decreases n - i
+  {
+    if space_len(s, i) == 0 { lo = i; i = n; } else { i = next(s, i); }
+  }
+  let mut k: i64 = n;
+  let mut hi: i64 = n;
+  while k > lo
+    invariant lo <= k && k <= n && is_char_boundary(s, k)
+    invariant lo <= hi && hi <= n && is_char_boundary(s, hi)
+    decreases k
+  {
+    let j: i64 = prev(s, k, lo);
+    if space_len(s, j) == k - j { k = j; hi = j; } else { hi = k; k = lo; }
+  }
+  return Span { lo: lo, hi: hi };
+}
+
 // ECMAScript String.prototype.trim.
 pub fn trim(s: str) -> str ! alloc
   ensures len(result) <= len(s)
 {
-  let n: i64 = len(s);
-  let mut i: i64 = 0;
-  let mut first: i64 = -1;
-  let mut last: i64 = 0;
-  while i < n
-    invariant 0 <= i && i <= n
-    invariant is_char_boundary(s, i)
-    invariant first == -1 || (0 <= first && first <= last && is_char_boundary(s, first))
-    invariant 0 <= last && last <= i && is_char_boundary(s, last)
-    decreases n - i
-  {
-    let j: i64 = next(s, i);
-    if space_len(s, i) == 0 {
-      if first == -1 { first = i; }
-      last = j;
-    }
-    i = j;
-  }
-  if first == -1 { return substr(s, 0, 0); }
-  return substr(s, first, last);
+  let b: Span = trim_span(s);
+  return substr(s, b.lo, b.hi);
 }
 
 // Byte equality of two strings.
@@ -190,26 +216,22 @@ pub fn clip_bytes(s: str, max: i64) -> str ! alloc
   return substr(s, 0, i);
 }
 
-// Whole-string equality with a literal.
-fn eq_whole(t: str, lit: str) -> bool
-{
-  if len(t) != len(lit) { return false; }
-  return eq_at(t, 0, lit);
-}
-
 // claude.ts engineLine: trimmed text is one of the two interrupt lines, or (only for a task-notification
 // origin) starts with <task-notification> and ends with </task-notification>, non-overlapping.
 pub fn engine_line(text: str, task_origin: bool) -> bool ! alloc
 {
-  let t: str = trim(text);
-  if eq_whole(t, "[Request interrupted by user]") { return true; }
-  if eq_whole(t, "[Request interrupted by user for tool use]") { return true; }
+  let b: Span = trim_span(text);
+  let m: i64 = b.hi - b.lo;
+  let a: str = "[Request interrupted by user]";
+  if m == len(a) && eq_at(text, b.lo, a) { return true; }
+  let u: str = "[Request interrupted by user for tool use]";
+  if m == len(u) && eq_at(text, b.lo, u) { return true; }
   if task_origin {
     let open: str = "<task-notification>";
     let close: str = "</task-notification>";
-    if len(t) >= len(open) + len(close) {
-      if eq_at(t, 0, open) {
-        if eq_at(t, len(t) - len(close), close) { return true; }
+    if m >= len(open) + len(close) {
+      if eq_at(text, b.lo, open) {
+        if eq_at(text, b.hi - len(close), close) { return true; }
       }
     }
   }

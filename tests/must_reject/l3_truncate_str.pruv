@@ -1,0 +1,5 @@
+// type_mismatch(type): truncate takes an array; a str is cut with substr
+fn f(s: str) -> i64 ! alloc {
+  let t: str = truncate(s, 0);
+  return len(t);
+}

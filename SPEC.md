@@ -87,6 +87,9 @@ it can never be silently dropped.
 - `alloc(n, v)`: new array of length n (0 <= n <= 2^40 must be proven) filled with v. Needs `alloc`.
   To grow an array, bound the input: `requires len(a) <= 1_000_000` before `alloc(len(a) + 1, 0)`.
 - `copy(a)`: new array equal to a. Needs `alloc`.
+- `truncate(a, m)`: new array holding the first m elements of `a` (`0 <= m <= len(a)` must be proven, `verify`
+  error `index_oob`). Needs `alloc`. Arrays only (`str` is a type error). When `a` is a local at its last use the
+  generated Rust shortens it in place instead of copying.
 - Evaluation order: code evaluates left to right in source order, the same in every compile mode; call arguments left to right, and in `a[i] = v` the index is evaluated before the value.
 - Precedence (high to low): unary `- !`; `* / %`; `+ -`; comparisons (non-associative); `&&`; `||`; `==>`.
 
@@ -579,7 +582,7 @@ appear only in `invariant` and `assert` of a function with `cost`. `cost` and
 
 Units: each `while` iteration adds 1 before the body; a call `f(args)` adds
 `1 + C_f` evaluated on the actual arguments (the callee's stated bound, not its
-real spending); `alloc(n, v)` adds `1 + n`; `copy(a)` adds `1 + len(a)`; `par`
+real spending); `alloc(n, v)` adds `1 + n`; `copy(a)` adds `1 + len(a)`; `truncate(a, m)` adds `1 + m`; `par`
 adds every branch's call units once at group entry from the captured arguments.
 Everything else costs 0. Every return must satisfy `spent <= C`, where `C` is the
 bound at entry. A function without `cost` is unchanged.

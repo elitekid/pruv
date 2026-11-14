@@ -1906,6 +1906,24 @@ impl<'a> FnVerifier<'a> {
                 self.spend(st, g, self.z.int(1).add(&a.n));
                 return Ok(Val::Arr(a.like(a.a.clone(), a.n.clone(), "copy")));
             }
+            "truncate" => {
+                // the first m elements of a, as a fresh array of length m
+                let av = arg(0)?.try_arr()?.clone();
+                let m = arg(1)?.try_ast()?.clone();
+                let ob = self.z.and(&[m.ge_i(0), m.le(&av.n)]);
+                self.prove_core(
+                    &st.env,
+                    &st.pc,
+                    g,
+                    &ob,
+                    pos(e),
+                    "index_oob",
+                    &format!("truncate length 0 <= m <= len({})", av.name),
+                    None,
+                );
+                self.spend(st, g, self.z.int(1).add(&m));
+                return Ok(Val::Arr(av.like(av.a.clone(), m, "truncate")));
+            }
             "is_char_boundary" => {
                 // G2 B1: no obligations or assumptions.
                 let sv = arg(0)?.try_arr()?;

@@ -454,6 +454,12 @@ struct Gen<'a> {
     boxed: HashSet<String>,
     /// G9 A2: names bound to a Rust reference (extended parameters, match payload views, buffer payload views)
     refs: HashSet<String>,
+    /// owned extended locals the current return statement may move (return_movable)
+    moving: HashSet<String>,
+    /// names borrowed as the scrutinee of an enclosing match_ext arm
+    pinned: HashSet<String>,
+    /// enclosing blocks being emitted: (names declared so far, names named later, loop body)
+    frames: Vec<(HashSet<String>, HashSet<String>, bool)>,
     /// G9 A2: types whose runtime contract helpers (size / equality) are needed
     need_size: HashSet<String>,
     need_eq: HashSet<String>,
@@ -551,6 +557,9 @@ impl<'a> Gen<'a> {
             ext: prog.g9.as_ref().map(|m| m.extended.iter().cloned().collect()).unwrap_or_default(),
             boxed: prog.g9.as_ref().map(|m| m.boxed.iter().cloned().collect()).unwrap_or_default(),
             refs: HashSet::new(),
+            moving: HashSet::new(),
+            pinned: HashSet::new(),
+            frames: Vec::new(),
             need_size: HashSet::new(),
             need_eq: HashSet::new(),
             diag: None,
@@ -1915,6 +1924,11 @@ impl<'a> Gen<'a> {
     /// an expression in an OWNING position (let, assignment, constructor field, return). A named value or a field path is
     /// cloned explicitly; a fresh temporary (constructor, literal, call) moves. Other types: plain self.e.
     fn own_e(&mut self, e: &Expr) -> R<String> {
+        if let Expr::Var(v) = e {
+            if !self.ext.is_empty() && self.is_ext(expr_ty(e).as_deref()) && self.moving.contains(&v.name) {
+                return self.e(e);
+            }
+        }
         if !self.ext.is_empty()
             && self.is_ext(expr_ty(e).as_deref())
             && matches!(e, Expr::Var(_) | Expr::FieldAccess(_))
@@ -1922,6 +1936,35 @@ impl<'a> Gen<'a> {
             return Ok(format!("::std::clone::Clone::clone({})", self.view(e)?));
         }
         self.e(e)
+    }
+
+    /// names of owned extended locals that the returned expression e may move instead of clone: a return is the last
+    /// use of every local, so a local named exactly once in e (no other move or borrow of it in e) that is not a
+    /// reference (parameter / payload view) and not the scrutinee of an enclosing match arm moves.
+    fn return_movable(&self, e: Option<&Expr>) -> HashSet<String> {
+        let mut out = HashSet::new();
+        let e = match e {
+            Some(e) if !self.ext.is_empty() => e,
+            _ => return out,
+        };
+        fn walk(x: &Expr, counts: &mut HashMap<String, usize>) {
+            match x {
+                Expr::Var(v) => *counts.entry(v.name.clone()).or_insert(0) += 1,
+                Expr::Move(v) => *counts.entry(v.name.clone()).or_insert(0) += 1,
+                _ => {}
+            }
+            for k in crate::refine::kids(x) {
+                walk(k, counts);
+            }
+        }
+        let mut counts = HashMap::new();
+        walk(e, &mut counts);
+        for (n, c) in counts {
+            if c == 1 && !self.refs.contains(&n) && !self.params.contains(&n) && !self.pinned.contains(&n) {
+                out.insert(n);
+            }
+        }
+        out
     }
 
     /// the value stored into the field `label` of a constructor / literal: owned, boxed on a recursive edge
@@ -1933,21 +1976,114 @@ impl<'a> Gen<'a> {
     // ---------- statements / code expressions ----------
 
     fn block(&mut self, stmts: &[Stmt], ind: usize) -> R<()> {
+        self.block_in(stmts, ind, &[], false)
+    }
+
+    fn block_in(&mut self, stmts: &[Stmt], ind: usize, decls: &[String], lp: bool) -> R<()> {
         let saved = self.vars.clone();
         let saved_refs = self.refs.clone();
-        for st in stmts {
-            self.stmt(st, ind)?;
+        let mut later: Vec<HashSet<String>> = vec![HashSet::new(); stmts.len() + 1];
+        for i in (0..stmts.len()).rev() {
+            let mut n = later[i + 1].clone();
+            crate::refine::stmt_names(std::slice::from_ref(&stmts[i]), &mut n);
+            later[i] = n;
         }
+        self.frames.push((decls.iter().cloned().collect(), HashSet::new(), lp));
+        for (i, st) in stmts.iter().enumerate() {
+            let top = self.frames.len() - 1;
+            self.frames[top].1 = std::mem::take(&mut later[i + 1]);
+            let r = self.stmt(st, ind);
+            if r.is_err() {
+                self.frames.pop();
+                return r;
+            }
+            if let Stmt::Let(x) = st {
+                let top = self.frames.len() - 1;
+                self.frames[top].0.insert(x.name.clone());
+            }
+        }
+        self.frames.pop();
         self.vars = saved;
         self.refs = saved_refs;
         Ok(())
     }
 
-    /// match on an extended enum: the scrutinee is borrowed (a view, never cloned, never consumed) and every payload
-    /// binder is an arm-local view.
+    /// the statement being emitted is the last use of local `name`: no later statement of any enclosing block up to
+    /// the one declaring it names it, and no loop body lies between (a parameter or binder view is never dead here).
+    fn dead_after(&self, name: &str) -> bool {
+        if self.refs.contains(name) || self.params.contains(name) || self.pinned.contains(name) {
+            return false;
+        }
+        for (decls, later, lp) in self.frames.iter().rev() {
+            if later.contains(name) {
+                return false;
+            }
+            if decls.contains(name) {
+                return true;
+            }
+            if *lp {
+                return false;
+            }
+        }
+        false
+    }
+
+    /// a let / assignment whose value is copy(v) of an owned local v at its last use moves v (see dead_after)
+    fn last_copy(&self, target: &str, e: &Expr) -> HashSet<String> {
+        let mut out = HashSet::new();
+        if !self.ext.is_empty() && !self.cost {
+            if let Expr::Call(c) = e {
+                if c.name == "truncate" && c.args.len() == 2 {
+                    if let Expr::Var(v) = &c.args[0] {
+                        // the length argument naming the array again (e.g. len(truncate(a, 1))) keeps it borrowed: no move
+                        let mut m_names = HashSet::new();
+                        crate::refine::expr_names(&c.args[1], &mut m_names);
+                        if v.name != target && self.dead_after(&v.name) && !m_names.contains(&v.name) {
+                            out.insert(v.name.clone());
+                        }
+                    }
+                }
+                if c.name == "copy" && c.args.len() == 1 {
+                    if let Expr::Var(v) = &c.args[0] {
+                        if v.name != target && self.dead_after(&v.name) {
+                            out.insert(v.name.clone());
+                        }
+                    }
+                    // copy(v.f) of an unboxed field of an owned local v at its last use moves the field out of v
+                    if let Expr::FieldAccess(x) = &c.args[0] {
+                        if let Expr::Var(v) = &*x.base {
+                            if v.name != target && !self.field_boxed(&v.ty, &x.field) && self.dead_after(&v.name) {
+                                out.insert(v.name.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// match on an extended enum: the scrutinee is borrowed (a view, never cloned) and every payload binder is an
+    /// arm-local view, unless the match consumes the scrutinee (below).
     fn match_ext(&mut self, x: &Match, ind: usize) -> R<()> {
         let sty = key_name(expr_ty(&x.scrutinee).as_deref().unwrap_or("")).to_string();
-        let sv = self.view(&x.scrutinee)?;
+        // Consuming match: a match on an owned local that no arm and no later statement names again (dead_after) is
+        // that local's last use, so it is matched by value and payloads bind as owned values a return or copy moves.
+        let mut consume = match &x.scrutinee {
+            Expr::Var(v) => !self.cost && self.dead_after(&v.name),
+            _ => false,
+        };
+        if consume {
+            let mut named = HashSet::new();
+            for a in &x.arms {
+                named.extend(a.binders.iter().cloned());
+                crate::refine::stmt_names(&a.body, &mut named);
+            }
+            if let Expr::Var(v) = &x.scrutinee {
+                consume = consume && !named.contains(&v.name);
+            }
+        }
+        let sv = if consume { self.e(&x.scrutinee)? } else { self.view(&x.scrutinee)? };
         self.emit(ind, &format!("match {} {{", sv));
         for a in &x.arms {
             let name = match &a.enum_name {
@@ -1958,24 +2094,44 @@ impl<'a> Gen<'a> {
             self.emit(ind + 1, &format!("{} => {{", pat));
             let saved_vars = self.vars.clone();
             let saved_refs = self.refs.clone();
+            let saved_pinned = self.pinned.clone();
+            // the local a field-path scrutinee (h.e) borrows from is pinned too
+            let mut root = &x.scrutinee;
+            while let Expr::FieldAccess(f) = root {
+                root = &*f.base;
+            }
+            if let Expr::Var(v) = root {
+                self.pinned.insert(v.name.clone());
+            }
             let fields: Vec<FieldDecl> = k_variant(&self.table, &sty, &a.ctor)?.fields.clone();
             for (b, fd) in a.binders.iter().zip(fields.iter()) {
                 let ft = fd.ty.as_str();
-                if self.is_ext(Some(ft)) {
+                if self.is_ext(Some(ft)) && consume {
+                    let boxed = self.boxed.contains(&format!("{}::{}.{}", sty, a.ctor, fd.name));
+                    self.emit(ind + 2, &format!("let {}: {} = {}{};", b, ft, if boxed { "*" } else { "" }, b));
+                    self.refs.remove(b);
+                } else if self.is_ext(Some(ft)) {
                     self.emit(ind + 2, &format!("let {}: &{} = {};", b, ft, b));
                     self.refs.insert(b.clone());
+                } else if (is_array_name(ft) || ft == "str") && consume {
+                    self.emit(ind + 2, &format!("let {}: {} = {};", b, rty(ft, false), b));
+                    self.refs.remove(b);
                 } else if is_array_name(ft) || ft == "str" {
                     self.emit(ind + 2, &format!("let {}: {} = {};", b, rty(ft, true), b));
                     self.refs.insert(b.clone());
+                } else if consume {
+                    self.emit(ind + 2, &format!("let {}: {} = {};", b, rty(ft, false), b));
+                    self.refs.remove(b);
                 } else {
                     self.emit(ind + 2, &format!("let {}: {} = *{};", b, rty(ft, false), b));
                     self.refs.remove(b);
                 }
                 self.vars.insert(b.clone(), fd.ty.clone());
             }
-            self.block(&a.body, ind + 2)?;
+            self.block_in(&a.body, ind + 2, &a.binders, false)?;
             self.vars = saved_vars;
             self.refs = saved_refs;
+            self.pinned = saved_pinned;
             self.emit(ind + 1, "}");
         }
         self.emit(ind, "}");
@@ -1985,14 +2141,20 @@ impl<'a> Gen<'a> {
     fn stmt(&mut self, st: &Stmt, ind: usize) -> R<()> {
         match st {
             Stmt::Let(x) => {
-                let v = self.own_e(&x.value)?;
+                self.moving = self.last_copy(&x.name, &x.value);
+                let v = self.own_e(&x.value);
+                self.moving.clear();
+                let v = v?;
                 let line = format!("let {}{}: {} = {};", if x.mutable { "mut " } else { "" }, x.name, rty(&x.ty, false), v);
                 self.emit(ind, &line);
                 self.vars.insert(x.name.clone(), x.ty.clone());
                 self.refs.remove(&x.name); // G9: a local is an owned value, never a reference
             }
             Stmt::Assign(x) => {
-                let v = self.own_e(&x.value)?;
+                self.moving = self.last_copy(&x.name, &x.value);
+                let v = self.own_e(&x.value);
+                self.moving.clear();
+                let v = v?;
                 self.emit(ind, &format!("{} = {};", x.name, v));
             }
             Stmt::FieldAssign(x) => {
@@ -2084,21 +2246,25 @@ impl<'a> Gen<'a> {
                 if self.cost {
                     self.emit(ind + 1, &Self::cost_add("1"));
                 }
-                self.block(&x.body, ind + 1)?;
+                self.block_in(&x.body, ind + 1, &[], true)?;
                 self.emit(ind, "}");
             }
             Stmt::Return(x) if self.cost => {
+                self.moving = self.return_movable(x.value.as_ref());
                 if let Some(v) = &x.value {
                     let t = self.own_e(v)?;
                     self.emit(ind, &format!("let pruv_return = {};", t));
                 }
+                self.moving.clear();
                 self.emit(ind, Self::cost_check());
                 self.emit(ind, if x.value.is_some() { "return pruv_return;" } else { "return;" });
             }
             Stmt::Return(x) => match &x.value {
                 None => self.emit(ind, "return;"),
                 Some(v) => {
+                    self.moving = self.return_movable(Some(v));
                     let t = self.own_e(v)?;
+                    self.moving.clear();
                     self.emit(ind, &format!("return {};", t));
                 }
             },
@@ -2225,6 +2391,11 @@ impl<'a> Gen<'a> {
 
     /// An array expression used as a borrowed slice
     fn arr_ref(&mut self, e: &Expr) -> R<String> {
+        if let Expr::StrLit(x) = e {
+            if !self.cost {
+                return Ok(lit_str(&x.value)); // a string literal is borrowed as its &'static str (no alloc)
+            }
+        }
         if let Expr::Var(x) = e {
             if self.refs.contains(&x.name) {
                 return Ok(x.name.clone()); // G9: a buffer payload view is already a reference
@@ -2256,6 +2427,14 @@ impl<'a> Gen<'a> {
             None => (Vec::new(), Vec::new()),
         };
         let name = self.fg_mut()?.catalog_helper(&x.name, &low, &src)?;
+        // string_to_str of an owned local that the enclosing return moves: the String itself is the copy.
+        if x.name == "string_to_str" && !self.cost {
+            if let Some(a @ Expr::Var(v)) = x.args.first() {
+                if self.moving.contains(&v.name) {
+                    return self.e(a);
+                }
+            }
+        }
         let mut args: Vec<String> = Vec::new();
         for (p, xa) in cat.params.iter().zip(x.args.iter()) {
             if p.ty.is_collection() {
@@ -2515,12 +2694,55 @@ impl<'a> Gen<'a> {
                     ));
                 }
                 if n == "copy" {
+                    // copy of an owned local that the enclosing return moves: the local itself is the copy.
+                    if !self.cost {
+                        if let a0 @ Expr::Var(v) = arg(a, 0)? {
+                            if self.moving.contains(&v.name) {
+                                return self.e(a0);
+                            }
+                        }
+                        if let a0 @ Expr::FieldAccess(x) = arg(a, 0)? {
+                            if let Expr::Var(v) = &*x.base {
+                                if self.moving.contains(&v.name) && !self.field_boxed(&v.ty, &x.field) {
+                                    return self.e(a0);
+                                }
+                            }
+                        }
+                    }
                     if expr_ty(arg(a, 0)?).as_deref() == Some("str") {
                         // G2 B2
                         let result = format!("{}.to_owned()", self.e(arg(a, 0)?)?);
                         return Ok(self.cost_buffer(result));
                     }
                     let result = format!("{}.to_vec()", self.e(arg(a, 0)?)?);
+                    return Ok(self.cost_buffer(result));
+                }
+                if n == "truncate" {
+                    // truncate of an owned local at its last use shortens the local in place; otherwise copy the prefix
+                    if !self.cost {
+                        if let a0 @ Expr::Var(v) = arg(a, 0)? {
+                            if self.moving.contains(&v.name) {
+                                let m0 = self.e(arg(a, 1)?)?;
+                                let t0 = self.e(a0)?;
+                                let chk = if self.verified {
+                                    ""
+                                } else {
+                                    "if pruv_m < 0 || (pruv_m as u64) > (pruv_t.len() as u64) { pruv_oob(pruv_m, pruv_t.len()) } "
+                                };
+                                return Ok(format!(
+                                    "{{ let pruv_m: i64 = {}; let mut pruv_t = {}; {}pruv_t.truncate(pruv_m as usize); pruv_t }}",
+                                    m0, t0, chk
+                                ));
+                            }
+                        }
+                    }
+                    let a0 = self.arr_ref(arg(a, 0)?)?;
+                    let m0 = self.e(arg(a, 1)?)?;
+                    let result = if !self.verified {
+                        format!("{{ let pruv_a = {}; let pruv_m: i64 = {}; if pruv_m < 0 || (pruv_m as u64) > (pruv_a.len() as u64) {{ pruv_oob(pruv_m, pruv_a.len()) }} pruv_a[..(pruv_m as usize)].to_vec() }}", a0, m0)
+                    } else {
+                        format!("{{ let pruv_a = {}; let pruv_m: i64 = {}; unsafe {{ pruv_a.get_unchecked(..(pruv_m as usize)) }}.to_vec() }}", a0, m0)
+                    };
                     return Ok(self.cost_buffer(result));
                 }
                 if n == "print" {

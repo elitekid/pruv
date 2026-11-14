@@ -45,6 +45,30 @@ pub fn string_field(doc: crate::json::JsonDocument, id: i64, key: str) -> Field 
   }
 }
 
+// 1 when the field is present, a string, and equal to lit; 0 when missing, another kind or another string;
+// negative on a corrupt tape (string_field's Defect). No decoding for ASCII literals.
+pub fn field_is(doc: crate::json::JsonDocument, id: i64, key: str, lit: str) -> i64 ! alloc
+  ensures result <= 1
+{
+  let f: i64 = string_id(doc, id, key);
+  if f == -1 { return 0; }
+  if f < 0 { return f; }
+  return crate::access::string_is(doc, f, lit);
+}
+
+// ID of the field when it is present and a string; -1 when missing or another kind; -3/-4 on a corrupt tape.
+pub fn string_id(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
+  ensures result == -1 || result == -3 || result == -4 || (result >= 0 && result < len(doc.tape) / 6)
+{
+  let f: i64 = crate::access::field(doc, id, key);
+  if f == -1 || f == -2 { return -1; }
+  if f < 0 { if f == -3 { return -3; } return -4; }
+  let k: i64 = crate::access::kind(doc, f);
+  if k < 0 { return -3; }
+  if k != 4 { return -1; }
+  return f;
+}
+
 // ID of the field when it is present and an object; -1 when missing or another kind; -2 on a corrupt tape.
 pub fn object_field(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
   ensures result == -1 || result == -2 || (result >= 0 && result < len(doc.tape) / 6)
@@ -79,18 +103,7 @@ pub fn task_origin(doc: crate::json::JsonDocument, id: i64) -> i64 ! alloc
   let o: i64 = object_field(doc, id, "origin");
   if o == -1 { return 0; }
   if o < 0 { return -4; }
-  let k: Field = string_field(doc, o, "kind");
-  match k {
-    Field::Value(v) => {
-      if crate::text::same(v, "task-notification") { return 1; }
-      return 0;
-    }
-    Field::Missing => { return 0; }
-    Field::Defect(e) => {
-      if e >= 0 { return -4; }
-      return e;
-    }
-  }
+  return field_is(doc, o, "kind", "task-notification");
 }
 
 // A block of a content array: a text piece, an ignorable block, the tool_result veto, or a defect.
@@ -99,20 +112,18 @@ fn block_of(doc: crate::json::JsonDocument, j: i64) -> Block ! alloc
   let k: i64 = crate::access::kind(doc, j);
   if k < 0 { return Block::Broken(k); }
   if k != 6 { return Block::Ignore; }
-  let ty: Field = string_field(doc, j, "type");
-  match ty {
-    Field::Value(v) => {
-      if crate::text::same(v, "tool_result") { return Block::Veto; }
-      if crate::text::same(v, "text") {
-        let tx: Field = string_field(doc, j, "text");
-        match tx {
-          Field::Value(x) => { return Block::Piece(copy(x)); }
-          Field::Missing => { return Block::Ignore; }
-          Field::Defect(e) => { return Block::Broken(e); }
-        }
-      }
-      return Block::Ignore;
-    }
+  let ty: i64 = string_id(doc, j, "type");
+  if ty == -1 { return Block::Ignore; }
+  if ty < 0 { return Block::Broken(ty); }
+  let veto: i64 = crate::access::string_is(doc, ty, "tool_result");
+  if veto < 0 { return Block::Broken(veto); }
+  if veto == 1 { return Block::Veto; }
+  let txt: i64 = crate::access::string_is(doc, ty, "text");
+  if txt < 0 { return Block::Broken(txt); }
+  if txt == 0 { return Block::Ignore; }
+  let tx: Field = string_field(doc, j, "text");
+  match tx {
+    Field::Value(x) => { return Block::Piece(copy(x)); }
     Field::Missing => { return Block::Ignore; }
     Field::Defect(e) => { return Block::Broken(e); }
   }
@@ -183,12 +194,9 @@ fn array_content(doc: crate::json::JsonDocument, c: i64) -> Field ! alloc
 pub fn human_text(doc: crate::json::JsonDocument) -> Field ! alloc
 {
   let root: i64 = crate::access::root(doc);
-  let ty: Field = string_field(doc, root, "type");
-  match ty {
-    Field::Value(v) => { if !crate::text::same(v, "user") { return Field::Missing; } }
-    Field::Missing => { return Field::Missing; }
-    Field::Defect(e) => { return Field::Defect(e); }
-  }
+  let user: i64 = field_is(doc, root, "type", "user");
+  if user < 0 { return Field::Defect(user); }
+  if user == 0 { return Field::Missing; }
   let meta: i64 = is_true(doc, root, "isMeta");
   if meta < 0 { return Field::Defect(meta); }
   if meta == 1 { return Field::Missing; }
@@ -250,15 +258,17 @@ fn ranked(doc: crate::json::JsonDocument, level: i64, first: str, second: str) -
 pub fn title_of(doc: crate::json::JsonDocument) -> Title ! alloc
   ensures is_variant(result, Title::Ranked) ==> (1 <= variant_field(result, Title::Ranked, rank) && variant_field(result, Title::Ranked, rank) <= 3)
 {
-  let ty: Field = string_field(doc, crate::access::root(doc), "type");
-  match ty {
-    Field::Value(v) => {
-      if crate::text::same(v, "custom-title") { return ranked(doc, 3, "customTitle", "title"); }
-      if crate::text::same(v, "ai-title") { return ranked(doc, 2, "aiTitle", "title"); }
-      if crate::text::same(v, "summary") { return ranked(doc, 1, "summary", "title"); }
-      return Title::NoTitle;
-    }
-    Field::Missing => { return Title::NoTitle; }
-    Field::Defect(e) => { return Title::Defect(e); }
-  }
+  let ty: i64 = string_id(doc, crate::access::root(doc), "type");
+  if ty == -1 { return Title::NoTitle; }
+  if ty < 0 { return Title::Defect(ty); }
+  let a: i64 = crate::access::string_is(doc, ty, "custom-title");
+  if a < 0 { return Title::Defect(a); }
+  if a == 1 { return ranked(doc, 3, "customTitle", "title"); }
+  let b: i64 = crate::access::string_is(doc, ty, "ai-title");
+  if b < 0 { return Title::Defect(b); }
+  if b == 1 { return ranked(doc, 2, "aiTitle", "title"); }
+  let c: i64 = crate::access::string_is(doc, ty, "summary");
+  if c < 0 { return Title::Defect(c); }
+  if c == 1 { return ranked(doc, 1, "summary", "title"); }
+  return Title::NoTitle;
 }

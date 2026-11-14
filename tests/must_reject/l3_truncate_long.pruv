@@ -1,0 +1,7 @@
+// index_oob(verify): truncate(a, m) needs 0 <= m <= len(a); m is only known to be non-negative here
+fn f(a: [i64], m: i64) -> i64 ! alloc
+  requires 0 <= m
+{
+  let t: [i64] = truncate(a, m);
+  return len(t);
+}

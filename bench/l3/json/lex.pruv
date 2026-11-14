@@ -12,6 +12,23 @@ pub fn validate_utf8(input: [u8], start: i64, end: i64) -> i64
   ensures result == -1 || (start <= result && result < end)
 {
   let mut i: i64 = start;
+  // Skip 16-byte all-ASCII blocks (a min reduction over 255 - byte, which the backend vectorizes).
+  let mut ok: bool = true;
+  while ok && i + 16 <= end
+    invariant start <= i && i <= end && end <= len(input)
+    invariant ok || start + 16 <= i
+    decreases end - i
+  {
+    let mut m: i64 = 255;
+    let mut k: i64 = 0;
+    while k < 16
+      invariant 0 <= k && k <= 16 && start <= i && i + 16 <= end && end <= len(input)
+      decreases 16 - k
+    { let r: i64 = 255 - input[i + k]; if r < m { m = r; } k = k + 1; }
+    ok = m >= 128;
+    i = i + 16;
+  }
+  if !ok { i = i - 16; }
   while i < end
     invariant start <= i && i <= end
     decreases end - i
@@ -173,6 +190,47 @@ pub fn scan_string(input: [u8], pos: i64, end: i64) -> Scan
   ensures result.kind == 0 ==> pos < result.position
 {
   let mut i: i64 = pos + 1;
+  // Skip 16-byte blocks with no quote, backslash or control byte; one reduction per condition vectorizes.
+  let mut ok: bool = true;
+  while ok && i + 16 <= end
+    invariant pos < i && i <= end && end <= len(input)
+    invariant ok || pos + 17 <= i
+    decreases end - i
+  {
+    let mut mq: i64 = 255;
+    let mut mb: i64 = 255;
+    let mut mc: i64 = 255;
+    let mut k: i64 = 0;
+    while k < 16
+      invariant 0 <= k && k <= 16 && pos < i && i + 16 <= end && end <= len(input)
+      decreases 16 - k
+    {
+      let b: i64 = input[i + k];
+      let mut hi: i64 = b; if hi < 34 { hi = 34; }
+      let mut lo: i64 = b; if lo > 34 { lo = 34; }
+      if hi - lo < mq { mq = hi - lo; }
+      k = k + 1;
+    }
+    k = 0;
+    while k < 16
+      invariant 0 <= k && k <= 16 && pos < i && i + 16 <= end && end <= len(input)
+      decreases 16 - k
+    {
+      let b: i64 = input[i + k];
+      let mut hi: i64 = b; if hi < 92 { hi = 92; }
+      let mut lo: i64 = b; if lo > 92 { lo = 92; }
+      if hi - lo < mb { mb = hi - lo; }
+      k = k + 1;
+    }
+    k = 0;
+    while k < 16
+      invariant 0 <= k && k <= 16 && pos < i && i + 16 <= end && end <= len(input)
+      decreases 16 - k
+    { let b: i64 = input[i + k]; if b < mc { mc = b; } k = k + 1; }
+    ok = mq != 0 && mb != 0 && mc >= 32;
+    i = i + 16;
+  }
+  if !ok { i = i - 16; }
   while i < end
     invariant pos < i && i <= end
     decreases end - i

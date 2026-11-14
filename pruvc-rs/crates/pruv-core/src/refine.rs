@@ -152,7 +152,7 @@ pub(crate) fn kids(e: &Expr) -> Vec<&Expr> {
     }
 }
 
-fn expr_names(e: &Expr, out: &mut HashSet<String>) {
+pub(crate) fn expr_names(e: &Expr, out: &mut HashSet<String>) {
     match e {
         Expr::Spent(_) => {},
         Expr::Var(x) => {
@@ -171,7 +171,7 @@ fn expr_names(e: &Expr, out: &mut HashSet<String>) {
     }
 }
 
-fn stmt_names(stmts: &[Stmt], out: &mut HashSet<String>) {
+pub(crate) fn stmt_names(stmts: &[Stmt], out: &mut HashSet<String>) {
     for st in stmts {
         match st {
             Stmt::Let(x) => {

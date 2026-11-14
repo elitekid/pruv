@@ -1,0 +1,71 @@
+// truncate(a, m): the first m elements as a new array; an owned local at its last use is shortened in place.
+// (the in-place move needs a program with an extended type, like every other last-use move)
+struct Holder { v: [i64] }
+enum E { V(items: [i64]) }
+struct H { e: E }
+struct Pair { h: H, a: [i64] }
+// the length argument names the array again: the outer truncate must not move it (audit 22dd12f3)
+fn nested() -> [i64] ! alloc
+  ensures len(result) == 1
+{
+  let a: [i64] = alloc(2, 7);
+  let b: [i64] = truncate(a, len(truncate(a, 1)));
+  return b;
+}
+// a match on a field path borrows its owner: the return must clone h, not move it (audit 22dd12f3)
+fn pair() -> Pair ! alloc {
+  let h: H = H { e: E::V(alloc(1, 7)) };
+  match h.e {
+    E::V(v) => {
+      return Pair { h: h, a: copy(v) };
+    }
+  }
+}
+fn sum(a: [i64]) -> i64
+  requires len(a) <= 100
+{
+  let mut s: i64 = 0; let mut i: i64 = 0;
+  while i < len(a) invariant 0 <= i && i <= len(a) && len(a) <= 100 && -100 * i <= s && s <= 100 * i decreases len(a) - i
+  { if a[i] >= -100 && a[i] <= 100 { s = s + a[i]; } i = i + 1; }
+  return s;
+}
+fn head(a: [i64], m: i64) -> [i64] ! alloc
+  requires 0 <= m && m <= len(a)
+  ensures len(result) == m
+  ensures forall i in 0..m: result[i] == a[i]
+{ return truncate(a, m); }
+fn build(n: i64) -> [i64] ! alloc
+  requires 0 <= n && n <= 50
+  ensures len(result) == n
+{
+  let mut t: [i64] = alloc(2 * n + 3, 7);
+  let mut i: i64 = 0;
+  while i < n invariant 0 <= i && i <= n && len(t) == 2 * n + 3 decreases n - i { t[i] = i; i = i + 1; }
+  return truncate(t, n);
+}
+fn keep(n: i64) -> [u8] ! alloc
+  requires 1 <= n && n <= 50
+  ensures len(result) == 1 && result[0] == 9
+{
+  let mut b: [u8] = alloc(n, 9);
+  let c: [u8] = truncate(b, len(b) - n + 1);
+  return c;
+}
+fn kept() -> i64 ! alloc
+  ensures result == 8
+{
+  let t: [i64] = build(7);
+  let u: [i64] = truncate(t, 3);
+  return len(t) + len(u) - 2;
+}
+fn run() -> () ! io, alloc {
+  let x: [i64] = build(10);
+  let y: [i64] = head(x, 4);
+  print(sum(x)); print(sum(y)); print(len(y));
+  let k: [u8] = keep(5);
+  print(len(k)); print(k[0]);
+  print(kept());
+  print(len(nested()));
+  let p: Pair = pair();
+  print(len(p.a));
+}

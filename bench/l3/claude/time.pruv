@@ -109,6 +109,61 @@ pub fn canonical_iso(s: str) -> bool
   return true;
 }
 
+// Value of the ASCII digit at byte i of b, else -1.
+fn dig_at(b: [u8], i: i64) -> i64
+  requires 0 <= i && i < len(b)
+  ensures -1 <= result && result <= 9
+  ensures result >= 0 ==> (result == b[i] - 48 && 48 <= b[i] && b[i] <= 57)
+{
+  let c: i64 = b[i];
+  if c < 48 || c > 57 { return -1; }
+  return c - 48;
+}
+
+// canonical_iso of the 24 bytes b[p..p+24].
+fn canonical_at(b: [u8], p: i64) -> bool
+  requires 0 <= p && p + 24 <= len(b)
+  ensures result ==> (b[p + 4] == 45 && b[p + 7] == 45 && b[p + 10] == 84 && b[p + 13] == 58 && b[p + 16] == 58 && b[p + 19] == 46 && b[p + 23] == 90)
+  ensures result ==> (forall i in 0..24: (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19 || i == 23 || (48 <= b[p + i] && b[p + i] <= 57)))
+{
+  let c4: i64 = b[p + 4];
+  let c7: i64 = b[p + 7];
+  let c10: i64 = b[p + 10];
+  let c13: i64 = b[p + 13];
+  let c16: i64 = b[p + 16];
+  let c19: i64 = b[p + 19];
+  let c23: i64 = b[p + 23];
+  if c4 != 45 || c7 != 45 || c10 != 84 || c13 != 58 || c16 != 58 || c19 != 46 || c23 != 90 { return false; }
+  let y0: i64 = dig_at(b, p);
+  let y1: i64 = dig_at(b, p + 1);
+  let y2: i64 = dig_at(b, p + 2);
+  let y3: i64 = dig_at(b, p + 3);
+  let m0: i64 = dig_at(b, p + 5);
+  let m1: i64 = dig_at(b, p + 6);
+  let d0: i64 = dig_at(b, p + 8);
+  let d1: i64 = dig_at(b, p + 9);
+  let h0: i64 = dig_at(b, p + 11);
+  let h1: i64 = dig_at(b, p + 12);
+  let n0: i64 = dig_at(b, p + 14);
+  let n1: i64 = dig_at(b, p + 15);
+  let s0: i64 = dig_at(b, p + 17);
+  let s1: i64 = dig_at(b, p + 18);
+  let f0: i64 = dig_at(b, p + 20);
+  let f1: i64 = dig_at(b, p + 21);
+  let f2: i64 = dig_at(b, p + 22);
+  if y0 < 0 || y1 < 0 || y2 < 0 || y3 < 0 || m0 < 0 || m1 < 0 || d0 < 0 || d1 < 0 { return false; }
+  if h0 < 0 || h1 < 0 || n0 < 0 || n1 < 0 || s0 < 0 || s1 < 0 || f0 < 0 || f1 < 0 || f2 < 0 { return false; }
+  let y: i64 = y0 * 1000 + y1 * 100 + y2 * 10 + y3;
+  let m: i64 = m0 * 10 + m1;
+  let d: i64 = d0 * 10 + d1;
+  if m < 1 || m > 12 { return false; }
+  if d < 1 || d > month_days(y, m) { return false; }
+  if h0 * 10 + h1 > 23 { return false; }
+  if n0 * 10 + n1 > 59 { return false; }
+  if s0 * 10 + s1 > 59 { return false; }
+  return true;
+}
+
 // 24-byte canonical text of integer milliseconds in the supported range. An empty array is returned only if
 // the (tested) calendar arithmetic left its guarded ranges; callers treat that as a defect.
 pub fn format_iso(ms: i64) -> [u8] ! alloc
@@ -221,7 +276,7 @@ fn from_integer(v: i64) -> Iso ! alloc
   if ms == 9223372036854775807 { return absent(); }
   let f: [u8] = format_iso(ms);
   if len(f) != 24 { return defect(); }
-  return present(f);
+  return Iso { status: 0, text: copy(f) };
 }
 
 // All of t is ASCII digits (and t is nonempty): the value; -1 otherwise; -2 when digit-only but above 2^53-1.
@@ -259,7 +314,7 @@ fn from_string(v: str) -> Iso ! alloc
   if n == -2 { return absent(); }
   if canonical_iso(v) {
     let b: [u8] = bytes24(v);
-    return present(b);
+    return Iso { status: 0, text: copy(b) };
   }
   return absent();
 }
@@ -280,6 +335,18 @@ pub fn iso_of(doc: crate::json::JsonDocument, id: i64) -> Iso ! alloc
     return from_integer(n.integer);
   }
   if k == 4 {
+    // A quoted canonical timestamp has no escapes, so its value is the 24 raw bytes: no decoding needed.
+    let sp: crate::access::Span = crate::access::raw_span(doc, id);
+    if sp.status == 0 && sp.end - sp.start == 26 && canonical_at(doc.source, sp.start + 1) {
+      let mut out: [u8] = alloc(24, 0);
+      let mut j: i64 = 0;
+      while j < 24
+        invariant 0 <= j && j <= 24 && len(out) == 24 && 0 <= sp.start && sp.start + 26 <= len(doc.source)
+        invariant forall q in 0..j: out[q] == doc.source[sp.start + 1 + q]
+        decreases 24 - j
+      { out[j] = doc.source[sp.start + 1 + j]; j = j + 1; }
+      return Iso { status: 0, text: copy(out) };
+    }
     let t: crate::jstr::Text = crate::access::string_text(doc, id);
     match t {
       crate::jstr::Text::InternalInvariant(e) => { return defect(); }

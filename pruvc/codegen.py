@@ -80,6 +80,7 @@ go through it), under trust_callers the pub entry is unchecked and `<entry>__pru
 from vast import *
 from typeinfo import TypeTable, is_user_type, is_array, uses_array_type, uses_str, is_collection, dependencies
 from foreign import CATALOG
+from refine import _kids as expr_kids, _stmt_names, _expr_names
 
 ALLOW = ("#[allow(unused_mut, unused_variables, unused_parens, non_snake_case, non_camel_case_types, "
          "dead_code, unreachable_code, unreachable_patterns, "
@@ -665,6 +666,9 @@ class Gen:
         s.g9 = getattr(prog, "g9", None) is not None
         s.ext, s.boxed = g9_sets(prog)
         s.refs = set()
+        s.moving = set()     # owned extended locals a return statement may move (see return_movable)
+        s.pinned = set()     # names borrowed as the scrutinee of an enclosing match_ext arm
+        s.frames = []        # enclosing blocks being emitted: [names declared so far, names named later, loop body]
         s.need_size = set()
         s.need_eq = set()
         # G6 (section 12): only a program that uses G6 gets any of the following
@@ -1437,9 +1441,27 @@ class Gen:
             return "&" + ("*" if s.field_boxed(e.base.ty, e.field) else "") + s.e(e)
         return "&(%s)" % s.e(e)
 
+    def return_movable(s, e):
+        """names of owned extended locals that the returned expression e may move instead of clone: a return is the
+        last use of every local, so a local named exactly once in e (no other move or borrow of it in e) that is not a
+        reference (parameter / payload view) and not the scrutinee of an enclosing match arm moves."""
+        if e is None or not s.ext:
+            return set()
+        counts = {}
+        def walk(x):
+            if isinstance(x, (Var, Move)):
+                counts[x.name] = counts.get(x.name, 0) + 1
+            for k in expr_kids(x):
+                walk(k)
+        walk(e)
+        return {n for n, c in counts.items() if c == 1 and n not in s.refs and n not in s.params and n not in s.pinned}
+
     def own_e(s, e):
         """an expression in an OWNING position (let, assignment, constructor field, return). A named value or a field
-        path is cloned explicitly; a fresh temporary (constructor, literal, call) moves. Other types: plain s.e."""
+        path is cloned explicitly; a fresh temporary (constructor, literal, call) moves. Other types: plain s.e.
+        Inside a return, an owned local named once in the returned expression moves (return_movable)."""
+        if s.ext and s.is_ext(e.ty) and isinstance(e, Var) and e.name in s.moving:
+            return s.e(e)
         if s.ext and s.is_ext(e.ty) and isinstance(e, (Var, FieldAccess)):
             return "::std::clone::Clone::clone(%s)" % s.view(e)
         return s.e(e)
@@ -1450,21 +1472,69 @@ class Gen:
         return "::std::boxed::Box::new(%s)" % v if label in s.boxed else v
 
     # ---------- statements / code expressions ----------
-    def block(s, stmts, ind):
+    def block(s, stmts, ind, decls=(), loop=False):
         saved = dict(s.vt)
         saved_refs = set(s.refs)
-        for st in stmts:
+        later = [set() for _ in range(len(stmts) + 1)]
+        for i in range(len(stmts) - 1, -1, -1):
+            later[i] = set(later[i + 1])
+            _stmt_names([stmts[i]], later[i])
+        frame = [set(decls), set(), loop]
+        s.frames.append(frame)
+        for i, st in enumerate(stmts):
+            frame[1] = later[i + 1]
             s.stmt(st, ind)
+            if isinstance(st, Let):
+                frame[0].add(st.name)
+        s.frames.pop()
         s.vt = saved
         s.refs = saved_refs
 
+    def dead_after(s, name):
+        """the statement being emitted is the last use of local `name`: no later statement of any enclosing block up to
+        the one declaring it names it, and no loop body lies between (a parameter or binder view is never dead here)."""
+        if name in s.refs or name in s.params or name in s.pinned:
+            return False
+        for decls, later, loop in reversed(s.frames):
+            if name in later:
+                return False
+            if name in decls:
+                return True
+            if loop:
+                return False
+        return False
+
+    def last_copy(s, st):
+        """a let / assignment whose value is copy(v) of an owned local v at its last use moves v (see dead_after)"""
+        e = st.value
+        if (s.ext and not s.cost and isinstance(e, Call) and e.name == "truncate" and len(e.args) == 2
+                and isinstance(e.args[0], Var) and e.args[0].name != st.name and s.dead_after(e.args[0].name)):
+            # the length argument naming the array again (e.g. len(truncate(a, 1))) keeps it borrowed: no move
+            m_names = set()
+            _expr_names(e.args[1], m_names)
+            return set() if e.args[0].name in m_names else {e.args[0].name}
+        if not (s.ext and not s.cost and isinstance(e, Call) and e.name == "copy" and len(e.args) == 1):
+            return set()
+        x = e.args[0]
+        if isinstance(x, Var) and x.name != st.name and s.dead_after(x.name):
+            return {x.name}
+        # copy(v.f) of an unboxed field of an owned local v at its last use moves the field out of v
+        if (isinstance(x, FieldAccess) and isinstance(x.base, Var) and x.base.name != st.name
+                and not s.field_boxed(x.base.ty, x.field) and s.dead_after(x.base.name)):
+            return {x.base.name}
+        return set()
+
     def stmt(s, st, ind):
         if isinstance(st, Let):
+            s.moving = s.last_copy(st)
             s.emit(ind, "let %s%s: %s = %s;" % ("mut " if st.mutable else "", st.name, rty(st.type), s.own_e(st.value)))
+            s.moving = set()
             s.vt[st.name] = st.type
             s.refs.discard(st.name)    # G9: a local is an owned value, never a reference
         elif isinstance(st, Assign):
+            s.moving = s.last_copy(st)
             s.emit(ind, "%s = %s;" % (st.name, s.own_e(st.value)))
+            s.moving = set()
         elif isinstance(st, FieldAssign):
             # rhs is fully evaluated into a temporary before the store (the replaced value drops at the store)
             vty = st.value.ty
@@ -1506,16 +1576,19 @@ class Gen:
             s.emit(ind, "while %s {" % s.e(st.cond))
             if s.cost:
                 s.emit(ind + 1, s.cost_add("1"))
-            s.block(st.body, ind + 1)
+            s.block(st.body, ind + 1, loop=True)
             s.emit(ind, "}")
         elif isinstance(st, Return):
+            s.moving = s.return_movable(st.value)
             if s.cost:
                 if st.value is not None:
                     s.emit(ind, "let pruv_return = %s;" % s.own_e(st.value))
+                s.moving = set()
                 s.emit(ind, s.cost_check())
                 s.emit(ind, "return;" if st.value is None else "return pruv_return;")
                 return
             s.emit(ind, "return;" if st.value is None else "return %s;" % s.own_e(st.value))
+            s.moving = set()
         elif isinstance(st, Assert):
             pass
         elif isinstance(st, ExprStmt):
@@ -1535,31 +1608,56 @@ class Gen:
             s.emit(ind, "}")
 
     def match_ext(s, st, ind):
-        """match on an extended enum: the scrutinee is borrowed (a view, never cloned, never consumed) and every payload
-        binder is an arm-local view. Scalars and non-extended values are copied out (`let v: i64 = *v;`), extended
+        """match on an extended enum: the scrutinee is borrowed (a view, never cloned) and every payload binder is an
+        arm-local view, unless the match consumes the scrutinee (below). Scalars and non-extended values are copied out (`let v: i64 = *v;`), extended
         payloads become `&T` (a Box edge derefs by coercion), buffers become `&[T]` / `&str`."""
         sty = st.scrutinee.ty
-        s.emit(ind, "match %s {" % s.view(st.scrutinee))
+        # Consuming match: a match on an owned local that no arm and no later statement names again (dead_after) is
+        # that local's last use, so it is matched by value and payloads bind as owned values a return or copy moves.
+        sc = st.scrutinee
+        consume = isinstance(sc, Var) and not s.cost and s.dead_after(sc.name)
+        if consume:
+            named = set()
+            for a in st.arms:
+                named.update(a.binders)
+                _stmt_names(a.body, named)
+            consume = consume and sc.name not in named
+        s.emit(ind, "match %s {" % (s.e(sc) if consume else s.view(sc)))
         for a in st.arms:
             name = a.ctor if a.enum_name is None else "%s::%s" % (a.enum_name, a.ctor)
             pat = name if not a.binders else "%s(%s)" % (name, ", ".join(a.binders))
             s.emit(ind + 1, "%s => {" % pat)
-            saved_vt, saved_refs = dict(s.vt), set(s.refs)
+            saved_vt, saved_refs, saved_pinned = dict(s.vt), set(s.refs), set(s.pinned)
+            root = st.scrutinee    # the local a field-path scrutinee (h.e) borrows from is pinned too
+            while isinstance(root, FieldAccess):
+                root = root.base
+            if isinstance(root, Var):
+                s.pinned.add(root.name)
             fields = s.table.variant(sty, a.ctor).fields
             for b, fd in zip(a.binders, fields):
                 ft = fd.type
-                if s.is_ext(ft):
+                if s.is_ext(ft) and consume:
+                    boxed = ("%s::%s.%s" % (sty.name, a.ctor, fd.name)) in s.boxed
+                    s.emit(ind + 2, "let %s: %s = %s%s;" % (b, ft.name, "*" if boxed else "", b))
+                    s.refs.discard(b)
+                elif s.is_ext(ft):
                     s.emit(ind + 2, "let %s: &%s = %s;" % (b, ft.name, b))
                     s.refs.add(b)
+                elif (is_array(ft) or ft == STR) and consume:
+                    s.emit(ind + 2, "let %s: %s = %s;" % (b, rty(ft), b))
+                    s.refs.discard(b)
                 elif is_array(ft) or ft == STR:
                     s.emit(ind + 2, "let %s: %s = %s;" % (b, rty(ft, True), b))
                     s.refs.add(b)
+                elif consume:
+                    s.emit(ind + 2, "let %s: %s = %s;" % (b, rty(ft), b))
+                    s.refs.discard(b)
                 else:
                     s.emit(ind + 2, "let %s: %s = *%s;" % (b, rty(ft), b))
                     s.refs.discard(b)
                 s.vt[b] = ft
-            s.block(a.body, ind + 2)
-            s.vt, s.refs = saved_vt, saved_refs
+            s.block(a.body, ind + 2, decls=a.binders)
+            s.vt, s.refs, s.pinned = saved_vt, saved_refs, saved_pinned
             s.emit(ind + 1, "}")
         s.emit(ind, "}")
 
@@ -1635,7 +1733,9 @@ class Gen:
         return "&mut *" + name if name in s.inouts else "&mut " + name
 
     def arr_ref(s, e):
-        """an array expression used as a borrowed slice"""
+        """an array expression used as a borrowed slice; a string literal is borrowed as its `&'static str` (no alloc)"""
+        if isinstance(e, StrLit) and not s.cost:
+            return str_lit(e.value)
         if isinstance(e, Var) and e.name in s.refs:
             return e.name          # G9: a buffer payload view is already a reference
         if isinstance(e, Var) and e.name in s.inouts:
@@ -1659,6 +1759,9 @@ class Gen:
         low = tuple(e.inst["args"]) if e.inst else ()
         src = tuple(e.inst.get("src_args", low)) if e.inst else ()
         name = s.fg.catalog_helper(e.name, low, src)
+        # string_to_str of an owned local that the enclosing return moves: the String itself is the copy.
+        if e.name == "string_to_str" and not s.cost and isinstance(e.args[0], Var) and e.args[0].name in s.moving:
+            return s.e(e.args[0])
         args = []
         for p, x in zip(cat.params, e.args):
             if is_collection(p.type):
@@ -1736,7 +1839,7 @@ class Gen:
             return "%s.%s" % (s.e(e.base), e.field)
         if isinstance(e, Call):
             n, a = e.name, e.args
-            if s.cost and n in ("alloc", "copy") and not getattr(e, "pruv_cost_wrapped", False):
+            if s.cost and n in ("alloc", "copy", "truncate") and not getattr(e, "pruv_cost_wrapped", False):
                 # Count the validated result length; nested argument calls still spend.
                 import copy
                 plain = copy.copy(e)
@@ -1759,9 +1862,27 @@ class Gen:
                 # source order: n before v (vec![v; n] would evaluate v first)
                 return "{ let pruv_n: i64 = %s; let pruv_v: i64 = %s; vec![pruv_v; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]))
             if n == "copy":
+                # copy of an owned local that the enclosing return moves: the local itself is the copy.
+                if not s.cost and isinstance(a[0], Var) and a[0].name in s.moving:
+                    return s.e(a[0])
+                if (not s.cost and isinstance(a[0], FieldAccess) and isinstance(a[0].base, Var)
+                        and a[0].base.name in s.moving and not s.field_boxed(a[0].base.ty, a[0].field)):
+                    return s.e(a[0])
                 if is_str(a[0].ty):  # G2 B2
                     return "%s.to_owned()" % s.e(a[0])
                 return "%s.to_vec()" % s.e(a[0])
+            if n == "truncate":
+                # truncate of an owned local at its last use shortens the local in place; otherwise copy the prefix
+                if not s.cost and isinstance(a[0], Var) and a[0].name in s.moving:
+                    chk = ("" if s.verified else "if pruv_m < 0 || (pruv_m as u64) > (pruv_t.len() as u64) "
+                           "{ pruv_oob(pruv_m, pruv_t.len()) } ")
+                    return ("{ let pruv_m: i64 = %s; let mut pruv_t = %s; %spruv_t.truncate(pruv_m as usize); pruv_t }"
+                            % (s.e(a[1]), s.e(a[0]), chk))
+                if not s.verified:
+                    return ("{ let pruv_a = %s; let pruv_m: i64 = %s; if pruv_m < 0 || (pruv_m as u64) > (pruv_a.len() as u64) "
+                            "{ pruv_oob(pruv_m, pruv_a.len()) } pruv_a[..(pruv_m as usize)].to_vec() }" % (s.arr_ref(a[0]), s.e(a[1])))
+                return ("{ let pruv_a = %s; let pruv_m: i64 = %s; unsafe { pruv_a.get_unchecked(..(pruv_m as usize)) }.to_vec() }"
+                        % (s.arr_ref(a[0]), s.e(a[1])))
             if n == "print":
                 return 'println!("{}", %s)' % s.e(a[0])
             if n == "is_char_boundary":  # G2 B2

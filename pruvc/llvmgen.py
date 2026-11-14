@@ -1416,7 +1416,7 @@ class FnGen:
 
     def ev_call(s, e, owned):
         n, a = e.name, e.args
-        if s.cost and n in ("alloc", "copy") and not getattr(e, "pruv_cost_wrapped", False):
+        if s.cost and n in ("alloc", "copy", "truncate") and not getattr(e, "pruv_cost_wrapped", False):
             import copy
             plain = copy.copy(e)
             plain.pruv_cost_wrapped = True
@@ -1459,6 +1459,17 @@ class FnGen:
                 return s.temp_arr(V("arr", p, src.b, src.ty), owned)
             p = s.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (src.a, src.b))
             return s.temp_arr(V("arr", p, src.b), owned)
+        if n == "truncate":     # the first m elements of the array as a new array
+            src = s.ev(a[0])
+            m = s.ev(a[1])
+            if not s.verified:
+                ok = s.op("icmp ule i64 %s, %s" % (m.a, src.b))
+                s.guard(ok, s.panic1("pruv_panic_arith", "truncate length outside 0..len"), False)
+            if is_bytes(src):
+                p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (src.a, m.a))
+                return s.temp_arr(V("arr", p, m.a, src.ty), owned)
+            p = s.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (src.a, m.a))
+            return s.temp_arr(V("arr", p, m.a), owned)
         if n == "is_char_boundary":  # G2 B2: s then i
             sv = s.ev(a[0])
             iv = s.ev(a[1])

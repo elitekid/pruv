@@ -439,7 +439,7 @@ impl Checker {
             if funcs.contains_key(&name) {
                 return Err(terr(f.line, f.col, "dup_fn", format!("function {} defined twice", name), ""));
             }
-            if matches!(name.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr")
+            if matches!(name.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr" | "truncate")
                 || contract_only(&name).is_some()
                 || is_catalog(&name)
             {
@@ -2081,7 +2081,7 @@ impl Checker {
                     format!("{} returns {}: a par branch must return ()", n, tn(&f.ret)),
                     "call a unit Pruv helper and pass results back through whole inout arrays"));
             }
-        } else if ["len", "alloc", "copy", "print", "is_char_boundary", "substr"].contains(&n.as_str())
+        } else if ["len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate"].contains(&n.as_str())
             || contract_only(n).is_some() || is_catalog(n) || (n == "old" && self.uses_inout)
         {
             return Err(terr(c.line, c.col, "parallel_call",
@@ -3174,7 +3174,7 @@ impl Checker {
             }
             Ok(())
         };
-        let is_builtin = matches!(n.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr");
+        let is_builtin = matches!(n.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr" | "truncate");
         let is_old = n == "old" && self.uses_inout && !self.funcs.contains_key(&n); // G5 A0: contextual builtin
         if targs.is_some() && !self.funcs.contains_key(&n) && (is_builtin || contract_only(&n).is_some() || is_old) {
             return Err(terr(line, col, "type_arity", format!("builtin {} takes no type arguments", n), "remove the `::<...>`"));
@@ -3210,6 +3210,21 @@ impl Checker {
                 }
                 arity(1)?;
                 let at = self.expect_array(&mut e.args[0], scope, c, false)?;
+                self.used_effects.insert("alloc".to_string());
+                return Ok(at);
+            }
+            // the first m elements of an array as a new array (moves the array at its last use)
+            "truncate" => {
+                if c {
+                    return Err(terr(line, col, "effect_in_contract", "truncate not allowed in contracts", ""));
+                }
+                arity(2)?;
+                let at = self.expect_array(&mut e.args[0], scope, c, false)?;
+                if at == strt() {
+                    let (l0, c0) = (e.args[0].line(), e.args[0].col());
+                    return Err(terr(l0, c0, "type_mismatch", "truncate takes an array, found str", "use substr(s, 0, m) for a str"));
+                }
+                self.expect(&mut e.args[1], &i64t(), scope, c, None)?;
                 self.used_effects.insert("alloc".to_string());
                 return Ok(at);
             }

@@ -1561,6 +1561,12 @@ class FnVerifier:
         if n == "copy":
             s.spend(st, g, 1 + args[0].n)
             return mk_arr(args[0].a, args[0].n, "copy", args[0].elem)
+        if n == "truncate":     # the first m elements of a, as a fresh array of length m
+            av, m = args
+            s.prove(st, g, z3.And(m >= 0, m <= av.n), e, "index_oob",
+                    "truncate length 0 <= m <= len(%s)" % av.name)
+            s.spend(st, g, 1 + m)
+            return mk_arr(av.a, m, "truncate", av.elem)
         if n == "is_char_boundary":
             return str_boundary(args[0], args[1])
         if n == "substr":   # G2 B1 (G2_SPEC 4.4): range -> boundary -> fresh result

@@ -325,11 +325,6 @@ pub fn tail_info(data: [u8], cut_before: bool) -> crate::boundary::ImportResult 
 pub enum Effect { Done(rank: i64, title: str, model: str), Defect(kind: i64) }
 enum Stamp { At(text: str), Bad(kind: i64) }
 
-fn done(rank: i64, title: str, model: str) -> Effect ! alloc
-{
-  return Effect::Done(rank, copy(title), copy(model));
-}
-
 // isoOf(entry.timestamp): the 24-byte canonical text, or "" when missing or unsupported.
 fn stamp_of(doc: crate::json::JsonDocument) -> Stamp ! alloc
 {
@@ -380,27 +375,27 @@ fn answer_blocks(doc: crate::json::JsonDocument, c: i64, at: str, inout st: [i64
     let bk: i64 = crate::access::kind(doc, j);
     if bk < 0 { return -4; }
     if bk == 6 {
-      let ty: crate::entry::Field = crate::entry::string_field(doc, j, "type");
-      match ty {
-        crate::entry::Field::Value(v) => {
-          if crate::text::same(v, "text") {
-            let tx: crate::entry::Field = crate::entry::string_field(doc, j, "text");
-            match tx {
-              crate::entry::Field::Value(x) => {
-                if len(x) > 50331648 { return -4; }
-                crate::turns::answer(inout st, inout sl, inout buf, x, at);
-              }
-              crate::entry::Field::Missing => { idle = true; }
-              crate::entry::Field::Defect(e) => { return -4; }
+      let ty: i64 = crate::entry::string_id(doc, j, "type");
+      if ty < -1 { return -4; }
+      if ty >= 0 {
+        let txt: i64 = crate::access::string_is(doc, ty, "text");
+        if txt < 0 { return -4; }
+        if txt == 1 {
+          let tx: crate::entry::Field = crate::entry::string_field(doc, j, "text");
+          match tx {
+            crate::entry::Field::Value(x) => {
+              if len(x) > 50331648 { return -4; }
+              crate::turns::answer(inout st, inout sl, inout buf, x, at);
             }
+            crate::entry::Field::Missing => { idle = true; }
+            crate::entry::Field::Defect(e) => { return -4; }
           }
-          if crate::text::same(v, "tool_use") {
-            crate::turns::tool(inout st, inout sl);
-          }
+        } else {
+          let tu: i64 = crate::access::string_is(doc, ty, "tool_use");
+          if tu < 0 { return -4; }
+          if tu == 1 { crate::turns::tool(inout st, inout sl); }
         }
-        crate::entry::Field::Missing => { idle = true; }
-        crate::entry::Field::Defect(e) => { return -4; }
-      }
+      } else { idle = true; }
     }
     j = next;
   }
@@ -455,25 +450,20 @@ pub fn consume_entry(doc: crate::json::JsonDocument, inout st: [i64], inout sl: 
     crate::entry::Field::Value(p) => {
       if len(p) > 50331648 { return Effect::Defect(-4); }
       crate::turns::begin(inout st, inout sl, inout buf, p, at);
-      return done(rank, title, nothing);
+      return Effect::Done(rank, copy(title), copy(nothing));
     }
     crate::entry::Field::Missing => { idle = true; }
     crate::entry::Field::Defect(e) => { return Effect::Defect(e); }
   }
   // 3. assistant entries
-  let ty: crate::entry::Field = crate::entry::string_field(doc, root, "type");
-  match ty {
-    crate::entry::Field::Value(v) => {
-      if !crate::text::same(v, "assistant") { return done(rank, title, nothing); }
-    }
-    crate::entry::Field::Missing => { return done(rank, title, nothing); }
-    crate::entry::Field::Defect(e) => { return Effect::Defect(e); }
-  }
+  let asst: i64 = crate::entry::field_is(doc, root, "type", "assistant");
+  if asst < 0 { return Effect::Defect(asst); }
+  if asst == 0 { return Effect::Done(rank, copy(title), copy(nothing)); }
   let side: i64 = crate::entry::is_true(doc, root, "isSidechain");
   if side < 0 { return Effect::Defect(side); }
-  if side == 1 { return done(rank, title, nothing); }
+  if side == 1 { return Effect::Done(rank, copy(title), copy(nothing)); }
   let msg: i64 = crate::entry::object_field(doc, root, "message");
-  if msg == -1 { return done(rank, title, nothing); }
+  if msg == -1 { return Effect::Done(rank, copy(title), copy(nothing)); }
   if msg < 0 { return Effect::Defect(msg); }
   let mut model: str = "";
   let mf: crate::entry::Field = crate::entry::string_field(doc, msg, "model");
@@ -482,7 +472,7 @@ pub fn consume_entry(doc: crate::json::JsonDocument, inout st: [i64], inout sl: 
       if crate::text::same(m, "<synthetic>") {
         let api: i64 = crate::entry::is_true(doc, root, "isApiErrorMessage");
         if api < 0 { return Effect::Defect(api); }
-        if api != 1 { return done(rank, title, nothing); }
+        if api != 1 { return Effect::Done(rank, copy(title), copy(nothing)); }
       } else {
         if len(m) > 50331648 { return Effect::Defect(-4); }
         model = copy(m);
@@ -492,7 +482,7 @@ pub fn consume_entry(doc: crate::json::JsonDocument, inout st: [i64], inout sl: 
     crate::entry::Field::Defect(e) => { return Effect::Defect(e); }
   }
   let c: i64 = crate::access::field(doc, msg, "content");
-  if c == -1 || c == -2 { return done(rank, title, model); }
+  if c == -1 || c == -2 { return Effect::Done(rank, copy(title), copy(model)); }
   if c < 0 { return Effect::Defect(c); }
   let k: i64 = crate::access::kind(doc, c);
   if k < 0 { return Effect::Defect(k); }
@@ -505,12 +495,12 @@ pub fn consume_entry(doc: crate::json::JsonDocument, inout st: [i64], inout sl: 
         crate::turns::answer(inout st, inout sl, inout buf, v, at);
       }
     }
-    return done(rank, title, model);
+    return Effect::Done(rank, copy(title), copy(model));
   }
-  if k != 5 { return done(rank, title, model); }
+  if k != 5 { return Effect::Done(rank, copy(title), copy(model)); }
   let r: i64 = answer_blocks(doc, c, at, inout st, inout sl, inout buf);
   if r < 0 { return Effect::Defect(r); }
-  return done(rank, title, model);
+  return Effect::Done(rank, copy(title), copy(model));
 }
 
 // Checked publication of a record with turns.

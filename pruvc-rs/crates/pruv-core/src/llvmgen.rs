@@ -2283,7 +2283,7 @@ impl<'a> FnGen<'a> {
 
     pub fn ev_call(&mut self, e: &Call, owned: bool) -> R<V> {
         let result = self.ev_call_inner(e, owned)?;
-        if self.cost && matches!(e.name.as_str(), "alloc" | "copy") {
+        if self.cost && matches!(e.name.as_str(), "alloc" | "copy" | "truncate") {
             let length = self.op(format!("zext i64 {} to i128", result.b))?;
             let units = self.op(format!("add i128 {}, 1", length))?;
             self.cost_add(&units)?;
@@ -2348,6 +2348,23 @@ impl<'a> FnGen<'a> {
             }
             let p = self.op(format!("call ptr @pruv_copy(ptr {}, i64 {})", src.a, src.b))?;
             return self.temp_arr(V::with_b(Kind::Arr, p, src.b.clone()), owned);
+        }
+        if n == "truncate" {
+            // the first m elements of the array as a new array
+            let src = self.ev(arg(a, 0)?, false)?;
+            let m = self.ev(arg(a, 1)?, false)?;
+            if !self.verified {
+                let ok = self.op(format!("icmp ule i64 {}, {}", m.a, src.b))?;
+                self.guard(&ok, Fail::Panic1("pruv_panic_arith", "truncate length outside 0..len".to_string()), false)?;
+            }
+            if is_bytes_ty(&src.ty) {
+                let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", src.a, m.a))?;
+                let mut rv = V::with_b(Kind::Arr, p, m.a.clone());
+                rv.ty = src.ty.clone();
+                return self.temp_arr(rv, owned);
+            }
+            let p = self.op(format!("call ptr @pruv_copy(ptr {}, i64 {})", src.a, m.a))?;
+            return self.temp_arr(V::with_b(Kind::Arr, p, m.a.clone()), owned);
         }
         if n == "print" {
             let x = self.ev(arg(a, 0)?, false)?;

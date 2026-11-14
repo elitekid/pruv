@@ -59,6 +59,29 @@ pub fn window_next(data: [u8], offset: i64) -> Frame
 {
   let limit: i64 = crate::boundary::limit_line_bytes();
   let mut i: i64 = offset;
+  // Skip 16-byte blocks with no newline (min distance to 10, a vectorizable reduction).
+  let mut ok: bool = true;
+  while ok && i + 16 <= len(data)
+    invariant offset <= i && i <= len(data)
+    invariant ok || offset + 16 <= i
+    decreases len(data) - i
+  {
+    let mut m: i64 = 255;
+    let mut k: i64 = 0;
+    while k < 16
+      invariant 0 <= k && k <= 16 && offset <= i && i + 16 <= len(data)
+      decreases 16 - k
+    {
+      let b: i64 = data[i + k];
+      let mut hi: i64 = b; if hi < 10 { hi = 10; }
+      let mut lo: i64 = b; if lo > 10 { lo = 10; }
+      if hi - lo < m { m = hi - lo; }
+      k = k + 1;
+    }
+    ok = m != 0;
+    i = i + 16;
+  }
+  if !ok { i = i - 16; }
   while i < len(data)
     invariant offset <= i && i <= len(data)
     decreases len(data) - i
