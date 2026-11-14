@@ -1,0 +1,91 @@
+// Lair oneLine (src/backend/engine-import/tail.ts, commit 698e1bd1), the one-line label of an imported
+// text: text.replace(/\s+/g, ' ').trim().slice(0, max). JavaScript \s and trim use the same set:
+// tab, LF, VT, FF, CR, space, U+00A0, U+1680, U+2000..U+200A, U+2028, U+2029, U+202F, U+205F, U+3000
+// and U+FEFF.
+// Pruv makes one pass: whitespace runs are skipped, and a single space is written before the next
+// non-whitespace character when something is already written (which folds the runs and trims both
+// ends). Characters are counted in UTF-16 units (2 for a 4-byte character) and the pass stops before the
+// first unit past max.
+// Known difference: slice(0, max) can stop between the halves of a surrogate pair and keep a lone high
+// surrogate. A Pruv str cannot hold one, so Pruv stops before the pair instead; in that case the result
+// is the original without its last unit.
+// Domain: text at most 10^11 UTF-8 bytes, max an integer in 0..=10^11.
+
+fn space(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 0 <= result && result <= 2
+{
+  let b: i64 = s[i];
+  if b == 10 || b == 13 { return 2; }
+  if b == 9 || b == 11 || b == 12 || b == 32 { return 1; }
+  if i + 1 >= len(s) { return 0; }
+  let c: i64 = s[i + 1];
+  if b == 194 && c == 160 { return 1; }
+  if i + 2 >= len(s) { return 0; }
+  let d: i64 = s[i + 2];
+  if b == 225 && c == 154 && d == 128 { return 1; }
+  if b == 226 && c == 128 && ((128 <= d && d <= 138) || d == 168 || d == 169 || d == 175) { return 1; }
+  if b == 226 && c == 129 && d == 159 { return 1; }
+  if b == 227 && c == 128 && d == 128 { return 1; }
+  if b == 239 && c == 187 && d == 191 { return 1; }
+  return 0;
+}
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+pub fn one_line(s: str, max: i64) -> str ! alloc
+  requires len(s) <= 100_000_000_000
+  requires 0 <= max && max <= 100_000_000_000
+  ensures len(result) <= len(s)
+{
+  let n: i64 = len(s);
+  let mut out: String = string_new();
+  let mut i: i64 = 0;
+  let mut u: i64 = 0;
+  let mut p: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant 0 <= u && u <= max
+    invariant 0 <= p && p <= 1
+    invariant len(out) + p <= i
+    invariant is_char_boundary(s, i)
+    decreases n - i
+  {
+    let j: i64 = next(s, i);
+    if space(s, i) != 0 {
+      if len(out) > 0 { p = 1; }
+      i = j;
+    } else {
+      let mut w: i64 = 1;
+      if j - i == 4 { w = 2; }
+      if u + p + w > max {
+        if p == 1 && u + 1 <= max {
+          out = string_push_str(move out, " ");
+        }
+        p = 0;
+        i = n;
+      } else {
+        if p == 1 { out = string_push_str(move out, " "); }
+        out = string_push_str(move out, substr(s, i, j));
+        u = u + p + w;
+        p = 0;
+        i = j;
+      }
+    }
+  }
+  return string_to_str(out);
+}

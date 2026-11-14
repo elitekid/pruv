@@ -1,6 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms, notePairs, cellDate, cellStr, cellInt, sha256Hex, extractVersionOf, chunkPage, chunkImage, imageCountText, imageCounts, textLineCounts, textLines, luhn, chatRefText, tomlString, stripUserInfo, validThread, clipChars } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms, notePairs, cellDate, cellStr, cellInt, sha256Hex, extractVersionOf, chunkPage, chunkImage, imageCountText, imageCounts, textLineCounts, textLines, luhn, chatRefText, tomlString, stripUserInfo, validThread, clipChars, alignOffset, stamp, oneLine } from './index.mjs';
 import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { joinRangeParts as tsJoinRangeParts } from '../../bench/l0/join_ranges.mjs';
 import { cutCell as tsCutCell } from '../../bench/l0/cut_cell.mjs';
@@ -14,6 +14,9 @@ import { tomlString as tsTomlString } from '../../bench/l0/toml_string.mjs';
 import { stripUserInfo as tsStripUserInfo } from '../../bench/l0/strip_user_info.mjs';
 import { validThread as tsValidThread } from '../../bench/l0/valid_thread.mjs';
 import { clipChars as tsClipChars } from '../../bench/l0/clip_chars.mjs';
+import { alignOffset as tsAlignOffset } from '../../bench/l0/align_offset.mjs';
+import { stamp as tsStamp } from '../../bench/l0/stamp.mjs';
+import { oneLine as tsOneLine } from '../../bench/l0/one_line.mjs';
 import { sheetRange as tsSheetRange } from '../../bench/l0/sheet_range.mjs';
 import { rangeText as tsRangeText } from '../../bench/l0/page_ranges.mjs';
 import { groupedNumber as tsGroupedNumber } from '../../bench/l0/grouped_number.mjs';
@@ -1018,6 +1021,59 @@ mustThrow('clipChars chars over 1e11', () => clipChars('a', 100000000001));
 mustThrow('clipChars NaN chars', () => clipChars('a', NaN));
 mustThrow('clipChars number text', () => clipChars(1, 1));
 
+// ---- alignOffset, stamp, oneLine against their oracles (bench/l0/run_{align_offset,stamp,one_line}.py --emit) ----
+const emitRows = (name) => execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [fileURLToPath(new URL(`../../bench/l0/run_${name}.py`, import.meta.url)), '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+const alignRows = emitRows('align_offset');
+let alignMismatches = 0, alignTsDiff = 0;
+for (const [text, offset, want] of alignRows) {
+  const got = alignOffset(text, offset);
+  if (got !== want) {
+    alignMismatches++;
+    if (alignMismatches <= 5) console.error('alignOffset mismatch', JSON.stringify({ text, offset, got, want }));
+  }
+  if (tsAlignOffset(text, offset) !== got) alignTsDiff++;
+}
+mustThrow('alignOffset negative offset', () => alignOffset('a', -1));
+mustThrow('alignOffset fractional offset', () => alignOffset('a', 0.5));
+mustThrow('alignOffset offset over 1e11', () => alignOffset('a', 100000000001));
+mustThrow('alignOffset number text', () => alignOffset(1, 1));
+const stampRows = emitRows('stamp');
+let stampMismatches = 0, stampTsDiff = 0;
+for (const [ms, want] of stampRows) {
+  const got = stamp(ms);
+  if (got !== want) {
+    stampMismatches++;
+    if (stampMismatches <= 5) console.error('stamp mismatch', JSON.stringify({ ms, got, want }));
+  }
+  if (tsStamp(ms) !== got) stampTsDiff++;
+}
+mustThrow('stamp fractional ms', () => stamp(1.5));
+mustThrow('stamp ms over 1e15', () => stamp(1e15 + 2));
+mustThrow('stamp NaN ms', () => stamp(NaN));
+mustThrow('stamp string ms', () => stamp('1'));
+const oneLineRows = emitRows('one_line');
+// Known difference: where slice stops inside a surrogate pair TS keeps a lone high surrogate; the bridge
+// stops before the pair, so it must equal the TS result without its last unit there.
+const loneTail = (s) => s.length > 0 && s.charCodeAt(s.length - 1) >= 0xd800 && s.charCodeAt(s.length - 1) <= 0xdbff;
+let oneLineMismatches = 0, oneLineTsDiff = 0, oneLineSplit = 0;
+for (const [text, max, tsWant, want] of oneLineRows) {
+  const got = oneLine(text, max);
+  if (got !== want) {
+    oneLineMismatches++;
+    if (oneLineMismatches <= 5) console.error('oneLine mismatch', JSON.stringify({ text, max, got, want }));
+  }
+  const ts = tsOneLine(text, max);
+  if (ts !== tsWant) oneLineTsDiff++;
+  else if (loneTail(ts)) { oneLineSplit++; if (got !== ts.slice(0, -1)) oneLineTsDiff++; }
+  else if (got !== ts) oneLineTsDiff++;
+}
+mustThrow('oneLine negative max', () => oneLine('a', -1));
+mustThrow('oneLine fractional max', () => oneLine('a', 1.5));
+mustThrow('oneLine max over 1e11', () => oneLine('a', 100000000001));
+mustThrow('oneLine number text', () => oneLine(1, 1));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -1363,6 +1419,16 @@ console.log(JSON.stringify({
   clip_chars_cases: clipCharsRows.length,
   clip_chars_mismatches: clipCharsMismatches,
   clip_chars_ts_differences: clipCharsTsDiff,
+  align_offset_cases: alignRows.length,
+  align_offset_mismatches: alignMismatches,
+  align_offset_ts_differences: alignTsDiff,
+  stamp_cases: stampRows.length,
+  stamp_mismatches: stampMismatches,
+  stamp_ts_differences: stampTsDiff,
+  one_line_cases: oneLineRows.length,
+  one_line_mismatches: oneLineMismatches,
+  one_line_ts_differences: oneLineTsDiff,
+  one_line_split_pair_cases: oneLineSplit,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -1392,4 +1458,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(clipCharsMismatches || clipCharsTsDiff || threadMismatches || threadTsDiff || stripMismatches || stripTsDiff || tomlMismatches || tomlTsDiff || chatRefMismatches || chatRefTsDiff || luhnMismatches || luhnTsDiff || textLinesMismatches || textLinesTsDiff || imageCountsMismatches || imageCountsTsDiff || clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || noteMismatches || noteTsDiff || cellDateMismatches || cellDateTsDiff || cellStrMismatches || cellStrTsDiff || cellIntMismatches || cellIntTsDiff || extractMismatches || extractTsDiff || chunkPageMismatches || chunkPageTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(alignMismatches || alignTsDiff || stampMismatches || stampTsDiff || oneLineMismatches || oneLineTsDiff || clipCharsMismatches || clipCharsTsDiff || threadMismatches || threadTsDiff || stripMismatches || stripTsDiff || tomlMismatches || tomlTsDiff || chatRefMismatches || chatRefTsDiff || luhnMismatches || luhnTsDiff || textLinesMismatches || textLinesTsDiff || imageCountsMismatches || imageCountsTsDiff || clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || noteMismatches || noteTsDiff || cellDateMismatches || cellDateTsDiff || cellStrMismatches || cellStrTsDiff || cellIntMismatches || cellIntTsDiff || extractMismatches || extractTsDiff || chunkPageMismatches || chunkPageTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);

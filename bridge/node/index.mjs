@@ -132,6 +132,9 @@ export const tomlString = native.tomlString;
 export const stripUserInfo = native.stripUserInfo;
 export const validThread = native.validThread;
 export const clipChars = native.clipChars;
+export const alignOffset = native.alignOffset;
+export const stamp = native.stamp;
+export const oneLine = native.oneLine;
 
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;

@@ -1,0 +1,53 @@
+// Lair stamp (src/backend/clip-notice.ts, commit 698e1bd1), the clip time label in the 0:03.2 shape:
+// tenths = max(0, round(ms / 100)), minutes = floor(tenths / 600), and the label is
+// `${minutes}:${((tenths % 600) / 10).toFixed(1).padStart(4, '0')}`.
+// For an integer ms, Math.round(ms / 100) is floor((ms + 50) / 100), and every negative ms gives 0
+// tenths (Math.round(-0.5) is -0, which Math.max turns into 0). The seconds part is a tenth count r in
+// 0..=599, so toFixed(1) prints r / 10 exactly and padStart makes it two whole digits, a dot and a digit.
+// Domain: ms an integer in -10^15..=10^15 (fractional ms are not covered).
+
+// Decimal digits of n, no leading zeros ("0" for 0).
+fn digits(n: i64) -> str ! alloc
+  requires 0 <= n && n <= 1000000000000000
+  ensures len(result) <= 16
+{
+  let ten: str = "0123456789";
+  let mut out: String = string_new();
+  let mut p: i64 = 1000000000000000;
+  let mut k: i64 = 0;
+  while k < 16
+    invariant 0 <= k && k <= 16
+    invariant 0 <= p && p <= 1000000000000000
+    invariant len(out) <= k
+    decreases 16 - k
+  {
+    if p > 0 {
+      let d: i64 = (n / p) % 10;
+      if len(out) > 0 || d != 0 || p == 1 {
+        out = string_push_str(move out, substr(ten, d, d + 1));
+      }
+    }
+    p = p / 10;
+    k = k + 1;
+  }
+  return string_to_str(out);
+}
+
+pub fn stamp(ms: i64) -> str ! alloc
+  requires -1000000000000000 <= ms && ms <= 1000000000000000
+  ensures len(result) <= 21
+{
+  let ten: str = "0123456789";
+  let mut tenths: i64 = 0;
+  if ms >= 0 { tenths = (ms + 50) / 100; }
+  let r: i64 = tenths % 600;
+  let sec: i64 = r / 10;
+  let mut out: String = string_new();
+  out = string_push_str(move out, digits(tenths / 600));
+  out = string_push_str(move out, ":");
+  out = string_push_str(move out, substr(ten, sec / 10, sec / 10 + 1));
+  out = string_push_str(move out, substr(ten, sec % 10, sec % 10 + 1));
+  out = string_push_str(move out, ".");
+  out = string_push_str(move out, substr(ten, r % 10, r % 10 + 1));
+  return string_to_str(out);
+}

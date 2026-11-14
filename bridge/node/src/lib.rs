@@ -99,6 +99,15 @@ mod valid_thread_gen;
 #[path = "../gen/clip_chars_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod clip_chars_gen;
+#[path = "../gen/align_offset_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod align_offset_gen;
+#[path = "../gen/stamp_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod stamp_gen;
+#[path = "../gen/one_line_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod one_line_gen;
 
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
@@ -910,6 +919,46 @@ pub fn clip_chars(text: String, chars: f64) -> napi::Result<String> {
             "clipChars: text must be at most 100000000000 UTF-8 bytes"));
     }
     Ok(clip_chars_gen::clip_chars(&text, chars as i64))
+}
+
+/// Lair alignOffset (src/backend/requests/ai-result.ts): a UTF-16 offset moved back one unit when it sits
+/// between the two halves of a surrogate pair.
+#[napi(js_name = "alignOffset")]
+pub fn align_offset(text: String, offset: f64) -> napi::Result<i64> {
+    if !offset.is_finite() || offset.fract() != 0.0 || !(0.0..=100_000_000_000.0).contains(&offset) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "alignOffset: offset must be an integer in 0..=100000000000"));
+    }
+    if text.len() as u64 > 100_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "alignOffset: text must be at most 100000000000 UTF-8 bytes"));
+    }
+    Ok(align_offset_gen::align_offset(&text, offset as i64))
+}
+
+/// Lair stamp (src/backend/clip-notice.ts): a clip time in ms as the 0:03.2 label.
+#[napi(js_name = "stamp")]
+pub fn stamp(ms: f64) -> napi::Result<String> {
+    if !ms.is_finite() || ms.fract() != 0.0 || !(-1e15..=1e15).contains(&ms) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "stamp: ms must be an integer in -1000000000000000..=1000000000000000"));
+    }
+    Ok(stamp_gen::stamp(ms as i64))
+}
+
+/// Lair oneLine (src/backend/engine-import/tail.ts): whitespace runs folded to one space, trimmed and cut
+/// to at most `max` UTF-16 units, stopping before a surrogate pair the cut would split.
+#[napi(js_name = "oneLine")]
+pub fn one_line(text: String, max: f64) -> napi::Result<String> {
+    if !max.is_finite() || max.fract() != 0.0 || !(0.0..=100_000_000_000.0).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "oneLine: max must be an integer in 0..=100000000000"));
+    }
+    if text.len() as u64 > 100_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "oneLine: text must be at most 100000000000 UTF-8 bytes"));
+    }
+    Ok(one_line_gen::one_line(&text, max as i64))
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {

@@ -1,0 +1,50 @@
+// Lair alignOffset (src/backend/requests/ai-result.ts, commit 698e1bd1), the UTF-16 offset fix that moves
+// an offset sitting between the two halves of a surrogate pair back to the start of the pair:
+// offset - 1 when 0 < offset < text.length, the unit at offset is a low surrogate and the unit before it
+// is a high surrogate, otherwise offset unchanged.
+// A Pruv str is valid UTF-8, so the surrogate pairs are exactly the 4-byte characters. Pruv walks the
+// characters counting 2 units for a 4-byte character and 1 for any other; the offset is inside a pair
+// when a 4-byte character starts at unit offset - 1. Offsets at or past the end come back unchanged.
+// Domain: text at most 10^11 UTF-8 bytes, offset an integer in 0..=10^11.
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+pub fn align_offset(s: str, offset: i64) -> i64
+  requires len(s) <= 100_000_000_000
+  requires 0 <= offset && offset <= 100_000_000_000
+  ensures result == offset || result == offset - 1
+{
+  let n: i64 = len(s);
+  let mut i: i64 = 0;
+  let mut u: i64 = 0;
+  while i < n && u < offset
+    invariant 0 <= i && i <= n
+    invariant 0 <= u && u <= offset
+    invariant is_char_boundary(s, i)
+    decreases n - i
+  {
+    let j: i64 = next(s, i);
+    if j - i == 4 {
+      if u + 1 == offset { return u; }
+      u = u + 2;
+    } else {
+      u = u + 1;
+    }
+    i = j;
+  }
+  return offset;
+}
