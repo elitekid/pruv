@@ -40,6 +40,7 @@ pub mod pyjson;
 pub mod pyrepr;
 pub mod pyrepr_table;
 pub mod refine;
+pub mod storage;
 pub mod typeinfo;
 
 /// Public entry: parses a source string (including newline normalization).

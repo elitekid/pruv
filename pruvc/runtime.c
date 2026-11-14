@@ -215,7 +215,7 @@ void pruv_free(int64_t *data, int64_t len) {
 #define PRUV_MAX_LEN ((uint64_t)1 << 40)
 
 static int pruv_layout_ok(int64_t size, int64_t align) {
-    return (size == 1 && align == 1) || (size == 4 && align == 4) || (size == 8 && align == 8);
+    return (size == 1 && align == 1) || (size == 2 && align == 2) || (size == 4 && align == 4) || (size == 8 && align == 8);
 }
 
 static void *pruv_raw_alloc_v2(int64_t len, int64_t size, int64_t align, int zeroed) {
@@ -241,6 +241,21 @@ void *pruv_alloc_u8(int64_t len, int64_t value) {
     if (value == 0) return pruv_raw_alloc_v2(len, 1, 1, 1);
     uint8_t *p = (uint8_t *)pruv_raw_alloc_v2(len, 1, 1, 0);
     memset(p, (int)(uint8_t)value, (size_t)len);
+    return p;
+}
+
+/* Verified refined i64 values; fill with their low storage-width bits. */
+void *pruv_alloc_narrow(int64_t len, int64_t value, int64_t size, int64_t align) {
+    if (size != 1 && size != 2 && size != 4) pruv_panic_arith("invalid element layout");
+    if (len <= 0) return NULL;
+    void *p = pruv_raw_alloc_v2(len, size, align, value == 0);
+    if (value == 0) return p;
+    if (size == 1) memset(p, (int)(uint8_t)value, (size_t)len);
+    else if (size == 2) {
+        for (int64_t i = 0; i < len; i++) ((uint16_t *)p)[i] = (uint16_t)value;
+    } else {
+        for (int64_t i = 0; i < len; i++) ((uint32_t *)p)[i] = (uint32_t)value;
+    }
     return p;
 }
 

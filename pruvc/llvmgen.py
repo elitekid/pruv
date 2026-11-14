@@ -49,6 +49,7 @@ from foreign import CATALOG, CATALOG_CONTRACT_ONLY, first_g6_use, _owned_result 
 import foreign_shim  # G6 A3
 import parallel_shim
 from foreign import first_par
+from storage import plan_storage, elem_size, alignment
 
 G6_UNSUPPORTED_MSG = "G6 foreign calls and collections are not implemented by the llvm codegen layer yet"
 G6_UNSUPPORTED_FIX = "avoid trusted rust fn, Vec, HashMap, String, take and move for now"
@@ -116,7 +117,7 @@ def is_arr(t):  # G2 B2: array-like type (arrays and str share the { ptr, i64 } 
 
 def elem_ty(t):
     """element info carried in V/Slot.ty of an array: ARRAY_U8 for [u8], ARRAY_BOOL for [bool], STR for str,
-    None for [i64]"""
+    None for logical [i64]; V/Slot.layout separately carries its storage width"""
     if t is not None and t.name == "array_u8":
         return ARRAY_U8
     if t is not None and t.name == "array_bool":  # G2 A5
@@ -300,6 +301,10 @@ def type_has_field(prog, name):
     return False
 
 
+def storage_ty(v):
+    return "i8" if is_bytes(v) else "i" + v.layout[1:]
+
+
 class V:
     """an SSA value: k in i64 | i1 | i128 | arr (a=ptr, b=len) | opt (a=tag i1, b=payload) | unit |
     agg (a=aggregate SSA of a user struct/enum, ty=its Type; %pruv_t_* in code, %pruv_c_* in requires) |
@@ -307,17 +312,19 @@ class V:
     ref (G9 contract evaluation: a=ptr to the REAL storage of an extended value, ty=its Type).
     p (G9, agg only): address of storage that holds this value when known (a parameter, a local slot, a boxed
     node, a call-result slot); lets a read argument pass the pointer instead of spilling a copy."""
-    __slots__ = ("k", "a", "b", "ty", "p")
+    __slots__ = ("k", "a", "b", "ty", "p", "layout")
 
-    def __init__(s, k, a=None, b=None, ty=None, p=None):
+    def __init__(s, k, a=None, b=None, ty=None, p=None, layout="i64"):
         s.k, s.a, s.b, s.ty, s.p = k, a, b, ty, p
+        s.layout = layout
 
 
 class Slot:
-    __slots__ = ("k", "a", "b", "ty")
+    __slots__ = ("k", "a", "b", "ty", "layout")
 
     def __init__(s, k, a, b=None, ty=None):
         s.k, s.a, s.b, s.ty = k, a, b, ty
+        s.layout = "i64"
 
 
 class Mod:
@@ -522,7 +529,7 @@ class FnGen:
         if sl.k == "arr":
             p = s.op("load ptr, ptr %s" % sl.a)
             n = s.op("load i64, ptr %s" % sl.b)
-            return V("arr", p, n, sl.ty)
+            return V("arr", p, n, sl.ty, layout=sl.layout)
         t = s.op("load i1, ptr %s" % sl.a)
         v = s.op("load i64, ptr %s" % sl.b)
         return V("opt", t, v)
@@ -535,6 +542,7 @@ class FnGen:
         elif sl.k == "coll":
             s.ins("store ptr %s, ptr %s" % (v.a, sl.a))
         elif sl.k == "arr":
+            sl.layout = v.layout
             s.ins("store ptr %s, ptr %s" % (v.a, sl.a))
             s.ins("store i64 %s, ptr %s" % (v.b, sl.b))
         else:
@@ -651,6 +659,9 @@ class FnGen:
             s.g6_drop(v)
         elif v.k == "agg":  # G9 A3: an extended temporary
             s.drop_agg(v)
+        elif v.layout != "i64":
+            sz, al = elem_size(v.layout), alignment(v.layout)
+            s.ins("call void @pruv_free_v2(ptr %s, i64 %s, i64 %d, i64 %d)" % (v.a, v.b, sz, al))
         elif is_bytes(v):  # G2 A5
             s.ins("call void @pruv_free_v2(ptr %s, i64 %s, i64 1, i64 1)" % (v.a, v.b))
         else:
@@ -959,7 +970,7 @@ class FnGen:
         for p in s.f.params:
             n = mangle(p.name)
             if is_arr(p.type):
-                names[p.name] = ("ssa", V("arr", "%%p.%s.a" % n, "%%p.%s.n" % n, elem_ty(p.type)))
+                names[p.name] = ("ssa", V("arr", "%%p.%s.a" % n, "%%p.%s.n" % n, elem_ty(p.type), layout=s.m.storage.layout_of(p)))
             elif p.type == BOOL:
                 names[p.name] = ("ssa", V("i1", "%%p.%s" % n))
             elif p.type == I64:
@@ -1071,7 +1082,11 @@ class FnGen:
             v = s.ev(st.value)
             a = sl if kind == "ssa" else s.load(sl)     # G5 A3: an inout parameter is a pointer view, stored through
             g = s.index_ptr(a, i)
-            if is_boolarr(a):  # G2 A5
+            if a.layout != "i64":
+                ty = storage_ty(a)
+                z = s.op("trunc i64 %s to %s" % (v.a, ty))
+                s.ins("store %s %s, ptr %s" % (ty, z, g))
+            elif is_boolarr(a):  # G2 A5
                 z = s.op("zext i1 %s to i8" % v.a)
                 s.ins("store i8 %s, ptr %s" % (z, g))
             elif is_u8(a):
@@ -1132,10 +1147,10 @@ class FnGen:
                     ok = s.op("icmp ule i64 %s, %s" % (m.a, src.b))
                     s.guard(ok, s.panic1("pruv_panic_arith", "truncate length outside 0..len"), False)
                 # the runtime shrinks the block to m elements so the later free gets its real layout
-                sz = 1 if is_bytes(src) else 8
+                sz = 1 if is_bytes(src) else elem_size(src.layout)
                 s.m.shrink = True
                 p = s.op("call ptr @pruv_shrink_v2(ptr %s, i64 %s, i64 %s, i64 %d, i64 %d)" % (src.a, src.b, m.a, sz, sz))
-                v = V("arr", p, m.a, src.ty)
+                v = V("arr", p, m.a, src.ty, layout=src.layout)
                 s.ins("store ptr null, ptr %s" % sl.a)
                 s.ins("store i64 0, ptr %s" % sl.b)
             elif st.value is not None:
@@ -1299,11 +1314,16 @@ class FnGen:
             s.dead = True
 
     # ---------- code expressions ----------
+    def narrow_load(s, a, ptr, target="i64"):
+        ty = storage_ty(a)
+        x = s.op("load %s, ptr %s" % (ty, ptr))
+        return s.op("%s %s %s to %s" % ("sext" if a.layout.startswith("i") else "zext", ty, x, target))
+
     def index_ptr(s, a, i):
         if not s.verified:
             ok = s.op("icmp ult i64 %s, %s" % (i.a, a.b))
             s.guard(ok, lambda: s.ins("call void @pruv_panic_oob(i64 %s, i64 %s)" % (i.a, a.b)), False)
-        return s.op("getelementptr inbounds %s, ptr %s, i64 %s" % ("i8" if is_bytes(a) else "i64", a.a, i.a))  # G2 A5: bytes = u8|bool
+        return s.op("getelementptr inbounds %s, ptr %s, i64 %s" % (storage_ty(a), a.a, i.a))  # G2 A5: bytes = u8|bool
 
     def truncate_move(s, e):
         """P2 batch 4: the slot of x when e is `truncate(x, m)` with x an owned local array (not a parameter or binder)
@@ -1441,6 +1461,8 @@ class FnGen:
             if is_u8(a) or is_strv(a):  # G2 B2: str reads like u8
                 x = s.op("load i8, ptr %s" % g)
                 return V("i64", s.op("zext i8 %s to i64" % x))
+            if a.layout != "i64":
+                return V("i64", s.narrow_load(a, g))
             return V("i64", s.op("load i64, ptr %s" % g))
         if isinstance(e, StrLit):  # G2 B2
             nm = s.m.string(e.value.decode("utf-8"))
@@ -1511,6 +1533,7 @@ class FnGen:
             import copy
             plain = copy.copy(e)
             plain.pruv_cost_wrapped = True
+            plain.pruv_storage_layout = s.m.storage.layout_of(e)
             result = s.ev_call(plain, owned)
             length = s.op("zext i64 %s to i128" % result.b)
             units = s.op("add i128 %s, 1" % length)
@@ -1539,15 +1562,24 @@ class FnGen:
                     s.guard(ok, s.panic_elem(v.a), False)
                 p = s.op("call ptr @pruv_alloc_u8(i64 %s, i64 %s)" % (cnt.a, v.a))
                 return s.temp_arr(V("arr", p, cnt.a, ARRAY_U8), owned)
+            layout = getattr(e, "pruv_storage_layout", s.m.storage.layout_of(e))
+            if layout != "i64":
+                p = s.op("call ptr @pruv_alloc_narrow(i64 %s, i64 %s, i64 %d, i64 %d)" %
+                         (cnt.a, v.a, elem_size(layout), alignment(layout)))
+                return s.temp_arr(V("arr", p, cnt.a, layout=layout), owned)
             p = s.op("call ptr @pruv_alloc(i64 %s, i64 %s)" % (cnt.a, v.a))
             return s.temp_arr(V("arr", p, cnt.a), owned)
         if n == "copy":
             src = s.ev(a[0])
             if not s.verified:
                 pass    # spec: same checks as proof mode (none)
+            if src.layout != "i64":
+                p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 %d, i64 %d)" %
+                         (src.a, src.b, elem_size(src.layout), alignment(src.layout)))
+                return s.temp_arr(V("arr", p, src.b, src.ty, layout=src.layout), owned)
             if is_bytes(src):  # G2 A5
                 p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (src.a, src.b))
-                return s.temp_arr(V("arr", p, src.b, src.ty), owned)
+                return s.temp_arr(V("arr", p, src.b, src.ty, layout=src.layout), owned)
             p = s.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (src.a, src.b))
             return s.temp_arr(V("arr", p, src.b), owned)
         if n == "truncate":     # the first m elements of the array as a new array
@@ -1556,9 +1588,13 @@ class FnGen:
             if not s.verified:
                 ok = s.op("icmp ule i64 %s, %s" % (m.a, src.b))
                 s.guard(ok, s.panic1("pruv_panic_arith", "truncate length outside 0..len"), False)
+            if src.layout != "i64":
+                p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 %d, i64 %d)" %
+                         (src.a, m.a, elem_size(src.layout), alignment(src.layout)))
+                return s.temp_arr(V("arr", p, m.a, src.ty, layout=src.layout), owned)
             if is_bytes(src):
                 p = s.op("call ptr @pruv_copy_v2(ptr %s, i64 %s, i64 1, i64 1)" % (src.a, m.a))
-                return s.temp_arr(V("arr", p, m.a, src.ty), owned)
+                return s.temp_arr(V("arr", p, m.a, src.ty, layout=src.layout), owned)
             p = s.op("call ptr @pruv_copy(ptr %s, i64 %s)" % (src.a, m.a))
             return s.temp_arr(V("arr", p, m.a), owned)
         if n == "is_char_boundary":  # G2 B2: s then i
@@ -1658,7 +1694,7 @@ class FnGen:
         x0 = s.op("extractvalue %s %s, 0" % (lty(f.ret), r))
         x1 = s.op("extractvalue %s %s, 1" % (lty(f.ret), r))
         if is_arr(f.ret):
-            return s.temp_arr(V("arr", x0, x1, elem_ty(f.ret)), owned)
+            return s.temp_arr(V("arr", x0, x1, elem_ty(f.ret), layout=s.m.storage.layout_of(f)), owned)
         return V("opt", x0, x1)
 
     # ---------- G6 A3: catalog operations and trusted rust fn through the bridge ----------
@@ -1742,7 +1778,7 @@ class FnGen:
         for p in s.f.params:
             n = mangle(p.name)
             if is_arr(p.type):
-                s.cenv[p.name] = V("arr", "%%p.%s.a" % n, "%%p.%s.n" % n, elem_ty(p.type))
+                s.cenv[p.name] = V("arr", "%%p.%s.a" % n, "%%p.%s.n" % n, elem_ty(p.type), layout=s.m.storage.layout_of(p))
             elif p.type == BOOL:
                 s.cenv[p.name] = V("i1", "%%p.%s" % n)
             elif p.type == I64:
@@ -1999,6 +2035,9 @@ class FnGen:
                 g = s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (a.a, ii))
                 x = s.op("load i8, ptr %s" % g)
                 return V("i128", s.op("zext i8 %s to i128" % x))
+            if a.layout != "i64":
+                g = s.op("getelementptr inbounds %s, ptr %s, i64 %s" % (storage_ty(a), a.a, ii))
+                return V("i128", s.narrow_load(a, g, "i128"))
             g = s.op("getelementptr inbounds i64, ptr %s, i64 %s" % (a.a, ii))
             x = s.op("load i64, ptr %s" % g)
             return V("i128", s.op("sext i64 %s to i128" % x))
@@ -2159,7 +2198,13 @@ class FnGen:
         s.place(bl)
         s.spend()
         pk = s.op("sub i64 %s, 1" % kv)
-        if is_u8(arr):
+        if arr.layout != "i64":
+            g0 = s.op("getelementptr inbounds %s, ptr %s, i64 %s" % (storage_ty(arr), arr.a, pk))
+            z0 = s.narrow_load(arr, g0)
+            g1 = s.op("getelementptr inbounds %s, ptr %s, i64 %s" % (storage_ty(arr), arr.a, kv))
+            z1 = s.narrow_load(arr, g1)
+            le = s.op("icmp sle i64 %s, %s" % (z0, z1))
+        elif is_u8(arr):
             g0 = s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (arr.a, pk))
             g1 = s.op("getelementptr inbounds i8, ptr %s, i64 %s" % (arr.a, kv))
             x0 = s.op("load i8, ptr %s" % g0)
@@ -3528,6 +3573,8 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
         raise RuntimeError("unsupported_type: %s" % g2err.message)
     tt = new_tt(prog)   # G9: SCC-condensed order and the extended / boxed metadata (identical to TypeTable otherwise)
     m = Mod(tt)
+    m.storage = plan_storage(prog, verified)
+    narrowed = any(w != "i64" for _, w in m.storage.entries)
     m.explicit = explicit
     cost_used = not verified and any(f.cost is not None for f in prog.functions)
     funcs = {f.name: f for f in prog.functions}
@@ -3586,8 +3633,9 @@ def gen_llvm(prog, verified=True, trust_callers=False, budget=1 << 30, plan=None
     g9_u8 = type_has_field(prog, "array_u8") or type_has_field(prog, "array_bool")
     ir = m.render_strings() + "\n" + type_defs(tt) + ("\n" if prog.types else "") + DECLS + (
         DECLS_U8 if (uses_array_type(prog, "array_u8") or uses_array_type(prog, "array_bool") or has_str or m.g6_v2
-                     or g9_u8)
+                     or g9_u8 or narrowed)
         else "") + (
+        "declare noalias ptr @pruv_alloc_narrow(i64, i64, i64, i64) nounwind\n" if narrowed else "") + (
         DECLS_BOOL if uses_array_type(prog, "array_bool") else "") + (
         DECLS_STR if has_str else "") + (
         DECLS_REPR if m.uses_repr else "") + (

@@ -3,6 +3,7 @@
 //! Rule: mutable state (temp numbers, label numbers, scopes, temp-free lists, contract environment) is changed in the same order as in Python.
 //! Python's None is imitated by the string "None" (the default of V's a/b).
 
+use crate::storage::{plan_storage, StoragePlan, elem_size, alignment};
 use crate::abi::{abi_of, AbiTarget};
 use crate::ast::*;
 use crate::typeinfo::{is_array_name, is_user_type, uses_array_type, TypeTable};
@@ -173,12 +174,12 @@ fn elem_ty(t: &str) -> Option<String> {
     }
 }
 
-/// Element IR type E (i8 for a byte array, otherwise i64)
+/// Physical element type, independent of the logical array element type.
 fn elem_ir(v: &V) -> &'static str {
     if is_bytes_ty(&v.ty) {
         "i8"
     } else {
-        "i64"
+        match v.layout { "u8" | "i8" => "i8", "u16" | "i16" => "i16", "u32" | "i32" => "i32", _ => "i64" }
     }
 }
 
@@ -477,6 +478,7 @@ pub fn type_defs(tt: &TypeTable) -> String {
 /// A Slot has the same shape (arr: a=ptr slot, b=len slot).
 #[derive(Clone, Debug)]
 pub struct V {
+    pub layout: &'static str,
     pub k: Kind,
     pub a: String,
     pub b: String,
@@ -490,17 +492,17 @@ pub type Slot = V;
 
 impl V {
     pub fn new(k: Kind, a: impl Into<String>) -> V {
-        V { k, a: a.into(), b: "None".to_string(), ty: None, p: None }
+        V { layout: "i64", k, a: a.into(), b: "None".to_string(), ty: None, p: None }
     }
     pub fn with_b(k: Kind, a: impl Into<String>, b: impl Into<String>) -> V {
-        V { k, a: a.into(), b: b.into(), ty: None, p: None }
+        V { layout: "i64", k, a: a.into(), b: b.into(), ty: None, p: None }
     }
     pub fn agg(a: impl Into<String>, ty: &str) -> V {
-        V { k: Kind::Agg, a: a.into(), b: "None".to_string(), ty: Some(ty.to_string()), p: None }
+        V { layout: "i64", k: Kind::Agg, a: a.into(), b: "None".to_string(), ty: Some(ty.to_string()), p: None }
     }
     /// an aggregate value with a known storage address
     pub fn agg_p(a: impl Into<String>, ty: &str, p: impl Into<String>) -> V {
-        V { k: Kind::Agg, a: a.into(), b: "None".to_string(), ty: Some(ty.to_string()), p: Some(p.into()) }
+        V { layout: "i64", k: Kind::Agg, a: a.into(), b: "None".to_string(), ty: Some(ty.to_string()), p: Some(p.into()) }
     }
     pub fn unit() -> V {
         V::new(Kind::Unit, "None")
@@ -529,6 +531,7 @@ struct Scope {
 }
 
 pub struct Mod {
+    storage: StoragePlan,
     strs: HashMap<String, String>,
     order: Vec<String>,
     /// G3: a wrapper rejects an invalid enum ordinal through pruv_panic_repr
@@ -557,6 +560,7 @@ pub struct Mod {
 impl Mod {
     pub fn new() -> Mod {
         Mod {
+            storage: StoragePlan::default(),
             strs: HashMap::new(),
             order: Vec::new(),
             uses_repr: false,
@@ -733,6 +737,8 @@ pub struct FnGen<'a> {
     cur: String,
     dead: bool,
     scopes: Vec<Scope>,
+    // Bindings and cleanup lists clone slots; retain layout by unique slot address.
+    slot_layouts: HashMap<String, &'static str>,
     temps: Vec<Vec<V>>,
     cenv: HashMap<String, V>,
     budget: Option<String>,
@@ -769,6 +775,7 @@ impl<'a> FnGen<'a> {
             cur: "None".to_string(),
             dead: false,
             scopes: Vec::new(),
+            slot_layouts: HashMap::new(),
             temps: Vec::new(),
             cenv: HashMap::new(),
             budget: None,
@@ -992,7 +999,7 @@ impl<'a> FnGen<'a> {
                 // G6 A3: owner slot, null-initialized
                 self.allocas.push(format!("{} = alloca ptr", a));
                 self.allocas.push(format!("store ptr null, ptr {}", a));
-                V { k: Kind::Coll, a, b: "None".to_string(), ty: Some(ty.to_string()), p: None }
+                V { layout: "i64", k: Kind::Coll, a, b: "None".to_string(), ty: Some(ty.to_string()), p: None }
             }
             Kind::Arr => {
                 self.allocas.push(format!("{} = alloca ptr", a));
@@ -1026,13 +1033,14 @@ impl<'a> FnGen<'a> {
             }
             Kind::Coll => {
                 let r = self.op(format!("load ptr, ptr {}", sl.a))?;
-                Ok(V { k: Kind::Coll, a: r, b: "None".to_string(), ty: sl.ty.clone(), p: None })
+                Ok(V { layout: "i64", k: Kind::Coll, a: r, b: "None".to_string(), ty: sl.ty.clone(), p: None })
             }
             Kind::Arr => {
                 let p = self.op(format!("load ptr, ptr {}", sl.a))?;
                 let n = self.op(format!("load i64, ptr {}", sl.b))?;
                 let mut v = V::with_b(Kind::Arr, p, n);
                 v.ty = sl.ty.clone();
+                v.layout = self.slot_layouts.get(&sl.a).copied().unwrap_or(sl.layout);
                 Ok(v)
             }
             _ => {
@@ -1052,6 +1060,7 @@ impl<'a> FnGen<'a> {
             }
             Kind::Coll => self.ins(format!("store ptr {}, ptr {}", v.a, sl.a)),
             Kind::Arr => {
+                self.slot_layouts.insert(sl.a.clone(), v.layout);
                 self.ins(format!("store ptr {}, ptr {}", v.a, sl.a))?;
                 self.ins(format!("store i64 {}, ptr {}", v.b, sl.b))
             }
@@ -1083,6 +1092,9 @@ impl<'a> FnGen<'a> {
         if v.k == Kind::Agg {
             // G9 A3: an extended temporary
             return self.drop_agg(v);
+        }
+        if v.layout != "i64" {
+            return self.ins(format!("call void @pruv_free_v2(ptr {}, i64 {}, i64 {}, i64 {})", v.a, v.b, elem_size(v.layout), alignment(v.layout)));
         }
         if is_bytes_ty(&v.ty) {
             return self.ins(format!("call void @pruv_free_v2(ptr {}, i64 {}, i64 1, i64 1)", v.a, v.b));
@@ -1298,7 +1310,7 @@ impl<'a> FnGen<'a> {
         let el = self.label("gdone");
         self.condbr(&nn, &dl, &el)?;
         self.place(&dl);
-        let v = V { k: Kind::Coll, a: p, b: "None".to_string(), ty: sl.ty.clone(), p: None };
+        let v = V { layout: "i64", k: Kind::Coll, a: p, b: "None".to_string(), ty: sl.ty.clone(), p: None };
         self.g6_drop(&v)?;
         self.br(&el)?;
         self.place(&el);
@@ -1716,6 +1728,7 @@ impl<'a> FnGen<'a> {
             let n = mangle(&p.name);
             if is_arr_name(&p.ty) {
                 let mut av = V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n));
+                av.layout = self.m.storage.layout_of(p);
                 if let Some(t) = elem_ty(&p.ty) {
                     av.ty = Some(t); // G2 A5
                 }
@@ -1738,6 +1751,7 @@ impl<'a> FnGen<'a> {
                     names.insert(
                         p.name.clone(),
                         Bind::Ssa(V {
+                            layout: "i64",
                             k: Kind::Coll,
                             a: format!("%p.{}.h", n),
                             b: "None".to_string(),
@@ -1889,7 +1903,11 @@ impl<'a> FnGen<'a> {
                     Bind::Slot(sl) => self.load(&sl)?,
                 };
                 let g = self.index_ptr(&a, &i)?;
-                if a.ty.as_deref() == Some(ARRAY_BOOL) {
+                if a.layout != "i64" {
+                    let ty = elem_ir(&a);
+                    let z = self.op(format!("trunc i64 {} to {}", v.a, ty))?;
+                    self.ins(format!("store {} {}, ptr {}", ty, z, g))?;
+                } else if a.ty.as_deref() == Some(ARRAY_BOOL) {
                     // G2 A5: no value range check
                     let z = self.op(format!("zext i1 {} to i8", v.a))?;
                     self.ins(format!("store i8 {}, ptr {}", z, g))?;
@@ -1970,7 +1988,7 @@ impl<'a> FnGen<'a> {
                         self.guard(&ok, Fail::Panic1("pruv_panic_arith", "truncate length outside 0..len".to_string()), false)?;
                     }
                     // the runtime shrinks the block to m elements so the later free gets its real layout
-                    let sz = if is_bytes_ty(&src.ty) { 1 } else { 8 };
+                    let sz = if is_bytes_ty(&src.ty) { 1 } else { elem_size(src.layout) };
                     self.m.shrink = true;
                     let p = self.op(format!(
                         "call ptr @pruv_shrink_v2(ptr {}, i64 {}, i64 {}, i64 {}, i64 {})",
@@ -1978,6 +1996,7 @@ impl<'a> FnGen<'a> {
                     ))?;
                     let mut rv = V::with_b(Kind::Arr, p, m.a.clone());
                     rv.ty = src.ty.clone();
+                    rv.layout = src.layout;
                     v = rv;
                     self.ins(format!("store ptr null, ptr {}", sl.a))?;
                     self.ins(format!("store i64 0, ptr {}", sl.b))?;
@@ -2113,6 +2132,12 @@ impl<'a> FnGen<'a> {
     }
 
     // ---------- code expressions ----------
+    fn narrow_load(&mut self, a: &V, ptr: &str, target: &str) -> R<String> {
+        let ty = elem_ir(a);
+        let x = self.op(format!("load {}, ptr {}", ty, ptr))?;
+        self.op(format!("{} {} {} to {}", if a.layout.starts_with('i') { "sext" } else { "zext" }, ty, x, target))
+    }
+
     pub fn index_ptr(&mut self, a: &V, i: &V) -> R<String> {
         if !self.verified {
             let ok = self.op(format!("icmp ult i64 {}, {}", i.a, a.b))?;
@@ -2327,6 +2352,9 @@ impl<'a> FnGen<'a> {
                     let r = self.op(format!("zext i8 {} to i64", x8))?;
                     return Ok(V::new(Kind::I64, r));
                 }
+                if a.layout != "i64" {
+                    return Ok(V::new(Kind::I64, self.narrow_load(&a, &g, "i64")?));
+                }
                 let r = self.op(format!("load i64, ptr {}", g))?;
                 Ok(V::new(Kind::I64, r))
             }
@@ -2341,7 +2369,7 @@ impl<'a> FnGen<'a> {
                 let v = self.ev(a, false)?;
                 Ok(V::with_b(Kind::Opt, if x.name == "Some" || x.name == "Ok" { "true" } else { "false" }, v.a))
             }
-            Expr::Call(x) => self.ev_call(x, owned),
+            Expr::Call(x) => self.ev_call(x, owned, self.m.storage.layout_of(e)),
             Expr::StructLit(x) => {
                 if self.is_ext(&x.name) {
                     // G9 A3: constructor fields are owning positions; the result is fresh
@@ -2426,8 +2454,8 @@ impl<'a> FnGen<'a> {
         Ok(V::new(Kind::I1, v))
     }
 
-    pub fn ev_call(&mut self, e: &Call, owned: bool) -> R<V> {
-        let result = self.ev_call_inner(e, owned)?;
+    pub fn ev_call(&mut self, e: &Call, owned: bool, layout: &'static str) -> R<V> {
+        let result = self.ev_call_inner(e, owned, layout)?;
         if self.cost && matches!(e.name.as_str(), "alloc" | "copy" | "truncate") {
             let length = self.op(format!("zext i64 {} to i128", result.b))?;
             let units = self.op(format!("add i128 {}, 1", length))?;
@@ -2436,7 +2464,7 @@ impl<'a> FnGen<'a> {
         Ok(result)
     }
 
-    fn ev_call_inner(&mut self, e: &Call, owned: bool) -> R<V> {
+    fn ev_call_inner(&mut self, e: &Call, owned: bool, layout: &'static str) -> R<V> {
         let n = e.name.as_str();
         let a = &e.args;
         if n == "len" {
@@ -2480,15 +2508,29 @@ impl<'a> FnGen<'a> {
                 rv.ty = Some(ARRAY_U8.to_string());
                 return self.temp_arr(rv, owned);
             }
+            if layout != "i64" {
+                let p = self.op(format!("call ptr @pruv_alloc_narrow(i64 {}, i64 {}, i64 {}, i64 {})", cnt.a, v.a, elem_size(layout), alignment(layout)))?;
+                let mut rv = V::with_b(Kind::Arr, p, cnt.a.clone());
+                rv.layout = layout;
+                return self.temp_arr(rv, owned);
+            }
             let p = self.op(format!("call ptr @pruv_alloc(i64 {}, i64 {})", cnt.a, v.a))?;
             return self.temp_arr(V::with_b(Kind::Arr, p, cnt.a.clone()), owned);
         }
         if n == "copy" {
             let src = self.ev(arg(a, 0)?, false)?;
+            if src.layout != "i64" {
+                let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 {}, i64 {})", src.a, src.b, elem_size(src.layout), alignment(src.layout)))?;
+                let mut rv = V::with_b(Kind::Arr, p, src.b.clone());
+                rv.ty = src.ty.clone();
+                rv.layout = src.layout;
+                return self.temp_arr(rv, owned);
+            }
             if is_bytes_ty(&src.ty) {
                 let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", src.a, src.b))?;
                 let mut rv = V::with_b(Kind::Arr, p, src.b.clone());
                 rv.ty = src.ty.clone();
+                rv.layout = src.layout;
                 return self.temp_arr(rv, owned);
             }
             let p = self.op(format!("call ptr @pruv_copy(ptr {}, i64 {})", src.a, src.b))?;
@@ -2502,10 +2544,18 @@ impl<'a> FnGen<'a> {
                 let ok = self.op(format!("icmp ule i64 {}, {}", m.a, src.b))?;
                 self.guard(&ok, Fail::Panic1("pruv_panic_arith", "truncate length outside 0..len".to_string()), false)?;
             }
+            if src.layout != "i64" {
+                let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 {}, i64 {})", src.a, m.a, elem_size(src.layout), alignment(src.layout)))?;
+                let mut rv = V::with_b(Kind::Arr, p, m.a.clone());
+                rv.ty = src.ty.clone();
+                rv.layout = src.layout;
+                return self.temp_arr(rv, owned);
+            }
             if is_bytes_ty(&src.ty) {
                 let p = self.op(format!("call ptr @pruv_copy_v2(ptr {}, i64 {}, i64 1, i64 1)", src.a, m.a))?;
                 let mut rv = V::with_b(Kind::Arr, p, m.a.clone());
                 rv.ty = src.ty.clone();
+                rv.layout = src.layout;
                 return self.temp_arr(rv, owned);
             }
             let p = self.op(format!("call ptr @pruv_copy(ptr {}, i64 {})", src.a, m.a))?;
@@ -2658,7 +2708,7 @@ impl<'a> FnGen<'a> {
         }
         if is_collection(&f.ret) {
             // G6 A3: fresh owned handle; a temporary unless the caller takes it
-            let rv = V { k: Kind::Coll, a: r, b: "None".to_string(), ty: Some(f.ret.clone()), p: None };
+            let rv = V { layout: "i64", k: Kind::Coll, a: r, b: "None".to_string(), ty: Some(f.ret.clone()), p: None };
             return self.temp_arr(rv, owned);
         }
         if is_agg(&f.ret) {
@@ -2668,6 +2718,7 @@ impl<'a> FnGen<'a> {
         let x1 = self.op(format!("extractvalue {} {}, 1", lty(&f.ret), r))?;
         if is_arr_name(&f.ret) {
             let mut rv = V::with_b(Kind::Arr, x0, x1);
+            rv.layout = self.m.storage.layout_of(f);
             if let Some(t) = elem_ty(&f.ret) {
                 rv.ty = Some(t); // G2 A5
             }
@@ -2718,7 +2769,7 @@ impl<'a> FnGen<'a> {
         ) {
             // a fresh box, or the very same box pointer of a consuming update
             let r = self.g6_call(&sym, "ptr", &args)?;
-            let rv = V { k: Kind::Coll, a: r, b: "None".to_string(), ty: e.ty.clone(), p: None };
+            let rv = V { layout: "i64", k: Kind::Coll, a: r, b: "None".to_string(), ty: e.ty.clone(), p: None };
             return self.temp_arr(rv, owned);
         }
         if matches!(
@@ -2780,7 +2831,7 @@ impl<'a> FnGen<'a> {
         if is_collection(&f.ret) {
             // G6b: a fresh boxed result; a temporary unless the caller takes it
             let r = self.g6_call(&sym, "ptr", &args)?;
-            let rv = V { k: Kind::Coll, a: r, b: "None".to_string(), ty: Some(f.ret.clone()), p: None };
+            let rv = V { layout: "i64", k: Kind::Coll, a: r, b: "None".to_string(), ty: Some(f.ret.clone()), p: None };
             return self.temp_arr(rv, owned);
         }
         if f.ret == "unit" {
@@ -2804,6 +2855,7 @@ impl<'a> FnGen<'a> {
             let n = mangle(&p.name);
             if is_arr_name(&p.ty) {
                 let mut av = V::with_b(Kind::Arr, format!("%p.{}.a", n), format!("%p.{}.n", n));
+                av.layout = self.m.storage.layout_of(p);
                 if let Some(t) = elem_ty(&p.ty) {
                     av.ty = Some(t); // G2 A5
                 }
@@ -2817,13 +2869,13 @@ impl<'a> FnGen<'a> {
                 // G6 A3: only len(c) is evaluable in a requires on LLVM
                 self.cenv.insert(
                     p.name.clone(),
-                    V { k: Kind::Coll, a: format!("%p.{}.h", n), b: "None".to_string(), ty: Some(p.ty.clone()), p: None },
+                    V { layout: "i64", k: Kind::Coll, a: format!("%p.{}.h", n), b: "None".to_string(), ty: Some(p.ty.clone()), p: None },
                 );
             } else if self.is_ext(&p.ty) {
                 // G9 A3: no i128 mirror; contracts read the REAL storage lazily (see cx)
                 self.cenv.insert(
                     p.name.clone(),
-                    V { k: Kind::Ref, a: format!("%p.{}", n), b: "None".to_string(), ty: Some(p.ty.clone()), p: None },
+                    V { layout: "i64", k: Kind::Ref, a: format!("%p.{}", n), b: "None".to_string(), ty: Some(p.ty.clone()), p: None },
                 );
             } else if is_agg(&p.ty) {
                 let c = self.to_c(&V::agg(format!("%p.{}", n), &p.ty), &p.ty)?;
@@ -3080,7 +3132,7 @@ impl<'a> FnGen<'a> {
             return Ok(v);
         }
         if self.is_ext(&t) {
-            return Ok(V { k: Kind::Ref, a: p, b: "None".to_string(), ty: Some(t), p: None });
+            return Ok(V { layout: "i64", k: Kind::Ref, a: p, b: "None".to_string(), ty: Some(t), p: None });
         }
         // a whole nominal value is converted whole: charge its weight to the budget first
         self.g9_charge_weight(&t, &p)?;
@@ -3099,7 +3151,7 @@ impl<'a> FnGen<'a> {
             Expr::StrLit(x) => {
                 // G2 B2: point at the global string directly, without copying
                 let g = self.str_global(&x.value);
-                Ok(V { k: Kind::Arr, a: g, b: x.value.len().to_string(), ty: Some(STR.to_string()), p: None })
+                Ok(V { layout: "i64", k: Kind::Arr, a: g, b: x.value.len().to_string(), ty: Some(STR.to_string()), p: None })
             }
             Expr::Var(x) => match self.cenv.get(&x.name) {
                 Some(v) => Ok(v.clone()),
@@ -3208,6 +3260,10 @@ impl<'a> FnGen<'a> {
                     let x8 = self.op(format!("load i8, ptr {}", g))?;
                     let r = self.op(format!("zext i8 {} to i128", x8))?;
                     return Ok(V::new(Kind::I128, r));
+                }
+                if a.layout != "i64" {
+                    let g = self.op(format!("getelementptr inbounds {}, ptr {}, i64 {}", elem_ir(&a), a.a, ii))?;
+                    return Ok(V::new(Kind::I128, self.narrow_load(&a, &g, "i128")?));
                 }
                 let g = self.op(format!("getelementptr inbounds i64, ptr {}, i64 {}", a.a, ii))?;
                 let v = self.op(format!("load i64, ptr {}", g))?;
@@ -3465,7 +3521,13 @@ impl<'a> FnGen<'a> {
         self.spend()?;
         let pk = self.op(format!("sub i64 {}, 1", kv))?;
         let le;
-        if is_u8_ty(&arr.ty) {
+        if arr.layout != "i64" {
+            let g0 = self.op(format!("getelementptr inbounds {}, ptr {}, i64 {}", elem_ir(&arr), arr.a, pk))?;
+            let z0 = self.narrow_load(&arr, &g0, "i64")?;
+            let g1 = self.op(format!("getelementptr inbounds {}, ptr {}, i64 {}", elem_ir(&arr), arr.a, kv))?;
+            let z1 = self.narrow_load(&arr, &g1, "i64")?;
+            le = self.op(format!("icmp sle i64 {}, {}", z0, z1))?;
+        } else if is_u8_ty(&arr.ty) {
             let g0 = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", arr.a, pk))?;
             let g1 = self.op(format!("getelementptr inbounds i8, ptr {}, i64 {}", arr.a, kv))?;
             let x0 = self.op(format!("load i8, ptr {}", g0))?;
@@ -4502,6 +4564,8 @@ fn gen_llvm_body(
     // G9: SCC-condensed order and the extended / boxed metadata (identical to TypeTable::new otherwise)
     let tt = new_tt(prog);
     let mut m = Mod::new();
+    m.storage = plan_storage(prog, verified);
+    let narrowed = m.storage.entries.iter().any(|(_, w)| *w != "i64");
     let explicit = prog.explicit.is_some();
     m.explicit = explicit;
     // G4 A3: per function (parallel to prog.functions): host entry flag; the display identity map
@@ -4618,7 +4682,7 @@ fn gen_llvm_body(
         }
     }
     let mut ir = format!(
-        "{}{}\n{}{}{}{}{}{}{}{}{}{}{}\n{}",
+        "{}{}\n{}{}{}{}{}{}{}{}{}{}{}{}\n{}",
         if target == AbiTarget::WinX64 { WIN_X64_HEADER } else { "" },
         m.render_strings(),
         type_defs(&tt),
@@ -4628,11 +4692,12 @@ fn gen_llvm_body(
         // G2 B2: DECLS_U8 if u8, bool or str is used, and DECLS_STR at the very end if str is used
         // G6 A3: DECLS_U8 also when string_to_str copies through pruv_copy_v2
         // G9 A3: DECLS_U8 also for a [u8] / [bool] buffer field
-        if uses_array_type(prog, "array_u8") || uses_array_type(prog, "array_bool") || has_str || m.g6_v2 || g9_u8 {
+        if uses_array_type(prog, "array_u8") || uses_array_type(prog, "array_bool") || has_str || m.g6_v2 || g9_u8 || narrowed {
             DECLS_U8
         } else {
             ""
         },
+        if narrowed { "declare noalias ptr @pruv_alloc_narrow(i64, i64, i64, i64) nounwind\n" } else { "" },
         if uses_array_type(prog, "array_bool") { DECLS_BOOL } else { "" },
         if has_str { DECLS_STR } else { "" },
         if m.uses_repr { DECLS_REPR } else { "" }, // G3

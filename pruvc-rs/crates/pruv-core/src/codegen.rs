@@ -478,6 +478,8 @@ fn join_map<T>(xs: &[T], sep: &str, f: impl Fn(&T) -> String) -> String {
 
 struct Gen<'a> {
     prog: &'a Program,
+    storage: crate::storage::StoragePlan,
+    function_name: String,
     budget: u64,
     verified: bool,
     trust: bool,
@@ -589,6 +591,8 @@ impl<'a> Gen<'a> {
                 !f.requires.is_empty() && f.foreign.is_none() && (!verified || (is_host(f) && !trust_callers))
             });
         Gen {
+            storage: crate::storage::plan_storage(prog, verified),
+            function_name: String::new(),
             prog,
             explicit,
             entries,
@@ -659,6 +663,20 @@ impl<'a> Gen<'a> {
             return format!("&{}", t);
         }
         rty(t, param)
+    }
+
+    fn layout(&self, e: &Expr) -> &'static str {
+        let width = self.storage.layout_of(e);
+        if width == "i64" && !self.storage.contains_node(e) {
+            if let Expr::Var(v) = e { return self.storage.parameter(&self.function_name, &v.name); }
+        }
+        width
+    }
+    fn rt_width(&self, t: &str, param: bool, width: &str) -> String {
+        if t == "array" && width != "i64" {
+            return if param { format!("&[{}]", width) } else { format!("::std::vec::Vec<{}>", width) };
+        }
+        self.rt(t, param)
     }
 
     /// G9: the diagnostic of a runtime requires the Rust backend cannot lower; the returned String is only a marker
@@ -878,6 +896,7 @@ impl<'a> Gen<'a> {
     }
 
     fn func(&mut self, f: &Function) -> R<()> {
+        self.function_name = f.name.clone();
         if f.foreign.is_some() {
             return Ok(()); // G6: a trusted rust fn has no body; its boundary helper is emitted on first use
         }
@@ -894,10 +913,10 @@ impl<'a> Gen<'a> {
                 // G5 A2: an inout parameter is a mutable slice borrow (`&mut [T]`)
                 format!("{}: &mut {}", p.name, &rty(&p.ty, true)[1..])
             } else {
-                format!("{}: {}", p.name, self.rt(&p.ty, !p.take))
+                format!("{}: {}", p.name, self.rt_width(&p.ty, !p.take, self.storage.layout_of(p)))
             }
         });
-        let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", rty(&f.ret, false)) };
+        let ret = if f.ret == "unit" { String::new() } else { format!(" -> {}", self.rt_width(&f.ret, false, self.storage.layout_of(f))) };
         let has = !f.requires.is_empty();
         let body_name = if has { format!("{}__pruv_body", f.name) } else { f.name.clone() };
         // G3: generic specializations (and G6 collection-bearing functions) are private items; G4 A2: only host entries
@@ -1420,6 +1439,9 @@ impl<'a> Gen<'a> {
                 if elem_of(&x.array) == "bool" {
                     // G2 A5
                     return Ok(format!("pruv_cidx_bool({}, {})", a, i));
+                }
+                if self.layout(&x.array) != "i64" {
+                    return Ok(format!("{{ let pruv_a = {}; let pruv_i: i128 = {}; if pruv_i >= 0 && pruv_i < pruv_a.len() as i128 {{ pruv_a[pruv_i as usize] as i128 }} else {{ pruv_ud(\"array index out of range\") }} }}", a, i));
                 }
                 Ok(format!("pruv_cidx({}, {})", a, i))
             }
@@ -2260,7 +2282,7 @@ impl<'a> Gen<'a> {
                 let v = self.own_e(&x.value);
                 self.moving.clear();
                 let v = v?;
-                let line = format!("let {}{}: {} = {};", if x.mutable { "mut " } else { "" }, x.name, rty(&x.ty, false), v);
+                let line = format!("let {}{}: {} = {};", if x.mutable { "mut " } else { "" }, x.name, self.rt_width(&x.ty, false, self.storage.layout_of(x)), v);
                 self.emit(ind, &line);
                 self.vars.insert(x.name.clone(), x.ty.clone());
                 self.refs.remove(&x.name); // G9: a local is an owned value, never a reference
@@ -2330,8 +2352,8 @@ impl<'a> Gen<'a> {
                     self.emit(
                         ind,
                         &format!(
-                            "{{ let pruv_i: i64 = {}; let pruv_x: i64 = {}; unsafe {{ *{}.get_unchecked_mut(pruv_i as usize) = pruv_x; }} }}",
-                            i, v, x.name
+                            "{{ let pruv_i: i64 = {}; let pruv_x: i64 = {}; unsafe {{ *{}.get_unchecked_mut(pruv_i as usize) = pruv_x{}; }} }}",
+                            i, v, x.name, if self.storage.layout_of(x) != "i64" { format!(" as {}", self.storage.layout_of(x)) } else { String::new() }
                         ),
                     );
                 } else {
@@ -2439,7 +2461,7 @@ impl<'a> Gen<'a> {
                 } else {
                     let ty = expr_ty(x).as_deref().ok_or("codegen: par argument has no type")?;
                     if is_array_name(&ty) {
-                        (rty(ty, true), self.arr_ref(x)?)
+                        (self.rt_width(ty, true, self.layout(x)), self.arr_ref(x)?)
                     } else {
                         (rty(ty, false), self.e(x)?)
                     }
@@ -2702,7 +2724,7 @@ impl<'a> Gen<'a> {
                 }
                 let a = self.e(&x.array)?;
                 let i = self.e(&x.index)?;
-                if u8r {
+                if u8r || self.layout(&x.array) != "i64" {
                     return Ok(format!("((unsafe {{ *{}.get_unchecked(({}) as usize) }}) as i64)", a, i));
                 }
                 Ok(format!("(unsafe {{ *{}.get_unchecked(({}) as usize) }})", a, i))
@@ -2805,7 +2827,7 @@ impl<'a> Gen<'a> {
                         "{{ let pruv_n: i64 = {}; let pruv_v: i64 = {}; vec![pruv_v{}; pruv_n as usize] }}",
                         n0,
                         v0,
-                        if u8a { " as u8" } else { "" }
+                        if u8a { " as u8".to_string() } else if self.layout(e) != "i64" { format!(" as {}", self.layout(e)) } else { String::new() }
                     ));
                 }
                 if n == "copy" {

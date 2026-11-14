@@ -21,7 +21,7 @@ feature is built and the program ported later. Nothing is dropped for being hard
 | reverse-complement | Benchmarks Game | - | P1 |
 | brainfuck | kostya | - (flat opcode array; the published `Box<[Op]>` tree needs arrays of enum values) | P1 |
 | primes | kostya | - (trie as an arena with an i64 map) | P1 |
-| sudoku | plb2 | - (wrapping u8 counters as `[u8]` with `band(.., 255)`, the shift by 16 as `ushr`; P2 builtins) | P1 time; memory fails (1.08–1.10) until P3 storage width narrowing |
+| sudoku | plb2 | - (wrapping u8 counters as `[u8]` with `band(.., 255)`, the shift by 16 as `ushr`; P2 builtins) | P1 time; memory fails (1.07–1.08) until P3 stack arrays (width narrowed in P3-N1, section 119) |
 | nqueen | plb2 | - (`band`, `bor`, `bxor`, `wrapping_shl`, `ushr`) | P2 |
 | bedcov | plb2 | - (bit builtins, `wrapping_add`/`wrapping_mul` for the hash RNG) | P2 |
 | k-nucleotide | Benchmarks Game | map keyed by byte strings (or packed i64 keys) | P2 |

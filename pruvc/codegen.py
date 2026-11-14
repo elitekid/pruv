@@ -655,7 +655,9 @@ def rstr(text):
 
 
 class Gen:
-    def __init__(s, prog, verified=True, trust_callers=False, budget=1 << 30, foreign_checks="requires"):
+    def __init__(s, prog, verified=True, trust_callers=False, budget=1 << 30, foreign_checks="requires", storage=None):
+        s.storage = storage
+        s.function_name = ""
         s.budget = budget
         s.prog = prog
         s.verified = verified
@@ -816,8 +818,17 @@ class Gen:
         """t is an extended user type (G9): recursive, or holding a buffer or an extended type"""
         return bool(s.ext) and t is not None and t.owner is None and not t.args and t.name in s.ext
 
-    def rt(s, t, param=False):
+    def layout(s, node):
+        width = s.storage.layout_of(node) if s.storage else "i64"
+        if width == "i64" and isinstance(node, Var) and s.storage and id(node) not in s.storage.objects:
+            return s.storage.parameter(s.function_name, node.name)
+        return width
+
+    def rt(s, t, param=False, site=None):
         """rty, except that an extended parameter is a shared reference `&Name` (read view)"""
+        width = s.layout(site)
+        if t == ARRAY and width != "i64":
+            return "&[%s]" % width if param else "::std::vec::Vec<%s>" % width
         if param and s.is_ext(t):
             return "&" + t.name
         return rty(t, param)
@@ -830,6 +841,7 @@ class Gen:
                 or (s.g5 and any(p.mode == "inout" for p in f.params)))   # G5: no public API for a mutable borrow
 
     def fn(s, f):
+        s.function_name = f.name
         if f.foreign is not None:
             return   # G6: a trusted rust fn has no body; its boundary helper is emitted on first use
         s.params = {p.name for p in f.params}
@@ -840,10 +852,10 @@ class Gen:
         s.refs = {p.name for p in f.params if s.is_ext(p.type)}
         if s.inouts:
             ps = ", ".join("%s: %s" % (p.name, "&mut " + rty(p.type, True)[1:] if p.mode == "inout"
-                                       else s.rt(p.type, not p.take)) for p in f.params)
+                                       else s.rt(p.type, not p.take, p)) for p in f.params)
         else:
-            ps = ", ".join("%s: %s" % (p.name, s.rt(p.type, not p.take)) for p in f.params)
-        ret = "" if f.ret == UNIT else " -> " + rty(f.ret)
+            ps = ", ".join("%s: %s" % (p.name, s.rt(p.type, not p.take, p)) for p in f.params)
+        ret = "" if f.ret == UNIT else " -> " + s.rt(f.ret, site=f)
         body_name = f.name + "__pruv_body" if f.requires else f.name
         if s.explicit:
             vis = "pub " if (f.host_entry and not f.requires) else ""
@@ -1181,6 +1193,8 @@ class Gen:
                 return "pruv_cidx_bool(%s, %s)" % (s.carr(e.array), s.c(e.index))
             if is_u8_array(e.array.ty):
                 return "pruv_cidx_u8(%s, %s)" % (s.carr(e.array), s.c(e.index))
+            if s.layout(e.array) != "i64":
+                return ('{ let pruv_a = %s; let pruv_i: i128 = %s; if pruv_i >= 0 && pruv_i < pruv_a.len() as i128 { pruv_a[pruv_i as usize] as i128 } else { pruv_ud("array index out of range") } }' % (s.carr(e.array), s.c(e.index)))
             return "pruv_cidx(%s, %s)" % (s.carr(e.array), s.c(e.index))
         if isinstance(e, Ctor):
             if e.ty is not None and e.ty.args:   # G3: Option<X> / Result<X>, X != i64
@@ -1586,7 +1600,7 @@ class Gen:
     def stmt(s, st, ind):
         if isinstance(st, Let):
             s.moving = s.last_copy(st)
-            s.emit(ind, "let %s%s: %s = %s;" % ("mut " if st.mutable else "", st.name, rty(st.type), s.own_e(st.value)))
+            s.emit(ind, "let %s%s: %s = %s;" % ("mut " if st.mutable else "", st.name, s.rt(st.type, site=st), s.own_e(st.value)))
             s.moving = set()
             s.vt[st.name] = st.type
             s.refs.discard(st.name)    # G9: a local is an owned value, never a reference
@@ -1617,6 +1631,9 @@ class Gen:
                 else:
                     s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; pruv_set_u8(%s, pruv_i, pruv_x); }" %
                            (s.e(st.index), s.e(st.value), s.mut_ref(st.name)))
+            elif s.verified and s.layout(st) != "i64":
+                s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x as %s; } }" %
+                       (s.e(st.index), s.e(st.value), st.name, s.layout(st)))
             elif s.verified:
                 s.emit(ind, "{ let pruv_i: i64 = %s; let pruv_x: i64 = %s; unsafe { *%s.get_unchecked_mut(pruv_i as usize) = pruv_x; } }" %
                        (s.e(st.index), s.e(st.value), st.name))
@@ -1739,7 +1756,7 @@ class Gen:
                     ty = "&mut " + rty(s.vt[x.expr.name], True)[1:]
                     val = s.mut_ref(x.expr.name)
                 elif is_array(x.ty):
-                    ty, val = rty(x.ty, True), s.arr_ref(x)
+                    ty, val = s.rt(x.ty, True, x), s.arr_ref(x)
                 else:
                     ty, val = rty(x.ty), s.e(x)
                 s.emit(d, "let %s: %s = %s;" % (n, ty, val))
@@ -1867,6 +1884,8 @@ class Gen:
                 return "((unsafe { *%s.get_unchecked((%s) as usize) }) as i64)" % (s.e(e.array), s.e(e.index))
             if not s.verified:
                 return "pruv_get(%s, %s)" % (s.arr_ref(e.array), s.e(e.index))
+            if s.layout(e.array) != "i64":
+                return "((unsafe { *%s.get_unchecked((%s) as usize) }) as i64)" % (s.e(e.array), s.e(e.index))
             return "(unsafe { *%s.get_unchecked((%s) as usize) })" % (s.e(e.array), s.e(e.index))
         if isinstance(e, Ctor):
             if e.ty is not None and e.ty.args:   # G3: explicit payload type, never left to Rust inference
@@ -1918,6 +1937,8 @@ class Gen:
                     return "{ let pruv_n: i64 = %s; let pruv_v: i64 = %s; vec![pruv_v as u8; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]))
                 if not s.verified:
                     return "pruv_alloc(%s, %s)" % (s.e(a[0]), s.e(a[1]))
+                if s.layout(e) != "i64":
+                    return "{ let pruv_n: i64 = %s; let pruv_v: i64 = %s; vec![pruv_v as %s; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]), s.layout(e))
                 # source order: n before v (vec![v; n] would evaluate v first)
                 return "{ let pruv_n: i64 = %s; let pruv_v: i64 = %s; vec![pruv_v; pruv_n as usize] }" % (s.e(a[0]), s.e(a[1]))
             if n == "copy":
@@ -2039,7 +2060,8 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
     g2err = g2_unimplemented_error(prog, "codegen", skip=("array_u8", "array_bool", "str"))  # G2 B2
     if g2err is not None:  # same as the Rust generator's Err(String); drivers reject earlier with the diagnostic
         raise RuntimeError("unsupported_type: %s" % g2err.message)
-    g = Gen(prog, verified, trust_callers, budget, foreign_checks)
+    from storage import plan_storage
+    g = Gen(prog, verified, trust_callers, budget, foreign_checks, plan_storage(prog, verified))
     g.prelude()
     mark = len(g.out)
     for f in prog.functions:

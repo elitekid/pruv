@@ -1868,3 +1868,29 @@ Build time (seconds, Pruv compiler including verification + rustc) is recorded p
 - **sudoku:** moved from 1.045 (section 117) to about 0.97 after the rewrite with `band`/`bor`/`wrapping_shl` candidate masks, the same bitboard algorithm as `matched.rs`.
 - **bedcov:** the first full run failed verification of `query_all` (Python checker, solver timeout on the loop invariant). The coverage-union loop moved into its own function `coverage`, which splits the query; it needs `n <= 1048575` in its precondition so the sum cannot overflow. Both checkers verify it.
 - **Noise:** a 3-round dev check showed binary-trees rs/llvm at 1.020 [0.966, 1.078]; the 30-round run gives 1.009 [1.004, 1.014]. Benchmarks must not run concurrently: one overlapping run inflated sudoku timings.
+
+## 119. P3-N1: storage width narrowing of refined i64 arrays (2026-11-15)
+
+Both compilers now store an `i64` array in the smallest of `u8`/`i8`/`u16`/`i16`/`u32`/`i32` that covers its elements' refinement range (`docs/P3_NARROW_DESIGN.md`; `pruvc/storage.py`, `pruv-core/src/storage.rs`). Arrays that flow into each other share one width (union-find); `inout` parameters, struct/enum fields, generic `[T]`, host ABI entries, foreign calls, unrefined declarations and `--no-verify` builds stay `i64`. Loads sign- or zero-extend to `i64` at once, stores truncate, contracts widen to `i128` and sorted checks to `i64`, so the language-level values do not change. The LLVM backend allocates through the new runtime entry `pruv_alloc_narrow(len, value, size, align)` and copies, shrinks and frees with the element size. Python and Rust emit byte-identical `.rs` and `.ll` for the two new runtime fixtures and the four bench programs, with and without `--no-verify`. In sudoku the row and column tables become `u16`, the grid and the 0..=8 tables `u8`/`i8`; the output buffer stays `i64`.
+
+The four bench programs that contain refined arrays were measured again (30 interleaved rounds after 3 warm-ups, same machine as section 118):
+
+| Program | Rust ms | py/rust | py/llvm | rs/rust | rs/llvm |
+|---|---|---|---|---|---|
+| sudoku (4000 puzzles) | 1303 | 0.962 [0.954, 0.969] faster | 0.964 [0.952, 0.975] faster | 0.965 [0.960, 0.969] faster | 0.964 [0.954, 0.975] faster |
+| brainfuck (bench.b) | 927 | 1.015 [1.012, 1.019] equal | 0.944 [0.939, 0.949] faster | 1.012 [1.010, 1.014] equal | 0.945 [0.941, 0.950] faster |
+| n-queens (n=15) | 1983 | 0.903 [0.901, 0.906] faster | 0.917 [0.916, 0.919] faster | 0.891 [0.889, 0.893] faster | 0.905 [0.904, 0.906] faster |
+| bedcov (1M intervals, 1M queries) | 653 | 0.957 [0.949, 0.965] faster | 0.956 [0.947, 0.966] faster | 0.957 [0.947, 0.966] faster | 0.957 [0.948, 0.966] faster |
+| geometric mean (4 programs) | | 0.959 | 0.945 | 0.955 | 0.943 |
+
+Peak resident set size as the Pruv/Rust ratio:
+
+| Program | Rust MiB | py/rust | py/llvm | rs/rust | rs/llvm |
+|---|---|---|---|---|---|
+| sudoku | 1.5 | 1.071 FAIL | 1.082 FAIL | 1.071 FAIL | 1.071 FAIL |
+| brainfuck | 1.5 | 1.000 | 0.990 | 0.990 | 1.000 |
+| n-queens | 1.5 | 1.000 | 1.000 | 1.000 | 1.000 |
+| bedcov | 78.0 | 0.707 | 0.707 | 0.707 | 0.707 |
+
+- **Pass rule:** time passes on all 16 cells (worst py/rust brainfuck 1.015). n-queens moved from about 0.94 to 0.89–0.92 with its narrowed board tables. Build time is unchanged within noise (sudoku 2.3–3.2 s including verification).
+- **sudoku memory still fails** (1.071–1.082, about 96–128 KiB over 1.5 MiB). Width is no longer the cause: a Rust program with the same `Vec` allocations as Pruv (two 2916-element `u16` tables, a 324-element `u8` table and the per-iteration small vectors) measures 1632 KiB against 1536 KiB with stack arrays, the same gap. The rest is heap placement: the first heap allocations of a small process map allocator zone pages. The next P3 batch moves fixed-size, non-escaping arrays to the stack.
