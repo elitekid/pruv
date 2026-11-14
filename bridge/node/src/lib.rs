@@ -96,6 +96,10 @@ mod strip_user_info_gen;
 #[allow(dead_code, clippy::all)]
 mod valid_thread_gen;
 
+#[path = "../gen/clip_chars_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod clip_chars_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -891,6 +895,21 @@ pub fn valid_thread(text: String) -> napi::Result<bool> {
             "validThread: text must be at most 100000000000 UTF-8 bytes"));
     }
     Ok(valid_thread_gen::valid_thread(&text))
+}
+
+/// Lair clipChars (src/backend/requests/ai-result.ts): the text cut to at most `chars` UTF-16 units,
+/// one unit shorter when the cut would split a surrogate pair.
+#[napi(js_name = "clipChars")]
+pub fn clip_chars(text: String, chars: f64) -> napi::Result<String> {
+    if !chars.is_finite() || chars.fract() != 0.0 || !(0.0..=100_000_000_000.0).contains(&chars) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "clipChars: chars must be an integer in 0..=100000000000"));
+    }
+    if text.len() as u64 > 100_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "clipChars: text must be at most 100000000000 UTF-8 bytes"));
+    }
+    Ok(clip_chars_gen::clip_chars(&text, chars as i64))
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {

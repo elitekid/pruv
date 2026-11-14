@@ -1,0 +1,56 @@
+// Lair clipChars (src/backend/requests/ai-result.ts, commit 698e1bd1), the cut that keeps at most `chars`
+// UTF-16 units of a text and steps back one unit when the cut would split a surrogate pair:
+// if text.length <= chars the text comes back whole; otherwise end = chars, minus one when chars > 0 and
+// the unit at chars - 1 is a high surrogate, and the result is text.slice(0, end).
+// A Pruv str is valid UTF-8, so every high surrogate is followed by its low surrogate and the 4-byte
+// characters are exactly the surrogate pairs. Pruv walks the characters, counting 2 units for a 4-byte
+// character and 1 for any other, and stops before the first character that would go past `chars`.
+// That is the same cut: a pair split at chars falls out whole.
+// Domain: text at most 10^11 UTF-8 bytes, chars an integer in 0..=10^11.
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+pub fn clip_chars(s: str, chars: i64) -> str ! alloc
+  requires len(s) <= 100_000_000_000
+  requires 0 <= chars && chars <= 100_000_000_000
+  ensures len(result) <= len(s)
+{
+  let n: i64 = len(s);
+  let mut i: i64 = 0;
+  let mut u: i64 = 0;
+  let mut end: i64 = n;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant 0 <= u && u <= chars
+    invariant 0 <= end && end <= n
+    invariant is_char_boundary(s, i)
+    invariant is_char_boundary(s, end)
+    decreases n - i
+  {
+    let j: i64 = next(s, i);
+    let mut w: i64 = 1;
+    if j - i == 4 { w = 2; }
+    if u + w > chars {
+      end = i;
+      i = n;
+    } else {
+      u = u + w;
+      i = j;
+    }
+  }
+  return substr(s, 0, end);
+}

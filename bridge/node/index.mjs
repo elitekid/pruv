@@ -131,6 +131,7 @@ export const tomlString = native.tomlString;
  *  strip_user_info (text at most 1e11 UTF-8 bytes, InvalidArg otherwise). */
 export const stripUserInfo = native.stripUserInfo;
 export const validThread = native.validThread;
+export const clipChars = native.clipChars;
 
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
