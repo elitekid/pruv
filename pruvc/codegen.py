@@ -261,7 +261,21 @@ SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div"
 CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
 # P2: bit builtin -> Rust operator (same names as check.BIT_BUILTINS); later batches add entries. The contract helper
 # pruv_c<name> is emitted only when a contract uses the builtin.
-BIT_RUST = {"band": "&", "bor": "|", "bxor": "^"}
+BIT_RUST = {"band": "&", "bor": "|", "bxor": "^", "wrapping_shl": "<<", "ushr": ">>"}
+# P2 batch 2: shifts need 0 <= k < 64; --no-verify uses these helpers (included only when used, table order)
+SHIFT_SAFE = {"wrapping_shl": "pruv_shl", "ushr": "pruv_ushr"}
+SAFE_SHIFT_HELPER = (
+    "#[allow(dead_code)]\n"
+    "#[inline]\n"
+    "fn %s(a: i64, k: i64) -> i64 { if k < 0 || k >= 64 { pruv_ovf(\"shift count outside 0..64\") } "
+    "(((a) as u64) %s ((k) as u32)) as i64 }\n")
+CONTRACT_SHIFT_HELPER = (
+    "#[allow(dead_code)]\n"
+    "#[inline]\n"
+    "fn pruv_c%s(a: i128, b: i128) -> i128 { if a < (i64::MIN as i128) || a > (i64::MAX as i128) || "
+    "b < (i64::MIN as i128) || b > (i64::MAX as i128) { pruv_ud(\"argument outside i64 in %s\") } "
+    "if b < 0 || b >= 64 { pruv_ud(\"shift count outside 0..64 in %s\") } "
+    "((((a as i64) as u64) %s (b as u32)) as i64) as i128 }\n")
 CONTRACT_BIT_HELPER = (
     "#[allow(dead_code)]\n"
     "#[inline]\n"
@@ -682,6 +696,7 @@ class Gen:
         s.need_size = set()
         s.need_eq = set()
         s.need_bits = set()  # P2: band/bor/bxor used in a runtime contract (filled while contracts are generated)
+        s.need_shift = set()  # P2 batch 2: shifts used in code under --no-verify (pruv_shl / pruv_ushr helpers)
         # G6 (section 12): only a program that uses G6 gets any of the following
         from foreign import first_g6_use, uses_files
         s.g10 = uses_files(prog)
@@ -1901,6 +1916,11 @@ class Gen:
                 return 'println!("{}", %s)' % s.e(a[0])
             if n == "is_char_boundary":  # G2 B2
                 return "pruv_str_boundary(%s, %s)" % (s.arr_ref(a[0]), s.e(a[1]))
+            if n in SHIFT_SAFE:  # P2 batch 2: --no-verify checks the count in a helper; verified relies on shift_range
+                if not s.verified:
+                    s.need_shift.add(n)
+                    return "%s(%s, %s)" % (SHIFT_SAFE[n], s.e(a[0]), s.e(a[1]))
+                return "((((%s) as u64) %s ((%s) as u32)) as i64)" % (s.e(a[0]), BIT_RUST[n], s.e(a[1]))
             if n in BIT_RUST:  # P2: no overflow possible, same text with and without --no-verify
                 return "(%s %s %s)" % (s.e(a[0]), BIT_RUST[n], s.e(a[1]))
             if n == "substr":  # G2 B2
@@ -1975,7 +1995,10 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
     # (declaration order, no addresses or hashes); nothing at all is added when no runtime requires needs them
     g.out[mark:mark] = g.g9_helper_texts()
     # P2: contract helpers of the bit builtins the requires checks used, in table order
-    g.out[mark:mark] = [CONTRACT_BIT_HELPER % (n, n, BIT_RUST[n]) for n in BIT_RUST if n in g.need_bits]
+    g.out[mark:mark] = [CONTRACT_SHIFT_HELPER % (n, n, n, BIT_RUST[n]) if n in SHIFT_SAFE
+                        else CONTRACT_BIT_HELPER % (n, n, BIT_RUST[n]) for n in BIT_RUST if n in g.need_bits]
+    # P2 batch 2: --no-verify shift helpers used by the code, in table order
+    g.out[mark:mark] = [SAFE_SHIFT_HELPER % (SHIFT_SAFE[n], BIT_RUST[n]) for n in SHIFT_SAFE if n in g.need_shift]
     manifest = None
     if g.g6:
         # helpers are discovered while the functions are generated; they go in front of them, in first-use order

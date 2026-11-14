@@ -49,7 +49,8 @@ pub fn contains_collection(t: &str) -> bool {
 
 pub const SIGNED_MIN128: i128 = i128::MIN;
 /// P2: bit builtin -> LLVM instruction (Python BIT_LLVM); later batches add entries.
-const BIT_LLVM: [(&str, &str); 3] = [("band", "and"), ("bor", "or"), ("bxor", "xor")];
+const BIT_LLVM: [(&str, &str); 5] =
+    [("band", "and"), ("bor", "or"), ("bxor", "xor"), ("wrapping_shl", "shl"), ("ushr", "lshr")];
 
 fn bit_llvm(n: &str) -> Option<&'static str> {
     BIT_LLVM.iter().find(|(k, _)| *k == n).map(|(_, ins)| *ins)
@@ -2394,6 +2395,15 @@ impl<'a> FnGen<'a> {
             // P2: no flags, same IR with and without --no-verify
             let x = self.ev(arg(a, 0)?, false)?;
             let y = self.ev(arg(a, 1)?, false)?;
+            if !self.verified && (n == "wrapping_shl" || n == "ushr") {
+                // P2 batch 2: check the count before shifting
+                let ok = self.op(format!("icmp ult i64 {}, 64", y.a))?;
+                self.guard(
+                    &ok,
+                    Fail::Panic1("pruv_panic_arith", "shift count outside 0..64".to_string()),
+                    false,
+                )?;
+            }
             let r = self.op(format!("{} i64 {}, {}", ins, x.a, y.a))?;
             return Ok(V::new(Kind::I64, r));
         }
@@ -3180,6 +3190,17 @@ impl<'a> FnGen<'a> {
                         let t = self.op(format!("add i128 {}, 9223372036854775808", v.a))?;
                         let ok = self.op(format!("icmp ult i128 {}, 18446744073709551616", t))?;
                         self.guard(&ok, und(format!("argument outside i64 in {}", n)), false)?;
+                    }
+                    if n == "wrapping_shl" || n == "ushr" {
+                        // P2 batch 2: count in 0..64 (unsigned compare covers negatives); shifts are not exact on
+                        // i128, so shift on i64 and widen
+                        let ok = self.op(format!("icmp ult i128 {}, 64", y.a))?;
+                        self.guard(&ok, und(format!("shift count outside 0..64 in {}", n)), false)?;
+                        let tx = self.op(format!("trunc i128 {} to i64", x.a))?;
+                        let ty = self.op(format!("trunc i128 {} to i64", y.a))?;
+                        let r = self.op(format!("{} i64 {}, {}", ins, tx, ty))?;
+                        let w = self.op(format!("sext i64 {} to i128", r))?;
+                        return Ok(V::new(Kind::I128, w));
                     }
                     let r = self.op(format!("{} i128 {}, {}", ins, x.a, y.a))?;
                     return Ok(V::new(Kind::I128, r));

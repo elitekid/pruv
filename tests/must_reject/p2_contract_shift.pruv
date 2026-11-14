@@ -1,0 +1,5 @@
+fn f(x: i64, k: i64) -> i64
+  requires ushr(x, k) >= 0
+{
+  return 0;
+}

@@ -96,6 +96,12 @@ it can never be silently dropped.
   (no user function of that name). Arguments are evaluated left to right, once. Wrong argument types are
   `type_mismatch`, a wrong argument count is `arity`. The verifier knows `y >= 0 ==> 0 <= band(x, y) <= y`, so
   `a[band(x, 255)]` is in bounds when `len(a) >= 256`.
+- `wrapping_shl(a, k)`, `ushr(a, k)`: `(i64, i64) -> i64`; `wrapping_shl` is the low 64 bits of `a << k` (two's
+  complement), `ushr` is the logical right shift of the 64-bit pattern (zero fill; `ushr(-1, 1) == 9223372036854775807`).
+  In code the verifier must prove `0 <= k < 64` (`verify` error `shift_range`). Pure, allowed in code and contracts,
+  names reserved. Known facts (code): `ushr(x, 0) == x`, `wrapping_shl(x, 0) == x`; `x >= 0 ==> 0 <= ushr(x, k) <= x`;
+  `k > 0 ==> ushr(x, k) >= 0`; for a literal `c` in 1..63, `ushr(x, c) <= 2^(64-c) - 1`, so `t[ushr(x, 60)]` is in
+  bounds for `len(t) >= 16`. Concrete constant expressions are decided exactly.
 - Evaluation order: code evaluates left to right in source order, the same in every compile mode; call arguments left to right, and in `a[i] = v` the index is evaluated before the value.
 - Precedence (high to low): unary `- !`; `* / %`; `+ -`; comparisons (non-associative); `&&`; `||`; `==>`.
 
@@ -112,7 +118,8 @@ Allowed only in `requires`, `ensures`, `invariant`, `assert`:
   proves it (`verify` error `contract_domain`): `a[i]` needs `0 <= i < len(a)`, `x / y` and `x % y` need `y != 0`,
   `some_val(o)` needs `is_some(o)`, `ok_val(r)` needs `is_ok(r)`, `err_val(r)` needs `!is_ok(r)`, `max`/`min` need
   `lo < hi`, and each argument of `band`/`bor`/`bxor` must be inside i64 (contract integers are unbounded and are
-  never truncated: `band(9223372036854775807 + 1, 255)` is outside the domain). The builtins have the same 64-bit
+  never truncated: `band(9223372036854775807 + 1, 255)` is outside the domain); `wrapping_shl`/`ushr` need both
+  arguments inside i64 and `k` in `0..64` (guard with `k >= 0 && k < 64 && ushr(x, k) >= 0`). The builtins have the same 64-bit
   two's-complement meaning in contracts as in code. Evaluation is left to right with short-circuit `&&` `||` `==>`; `forall`/`exists` go up from `lo` and stop
   at the first false/true k, so only the k they reach need a defined body; aggregates need it for every k in range.
   This holds in `requires` (each clause from the earlier ones only: write `requires 0 <= i && i < len(a)` before
@@ -704,6 +711,10 @@ inner start `i + 1`; any bound names, same array `a`, exactly this shape) is che
 A run-time `requires` that passes an argument outside i64 to `band`/`bor`/`bxor` panics with
 `pruv: requires undefined: argument outside i64 in band` (`bor`, `bxor` likewise). `--no-verify` gives the same
 `band`/`bor`/`bxor` results as the verified build.
+With `--no-verify`, a shift count outside `0..64` stops the program before shifting (exit 101, stderr
+`pruv: arithmetic error: shift count outside 0..64`); a run-time `requires` that passes such a count or an argument
+outside i64 to `wrapping_shl`/`ushr` panics with `pruv: requires undefined: shift count outside 0..64 in ushr`
+(`wrapping_shl` likewise).
 
 `--no-verify` emits safe mode: no proof exists, so indexing and arithmetic are checked (panic on out-of-range index
 or i64 overflow), and `/` `%` use the verifier's domain (divisor > 0 and dividend >= 0, otherwise panic).

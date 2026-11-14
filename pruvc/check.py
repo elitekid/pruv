@@ -16,7 +16,8 @@ CONTRACT_ONLY = {"is_some": ("option", BOOL), "some_val": ("option", "payload"),
                  "ok_val": ("result", "payload"), "err_val": ("result", I64),
                  "size": ("size", I64)}   # G9 A0: structural size of a non-generic nominal value
 # P2: pure (i64, i64) -> i64 bit builtins: name -> (Rust operator, LLVM instruction); later batches add entries here
-BIT_BUILTINS = {"band": ("&", "and"), "bor": ("|", "or"), "bxor": ("^", "xor")}
+BIT_BUILTINS = {"band": ("&", "and"), "bor": ("|", "or"), "bxor": ("^", "xor"),
+                "wrapping_shl": ("<<", "shl"), "ushr": (">>", "lshr")}
 BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate") + tuple(BIT_BUILTINS)
 RESERVED_TYPE_NAMES = ("Option", "Result", "Some", "None", "Ok", "Err")
 TYPE_NAME_RE = re.compile(r"[A-Z][A-Za-z0-9_]*\Z")

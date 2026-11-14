@@ -143,6 +143,7 @@ fn fix_for(code: &str) -> &'static str {
         "index_oob" => "add a requires/invariant/if that bounds the index, e.g. `invariant 0 <= i && i <= len(a)`",
         "overflow" => "bound the operands with requires (element ranges, len(a) <= N) and loop invariants on accumulators",
         "div" => "prove divisor > 0 and dividend >= 0 (add an if or requires)",
+        "shift_range" => "prove 0 <= shift count < 64 (add an if or requires)",
         "alloc_negative" => "prove 0 <= length <= 2^40",
         "call_requires" => "make the callee's requires hold before the call",
         "ensures" => "fix the code, or strengthen loop invariants so the postcondition follows",

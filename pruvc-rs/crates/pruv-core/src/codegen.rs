@@ -299,10 +299,38 @@ fn contract_arith(op: &str) -> Option<&'static str> {
 
 /// P2: bit builtin -> Rust operator (Python BIT_RUST, same order); later batches add entries. The contract helper
 /// pruv_c<name> is emitted only when a contract uses the builtin.
-const BIT_RUST: [(&str, &str); 3] = [("band", "&"), ("bor", "|"), ("bxor", "^")];
+const BIT_RUST: [(&str, &str); 5] =
+    [("band", "&"), ("bor", "|"), ("bxor", "^"), ("wrapping_shl", "<<"), ("ushr", ">>")];
 
 fn bit_rust(n: &str) -> Option<&'static str> {
     BIT_RUST.iter().find(|(k, _)| *k == n).map(|(_, op)| *op)
+}
+
+/// P2 batch 2: --no-verify helper name of a shift builtin (Python SHIFT_SAFE); None for the other bit builtins.
+fn shift_safe(n: &str) -> Option<&'static str> {
+    match n {
+        "wrapping_shl" => Some("pruv_shl"),
+        "ushr" => Some("pruv_ushr"),
+        _ => None,
+    }
+}
+
+/// Python SAFE_SHIFT_HELPER % (helper, op)
+fn safe_shift_helper(helper: &str, op: &str) -> String {
+    format!(
+        "#[allow(dead_code)]\n#[inline]\nfn {helper}(a: i64, k: i64) -> i64 {{ if k < 0 || k >= 64 {{ pruv_ovf(\"shift count outside 0..64\") }} (((a) as u64) {op} ((k) as u32)) as i64 }}\n",
+        helper = helper,
+        op = op
+    )
+}
+
+/// Python CONTRACT_SHIFT_HELPER % (name, name, name, op)
+fn contract_shift_helper(n: &str, op: &str) -> String {
+    format!(
+        "#[allow(dead_code)]\n#[inline]\nfn pruv_c{n}(a: i128, b: i128) -> i128 {{ if a < (i64::MIN as i128) || a > (i64::MAX as i128) || b < (i64::MIN as i128) || b > (i64::MAX as i128) {{ pruv_ud(\"argument outside i64 in {n}\") }} if b < 0 || b >= 64 {{ pruv_ud(\"shift count outside 0..64 in {n}\") }} ((((a as i64) as u64) {op} (b as u32)) as i64) as i128 }}\n",
+        n = n,
+        op = op
+    )
 }
 
 /// Python CONTRACT_BIT_HELPER % (name, name, op)
@@ -482,6 +510,8 @@ struct Gen<'a> {
     need_eq: HashSet<String>,
     /// P2: band/bor/bxor used in a runtime contract (filled while contracts are generated)
     need_bits: HashSet<String>,
+    /// P2 batch 2: shifts used in code under --no-verify (pruv_shl / pruv_ushr helpers)
+    need_shift: HashSet<String>,
     /// G9 A2: the diagnostic raised by g9_unsupported (the R error is only a marker)
     diag: Option<PruvError>,
     /// G4 A2 (explicit visibility mode, docs/G4_SPEC.md 4): only host entries are `pub`. Verified: just the entries that have
@@ -582,6 +612,7 @@ impl<'a> Gen<'a> {
             need_size: HashSet::new(),
             need_eq: HashSet::new(),
             need_bits: HashSet::new(),
+            need_shift: HashSet::new(),
             diag: None,
         }
     }
@@ -2781,6 +2812,16 @@ impl<'a> Gen<'a> {
                     let i0 = self.e(arg(a, 1)?)?;
                     return Ok(format!("pruv_str_boundary({}, {})", s0, i0));
                 }
+                if let (Some(op), Some(helper)) = (bit_rust(n), shift_safe(n)) {
+                    // P2 batch 2: --no-verify checks the count in a helper; verified relies on shift_range
+                    let a0 = self.e(arg(a, 0)?)?;
+                    let a1 = self.e(arg(a, 1)?)?;
+                    if !self.verified {
+                        self.need_shift.insert(n.to_string());
+                        return Ok(format!("{}({}, {})", helper, a0, a1));
+                    }
+                    return Ok(format!("(((({}) as u64) {} (({}) as u32)) as i64)", a0, op, a1));
+                }
                 if let Some(op) = bit_rust(n) {
                     // P2: no overflow possible, same text with and without --no-verify
                     let a0 = self.e(arg(a, 0)?)?;
@@ -3013,9 +3054,16 @@ pub fn gen_rust_concrete_ex(
     let bit_texts: Vec<String> = BIT_RUST
         .iter()
         .filter(|(k, _)| g.need_bits.contains(*k))
-        .map(|(k, op)| contract_bit_helper(k, op))
+        .map(|(k, op)| if shift_safe(k).is_some() { contract_shift_helper(k, op) } else { contract_bit_helper(k, op) })
         .collect();
     drop(g.out.splice(mark..mark, bit_texts));
+    // P2 batch 2: --no-verify shift helpers used by the code, in table order
+    let shift_texts: Vec<String> = BIT_RUST
+        .iter()
+        .filter(|(k, _)| g.need_shift.contains(*k))
+        .filter_map(|(k, op)| shift_safe(k).map(|h| safe_shift_helper(h, op)))
+        .collect();
+    drop(g.out.splice(mark..mark, shift_texts));
     let mut manifest: Option<String> = None;
     if g.g6 {
         // helpers are discovered while the functions are generated; they go in front of them, in first-use order

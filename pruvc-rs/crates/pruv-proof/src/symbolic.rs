@@ -218,7 +218,7 @@ fn is_tag_fn(n: &str) -> bool {
 
 /// P2: bit builtins evaluated as 64-bit bit-vector operations (verify.py BIT_Z3); later batches add names here.
 fn is_bit_z3(n: &str) -> bool {
-    matches!(n, "band" | "bor" | "bxor")
+    matches!(n, "band" | "bor" | "bxor" | "wrapping_shl" | "ushr")
 }
 
 /// verify.py `_partial_here` (line 86).
@@ -1944,6 +1944,8 @@ impl<'a> FnVerifier<'a> {
                 let u = match n {
                     "band" => bx.bvand(&by),
                     "bor" => bx.bvor(&by),
+                    "wrapping_shl" => bx.bvshl(&by),
+                    "ushr" => bx.bvlshr(&by),
                     _ => bx.bvxor(&by),
                 }
                 .bv2int(false);
@@ -1952,6 +1954,11 @@ impl<'a> FnVerifier<'a> {
                     &u,
                     &u.sub(&self.z.int_str("18446744073709551616")),
                 );
+                if code && (n == "wrapping_shl" || n == "ushr") {
+                    // shift count must be in 0..64
+                    let ob = self.z.and(&[y0.ge_i(0), y0.lt_i(64)]);
+                    self.prove_core(&st.env, &st.pc, g, &ob, pos(e), "shift_range", "shift count in 0..64", None);
+                }
                 if code {
                     let f = self.z.and(&[r.ge_i(i64::MIN), r.le_i(i64::MAX)]);
                     self.assume(st, g, f);
@@ -1960,6 +1967,28 @@ impl<'a> FnVerifier<'a> {
                         self.assume(st, g, f);
                         let f = x0.ge_i(0).implies(&self.z.and(&[r.ge_i(0), r.le(&x0)]));
                         self.assume(st, g, f);
+                    } else if n == "wrapping_shl" {
+                        let f = y0.raw_eq(&self.z.int(0)).implies(&r.eq(&x0));
+                        self.assume(st, g, f);
+                    } else if n == "ushr" {
+                        let f = y0.raw_eq(&self.z.int(0)).implies(&r.eq(&x0));
+                        self.assume(st, g, f);
+                        let f = x0.ge_i(0).implies(&self.z.and(&[r.ge_i(0), r.le(&x0)]));
+                        self.assume(st, g, f);
+                        let f = y0.gt_i(0).implies(&r.ge_i(0));
+                        self.assume(st, g, f);
+                        // literal shift count c with 0 < c < 64 (syntactically an int literal in the source)
+                        let c: Option<i128> = match &x.args[1] {
+                            Expr::IntLit(l) => l.value.parse::<i128>().ok(),
+                            _ => None,
+                        };
+                        if let Some(c) = c.filter(|c| *c > 0 && *c < 64) {
+                            let f = r.raw_le(&self.z.int_str(&((1i128 << (64 - c)) - 1).to_string()));
+                            self.assume(st, g, f);
+                            let wide = self.z.ite(&x0.lt_i(0), &x0.add(&self.z.int_str("18446744073709551616")), &x0);
+                            let f = r.eq(&wide.div(&self.z.int_str(&(1i128 << c).to_string())));
+                            self.assume(st, g, f);
+                        }
                     } else {
                         let f = self
                             .z
@@ -2621,6 +2650,10 @@ impl<'a> FnVerifier<'a> {
                         a1.ge_i(i64::MIN),
                         a1.le_i(i64::MAX),
                     ])));
+                    if x.name == "wrapping_shl" || x.name == "ushr" {
+                        // shift count in 0..64
+                        parts.push(Some(self.z.and(&[a1.ge_i(0), a1.lt_i(64)])));
+                    }
                 }
                 if wo && is_tag_fn(&x.name) {
                     let a0 = x.args.first().ok_or_else(|| "tuple index out of range".to_string())?;

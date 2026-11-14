@@ -43,7 +43,7 @@ pub(crate) enum CRes {
 }
 
 /// P2: pure (i64, i64) -> i64 bit builtins (check.py BIT_BUILTINS); later batches add names here.
-pub(crate) const BIT_BUILTINS: [&str; 3] = ["band", "bor", "bxor"];
+pub(crate) const BIT_BUILTINS: [&str; 5] = ["band", "bor", "bxor", "wrapping_shl", "ushr"];
 
 pub(crate) fn is_bit_builtin(n: &str) -> bool {
     BIT_BUILTINS.contains(&n)

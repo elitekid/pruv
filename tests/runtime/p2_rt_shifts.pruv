@@ -1,0 +1,75 @@
+// wrapping_shl / ushr: shifts of the 64-bit two's-complement pattern; the count must be proven in 0..63.
+fn c1() -> i64
+  ensures result == -9223372036854775807 - 1
+{ return wrapping_shl(1, 63); }
+fn c2() -> i64
+  ensures result == 9223372036854775807
+{ return ushr(-1, 1); }
+fn c3() -> i64
+  ensures result == 1
+{ return ushr(-1, 63); }
+fn c4() -> i64
+  ensures result == -16
+{ return wrapping_shl(-1, 4); }
+fn c5() -> i64
+  ensures result == 15
+{ return ushr(-16, 60); }
+fn shl(a: i64, k: i64) -> i64
+  requires 0 <= k && k < 64
+  ensures result == wrapping_shl(a, k)
+{ return wrapping_shl(a, k); }
+fn shr(a: i64, k: i64) -> i64
+  requires 0 <= k && k < 64
+  ensures result == ushr(a, k)
+{ return ushr(a, k); }
+// constant-shift fact: no requires on x, the result is in 0..15
+fn top_nibble(x: i64) -> i64
+  ensures 0 <= result && result <= 15
+  ensures result <= 15
+{ return ushr(x, 60); }
+fn pick(x: i64) -> i64 ! alloc
+  ensures result == 7
+{
+  let mut t: [i64] = alloc(16, 3);
+  t[ushr(x, 60)] = 7;
+  return t[ushr(x, 60)];
+}
+// short-circuit guarded shift in a contract
+fn guarded(x: i64, k: i64) -> i64
+  requires k >= 0 && k < 64 && ushr(x, k) >= 0
+  ensures result == k
+{ return k; }
+fn run() -> () ! io, alloc {
+  print(c1());
+  print(c2());
+  print(c3());
+  print(c4());
+  print(c5());
+  print(shl(1, 0));
+  print(shl(1, 63));
+  print(shl(3, 63));
+  print(shl(5, 2));
+  print(shl(-1, 63));
+  print(shl(9223372036854775807, 1));
+  print(shl(4611686018427387904, 1));
+  print(shr(-1, 0));
+  print(shr(-1, 1));
+  print(shr(-1, 63));
+  print(shr(-16, 60));
+  print(shr(256, 4));
+  print(shr(-9223372036854775807 - 1, 63));
+  print(shr(-9223372036854775807 - 1, 1));
+  print(shr(7, 0));
+  print(top_nibble(-1));
+  print(top_nibble(0));
+  print(top_nibble(-9223372036854775807 - 1));
+  print(top_nibble(9223372036854775807));
+  print(top_nibble(4611686018427387904));
+  print(pick(-1));
+  print(pick(5));
+  print(guarded(5, 3));
+  print(guarded(-1, 1));
+  print(guarded(1, 63));
+  print(wrapping_shl(1, 63));
+  print(ushr(-1, 63));
+}

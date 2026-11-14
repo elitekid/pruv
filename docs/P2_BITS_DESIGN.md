@@ -88,3 +88,35 @@ with its `l3_rt_truncate` tests. `tests/diff_compilers.py --input ... --backend 
 
 Then port nqueen (n=15, dev 12), base64 and bedcov (n=1,000,000 seed 11, dev 10,000) into `bench/perf/` and run
 `bench/perf/run.py`.
+4. Byte-word access and the decode result copy (added 2026-11-15 after measuring base64). See "Batch 4" below.
+
+## Batch 4: byte-word builtins and in-place `return truncate`
+
+Measured on the generated base64 code (n = 8192, matched Rust 480 ms): the byte-built word `bor(wrapping_shl(s[i], 56),
+...)` is never turned into one load + byte swap and the six byte stores of the decoder are never merged, because LLVM
+narrows each `ushr(w, c) & 63` / `& 255` to one byte before its load/store combining runs (0 `rev` in the Pruv object
+against 9 in matched Rust). Hand-replacing them with `from_be_bytes` and one 6-byte `to_be_bytes` copy, and the
+decoder's `truncate` copy with an in-place shorten, gives 483 ms (1.006); without the word store 549 ms, without the
+in-place truncate 553 ms. Inlining hints made no difference once the word access exists.
+
+1. `load_be(a: [u8], i: i64, n)`: `n` an integer literal 1..=8; the bytes `a[i..i+n]` read big-endian; for `n = 8` the
+   64 bits as two's complement i64, for `n < 8` a value in `0..2^(8n)`. Obligation: the existing `verify/index_oob` error for
+   `0 <= i && i + n <= len(a)` (one check, the last byte). Code and contracts (in contracts the index check is the same
+   rule as `a[i]` in a contract). Z3: `concat` of the n byte selects (each `Int2BV(8)` of the element, which
+   the element type keeps in 0..=255), `BV2Int`, signed fold for n = 8. Rust: `i64::from_be_bytes` (n = 8) or
+   `u64::from_be_bytes` of a zero-padded buffer built from `a[i..i+n]` (n < 8), unchecked slice access when verified.
+   LLVM: `load iN, align 1` + `llvm.bswap.iN` (n = 1: plain load) + `zext`/none; n in {3,5,6,7}: load of the bytes
+   as separate loads (no combining expected; only n = 8 is used by the benchmarks).
+2. `store_be(inout a: [u8], i: i64, w: i64, n)`: statement only (the section 6g mutating-call positions), `n` an
+   integer literal 1..=8; writes the low `8n` bits of `w` big-endian to `a[i..i+n]`, other elements unchanged.
+   Obligation: `verify/index_oob` for `0 <= i && i + n <= len(a)`. Verifier: the n array stores
+   `a[i+k] := band(ushr(w, 8(n-1-k)), 255)`, k = 0..n-1, exactly as the byte statements. Rust:
+   `a[i..i+n].copy_from_slice(&(w as u64).to_be_bytes()[8-n..])` (unchecked when verified). LLVM: bswap of the low
+   `8n` bits and one `store iN, align 1` for n in {1,2,4,8}, else stores of 4/2/1-byte pieces high to low.
+3. `return truncate(x, m)` where `x` is a mutable local array (not a parameter, not a binder) and `m` does not name `x`:
+   both backends shorten `x` in place and move it out (Rust: the existing `pruv_t.truncate` text; LLVM: return the
+   same pointer with length `m` and clear the slot as the plain `return x` does). Any program, not only G9 ones.
+   No change to the verifier or to any other truncate.
+4. Tests: `p2_rt_words` (n = 1, 2, 4, 6, 8 load/store round trips, a high-bit n = 8 word, store leaves neighbours,
+   verified and `--no-verify`), `p2_word_index` must-reject (`i + 8 > len`, `verify/index_oob`), `p2_word_literal`
+   must-reject (non-literal or 9 for `n`, `type/...`), `l3_rt_truncate` keeps passing.

@@ -55,7 +55,7 @@ G6_UNSUPPORTED_FIX = "avoid trusted rust fn, Vec, HashMap, String, take and move
 G6_BRIDGE_DECL = "@pruv_g6_bridge_v1 = external global i8\n"
 
 SIGNED_MIN128 = -170141183460469231731687303715884105728
-BIT_LLVM = {"band": "and", "bor": "or", "bxor": "xor"}   # P2: bit builtin -> LLVM instruction; later batches add entries
+BIT_LLVM = {"band": "and", "bor": "or", "bxor": "xor", "wrapping_shl": "shl", "ushr": "lshr"}   # P2: bit builtin -> LLVM instruction; later batches add entries
 OPT = "{ i1, i64 }"
 COPT = "{ i1, i128 }"       # Option/Result stored inside a contract aggregate (%pruv_c_*)
 ARR = "{ ptr, i64 }"
@@ -1479,6 +1479,9 @@ class FnGen:
         if n in BIT_LLVM:   # P2: no flags, same IR with and without --no-verify
             x = s.ev(a[0])
             y = s.ev(a[1])
+            if not s.verified and n in ("wrapping_shl", "ushr"):   # P2 batch 2: check the count before shifting
+                ok = s.op("icmp ult i64 %s, 64" % y.a)
+                s.guard(ok, s.panic1("pruv_panic_arith", "shift count outside 0..64"), False)
             return V("i64", s.op("%s i64 %s, %s" % (BIT_LLVM[n], x.a, y.a)))
         if n == "substr":  # G2 B2: s, lo, hi in order
             sv = s.ev(a[0])
@@ -1979,6 +1982,14 @@ class FnGen:
                     t = s.op("add i128 %s, 9223372036854775808" % v.a)
                     ok = s.op("icmp ult i128 %s, 18446744073709551616" % t)
                     s.guard(ok, und("argument outside i64 in " + n), False)
+                if n in ("wrapping_shl", "ushr"):   # P2 batch 2: count in 0..64 (unsigned compare covers negatives);
+                    # shifts are not exact on i128, so shift on i64 and widen
+                    ok = s.op("icmp ult i128 %s, 64" % y.a)
+                    s.guard(ok, und("shift count outside 0..64 in " + n), False)
+                    tx = s.op("trunc i128 %s to i64" % x.a)
+                    ty = s.op("trunc i128 %s to i64" % y.a)
+                    r = s.op("%s i64 %s, %s" % (BIT_LLVM[n], tx, ty))
+                    return V("i128", s.op("sext i64 %s to i128" % r))
                 return V("i128", s.op("%s i128 %s, %s" % (BIT_LLVM[n], x.a, y.a)))
             if n in ("is_some", "is_ok"):
                 o = s.cev(a[0])

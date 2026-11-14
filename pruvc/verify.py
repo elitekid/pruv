@@ -573,7 +573,8 @@ def _imp(c, d):
 
 _TAG_FNS = ("some_val", "ok_val", "err_val")
 # P2: bit builtin name -> z3 bit-vector operator (same names as check.BIT_BUILTINS); later batches add entries
-BIT_Z3 = {"band": lambda a, b: a & b, "bor": lambda a, b: a | b, "bxor": lambda a, b: a ^ b}
+BIT_Z3 = {"band": lambda a, b: a & b, "bor": lambda a, b: a | b, "bxor": lambda a, b: a ^ b,
+          "wrapping_shl": lambda a, b: a << b, "ushr": z3.LShR}
 
 
 def _partial_here(e, kind):
@@ -811,6 +812,7 @@ FIX = {
     "index_oob": "add a requires/invariant/if that bounds the index, e.g. `invariant 0 <= i && i <= len(a)`",
     "overflow": "bound the operands with requires (element ranges, len(a) <= N) and loop invariants on accumulators",
     "div": "prove divisor > 0 and dividend >= 0 (add an if or requires)",
+    "shift_range": "prove 0 <= shift count < 64 (add an if or requires)",
     "alloc_negative": "prove 0 <= length <= 2^40",
     "call_requires": "make the callee's requires hold before the call",
     "ensures": "fix the code, or strengthen loop invariants so the postcondition follows",
@@ -1398,6 +1400,8 @@ class FnVerifier:
                 x = s.ev(e.args[0], st, g, False, env)
                 y = s.ev(e.args[1], st, g, False, env)
                 parts.append(z3.And(x >= -2 ** 63, x <= 2 ** 63 - 1, y >= -2 ** 63, y <= 2 ** 63 - 1))
+                if e.name in ("wrapping_shl", "ushr"):      # shift count in 0..64
+                    parts.append(z3.And(y >= 0, y < 64))
             if wo and e.name in _TAG_FNS:
                 v = s.ev(e.args[0], st, g, False, env)
                 vty = s.model.type_of(v)       # G3: the Option/Result instance of the argument
@@ -1579,11 +1583,23 @@ class FnVerifier:
             x, y = args
             u = z3.BV2Int(BIT_Z3[n](z3.Int2BV(x, 64), z3.Int2BV(y, 64)))
             r = z3.If(u < 2 ** 63, u, u - 2 ** 64)
+            if code and n in ("wrapping_shl", "ushr"):    # shift count must be in 0..64
+                s.prove(st, g, z3.And(y >= 0, y < 64), e, "shift_range", "shift count in 0..64")
             if code:
                 s.assume(st, g, z3.And(r >= -2 ** 63, r <= 2 ** 63 - 1))
                 if n == "band":
                     s.assume(st, g, z3.Implies(y >= 0, z3.And(r >= 0, r <= y)))
                     s.assume(st, g, z3.Implies(x >= 0, z3.And(r >= 0, r <= x)))
+                elif n == "wrapping_shl":
+                    s.assume(st, g, z3.Implies(y == 0, r == x))
+                elif n == "ushr":
+                    s.assume(st, g, z3.Implies(y == 0, r == x))
+                    s.assume(st, g, z3.Implies(x >= 0, z3.And(0 <= r, r <= x)))
+                    s.assume(st, g, z3.Implies(y > 0, r >= 0))
+                    c = e.args[1].value if isinstance(e.args[1], IntLit) else None
+                    if c is not None and 0 < c < 64:    # literal shift count
+                        s.assume(st, g, r <= 2 ** (64 - c) - 1)
+                        s.assume(st, g, r == z3.If(x < 0, x + 2 ** 64, x) / 2 ** c)
                 else:
                     s.assume(st, g, z3.Implies(z3.And(x >= 0, y >= 0), z3.And(r >= 0, r <= x + y)))
             return r

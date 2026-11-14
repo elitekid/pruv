@@ -7,7 +7,7 @@
 //! - Patterns: a single-term `Z3_mk_pattern` (z3py `_to_pattern` → `MultiPattern`)
 //! - Datatype: `Z3_mk_constructor(name, "is-"+name, ...)` + `Z3_mk_datatypes` (z3py `CreateDatatypes`)
 //! - Arithmetic: `+ - *` are two-argument `Z3_mk_add/sub/mul`, `!=` is `Z3_mk_distinct` (Python `__ne__`)
-//! - Bit-vectors (P2): `Int2BV` → `Z3_mk_int2bv(ctx, bits, a)`, `BV2Int` → `Z3_mk_bv2int(ctx, a, is_signed)`, `& | ^` → `Z3_mk_bvand/bvor/bvxor`
+//! - Bit-vectors (P2): `Int2BV` → `Z3_mk_int2bv(ctx, bits, a)`, `BV2Int` → `Z3_mk_bv2int(ctx, a, is_signed)`, `& | ^` → `Z3_mk_bvand/bvor/bvxor`, `<<` / `LShR` → `Z3_mk_bvshl/bvlshr`
 //! - Solver: `Z3_mk_solver`; the timeout is `Z3_params_set_uint("timeout", ms)` followed by `Z3_solver_set_params`
 //!
 //! # Common safety rationale (cited by number from each unsafe block's `SAFETY:`)
@@ -555,6 +555,10 @@ impl Ast {
     bin_ast!(bvand, Z3_mk_bvand);
     bin_ast!(bvor, Z3_mk_bvor);
     bin_ast!(bvxor, Z3_mk_bvxor);
+    // P2 batch 2: z3py `a << b` (`BitVecRef.__lshift__` → bvshl) and `LShR(a, b)` (logical right shift → bvlshr).
+    // Each expands through `bin_ast!`, whose unsafe block carries the SAFETY comment (S1 S2, same-context debug_assert).
+    bin_ast!(bvshl, Z3_mk_bvshl);
+    bin_ast!(bvlshr, Z3_mk_bvlshr);
 
     /// z3py `Int2BV(self, bits)`: `Z3_mk_int2bv(ctx, bits, a)`.
     pub fn int2bv(&self, bits: u32) -> Ast {
