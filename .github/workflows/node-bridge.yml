@@ -67,6 +67,8 @@ on:
       - "bench/l0/run_toml_string.py"
       - "bench/l0/strip_user_info.mjs"
       - "bench/l0/run_strip_user_info.py"
+      - "bench/l0/valid_thread.mjs"
+      - "bench/l0/run_valid_thread.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

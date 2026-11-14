@@ -130,6 +130,7 @@ export const tomlString = native.tomlString;
  *  kept, everything up to the last `@` before the next whitespace or `/` dropped), from the verified Pruv
  *  strip_user_info (text at most 1e11 UTF-8 bytes, InvalidArg otherwise). */
 export const stripUserInfo = native.stripUserInfo;
+export const validThread = native.validThread;
 
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;

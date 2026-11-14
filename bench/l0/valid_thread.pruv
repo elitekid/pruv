@@ -1,0 +1,30 @@
+// Lair validThread (src/backend/engine-import/tail.ts, commit 698e1bd1), the shape check a conversation
+// number must pass before it is used as a file name: /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(thread).
+// Without the m flag, $ only matches at the very end, so a trailing line break fails.
+// Every accepted character is ASCII, so Pruv checks UTF-8 bytes: 1 to 128 bytes, the first an ASCII
+// letter or digit, the rest ASCII letters, digits, '_' or '-'. Any byte of a non-ASCII character fails.
+// Domain: text at most 10^11 UTF-8 bytes.
+
+fn alnum(x: i64) -> bool
+{
+  return (48 <= x && x <= 57) || (65 <= x && x <= 90) || (97 <= x && x <= 122);
+}
+
+pub fn valid_thread(s: str) -> bool
+  requires len(s) <= 100000000000
+{
+  let n: i64 = len(s);
+  if n < 1 || n > 128 { return false; }
+  if !alnum(s[0]) { return false; }
+  let mut i: i64 = 1;
+  let mut ok: bool = true;
+  while i < n
+    invariant 1 <= i && i <= n
+    decreases n - i
+  {
+    let x: i64 = s[i];
+    if !(alnum(x) || x == 95 || x == 45) { ok = false; }
+    i = i + 1;
+  }
+  return ok;
+}

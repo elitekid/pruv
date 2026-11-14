@@ -92,6 +92,10 @@ mod toml_string_gen;
 #[allow(dead_code, clippy::all)]
 mod strip_user_info_gen;
 
+#[path = "../gen/valid_thread_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod valid_thread_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -876,6 +880,17 @@ pub fn strip_user_info(text: String) -> napi::Result<String> {
             "stripUserInfo: text must be at most 100000000000 UTF-8 bytes"));
     }
     Ok(strip_user_info_gen::strip_user_info(&text))
+}
+
+/// Lair validThread (src/backend/engine-import/tail.ts): whether the text has the conversation number
+/// shape `/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/` that may be used as a file name.
+#[napi(js_name = "validThread")]
+pub fn valid_thread(text: String) -> napi::Result<bool> {
+    if text.len() as u64 > 100_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "validThread: text must be at most 100000000000 UTF-8 bytes"));
+    }
+    Ok(valid_thread_gen::valid_thread(&text))
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {
