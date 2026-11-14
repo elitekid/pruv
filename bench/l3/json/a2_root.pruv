@@ -1,0 +1,17 @@
+// Plain-array host ABI: tape on success, [-1, byte offset, error kind] on failure.
+mod json;
+mod lex;
+mod parse;
+
+pub fn parse_tape(input: [u8]) -> [i64] ! alloc
+{
+  let parsed: crate::json::JsonParse = crate::parse::parse(input);
+  match parsed {
+    crate::json::JsonParse::Parsed(document) => { return copy(document.tape); }
+    crate::json::JsonParse::Failed(error) => {
+      let mut out: [i64] = alloc(3, 0);
+      out[0] = -1; out[1] = error.position; out[2] = error.kind;
+      return out;
+    }
+  }
+}

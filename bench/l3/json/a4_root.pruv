@@ -1,0 +1,68 @@
+mod json;
+mod lex;
+mod parse;
+mod jstr;
+mod access;
+
+fn one(v: i64) -> [i64] ! alloc { let mut a: [i64] = alloc(1, 0); a[0] = v; return a; }
+// Path pairs: 0 absolute ID, 1 array index, 2 field units, 3 field str.
+// Modes: kind, raw bytes, length, boolean, number, units, text UTF-8 bytes.
+pub fn query(input: [u8], ops: [i64], key: [i64], text: str, mode: i64) -> [i64] ! alloc
+{
+  let parsed: crate::json::JsonParse = crate::parse::parse(input);
+  match parsed {
+    crate::json::JsonParse::Failed(error) => { return one(-10); }
+    crate::json::JsonParse::Parsed(d) => {
+      let mut id: i64 = crate::access::root(d); let mut p: i64 = 0;
+      while len(ops) - p >= 2
+        invariant 0 <= p && p <= len(ops)
+        decreases len(ops) - p
+      {
+        let op: i64 = ops[p]; let arg: i64 = ops[p + 1];
+        if op == 0 { id = arg; }
+        if op == 1 { id = crate::access::array_at(d, id, arg); }
+        if op == 2 { id = crate::access::field_units(d, id, key); }
+        if op == 3 { id = crate::access::field(d, id, text); }
+        if id < 0 && op != 0 { return one(id); } p = p + 2;
+      }
+      if mode == 0 { return one(crate::access::kind(d, id)); }
+      if mode == 2 { return one(crate::access::array_length(d, id)); }
+      if mode == 3 { return one(crate::access::boolean(d, id)); }
+      if mode == 5 {
+        let u: crate::access::Units = crate::access::string_units(d, id);
+        if u.status != 0 { return one(u.status); } return copy(u.units);
+      }
+      if mode == 6 {
+        let t: crate::jstr::Text = crate::access::string_text(d, id);
+        match t {
+          crate::jstr::Text::InternalInvariant(k) => { return one(k); }
+          crate::jstr::Text::Decoded(s) => {
+            if len(s) > 50331648 { return one(-4); }
+            let mut out: [i64] = alloc(len(s), 0); let mut i: i64 = 0;
+            while i < len(s)
+              invariant 0 <= i && i <= len(s) && len(out) == len(s)
+              decreases len(s) - i
+            { out[i] = s[i]; i = i + 1; } return out;
+          }
+        }
+      }
+      let span: crate::access::Span = crate::access::raw_span(d, id);
+      if span.status != 0 { return one(span.status); }
+      let mut prefix: i64 = 0;
+      if mode == 4 { prefix = 4; }
+      let mut out: [i64] = alloc(prefix + span.end - span.start, 0);
+      if mode == 4 {
+        let n: crate::access::Number = crate::access::number(d, id);
+        if n.status != 0 { return one(n.status); }
+        out[0] = 0; if n.has_integer { out[1] = 1; } out[2] = n.integer; if n.negative_zero { out[3] = 1; }
+      }
+      let mut i: i64 = span.start;
+      while i < span.end
+        invariant span.start <= i && i <= span.end && 0 <= span.start && span.end <= len(d.source)
+        invariant 0 <= prefix && prefix <= 4 && len(out) == prefix + span.end - span.start
+        decreases span.end - i
+      { out[prefix + i - span.start] = d.source[i]; i = i + 1; }
+      return out;
+    }
+  }
+}

@@ -1,0 +1,39 @@
+// Host-only scalar ABI. UTF-8 returns -1 or the first invalid sequence start.
+// Token results: >=0 success end; -(kind * 33554432 + position) - 1 error.
+// The encoding accommodates the A0 16 MiB input limit without overlap.
+mod lex;
+
+pub fn literal(input: [u8], pos: i64, end: i64) -> i64
+  requires 0 <= pos && pos <= end && end <= len(input) && end <= 16777216
+{
+  let r: crate::lex::Scan = crate::lex::scan_literal(input, pos, end);
+  if r.kind == 0 { return r.position; }
+  return -(r.kind * 33554432 + r.position) - 1;
+}
+
+pub fn number(input: [u8], pos: i64, end: i64) -> i64
+  requires 0 <= pos && pos <= end && end <= len(input) && end <= 16777216
+{
+  let r: crate::lex::Scan = crate::lex::scan_number(input, pos, end);
+  if r.kind == 0 { return r.position; }
+  return -(r.kind * 33554432 + r.position) - 1;
+}
+
+pub fn string(input: [u8], pos: i64, end: i64) -> i64
+  requires 0 <= pos && pos <= end && end <= len(input) && end <= 16777216
+  requires pos < end && input[pos] == 34
+{
+  let r: crate::lex::Scan = crate::lex::scan_string(input, pos, end);
+  if r.kind == 0 { return r.position; }
+  return -(r.kind * 33554432 + r.position) - 1;
+}
+
+pub fn utf8(input: [u8], pos: i64, end: i64) -> i64
+  requires 0 <= pos && pos <= end && end <= len(input)
+  ensures result == -1 || (pos <= result && result < end)
+{ return crate::lex::validate_utf8(input, pos, end); }
+
+pub fn whitespace(input: [u8], pos: i64, end: i64) -> i64
+  requires 0 <= pos && pos <= end && end <= len(input)
+  ensures pos <= result && result <= end
+{ return crate::lex::skip_whitespace(input, pos, end); }

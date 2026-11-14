@@ -1,0 +1,819 @@
+{
+  "method": "Wall-clock milliseconds inside host process; median of 3, no warmup; input IO, compilation and output validation excluded. text_of includes parsing and decoding. Node times JSON.parse only.",
+  "platform": "macOS-26.5-arm64-arm-64bit",
+  "cases": {
+    "plain_8MiB": {
+      "bytes": 8388610,
+      "expected": [
+        "ok",
+        "1",
+        "0"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            22.396875,
+            17.660249999999998,
+            14.075833
+          ],
+          "median_ms": 17.660249999999998,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            25.360917,
+            16.911708,
+            13.79875
+          ],
+          "median_ms": 16.911708,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            22.969,
+            17.621000000000002,
+            14.444291999999999
+          ],
+          "median_ms": 17.621000000000002,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            24.801541999999998,
+            17.054792,
+            13.984375
+          ],
+          "median_ms": 17.054792,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        }
+      },
+      "node": {
+        "samples_ms": [
+          2.626041,
+          2.944625,
+          2.676333
+        ],
+        "median_ms": 2.676333
+      }
+    },
+    "escapes_4MiB": {
+      "bytes": 4194306,
+      "expected": [
+        "ok",
+        "1",
+        "0"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            5.320583,
+            4.81325,
+            4.645333
+          ],
+          "median_ms": 4.81325,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            5.213833999999999,
+            4.685916,
+            4.513708
+          ],
+          "median_ms": 4.685916,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            5.40125,
+            4.748208,
+            4.597959
+          ],
+          "median_ms": 4.748208,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            5.233416999999999,
+            4.743333,
+            4.58725
+          ],
+          "median_ms": 4.743333,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        }
+      },
+      "node": {
+        "samples_ms": [
+          4.366125,
+          4.481709,
+          4.369583
+        ],
+        "median_ms": 4.369583
+      }
+    },
+    "object_100000": {
+      "bytes": 1088891,
+      "expected": [
+        "ok",
+        "200001",
+        "100000"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            6.083583,
+            4.872125,
+            4.749874999999999
+          ],
+          "median_ms": 4.872125,
+          "observed": [
+            "ok",
+            "200001",
+            "100000"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            6.453208999999999,
+            5.023458,
+            5.036416999999999
+          ],
+          "median_ms": 5.036416999999999,
+          "observed": [
+            "ok",
+            "200001",
+            "100000"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            6.0,
+            4.7078750000000005,
+            4.541291999999999
+          ],
+          "median_ms": 4.7078750000000005,
+          "observed": [
+            "ok",
+            "200001",
+            "100000"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            6.472,
+            4.801875,
+            4.855792
+          ],
+          "median_ms": 4.855792,
+          "observed": [
+            "ok",
+            "200001",
+            "100000"
+          ]
+        }
+      },
+      "node": {
+        "samples_ms": [
+          11.5765,
+          10.501042,
+          10.895459
+        ],
+        "median_ms": 10.895459
+      }
+    },
+    "array_500000": {
+      "bytes": 1000001,
+      "expected": [
+        "ok",
+        "500001",
+        "500000"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            13.166459,
+            10.489958000000001,
+            10.196709
+          ],
+          "median_ms": 10.489958000000001,
+          "observed": [
+            "ok",
+            "500001",
+            "500000"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            12.888375,
+            10.504917,
+            10.132458
+          ],
+          "median_ms": 10.504917,
+          "observed": [
+            "ok",
+            "500001",
+            "500000"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            12.932917,
+            10.019292,
+            9.733291999999999
+          ],
+          "median_ms": 10.019292,
+          "observed": [
+            "ok",
+            "500001",
+            "500000"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            13.926667,
+            10.633875,
+            10.387
+          ],
+          "median_ms": 10.633875,
+          "observed": [
+            "ok",
+            "500001",
+            "500000"
+          ]
+        }
+      },
+      "node": {
+        "samples_ms": [
+          2.059416,
+          2.1975,
+          2.157709
+        ],
+        "median_ms": 2.157709
+      }
+    },
+    "depth_128": {
+      "bytes": 257,
+      "expected": [
+        "ok",
+        "129",
+        "1"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            0.012709,
+            0.012125,
+            0.009417
+          ],
+          "median_ms": 0.012125,
+          "observed": [
+            "ok",
+            "129",
+            "1"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            0.013167,
+            0.011833,
+            0.008708
+          ],
+          "median_ms": 0.011833,
+          "observed": [
+            "ok",
+            "129",
+            "1"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            0.012,
+            0.015667,
+            0.0085
+          ],
+          "median_ms": 0.012,
+          "observed": [
+            "ok",
+            "129",
+            "1"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            0.014708,
+            0.012,
+            0.008583
+          ],
+          "median_ms": 0.012,
+          "observed": [
+            "ok",
+            "129",
+            "1"
+          ]
+        }
+      },
+      "node": {
+        "samples_ms": [
+          0.008542,
+          0.00475,
+          0.003625
+        ],
+        "median_ms": 0.00475
+      }
+    },
+    "depth_129": {
+      "bytes": 259,
+      "expected": [
+        "error",
+        "128",
+        "3"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            0.000833,
+            0.0018750000000000001,
+            0.00075
+          ],
+          "median_ms": 0.000833,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            0.002334,
+            0.00175,
+            0.0007080000000000001
+          ],
+          "median_ms": 0.00175,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            0.000875,
+            0.003792,
+            0.00075
+          ],
+          "median_ms": 0.000875,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            0.001958,
+            0.002084,
+            0.000791
+          ],
+          "median_ms": 0.001958,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        }
+      }
+    },
+    "hostile_depth_1000000": {
+      "bytes": 1000000,
+      "expected": [
+        "error",
+        "128",
+        "3"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            0.2265,
+            0.232208,
+            0.228541
+          ],
+          "median_ms": 0.228541,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            0.227291,
+            0.231625,
+            0.228167
+          ],
+          "median_ms": 0.228167,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            0.22583299999999998,
+            0.23800000000000002,
+            0.243708
+          ],
+          "median_ms": 0.23800000000000002,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            0.234333,
+            0.243083,
+            0.233166
+          ],
+          "median_ms": 0.234333,
+          "observed": [
+            "error",
+            "128",
+            "3"
+          ]
+        }
+      }
+    },
+    "bytes_16777216": {
+      "bytes": 16777216,
+      "expected": [
+        "ok",
+        "1",
+        "0"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            22.09975,
+            21.317415999999998,
+            21.761208
+          ],
+          "median_ms": 21.761208,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            23.045209,
+            21.494333,
+            21.482
+          ],
+          "median_ms": 21.494333,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            22.323791999999997,
+            21.43425,
+            21.105833
+          ],
+          "median_ms": 21.43425,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            23.131041,
+            21.369292,
+            21.188375
+          ],
+          "median_ms": 21.369292,
+          "observed": [
+            "ok",
+            "1",
+            "0"
+          ]
+        }
+      },
+      "node": {
+        "samples_ms": [
+          5.2815,
+          5.272375,
+          5.121
+        ],
+        "median_ms": 5.272375
+      }
+    },
+    "bytes_16777217": {
+      "bytes": 16777217,
+      "expected": [
+        "error",
+        "0",
+        "1"
+      ],
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            0.00075,
+            8.3e-05,
+            8.3e-05
+          ],
+          "median_ms": 8.3e-05,
+          "observed": [
+            "error",
+            "0",
+            "1"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            0.002458,
+            4.2e-05,
+            4.1e-05
+          ],
+          "median_ms": 4.2e-05,
+          "observed": [
+            "error",
+            "0",
+            "1"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            0.0011250000000000001,
+            8.4e-05,
+            4.2e-05
+          ],
+          "median_ms": 8.4e-05,
+          "observed": [
+            "error",
+            "0",
+            "1"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            0.0025830000000000002,
+            0.000125,
+            4.1e-05
+          ],
+          "median_ms": 0.000125,
+          "observed": [
+            "error",
+            "0",
+            "1"
+          ]
+        }
+      }
+    },
+    "plain_8MiB_text": {
+      "bytes": 8388610,
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            63.298790999999994,
+            35.07825,
+            31.370250000000002
+          ],
+          "median_ms": 35.07825,
+          "observed": [
+            "text",
+            "8388608",
+            "813694976"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            60.7605,
+            36.411875,
+            33.09375
+          ],
+          "median_ms": 36.411875,
+          "observed": [
+            "text",
+            "8388608",
+            "813694976"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            60.349374999999995,
+            35.095417,
+            31.532834
+          ],
+          "median_ms": 35.095417,
+          "observed": [
+            "text",
+            "8388608",
+            "813694976"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            61.227875000000004,
+            37.786500000000004,
+            41.476
+          ],
+          "median_ms": 41.476,
+          "observed": [
+            "text",
+            "8388608",
+            "813694976"
+          ]
+        }
+      }
+    },
+    "escapes_4MiB_text": {
+      "bytes": 4194306,
+      "pairs": {
+        "py/rust": {
+          "samples_ms": [
+            7.628125000000001,
+            7.866875,
+            6.864625
+          ],
+          "median_ms": 7.628125000000001,
+          "observed": [
+            "text",
+            "1048576",
+            "56098816"
+          ]
+        },
+        "py/llvm": {
+          "samples_ms": [
+            8.00375,
+            8.363542,
+            7.539458
+          ],
+          "median_ms": 8.00375,
+          "observed": [
+            "text",
+            "1048576",
+            "56098816"
+          ]
+        },
+        "rs/rust": {
+          "samples_ms": [
+            7.602417,
+            7.54975,
+            6.947375
+          ],
+          "median_ms": 7.54975,
+          "observed": [
+            "text",
+            "1048576",
+            "56098816"
+          ]
+        },
+        "rs/llvm": {
+          "samples_ms": [
+            13.038833,
+            10.650125,
+            12.024083
+          ],
+          "median_ms": 12.024083,
+          "observed": [
+            "text",
+            "1048576",
+            "56098816"
+          ]
+        }
+      }
+    }
+  },
+  "builds": {
+    "py/rust/a2": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a2_py_rust/a2_root_gen.rs",
+      "ll": null,
+      "stderr": "{\"ok\": true}\n"
+    },
+    "py/rust/a3": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a3_py_rust/a3_root_gen.rs",
+      "ll": null,
+      "stderr": "{\"ok\": true}\n"
+    },
+    "py/llvm/a2": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a2_py_llvm/a2_root_gen.rs",
+      "ll": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a2_py_llvm/a2_root_gen.ll",
+      "stderr": "{\"ok\": true}\n"
+    },
+    "py/llvm/a3": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a3_py_llvm/a3_root_gen.rs",
+      "ll": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a3_py_llvm/a3_root_gen.ll",
+      "stderr": "{\"ok\": true}\n"
+    },
+    "rs/rust/a2": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a2_rs_rust/a2_root_gen.rs",
+      "ll": null,
+      "stderr": "{\"ok\": true}\n"
+    },
+    "rs/rust/a3": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a3_rs_rust/a3_root_gen.rs",
+      "ll": null,
+      "stderr": "{\"ok\": true}\n"
+    },
+    "rs/llvm/a2": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a2_rs_llvm/a2_root_gen.rs",
+      "ll": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a2_rs_llvm/a2_root_gen.ll",
+      "stderr": "{\"ok\": true}\n"
+    },
+    "rs/llvm/a3": {
+      "rc": 0,
+      "errors": [
+        {
+          "ok": true
+        }
+      ],
+      "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a3_rs_llvm/a3_root_gen.rs",
+      "ll": "/Users/spica4345/Projects/pruv/bench/l3/json/work/q-measure/a3_rs_llvm/a3_root_gen.ll",
+      "stderr": "{\"ok\": true}\n"
+    }
+  },
+  "errors": [],
+  "node_version": "v26.4.0",
+  "elapsed_seconds": 78.30985837499999
+}

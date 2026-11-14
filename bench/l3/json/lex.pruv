@@ -1,0 +1,214 @@
+// A1: absolute byte offsets. Scan.kind == 0 is success; otherwise A0 error kind.
+// Literals blame the first mismatching byte; Unicode escapes the first nonhex byte.
+// Missing required bytes: UnexpectedEof at end. Missing quote: UnterminatedString.
+// Validate UTF-8 separately before grammar scanning. No string decoding here.
+pub struct Scan { position: i64, kind: i64 }
+fn outcome(position: i64, kind: i64) -> Scan
+  ensures result.position == position && result.kind == kind
+{ return Scan { position: position, kind: kind }; }
+
+pub fn validate_utf8(input: [u8], start: i64, end: i64) -> i64
+  requires 0 <= start && start <= end && end <= len(input)
+  ensures result == -1 || (start <= result && result < end)
+{
+  let mut i: i64 = start;
+  while i < end
+    invariant start <= i && i <= end
+    decreases end - i
+  {
+    let c: i64 = input[i];
+    if c < 128 { i = i + 1; } else {
+      let mut n: i64 = 0;
+      if c >= 194 && c <= 223 { n = 2; }
+      if c >= 224 && c <= 239 { n = 3; }
+      if c >= 240 && c <= 244 { n = 4; }
+      if n == 0 || end - i < n { return i; }
+      let b: i64 = input[i + 1];
+      if b < 128 || b > 191 { return i; }
+      if c == 224 && b < 160 { return i; }
+      if c == 237 && b >= 160 { return i; }
+      if c == 240 && b < 144 { return i; }
+      if c == 244 && b > 143 { return i; }
+      let mut j: i64 = 2;
+      while j < n
+        invariant 2 <= j && j <= n && 2 <= n && n <= 4 && n <= end - i
+        invariant start <= i && i < end && end <= len(input)
+        decreases n - j
+      {
+        let continuation: i64 = input[i + j];
+        if continuation < 128 || continuation > 191 { return i; }
+        j = j + 1;
+      }
+      i = i + n;
+    }
+  }
+  return -1;
+}
+
+pub fn skip_whitespace(input: [u8], pos: i64, end: i64) -> i64
+  requires 0 <= pos && pos <= end && end <= len(input)
+  ensures pos <= result && result <= end
+{
+  let mut i: i64 = pos;
+  while i < end
+    invariant pos <= i && i <= end
+    decreases end - i
+  {
+    let c: i64 = input[i];
+    if c != 32 && c != 9 && c != 10 && c != 13 { return i; }
+    i = i + 1;
+  }
+  return i;
+}
+
+// Dispatch by first byte; the following delimiter is the grammar caller's job.
+pub fn scan_literal(input: [u8], pos: i64, end: i64) -> Scan
+  requires 0 <= pos && pos <= end && end <= len(input)
+  ensures pos <= result.position && result.position <= end
+  ensures 0 <= result.kind && result.kind <= 17
+  ensures result.kind == 0 ==> pos < result.position
+{
+  if pos == end { return outcome(end, 5); }
+  let c: i64 = input[pos];
+  let mut n: i64 = 4;
+  if c == 102 { n = 5; }
+  if c != 116 && c != 102 && c != 110 { return outcome(pos, 12); }
+  let mut i: i64 = pos;
+  let mut k: i64 = 0;
+  while k < n
+    invariant pos <= i && i <= end && i - pos == k
+    invariant 0 <= k && k <= n && 4 <= n && n <= 5
+    decreases n - k
+  {
+    if i == end { return outcome(end, 5); }
+    let mut want: i64 = c;
+    if c == 116 {
+      if k == 1 { want = 114; }
+      if k == 2 { want = 117; }
+      if k == 3 { want = 101; }
+    }
+    if c == 102 {
+      if k == 1 { want = 97; }
+      if k == 2 { want = 108; }
+      if k == 3 { want = 115; }
+      if k == 4 { want = 101; }
+    }
+    if c == 110 {
+      if k == 1 { want = 117; }
+      if k >= 2 { want = 108; }
+    }
+    if input[i] != want { return outcome(i, 12); }
+    i = i + 1;
+    k = k + 1;
+  }
+  return outcome(i, 0);
+}
+
+fn digits(input: [u8], pos: i64, end: i64) -> i64
+  requires 0 <= pos && pos <= end && end <= len(input)
+  ensures pos <= result && result <= end
+{
+  let mut i: i64 = pos;
+  while i < end
+    invariant pos <= i && i <= end
+    decreases end - i
+  {
+    let c: i64 = input[i];
+    if c < 48 || c > 57 { return i; }
+    i = i + 1;
+  }
+  return i;
+}
+
+pub fn scan_number(input: [u8], pos: i64, end: i64) -> Scan
+  requires 0 <= pos && pos <= end && end <= len(input)
+  ensures pos <= result.position && result.position <= end
+  ensures 0 <= result.kind && result.kind <= 17
+  ensures result.kind == 0 ==> pos < result.position
+{
+  let mut i: i64 = pos;
+  if i == end { return outcome(end, 5); }
+  if input[i] == 45 { i = i + 1; }
+  if i == end { return outcome(end, 5); }
+  let c: i64 = input[i];
+  if c < 48 || c > 57 { return outcome(i, 13); }
+  i = i + 1;
+  if c == 48 {
+    if i < end {
+      let b: i64 = input[i];
+      if b >= 48 && b <= 57 { return outcome(i, 13); }
+    }
+  } else { i = digits(input, i, end); }
+  if i < end {
+    if input[i] == 46 {
+      i = i + 1;
+      if i == end { return outcome(end, 5); }
+      let b: i64 = input[i];
+      if b < 48 || b > 57 { return outcome(i, 13); }
+      i = digits(input, i + 1, end);
+    }
+  }
+  if i < end {
+    let b: i64 = input[i];
+    if b == 101 || b == 69 {
+      i = i + 1;
+      if i == end { return outcome(end, 5); }
+      let sign: i64 = input[i];
+      if sign == 43 || sign == 45 { i = i + 1; }
+      if i == end { return outcome(end, 5); }
+      let d: i64 = input[i];
+      if d < 48 || d > 57 { return outcome(i, 13); }
+      i = digits(input, i + 1, end);
+    }
+  }
+  return outcome(i, 0);
+}
+
+// Requires the opening quote. Lone escaped surrogates are accepted.
+pub fn scan_string(input: [u8], pos: i64, end: i64) -> Scan
+  requires 0 <= pos && pos < end && end <= len(input)
+  requires input[pos] == 34
+  ensures pos <= result.position && result.position <= end
+  ensures 0 <= result.kind && result.kind <= 17
+  ensures result.kind == 0 ==> pos < result.position
+{
+  let mut i: i64 = pos + 1;
+  while i < end
+    invariant pos < i && i <= end
+    decreases end - i
+  {
+    let c: i64 = input[i];
+    if c == 34 { return outcome(i + 1, 0); }
+    if c < 32 { return outcome(i, 16); }
+    i = i + 1;
+    if c == 92 {
+      if i == end { return outcome(end, 5); }
+      let esc: i64 = input[i];
+      if esc == 117 {
+        i = i + 1;
+        let hex_start: i64 = i;
+        let mut k: i64 = 0;
+        while k < 4
+          invariant 0 <= k && k <= 4 && pos < i && i <= end
+          invariant i >= hex_start
+          decreases 4 - k
+        {
+          if i == end { return outcome(end, 5); }
+          let h: i64 = input[i];
+          if !((48 <= h && h <= 57) || (65 <= h && h <= 70) || (97 <= h && h <= 102)) {
+            return outcome(i, 15);
+          }
+          i = i + 1;
+          k = k + 1;
+        }
+      } else {
+        if esc != 34 && esc != 92 && esc != 47 && esc != 98 && esc != 102 && esc != 110 && esc != 114 && esc != 116 {
+          return outcome(i, 14);
+        }
+        i = i + 1;
+      }
+    }
+  }
+  return outcome(end, 17);
+}
+

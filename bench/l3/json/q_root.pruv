@@ -1,0 +1,129 @@
+// Q canonical dump through accessors; keys use a standalone string view.
+mod json;
+mod lex;
+mod parse;
+mod jstr;
+mod access;
+mod lines;
+fn put(inout a: [i64], p: i64, v: i64) -> i64
+ requires 0 <= p && p <= len(a)
+ ensures 0 <= result && result <= len(a)
+ ensures len(a) == len(old(a))
+ ensures result == p || result == p+1
+ ensures forall j in 0..len(a): j != p ==> a[j] == old(a)[j]
+{ if p < len(a) { a[p] = v; return p+1; } return p; }
+fn fail(pos: i64, k: i64) -> [i64] ! alloc {
+ let mut a: [i64] = alloc(3,0); a[0] = -1; a[1] = pos; a[2] = k; return a;
+}
+fn canonical(d: crate::json::JsonDocument) -> [i64] ! alloc {
+ if len(d.source) > 16777216 || len(d.tape) > 6291456 { return fail(0,18); }
+ let mut a: [i64] = alloc(8*len(d.source)+4*len(d.tape)+1,0);
+ let mut p: i64 = 0; let mut r: i64 = 0;
+ p = put(inout a,p,len(d.tape)/6);
+ while r < len(d.tape)/6
+ invariant 0 <= r && r <= len(d.tape)/6 && len(d.tape) <= 6291456
+ invariant 0 <= p && p <= len(a)
+ decreases len(d.tape)/6-r
+ {
+  let mut j: i64 = 0;
+  while j < 6
+  invariant 0 <= j && j <= 6 && 0 <= r && r < len(d.tape)/6
+  invariant 0 <= p && p <= len(a)
+  decreases 6-j
+  { p = put(inout a,p,d.tape[6*r+j]); j = j+1; }
+  let k: i64 = d.tape[6*r];
+  let mut view: crate::json::JsonDocument = d; let mut id: i64 = r;
+  if k == 7 {
+   let s: i64 = d.tape[6*r+1]; let e: i64 = d.tape[6*r+2];
+   if s < 0 || e < s || e > len(d.source) { return fail(0,18); }
+   let parsed: crate::json::JsonParse = crate::lines::parse_range(d.source,s,e);
+   match parsed {
+    crate::json::JsonParse::Failed(error) => { return fail(0,18); }
+    crate::json::JsonParse::Parsed(keydoc) => { view = keydoc; id = 0; }
+   }
+  }
+  p = put(inout a,p,crate::access::kind(view,id));
+  let span: crate::access::Span = crate::access::raw_span(view,id);
+  if span.status != 0 { return fail(0,18); }
+  p = put(inout a,p,span.start); p = put(inout a,p,span.end);
+  if k == 4 || k == 7 {
+   let u: crate::access::Units = crate::access::string_units(view,id);
+   if u.status != 0 { return fail(0,18); }
+   p = put(inout a,p,len(u.units)); let mut i: i64 = 0;
+   while i < len(u.units)
+   invariant 0 <= i && i <= len(u.units) && 0 <= p && p <= len(a)
+   decreases len(u.units)-i
+   { p = put(inout a,p,u.units[i]); i = i+1; }
+   let t: crate::jstr::Text = crate::access::string_text(view,id);
+   match t {
+    crate::jstr::Text::InternalInvariant(error) => { return fail(0,18); }
+    crate::jstr::Text::Decoded(s) => {
+     p = put(inout a,p,len(s)); let mut ti: i64 = 0;
+     while ti < len(s)
+     invariant 0 <= ti && ti <= len(s) && 0 <= p && p <= len(a)
+     decreases len(s)-ti
+     { p = put(inout a,p,s[ti]); ti = ti+1; }
+    }
+   }
+   if k == 7 { p = put(inout a,p,crate::access::field_units(d,d.tape[6*r+4],u.units)); }
+  }
+  if k == 3 {
+   let n: crate::access::Number = crate::access::number(d,r);
+   if n.status != 0 { return fail(0,18); }
+   let mut exact: i64 = 0; let mut neg: i64 = 0;
+   if n.has_integer { exact = 1; } if n.negative_zero { neg = 1; }
+   p = put(inout a,p,n.start); p = put(inout a,p,n.end);
+   p = put(inout a,p,exact); p = put(inout a,p,n.integer); p = put(inout a,p,neg);
+  }
+  if k == 1 || k == 2 { p = put(inout a,p,crate::access::boolean(d,r)); }
+  if k == 5 {
+   let n: i64 = crate::access::array_length(d,r);
+   if n < 0 || n > 1048576 { return fail(0,18); }
+   p = put(inout a,p,n); let mut i: i64 = 0;
+   while i < n
+   invariant 0 <= i && i <= n && n <= 1048576 && 0 <= p && p <= len(a)
+   decreases n-i
+   { p = put(inout a,p,crate::access::array_at(d,r,i)); i = i+1; }
+  }
+  r = r+1;
+ }
+ if p == len(a) { return fail(0,18); }
+ let mut out: [i64] = alloc(p,0); let mut i: i64 = 0;
+ while i < p
+ invariant 0 <= i && i <= p && p <= len(a) && len(out) == p
+ decreases p-i
+ { out[i] = a[i]; i = i+1; } return out;
+}
+pub fn dump(input: [u8]) -> [i64] ! alloc {
+ let parsed: crate::json::JsonParse = crate::parse::parse(input);
+ match parsed {
+  crate::json::JsonParse::Failed(error) => { return fail(error.position,error.kind); }
+  crate::json::JsonParse::Parsed(d) => { return canonical(d); }
+ }
+}
+// [-1,offset,0|1] means Done|NeedMore; a Line is start,end,next plus dump.
+pub fn line_dump(input: [u8], offset: i64, is_final: bool) -> [i64] ! alloc
+ requires 0 <= offset && offset <= len(input)
+{
+ let step: crate::lines::JsonlStep = crate::lines::jsonl_next(input,offset,is_final);
+ match step {
+  crate::lines::JsonlStep::Done => { return fail(offset,0); }
+  crate::lines::JsonlStep::NeedMore => { return fail(offset,1); }
+  crate::lines::JsonlStep::Line(start,end,next) => {
+   let parsed: crate::json::JsonParse = crate::lines::parse_range(input,start,end);
+   let mut payload: [i64] = alloc(0,0);
+   match parsed {
+    crate::json::JsonParse::Failed(error) => { payload = fail(error.position,error.kind); }
+    crate::json::JsonParse::Parsed(d) => { payload = canonical(d); }
+   }
+   if len(payload) > 1000000000 { return fail(0,18); }
+   let mut out: [i64] = alloc(len(payload)+3,0);
+   out[0] = start; out[1] = end; out[2] = next; let mut i: i64 = 0;
+   while i < len(payload)
+   invariant 0 <= i && i <= len(payload) && len(payload) <= 1000000000 && len(out) == len(payload)+3
+   decreases len(payload)-i
+   { out[i+3] = payload[i]; i = i+1; } return out;
+  }
+ }
+}
+

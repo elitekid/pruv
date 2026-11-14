@@ -1,0 +1,159 @@
+// A3: decoding semantics are specified for parser-validated quoted spans.
+trusted rust fn utf8_to_string(data: [u8]) -> String ! alloc
+  ensures len(result) == 0 || len(result) == len(data)
+  ensures len(result) == len(data) ==> (forall i in 0..len(data): result[i] == data[i])
+  = "::pruv_str::utf8_to_string";
+
+struct Step { next: i64, value: i64 }
+fn hex(c: i64) -> i64
+  ensures 0 <= result && result <= 15
+{
+  if 48 <= c && c <= 57 { return c - 48; }
+  if 65 <= c && c <= 70 { return c - 55; }
+  if 97 <= c && c <= 102 { return c - 87; }
+  return 0;
+}
+fn step(a: [u8], p: i64, end: i64) -> Step
+  requires 0 <= p && p < end && end <= len(a) && end <= 16777216
+  ensures p < result.next && result.next <= end
+  ensures 0 <= result.value && result.value <= 1114111
+  ensures result.value > 65535 ==> result.next >= p + 2
+{
+  let c: i64 = a[p];
+  if c == 92 && end - p >= 2 {
+    let e: i64 = a[p + 1];
+    if e == 117 && end - p >= 6 {
+      let v: i64 = 4096 * hex(a[p + 2]) + 256 * hex(a[p + 3]) + 16 * hex(a[p + 4]) + hex(a[p + 5]);
+      return Step { next: p + 6, value: v };
+    }
+    let mut v: i64 = e;
+    if e == 98 { v = 8; }
+    if e == 102 { v = 12; }
+    if e == 110 { v = 10; }
+    if e == 114 { v = 13; }
+    if e == 116 { v = 9; }
+    return Step { next: p + 2, value: v };
+  }
+  let mut n: i64 = 1;
+  let mut v: i64 = c;
+  if 194 <= c && c <= 223 { n = 2; v = c - 192; }
+  if 224 <= c && c <= 239 { n = 3; v = c - 224; }
+  if 240 <= c && c <= 244 { n = 4; v = c - 240; }
+  if end - p < n { return Step { next: p + 1, value: 65533 }; }
+  let mut k: i64 = 1;
+  while k < n
+    invariant 1 <= k && k <= n && 1 <= n && n <= 4 && n <= end - p
+    invariant 0 <= p && p < end && end <= len(a) && end <= 16777216
+    invariant 0 <= v && v <= 16777215
+    decreases n - k
+  {
+    v = v * 64 + a[p + k] % 64;
+    k = k + 1;
+    if v > 16777215 { return Step { next: p + n, value: 65533 }; }
+  }
+  if v > 1114111 { v = 65533; }
+  if n == 1 { v = c; }
+  return Step { next: p + n, value: v };
+}
+
+pub fn string_units(source: [u8], start: i64, end: i64) -> [i64] ! alloc
+  requires 0 <= start && start <= end && end <= len(source) && end <= 16777216
+  ensures len(result) <= end - start
+  ensures forall i in 0..len(result): (0 <= result[i] && result[i] <= 65535)
+{
+  let mut buf: [i64] = alloc(end - start, 0);
+  let mut p: i64 = start;
+  let mut stop: i64 = start;
+  if end - start >= 2 { p = start + 1; stop = end - 1; }
+  let mut used: i64 = 0;
+  while p < stop
+    invariant start <= p && p <= end && start <= stop && stop <= end
+    invariant 0 <= used && used <= p - start
+    invariant len(buf) == end - start
+    invariant forall i in 0..len(buf): (0 <= buf[i] && buf[i] <= 65535)
+    decreases stop - p
+  {
+    let s: Step = step(source, p, stop);
+    let v: i64 = s.value;
+    if v <= 65535 { buf[used] = v; used = used + 1; }
+    else {
+      buf[used] = 55296 + (v - 65536) / 1024;
+      buf[used + 1] = 56320 + (v - 65536) % 1024;
+      used = used + 2;
+    }
+    p = s.next;
+  }
+  let mut out: [i64] = alloc(used, 0);
+  let mut i: i64 = 0;
+  while i < used
+    invariant 0 <= i && i <= used && used <= len(buf)
+    invariant len(out) == used
+    invariant forall j in 0..len(buf): (0 <= buf[j] && buf[j] <= 65535)
+    invariant forall j in 0..i: (0 <= out[j] && out[j] <= 65535)
+    decreases used - i
+  { out[i] = buf[i]; i = i + 1; }
+  return out;
+}
+
+pub fn string_utf8(source: [u8], start: i64, end: i64) -> [u8] ! alloc
+  requires 0 <= start && start <= end && end <= len(source) && end <= 16777216
+  ensures len(result) <= 3 * (end - start)
+  ensures forall i in 0..len(result): (0 <= result[i] && result[i] <= 255)
+{
+  let units: [i64] = string_units(source, start, end);
+  let mut buf: [u8] = alloc(3 * len(units), 0);
+  let mut i: i64 = 0;
+  let mut used: i64 = 0;
+  while i < len(units)
+    invariant 0 <= i && i <= len(units) && len(units) <= end - start
+    invariant len(buf) == 3 * len(units)
+    invariant 0 <= used && used <= 3 * i
+    invariant forall j in 0..len(units): (0 <= units[j] && units[j] <= 65535)
+    decreases len(units) - i
+  {
+    let mut v: i64 = units[i];
+    let mut n: i64 = 1;
+    if 55296 <= v && v <= 56319 && i + 1 < len(units) {
+      let low: i64 = units[i + 1];
+      if 56320 <= low && low <= 57343 {
+        v = 65536 + (v - 55296) * 1024 + low - 56320; n = 2;
+      }
+    }
+    if 55296 <= v && v <= 57343 { v = 65533; }
+    if v <= 127 { buf[used] = v; used = used + 1; }
+    else {
+      if v <= 2047 {
+        buf[used] = 192 + v / 64; buf[used + 1] = 128 + v % 64; used = used + 2;
+      } else {
+        if v <= 65535 {
+          buf[used] = 224 + v / 4096; buf[used + 1] = 128 + (v / 64) % 64;
+          buf[used + 2] = 128 + v % 64; used = used + 3;
+        } else {
+          buf[used] = 240 + v / 262144; buf[used + 1] = 128 + (v / 4096) % 64;
+          buf[used + 2] = 128 + (v / 64) % 64; buf[used + 3] = 128 + v % 64; used = used + 4;
+        }
+      }
+    }
+    i = i + n;
+  }
+  let mut out: [u8] = alloc(used, 0);
+  let mut j: i64 = 0;
+  while j < used
+    invariant 0 <= j && j <= used && used <= len(buf)
+    invariant len(out) == used
+    decreases used - j
+  { out[j] = buf[j]; j = j + 1; }
+  return out;
+}
+
+pub enum Text { Decoded(text: str), InternalInvariant(kind: i64) }
+pub fn string_text(source: [u8], start: i64, end: i64) -> Text ! alloc
+  requires 0 <= start && start <= end && end <= len(source) && end <= 16777216
+{
+  let bytes: [u8] = string_utf8(source, start, end);
+  let owned: String = utf8_to_string(bytes);
+  if len(owned) != len(bytes) { return Text::InternalInvariant(crate::json::err_internal_invariant()); }
+  return Text::Decoded(string_to_str(owned));
+}
+pub fn adapter_probe(data: [u8]) -> str ! alloc
+{ let s: String = utf8_to_string(data); return string_to_str(s); }

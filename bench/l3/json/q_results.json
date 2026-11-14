@@ -1,0 +1,121 @@
+{
+  "seed": 20261114,
+  "pairs": {
+    "py/rust": {
+      "cases": 20213,
+      "accepted": 10543,
+      "rejected": 9670,
+      "policy_differences": {
+        "invalid_utf8": 875,
+        "depth": 4,
+        "records": 1
+      },
+      "lossy_text_views": 2575,
+      "mismatches": 0,
+      "verified": true
+    },
+    "py/llvm": {
+      "cases": 20213,
+      "accepted": 10543,
+      "rejected": 9670,
+      "policy_differences": {
+        "invalid_utf8": 875,
+        "depth": 4,
+        "records": 1
+      },
+      "lossy_text_views": 2575,
+      "mismatches": 0,
+      "verified": true
+    },
+    "rs/rust": {
+      "cases": 20213,
+      "accepted": 10543,
+      "rejected": 9670,
+      "policy_differences": {
+        "invalid_utf8": 875,
+        "depth": 4,
+        "records": 1
+      },
+      "lossy_text_views": 2575,
+      "mismatches": 0,
+      "verified": true
+    },
+    "rs/llvm": {
+      "cases": 20213,
+      "accepted": 10543,
+      "rejected": 9670,
+      "policy_differences": {
+        "invalid_utf8": 875,
+        "depth": 4,
+        "records": 1
+      },
+      "lossy_text_views": 2575,
+      "mismatches": 0,
+      "verified": true
+    }
+  },
+  "failures": [],
+  "versions": {
+    "python": "3.9.6 (default, Jan  9 2026, 11:03:41) \n[Clang 17.0.0 (clang-1700.6.4.2)]",
+    "node": "v26.4.0",
+    "electron": {
+      "node": "24.22.2",
+      "acorn": "8.18.0",
+      "ada": "4.0.0",
+      "amaro": "1.1.11",
+      "ares": "1.34.9",
+      "brotli": "1.2.0",
+      "cldr": "48.0",
+      "icu": "78.2",
+      "llhttp": "9.4.3",
+      "merve": "1.2.2",
+      "modules": "149",
+      "napi": "10",
+      "nbytes": "0.1.4",
+      "ncrypto": "0.0.1",
+      "nghttp2": "1.70.0",
+      "nghttp3": "",
+      "ngtcp2": "",
+      "openssl": "0.0.0",
+      "simdjson": "4.6.11",
+      "simdutf": "7.7.0",
+      "sqlite": "3.53.4",
+      "tz": "2026e",
+      "undici": "7.30.1",
+      "unicode": "17.0",
+      "uv": "1.52.1",
+      "uvwasi": "0.0.23",
+      "v8": "15.2.124.45-electron.0",
+      "zlib": "1.3.2.1-motley",
+      "zstd": "1.6.0",
+      "electron": "44.11.2",
+      "chrome": "152.0.7977.169"
+    },
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "compiler_commands": {
+      "py": [
+        "/Users/spica4345/Projects/pruv/.venv/bin/python",
+        "/Users/spica4345/Projects/pruv/pruvc/pruvc.py"
+      ],
+      "rs": [
+        "/Users/spica4345/Projects/pruv/pruvc-rs/target/release/pruvc"
+      ]
+    },
+    "rust_source_sha256": "888a5b93a90541ecf793413e97bc9f0e5ecf67bc9f95434a250c7cb5d652aff9",
+    "rust_binary_sha256": "b58519d9ab877bc4ae9fafa7a9f56d8cd46e4f45070eb46303c32bf4c029737d",
+    "python_source_sha256": "c03d48dca14f11c6c94f7a8b8a401c1f5deb4c2e74365aae62d8e97704b66299"
+  },
+  "status": "passed",
+  "generated": 20000,
+  "fixed": 213,
+  "node": {
+    "cases": 20213,
+    "mismatches": 0
+  },
+  "electron": {
+    "cases": 20213,
+    "mismatches": 0
+  },
+  "jsonl_steps": 44,
+  "wall_seconds": 53.51
+}

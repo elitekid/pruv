@@ -1,0 +1,47 @@
+mod json;
+mod lex;
+mod parse;
+mod jstr;
+
+pub fn units_of(input: [u8]) -> [i64] ! alloc
+{
+  let parsed: crate::json::JsonParse = crate::parse::parse(input);
+  match parsed {
+    crate::json::JsonParse::Parsed(d) => {
+      if len(d.tape) >= 6 && d.tape[0] == 4 {
+        let s: i64 = d.tape[1]; let e: i64 = d.tape[2];
+        if 0 <= s && s <= e && e <= len(d.source) && e <= 16777216 {
+          return crate::jstr::string_units(d.source, s, e);
+        }
+      }
+      let mut out: [i64] = alloc(2, -1);
+      if len(d.tape) > 0 { out[1] = d.tape[0]; }
+      return out;
+    }
+    crate::json::JsonParse::Failed(error) => {
+      let mut out: [i64] = alloc(2, -1); out[1] = error.kind; return out;
+    }
+  }
+}
+pub fn text_of(input: [u8]) -> str ! alloc
+{
+  let parsed: crate::json::JsonParse = crate::parse::parse(input);
+  match parsed {
+    crate::json::JsonParse::Parsed(d) => {
+      if len(d.tape) >= 6 && d.tape[0] == 4 {
+        let s: i64 = d.tape[1]; let e: i64 = d.tape[2];
+        if 0 <= s && s <= e && e <= len(d.source) && e <= 16777216 {
+          let t: crate::jstr::Text = crate::jstr::string_text(d.source, s, e);
+          match t {
+            crate::jstr::Text::Decoded(text) => { return copy(text); }
+            crate::jstr::Text::InternalInvariant(kind) => { return "InternalInvariant"; }
+          }
+        }
+      }
+      return "NotString";
+    }
+    crate::json::JsonParse::Failed(error) => { return "ParseFailed"; }
+  }
+}
+pub fn adapter_probe(data: [u8]) -> str ! alloc
+{ return crate::jstr::adapter_probe(data); }

@@ -1,0 +1,180 @@
+// A4: >=0 success; -1 missing; -2 wrong kind; -3 bad ID; -4 corrupt tape.
+// Negative array indices are missing. Key records are not value IDs.
+pub fn root(doc: crate::json::JsonDocument) -> i64 ensures result == 0 { return 0; }
+fn valid(doc: crate::json::JsonDocument, id: i64) -> bool
+  ensures result ==> (0 <= id && id < len(doc.tape) / 6 && len(doc.tape) <= 6291456)
+  ensures result ==> (0 <= doc.tape[6 * id] && doc.tape[6 * id] <= 6)
+{
+  if len(doc.tape) > 6291456 || id < 0 || id >= len(doc.tape) / 6 { return false; }
+  return 0 <= doc.tape[6 * id] && doc.tape[6 * id] <= 6;
+}
+pub fn kind(doc: crate::json::JsonDocument, id: i64) -> i64
+  ensures result == -3 || (0 <= result && result <= 6)
+{ if !valid(doc, id) { return -3; } return doc.tape[6 * id]; }
+pub struct Span { status: i64, start: i64, end: i64 }
+pub fn raw_span(doc: crate::json::JsonDocument, id: i64) -> Span
+  ensures result.status == 0 ==> (0 <= result.start && result.start <= result.end && result.end <= len(doc.source) && result.end <= 16777216)
+  ensures result.status == 0 ==> (0 <= id && id < len(doc.tape) / 6 && result.start == doc.tape[6 * id + 1] && result.end == doc.tape[6 * id + 2])
+{
+  if !valid(doc, id) { return Span { status: -3, start: 0, end: 0 }; }
+  let s: i64 = doc.tape[6 * id + 1]; let e: i64 = doc.tape[6 * id + 2];
+  if s < 0 || e < s || e > len(doc.source) || e > 16777216 { return Span { status: -4, start: 0, end: 0 }; }
+  return Span { status: 0, start: s, end: e };
+}
+pub fn array_length(doc: crate::json::JsonDocument, id: i64) -> i64
+{
+  if !valid(doc, id) { return -3; } if doc.tape[6 * id] != 5 { return -2; }
+  let n: i64 = doc.tape[6 * id + 5]; if n < 0 { return -4; } return n;
+}
+pub fn array_at(doc: crate::json::JsonDocument, id: i64, index: i64) -> i64
+  ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
+{
+  if !valid(doc, id) { return -3; } if doc.tape[6 * id] != 5 { return -2; }
+  if index < 0 { return -1; }
+  let stop: i64 = doc.tape[6 * id + 3];
+  if stop <= id || stop > len(doc.tape) / 6 { return -4; }
+  let mut j: i64 = id + 1; let mut n: i64 = 0;
+  while j < stop
+    invariant 0 <= id && id < j && j <= stop && stop <= len(doc.tape) / 6 && len(doc.tape) <= 6291456
+    invariant 0 <= n && n <= j
+    decreases stop - j
+  {
+    let next: i64 = doc.tape[6 * j + 3];
+    if next <= j || next > stop || doc.tape[6 * j + 4] != id || !valid(doc, j) { return -4; }
+    if n == index { return j; } n = n + 1; j = next;
+  }
+  return -1;
+}
+fn equal(a: [i64], b: [i64]) -> bool
+{
+  if len(a) != len(b) { return false; } let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a) && len(a) == len(b)
+    decreases len(a) - i
+  { if a[i] != b[i] { return false; } i = i + 1; }
+  return true;
+}
+pub fn field_units(doc: crate::json::JsonDocument, id: i64, key: [i64]) -> i64 ! alloc
+  ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
+{
+  if !valid(doc, id) { return -3; } if doc.tape[6 * id] != 6 { return -2; }
+  let stop: i64 = doc.tape[6 * id + 3];
+  if stop <= id || stop > len(doc.tape) / 6 { return -4; }
+  let mut j: i64 = id + 1; let mut found: i64 = -1;
+  while j < stop
+    invariant 0 <= id && id < j && j <= stop && stop <= len(doc.tape) / 6 && len(doc.tape) <= 6291456
+    invariant found == -1 || (0 <= found && found < len(doc.tape) / 6 && doc.tape[6 * found + 4] == id)
+    decreases stop - j
+  {
+    if doc.tape[6 * j] != 7 || doc.tape[6 * j + 4] != id || doc.tape[6 * j + 3] != j + 1 { return -4; }
+    let v: i64 = j + 1; if v >= stop || !valid(doc, v) { return -4; }
+    let next: i64 = doc.tape[6 * v + 3];
+    if next <= v || next > stop || doc.tape[6 * v + 4] != id { return -4; }
+    let s: i64 = doc.tape[6 * j + 1]; let e: i64 = doc.tape[6 * j + 2];
+    if s < 0 || e < s || e > len(doc.source) || e > 16777216 { return -4; }
+    let units: [i64] = crate::jstr::string_units(doc.source, s, e);
+    if equal(units, key) { found = v; } j = next;
+  }
+  return found;
+}
+// str indexing exposes UTF-8 bytes. Decode scalars without interpreting escapes.
+pub fn field(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
+  ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
+{
+  if len(key) > 16777216 { return -1; }
+  let mut units: [i64] = alloc(len(key), 0); let mut p: i64 = 0; let mut used: i64 = 0;
+  while p < len(key)
+    invariant 0 <= used && used <= p && p <= len(key) && len(key) <= 16777216 && len(units) == len(key)
+    decreases len(key) - p
+  {
+    let c: i64 = key[p]; let mut n: i64 = 1; let mut v: i64 = c;
+    if 194 <= c && c <= 223 { n = 2; v = c - 192; }
+    if 224 <= c && c <= 239 { n = 3; v = c - 224; }
+    if 240 <= c && c <= 244 { n = 4; v = c - 240; }
+    if v < 0 || v > 255 || len(key) - p < n { return -4; }
+    let mut k: i64 = 1;
+    while k < n
+      invariant 1 <= k && k <= n && n <= 4 && n <= len(key) - p && 0 <= p
+      invariant 0 <= v && v <= 16777215
+      decreases n - k
+    {
+      v = v * 64 + key[p + k] % 64;
+      if v < 0 || v > 16777215 { return -4; } k = k + 1;
+    }
+    if v > 1114111 { return -4; }
+    if v <= 65535 { units[used] = v; used = used + 1; }
+    else {
+      if n < 2 { return -4; }
+      units[used] = 55296 + (v - 65536) / 1024;
+      units[used + 1] = 56320 + (v - 65536) % 1024; used = used + 2;
+    }
+    p = p + n;
+  }
+  let mut out: [i64] = alloc(used, 0); let mut i: i64 = 0;
+  while i < used
+    invariant 0 <= i && i <= used && used <= len(units) && len(out) == used
+    decreases used - i
+  { out[i] = units[i]; i = i + 1; }
+  return field_units(doc, id, out);
+}
+pub struct Units { status: i64, units: [i64] }
+pub fn string_units(doc: crate::json::JsonDocument, id: i64) -> Units ! alloc
+  ensures len(result.units) <= len(doc.source)
+  ensures result.status == 0 ==> (0 <= id && id < len(doc.tape) / 6 && len(result.units) <= doc.tape[6 * id + 2] - doc.tape[6 * id + 1])
+{
+  let k: i64 = kind(doc, id);
+  if k != 4 { let empty: [i64] = alloc(0, 0); let mut status: i64 = -2; if k < 0 { status = k; } return Units { status: status, units: copy(empty) }; }
+  let s: Span = raw_span(doc, id);
+  if s.status != 0 { let empty: [i64] = alloc(0, 0); return Units { status: s.status, units: copy(empty) }; }
+  let u: [i64] = crate::jstr::string_units(doc.source, s.start, s.end);
+  return Units { status: 0, units: copy(u) };
+}
+pub fn string_text(doc: crate::json::JsonDocument, id: i64) -> crate::jstr::Text ! alloc
+  ensures is_variant(result, crate::jstr::Text::Decoded) ==> (0 <= id && id < len(doc.tape) / 6 && len(variant_field(result, crate::jstr::Text::Decoded, text)) <= 3 * (doc.tape[6 * id + 2] - doc.tape[6 * id + 1]))
+{
+  let k: i64 = kind(doc, id);
+  if k != 4 { if k < 0 { return crate::jstr::Text::InternalInvariant(k); } return crate::jstr::Text::InternalInvariant(-2); }
+  let s: Span = raw_span(doc, id);
+  if s.status != 0 { return crate::jstr::Text::InternalInvariant(s.status); }
+  let decoded: crate::jstr::Text = crate::jstr::string_text(doc.source, s.start, s.end);
+  match decoded {
+    crate::jstr::Text::InternalInvariant(error) => { return crate::jstr::Text::InternalInvariant(error); }
+    crate::jstr::Text::Decoded(text) => {
+      if len(text) > 3 * (s.end - s.start) { return crate::jstr::Text::InternalInvariant(-4); }
+      return crate::jstr::Text::Decoded(copy(text));
+    }
+  }
+}
+pub fn boolean(doc: crate::json::JsonDocument, id: i64) -> i64
+{ let k: i64 = kind(doc, id); if k < 0 { return k; } if k == 1 { return 0; } if k == 2 { return 1; } return -2; }
+// has_integer is the Option discriminant; absent integer payload is zero.
+pub struct Number { status: i64, start: i64, end: i64, has_integer: bool, integer: i64, negative_zero: bool }
+pub fn number(doc: crate::json::JsonDocument, id: i64) -> Number
+  ensures -9007199254740991 <= result.integer && result.integer <= 9007199254740991
+  ensures result.status == 0 ==> (0 <= result.start && result.start <= result.end && result.end <= len(doc.source))
+{
+  let k: i64 = kind(doc, id); let mut status: i64 = -2; if k < 0 { status = k; }
+  if k != 3 { return Number { status: status, start: 0, end: 0, has_integer: false, integer: 0, negative_zero: false }; }
+  let s: Span = raw_span(doc, id);
+  if s.status != 0 { return Number { status: s.status, start: 0, end: 0, has_integer: false, integer: 0, negative_zero: false }; }
+  let mut p: i64 = s.start; let mut neg: bool = false;
+  if p < s.end && doc.source[p] == 45 { neg = true; p = p + 1; }
+  let digits: i64 = p; let mut v: i64 = 0; let mut exact: bool = true;
+  while p < s.end
+    invariant s.start <= p && p <= s.end && s.end <= len(doc.source)
+    invariant 0 <= v && v <= 9007199254740991
+    decreases s.end - p
+  {
+    let c: i64 = doc.source[p];
+    if c < 48 || c > 57 { exact = false; } else {
+      let d: i64 = c - 48;
+      if v > (9007199254740991 - d) / 10 { exact = false; }
+      else { v = v * 10 + d; }
+    }
+    p = p + 1;
+  }
+  if digits == s.end { exact = false; }
+  let nz: bool = neg && s.end - s.start == 2 && exact && v == 0;
+  if !exact { v = 0; } if neg { v = -v; }
+  return Number { status: 0, start: s.start, end: s.end, has_integer: exact, integer: v, negative_zero: nz };
+}

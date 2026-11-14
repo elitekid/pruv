@@ -1,0 +1,10 @@
+// JSON batch A0 host-test root: loads the json child module and exposes the structural check with a
+// plain-array/scalar signature (docs/JSON_SPEC.md: no extended-value host ABI for JsonDocument).
+mod json;
+
+pub fn check_tape(tape: [i64], input_length: i64) -> bool
+  ensures result ==> (len(tape) % 6 == 0 && len(tape) >= 6 && len(tape) <= 6291456)
+  ensures result ==> (input_length >= 1 && input_length <= 16777216)
+{
+  return crate::json::check_tape(tape, input_length);
+}

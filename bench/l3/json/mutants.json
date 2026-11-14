@@ -1,0 +1,1653 @@
+{
+  "mutants": [
+    {
+      "name": "depth_constant",
+      "module": "json.pruv",
+      "description": "Depth 128 to 129",
+      "replacement": {
+        "old": "{ return 128; }",
+        "new": "{ return 129; }"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 47,
+              "col": 53,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 47) in crate::json::limit_depth",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {}
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/depth_constant/py/a0_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 47, \"col\": 53, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 47) in crate::json::limit_depth\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 47,
+              "col": 53,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 47) in crate::json::limit_depth",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {}
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/depth_constant/rs/a0_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 47, \"col\": 53, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 47) in crate::json::limit_depth\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "record_constant",
+      "module": "json.pruv",
+      "description": "Record cap plus one",
+      "replacement": {
+        "old": "{ return 1048576; }",
+        "new": "{ return 1048577; }"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 46,
+              "col": 59,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 46) in crate::json::limit_records",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {}
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/record_constant/py/a0_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 46, \"col\": 59, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 46) in crate::json::limit_records\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 46,
+              "col": 59,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 46) in crate::json::limit_records",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {}
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/record_constant/rs/a0_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 46, \"col\": 59, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 46) in crate::json::limit_records\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "span_empty",
+      "module": "json.pruv",
+      "description": "Allow empty source spans",
+      "replacement": {
+        "old": "s >= e || e > input_length",
+        "new": "s > e || e > input_length"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 106,
+              "col": 5,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 86) in crate::json::rec_ok",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 70794,
+                  "first": [
+                    6,
+                    0,
+                    0,
+                    11799,
+                    -1,
+                    -9223372036854743523,
+                    0,
+                    0
+                  ]
+                },
+                "input_length": 0,
+                "r": 0,
+                "m": 11799,
+                "b": 0,
+                "kind": 6,
+                "s": 0,
+                "e": 0,
+                "sk": 11799,
+                "par": -1,
+                "cnt": -9223372036854743523
+              }
+            },
+            {
+              "stage": "verify",
+              "line": 116,
+              "col": 3,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 86) in crate::json::rec_ok",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 193722,
+                  "first": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                "input_length": 0,
+                "r": 32286,
+                "m": 32287,
+                "b": 193716,
+                "kind": 5,
+                "s": 0,
+                "e": 0,
+                "sk": 32287,
+                "par": 32285,
+                "cnt": 0,
+                "pb": 193710,
+                "pk": 5,
+                "ps": -9223372036854745196,
+                "pe": 5853,
+                "psk": 32287
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/span_empty/py/a0_root_gen.rs",
+          "ll": null,
+          "stderr": "\", \"line\": 116, \"col\": 3, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 86) in crate::json::rec_ok\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {\"tape\": {\"len\": 193722, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}, \"input_length\": 0, \"r\": 32286, \"m\": 32287, \"b\": 193716, \"kind\": 5, \"s\": 0, \"e\": 0, \"sk\": 32287, \"par\": 32285, \"cnt\": 0, \"pb\": 193710, \"pk\": 5, \"ps\": -9223372036854745196, \"pe\": 5853, \"psk\": 32287}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 106,
+              "col": 5,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 86) in crate::json::rec_ok",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 70794,
+                  "first": [
+                    6,
+                    0,
+                    0,
+                    11799,
+                    -1,
+                    -9223372036854743523,
+                    0,
+                    0
+                  ]
+                },
+                "input_length": 0,
+                "r": 0,
+                "m": 11799,
+                "b": 0,
+                "kind": 6,
+                "s": 0,
+                "e": 0,
+                "sk": 11799,
+                "par": -1,
+                "cnt": -9223372036854743523
+              }
+            },
+            {
+              "stage": "verify",
+              "line": 116,
+              "col": 3,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 86) in crate::json::rec_ok",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 193722,
+                  "first": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                "input_length": 0,
+                "r": 32286,
+                "m": 32287,
+                "b": 193716,
+                "kind": 1,
+                "s": 0,
+                "e": 0,
+                "sk": 32287,
+                "par": 32285,
+                "cnt": 0,
+                "pb": 193710,
+                "pk": 5,
+                "ps": -9223372036854765358,
+                "pe": 30612,
+                "psk": 32287
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/span_empty/rs/a0_root_gen.rs",
+          "ll": null,
+          "stderr": ", \"line\": 116, \"col\": 3, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 86) in crate::json::rec_ok\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {\"tape\": {\"len\": 193722, \"first\": [0, 0, 0, 0, 0, 0, 0, 0]}, \"input_length\": 0, \"r\": 32286, \"m\": 32287, \"b\": 193716, \"kind\": 1, \"s\": 0, \"e\": 0, \"sk\": 32287, \"par\": 32285, \"cnt\": 0, \"pb\": 193710, \"pk\": 5, \"ps\": -9223372036854765358, \"pe\": 30612, \"psk\": 32287}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "skip_equal",
+      "module": "json.pruv",
+      "description": "Allow skip equal to record",
+      "replacement": {
+        "old": "sk <= r || sk > m",
+        "new": "sk < r || sk > m"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 116,
+              "col": 3,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 87) in crate::json::rec_ok",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 193722,
+                  "first": [
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366
+                  ]
+                },
+                "input_length": 8366,
+                "r": 32286,
+                "m": 32287,
+                "b": 193716,
+                "kind": 5,
+                "s": 8365,
+                "e": 8366,
+                "sk": 32286,
+                "par": 32285,
+                "cnt": -1,
+                "pb": 193710,
+                "pk": 5,
+                "ps": -9223372036854745196,
+                "pe": 8366,
+                "psk": 32287
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/skip_equal/py/a0_root_gen.rs",
+          "ll": null,
+          "stderr": "\"ensures\", \"message\": \"cannot prove postcondition (line 87) in crate::json::rec_ok\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {\"tape\": {\"len\": 193722, \"first\": [8366, 8366, 8366, 8366, 8366, 8366, 8366, 8366]}, \"input_length\": 8366, \"r\": 32286, \"m\": 32287, \"b\": 193716, \"kind\": 5, \"s\": 8365, \"e\": 8366, \"sk\": 32286, \"par\": 32285, \"cnt\": -1, \"pb\": 193710, \"pk\": 5, \"ps\": -9223372036854745196, \"pe\": 8366, \"psk\": 32287}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 116,
+              "col": 3,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 87) in crate::json::rec_ok",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "json.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 193722,
+                  "first": [
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366,
+                    8366
+                  ]
+                },
+                "input_length": 8366,
+                "r": 32286,
+                "m": 32287,
+                "b": 193716,
+                "kind": 5,
+                "s": 8365,
+                "e": 8366,
+                "sk": 32286,
+                "par": 32285,
+                "cnt": -1,
+                "pb": 193710,
+                "pk": 5,
+                "ps": -9223372036854745196,
+                "pe": 8366,
+                "psk": 32287
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/skip_equal/rs/a0_root_gen.rs",
+          "ll": null,
+          "stderr": "\"ensures\", \"message\": \"cannot prove postcondition (line 87) in crate::json::rec_ok\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"json.pruv\", \"counterexample\": {\"tape\": {\"len\": 193722, \"first\": [8366, 8366, 8366, 8366, 8366, 8366, 8366, 8366]}, \"input_length\": 8366, \"r\": 32286, \"m\": 32287, \"b\": 193716, \"kind\": 5, \"s\": 8365, \"e\": 8366, \"sk\": 32286, \"par\": 32285, \"cnt\": -1, \"pb\": 193710, \"pk\": 5, \"ps\": -9223372036854745196, \"pe\": 8366, \"psk\": 32287}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "leading_zero",
+      "module": "lex.pruv",
+      "description": "Accept a leading zero",
+      "replacement": {
+        "old": "if b >= 48 && b <= 57 { return outcome(i, 13); }",
+        "new": "if b >= 48 && b <= 57 { return outcome(i + 1, 0); }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/leading_zero/py/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/leading_zero/rs/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 1,
+        "fixture": 216,
+        "name": "number edge b'01'",
+        "expected": "-436207618",
+        "actual": "2"
+      }
+    },
+    {
+      "name": "control_bound",
+      "module": "lex.pruv",
+      "description": "Allow raw U+001F",
+      "replacement": {
+        "old": "if c < 32 { return outcome(i, 16); }",
+        "new": "if c < 31 { return outcome(i, 16); }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/control_bound/py/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/control_bound/rs/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 1,
+        "fixture": 306,
+        "name": "string edge b'\"\\x1f\"'",
+        "expected": "-536870914",
+        "actual": "3"
+      }
+    },
+    {
+      "name": "wrong_escape_kind",
+      "module": "lex.pruv",
+      "description": "Wrong escape error kind",
+      "replacement": {
+        "old": "return outcome(i, 14);",
+        "new": "return outcome(i, 15);"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/wrong_escape_kind/py/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/wrong_escape_kind/rs/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 1,
+        "fixture": 296,
+        "name": "string edge b'\"\\\\x\"'",
+        "expected": "-469762051",
+        "actual": "-503316483"
+      }
+    },
+    {
+      "name": "wrong_literal_position",
+      "module": "lex.pruv",
+      "description": "Wrong literal error position",
+      "replacement": {
+        "old": "return outcome(i, 12);",
+        "new": "return outcome(pos, 12);"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/wrong_literal_position/py/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/wrong_literal_position/rs/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 1,
+        "fixture": 136,
+        "name": "literal typo b'tXue'",
+        "expected": "-402653186",
+        "actual": "-402653185"
+      }
+    },
+    {
+      "name": "utf8_comparison",
+      "module": "lex.pruv",
+      "description": "Reject valid UTF-8 boundary",
+      "replacement": {
+        "old": "if c == 237 && b >= 160",
+        "new": "if c == 237 && b >= 159"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/utf8_comparison/py/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/utf8_comparison/rs/a1_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 1,
+        "fixture": 10,
+        "name": "utf8 valid ed9fbf",
+        "expected": "-1",
+        "actual": "0"
+      }
+    },
+    {
+      "name": "trailing_comma",
+      "module": "parse.pruv",
+      "description": "Accept trailing commas",
+      "replacement": {
+        "old": "if matches && (state == 1 || state == 4) { return done(p, 10, records); }",
+        "new": "if matches && (state == 1 || state == 4) { return done(p + 1, 0, records); }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/trailing_comma/py/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/trailing_comma/rs/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 2,
+        "fixture": 63,
+        "name": "b'[1,]'",
+        "expected": "-1 3 10",
+        "actual": "-1 0 18"
+      }
+    },
+    {
+      "name": "record_bound",
+      "module": "parse.pruv",
+      "description": "Reject one record too early",
+      "replacement": {
+        "old": "if records == 1048576 {",
+        "new": "if records == 1048575 {"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 145,
+              "col": 33,
+              "code": "call_requires",
+              "message": "cannot prove precondition of crate::parse::write_record (line 41) in crate::parse::scan",
+              "fix": "make the callee's requires hold before the call",
+              "file": "parse.pruv",
+              "counterexample": {
+                "input": {
+                  "len": 20538,
+                  "first": [
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11
+                  ]
+                },
+                "fill": true,
+                "tape": {
+                  "len": 0,
+                  "first": []
+                },
+                "n": 20538,
+                "stack": {
+                  "len": 516,
+                  "first": [
+                    -9223372036854759887,
+                    -9223372036854759887,
+                    -9223372036854759887,
+                    -9223372036854759887,
+                    -9223372036854759887,
+                    -9223372036854759887,
+                    -9223372036854759887,
+                    -9223372036854759887
+                  ]
+                },
+                "depth": 113,
+                "records": 1048576,
+                "p": 20537,
+                "state": -1,
+                "parent": -9223372036854759887,
+                "container": -9223372036854749523,
+                "c": 126,
+                "matches": false,
+                "closing": false,
+                "key": false,
+                "start": 20537,
+                "token": "crate::parse::Token { end: 20538, kind: 2, error: 0 }",
+                "kind": 2,
+                "end": 20538
+              }
+            },
+            {
+              "stage": "verify",
+              "line": 95,
+              "col": 28,
+              "code": "invariant_preserved",
+              "message": "cannot prove loop invariant preserved in crate::parse::scan",
+              "fix": "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
+              "file": "parse.pruv",
+              "counterexample": {
+                "input": {
+                  "len": 5854,
+                  "first": [
+                    12,
+                    12,
+                    12,
+                    12,
+                    12,
+                    12,
+                    12,
+                    12
+                  ]
+                },
+                "fill": true,
+                "tape": {
+                  "len": 6291462,
+                  "first": [
+                    9,
+                    9,
+                    9,
+                    9,
+                    9,
+                    9,
+                    9,
+                    9
+                  ]
+                },
+                "n": 5854,
+                "stack": {
+                  "len": 516,
+                  "first": [
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11
+                  ]
+                },
+                "depth": 119,
+                "records": 1048577,
+                "p": 5854,
+                "state": -1,
+                "parent": -9223372036854747708,
+                "container": -9223372036854775527,
+                "c": 57,
+                "matches": false,
+                "closing": false,
+                "key": false,
+                "start": 5853,
+                "token": "crate::parse::Token { end: 5854, kind: 5, error: 0 }",
+                "kind": 5,
+                "end": 5854,
+                "written": true,
+                "count": 8945
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/record_bound/py/a2_root_gen.rs",
+          "ll": null,
+          "stderr": " 12, 12, 12, 12, 12, 12]}, \"fill\": true, \"tape\": {\"len\": 6291462, \"first\": [9, 9, 9, 9, 9, 9, 9, 9]}, \"n\": 5854, \"stack\": {\"len\": 516, \"first\": [11, 11, 11, 11, 11, 11, 11, 11]}, \"depth\": 119, \"records\": 1048577, \"p\": 5854, \"state\": -1, \"parent\": -9223372036854747708, \"container\": -9223372036854775527, \"c\": 57, \"matches\": false, \"closing\": false, \"key\": false, \"start\": 5853, \"token\": \"crate::parse::Token { end: 5854, kind: 5, error: 0 }\", \"kind\": 5, \"end\": 5854, \"written\": true, \"count\": 8945}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 145,
+              "col": 33,
+              "code": "call_requires",
+              "message": "cannot prove precondition of crate::parse::write_record (line 41) in crate::parse::scan",
+              "fix": "make the callee's requires hold before the call",
+              "file": "parse.pruv",
+              "counterexample": {
+                "input": {
+                  "len": 30613,
+                  "first": [
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11
+                  ]
+                },
+                "fill": true,
+                "tape": {
+                  "len": 0,
+                  "first": []
+                },
+                "n": 30613,
+                "stack": {
+                  "len": 516,
+                  "first": [
+                    -9223372036854769955,
+                    -9223372036854769955,
+                    -9223372036854769955,
+                    -9223372036854769955,
+                    -9223372036854769955,
+                    -9223372036854769955,
+                    -9223372036854769955,
+                    -9223372036854769955
+                  ]
+                },
+                "depth": 68,
+                "records": 1048576,
+                "p": 30612,
+                "state": -1,
+                "parent": -9223372036854769955,
+                "container": -9223372036854774666,
+                "c": 25,
+                "matches": false,
+                "closing": false,
+                "key": false,
+                "start": 30612,
+                "token": "crate::parse::Token { end: 30613, kind: 2, error: 0 }",
+                "kind": 2,
+                "end": 30613
+              }
+            },
+            {
+              "stage": "verify",
+              "line": 95,
+              "col": 28,
+              "code": "invariant_preserved",
+              "message": "cannot prove loop invariant preserved in crate::parse::scan",
+              "fix": "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
+              "file": "parse.pruv",
+              "counterexample": {
+                "input": {
+                  "len": 282,
+                  "first": [
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11,
+                    11
+                  ]
+                },
+                "fill": true,
+                "tape": {
+                  "len": 6291462,
+                  "first": [
+                    8,
+                    8,
+                    8,
+                    8,
+                    8,
+                    8,
+                    8,
+                    8
+                  ]
+                },
+                "n": 282,
+                "stack": {
+                  "len": 516,
+                  "first": [
+                    10,
+                    10,
+                    10,
+                    10,
+                    10,
+                    10,
+                    10,
+                    10
+                  ]
+                },
+                "depth": 50,
+                "records": 1048577,
+                "p": 282,
+                "state": 6,
+                "parent": -9223372036854755271,
+                "container": -9223372036854766863,
+                "c": 173,
+                "matches": false,
+                "closing": false,
+                "key": false,
+                "start": 281,
+                "token": "crate::parse::Token { end: 282, kind: 5, error: 0 }",
+                "kind": 5,
+                "end": 282,
+                "written": true,
+                "count": 14680
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/record_bound/rs/a2_root_gen.rs",
+          "ll": null,
+          "stderr": ", 11, 11, 11, 11, 11, 11, 11]}, \"fill\": true, \"tape\": {\"len\": 6291462, \"first\": [8, 8, 8, 8, 8, 8, 8, 8]}, \"n\": 282, \"stack\": {\"len\": 516, \"first\": [10, 10, 10, 10, 10, 10, 10, 10]}, \"depth\": 50, \"records\": 1048577, \"p\": 282, \"state\": 6, \"parent\": -9223372036854755271, \"container\": -9223372036854766863, \"c\": 173, \"matches\": false, \"closing\": false, \"key\": false, \"start\": 281, \"token\": \"crate::parse::Token { end: 282, kind: 5, error: 0 }\", \"kind\": 5, \"end\": 282, \"written\": true, \"count\": 14680}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "depth_bound",
+      "module": "parse.pruv",
+      "description": "Move primary depth guard to 129",
+      "replacement": {
+        "old": "&& depth == 128 {",
+        "new": "&& depth == 129 {"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/depth_bound/py/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/depth_bound/rs/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "survived",
+      "caught_by": null,
+      "reason": "Equivalent: the later depth >= 128 guard still rejects the 129th container before stack growth."
+    },
+    {
+      "name": "skip_not_advanced",
+      "module": "parse.pruv",
+      "description": "Do not advance scalar skip",
+      "replacement": {
+        "old": "tape[b + 3] = r + 1;",
+        "new": "tape[b + 3] = r;"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 51,
+              "col": 3,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 45) in crate::parse::write_record",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "parse.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 50196,
+                  "first": [
+                    8,
+                    8,
+                    8,
+                    8,
+                    8,
+                    8,
+                    8,
+                    8
+                  ]
+                },
+                "r": 8365,
+                "k": -9223372036854743523,
+                "s": -9223372036854765358,
+                "e": -9223372036854745196,
+                "parent": -9223372036854769955,
+                "b": 50190
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/skip_not_advanced/py/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 51, \"col\": 3, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 45) in crate::parse::write_record\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"parse.pruv\", \"counterexample\": {\"tape\": {\"len\": 50196, \"first\": [8, 8, 8, 8, 8, 8, 8, 8]}, \"r\": 8365, \"k\": -9223372036854743523, \"s\": -9223372036854765358, \"e\": -9223372036854745196, \"parent\": -9223372036854769955, \"b\": 50190}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 51,
+              "col": 3,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 45) in crate::parse::write_record",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "parse.pruv",
+              "counterexample": {
+                "tape": {
+                  "len": 6,
+                  "first": [
+                    -9223372036854765358,
+                    -9223372036854745196,
+                    -9223372036854769955,
+                    0,
+                    -9223372036854747708,
+                    0
+                  ]
+                },
+                "r": 0,
+                "k": -9223372036854765358,
+                "s": -9223372036854745196,
+                "e": -9223372036854769955,
+                "parent": -9223372036854747708,
+                "b": 0
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/skip_not_advanced/rs/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "line\": 51, \"col\": 3, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 45) in crate::parse::write_record\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"parse.pruv\", \"counterexample\": {\"tape\": {\"len\": 6, \"first\": [-9223372036854765358, -9223372036854745196, -9223372036854769955, 0, -9223372036854747708, 0]}, \"r\": 0, \"k\": -9223372036854765358, \"s\": -9223372036854745196, \"e\": -9223372036854769955, \"parent\": -9223372036854747708, \"b\": 0}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "wrong_colon_kind",
+      "module": "parse.pruv",
+      "description": "Wrong missing-colon error",
+      "replacement": {
+        "old": "if c != 58 { return done(p, 8, records); }",
+        "new": "if c != 58 { return done(p, 9, records); }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/wrong_colon_kind/py/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/wrong_colon_kind/rs/a2_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 2,
+        "fixture": 67,
+        "name": "b'{\"a\" 0}'",
+        "expected": "-1 5 8",
+        "actual": "-1 5 9"
+      }
+    },
+    {
+      "name": "surrogate_combine",
+      "module": "jstr.pruv",
+      "description": "Drop surrogate-pair combine",
+      "replacement": {
+        "old": "v = 65536 + (v - 55296) * 1024 + low - 56320; n = 2;",
+        "new": "v = 65533; n = 2;"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/surrogate_combine/py/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/surrogate_combine/rs/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 3,
+        "fixture": 4,
+        "name": "b'\"\\\\uD800\\\\uDC00\"'",
+        "expected": "55296 56320|240 144 128 128",
+        "actual": "55296 56320|239 191 189"
+      }
+    },
+    {
+      "name": "replacement_bytes",
+      "module": "jstr.pruv",
+      "description": "Wrong replacement scalar / UTF-8 bytes",
+      "replacement": {
+        "old": "if 55296 <= v && v <= 57343 { v = 65533; }",
+        "new": "if 55296 <= v && v <= 57343 { v = 65532; }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/replacement_bytes/py/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/replacement_bytes/rs/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 3,
+        "fixture": 6,
+        "name": "b'\"\\\\uD800\"'",
+        "expected": "55296|239 191 189",
+        "actual": "55296|239 191 188"
+      }
+    },
+    {
+      "name": "newline_decode",
+      "module": "jstr.pruv",
+      "description": "Decode newline as CR",
+      "replacement": {
+        "old": "if e == 110 { v = 10; }",
+        "new": "if e == 110 { v = 13; }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/newline_decode/py/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/newline_decode/rs/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 3,
+        "fixture": 1,
+        "name": "b'\"\\\\\"\\\\\\\\\\\\/\\\\b\\\\f\\\\n\\\\r\\\\t\"'",
+        "expected": "34 92 47 8 12 10 13 9|34 92 47 8 12 10 13 9",
+        "actual": "34 92 47 8 12 13 13 9|34 92 47 8 12 13 13 9"
+      }
+    },
+    {
+      "name": "hex_digit",
+      "module": "jstr.pruv",
+      "description": "Wrong lowercase hex value",
+      "replacement": {
+        "old": "return c - 87;",
+        "new": "return c - 86;"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 13,
+              "col": 28,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 9) in crate::jstr::hex",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "jstr.pruv",
+              "counterexample": {
+                "c": 102
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/hex_digit/py/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 13, \"col\": 28, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 9) in crate::jstr::hex\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"jstr.pruv\", \"counterexample\": {\"c\": 102}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 13,
+              "col": 28,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 9) in crate::jstr::hex",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "jstr.pruv",
+              "counterexample": {
+                "c": 102
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/hex_digit/rs/a3_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 13, \"col\": 28, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 9) in crate::jstr::hex\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"jstr.pruv\", \"counterexample\": {\"c\": 102}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "first_wins",
+      "module": "access.pruv",
+      "description": "First duplicate wins",
+      "replacement": {
+        "old": "if equal(units, key) { found = v; }",
+        "new": "if equal(units, key) && found == -1 { found = v; }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/first_wins/py/a4_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/first_wins/rs/a4_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 4,
+        "fixture": 1058,
+        "name": "(b'{\"a\":null,\"a\":1,\"\\\\u0061\":[2],\"__proto__\":3,\"constructor\":4,\"\":5,\"01\":6}', [0, 0, 2, 0], [97], '', 0)",
+        "expected": "5",
+        "actual": "0"
+      }
+    },
+    {
+      "name": "safe_integer",
+      "module": "access.pruv",
+      "description": "2^53 boundary off by one",
+      "replacement": {
+        "old": "if v > (9007199254740991 - d) / 10",
+        "new": "if v > (9007199254740992 - d) / 10"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 165,
+              "col": 22,
+              "code": "invariant_preserved",
+              "message": "cannot prove loop invariant preserved in crate::access::number",
+              "fix": "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
+              "file": "access.pruv",
+              "counterexample": {
+                "doc": "crate::json::JsonDocument { source: [245, 43, 208, 206, 43, 43, 43, 43, ...], tape: [43, 43, 43, 43, 43, 43, 43, 43, ...] }",
+                "id": 8365,
+                "k": 3,
+                "status": -2,
+                "s": "crate::access::Span { status: 0, start: 7035, end: 20529 }",
+                "p": 20487,
+                "neg": true,
+                "digits": 7036,
+                "v": 9007199254740992,
+                "exact": false,
+                "c": 50,
+                "d": 2
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/safe_integer/py/a4_root_gen.rs",
+          "ll": null,
+          "stderr": "ccess::number\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"file\": \"access.pruv\", \"counterexample\": {\"doc\": \"crate::json::JsonDocument { source: [245, 43, 208, 206, 43, 43, 43, 43, ...], tape: [43, 43, 43, 43, 43, 43, 43, 43, ...] }\", \"id\": 8365, \"k\": 3, \"status\": -2, \"s\": \"crate::access::Span { status: 0, start: 7035, end: 20529 }\", \"p\": 20487, \"neg\": true, \"digits\": 7036, \"v\": 9007199254740992, \"exact\": false, \"c\": 50, \"d\": 2}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 165,
+              "col": 22,
+              "code": "invariant_preserved",
+              "message": "cannot prove loop invariant preserved in crate::access::number",
+              "fix": "the invariant must hold again after one body iteration; add facts it depends on as more invariants",
+              "file": "access.pruv",
+              "counterexample": {
+                "doc": "crate::json::JsonDocument { source: [245, 19, 19, 19, 19, 19, 19, 19, ...], tape: [19, 19, 19, 19, 19, 19, 19, 19, ...] }",
+                "id": 8365,
+                "k": 3,
+                "status": -2,
+                "s": "crate::access::Span { status: 0, start: 28223, end: 16759329 }",
+                "p": 16759329,
+                "neg": true,
+                "digits": 28224,
+                "v": 9007199254740992,
+                "exact": false,
+                "c": 50,
+                "d": 2
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/safe_integer/rs/a4_root_gen.rs",
+          "ll": null,
+          "stderr": ":number\", \"fix\": \"the invariant must hold again after one body iteration; add facts it depends on as more invariants\", \"file\": \"access.pruv\", \"counterexample\": {\"doc\": \"crate::json::JsonDocument { source: [245, 19, 19, 19, 19, 19, 19, 19, ...], tape: [19, 19, 19, 19, 19, 19, 19, 19, ...] }\", \"id\": 8365, \"k\": 3, \"status\": -2, \"s\": \"crate::access::Span { status: 0, start: 28223, end: 16759329 }\", \"p\": 16759329, \"neg\": true, \"digits\": 28224, \"v\": 9007199254740992, \"exact\": false, \"c\": 50, \"d\": 2}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    },
+    {
+      "name": "negative_zero",
+      "module": "access.pruv",
+      "description": "Wrong negative-zero flag",
+      "replacement": {
+        "old": "let nz: bool = neg &&",
+        "new": "let nz: bool = !neg &&"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/negative_zero/py/a4_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/negative_zero/rs/a4_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 4,
+        "fixture": 2759,
+        "name": "(b'-0', [0, 0], [], '', 4)",
+        "expected": "0 1 0 1 45 48",
+        "actual": "0 1 0 0 45 48"
+      }
+    },
+    {
+      "name": "array_index",
+      "module": "access.pruv",
+      "description": "Wrong array index comparison",
+      "replacement": {
+        "old": "if n == index { return j; }",
+        "new": "if n + 1 == index { return j; }"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/array_index/py/a4_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/array_index/rs/a4_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 4,
+        "fixture": 675,
+        "name": "(b'[null,[1,[2,3]],{},false,\"x\"]', [0, 0, 1, 0], [], '', 0)",
+        "expected": "0",
+        "actual": "-1"
+      }
+    },
+    {
+      "name": "cr_included",
+      "module": "lines.pruv",
+      "description": "Keep CR in physical line",
+      "replacement": {
+        "old": "end = i - 1;",
+        "new": "end = i;"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/cr_included/py/a5_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/cr_included/rs/a5_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 5,
+        "fixture": 9,
+        "name": "('split', 0, 0, 0, b'0\\r\\n')",
+        "expected": "0 1 3 1 3",
+        "actual": "0 2 3 1 3"
+      }
+    },
+    {
+      "name": "lf_included",
+      "module": "lines.pruv",
+      "description": "Keep LF in physical line",
+      "replacement": {
+        "old": "JsonlStep::Line(offset, end, i + 1)",
+        "new": "JsonlStep::Line(offset, i + 1, i + 1)"
+      },
+      "verification": {
+        "py": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/lf_included/py/a5_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        },
+        "rs": {
+          "rc": 0,
+          "errors": [
+            {
+              "ok": true
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/lf_included/rs/a5_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"ok\": true}\n"
+        }
+      },
+      "classification": "behavior-detected",
+      "caught_by": {
+        "batch": 5,
+        "fixture": 6,
+        "name": "('split', 0, 0, 0, b'0\\n')",
+        "expected": "0 1 2 1 2",
+        "actual": "0 2 2 1 2"
+      }
+    },
+    {
+      "name": "next_not_advanced",
+      "module": "lines.pruv",
+      "description": "Do not advance next past LF",
+      "replacement": {
+        "old": "JsonlStep::Line(offset, end, i + 1)",
+        "new": "JsonlStep::Line(offset, end, i)"
+      },
+      "verification": {
+        "py": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 16,
+              "col": 7,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 6) in crate::lines::jsonl_next",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "lines.pruv",
+              "counterexample": {
+                "data": {
+                  "len": 1,
+                  "first": [
+                    10
+                  ]
+                },
+                "offset": 0,
+                "is_final": false,
+                "i": 0,
+                "end": 0
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/next_not_advanced/py/a5_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 16, \"col\": 7, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 6) in crate::lines::jsonl_next\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"lines.pruv\", \"counterexample\": {\"data\": {\"len\": 1, \"first\": [10]}, \"offset\": 0, \"is_final\": false, \"i\": 0, \"end\": 0}}\n"
+        },
+        "rs": {
+          "rc": 1,
+          "errors": [
+            {
+              "stage": "verify",
+              "line": 16,
+              "col": 7,
+              "code": "ensures",
+              "message": "cannot prove postcondition (line 6) in crate::lines::jsonl_next",
+              "fix": "fix the code, or strengthen loop invariants so the postcondition follows",
+              "file": "lines.pruv",
+              "counterexample": {
+                "data": {
+                  "len": 1,
+                  "first": [
+                    10
+                  ]
+                },
+                "offset": 0,
+                "is_final": false,
+                "i": 0,
+                "end": 0
+              }
+            }
+          ],
+          "rs": "/Users/spica4345/Projects/pruv/bench/l3/json/work/mutants/next_not_advanced/rs/a5_root_gen.rs",
+          "ll": null,
+          "stderr": "{\"stage\": \"verify\", \"line\": 16, \"col\": 7, \"code\": \"ensures\", \"message\": \"cannot prove postcondition (line 6) in crate::lines::jsonl_next\", \"fix\": \"fix the code, or strengthen loop invariants so the postcondition follows\", \"file\": \"lines.pruv\", \"counterexample\": {\"data\": {\"len\": 1, \"first\": [10]}, \"offset\": 0, \"is_final\": false, \"i\": 0, \"end\": 0}}\n"
+        }
+      },
+      "classification": "proof-rejected",
+      "caught_by": {
+        "verifiers": [
+          "py",
+          "rs"
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "policy": "Infrastructure failures are errors, never proof-rejected.",
+  "counts": {
+    "proof-rejected": 9,
+    "behavior-detected": 15,
+    "survived": 1
+  },
+  "elapsed_seconds": 405.334602917
+}

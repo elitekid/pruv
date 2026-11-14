@@ -1,0 +1,55 @@
+// A5: byte-preserving JSON Lines iteration and bounded range parsing.
+pub enum JsonlStep { Line(start: i64, end: i64, next: i64), NeedMore, Done }
+
+pub fn jsonl_next(data: [u8], offset: i64, is_final: bool) -> JsonlStep
+  requires 0 <= offset && offset <= len(data)
+  ensures is_variant(result, JsonlStep::Line) ==> (offset <= variant_field(result, JsonlStep::Line, start) && variant_field(result, JsonlStep::Line, start) <= variant_field(result, JsonlStep::Line, end) && variant_field(result, JsonlStep::Line, end) <= variant_field(result, JsonlStep::Line, next) && variant_field(result, JsonlStep::Line, next) <= len(data) && offset < variant_field(result, JsonlStep::Line, next))
+{
+  let mut i: i64 = offset;
+  while i < len(data)
+    invariant offset <= i && i <= len(data)
+    decreases len(data) - i
+  {
+    if data[i] == 10 {
+      let mut end: i64 = i;
+      if i > offset { if data[i - 1] == 13 { end = i - 1; } }
+      return JsonlStep::Line(offset, end, i + 1);
+    }
+    i = i + 1;
+  }
+  if !is_final { return JsonlStep::NeedMore; }
+  if offset < len(data) { return JsonlStep::Line(offset, len(data), len(data)); }
+  return JsonlStep::Done;
+}
+
+pub fn parse_range(data: [u8], lo: i64, hi: i64) -> crate::json::JsonParse ! alloc
+  requires 0 <= lo && lo <= hi && hi <= len(data)
+  ensures is_variant(result, crate::json::JsonParse::Failed) ==> (0 <= variant_field(result, crate::json::JsonParse::Failed, error).position && variant_field(result, crate::json::JsonParse::Failed, error).position <= hi - lo)
+  ensures hi - lo > 16777216 ==> is_variant(result, crate::json::JsonParse::Failed)
+  ensures hi - lo > 16777216 ==> (variant_field(result, crate::json::JsonParse::Failed, error).position == 0 && variant_field(result, crate::json::JsonParse::Failed, error).kind == 1)
+{
+  let n: i64 = hi - lo;
+  if n > crate::json::limit_input_bytes() {
+    return crate::json::JsonParse::Failed(crate::json::make_error(0, crate::json::err_input_too_large()));
+  }
+  let mut owned: [u8] = alloc(n, 0);
+  let mut i: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n && n == hi - lo && len(owned) == n
+    invariant forall j in 0..i: owned[j] == data[lo + j]
+    decreases n - i
+  { owned[i] = data[lo + i]; i = i + 1; }
+  return crate::parse::parse(owned);
+}
+
+// -1 denotes negative input or an unrepresentable absolute offset.
+pub fn absolute_offset(base: i64, start: i64, position: i64) -> i64
+  ensures result == -1 || (result >= 0 && result == base + start + position)
+  ensures (base < 0 || start < 0 || position < 0) ==> result == -1
+{
+  if base < 0 || start < 0 || position < 0 { return -1; }
+  if start > 9223372036854775807 - base { return -1; }
+  let sum: i64 = base + start;
+  if position > 9223372036854775807 - sum { return -1; }
+  return sum + position;
+}
