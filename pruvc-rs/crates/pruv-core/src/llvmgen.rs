@@ -48,6 +48,12 @@ pub fn contains_collection(t: &str) -> bool {
 }
 
 pub const SIGNED_MIN128: i128 = i128::MIN;
+/// P2: bit builtin -> LLVM instruction (Python BIT_LLVM); later batches add entries.
+const BIT_LLVM: [(&str, &str); 3] = [("band", "and"), ("bor", "or"), ("bxor", "xor")];
+
+fn bit_llvm(n: &str) -> Option<&'static str> {
+    BIT_LLVM.iter().find(|(k, _)| *k == n).map(|(_, ins)| *ins)
+}
 pub const OPT: &str = "{ i1, i64 }";
 /// Option/Result stored inside a contract aggregate
 pub const COPT: &str = "{ i1, i128 }";
@@ -2384,6 +2390,13 @@ impl<'a> FnGen<'a> {
             let c = self.op(format!("icmp ne i32 {}, 0", r))?;
             return Ok(V::new(Kind::I1, c));
         }
+        if let Some(ins) = bit_llvm(n) {
+            // P2: no flags, same IR with and without --no-verify
+            let x = self.ev(arg(a, 0)?, false)?;
+            let y = self.ev(arg(a, 1)?, false)?;
+            let r = self.op(format!("{} i64 {}, {}", ins, x.a, y.a))?;
+            return Ok(V::new(Kind::I64, r));
+        }
         if n == "substr" {
             // G2 B2: argument order s -> lo -> hi
             let s = self.ev(arg(a, 0)?, false)?;
@@ -3158,6 +3171,18 @@ impl<'a> FnGen<'a> {
                     let r = self.op(format!("call i32 @pruv_str_boundary(ptr {}, i64 {}, i64 {})", s.a, s.b, u))?;
                     let c = self.op(format!("icmp ne i32 {}, 0", r))?;
                     return Ok(V::new(Kind::I1, c));
+                }
+                if let Some(ins) = bit_llvm(n) {
+                    // P2: both i128 arguments must be inside i64; then the op on i128 is exact
+                    let x = self.cev(arg(a, 0)?)?;
+                    let y = self.cev(arg(a, 1)?)?;
+                    for v in [&x, &y] {
+                        let t = self.op(format!("add i128 {}, 9223372036854775808", v.a))?;
+                        let ok = self.op(format!("icmp ult i128 {}, 18446744073709551616", t))?;
+                        self.guard(&ok, und(format!("argument outside i64 in {}", n)), false)?;
+                    }
+                    let r = self.op(format!("{} i128 {}, {}", ins, x.a, y.a))?;
+                    return Ok(V::new(Kind::I128, r));
                 }
                 if n == "is_some" || n == "is_ok" {
                     let v = self.cev(arg(a, 0)?)?;

@@ -15,7 +15,9 @@ from foreign import (CATALOG, CATALOG_NAMES, CATALOG_CONTRACT_ONLY, FILE_OBSERVE
 CONTRACT_ONLY = {"is_some": ("option", BOOL), "some_val": ("option", "payload"), "is_ok": ("result", BOOL),
                  "ok_val": ("result", "payload"), "err_val": ("result", I64),
                  "size": ("size", I64)}   # G9 A0: structural size of a non-generic nominal value
-BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate")
+# P2: pure (i64, i64) -> i64 bit builtins: name -> (Rust operator, LLVM instruction); later batches add entries here
+BIT_BUILTINS = {"band": ("&", "and"), "bor": ("|", "or"), "bxor": ("^", "xor")}
+BUILTIN_FNS = ("len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate") + tuple(BIT_BUILTINS)
 RESERVED_TYPE_NAMES = ("Option", "Result", "Some", "None", "Ok", "Err")
 TYPE_NAME_RE = re.compile(r"[A-Z][A-Za-z0-9_]*\Z")
 FIELD_NAME_RE = re.compile(r"[a-z][A-Za-z0-9_]*\Z")
@@ -1626,6 +1628,9 @@ class Checker:
         if n == "is_char_boundary":   # G2 B0
             arity(2); s.expect(a[0], STR, scope, c); s.expect(a[1], I64, scope, c)
             return BOOL
+        if n in BIT_BUILTINS:   # P2: pure i64 bit operation, allowed in code and contracts
+            arity(2); s.expect(a[0], I64, scope, c); s.expect(a[1], I64, scope, c)
+            return I64
         if n == "substr":   # G2 B0
             if c: terr(e, "effect_in_contract", "substr not allowed in contracts")
             arity(3); s.expect(a[0], STR, scope, c); s.expect(a[1], I64, scope, c); s.expect(a[2], I64, scope, c)

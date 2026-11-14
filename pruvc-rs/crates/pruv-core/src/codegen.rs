@@ -297,6 +297,23 @@ fn contract_arith(op: &str) -> Option<&'static str> {
     }
 }
 
+/// P2: bit builtin -> Rust operator (Python BIT_RUST, same order); later batches add entries. The contract helper
+/// pruv_c<name> is emitted only when a contract uses the builtin.
+const BIT_RUST: [(&str, &str); 3] = [("band", "&"), ("bor", "|"), ("bxor", "^")];
+
+fn bit_rust(n: &str) -> Option<&'static str> {
+    BIT_RUST.iter().find(|(k, _)| *k == n).map(|(_, op)| *op)
+}
+
+/// Python CONTRACT_BIT_HELPER % (name, name, op)
+fn contract_bit_helper(n: &str, op: &str) -> String {
+    format!(
+        "#[allow(dead_code)]\n#[inline]\nfn pruv_c{n}(a: i128, b: i128) -> i128 {{ if a < (i64::MIN as i128) || a > (i64::MAX as i128) || b < (i64::MIN as i128) || b > (i64::MAX as i128) {{ pruv_ud(\"argument outside i64 in {n}\") }} ((a as i64) {op} (b as i64)) as i128 }}\n",
+        n = n,
+        op = op
+    )
+}
+
 // ---------- helpers ----------
 
 fn expr_ty(e: &Expr) -> &Option<String> {
@@ -463,6 +480,8 @@ struct Gen<'a> {
     /// G9 A2: types whose runtime contract helpers (size / equality) are needed
     need_size: HashSet<String>,
     need_eq: HashSet<String>,
+    /// P2: band/bor/bxor used in a runtime contract (filled while contracts are generated)
+    need_bits: HashSet<String>,
     /// G9 A2: the diagnostic raised by g9_unsupported (the R error is only a marker)
     diag: Option<PruvError>,
     /// G4 A2 (explicit visibility mode, docs/G4_SPEC.md 4): only host entries are `pub`. Verified: just the entries that have
@@ -562,6 +581,7 @@ impl<'a> Gen<'a> {
             frames: Vec::new(),
             need_size: HashSet::new(),
             need_eq: HashSet::new(),
+            need_bits: HashSet::new(),
             diag: None,
         }
     }
@@ -1536,6 +1556,13 @@ impl<'a> Gen<'a> {
                     let s0 = self.carr(arg(a, 0)?)?;
                     let i0 = self.c(arg(a, 1)?)?;
                     return Ok(format!("pruv_cboundary({}, {})", s0, i0));
+                }
+                if bit_rust(n).is_some() {
+                    // P2: i128 arguments checked inside i64 by the helper
+                    self.need_bits.insert(n.to_string());
+                    let a0 = self.c(arg(a, 0)?)?;
+                    let a1 = self.c(arg(a, 1)?)?;
+                    return Ok(format!("pruv_c{}({}, {})", n, a0, a1));
                 }
                 if n == "is_some" {
                     return Ok(format!("{}.is_some()", self.c(arg(a, 0)?)?));
@@ -2754,6 +2781,12 @@ impl<'a> Gen<'a> {
                     let i0 = self.e(arg(a, 1)?)?;
                     return Ok(format!("pruv_str_boundary({}, {})", s0, i0));
                 }
+                if let Some(op) = bit_rust(n) {
+                    // P2: no overflow possible, same text with and without --no-verify
+                    let a0 = self.e(arg(a, 0)?)?;
+                    let a1 = self.e(arg(a, 1)?)?;
+                    return Ok(format!("({} {} {})", a0, op, a1));
+                }
                 if n == "substr" {
                     // G2 B2: argument evaluation order s -> lo -> hi
                     let s0 = self.arr_ref(arg(a, 0)?)?;
@@ -2976,6 +3009,13 @@ pub fn gen_rust_concrete_ex(
     // (declaration order); nothing at all is added when no runtime requires needs them
     let g9_texts = g.g9_helper_texts();
     drop(g.out.splice(mark..mark, g9_texts));
+    // P2: contract helpers of the bit builtins the requires checks used, in table order
+    let bit_texts: Vec<String> = BIT_RUST
+        .iter()
+        .filter(|(k, _)| g.need_bits.contains(*k))
+        .map(|(k, op)| contract_bit_helper(k, op))
+        .collect();
+    drop(g.out.splice(mark..mark, bit_texts));
     let mut manifest: Option<String> = None;
     if g.g6 {
         // helpers are discovered while the functions are generated; they go in front of them, in first-use order

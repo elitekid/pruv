@@ -31,7 +31,8 @@ or contains `__`, error code reserved_name, so user names never collide with the
                     needed): pruv_idx pruv_oob pruv_get pruv_set pruv_ovf pruv_add pruv_sub
                     pruv_mul pruv_div pruv_rem pruv_neg pruv_alloc (safe mode) and
                     pruv_ud pruv_cidx pruv_cadd pruv_csub pruv_cmul pruv_cneg pruv_cdiv pruv_crem
-                    (requires evaluation).  Local temporaries pruv_* are also reserved.
+                    (requires evaluation; pruv_cband pruv_cbor pruv_cbxor only when a contract uses band/bor/bxor).
+                    Local temporaries pruv_* are also reserved.
                     [u8] programs also get pruv_elem_oor pruv_get_u8 pruv_set_u8 pruv_alloc_u8
                     (safe mode) and pruv_cidx_u8 (requires evaluation).
 
@@ -258,6 +259,15 @@ def str_lit(bs):
 
 SAFE_ARITH = {"+": "pruv_add", "-": "pruv_sub", "*": "pruv_mul", "/": "pruv_div", "%": "pruv_rem"}
 CONTRACT_ARITH = {"+": "pruv_cadd", "-": "pruv_csub", "*": "pruv_cmul", "/": "pruv_cdiv", "%": "pruv_crem"}
+# P2: bit builtin -> Rust operator (same names as check.BIT_BUILTINS); later batches add entries. The contract helper
+# pruv_c<name> is emitted only when a contract uses the builtin.
+BIT_RUST = {"band": "&", "bor": "|", "bxor": "^"}
+CONTRACT_BIT_HELPER = (
+    "#[allow(dead_code)]\n"
+    "#[inline]\n"
+    "fn pruv_c%s(a: i128, b: i128) -> i128 { if a < (i64::MIN as i128) || a > (i64::MAX as i128) || "
+    "b < (i64::MIN as i128) || b > (i64::MAX as i128) { pruv_ud(\"argument outside i64 in %s\") } "
+    "((a as i64) %s (b as i64)) as i128 }\n")
 
 
 # ---------------------------------------------------------------------------
@@ -671,6 +681,7 @@ class Gen:
         s.frames = []        # enclosing blocks being emitted: [names declared so far, names named later, loop body]
         s.need_size = set()
         s.need_eq = set()
+        s.need_bits = set()  # P2: band/bor/bxor used in a runtime contract (filled while contracts are generated)
         # G6 (section 12): only a program that uses G6 gets any of the following
         from foreign import first_g6_use, uses_files
         s.g10 = uses_files(prog)
@@ -1230,6 +1241,9 @@ class Gen:
                                                                   s.c(a[2]), s.c(a[3]))
             if n == "is_char_boundary":  # G2 B2
                 return "pruv_cboundary(%s, %s)" % (s.carr(a[0]), s.c(a[1]))
+            if n in BIT_RUST:   # P2: i128 arguments checked inside i64 by the helper
+                s.need_bits.add(n)
+                return "pruv_c%s(%s, %s)" % (n, s.c(a[0]), s.c(a[1]))
             if n == "is_some":
                 return "%s.is_some()" % s.c(a[0])
             if n == "some_val":
@@ -1887,6 +1901,8 @@ class Gen:
                 return 'println!("{}", %s)' % s.e(a[0])
             if n == "is_char_boundary":  # G2 B2
                 return "pruv_str_boundary(%s, %s)" % (s.arr_ref(a[0]), s.e(a[1]))
+            if n in BIT_RUST:  # P2: no overflow possible, same text with and without --no-verify
+                return "(%s %s %s)" % (s.e(a[0]), BIT_RUST[n], s.e(a[1]))
             if n == "substr":  # G2 B2
                 if not s.verified:
                     return "pruv_substr(%s, %s, %s)" % (s.arr_ref(a[0]), s.e(a[1]), s.e(a[2]))
@@ -1958,6 +1974,8 @@ def gen_rust_ex(prog, verified=True, trust_callers=False, budget=1 << 30, plan=N
     # G9: size / equality helpers discovered while the requires checks were generated go in front of the functions
     # (declaration order, no addresses or hashes); nothing at all is added when no runtime requires needs them
     g.out[mark:mark] = g.g9_helper_texts()
+    # P2: contract helpers of the bit builtins the requires checks used, in table order
+    g.out[mark:mark] = [CONTRACT_BIT_HELPER % (n, n, BIT_RUST[n]) for n in BIT_RUST if n in g.need_bits]
     manifest = None
     if g.g6:
         # helpers are discovered while the functions are generated; they go in front of them, in first-use order

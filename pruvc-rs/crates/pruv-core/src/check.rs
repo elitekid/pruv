@@ -42,6 +42,13 @@ pub(crate) enum CRes {
     Payload,
 }
 
+/// P2: pure (i64, i64) -> i64 bit builtins (check.py BIT_BUILTINS); later batches add names here.
+pub(crate) const BIT_BUILTINS: [&str; 3] = ["band", "bor", "bxor"];
+
+pub(crate) fn is_bit_builtin(n: &str) -> bool {
+    BIT_BUILTINS.contains(&n)
+}
+
 /// Built-ins used only in contracts: name -> (argument kind, result).
 pub(crate) fn contract_only(n: &str) -> Option<(&'static str, CRes)> {
     match n {
@@ -440,6 +447,7 @@ impl Checker {
                 return Err(terr(f.line, f.col, "dup_fn", format!("function {} defined twice", name), ""));
             }
             if matches!(name.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr" | "truncate")
+                || is_bit_builtin(&name)
                 || contract_only(&name).is_some()
                 || is_catalog(&name)
             {
@@ -2082,6 +2090,7 @@ impl Checker {
                     "call a unit Pruv helper and pass results back through whole inout arrays"));
             }
         } else if ["len", "alloc", "copy", "print", "is_char_boundary", "substr", "truncate"].contains(&n.as_str())
+            || is_bit_builtin(n)
             || contract_only(n).is_some() || is_catalog(n) || (n == "old" && self.uses_inout)
         {
             return Err(terr(c.line, c.col, "parallel_call",
@@ -3174,7 +3183,8 @@ impl Checker {
             }
             Ok(())
         };
-        let is_builtin = matches!(n.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr" | "truncate");
+        let is_builtin = matches!(n.as_str(), "len" | "alloc" | "copy" | "print" | "is_char_boundary" | "substr" | "truncate")
+            || is_bit_builtin(&n);
         let is_old = n == "old" && self.uses_inout && !self.funcs.contains_key(&n); // G5 A0: contextual builtin
         if targs.is_some() && !self.funcs.contains_key(&n) && (is_builtin || contract_only(&n).is_some() || is_old) {
             return Err(terr(line, col, "type_arity", format!("builtin {} takes no type arguments", n), "remove the `::<...>`"));
@@ -3233,6 +3243,13 @@ impl Checker {
                 self.expect(&mut e.args[0], &strt(), scope, c, None)?;
                 self.expect(&mut e.args[1], &i64t(), scope, c, None)?;
                 return Ok(boolt());
+            }
+            // P2: pure i64 bit operation, allowed in code and contracts
+            _ if is_bit_builtin(&n) => {
+                arity(2)?;
+                self.expect(&mut e.args[0], &i64t(), scope, c, None)?;
+                self.expect(&mut e.args[1], &i64t(), scope, c, None)?;
+                return Ok(i64t());
             }
             "substr" => {
                 if c {

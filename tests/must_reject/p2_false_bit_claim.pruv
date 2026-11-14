@@ -1,0 +1,5 @@
+fn f(x: i64) -> i64
+  ensures band(result, 1) == 0
+{
+  return x;
+}

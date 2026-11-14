@@ -7,6 +7,7 @@
 //! - Patterns: a single-term `Z3_mk_pattern` (z3py `_to_pattern` → `MultiPattern`)
 //! - Datatype: `Z3_mk_constructor(name, "is-"+name, ...)` + `Z3_mk_datatypes` (z3py `CreateDatatypes`)
 //! - Arithmetic: `+ - *` are two-argument `Z3_mk_add/sub/mul`, `!=` is `Z3_mk_distinct` (Python `__ne__`)
+//! - Bit-vectors (P2): `Int2BV` → `Z3_mk_int2bv(ctx, bits, a)`, `BV2Int` → `Z3_mk_bv2int(ctx, a, is_signed)`, `& | ^` → `Z3_mk_bvand/bvor/bvxor`
 //! - Solver: `Z3_mk_solver`; the timeout is `Z3_params_set_uint("timeout", ms)` followed by `Z3_solver_set_params`
 //!
 //! # Common safety rationale (cited by number from each unsafe block's `SAFETY:`)
@@ -550,6 +551,21 @@ impl Ast {
     bin_ast!(div, Z3_mk_div);
     bin_ast!(modulo, Z3_mk_mod);
     bin_ast!(select, Z3_mk_select);
+    // P2: z3py `a & b`, `a | b`, `a ^ b` on bit-vectors (`BitVecRef.__and__` etc.: one two-argument call each).
+    bin_ast!(bvand, Z3_mk_bvand);
+    bin_ast!(bvor, Z3_mk_bvor);
+    bin_ast!(bvxor, Z3_mk_bvxor);
+
+    /// z3py `Int2BV(self, bits)`: `Z3_mk_int2bv(ctx, bits, a)`.
+    pub fn int2bv(&self, bits: u32) -> Ast {
+        // SAFETY: S1 S2 — self is an Int expression of this context.
+        unsafe { self.z.wrap(nn(z::Z3_mk_int2bv(self.z.raw(), bits as c_uint, self.raw))) }
+    }
+    /// z3py `BV2Int(self, is_signed)`: `Z3_mk_bv2int(ctx, a, is_signed)` (z3py default is unsigned).
+    pub fn bv2int(&self, is_signed: bool) -> Ast {
+        // SAFETY: S1 S2 — self is a bit-vector expression of this context.
+        unsafe { self.z.wrap(nn(z::Z3_mk_bv2int(self.z.raw(), self.raw, is_signed))) }
+    }
 
     /// Python `a != b` → `Z3_mk_distinct(a, b)`.
     pub fn ne(&self, o: &Ast) -> Ast {

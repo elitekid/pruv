@@ -572,6 +572,8 @@ def _imp(c, d):
 
 
 _TAG_FNS = ("some_val", "ok_val", "err_val")
+# P2: bit builtin name -> z3 bit-vector operator (same names as check.BIT_BUILTINS); later batches add entries
+BIT_Z3 = {"band": lambda a, b: a & b, "bor": lambda a, b: a | b, "bxor": lambda a, b: a ^ b}
 
 
 def _partial_here(e, kind):
@@ -585,7 +587,7 @@ def _partial_here(e, kind):
     if isinstance(e, Binary):
         return e.op in ("/", "%")
     if isinstance(e, Call):
-        return e.name in _TAG_FNS or e.name == "file_byte"
+        return e.name in _TAG_FNS or e.name == "file_byte" or e.name in BIT_Z3
     if isinstance(e, Quant):
         return e.kind in ("max", "min")
     return False
@@ -1392,6 +1394,10 @@ class FnVerifier:
                 f = s.ev(e.args[0], st, g, False, env)
                 i = s.ev(e.args[1], st, g, False, env)
                 parts.append(z3.And(i >= 0, i < f.buf.n))
+            if wo and e.name in BIT_Z3:     # P2: both arguments inside i64
+                x = s.ev(e.args[0], st, g, False, env)
+                y = s.ev(e.args[1], st, g, False, env)
+                parts.append(z3.And(x >= -2 ** 63, x <= 2 ** 63 - 1, y >= -2 ** 63, y <= 2 ** 63 - 1))
             if wo and e.name in _TAG_FNS:
                 v = s.ev(e.args[0], st, g, False, env)
                 vty = s.model.type_of(v)       # G3: the Option/Result instance of the argument
@@ -1569,6 +1575,18 @@ class FnVerifier:
             return mk_arr(av.a, m, "truncate", av.elem)
         if n == "is_char_boundary":
             return str_boundary(args[0], args[1])
+        if n in BIT_Z3:     # P2: exact 64-bit two's-complement result as a signed Int
+            x, y = args
+            u = z3.BV2Int(BIT_Z3[n](z3.Int2BV(x, 64), z3.Int2BV(y, 64)))
+            r = z3.If(u < 2 ** 63, u, u - 2 ** 64)
+            if code:
+                s.assume(st, g, z3.And(r >= -2 ** 63, r <= 2 ** 63 - 1))
+                if n == "band":
+                    s.assume(st, g, z3.Implies(y >= 0, z3.And(r >= 0, r <= y)))
+                    s.assume(st, g, z3.Implies(x >= 0, z3.And(r >= 0, r <= x)))
+                else:
+                    s.assume(st, g, z3.Implies(z3.And(x >= 0, y >= 0), z3.And(r >= 0, r <= x + y)))
+            return r
         if n == "substr":   # G2 B1 (G2_SPEC 4.4): range -> boundary -> fresh result
             sv, lo, hi = args
             s.prove(st, g, z3.And(lo >= 0, lo <= hi, hi <= sv.n), e, "string_slice_range",

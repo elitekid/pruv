@@ -216,6 +216,11 @@ fn is_tag_fn(n: &str) -> bool {
     matches!(n, "some_val" | "ok_val" | "err_val")
 }
 
+/// P2: bit builtins evaluated as 64-bit bit-vector operations (verify.py BIT_Z3); later batches add names here.
+fn is_bit_z3(n: &str) -> bool {
+    matches!(n, "band" | "bor" | "bxor")
+}
+
 /// verify.py `_partial_here` (line 86).
 fn partial_here(e: &Expr, kind: PKind) -> bool {
     match e {
@@ -224,7 +229,7 @@ fn partial_here(e: &Expr, kind: PKind) -> bool {
         _ if kind == PKind::Variant => false,
         Expr::Index(_) => true,
         Expr::Binary(b) => b.op == "/" || b.op == "%",
-        Expr::Call(c) => is_tag_fn(&c.name) || c.name == "file_byte",
+        Expr::Call(c) => is_tag_fn(&c.name) || c.name == "file_byte" || is_bit_z3(&c.name),
         Expr::Quant(q) => q.kind == "max" || q.kind == "min",
         _ => false,
     }
@@ -1930,6 +1935,41 @@ impl<'a> FnVerifier<'a> {
                 let i = arg(1)?.try_ast()?;
                 return Ok(Val::Bool(self.str_boundary(sv, i)));
             }
+            _ if is_bit_z3(n) => {
+                // P2: exact 64-bit two's-complement result as a signed Int (Python BIT_Z3)
+                let x0 = arg(0)?.try_ast()?.clone();
+                let y0 = arg(1)?.try_ast()?.clone();
+                let bx = x0.int2bv(64);
+                let by = y0.int2bv(64);
+                let u = match n {
+                    "band" => bx.bvand(&by),
+                    "bor" => bx.bvor(&by),
+                    _ => bx.bvxor(&by),
+                }
+                .bv2int(false);
+                let r = self.z.ite(
+                    &u.raw_lt(&self.z.int_str("9223372036854775808")),
+                    &u,
+                    &u.sub(&self.z.int_str("18446744073709551616")),
+                );
+                if code {
+                    let f = self.z.and(&[r.ge_i(i64::MIN), r.le_i(i64::MAX)]);
+                    self.assume(st, g, f);
+                    if n == "band" {
+                        let f = y0.ge_i(0).implies(&self.z.and(&[r.ge_i(0), r.le(&y0)]));
+                        self.assume(st, g, f);
+                        let f = x0.ge_i(0).implies(&self.z.and(&[r.ge_i(0), r.le(&x0)]));
+                        self.assume(st, g, f);
+                    } else {
+                        let f = self
+                            .z
+                            .and(&[x0.ge_i(0), y0.ge_i(0)])
+                            .implies(&self.z.and(&[r.ge_i(0), r.le(&x0.add(&y0))]));
+                        self.assume(st, g, f);
+                    }
+                }
+                return Ok(Val::Int(r));
+            }
             "substr" => {
                 // G2 B1: range → bounds → new result → length assumption → byte-relation assumption.
                 let sv = arg(0)?.try_arr()?.clone();
@@ -2570,6 +2610,17 @@ impl<'a> FnVerifier<'a> {
                     let f = self.ev(&x.args[0], st, g, false, env)?;
                     let i = self.ev_ast(&x.args[1], st, g, false, env)?;
                     parts.push(Some(self.z.and(&[i.ge_i(0), i.lt(&f.try_file()?.buf.n)])));
+                }
+                if wo && is_bit_z3(&x.name) {
+                    // P2: both arguments inside i64
+                    let a0 = self.ev_ast(&x.args[0], st, g, false, env)?;
+                    let a1 = self.ev_ast(&x.args[1], st, g, false, env)?;
+                    parts.push(Some(self.z.and(&[
+                        a0.ge_i(i64::MIN),
+                        a0.le_i(i64::MAX),
+                        a1.ge_i(i64::MIN),
+                        a1.le_i(i64::MAX),
+                    ])));
                 }
                 if wo && is_tag_fn(&x.name) {
                     let a0 = x.args.first().ok_or_else(|| "tuple index out of range".to_string())?;

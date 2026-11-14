@@ -90,6 +90,12 @@ it can never be silently dropped.
 - `truncate(a, m)`: new array holding the first m elements of `a` (`0 <= m <= len(a)` must be proven, `verify`
   error `index_oob`). Needs `alloc`. Arrays only (`str` is a type error). When `a` is a local at its last use the
   generated Rust shortens it in place instead of copying.
+- `band(a, b)`, `bor(a, b)`, `bxor(a, b)`: `(i64, i64) -> i64`, bitwise and/or/xor on the 64-bit two's-complement
+  representation. Negative operands are allowed (`band(-1, 255) == 255`); the complement of `x` is `bxor(x, -1)`
+  (`== -x - 1`). No overflow obligation on the result. Pure, allowed in code and contracts; the names are reserved
+  (no user function of that name). Arguments are evaluated left to right, once. Wrong argument types are
+  `type_mismatch`, a wrong argument count is `arity`. The verifier knows `y >= 0 ==> 0 <= band(x, y) <= y`, so
+  `a[band(x, 255)]` is in bounds when `len(a) >= 256`.
 - Evaluation order: code evaluates left to right in source order, the same in every compile mode; call arguments left to right, and in `a[i] = v` the index is evaluated before the value.
 - Precedence (high to low): unary `- !`; `* / %`; `+ -`; comparisons (non-associative); `&&`; `||`; `==>`.
 
@@ -105,7 +111,9 @@ Allowed only in `requires`, `ensures`, `invariant`, `assert`:
 - Contract domain: every partial operation in a contract must be defined where it is evaluated, and the verifier
   proves it (`verify` error `contract_domain`): `a[i]` needs `0 <= i < len(a)`, `x / y` and `x % y` need `y != 0`,
   `some_val(o)` needs `is_some(o)`, `ok_val(r)` needs `is_ok(r)`, `err_val(r)` needs `!is_ok(r)`, `max`/`min` need
-  `lo < hi`. Evaluation is left to right with short-circuit `&&` `||` `==>`; `forall`/`exists` go up from `lo` and stop
+  `lo < hi`, and each argument of `band`/`bor`/`bxor` must be inside i64 (contract integers are unbounded and are
+  never truncated: `band(9223372036854775807 + 1, 255)` is outside the domain). The builtins have the same 64-bit
+  two's-complement meaning in contracts as in code. Evaluation is left to right with short-circuit `&&` `||` `==>`; `forall`/`exists` go up from `lo` and stop
   at the first false/true k, so only the k they reach need a defined body; aggregates need it for every k in range.
   This holds in `requires` (each clause from the earlier ones only: write `requires 0 <= i && i < len(a)` before
   `requires a[i] > 0`), `ensures`, `invariant` (earlier clauses of the same kind may guard later ones), `assert` and
@@ -692,6 +700,10 @@ Number-range quantifiers and aggregates iterate once per element of the range, s
 with one exception: the sortedness precondition `forall i in 0..len(a): forall j in i..len(a): a[i] <= a[j]` (or with
 inner start `i + 1`; any bound names, same array `a`, exactly this shape) is checked as the equivalent
 `forall k in 1..len(a): a[k-1] <= a[k]`, in O(len(a)). The verifier still uses the written form.
+
+A run-time `requires` that passes an argument outside i64 to `band`/`bor`/`bxor` panics with
+`pruv: requires undefined: argument outside i64 in band` (`bor`, `bxor` likewise). `--no-verify` gives the same
+`band`/`bor`/`bxor` results as the verified build.
 
 `--no-verify` emits safe mode: no proof exists, so indexing and arithmetic are checked (panic on out-of-range index
 or i64 overflow), and `/` `%` use the verifier's domain (divisor > 0 and dividend >= 0, otherwise panic).

@@ -55,6 +55,7 @@ G6_UNSUPPORTED_FIX = "avoid trusted rust fn, Vec, HashMap, String, take and move
 G6_BRIDGE_DECL = "@pruv_g6_bridge_v1 = external global i8\n"
 
 SIGNED_MIN128 = -170141183460469231731687303715884105728
+BIT_LLVM = {"band": "and", "bor": "or", "bxor": "xor"}   # P2: bit builtin -> LLVM instruction; later batches add entries
 OPT = "{ i1, i64 }"
 COPT = "{ i1, i128 }"       # Option/Result stored inside a contract aggregate (%pruv_c_*)
 ARR = "{ ptr, i64 }"
@@ -1475,6 +1476,10 @@ class FnGen:
             iv = s.ev(a[1])
             r = s.op("call i32 @pruv_str_boundary(ptr %s, i64 %s, i64 %s)" % (sv.a, sv.b, iv.a))
             return V("i1", s.op("icmp ne i32 %s, 0" % r))
+        if n in BIT_LLVM:   # P2: no flags, same IR with and without --no-verify
+            x = s.ev(a[0])
+            y = s.ev(a[1])
+            return V("i64", s.op("%s i64 %s, %s" % (BIT_LLVM[n], x.a, y.a)))
         if n == "substr":  # G2 B2: s, lo, hi in order
             sv = s.ev(a[0])
             lo = s.ev(a[1])
@@ -1967,6 +1972,14 @@ class FnGen:
                 u = s.op("select i1 %s, i64 %s, i64 -1" % (ok, t))
                 r = s.op("call i32 @pruv_str_boundary(ptr %s, i64 %s, i64 %s)" % (sv.a, sv.b, u))
                 return V("i1", s.op("icmp ne i32 %s, 0" % r))
+            if n in BIT_LLVM:   # P2: both i128 arguments must be inside i64; then the op on i128 is exact
+                x = s.cev(a[0])
+                y = s.cev(a[1])
+                for v in (x, y):
+                    t = s.op("add i128 %s, 9223372036854775808" % v.a)
+                    ok = s.op("icmp ult i128 %s, 18446744073709551616" % t)
+                    s.guard(ok, und("argument outside i64 in " + n), False)
+                return V("i128", s.op("%s i128 %s, %s" % (BIT_LLVM[n], x.a, y.a)))
             if n in ("is_some", "is_ok"):
                 o = s.cev(a[0])
                 if o.k == "agg":  # G3: tag of a new Option/Result

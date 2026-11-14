@@ -1,0 +1,55 @@
+// band/bor/bxor: bitwise and/or/xor on the 64-bit two's-complement value; negatives allowed, no overflow obligation.
+fn max_i() -> i64
+  ensures result == 9223372036854775807
+{ return 9223372036854775807; }
+fn min_i() -> i64
+  ensures result == -9223372036854775807 - 1
+{ return -9223372036854775807 - 1; }
+fn f_and(x: i64, y: i64) -> i64
+  ensures result == band(x, y)
+{ return band(x, y); }
+fn f_or(x: i64, y: i64) -> i64
+  ensures result == bor(x, y)
+{ return bor(x, y); }
+fn f_xor(x: i64, y: i64) -> i64
+  ensures result == bxor(x, y)
+{ return bxor(x, y); }
+fn mask8(x: i64) -> i64
+  ensures result == band(x, 255)
+  ensures 0 <= result && result <= 255
+{ return band(x, 255); }
+// the masked index is proven in bounds by the band fact
+fn table_at(x: i64) -> i64 ! alloc
+  ensures result == 7
+{
+  let mut a: [i64] = alloc(256, 3);
+  a[band(x, 255)] = 7;
+  return a[band(x, 255)];
+}
+fn run() -> () ! io, alloc {
+  print(f_and(-1, 255));
+  print(f_xor(5, -1));
+  print(f_and(max_i(), min_i()));
+  print(f_or(max_i(), min_i()));
+  print(f_xor(max_i(), min_i()));
+  print(f_and(min_i(), -1));
+  print(f_xor(min_i(), -1));
+  print(f_or(0, -7));
+  print(f_and(-6, 12));
+  print(f_or(-6, 3));
+  print(f_xor(-6, 12));
+  print(mask8(1000));
+  print(mask8(-1));
+  print(mask8(-256));
+  print(mask8(-3));
+  print(mask8(min_i()));
+  print(mask8(max_i()));
+  print(table_at(1000));
+  print(table_at(-1));
+  print(table_at(min_i()));
+  print(f_xor(12345, 12345));
+  print(f_or(5, 0));
+  print(f_and(max_i(), -1));
+  print(band(-1, 255));
+  print(bxor(5, -1));
+}
