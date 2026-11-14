@@ -99,6 +99,16 @@ export const imageCountText = native.imageCountText;
 export function imageCounts(items) {
   return native.imageCountText(items.map(item => item.page), items.map(item => item.count));
 }
+export const textLineCounts = native.textLineCounts;
+
+/** The line part of Lair textDraft (src/documents/extract.ts): { lines, keep } — the line count after the LF
+ *  split (one trailing CR dropped per line, an empty last line dropped) and how many leading lines fit the
+ *  character limit chars (running total of UTF-16 length + 1), from the verified Pruv textLineCounts
+ *  (chars must be an integer in -1e15..=1e15, InvalidArg otherwise). */
+export function textLines(text, chars) {
+  const [lines, keep] = native.textLineCounts(text, chars);
+  return { lines, keep };
+}
 
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;

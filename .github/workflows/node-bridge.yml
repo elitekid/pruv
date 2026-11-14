@@ -57,6 +57,8 @@ on:
       - "bench/l0/run_chunk_page.py"
       - "bench/l0/image_counts.mjs"
       - "bench/l0/run_image_counts.py"
+      - "bench/l0/text_lines.mjs"
+      - "bench/l0/run_text_lines.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

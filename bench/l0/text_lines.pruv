@@ -1,0 +1,65 @@
+// Lair textDraft (src/documents/extract.ts), the line part of a plain text document: split the decoded
+// text on LF, drop one CR at the end of every line, drop the last line if it is then empty, and keep the
+// lines before the first one where the running total of (UTF-16 length + 1) goes over the character
+// limit; keep all of them if it never does. The chunking of the kept lines and the notes are not here.
+// Pruv works on the UTF-8 bytes in one pass and counts UTF-16 units per byte: 1 for an ASCII byte or the
+// first byte of a 2- or 3-byte character, 2 for the first byte of a 4-byte character, 0 for a
+// continuation byte. The result is [line count, kept line count]; the host slices nothing.
+// Domain: text at most 5 * 10^11 UTF-8 bytes, chars in -10^15..10^15.
+
+pub fn text_lines(s: str, chars: i64) -> [i64] ! alloc
+  requires len(s) <= 500000000000
+  requires -1000000000000000 <= chars && chars <= 1000000000000000
+  ensures len(result) == 2
+  ensures 0 <= result[1] && result[1] <= result[0] && result[0] <= len(s)
+{
+  let n: i64 = len(s);
+  let mut i: i64 = 0;
+  let mut a: i64 = 0;
+  let mut lu: i64 = 0;
+  let mut count: i64 = 0;
+  let mut keep: i64 = -1;
+  let mut used: i64 = 0;
+  while i < n
+    invariant 0 <= a && a <= i && i <= n
+    invariant 0 <= lu && lu <= 2 * (i - a)
+    invariant i == a || s[i - 1] != 13 || lu >= 1
+    invariant 0 <= count && count <= a
+    invariant -1 <= keep && keep <= count
+    invariant 0 <= used && used <= 2 * a
+    decreases n - i
+  {
+    let x: i64 = s[i];
+    if x == 10 {
+      let mut w: i64 = lu;
+      if i > a && s[i - 1] == 13 { w = w - 1; }
+      if keep == -1 {
+        used = used + w + 1;
+        if used > chars { keep = count; }
+      }
+      count = count + 1;
+      a = i + 1;
+      lu = 0;
+    } else if x < 128 || (192 <= x && x < 240) {
+      lu = lu + 1;
+    } else if x >= 240 {
+      lu = lu + 2;
+    }
+    i = i + 1;
+  }
+  let mut b: i64 = n;
+  let mut w: i64 = lu;
+  if n > a && s[n - 1] == 13 { b = n - 1; w = lu - 1; }
+  if b > a {
+    if keep == -1 {
+      used = used + w + 1;
+      if used > chars { keep = count; }
+    }
+    count = count + 1;
+  }
+  if keep == -1 { keep = count; }
+  let mut out: [i64] = alloc(2, 0);
+  out[0] = count;
+  out[1] = keep;
+  return out;
+}

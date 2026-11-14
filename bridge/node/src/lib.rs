@@ -72,6 +72,10 @@ mod chunk_page_gen;
 #[allow(dead_code, clippy::all)]
 mod image_counts_gen;
 
+#[path = "../gen/text_lines_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod text_lines_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -797,6 +801,21 @@ pub fn image_count_text(pages: Vec<f64>, counts: Vec<f64>) -> napi::Result<Strin
         c.push(b as i64);
     }
     Ok(image_counts_gen::image_counts(&p, &c))
+}
+
+/// The line part of Lair textDraft (src/documents/extract.ts): [line count, kept line count] for the text
+/// split on LF (one trailing CR dropped per line, an empty last line dropped) under the character limit.
+#[napi(js_name = "textLineCounts")]
+pub fn text_line_counts(text: String, chars: f64) -> napi::Result<Vec<f64>> {
+    if text.len() as u64 > 500_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "textLineCounts: text must be at most 500000000000 UTF-8 bytes"));
+    }
+    if !chars.is_finite() || chars.fract() != 0.0 || !(-1e15..=1e15).contains(&chars) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "textLineCounts: chars must be an integer in -1000000000000000..=1000000000000000"));
+    }
+    Ok(text_lines_gen::text_lines(&text, chars as i64).iter().map(|&x| x as f64).collect())
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {
