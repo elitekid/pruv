@@ -126,6 +126,11 @@ export const chatRefText = native.chatRefText;
  *  verified Pruv toml_string (value at most 1e11 UTF-8 bytes, InvalidArg otherwise). */
 export const tomlString = native.tomlString;
 
+/** Lair stripUserInfo (src/backend/git-changes.ts): the text with URL user info removed (scheme and `://`
+ *  kept, everything up to the last `@` before the next whitespace or `/` dropped), from the verified Pruv
+ *  strip_user_info (text at most 1e11 UTF-8 bytes, InvalidArg otherwise). */
+export const stripUserInfo = native.stripUserInfo;
+
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

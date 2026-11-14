@@ -1,0 +1,120 @@
+// stripUserInfo of Lair src/backend/git-changes.ts: text.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/]*@/gi, '$1').
+// A match starts at an ASCII letter that does not follow an ASCII word character, takes the longest run of
+// letters, digits, `+`, `.` and `-` and needs `://` right after it. Then it runs to the last `@` before the
+// next JS whitespace character or `/`, and everything between `://` and that `@` (the `@` too) is dropped.
+// If there is no such `@`, no start inside the same run can match either, so the scan goes on after the run.
+// Whitespace class of the character starting at byte i: 0 other, 1 whitespace, 2 CR or LF.
+fn space(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures 0 <= result && result <= 2
+{
+  let b: i64 = s[i];
+  if b == 10 || b == 13 { return 2; }
+  if b == 9 || b == 11 || b == 12 || b == 32 { return 1; }
+  if i + 1 >= len(s) { return 0; }
+  let c: i64 = s[i + 1];
+  if b == 194 && c == 160 { return 1; }
+  if i + 2 >= len(s) { return 0; }
+  let d: i64 = s[i + 2];
+  if b == 225 && c == 154 && d == 128 { return 1; }
+  if b == 226 && c == 128 && ((128 <= d && d <= 138) || d == 168 || d == 169 || d == 175) { return 1; }
+  if b == 226 && c == 129 && d == 159 { return 1; }
+  if b == 227 && c == 128 && d == 128 { return 1; }
+  if b == 239 && c == 187 && d == 191 { return 1; }
+  return 0;
+}
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+fn letter(b: i64) -> bool {
+  return (65 <= b && b <= 90) || (97 <= b && b <= 122);
+}
+fn word(b: i64) -> bool {
+  return letter(b) || (48 <= b && b <= 57) || b == 95;
+}
+fn scheme(b: i64) -> bool {
+  return letter(b) || (48 <= b && b <= 57) || b == 43 || b == 46 || b == 45;
+}
+pub fn strip_user_info(text: str) -> str ! alloc
+  requires len(text) <= 100_000_000_000
+  ensures len(result) <= len(text)
+{
+  let mut out: String = string_new();
+  let mut last: i64 = 0;
+  let mut i: i64 = 0;
+  while i < len(text)
+    invariant 0 <= last && last <= i && i <= len(text)
+    invariant is_char_boundary(text, i)
+    invariant is_char_boundary(text, last)
+    invariant len(out) <= last
+    decreases len(text) - i
+  {
+    let b: i64 = text[i];
+    let mut start: bool = letter(b);
+    if start && i > 0 {
+      if word(text[i - 1]) {
+        start = false;
+      }
+    }
+    if start {
+      let mut j: i64 = next(text, i);
+      while j < len(text) && scheme(text[j])
+        invariant i < j && j <= len(text)
+        invariant is_char_boundary(text, j)
+        decreases len(text) - j
+      {
+        j = next(text, j);
+      }
+      let mut found: i64 = -1;
+      if j < len(text) && text[j] == 58 {
+        let k0: i64 = next(text, j);
+        if k0 < len(text) && text[k0] == 47 {
+          let k1: i64 = next(text, k0);
+          if k1 < len(text) && text[k1] == 47 {
+            let k2: i64 = next(text, k1);
+            let mut k: i64 = k2;
+            while k < len(text) && text[k] != 47 && space(text, k) == 0
+              invariant k2 <= k && k <= len(text)
+              invariant is_char_boundary(text, k)
+              invariant found == -1 || (k2 < found && found <= k && is_char_boundary(text, found))
+              decreases len(text) - k
+            {
+              let e: i64 = next(text, k);
+              if text[k] == 64 {
+                found = e;
+              }
+              k = e;
+            }
+            if found != -1 {
+              let piece: str = substr(text, last, k2);
+              out = string_push_str(move out, piece);
+              last = found;
+            }
+          }
+        }
+      }
+      if found != -1 {
+        i = found;
+      } else {
+        i = j;
+      }
+    } else {
+      i = next(text, i);
+    }
+  }
+  let rest: str = substr(text, last, len(text));
+  out = string_push_str(move out, rest);
+  return string_to_str(out);
+}

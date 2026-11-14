@@ -1,6 +1,6 @@
 // Usage: node bridge/node/test.mjs [--cases N] [--seed S]
 import { crc32 } from 'node:zlib';
-import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms, notePairs, cellDate, cellStr, cellInt, sha256Hex, extractVersionOf, chunkPage, chunkImage, imageCountText, imageCounts, textLineCounts, textLines, luhn, chatRefText, tomlString } from './index.mjs';
+import { clipBytes, hostWithin, versionAtLeast, colLetters, termPlain, termState, decodeBytes, looksBinary, zipUncompressedTotal, pngScanlines, encodePng, splitText, groupTexts, chunkLines, chunkBlocks, jpegOrientation, shrinkPixels, shrinkJpeg, numberRanges, clipSheetBackground, clipSheetCell, renderClipSheet, kindOf, extensionOf, kindCode, extensionAt, rowPieces, rowTextPieces, sheetChunks, cellRange, extractSheetChunks, textAroundPlan, textAround, parseHtmlRecords, parseHtml, docxPartsRecords, docxParts, tokenizeRecords, tokenize, csvName, countList, joinRangeParts, cutCell, sheetRange, pageRanges, groupedNumber, under, capKeep, evictStop, indexTerms, notePairs, cellDate, cellStr, cellInt, sha256Hex, extractVersionOf, chunkPage, chunkImage, imageCountText, imageCounts, textLineCounts, textLines, luhn, chatRefText, tomlString, stripUserInfo } from './index.mjs';
 import { csvName as tsCsvName, countList as tsCountList } from '../../bench/l0/doc_labels.mjs';
 import { joinRangeParts as tsJoinRangeParts } from '../../bench/l0/join_ranges.mjs';
 import { cutCell as tsCutCell } from '../../bench/l0/cut_cell.mjs';
@@ -11,6 +11,7 @@ import { textDraft as tsTextDraft } from '../../bench/l0/text_lines.mjs';
 import { luhn as tsLuhn } from '../../bench/l0/luhn.mjs';
 import { chatRefText as tsChatRefText } from '../../bench/l0/chat_ref.mjs';
 import { tomlString as tsTomlString } from '../../bench/l0/toml_string.mjs';
+import { stripUserInfo as tsStripUserInfo } from '../../bench/l0/strip_user_info.mjs';
 import { sheetRange as tsSheetRange } from '../../bench/l0/sheet_range.mjs';
 import { rangeText as tsRangeText } from '../../bench/l0/page_ranges.mjs';
 import { groupedNumber as tsGroupedNumber } from '../../bench/l0/grouped_number.mjs';
@@ -963,6 +964,22 @@ for (const [value, want] of tomlRows) {
 }
 mustThrow('tomlString number value', () => tomlString(1));
 
+// ---- stripUserInfo (git-changes.ts) against the oracle (bench/l0/run_strip_user_info.py --emit) ----
+const stripScript = fileURLToPath(new URL('../../bench/l0/run_strip_user_info.py', import.meta.url));
+const stripRows = execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
+  [stripScript, '--emit', '--n', String(Math.min(CASES, 20000)), '--seed', String(SEED)],
+  { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\n').filter(Boolean).map(l => JSON.parse(l));
+let stripMismatches = 0, stripTsDiff = 0;
+for (const [text, want] of stripRows) {
+  const got = stripUserInfo(text);
+  if (got !== want) {
+    stripMismatches++;
+    if (stripMismatches <= 5) console.error('stripUserInfo mismatch', JSON.stringify({ text, got, want }));
+  }
+  if (tsStripUserInfo(text) !== got) stripTsDiff++;
+}
+mustThrow('stripUserInfo number text', () => stripUserInfo(1));
+
 // ---- renderClipSheet against the integral-image oracle (bench/l0/run_clip_sheet.py --emit) ----
 // A stub jpeg module: decode passes the {width, height, data} cell through, encode returns the RGBA sheet.
 const passJpeg = { decode: (j) => j, encode: (image) => ({ data: image.data }) };
@@ -1299,6 +1316,9 @@ console.log(JSON.stringify({
   toml_string_cases: tomlRows.length,
   toml_string_mismatches: tomlMismatches,
   toml_string_ts_differences: tomlTsDiff,
+  strip_user_info_cases: stripRows.length,
+  strip_user_info_mismatches: stripMismatches,
+  strip_user_info_ts_differences: stripTsDiff,
   sheet_cases: sheetRows.length,
   sheet_mismatches: sheetMismatches,
   sheet_ts_differences: sheetTsDiff,
@@ -1328,4 +1348,4 @@ console.log(JSON.stringify({
   token_unicode: process.versions.unicode,
   error_checks: errorOk ? 'ok' : 'FAILED',
 }));
-process.exit(tomlMismatches || tomlTsDiff || chatRefMismatches || chatRefTsDiff || luhnMismatches || luhnTsDiff || textLinesMismatches || textLinesTsDiff || imageCountsMismatches || imageCountsTsDiff || clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || noteMismatches || noteTsDiff || cellDateMismatches || cellDateTsDiff || cellStrMismatches || cellStrTsDiff || cellIntMismatches || cellIntTsDiff || extractMismatches || extractTsDiff || chunkPageMismatches || chunkPageTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
+process.exit(stripMismatches || stripTsDiff || tomlMismatches || tomlTsDiff || chatRefMismatches || chatRefTsDiff || luhnMismatches || luhnTsDiff || textLinesMismatches || textLinesTsDiff || imageCountsMismatches || imageCountsTsDiff || clipMismatches || hostMismatches || versionMismatches || colMismatches || termMismatches || decodeMismatches || zipMismatches || zipTsDiff || pngMismatches || pngTsDiff || splitMismatches || splitTsDiff || groupMismatches || groupTsDiff || shrinkMismatches || shrinkTsDiff || rangesMismatches || rangesTsDiff || labelsMismatches || labelsTsDiff || joinMismatches || joinTsDiff || cutMismatches || cutTsDiff || rangeMismatches || rangeTsDiff || pageMismatches || pageTsDiff || groupedMismatches || groupedTsDiff || underMismatches || underTsDiff || capMismatches || capTsDiff || evictMismatches || evictTsDiff || indexMismatches || (indexUnicode17 && indexTsDiff) || noteMismatches || noteTsDiff || cellDateMismatches || cellDateTsDiff || cellStrMismatches || cellStrTsDiff || cellIntMismatches || cellIntTsDiff || extractMismatches || extractTsDiff || chunkPageMismatches || chunkPageTsDiff || sheetMismatches || sheetTsDiff || kindMismatches || kindTsDiff || rowMismatches || rowTsDiff || chunkMismatches || chunkTsDiff || aroundMismatches || htmlMismatches || htmlTsDiff || partsMismatches || partsTsDiff || tokenMismatches || (tokenUnicode17 && tokenTsDiff) || !errorOk ? 1 : 0);
