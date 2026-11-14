@@ -110,6 +110,11 @@ export function textLines(text, chars) {
   return { lines, keep };
 }
 
+/** Lair luhn (src/shared/common-memory.ts): true when the Luhn sum over the UTF-16 units of text (right to
+ *  left, every second (unit - 48) doubled, 9 taken off a doubled value over 9) is a multiple of 10, from
+ *  the verified Pruv luhn (text at most 1e10 UTF-8 bytes, InvalidArg otherwise). */
+export const luhn = native.luhn;
+
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 

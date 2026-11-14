@@ -76,6 +76,10 @@ mod image_counts_gen;
 #[allow(dead_code, clippy::all)]
 mod text_lines_gen;
 
+#[path = "../gen/luhn_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod luhn_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -816,6 +820,17 @@ pub fn text_line_counts(text: String, chars: f64) -> napi::Result<Vec<f64>> {
             "textLineCounts: chars must be an integer in -1000000000000000..=1000000000000000"));
     }
     Ok(text_lines_gen::text_lines(&text, chars as i64).iter().map(|&x| x as f64).collect())
+}
+
+/// Lair luhn (src/shared/common-memory.ts): the Luhn check over the UTF-16 units of the text, as
+/// sensitiveReason runs it on 13- to 19-digit runs.
+#[napi(js_name = "luhn")]
+pub fn luhn(text: String) -> napi::Result<bool> {
+    if text.len() as u64 > 10_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "luhn: text must be at most 10000000000 UTF-8 bytes"));
+    }
+    Ok(luhn_gen::luhn(&text))
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {
