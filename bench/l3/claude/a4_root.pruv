@@ -1,0 +1,35 @@
+// L3-1 A4 root: the complete pure API as plain-array packets (same three entry points as root.pruv; the fixture
+// root is kept separate from the production root as in A0-A3).
+//   head_packet(data, cut_after) / tail_packet(data, cut_before) / window_packet(data, cut_before)
+// Result: [0, 14, turn_slots, byte_len, ...meta(14), ...turns(10 each), ...text bytes] or [code, position].
+mod json;
+mod lex;
+mod parse;
+mod lines;
+mod jstr;
+mod access;
+mod boundary;
+mod framing;
+mod text;
+mod entry;
+mod time;
+mod turns;
+mod import;
+
+pub fn head_packet(data: [u8], cut_after: i64) -> [i64] ! alloc
+{
+  let r: crate::boundary::ImportResult = crate::import::read_head(data, cut_after != 0);
+  return crate::boundary::pack_result(r);
+}
+
+pub fn tail_packet(data: [u8], cut_before: i64) -> [i64] ! alloc
+{
+  let r: crate::boundary::ImportResult = crate::import::tail_info(data, cut_before != 0);
+  return crate::boundary::pack_result(r);
+}
+
+pub fn window_packet(data: [u8], cut_before: i64) -> [i64] ! alloc
+{
+  let r: crate::boundary::ImportResult = crate::import::read_window(data, cut_before != 0);
+  return crate::boundary::pack_result(r);
+}
