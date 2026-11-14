@@ -1,0 +1,62 @@
+// tomlString of Lair src/backend/provider-accounts.ts: a TOML basic string. The value goes between double
+// quotes; `"` and `\` get a `\` in front, and U+0000..U+001F, U+007F, U+2028 and U+2029 become `\u` with four
+// lowercase hex digits. Every other character is copied as it is.
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+pub fn toml_string(value: str) -> str ! alloc
+  requires len(value) <= 100_000_000_000
+  ensures len(result) <= 6 * len(value) + 2
+{
+  let digits: str = "0123456789abcdef";
+  let mut out: String = string_new();
+  out = string_push_str(move out, "\"");
+  let mut i: i64 = 0;
+  while i < len(value)
+    invariant 0 <= i && i <= len(value)
+    invariant is_char_boundary(value, i)
+    invariant len(out) <= 6 * i + 1
+    decreases len(value) - i
+  {
+    let j: i64 = next(value, i);
+    let b: i64 = value[i];
+    if b == 34 {
+      out = string_push_str(move out, "\\\"");
+    } else if b == 92 {
+      out = string_push_str(move out, "\\\\");
+    } else if b < 32 {
+      if b < 16 {
+        out = string_push_str(move out, "\\u000");
+      } else {
+        out = string_push_str(move out, "\\u001");
+      }
+      let d: i64 = b % 16;
+      let hex: str = substr(digits, d, d + 1);
+      out = string_push_str(move out, hex);
+    } else if b == 127 {
+      out = string_push_str(move out, "\\u007f");
+    } else if b == 226 && j == i + 3 && value[i + 1] == 128 && value[i + 2] == 168 {
+      out = string_push_str(move out, "\\u2028");
+    } else if b == 226 && j == i + 3 && value[i + 1] == 128 && value[i + 2] == 169 {
+      out = string_push_str(move out, "\\u2029");
+    } else {
+      let piece: str = substr(value, i, j);
+      out = string_push_str(move out, piece);
+    }
+    i = j;
+  }
+  out = string_push_str(move out, "\"");
+  return string_to_str(out);
+}

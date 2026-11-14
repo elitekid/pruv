@@ -63,6 +63,8 @@ on:
       - "bench/l0/run_luhn.py"
       - "bench/l0/chat_ref.mjs"
       - "bench/l0/run_chat_ref.py"
+      - "bench/l0/toml_string.mjs"
+      - "bench/l0/run_toml_string.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

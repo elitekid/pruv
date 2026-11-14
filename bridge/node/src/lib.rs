@@ -84,6 +84,10 @@ mod luhn_gen;
 #[allow(dead_code, clippy::all)]
 mod chat_ref_gen;
 
+#[path = "../gen/toml_string_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod toml_string_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -846,6 +850,17 @@ pub fn chat_ref_text(title: String, id: String) -> napi::Result<String> {
             "chatRefText: title and id must each be at most 100000000000 UTF-8 bytes"));
     }
     Ok(chat_ref_gen::chat_ref_text(&title, &id))
+}
+
+/// Lair tomlString (src/backend/provider-accounts.ts): a TOML basic string, `"` and `\` escaped with `\` and
+/// U+0000..U+001F, U+007F, U+2028, U+2029 written as `\u` with four lowercase hex digits.
+#[napi(js_name = "tomlString")]
+pub fn toml_string(value: String) -> napi::Result<String> {
+    if value.len() as u64 > 100_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "tomlString: value must be at most 100000000000 UTF-8 bytes"));
+    }
+    Ok(toml_string_gen::toml_string(&value))
 }
 
 fn sheet_int(name: &str, v: f64, lo: f64, hi: f64) -> napi::Result<i64> {

@@ -121,6 +121,11 @@ export const luhn = native.luhn;
  *  InvalidArg otherwise). */
 export const chatRefText = native.chatRefText;
 
+/** Lair tomlString (src/backend/provider-accounts.ts): the value in double quotes with `"` and backslash
+ *  escaped and U+0000..U+001F, U+007F, U+2028, U+2029 as `\u` plus four lowercase hex digits, from the
+ *  verified Pruv toml_string (value at most 1e11 UTF-8 bytes, InvalidArg otherwise). */
+export const tomlString = native.tomlString;
+
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 
