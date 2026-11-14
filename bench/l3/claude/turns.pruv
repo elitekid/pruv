@@ -1,0 +1,365 @@
+// L3-1 A3 turn collector (port of tail.ts TurnCollector; docs/CLAUDE_IMPORT_SPEC.md "Collector state and
+// transitions", policies P2/P3). State lives in three caller-owned arrays passed through `inout`:
+//   st  [4]    st[0] begun (ordinal counter), st[1] current present, st[2] lost_before, st[3] slot of the newest draft
+//   sl  [1600] 200 slots x 8: +0 prompt_len +1 reply_len +2 reply budget (saturating counter) +3 tools +4 clipped
+//              +5 created present +6 completed present +7 draft ordinal (-1 = never written)
+//   buf [13116800] prompt of slot s at 32768*s, reply at 6553600+32768*s, created stamp at 13107200+48*s,
+//              completed stamp 24 bytes after it.
+// Draft k (0-based begin ordinal) lives in slot k % 200, so the ring always holds the newest min(begun,200)
+// drafts. Timestamps are `str` of length 0 (absent) or 24.
+//
+// State invariant (repeated inline because contracts cannot call functions; `s` ranges over 0..200):
+//   I3(s) slot numbers in range:  0<=len(prompt)<=32768, 0<=reply_len<=budget<=32768, 0<=tools<=1e15, flags 0/1
+//   I4(s) ring ordering: begun<=s ==> ordinal==-1; begun>s ==> ordinal in [begun-200,begun-1] and ordinal%200==s
+// tools saturates at 1e15 (an unreachable bound: a window has at most 8 MiB of text).
+
+pub struct Collected { turns: [i64], text: [u8], kept: i64, trimmed: i64, total: i64 }
+
+pub fn new_state() -> [i64] ! alloc
+  ensures len(result) == 4
+  ensures result[0] == 0 && result[1] == 0 && result[2] == 0 && result[3] == 0
+{
+  return alloc(4, 0);
+}
+
+pub fn new_slots() -> [i64] ! alloc
+  ensures len(result) == 1600
+  ensures forall s in 0..200: (result[8 * s] == 0 && result[8 * s + 1] == 0 && result[8 * s + 2] == 0 && result[8 * s + 3] == 0 && result[8 * s + 4] == 0 && result[8 * s + 5] == 0 && result[8 * s + 6] == 0 && result[8 * s + 7] == -1)
+{
+  let mut sl: [i64] = alloc(1600, 0);
+  let mut s: i64 = 0;
+  while s < 200
+    invariant 0 <= s && s <= 200 && len(sl) == 1600
+    invariant forall t in 0..s: (sl[8 * t] == 0 && sl[8 * t + 1] == 0 && sl[8 * t + 2] == 0 && sl[8 * t + 3] == 0 && sl[8 * t + 4] == 0 && sl[8 * t + 5] == 0 && sl[8 * t + 6] == 0 && sl[8 * t + 7] == -1)
+    invariant forall k in 0..1600: (k >= 8 * s) ==> sl[k] == 0
+    decreases 200 - s
+  {
+    sl[8 * s + 7] = -1;
+    s = s + 1;
+  }
+  return sl;
+}
+
+pub fn new_buffer() -> [u8] ! alloc
+  ensures len(result) == 13116800
+{
+  return alloc(13116800, 0);
+}
+
+// dst[at..at+n) = src[0..n); everything else unchanged.
+fn put_str(inout dst: [u8], at: i64, src: str, n: i64) -> ()
+  requires 0 <= n && n <= len(src) && 0 <= at && at <= len(dst) && n <= len(dst) - at
+  ensures len(dst) == len(old(dst))
+  ensures forall k in 0..n: dst[at + k] == src[k]
+  ensures forall k in 0..len(dst): (k < at || k >= at + n) ==> dst[k] == old(dst)[k]
+{
+  let mut j: i64 = 0;
+  while j < n
+    invariant 0 <= j && j <= n && n <= len(src) && 0 <= at && at <= len(dst) && n <= len(dst) - at && len(dst) == len(old(dst))
+    invariant forall k in 0..j: dst[at + k] == src[k]
+    invariant forall k in 0..len(dst): (k < at || k >= at + j) ==> dst[k] == old(dst)[k]
+    decreases n - j
+  {
+    dst[at + j] = src[j];
+    j = j + 1;
+  }
+}
+
+// n (0..2) LF bytes at dst[at..].
+fn put_nl(inout dst: [u8], at: i64, n: i64) -> ()
+  requires 0 <= n && n <= 2 && 0 <= at && at <= len(dst) && n <= len(dst) - at
+  ensures len(dst) == len(old(dst))
+  ensures forall k in 0..n: dst[at + k] == 10
+  ensures forall k in 0..len(dst): (k < at || k >= at + n) ==> dst[k] == old(dst)[k]
+{
+  if n >= 1 { dst[at] = 10; }
+  if n == 2 { dst[at + 1] = 10; }
+}
+
+// sep LF bytes followed by text[0..n) at dst[at..].
+fn write_piece(inout dst: [u8], at: i64, sep: i64, text: str, n: i64) -> ()
+  requires 0 <= sep && sep <= 2 && 0 <= n && n <= len(text) && 0 <= at && at <= len(dst) && sep + n <= len(dst) - at
+  ensures len(dst) == len(old(dst))
+  ensures forall k in 0..sep: dst[at + k] == 10
+  ensures forall k in 0..n: dst[at + sep + k] == text[k]
+  ensures forall k in 0..len(dst): (k < at || k >= at + sep + n) ==> dst[k] == old(dst)[k]
+{
+  put_nl(inout dst, at, sep);
+  put_str(inout dst, at + sep, text, n);
+}
+
+// begin: new current draft in slot begun % 200 (evicting the oldest), prompt clipped to 32768 bytes (longest
+// whole-scalar prefix), clipped set when the original exceeded the cap or lost_before was set, lost_before
+// cleared, reply/budget/tools/completedAt reset, optional createdAt stored.
+pub fn begin(inout st: [i64], inout sl: [i64], inout buf: [u8], prompt: str, created: str) -> () ! alloc
+  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  requires 0 <= st[0] && st[0] < 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+  requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+  requires len(prompt) <= 100000000
+  requires len(created) == 0 || len(created) == 24
+  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  ensures st[0] == old(st)[0] + 1 && st[1] == 1 && st[2] == 0 && st[3] == old(st)[0] % 200
+  ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  ensures forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+  ensures sl[8 * st[3] + 7] == old(st)[0]
+  ensures sl[8 * st[3] + 1] == 0 && sl[8 * st[3] + 2] == 0 && sl[8 * st[3] + 3] == 0 && sl[8 * st[3] + 6] == 0
+  ensures sl[8 * st[3]] <= len(prompt)
+  ensures len(prompt) <= 32768 ==> sl[8 * st[3]] == len(prompt)
+  ensures is_char_boundary(prompt, sl[8 * st[3]])
+  ensures sl[8 * st[3]] == len(prompt) || (forall t in sl[8 * st[3]] + 1..32769: !is_char_boundary(prompt, t))
+  ensures forall k in 0..sl[8 * st[3]]: buf[32768 * st[3] + k] == prompt[k]
+  ensures (len(prompt) > 32768 || old(st)[2] == 1) ==> sl[8 * st[3] + 4] == 1
+  ensures (len(prompt) <= 32768 && old(st)[2] == 0) ==> sl[8 * st[3] + 4] == 0
+  ensures len(created) == 24 ==> (sl[8 * st[3] + 5] == 1 && forall k in 0..24: buf[13107200 + 48 * st[3] + k] == created[k])
+  ensures len(created) != 24 ==> sl[8 * st[3] + 5] == 0
+  ensures forall k in 0..1600: (k < 8 * st[3] || k >= 8 * st[3] + 8) ==> sl[k] == old(sl)[k]
+  ensures forall k in 0..len(buf): ((k < 32768 * st[3] || k >= 32768 * st[3] + sl[8 * st[3]]) && (k < 13107200 + 48 * st[3] || k >= 13107200 + 48 * st[3] + 24 * sl[8 * st[3] + 5])) ==> buf[k] == old(buf)[k]
+{
+  let k: i64 = st[0];
+  let w: i64 = k % 200;
+  let cp: str = crate::text::clip_bytes(prompt, 32768);
+  let n: i64 = len(cp);
+  put_str(inout buf, 32768 * w, cp, n);
+  let mut has: i64 = 0;
+  if len(created) == 24 {
+    put_str(inout buf, 13107200 + 48 * w, created, 24);
+    has = 1;
+  }
+  let mut cl: i64 = 0;
+  if len(prompt) > 32768 || st[2] == 1 { cl = 1; }
+  sl[8 * w] = n;
+  sl[8 * w + 1] = 0;
+  sl[8 * w + 2] = 0;
+  sl[8 * w + 3] = 0;
+  sl[8 * w + 4] = cl;
+  sl[8 * w + 5] = has;
+  sl[8 * w + 6] = 0;
+  sl[8 * w + 7] = k;
+  st[0] = k + 1;
+  st[1] = 1;
+  st[2] = 0;
+  st[3] = w;
+}
+
+// skip_user: detach the current draft (the earlier draft stays in the ring) and mark the next one clipped.
+pub fn skip_user(inout st: [i64]) -> ()
+  requires len(st) == 4
+  ensures len(st) == 4
+  ensures st[0] == old(st)[0] && st[1] == 0 && st[2] == 1 && st[3] == old(st)[3]
+{
+  st[1] = 0;
+  st[2] = 1;
+}
+
+// tool: one increment of the current draft's tool count (saturating); no timestamp update; nothing without a
+// current draft.
+pub fn tool(inout st: [i64], inout sl: [i64]) -> ()
+  requires len(st) == 4 && len(sl) == 1600 && 0 <= st[3] && st[3] < 200
+  requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  ensures len(st) == 4 && len(sl) == 1600
+  ensures st[0] == old(st)[0] && st[1] == old(st)[1] && st[2] == old(st)[2] && st[3] == old(st)[3]
+  ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  ensures forall s in 0..200: sl[8 * s + 7] == old(sl)[8 * s + 7]
+  ensures st[1] == 0 ==> (forall k in 0..1600: sl[k] == old(sl)[k])
+  ensures st[1] == 1 ==> (forall k in 0..1600: (k != 8 * st[3] + 3) ==> sl[k] == old(sl)[k])
+  ensures (st[1] == 1 && old(sl)[8 * st[3] + 3] < 1000000000000000) ==> sl[8 * st[3] + 3] == old(sl)[8 * st[3] + 3] + 1
+  ensures (st[1] == 1 && old(sl)[8 * st[3] + 3] >= 1000000000000000) ==> sl[8 * st[3] + 3] == old(sl)[8 * st[3] + 3]
+{
+  if st[1] == 0 { return; }
+  let c: i64 = st[3];
+  let t: i64 = sl[8 * c + 3];
+  if t < 1000000000000000 { sl[8 * c + 3] = t + 1; }
+}
+
+// answer: no current draft => nothing. Otherwise completedAt is updated first (even for empty text or a full
+// reply); empty text or budget >= 32768 stops; else piece = text (empty reply) or "\n\n"+text, appended when
+// it fits the remaining budget, else its longest whole-scalar prefix is appended, the budget counter saturates
+// at 32768 and clipped is set. The counter is separate from the actual reply length (a multibyte cut leaves
+// unused bytes that later calls must not fill).
+pub fn answer(inout st: [i64], inout sl: [i64], inout buf: [u8], text: str, at: str) -> () ! alloc
+  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  requires 0 <= st[0] && st[0] <= 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+  requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+  requires len(text) <= 100000000
+  requires len(at) == 0 || len(at) == 24
+  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  ensures st[0] == old(st)[0] && st[1] == old(st)[1] && st[2] == old(st)[2] && st[3] == old(st)[3]
+  ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  ensures forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+  ensures st[1] == 0 ==> (forall k in 0..1600: sl[k] == old(sl)[k])
+  ensures st[1] == 0 ==> (forall k in 0..len(buf): buf[k] == old(buf)[k])
+  ensures st[1] == 1 ==> (forall k in 0..1600: (k < 8 * st[3] || k >= 8 * st[3] + 8) ==> sl[k] == old(sl)[k])
+  ensures st[1] == 1 ==> (sl[8 * st[3]] == old(sl)[8 * st[3]] && sl[8 * st[3] + 3] == old(sl)[8 * st[3] + 3] && sl[8 * st[3] + 5] == old(sl)[8 * st[3] + 5] && sl[8 * st[3] + 7] == old(sl)[8 * st[3] + 7])
+  ensures (st[1] == 1 && len(at) == 24) ==> (sl[8 * st[3] + 6] == 1 && forall k in 0..24: buf[13107200 + 48 * st[3] + 24 + k] == at[k])
+  ensures (st[1] == 1 && len(at) != 24) ==> sl[8 * st[3] + 6] == old(sl)[8 * st[3] + 6]
+  ensures (st[1] == 1 && (len(text) == 0 || old(sl)[8 * st[3] + 2] >= 32768)) ==> (sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4])
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] == 0 && len(text) <= 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 1] == len(text) && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] + len(text) && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4] && (forall k in 0..len(text): buf[6553600 + 32768 * st[3] + k] == text[k]))
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 <= 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] + 2 + len(text) && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] + 2 + len(text) && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4] && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1]] == 10 && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 1] == 10 && (forall k in 0..len(text): buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 2 + k] == text[k]))
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] == 0 && len(text) > 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] <= 32768 - old(sl)[8 * st[3] + 2] && sl[8 * st[3] + 1] <= len(text) && is_char_boundary(text, sl[8 * st[3] + 1]) && (forall t in sl[8 * st[3] + 1] + 1..32769 - old(sl)[8 * st[3] + 2]: !is_char_boundary(text, t)) && (forall k in 0..sl[8 * st[3] + 1]: buf[6553600 + 32768 * st[3] + k] == text[k]))
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 > 32768 - old(sl)[8 * st[3] + 2] && 32768 - old(sl)[8 * st[3] + 2] == 1) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] + 1 && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1]] == 10)
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 > 32768 - old(sl)[8 * st[3] + 2] && 32768 - old(sl)[8 * st[3] + 2] >= 2) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] >= old(sl)[8 * st[3] + 1] + 2 && sl[8 * st[3] + 1] <= old(sl)[8 * st[3] + 1] + (32768 - old(sl)[8 * st[3] + 2]) && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1]] == 10 && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 1] == 10 && is_char_boundary(text, sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 2) && (forall k in 0..sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 2: buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 2 + k] == text[k]) && (forall t in sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 1..32767 - old(sl)[8 * st[3] + 2]: !is_char_boundary(text, t)))
+{
+  if st[1] == 0 { return; }
+  let c: i64 = st[3];
+  if len(at) == 24 {
+    put_str(inout buf, 13107200 + 48 * c + 24, at, 24);
+    sl[8 * c + 6] = 1;
+  }
+  if len(text) == 0 { return; }
+  let used: i64 = sl[8 * c + 2];
+  if used >= 32768 { return; }
+  let rl: i64 = sl[8 * c + 1];
+  let rb: i64 = 6553600 + 32768 * c + rl;
+  let room: i64 = 32768 - used;
+  let mut sep: i64 = 0;
+  if rl > 0 { sep = 2; }
+  if sep + len(text) <= room {
+    write_piece(inout buf, rb, sep, text, len(text));
+    sl[8 * c + 1] = rl + sep + len(text);
+    sl[8 * c + 2] = used + sep + len(text);
+    return;
+  }
+  let mut s2: i64 = sep;
+  let mut take: i64 = 0;
+  if sep == 2 && room < 2 {
+    s2 = room;
+  } else {
+    let cp: str = crate::text::clip_bytes(text, room - sep);
+    take = len(cp);
+  }
+  write_piece(inout buf, rb, s2, text, take);
+  sl[8 * c + 1] = rl + s2 + take;
+  sl[8 * c + 2] = 32768;
+  sl[8 * c + 4] = 1;
+}
+
+// Newest-first suffix selection over the ring. Result layout: [0] kept, [1] total prompt+reply bytes of the
+// kept drafts, [2+j] pre[j] = bytes (prompt+reply+stamps) of the j newest kept drafts, j in 0..=kept.
+// Drafts are scanned from the newest; the scan stops at the first draft that would push the total past
+// 2097152 (it is not skipped to fit older ones); at most min(begun,200) drafts exist in the ring.
+fn plan(st: [i64], sl: [i64]) -> [i64] ! alloc
+  requires len(st) == 4 && len(sl) == 1600 && 0 <= st[0] && st[0] <= 1000000000000
+  requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  ensures len(result) == 203
+  ensures 0 <= result[0] && result[0] <= 200 && result[0] <= st[0]
+  ensures 0 <= result[1] && result[1] <= 2097152
+  ensures result[1] == sum(j in 0..result[0]: sl[8 * ((st[0] - 1 - j) % 200)] + sl[8 * ((st[0] - 1 - j) % 200) + 1])
+  ensures (result[0] < st[0] && result[0] < 200) ==> result[1] + sl[8 * ((st[0] - 1 - result[0]) % 200)] + sl[8 * ((st[0] - 1 - result[0]) % 200) + 1] > 2097152
+  ensures result[2] == 0
+  ensures 0 <= result[2 + result[0]] && result[2 + result[0]] <= result[1] + 48 * result[0]
+  ensures result[2 + result[0]] <= 2106752
+{
+  let b: i64 = st[0];
+  let mut avail: i64 = b;
+  if avail > 200 { avail = 200; }
+  let mut pre: [i64] = alloc(203, 0);
+  let mut i: i64 = 0;
+  let mut total: i64 = 0;
+  while i < avail
+    invariant 0 <= i && i <= avail && avail <= 200 && avail <= b && 0 <= b && b <= 1000000000000
+    invariant (b <= 200 && avail == b) || (b > 200 && avail == 200)
+    invariant len(pre) == 203 && len(sl) == 1600 && len(st) == 4 && st[0] == b
+    invariant 0 <= total && total <= 2097152
+    invariant total == sum(j in 0..i: sl[8 * ((b - 1 - j) % 200)] + sl[8 * ((b - 1 - j) % 200) + 1])
+    invariant pre[2] == 0
+    invariant 0 <= pre[2 + i] && pre[2 + i] <= total + 48 * i
+    invariant forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+    decreases avail - i
+  {
+    let w: i64 = (b - 1 - i) % 200;
+    let size: i64 = sl[8 * w] + sl[8 * w + 1];
+    if total + size > 2097152 {
+      pre[0] = i;
+      pre[1] = total;
+      return pre;
+    }
+    let need: i64 = size + 24 * sl[8 * w + 5] + 24 * sl[8 * w + 6];
+    total = total + size;
+    pre[3 + i] = pre[2 + i] + need;
+    i = i + 1;
+  }
+  pre[0] = i;
+  pre[1] = total;
+  return pre;
+}
+
+// finish: newest contiguous suffix (at most 200 drafts, at most 2097152 actual prompt+reply bytes), published
+// oldest first. Turn text is packed oldest first as prompt, reply, createdAt, completedAt of each turn,
+// starting at byte offset `base` of the caller's text; refs of the 10-slot records are absolute
+// (base + local) and absent stamps are (-1,0). trimmed = kept < begun (drafts evicted from the ring count).
+pub fn finish(st: [i64], sl: [i64], buf: [u8], base: i64) -> Collected ! alloc
+  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  requires 0 <= st[0] && st[0] <= 1000000000000 && 0 <= base && base <= 3500000
+  requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+  ensures 0 <= result.kept && result.kept <= 200 && result.kept <= st[0]
+  ensures len(result.turns) == 10 * result.kept
+  ensures 0 <= len(result.text) && len(result.text) <= 2106752
+  ensures (result.trimmed == 0 && result.kept == st[0]) || (result.trimmed == 1 && result.kept < st[0])
+  ensures 0 <= result.total && result.total <= 2097152
+  ensures result.total == sum(j in 0..result.kept: sl[8 * ((st[0] - 1 - j) % 200)] + sl[8 * ((st[0] - 1 - j) % 200) + 1])
+  ensures (result.kept < st[0] && result.kept < 200) ==> result.total + sl[8 * ((st[0] - 1 - result.kept) % 200)] + sl[8 * ((st[0] - 1 - result.kept) % 200) + 1] > 2097152
+{
+  let p: [i64] = plan(st, sl);
+  let kept: i64 = p[0];
+  let b: i64 = st[0];
+  let tl: i64 = p[2 + kept];
+  let mut turns: [i64] = alloc(10 * kept, 0);
+  let mut text: [u8] = alloc(tl, 0);
+  let mut tr: i64 = 0;
+  if kept < b { tr = 1; }
+  let mut j: i64 = 0;
+  while j < kept
+    invariant (tr == 0 && kept == b) || (tr == 1 && kept < b)
+    invariant 0 <= j && j <= kept && 0 <= kept && kept <= 200 && kept <= b && 0 <= b && b <= 1000000000000
+    invariant len(turns) == 10 * kept && len(text) == tl && len(p) == 203 && len(sl) == 1600 && len(buf) == 13116800
+    invariant tl == p[2 + kept] && 0 <= tl && tl <= 2106752
+    invariant forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+    decreases kept - j
+  {
+    let w: i64 = (b - 1 - j) % 200;
+    let plen: i64 = sl[8 * w];
+    let rlen: i64 = sl[8 * w + 1];
+    let cp: i64 = sl[8 * w + 5];
+    let dp: i64 = sl[8 * w + 6];
+    // plan lays draft j out at [tl - p[3+j], tl - p[2+j]); checked here instead of proved through plan.
+    let e: i64 = p[3 + j];
+    if e < 0 || e > tl || plen + rlen + 24 * cp + 24 * dp > e {
+      return Collected { turns: copy(turns), text: copy(text), kept: kept, trimmed: tr, total: p[1] };
+    }
+    let lo: i64 = tl - e;
+    crate::boundary::copy_span(inout text, lo, buf, 32768 * w, 32768 * w + plen);
+    crate::boundary::copy_span(inout text, lo + plen, buf, 6553600 + 32768 * w, 6553600 + 32768 * w + rlen);
+    if cp == 1 {
+      crate::boundary::copy_span(inout text, lo + plen + rlen, buf, 13107200 + 48 * w, 13107200 + 48 * w + 24);
+    }
+    if dp == 1 {
+      crate::boundary::copy_span(inout text, lo + plen + rlen + 24 * cp, buf, 13107200 + 48 * w + 24, 13107200 + 48 * w + 48);
+    }
+    let t: i64 = kept - 1 - j;
+    turns[10 * t] = base + lo;
+    turns[10 * t + 1] = plen;
+    turns[10 * t + 2] = base + lo + plen;
+    turns[10 * t + 3] = rlen;
+    if cp == 1 {
+      turns[10 * t + 4] = base + lo + plen + rlen;
+      turns[10 * t + 5] = 24;
+    } else {
+      turns[10 * t + 4] = -1;
+      turns[10 * t + 5] = 0;
+    }
+    if dp == 1 {
+      turns[10 * t + 6] = base + lo + plen + rlen + 24 * cp;
+      turns[10 * t + 7] = 24;
+    } else {
+      turns[10 * t + 6] = -1;
+      turns[10 * t + 7] = 0;
+    }
+    turns[10 * t + 8] = sl[8 * w + 3];
+    turns[10 * t + 9] = sl[8 * w + 4];
+    j = j + 1;
+  }
+  return Collected { turns: copy(turns), text: copy(text), kept: kept, trimmed: tr, total: p[1] };
+}

@@ -1,0 +1,195 @@
+// L3-1 A3 root: a plain-array program runner for the turn collector (root pub fns take [i64]/[u8] and return
+// [i64]). `run(prog)` executes a transition program on fresh state and returns the observations.
+//   prog[0]  base offset passed to finish
+//   then ops: [1, text, stamp] begin   [2] skip_user   [3, text, stamp] answer   [4] tool   [5] snapshot
+//   spec     [n, plen, p0..p(plen-1)]: n bytes, byte i = p[i % plen] (plen >= 1 when n > 0); a stamp spec must
+//            decode to 0 or 24 bytes; a text must be valid UTF-8
+// Result: [0, nsnap, kept, trimmed, total, ...12*nsnap snapshot words, ...10*kept turn words, ...text bytes]
+//         [1, position] for a malformed program.
+// A snapshot is [begun, current, lost, slot, plen, rlen, budget, tools, clipped, created, completed, ordinal]
+// of the state slot st[3] (the newest begun draft, or slot 0 before any begin).
+mod json;
+mod jstr;
+mod text;
+mod boundary;
+mod turns;
+
+pub struct Txt { next: i64, bytes: [u8] }
+
+fn pair(a: i64, b: i64) -> [i64] ! alloc
+  ensures len(result) == 2
+{
+  let mut out: [i64] = alloc(2, 0);
+  out[0] = a; out[1] = b;
+  return out;
+}
+
+fn bad() -> Txt ! alloc
+  ensures result.next == -1
+{
+  let z: [u8] = alloc(0, 0);
+  return Txt { next: -1, bytes: copy(z) };
+}
+
+// Decode the spec at pos; next == -1 when malformed.
+fn read_text(prog: [i64], pos: i64) -> Txt ! alloc
+  requires 0 <= pos && len(prog) <= 100000000
+  ensures result.next == -1 || (pos + 2 <= result.next && result.next <= len(prog))
+  ensures result.next == -1 || len(result.bytes) <= 100000000
+{
+  if pos > len(prog) - 2 { return bad(); }
+  let n: i64 = prog[pos];
+  let plen: i64 = prog[pos + 1];
+  if n < 0 || n > 100000000 { return bad(); }
+  if plen < 0 || plen > 4096 { return bad(); }
+  if n > 0 && plen == 0 { return bad(); }
+  if plen > len(prog) - (pos + 2) { return bad(); }
+  let mut pat: [u8] = alloc(plen, 0);
+  let mut k: i64 = 0;
+  while k < plen
+    invariant 0 <= k && k <= plen && len(pat) == plen && 0 <= pos && plen <= len(prog) - (pos + 2)
+    decreases plen - k
+  {
+    let v: i64 = prog[pos + 2 + k];
+    if v < 0 || v > 255 { return bad(); }
+    pat[k] = v;
+    k = k + 1;
+  }
+  let mut out: [u8] = alloc(n, 0);
+  let mut i: i64 = 0;
+  let mut m: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n && len(out) == n && len(pat) == plen && 0 <= m && (n == 0 || plen > 0) && (plen == 0 || m < plen)
+    decreases n - i
+  {
+    out[i] = pat[m];
+    m = m + 1;
+    if m == plen { m = 0; }
+    i = i + 1;
+  }
+  return Txt { next: pos + 2 + plen, bytes: copy(out) };
+}
+
+// One op at pos; the new position, or -1 for a malformed op (state untouched on every -1).
+fn step(prog: [i64], pos: i64, inout st: [i64], inout sl: [i64], inout buf: [u8], inout snaps: [i64]) -> i64 ! alloc
+  requires 0 <= pos && pos < len(prog) && len(prog) <= 100000000
+  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && len(snaps) == 769
+  requires 0 <= st[0] && st[0] <= pos && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+  requires 0 <= snaps[0] && snaps[0] <= 64
+  requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && len(snaps) == 769
+  ensures result == -1 || (pos < result && result <= len(prog))
+  ensures 0 <= st[0] && (result == -1 || st[0] <= result) && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+  ensures 0 <= snaps[0] && snaps[0] <= 64
+  ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+  ensures forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+{
+  let op: i64 = prog[pos];
+  if op == 2 {
+    crate::turns::skip_user(inout st);
+    return pos + 1;
+  }
+  if op == 4 {
+    crate::turns::tool(inout st, inout sl);
+    return pos + 1;
+  }
+  if op == 5 {
+    let nsn: i64 = snaps[0];
+    if nsn >= 64 { return -1; }
+    let c: i64 = st[3];
+    let at: i64 = 1 + 12 * nsn;
+    snaps[at] = st[0];
+    snaps[at + 1] = st[1];
+    snaps[at + 2] = st[2];
+    snaps[at + 3] = st[3];
+    snaps[at + 4] = sl[8 * c];
+    snaps[at + 5] = sl[8 * c + 1];
+    snaps[at + 6] = sl[8 * c + 2];
+    snaps[at + 7] = sl[8 * c + 3];
+    snaps[at + 8] = sl[8 * c + 4];
+    snaps[at + 9] = sl[8 * c + 5];
+    snaps[at + 10] = sl[8 * c + 6];
+    snaps[at + 11] = sl[8 * c + 7];
+    snaps[0] = nsn + 1;
+    return pos + 1;
+  }
+  if op == 1 || op == 3 {
+    let a: Txt = read_text(prog, pos + 1);
+    if a.next < 0 { return -1; }
+    let b: Txt = read_text(prog, a.next);
+    if b.next < 0 { return -1; }
+    let s: str = crate::jstr::adapter_probe(a.bytes);
+    if len(s) != len(a.bytes) { return -1; }
+    let ts: str = crate::jstr::adapter_probe(b.bytes);
+    if len(ts) != len(b.bytes) { return -1; }
+    if len(ts) != 0 && len(ts) != 24 { return -1; }
+    if op == 1 {
+      crate::turns::begin(inout st, inout sl, inout buf, s, ts);
+    } else {
+      crate::turns::answer(inout st, inout sl, inout buf, s, ts);
+    }
+    return b.next;
+  }
+  return -1;
+}
+
+pub fn run(prog: [i64]) -> [i64] ! alloc
+{
+  if len(prog) < 1 || len(prog) > 100000000 { return pair(1, 0); }
+  let base: i64 = prog[0];
+  if base < 0 || base > 3500000 { return pair(1, 0); }
+  let mut st: [i64] = crate::turns::new_state();
+  let mut sl: [i64] = crate::turns::new_slots();
+  let mut buf: [u8] = crate::turns::new_buffer();
+  let mut snaps: [i64] = alloc(769, 0);
+  let mut pos: i64 = 1;
+  while pos < len(prog)
+    invariant 1 <= pos && pos <= len(prog) && len(prog) <= 100000000 && 0 <= base && base <= 3500000
+    invariant len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && len(snaps) == 769
+    invariant 0 <= st[0] && st[0] <= pos && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+    invariant 0 <= snaps[0] && snaps[0] <= 64
+    invariant forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
+    invariant forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
+    decreases len(prog) - pos
+  {
+    let nx: i64 = step(prog, pos, inout st, inout sl, inout buf, inout snaps);
+    if nx < 0 { return pair(1, pos); }
+    pos = nx;
+  }
+  let col: crate::turns::Collected = crate::turns::finish(st, sl, buf, base);
+  let ns: i64 = snaps[0];
+  let nt: i64 = len(col.turns);
+  let nx: i64 = len(col.text);
+  let head: i64 = 5 + 12 * ns;
+  let mut out: [i64] = alloc(head + nt + nx, 0);
+  out[1] = ns;
+  out[2] = col.kept;
+  out[3] = col.trimmed;
+  out[4] = col.total;
+  let mut i: i64 = 0;
+  while i < 12 * ns
+    invariant 0 <= i && i <= 12 * ns && 0 <= ns && ns <= 64 && len(snaps) == 769 && head == 5 + 12 * ns && len(out) == head + nt + nx && 0 <= nt && 0 <= nx
+    decreases 12 * ns - i
+  {
+    out[5 + i] = snaps[1 + i];
+    i = i + 1;
+  }
+  let mut j: i64 = 0;
+  while j < nt
+    invariant 0 <= j && j <= nt && 0 <= ns && ns <= 64 && head == 5 + 12 * ns && len(out) == head + nt + nx && 0 <= nx && nt == len(col.turns)
+    decreases nt - j
+  {
+    out[head + j] = col.turns[j];
+    j = j + 1;
+  }
+  let mut k: i64 = 0;
+  while k < nx
+    invariant 0 <= k && k <= nx && 0 <= ns && ns <= 64 && head == 5 + 12 * ns && len(out) == head + nt + nx && 0 <= nt && nx == len(col.text)
+    decreases nx - k
+  {
+    out[head + nt + k] = col.text[k];
+    k = k + 1;
+  }
+  return out;
+}
