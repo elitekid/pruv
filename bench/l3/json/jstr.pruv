@@ -95,28 +95,60 @@ pub fn string_units(source: [u8], start: i64, end: i64) -> [i64] ! alloc
   return out;
 }
 
+// True iff string_units(source, start, end) equals key[0..klen]; no allocation.
+pub fn units_equal(source: [u8], start: i64, end: i64, key: [i64], klen: i64) -> bool
+  requires 0 <= start && start <= end && end <= len(source) && end <= 16777216 && 0 <= klen && klen <= len(key)
+{
+  let mut p: i64 = start;
+  let mut stop: i64 = start;
+  if end - start >= 2 { p = start + 1; stop = end - 1; }
+  let mut q: i64 = 0;
+  while p < stop
+    invariant start <= p && p <= end && start <= stop && stop <= end
+    invariant end <= len(source) && end <= 16777216
+    invariant 0 <= q && q <= klen && klen <= len(key)
+    decreases stop - p
+  {
+    let s: Step = step(source, p, stop);
+    let v: i64 = s.value;
+    if v <= 65535 {
+      if q >= klen || key[q] != v { return false; }
+      q = q + 1;
+    } else {
+      if q + 1 >= klen { return false; }
+      if key[q] != 55296 + (v - 65536) / 1024 || key[q + 1] != 56320 + (v - 65536) % 1024 { return false; }
+      q = q + 2;
+    }
+    p = s.next;
+  }
+  return q == klen;
+}
+
 pub fn string_utf8(source: [u8], start: i64, end: i64) -> [u8] ! alloc
   requires 0 <= start && start <= end && end <= len(source) && end <= 16777216
   ensures len(result) <= 3 * (end - start)
   ensures forall i in 0..len(result): (0 <= result[i] && result[i] <= 255)
 {
-  let units: [i64] = string_units(source, start, end);
-  let mut buf: [u8] = alloc(3 * len(units), 0);
-  let mut i: i64 = 0;
+  let mut buf: [u8] = alloc(3 * (end - start), 0);
+  let mut p: i64 = start;
+  let mut stop: i64 = start;
+  if end - start >= 2 { p = start + 1; stop = end - 1; }
   let mut used: i64 = 0;
-  while i < len(units)
-    invariant 0 <= i && i <= len(units) && len(units) <= end - start
-    invariant len(buf) == 3 * len(units)
-    invariant 0 <= used && used <= 3 * i
-    invariant forall j in 0..len(units): (0 <= units[j] && units[j] <= 65535)
-    decreases len(units) - i
+  while p < stop
+    invariant start <= p && p <= end && start <= stop && stop <= end
+    invariant end <= len(source) && end <= 16777216
+    invariant len(buf) == 3 * (end - start)
+    invariant 0 <= used && used <= 3 * (p - start)
+    decreases stop - p
   {
-    let mut v: i64 = units[i];
-    let mut n: i64 = 1;
-    if 55296 <= v && v <= 56319 && i + 1 < len(units) {
-      let low: i64 = units[i + 1];
-      if 56320 <= low && low <= 57343 {
-        v = 65536 + (v - 55296) * 1024 + low - 56320; n = 2;
+    let s: Step = step(source, p, stop);
+    let mut v: i64 = s.value;
+    let mut np: i64 = s.next;
+    // High surrogate followed by a low surrogate step: recombine.
+    if 55296 <= v && v <= 56319 && np < stop {
+      let s2: Step = step(source, np, stop);
+      if 56320 <= s2.value && s2.value <= 57343 {
+        v = 65536 + (v - 55296) * 1024 + s2.value - 56320; np = s2.next;
       }
     }
     if 55296 <= v && v <= 57343 { v = 65533; }
@@ -134,7 +166,7 @@ pub fn string_utf8(source: [u8], start: i64, end: i64) -> [u8] ! alloc
         }
       }
     }
-    i = i + n;
+    p = np;
   }
   let mut out: [u8] = alloc(used, 0);
   let mut j: i64 = 0;

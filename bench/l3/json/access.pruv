@@ -45,16 +45,9 @@ pub fn array_at(doc: crate::json::JsonDocument, id: i64, index: i64) -> i64
   }
   return -1;
 }
-fn equal(a: [i64], b: [i64]) -> bool
-{
-  if len(a) != len(b) { return false; } let mut i: i64 = 0;
-  while i < len(a)
-    invariant 0 <= i && i <= len(a) && len(a) == len(b)
-    decreases len(a) - i
-  { if a[i] != b[i] { return false; } i = i + 1; }
-  return true;
-}
-pub fn field_units(doc: crate::json::JsonDocument, id: i64, key: [i64]) -> i64 ! alloc
+// Member lookup against key[0..klen]; no allocation.
+fn find(doc: crate::json::JsonDocument, id: i64, key: [i64], klen: i64) -> i64
+  requires 0 <= klen && klen <= len(key)
   ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
 {
   if !valid(doc, id) { return -3; } if doc.tape[6 * id] != 6 { return -2; }
@@ -72,11 +65,13 @@ pub fn field_units(doc: crate::json::JsonDocument, id: i64, key: [i64]) -> i64 !
     if next <= v || next > stop || doc.tape[6 * v + 4] != id { return -4; }
     let s: i64 = doc.tape[6 * j + 1]; let e: i64 = doc.tape[6 * j + 2];
     if s < 0 || e < s || e > len(doc.source) || e > 16777216 { return -4; }
-    let units: [i64] = crate::jstr::string_units(doc.source, s, e);
-    if equal(units, key) { found = v; } j = next;
+    if crate::jstr::units_equal(doc.source, s, e, key, klen) { found = v; } j = next;
   }
   return found;
 }
+pub fn field_units(doc: crate::json::JsonDocument, id: i64, key: [i64]) -> i64 ! alloc
+  ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
+{ return find(doc, id, key, len(key)); }
 // str indexing exposes UTF-8 bytes. Decode scalars without interpreting escapes.
 pub fn field(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
   ensures result >= 0 ==> (result < len(doc.tape) / 6 && doc.tape[6 * result + 4] == id)
@@ -110,12 +105,7 @@ pub fn field(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
     }
     p = p + n;
   }
-  let mut out: [i64] = alloc(used, 0); let mut i: i64 = 0;
-  while i < used
-    invariant 0 <= i && i <= used && used <= len(units) && len(out) == used
-    decreases used - i
-  { out[i] = units[i]; i = i + 1; }
-  return field_units(doc, id, out);
+  return find(doc, id, units, used);
 }
 pub struct Units { status: i64, units: [i64] }
 pub fn string_units(doc: crate::json::JsonDocument, id: i64) -> Units ! alloc
