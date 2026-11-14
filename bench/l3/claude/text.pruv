@@ -1,0 +1,380 @@
+// L3-1 A1 text helpers (mirror of src claude.ts/tail.ts): ECMAScript whitespace, trim, one_line, clip_bytes,
+// engine_line and the raw-prefix dropped_user scanner.
+// one_line and clip_bytes are local copies of bench/l0/one_line.pruv and bench/l0/clip_bytes.pruv (same
+// algorithms and documented differences); clip_bytes preconditions are widened to 100_000_000 bytes and it
+// keeps genuine U+FFFD (policy P3: no trailing-U+FFFD stripping).
+// ECMAScript whitespace: TAB LF VT FF CR SPACE U+00A0 U+1680 U+2000..U+200A U+2028 U+2029 U+202F U+205F
+// U+3000 U+FEFF (not U+180E, U+200B, U+0085).
+
+// Byte length of the whitespace scalar starting at boundary i, else 0.
+pub fn space_len(s: str, i: i64) -> i64
+  requires 0 <= i && i <= len(s)
+  ensures 0 <= result && result <= 3
+  ensures result <= len(s) - i
+{
+  if i >= len(s) { return 0; }
+  let b: i64 = s[i];
+  if (9 <= b && b <= 13) || b == 32 { return 1; }
+  if i + 1 >= len(s) { return 0; }
+  let c: i64 = s[i + 1];
+  if b == 194 && c == 160 { return 2; }
+  if i + 2 >= len(s) { return 0; }
+  let d: i64 = s[i + 2];
+  if b == 225 && c == 154 && d == 128 { return 3; }
+  if b == 226 && c == 128 && ((128 <= d && d <= 138) || d == 168 || d == 169 || d == 175) { return 3; }
+  if b == 226 && c == 129 && d == 159 { return 3; }
+  if b == 227 && c == 128 && d == 128 { return 3; }
+  if b == 239 && c == 187 && d == 191 { return 3; }
+  return 0;
+}
+
+// End of the character starting at boundary i.
+fn next(s: str, i: i64) -> i64
+  requires 0 <= i && i < len(s)
+  ensures i < result && result <= len(s)
+  ensures is_char_boundary(s, result)
+{
+  let mut j: i64 = i + 1;
+  while j < len(s) && !is_char_boundary(s, j)
+    invariant i < j && j <= len(s)
+    decreases len(s) - j
+  {
+    j = j + 1;
+  }
+  return j;
+}
+
+// trim() of the text is empty.
+pub fn is_blank(s: str) -> bool
+{
+  let mut i: i64 = 0;
+  while i < len(s)
+    invariant 0 <= i && i <= len(s)
+    decreases len(s) - i
+  {
+    let w: i64 = space_len(s, i);
+    if w == 0 { return false; }
+    i = i + w;
+  }
+  return true;
+}
+
+// ECMAScript String.prototype.trim.
+pub fn trim(s: str) -> str ! alloc
+  ensures len(result) <= len(s)
+{
+  let n: i64 = len(s);
+  let mut i: i64 = 0;
+  let mut first: i64 = -1;
+  let mut last: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant is_char_boundary(s, i)
+    invariant first == -1 || (0 <= first && first <= last && is_char_boundary(s, first))
+    invariant 0 <= last && last <= i && is_char_boundary(s, last)
+    decreases n - i
+  {
+    let j: i64 = next(s, i);
+    if space_len(s, i) == 0 {
+      if first == -1 { first = i; }
+      last = j;
+    }
+    i = j;
+  }
+  if first == -1 { return substr(s, 0, 0); }
+  return substr(s, first, last);
+}
+
+// Byte equality of two strings.
+pub fn same(a: str, b: str) -> bool
+  ensures result ==> len(a) == len(b)
+{
+  if len(a) != len(b) { return false; }
+  let mut i: i64 = 0;
+  while i < len(a)
+    invariant 0 <= i && i <= len(a) && len(a) == len(b)
+    decreases len(a) - i
+  {
+    let x: i64 = a[i];
+    let y: i64 = b[i];
+    if x != y { return false; }
+    i = i + 1;
+  }
+  return true;
+}
+
+// lit occurs in s at byte position at.
+fn eq_at(s: str, at: i64, lit: str) -> bool
+  requires 0 <= at && at <= len(s) && len(lit) <= len(s) - at
+{
+  let mut k: i64 = 0;
+  while k < len(lit)
+    invariant 0 <= k && k <= len(lit)
+    decreases len(lit) - k
+  {
+    let x: i64 = s[at + k];
+    let y: i64 = lit[k];
+    if x != y { return false; }
+    k = k + 1;
+  }
+  return true;
+}
+
+// Lair oneLine: text.replace(/\s+/g, ' ').trim().slice(0, max) counted in UTF-16 units. One pass: whitespace
+// runs are skipped and one space is written before the next non-whitespace character when something is
+// already written. A cut inside a surrogate pair omits the whole scalar (a Pruv str cannot hold a lone
+// surrogate); a pending separator space is kept when it fits, as slice would keep it.
+pub fn one_line(s: str, max: i64) -> str ! alloc
+  requires len(s) <= 100_000_000_000
+  requires 0 <= max && max <= 100_000_000_000
+  ensures len(result) <= len(s)
+{
+  let n: i64 = len(s);
+  let mut out: String = string_new();
+  let mut i: i64 = 0;
+  let mut u: i64 = 0;
+  let mut p: i64 = 0;
+  while i < n
+    invariant 0 <= i && i <= n
+    invariant 0 <= u && u <= max
+    invariant 0 <= p && p <= 1
+    invariant len(out) + p <= i
+    invariant is_char_boundary(s, i)
+    decreases n - i
+  {
+    let j: i64 = next(s, i);
+    if space_len(s, i) != 0 {
+      if len(out) > 0 { p = 1; }
+      i = j;
+    } else {
+      let mut w: i64 = 1;
+      if j - i == 4 { w = 2; }
+      if u + p + w > max {
+        if p == 1 && u + 1 <= max {
+          out = string_push_str(move out, " ");
+        }
+        p = 0;
+        i = n;
+      } else {
+        if p == 1 { out = string_push_str(move out, " "); }
+        out = string_push_str(move out, substr(s, i, j));
+        u = u + p + w;
+        p = 0;
+        i = j;
+      }
+    }
+  }
+  return string_to_str(out);
+}
+
+// Longest UTF-8 boundary prefix within the byte budget (genuine U+FFFD is kept, policy P3).
+pub fn clip_bytes(s: str, max: i64) -> str ! alloc
+  requires 0 <= max && max <= 100_000_000
+  requires len(s) <= 100_000_000
+  ensures len(result) <= max
+  ensures len(result) <= len(s)
+  ensures is_char_boundary(s, len(result))
+  ensures forall t in 0..len(result): result[t] == s[t]
+  ensures len(result) == len(s) || (forall t in len(result)+1..max+1: !is_char_boundary(s, t))
+  ensures len(s) <= max ==> len(result) == len(s)
+{
+  let mut i: i64 = max;
+  if i > len(s) { i = len(s); }
+  while i > 0 && !is_char_boundary(s, i)
+    invariant 0 <= i && i <= len(s) && i <= max
+    invariant forall t in i+1..max+1: !is_char_boundary(s, t)
+    decreases i
+  {
+    i = i - 1;
+  }
+  return substr(s, 0, i);
+}
+
+// Whole-string equality with a literal.
+fn eq_whole(t: str, lit: str) -> bool
+{
+  if len(t) != len(lit) { return false; }
+  return eq_at(t, 0, lit);
+}
+
+// claude.ts engineLine: trimmed text is one of the two interrupt lines, or (only for a task-notification
+// origin) starts with <task-notification> and ends with </task-notification>, non-overlapping.
+pub fn engine_line(text: str, task_origin: bool) -> bool ! alloc
+{
+  let t: str = trim(text);
+  if eq_whole(t, "[Request interrupted by user]") { return true; }
+  if eq_whole(t, "[Request interrupted by user for tool use]") { return true; }
+  if task_origin {
+    let open: str = "<task-notification>";
+    let close: str = "</task-notification>";
+    if len(t) >= len(open) + len(close) {
+      if eq_at(t, 0, open) {
+        if eq_at(t, len(t) - len(close), close) { return true; }
+      }
+    }
+  }
+  return false;
+}
+
+// ---- dropped_user: byte scanner for the four raw-prefix regexes ----
+// The prefix is read as replacement-decoded UTF-8: whitespace is recognised as UTF-8 sequences, every
+// invalid byte counts as non-whitespace and is not a brace.
+
+fn ws_at(head: [u8], p: i64) -> i64
+  requires 0 <= p && p <= len(head)
+  ensures 0 <= result && result <= 3
+  ensures result <= len(head) - p
+{
+  if p >= len(head) { return 0; }
+  let b: i64 = head[p];
+  if (9 <= b && b <= 13) || b == 32 { return 1; }
+  if p + 1 >= len(head) { return 0; }
+  let c: i64 = head[p + 1];
+  if b == 194 && c == 160 { return 2; }
+  if p + 2 >= len(head) { return 0; }
+  let d: i64 = head[p + 2];
+  if b == 225 && c == 154 && d == 128 { return 3; }
+  if b == 226 && c == 128 && ((128 <= d && d <= 138) || d == 168 || d == 169 || d == 175) { return 3; }
+  if b == 226 && c == 129 && d == 159 { return 3; }
+  if b == 227 && c == 128 && d == 128 { return 3; }
+  if b == 239 && c == 187 && d == 191 { return 3; }
+  return 0;
+}
+
+// Position after the whitespace run starting at p.
+fn skip_ws(head: [u8], p: i64) -> i64
+  requires 0 <= p && p <= len(head)
+  ensures p <= result && result <= len(head)
+{
+  let mut q: i64 = p;
+  while q < len(head)
+    invariant p <= q && q <= len(head)
+    decreases len(head) - q
+  {
+    let w: i64 = ws_at(head, q);
+    if w == 0 { return q; }
+    q = q + w;
+  }
+  return q;
+}
+
+// End of the literal lit at p, or -1.
+fn lit_end(head: [u8], p: i64, lit: str) -> i64
+  requires 0 <= p
+  ensures result == -1 || (p <= result && result <= len(head))
+{
+  if p > len(head) { return -1; }
+  if len(lit) > len(head) - p { return -1; }
+  let mut k: i64 = 0;
+  while k < len(lit)
+    invariant 0 <= k && k <= len(lit) && 0 <= p && p <= len(head) && len(lit) <= len(head) - p
+    decreases len(lit) - k
+  {
+    let a: i64 = head[p + k];
+    let b: i64 = lit[k];
+    if a != b { return -1; }
+    k = k + 1;
+  }
+  return p + len(lit);
+}
+
+// End of "word" (with its quotes) at p, or -1.
+fn quoted_end(head: [u8], p: i64, word: str) -> i64
+  requires 0 <= p
+  ensures result == -1 || (p < result && result <= len(head))
+{
+  if p >= len(head) { return -1; }
+  let q: i64 = head[p];
+  if q != 34 { return -1; }
+  let e: i64 = lit_end(head, p + 1, word);
+  if e < 0 { return -1; }
+  if e >= len(head) { return -1; }
+  let r: i64 = head[e];
+  if r != 34 { return -1; }
+  return e + 1;
+}
+
+// After a key ending at e: whitespace, a colon, whitespace; returns the value start or -1.
+fn colon_value(head: [u8], e: i64) -> i64
+  requires 0 <= e && e <= len(head)
+  ensures result == -1 || (e < result && result <= len(head))
+{
+  let a: i64 = skip_ws(head, e);
+  if a >= len(head) { return -1; }
+  let c: i64 = head[a];
+  if c != 58 { return -1; }
+  return skip_ws(head, a + 1);
+}
+
+// "key"\s*:\s*value at p (value quoted or bare); end of the match or -1.
+fn kv(head: [u8], p: i64, key: str, val: str, quote_val: bool) -> i64
+  requires 0 <= p
+  ensures result == -1 || (p <= result && result <= len(head))
+{
+  let e: i64 = quoted_end(head, p, key);
+  if e < 0 { return -1; }
+  let v: i64 = colon_value(head, e);
+  if v < 0 { return -1; }
+  if quote_val { return quoted_end(head, v, val); }
+  return lit_end(head, v, val);
+}
+
+// [^{}]* from r, then "type"\s*:\s*"tool_result": a brace ends the search.
+fn tool_result_after(head: [u8], r: i64) -> bool ! alloc
+  requires 0 <= r && r <= len(head)
+{
+  let mut t: i64 = r;
+  while t < len(head)
+    invariant r <= t && t <= len(head)
+    decreases len(head) - t
+  {
+    let c: i64 = head[t];
+    if c == 123 || c == 125 { return false; }
+    if c == 34 {
+      if kv(head, t, "type", "tool_result", true) >= 0 { return true; }
+    }
+    t = t + 1;
+  }
+  return false;
+}
+
+// "content"\s*:\s*\[\s*\{ at p followed by a brace-free span up to a tool_result type.
+fn content_hit(head: [u8], p: i64) -> bool ! alloc
+  requires 0 <= p
+{
+  let e: i64 = quoted_end(head, p, "content");
+  if e < 0 { return false; }
+  let v: i64 = colon_value(head, e);
+  if v < 0 { return false; }
+  if v >= len(head) { return false; }
+  let c: i64 = head[v];
+  if c != 91 { return false; }
+  let w: i64 = skip_ws(head, v + 1);
+  if w >= len(head) { return false; }
+  let d: i64 = head[w];
+  if d != 123 { return false; }
+  return tool_result_after(head, w + 1);
+}
+
+// claude.ts droppedUser: "type":"user" occurs and none of "isMeta":true, "isSidechain":true or a
+// tool_result first block of content occurs (unanchored, literal key spelling).
+pub fn dropped_user(head: [u8]) -> bool ! alloc
+{
+  let n: i64 = len(head);
+  let mut user: bool = false;
+  let mut p: i64 = 0;
+  while p < n
+    invariant 0 <= p && p <= n
+    decreases n - p
+  {
+    let c: i64 = head[p];
+    if c == 34 {
+      if kv(head, p, "type", "user", true) >= 0 { user = true; }
+      if kv(head, p, "isMeta", "true", false) >= 0 { return false; }
+      if kv(head, p, "isSidechain", "true", false) >= 0 { return false; }
+      if content_hit(head, p) { return false; }
+    }
+    p = p + 1;
+  }
+  return user;
+}

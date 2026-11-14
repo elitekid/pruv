@@ -1,0 +1,264 @@
+// L3-1 A1 entry classification (mirror of tail.ts parseLine/record/str and claude.ts humanText/titleOf):
+// one-line parse to an object document, checked field helpers, human_text and ranked titles.
+// Decoder/tape defects (jstr InternalInvariant, corrupt tape) are returned as Defect, never as Missing.
+// Objects are looked up with last-wins keys; kinds are never coerced.
+
+pub enum Line { Object(doc: crate::json::JsonDocument), Skip, Defect(position: i64) }
+pub enum Field { Value(text: str), Missing, Defect(kind: i64) }
+pub enum Title { Ranked(rank: i64, text: str), NoTitle, Defect(kind: i64) }
+enum Block { Piece(text: str), Ignore, Veto, Broken(kind: i64) }
+
+// Object roots only; malformed, empty and non-object lines are Skip; only InternalInvariant is a defect.
+pub fn parse_line(data: [u8], start: i64, end: i64) -> Line ! alloc
+  requires 0 <= start && start <= end && end <= len(data)
+{
+  let parsed: crate::json::JsonParse = crate::lines::parse_range(data, start, end);
+  match parsed {
+    crate::json::JsonParse::Parsed(d) => {
+      if crate::access::kind(d, crate::access::root(d)) == 6 { return Line::Object(d); }
+      return Line::Skip;
+    }
+    crate::json::JsonParse::Failed(error) => {
+      if error.kind == crate::json::err_internal_invariant() { return Line::Defect(error.position); }
+      return Line::Skip;
+    }
+  }
+}
+
+// Field present with kind string -> its decoded text; missing or another kind -> Missing.
+pub fn string_field(doc: crate::json::JsonDocument, id: i64, key: str) -> Field ! alloc
+  ensures is_variant(result, Field::Value) ==> len(variant_field(result, Field::Value, text)) <= 50331648
+{
+  let f: i64 = crate::access::field(doc, id, key);
+  if f == -1 || f == -2 { return Field::Missing; }
+  if f < 0 { return Field::Defect(f); }
+  let k: i64 = crate::access::kind(doc, f);
+  if k < 0 { return Field::Defect(k); }
+  if k != 4 { return Field::Missing; }
+  let t: crate::jstr::Text = crate::access::string_text(doc, f);
+  match t {
+    crate::jstr::Text::InternalInvariant(e) => { return Field::Defect(e); }
+    crate::jstr::Text::Decoded(v) => {
+      if len(v) > 50331648 { return Field::Defect(-4); }
+      return Field::Value(copy(v));
+    }
+  }
+}
+
+// ID of the field when it is present and an object; -1 when missing or another kind; -2 on a corrupt tape.
+pub fn object_field(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
+  ensures result == -1 || result == -2 || (result >= 0 && result < len(doc.tape) / 6)
+{
+  let f: i64 = crate::access::field(doc, id, key);
+  if f == -1 || f == -2 { return -1; }
+  if f < 0 { return -2; }
+  let k: i64 = crate::access::kind(doc, f);
+  if k < 0 { return -2; }
+  if k == 6 { return f; }
+  return -1;
+}
+
+// 1 when the field is present and the literal boolean true, 0 otherwise, negative on a corrupt tape.
+pub fn is_true(doc: crate::json::JsonDocument, id: i64, key: str) -> i64 ! alloc
+  ensures result <= 1
+{
+  let f: i64 = crate::access::field(doc, id, key);
+  if f == -1 || f == -2 { return 0; }
+  if f < 0 { return f; }
+  let k: i64 = crate::access::kind(doc, f);
+  if k < 0 { return k; }
+  if k == 2 { return 1; }
+  return 0;
+}
+
+// 1 when origin is an object whose kind is the string "task-notification", 0 otherwise, negative on a
+// corrupt tape.
+pub fn task_origin(doc: crate::json::JsonDocument, id: i64) -> i64 ! alloc
+  ensures result <= 1
+{
+  let o: i64 = object_field(doc, id, "origin");
+  if o == -1 { return 0; }
+  if o < 0 { return -4; }
+  let k: Field = string_field(doc, o, "kind");
+  match k {
+    Field::Value(v) => {
+      if crate::text::same(v, "task-notification") { return 1; }
+      return 0;
+    }
+    Field::Missing => { return 0; }
+    Field::Defect(e) => {
+      if e >= 0 { return -4; }
+      return e;
+    }
+  }
+}
+
+// A block of a content array: a text piece, an ignorable block, the tool_result veto, or a defect.
+fn block_of(doc: crate::json::JsonDocument, j: i64) -> Block ! alloc
+{
+  let k: i64 = crate::access::kind(doc, j);
+  if k < 0 { return Block::Broken(k); }
+  if k != 6 { return Block::Ignore; }
+  let ty: Field = string_field(doc, j, "type");
+  match ty {
+    Field::Value(v) => {
+      if crate::text::same(v, "tool_result") { return Block::Veto; }
+      if crate::text::same(v, "text") {
+        let tx: Field = string_field(doc, j, "text");
+        match tx {
+          Field::Value(x) => { return Block::Piece(copy(x)); }
+          Field::Missing => { return Block::Ignore; }
+          Field::Defect(e) => { return Block::Broken(e); }
+        }
+      }
+      return Block::Ignore;
+    }
+    Field::Missing => { return Block::Ignore; }
+    Field::Defect(e) => { return Block::Broken(e); }
+  }
+}
+
+// String content: untrimmed text unless blank or an engine line.
+fn string_content(doc: crate::json::JsonDocument, c: i64) -> Field ! alloc
+{
+  let t: crate::jstr::Text = crate::access::string_text(doc, c);
+  match t {
+    crate::jstr::Text::InternalInvariant(e) => { return Field::Defect(e); }
+    crate::jstr::Text::Decoded(v) => {
+      if crate::text::is_blank(v) { return Field::Missing; }
+      let o: i64 = task_origin(doc, 0);
+      if o < 0 { return Field::Defect(o); }
+      let engine: bool = crate::text::engine_line(v, o == 1);
+      if engine { return Field::Missing; }
+      return Field::Value(copy(v));
+    }
+  }
+}
+
+// Array content: walk the children by their skip links; a tool_result object anywhere vetoes; text pieces
+// are joined with "\n\n"; the joined text is then tested for blankness and engine lines.
+fn array_content(doc: crate::json::JsonDocument, c: i64) -> Field ! alloc
+  requires 0 <= c && c < len(doc.tape) / 6
+{
+  if len(doc.tape) > 6291456 { return Field::Defect(-4); }
+  let stop: i64 = doc.tape[6 * c + 3];
+  if stop <= c || stop > len(doc.tape) / 6 { return Field::Defect(-4); }
+  let mut joined: String = string_new();
+  let mut count: i64 = 0;
+  let mut seen: i64 = 0;
+  let mut j: i64 = c + 1;
+  while j < stop
+    invariant 0 <= c && c < j && j <= stop && stop <= len(doc.tape) / 6 && len(doc.tape) <= 6291456
+    invariant 0 <= count && count <= j && 0 <= seen && seen <= j
+    invariant len(joined) <= 1000000000
+    decreases stop - j
+  {
+    let next: i64 = doc.tape[6 * j + 3];
+    if next <= j || next > stop || doc.tape[6 * j + 4] != c { return Field::Defect(-4); }
+    let b: Block = block_of(doc, j);
+    match b {
+      Block::Piece(x) => {
+        let room: i64 = 1000000000 - len(joined);
+        if len(x) > room - 2 { return Field::Defect(-4); }
+        if count > 0 { joined = string_push_str(move joined, "\n\n"); }
+        joined = string_push_str(move joined, x);
+        count = count + 1;
+      }
+      Block::Ignore => { seen = seen + 1; }
+      Block::Veto => { return Field::Missing; }
+      Block::Broken(e) => { return Field::Defect(e); }
+    }
+    j = next;
+  }
+  let whole: str = string_to_str(joined);
+  if crate::text::is_blank(whole) { return Field::Missing; }
+  let o: i64 = task_origin(doc, 0);
+  if o < 0 { return Field::Defect(o); }
+  let engine: bool = crate::text::engine_line(whole, o == 1);
+  if engine { return Field::Missing; }
+  return Field::Value(copy(whole));
+}
+
+// claude.ts humanText for a root object: the human-written text (untrimmed) or Missing.
+pub fn human_text(doc: crate::json::JsonDocument) -> Field ! alloc
+{
+  let root: i64 = crate::access::root(doc);
+  let ty: Field = string_field(doc, root, "type");
+  match ty {
+    Field::Value(v) => { if !crate::text::same(v, "user") { return Field::Missing; } }
+    Field::Missing => { return Field::Missing; }
+    Field::Defect(e) => { return Field::Defect(e); }
+  }
+  let meta: i64 = is_true(doc, root, "isMeta");
+  if meta < 0 { return Field::Defect(meta); }
+  if meta == 1 { return Field::Missing; }
+  let side: i64 = is_true(doc, root, "isSidechain");
+  if side < 0 { return Field::Defect(side); }
+  if side == 1 { return Field::Missing; }
+  let msg: i64 = object_field(doc, root, "message");
+  if msg == -1 { return Field::Missing; }
+  if msg < 0 { return Field::Defect(msg); }
+  let c: i64 = crate::access::field(doc, msg, "content");
+  if c == -1 || c == -2 { return Field::Missing; }
+  if c < 0 { return Field::Defect(c); }
+  let k: i64 = crate::access::kind(doc, c);
+  if k < 0 { return Field::Defect(k); }
+  if k == 4 { return string_content(doc, c); }
+  if k == 5 { return array_content(doc, c); }
+  return Field::Missing;
+}
+
+// String value of key whose trim is nonempty.
+fn title_key(doc: crate::json::JsonDocument, id: i64, key: str) -> Field ! alloc
+{
+  let f: Field = string_field(doc, id, key);
+  match f {
+    Field::Value(v) => {
+      if crate::text::is_blank(v) { return Field::Missing; }
+      return Field::Value(copy(v));
+    }
+    Field::Missing => { return Field::Missing; }
+    Field::Defect(e) => { return Field::Defect(e); }
+  }
+}
+
+// The first of the two keys whose value is a string with nonblank trim; the untrimmed value is returned.
+pub fn pick_title(doc: crate::json::JsonDocument, id: i64, first: str, second: str) -> Field ! alloc
+{
+  let a: Field = title_key(doc, id, first);
+  match a {
+    Field::Value(v) => { return Field::Value(copy(v)); }
+    Field::Missing => { return title_key(doc, id, second); }
+    Field::Defect(e) => { return Field::Defect(e); }
+  }
+}
+
+fn ranked(doc: crate::json::JsonDocument, level: i64, first: str, second: str) -> Title ! alloc
+  requires 1 <= level && level <= 3
+  ensures is_variant(result, Title::Ranked) ==> (1 <= variant_field(result, Title::Ranked, rank) && variant_field(result, Title::Ranked, rank) <= 3)
+{
+  let f: Field = pick_title(doc, crate::access::root(doc), first, second);
+  match f {
+    Field::Value(v) => { return Title::Ranked(level, copy(v)); }
+    Field::Missing => { return Title::NoTitle; }
+    Field::Defect(e) => { return Title::Defect(e); }
+  }
+}
+
+// claude.ts titleOf: custom-title (rank 3), ai-title (rank 2), summary (rank 1). The text is untrimmed and
+// not passed through one_line here (tailInfo applies oneLine(text, 120) to the winner).
+pub fn title_of(doc: crate::json::JsonDocument) -> Title ! alloc
+  ensures is_variant(result, Title::Ranked) ==> (1 <= variant_field(result, Title::Ranked, rank) && variant_field(result, Title::Ranked, rank) <= 3)
+{
+  let ty: Field = string_field(doc, crate::access::root(doc), "type");
+  match ty {
+    Field::Value(v) => {
+      if crate::text::same(v, "custom-title") { return ranked(doc, 3, "customTitle", "title"); }
+      if crate::text::same(v, "ai-title") { return ranked(doc, 2, "aiTitle", "title"); }
+      if crate::text::same(v, "summary") { return ranked(doc, 1, "summary", "title"); }
+      return Title::NoTitle;
+    }
+    Field::Missing => { return Title::NoTitle; }
+    Field::Defect(e) => { return Title::Defect(e); }
+  }
+}
