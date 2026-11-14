@@ -1,0 +1,282 @@
+// L3-1 A0: import limits, flat output records, the publication check and the plain-array packet.
+// Constants are nullary functions (no `const`); contracts repeat their values as literals.
+// Output layout (docs/CLAUDE_IMPORT_SPEC.md): meta has 14 slots, each turn 10 slots, strings are (start,len)
+// refs into text, absent is (-1,0).
+
+pub fn limit_edge_bytes() -> i64 ensures result == 65536 { return 65536; }
+pub fn limit_window_bytes() -> i64 ensures result == 8388608 { return 8388608; }
+pub fn limit_line_bytes() -> i64 ensures result == 1048576 { return 1048576; }
+pub fn limit_drop_head() -> i64 ensures result == 8192 { return 8192; }
+pub fn limit_turns() -> i64 ensures result == 200 { return 200; }
+pub fn limit_prompt_bytes() -> i64 ensures result == 32768 { return 32768; }
+pub fn limit_reply_bytes() -> i64 ensures result == 32768 { return 32768; }
+pub fn limit_total_bytes() -> i64 ensures result == 2097152 { return 2097152; }
+pub fn limit_output_bytes() -> i64 ensures result == 5646080 { return 5646080; }
+pub fn timestamp_bytes() -> i64 ensures result == 24 { return 24; }
+pub fn schema_version() -> i64 ensures result == 1 { return 1; }
+pub fn meta_len() -> i64 ensures result == 14 { return 14; }
+pub fn turn_width() -> i64 ensures result == 10 { return 10; }
+pub fn mode_head() -> i64 ensures result == 0 { return 0; }
+pub fn mode_tail() -> i64 ensures result == 1 { return 1; }
+pub fn mode_window() -> i64 ensures result == 2 { return 2; }
+pub fn code_input_too_large() -> i64 ensures result == 1 { return 1; }
+pub fn code_internal_invariant() -> i64 ensures result == 2 { return 2; }
+
+pub struct ImportOutput { meta: [i64], turns: [i64], text: [u8] }
+// Dedicated non-generic result: a buffer-bearing type cannot be a Result<T> payload.
+pub enum ImportResult { Imported(output: ImportOutput), Failed(code: i64, position: i64) }
+
+// Ownership boundary: wraps copies of completed buffers (struct literals stay inside this module).
+pub fn make_output(meta: [i64], turns: [i64], text: [u8]) -> ImportOutput ! alloc
+{
+  return ImportOutput { meta: copy(meta), turns: copy(turns), text: copy(text) };
+}
+
+// A ref (s,l) is absent (-1,0) or present inside a text of n bytes.
+fn ref_ok(s: i64, l: i64, n: i64) -> bool
+  requires 0 <= n
+  ensures result ==> ((s == -1 && l == 0) || (0 <= s && s <= n && 0 <= l && l <= n - s))
+{
+  if s == -1 { return l == 0; }
+  if s < 0 || s > n { return false; }
+  if l < 0 || l > n - s { return false; }
+  return true;
+}
+
+// Per-turn record facts of turn i (everything except the cross-turn total and the tiling).
+fn turn_ok(turns: [i64], n: i64, i: i64) -> bool
+  requires 0 <= i && 10 * i + 10 <= len(turns) && 0 <= n && n <= 5646080
+  ensures result ==> (0 <= turns[10 * i] && turns[10 * i] <= n && 0 <= turns[10 * i + 1] && turns[10 * i + 1] <= 32768 && turns[10 * i] + turns[10 * i + 1] <= n && 0 <= turns[10 * i + 2] && turns[10 * i + 2] <= n && 0 <= turns[10 * i + 3] && turns[10 * i + 3] <= 32768 && turns[10 * i + 2] + turns[10 * i + 3] <= n && turns[10 * i + 8] >= 0 && (turns[10 * i + 9] == 0 || turns[10 * i + 9] == 1))
+  ensures result ==> ((turns[10 * i + 5] == 0 || turns[10 * i + 5] == 24) && (turns[10 * i + 7] == 0 || turns[10 * i + 7] == 24))
+  ensures result ==> (((turns[10 * i + 4] == -1 && turns[10 * i + 5] == 0) || (0 <= turns[10 * i + 4] && turns[10 * i + 4] <= n && 0 <= turns[10 * i + 5] && turns[10 * i + 5] <= n - turns[10 * i + 4])) && ((turns[10 * i + 6] == -1 && turns[10 * i + 7] == 0) || (0 <= turns[10 * i + 6] && turns[10 * i + 6] <= n && 0 <= turns[10 * i + 7] && turns[10 * i + 7] <= n - turns[10 * i + 6])))
+{
+  let b: i64 = 10 * i;
+  if turns[b] < 0 || turns[b] > n { return false; }
+  if turns[b + 1] < 0 || turns[b + 1] > 32768 || turns[b + 1] > n - turns[b] { return false; }
+  if turns[b + 2] < 0 || turns[b + 2] > n { return false; }
+  if turns[b + 3] < 0 || turns[b + 3] > 32768 || turns[b + 3] > n - turns[b + 2] { return false; }
+  if !ref_ok(turns[b + 4], turns[b + 5], n) { return false; }
+  if !ref_ok(turns[b + 6], turns[b + 7], n) { return false; }
+  if turns[b + 4] != -1 && turns[b + 5] != 24 { return false; }
+  if turns[b + 6] != -1 && turns[b + 7] != 24 { return false; }
+  if turns[b + 8] < 0 { return false; }
+  if turns[b + 9] != 0 && turns[b + 9] != 1 { return false; }
+  return true;
+}
+
+// Every turn is well formed and the actual prompt+reply total stays within 2097152.
+fn turns_ok(turns: [i64], n: i64, m: i64) -> bool
+  requires 0 <= m && m <= 200 && len(turns) == 10 * m && 0 <= n && n <= 5646080
+  ensures result ==> (forall i in 0..m: (0 <= turns[10 * i] && turns[10 * i] <= n && 0 <= turns[10 * i + 1] && turns[10 * i + 1] <= 32768 && turns[10 * i] + turns[10 * i + 1] <= n && 0 <= turns[10 * i + 2] && turns[10 * i + 2] <= n && 0 <= turns[10 * i + 3] && turns[10 * i + 3] <= 32768 && turns[10 * i + 2] + turns[10 * i + 3] <= n && turns[10 * i + 8] >= 0 && (turns[10 * i + 9] == 0 || turns[10 * i + 9] == 1)))
+  ensures result ==> (forall i in 0..m: ((turns[10 * i + 5] == 0 || turns[10 * i + 5] == 24) && (turns[10 * i + 7] == 0 || turns[10 * i + 7] == 24)))
+  ensures result ==> (forall i in 0..m: (((turns[10 * i + 4] == -1 && turns[10 * i + 5] == 0) || (0 <= turns[10 * i + 4] && turns[10 * i + 4] <= n && 0 <= turns[10 * i + 5] && turns[10 * i + 5] <= n - turns[10 * i + 4])) && ((turns[10 * i + 6] == -1 && turns[10 * i + 7] == 0) || (0 <= turns[10 * i + 6] && turns[10 * i + 6] <= n && 0 <= turns[10 * i + 7] && turns[10 * i + 7] <= n - turns[10 * i + 6]))))
+  ensures result ==> sum(i in 0..m: turns[10 * i + 1] + turns[10 * i + 3]) <= 2097152
+{
+  let mut i: i64 = 0;
+  let mut total: i64 = 0;
+  while i < m
+    invariant 0 <= i && i <= m && 0 <= m && m <= 200 && len(turns) == 10 * m && 0 <= n && n <= 5646080
+    invariant 0 <= total && total <= 2097152
+    invariant forall t in 0..i: (0 <= turns[10 * t] && turns[10 * t] <= n && 0 <= turns[10 * t + 1] && turns[10 * t + 1] <= 32768 && turns[10 * t] + turns[10 * t + 1] <= n && 0 <= turns[10 * t + 2] && turns[10 * t + 2] <= n && 0 <= turns[10 * t + 3] && turns[10 * t + 3] <= 32768 && turns[10 * t + 2] + turns[10 * t + 3] <= n && turns[10 * t + 8] >= 0 && (turns[10 * t + 9] == 0 || turns[10 * t + 9] == 1))
+    invariant forall t in 0..i: ((turns[10 * t + 5] == 0 || turns[10 * t + 5] == 24) && (turns[10 * t + 7] == 0 || turns[10 * t + 7] == 24))
+    invariant forall t in 0..i: (((turns[10 * t + 4] == -1 && turns[10 * t + 5] == 0) || (0 <= turns[10 * t + 4] && turns[10 * t + 4] <= n && 0 <= turns[10 * t + 5] && turns[10 * t + 5] <= n - turns[10 * t + 4])) && ((turns[10 * t + 6] == -1 && turns[10 * t + 7] == 0) || (0 <= turns[10 * t + 6] && turns[10 * t + 6] <= n && 0 <= turns[10 * t + 7] && turns[10 * t + 7] <= n - turns[10 * t + 6])))
+    invariant total == sum(t in 0..i: turns[10 * t + 1] + turns[10 * t + 3])
+    decreases m - i
+  {
+    if !turn_ok(turns, n, i) { return false; }
+    let sum: i64 = total + turns[10 * i + 1] + turns[10 * i + 3];
+    if sum > 2097152 { return false; }
+    total = sum;
+    i = i + 1;
+  }
+  return true;
+}
+
+// Advance the tiling cursor over one ref: -1 when a present ref does not start at the cursor.
+fn take(s: i64, l: i64, cur: i64) -> i64
+  requires 0 <= cur
+  ensures result >= -1
+{
+  if s == -1 {
+    if l == 0 { return cur; }
+    return -1;
+  }
+  if s != cur || l < 0 { return -1; }
+  if l > 9223372036854775807 - cur { return -1; }
+  return cur + l;
+}
+
+// Runtime-only rule: present refs, in packing order, tile text exactly.
+fn tiled(meta: [i64], turns: [i64], n: i64, m: i64) -> bool
+  requires len(meta) == 14 && 0 <= m && m <= 200 && len(turns) == 10 * m && 0 <= n
+{
+  let mut cur: i64 = take(meta[4], meta[5], 0);
+  if cur < 0 { return false; }
+  cur = take(meta[6], meta[7], cur);
+  if cur < 0 { return false; }
+  cur = take(meta[8], meta[9], cur);
+  if cur < 0 { return false; }
+  cur = take(meta[10], meta[11], cur);
+  if cur < 0 { return false; }
+  cur = take(meta[12], meta[13], cur);
+  if cur < 0 { return false; }
+  let mut i: i64 = 0;
+  while i < m
+    invariant 0 <= i && i <= m && 0 <= cur && 0 <= m && m <= 200 && len(turns) == 10 * m
+    decreases m - i
+  {
+    cur = take(turns[10 * i], turns[10 * i + 1], cur);
+    if cur < 0 { return false; }
+    cur = take(turns[10 * i + 2], turns[10 * i + 3], cur);
+    if cur < 0 { return false; }
+    cur = take(turns[10 * i + 4], turns[10 * i + 5], cur);
+    if cur < 0 { return false; }
+    cur = take(turns[10 * i + 6], turns[10 * i + 7], cur);
+    if cur < 0 { return false; }
+    i = i + 1;
+  }
+  return cur == n;
+}
+
+pub fn check_output(meta: [i64], turns: [i64], text: [u8]) -> bool
+  ensures result ==> len(meta) == 14
+  ensures result ==> meta[0] == 1
+  ensures result ==> (0 <= meta[1] && meta[1] <= 2)
+  ensures result ==> (meta[2] == 0 || meta[2] == 1)
+  ensures result ==> (0 <= meta[3] && meta[3] <= 200)
+  ensures result ==> len(turns) == 10 * meta[3]
+  ensures result ==> len(text) <= 5646080
+  ensures result ==> (forall i in 0..meta[3]: (0 <= turns[10 * i] && turns[10 * i] <= len(text) && 0 <= turns[10 * i + 1] && turns[10 * i + 1] <= 32768 && turns[10 * i] + turns[10 * i + 1] <= len(text) && 0 <= turns[10 * i + 2] && turns[10 * i + 2] <= len(text) && 0 <= turns[10 * i + 3] && turns[10 * i + 3] <= 32768 && turns[10 * i + 2] + turns[10 * i + 3] <= len(text) && turns[10 * i + 8] >= 0 && (turns[10 * i + 9] == 0 || turns[10 * i + 9] == 1)))
+  ensures result ==> (forall i in 0..meta[3]: ((turns[10 * i + 5] == 0 || turns[10 * i + 5] == 24) && (turns[10 * i + 7] == 0 || turns[10 * i + 7] == 24)))
+  ensures result ==> (forall i in 0..meta[3]: (((turns[10 * i + 4] == -1 && turns[10 * i + 5] == 0) || (0 <= turns[10 * i + 4] && turns[10 * i + 4] <= len(text) && 0 <= turns[10 * i + 5] && turns[10 * i + 5] <= len(text) - turns[10 * i + 4])) && ((turns[10 * i + 6] == -1 && turns[10 * i + 7] == 0) || (0 <= turns[10 * i + 6] && turns[10 * i + 6] <= len(text) && 0 <= turns[10 * i + 7] && turns[10 * i + 7] <= len(text) - turns[10 * i + 6]))))
+  ensures result ==> sum(i in 0..meta[3]: turns[10 * i + 1] + turns[10 * i + 3]) <= 2097152
+  ensures result ==> (meta[1] != 2 ==> (meta[2] == 0 && meta[3] == 0 && meta[12] == -1))
+  ensures result ==> (meta[1] != 0 ==> (meta[6] == -1 && meta[8] == -1))
+  ensures result ==> (meta[1] != 1 ==> meta[10] == -1)
+  ensures result ==> (meta[10] != -1 ==> meta[11] == 24)
+  ensures result ==> ((meta[4] == -1 && meta[5] == 0) || (0 <= meta[4] && meta[4] <= len(text) && 0 <= meta[5] && meta[5] <= len(text) - meta[4]))
+  ensures result ==> ((meta[6] == -1 && meta[7] == 0) || (0 <= meta[6] && meta[6] <= len(text) && 0 <= meta[7] && meta[7] <= len(text) - meta[6]))
+  ensures result ==> ((meta[8] == -1 && meta[9] == 0) || (0 <= meta[8] && meta[8] <= len(text) && 0 <= meta[9] && meta[9] <= len(text) - meta[8]))
+  ensures result ==> ((meta[10] == -1 && meta[11] == 0) || (0 <= meta[10] && meta[10] <= len(text) && 0 <= meta[11] && meta[11] <= len(text) - meta[10]))
+  ensures result ==> ((meta[12] == -1 && meta[13] == 0) || (0 <= meta[12] && meta[12] <= len(text) && 0 <= meta[13] && meta[13] <= len(text) - meta[12]))
+{
+  if len(meta) != 14 { return false; }
+  if meta[0] != 1 { return false; }
+  let mode: i64 = meta[1];
+  if mode < 0 || mode > 2 { return false; }
+  if meta[2] != 0 && meta[2] != 1 { return false; }
+  if mode != 2 && meta[2] != 0 { return false; }
+  let m: i64 = meta[3];
+  if m < 0 || m > 200 { return false; }
+  if mode != 2 && m != 0 { return false; }
+  if len(turns) != 10 * m { return false; }
+  let n: i64 = len(text);
+  if n > 5646080 { return false; }
+  // title: any mode
+  if !ref_ok(meta[4], meta[5], n) { return false; }
+  // cwd and entrypoint: head only
+  if !ref_ok(meta[6], meta[7], n) { return false; }
+  if mode != 0 && meta[6] != -1 { return false; }
+  if !ref_ok(meta[8], meta[9], n) { return false; }
+  if mode != 0 && meta[8] != -1 { return false; }
+  // lastAt: tail only, exactly 24 bytes when present
+  if !ref_ok(meta[10], meta[11], n) { return false; }
+  if mode != 1 && meta[10] != -1 { return false; }
+  if meta[10] != -1 && meta[11] != 24 { return false; }
+  // model: window only
+  if !ref_ok(meta[12], meta[13], n) { return false; }
+  if mode != 2 && meta[12] != -1 { return false; }
+  if !turns_ok(turns, n, m) { return false; }
+  if !tiled(meta, turns, n, m) { return false; }
+  return true;
+}
+
+// Widened packet: [0, 14, turn slots, text bytes, ...meta, ...turns, ...text].
+fn widen(meta: [i64], turns: [i64], text: [u8]) -> [i64] ! alloc
+  requires len(meta) == 14 && len(turns) <= 2000 && len(text) <= 5646080
+  ensures len(result) == 18 + len(turns) + len(text)
+  ensures result[0] == 0 && result[1] == 14 && result[2] == len(turns) && result[3] == len(text)
+  ensures forall i in 0..14: result[4 + i] == meta[i]
+  ensures forall j in 0..len(turns): result[18 + j] == turns[j]
+  ensures forall k in 0..len(text): result[18 + len(turns) + k] == text[k]
+{
+  let nt: i64 = len(turns);
+  let nx: i64 = len(text);
+  let mut out: [i64] = alloc(18 + nt + nx, 0);
+  out[1] = 14; out[2] = nt; out[3] = nx;
+  let mut i: i64 = 0;
+  while i < 14
+    invariant 0 <= i && i <= 14 && len(out) == 18 + nt + nx && nt == len(turns) && nx == len(text) && len(meta) == 14
+    invariant out[0] == 0 && out[1] == 14 && out[2] == nt && out[3] == nx
+    invariant forall t in 0..i: out[4 + t] == meta[t]
+    decreases 14 - i
+  { out[4 + i] = meta[i]; i = i + 1; }
+  let mut j: i64 = 0;
+  while j < nt
+    invariant 0 <= j && j <= nt && len(out) == 18 + nt + nx && nt == len(turns) && nx == len(text)
+    invariant out[0] == 0 && out[1] == 14 && out[2] == nt && out[3] == nx
+    invariant len(meta) == 14
+    invariant forall t in 0..14: out[4 + t] == meta[t]
+    invariant forall t in 0..j: out[18 + t] == turns[t]
+    decreases nt - j
+  { out[18 + j] = turns[j]; j = j + 1; }
+  let mut k: i64 = 0;
+  while k < nx
+    invariant 0 <= k && k <= nx && len(out) == 18 + nt + nx && nt == len(turns) && nx == len(text)
+    invariant out[0] == 0 && out[1] == 14 && out[2] == nt && out[3] == nx
+    invariant len(meta) == 14
+    invariant forall t in 0..14: out[4 + t] == meta[t]
+    invariant forall t in 0..nt: out[18 + t] == turns[t]
+    invariant forall t in 0..k: out[18 + nt + t] == text[t]
+    decreases nx - k
+  { out[18 + nt + k] = text[k]; k = k + 1; }
+  return out;
+}
+
+fn pair(a: i64, b: i64) -> [i64] ! alloc
+  ensures len(result) == 2 && result[0] == a && result[1] == b
+{
+  let mut out: [i64] = alloc(2, 0);
+  out[0] = a; out[1] = b;
+  return out;
+}
+
+// A Failed code of 0 would collide with the success tag, so it is reported as an internal invariant.
+pub fn pack_result(r: ImportResult) -> [i64] ! alloc
+  ensures len(result) >= 2
+  ensures result[0] == 0 ==> (len(result) == 4 + 14 + result[2] + result[3] && result[1] == 14)
+  ensures (is_variant(r, ImportResult::Imported) && result[0] == 0) ==> (result[2] == len(variant_field(r, ImportResult::Imported, output).turns) && result[3] == len(variant_field(r, ImportResult::Imported, output).text))
+  ensures (is_variant(r, ImportResult::Imported) && result[0] == 0) ==> (forall i in 0..14: result[4 + i] == variant_field(r, ImportResult::Imported, output).meta[i])
+  ensures (is_variant(r, ImportResult::Imported) && result[0] == 0) ==> (forall j in 0..result[2]: result[18 + j] == variant_field(r, ImportResult::Imported, output).turns[j])
+  ensures (is_variant(r, ImportResult::Imported) && result[0] == 0) ==> (forall k in 0..result[3]: result[18 + result[2] + k] == variant_field(r, ImportResult::Imported, output).text[k])
+  ensures is_variant(r, ImportResult::Failed) ==> result[0] != 0
+{
+  match r {
+    ImportResult::Failed(code, position) => {
+      if code == 0 { return pair(2, position); }
+      return pair(code, position);
+    }
+    ImportResult::Imported(o) => {
+      if !check_output(o.meta, o.turns, o.text) { return pair(2, 0); }
+      return widen(o.meta, o.turns, o.text);
+    }
+  }
+}
+
+// Copy src[lo..hi] into dst at `at`; everything else in dst is unchanged.
+pub fn copy_span(inout dst: [u8], at: i64, src: [u8], lo: i64, hi: i64) -> ()
+  requires 0 <= lo && lo <= hi && hi <= len(src)
+  requires 0 <= at && at <= len(dst) && hi - lo <= len(dst) - at
+  ensures len(dst) == len(old(dst))
+  ensures forall k in 0..hi - lo: dst[at + k] == src[lo + k]
+  ensures forall k in 0..len(dst): ((k < at || k >= at + (hi - lo)) ==> dst[k] == old(dst)[k])
+{
+  let n: i64 = hi - lo;
+  let mut j: i64 = 0;
+  while j < n
+    invariant 0 <= j && j <= n && n == hi - lo && 0 <= lo && hi <= len(src) && 0 <= at && at <= len(dst) && n <= len(dst) - at && len(dst) == len(old(dst))
+    invariant forall k in 0..j: dst[at + k] == src[lo + k]
+    invariant forall k in 0..len(dst): ((k < at || k >= at + j) ==> dst[k] == old(dst)[k])
+    decreases n - j
+  { dst[at + j] = src[lo + j]; j = j + 1; }
+}

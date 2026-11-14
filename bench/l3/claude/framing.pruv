@@ -1,0 +1,80 @@
+// L3-1 A0: byte framing of edge and window inputs (TS readEdgeLines, openLineWindow, headText).
+// Frames are ranges into the caller's buffer; no stream, file or parser is involved.
+pub enum Frame { Entry(start: i64, end: i64, next: i64), Dropped(start: i64, prefix_end: i64, next: i64), Done }
+
+// The first range of a cut input is discarded through its first LF, even if the input starts on a line boundary.
+pub fn skip_first(data: [u8], cut: bool) -> i64
+  ensures 0 <= result && result <= len(data)
+  ensures !cut ==> result == 0
+{
+  if !cut { return 0; }
+  let mut i: i64 = 0;
+  while i < len(data)
+    invariant 0 <= i && i <= len(data)
+    decreases len(data) - i
+  {
+    if data[i] == 10 { return i + 1; }
+    i = i + 1;
+  }
+  return len(data);
+}
+
+// Edge lines never drop: NeedMore and Done both end the iteration.
+pub fn edge_next(data: [u8], offset: i64, is_final: bool) -> Frame
+  requires 0 <= offset && offset <= len(data)
+  ensures is_variant(result, Frame::Entry) ==> (offset <= variant_field(result, Frame::Entry, start) && variant_field(result, Frame::Entry, start) <= variant_field(result, Frame::Entry, end) && variant_field(result, Frame::Entry, end) <= variant_field(result, Frame::Entry, next) && variant_field(result, Frame::Entry, next) <= len(data) && offset < variant_field(result, Frame::Entry, next))
+  ensures is_variant(result, Frame::Entry) || is_variant(result, Frame::Done)
+{
+  let step: crate::lines::JsonlStep = crate::lines::jsonl_next(data, offset, is_final);
+  match step {
+    crate::lines::JsonlStep::Line(start, end, next) => { return Frame::Entry(start, end, next); }
+    crate::lines::JsonlStep::NeedMore => { return Frame::Done; }
+    crate::lines::JsonlStep::Done => { return Frame::Done; }
+  }
+}
+
+// The first at most 8192 bytes of an oversized line [start, line_end).
+pub fn drop_prefix(start: i64, line_end: i64) -> i64
+  requires 0 <= start && start <= line_end
+  ensures start <= result && result <= line_end
+  ensures result - start <= 8192
+  ensures line_end > start ==> result > start
+  ensures line_end - start >= 8192 ==> result == start + 8192
+  ensures line_end - start < 8192 ==> result == line_end
+{
+  let room: i64 = line_end - start;
+  let head: i64 = crate::boundary::limit_drop_head();
+  if room > head { return start + head; }
+  return line_end;
+}
+
+// One window frame from offset. The raw length before LF counts a CR. An oversized line gives exactly one
+// Dropped frame at its position; a short unterminated tail is ignored (Done).
+pub fn window_next(data: [u8], offset: i64) -> Frame
+  requires 0 <= offset && offset <= len(data)
+  ensures is_variant(result, Frame::Entry) ==> (variant_field(result, Frame::Entry, start) == offset && variant_field(result, Frame::Entry, start) <= variant_field(result, Frame::Entry, end) && variant_field(result, Frame::Entry, end) <= variant_field(result, Frame::Entry, next) && variant_field(result, Frame::Entry, next) <= len(data) && variant_field(result, Frame::Entry, next) > offset)
+  ensures is_variant(result, Frame::Entry) ==> (0 < variant_field(result, Frame::Entry, next) && variant_field(result, Frame::Entry, next) <= len(data) && data[variant_field(result, Frame::Entry, next) - 1] == 10 && variant_field(result, Frame::Entry, next) - 1 - variant_field(result, Frame::Entry, start) <= 1048576)
+  ensures is_variant(result, Frame::Dropped) ==> (variant_field(result, Frame::Dropped, start) == offset && variant_field(result, Frame::Dropped, start) < variant_field(result, Frame::Dropped, prefix_end) && variant_field(result, Frame::Dropped, prefix_end) <= variant_field(result, Frame::Dropped, next) && variant_field(result, Frame::Dropped, prefix_end) - variant_field(result, Frame::Dropped, start) <= 8192 && variant_field(result, Frame::Dropped, next) > offset && variant_field(result, Frame::Dropped, next) <= len(data))
+  ensures is_variant(result, Frame::Done) ==> len(data) - offset <= 1048576
+{
+  let limit: i64 = crate::boundary::limit_line_bytes();
+  let mut i: i64 = offset;
+  while i < len(data)
+    invariant offset <= i && i <= len(data)
+    decreases len(data) - i
+  {
+    if data[i] == 10 {
+      if i - offset > limit {
+        return Frame::Dropped(offset, drop_prefix(offset, i), i + 1);
+      }
+      let mut end: i64 = i;
+      if i > offset { if data[i - 1] == 13 { end = i - 1; } }
+      return Frame::Entry(offset, end, i + 1);
+    }
+    i = i + 1;
+  }
+  if len(data) - offset > limit {
+    return Frame::Dropped(offset, drop_prefix(offset, len(data)), len(data));
+  }
+  return Frame::Done;
+}
