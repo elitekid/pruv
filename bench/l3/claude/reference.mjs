@@ -3,7 +3,7 @@
 // readEdgeLines / openLineWindow / TurnCollector / isoOf / oneLine / clipBytes, plan.ts) on the fixtures written by
 // test_a4.py, compared with the Python oracle's packet projected to the same shape.
 //
-//   node reference.mjs [--typescript DIR] [--src DIR] [--fixtures FILE] [--out FILE] [--only SUBSTRING] [--verbose]
+//   node reference.mjs [--typescript DIR] [--src DIR] [--fixtures FILE] [--out FILE] [--only SUBSTRING] [--verbose] [--time]
 //
 // Defaults: --src <repo>/.lair-src-l3-1, --fixtures work/a4/fixtures.json (run test_a4.py first).
 //
@@ -37,6 +37,7 @@ const FIXTURES = path.resolve(opt('--fixtures', path.join(HERE, 'work', 'a4', 'f
 const OUT = opt('--out', undefined);
 const ONLY = opt('--only', undefined);
 const VERBOSE = args.includes('--verbose');
+const TIME = args.includes('--time');
 const TS_DIR = opt('--typescript', undefined);
 const EDGE = 65536;
 const WINDOW = 8 * 1024 * 1024;
@@ -231,19 +232,24 @@ function diffPaths(a, b, at = '', out = []) {
 }
 
 // ---------------- main ----------------
-const cases = JSON.parse(fs.readFileSync(FIXTURES, 'utf8')).filter(fx => !ONLY || fx.name.includes(ONLY));
+// FIXTURES may list several files separated by commas (a corpus too large for one JS string is written in shards);
+// they are loaded one at a time so only one shard is in memory.
+const files = FIXTURES.split(',');
 const mods = await buildReference();
 const meta = {
   node: process.versions.node, electron: process.versions.electron ?? null, v8: process.versions.v8, platform: process.platform,
-  sources: mods.hashes, fixtures: FIXTURES, count: cases.length,
+  sources: mods.hashes, fixtures: FIXTURES, count: 0,
 };
-console.log(`reference: node ${meta.node}${meta.electron ? ` electron ${meta.electron}` : ''}, ${cases.length} fixtures`);
+console.log(`reference: node ${meta.node}${meta.electron ? ` electron ${meta.electron}` : ''}, ${files.length} fixture file(s)`);
 console.log(`sources: ${Object.entries(meta.sources).map(([f, h]) => `${f} ${h.slice(0, 12)}`).join(', ')}`);
 
 const results = [];
 let diffs = 0;
 let errors = 0;
 let skipped = 0;
+for (const fxFile of files) {
+const cases = JSON.parse(fs.readFileSync(fxFile, 'utf8')).filter(fx => !ONLY || fx.name.includes(ONLY));
+meta.count += cases.length;
 for (const fx of cases) {
   const data = Buffer.from(fx.data, 'base64');
   const expectedRaw = fx.expected;
@@ -251,7 +257,16 @@ for (const fx of cases) {
   const file = virtualFile(fx, data);
   if (!file) { results.push({ name: fx.name, status: 'skipped', reason: 'flagged fixture does not have the exact edge/window size' }); skipped++; continue; }
   let ts;
+  let timing;
   try {
+    if (TIME) {  // 1 warm-up + 5 timed calls of the TS function (projection and comparison excluded)
+      await runTs(mods, fx, file);
+      const ms = [];
+      for (let i = 0; i < 5; i++) { const t0 = performance.now(); await runTs(mods, fx, file); ms.push(performance.now() - t0); }
+      ms.sort((a, b) => a - b);
+      timing = { median_ms: ms[2], min_ms: ms[0], max_ms: ms[4] };
+      console.log(`time     ${fx.name}: median ${ms[2].toFixed(3)} ms`);
+    }
     ts = project(fx.op, await runTs(mods, fx, file));
   } catch (error) {
     errors++;
@@ -260,16 +275,17 @@ for (const fx of cases) {
     continue;
   }
   const want = decodePacket(fx.op, expectedRaw);
-  if (same(ts, want)) { results.push({ name: fx.name, status: 'match' }); if (VERBOSE) console.log(`match    ${fx.name}`); continue; }
+  if (same(ts, want)) { results.push({ name: fx.name, status: 'match', ...(timing && { timing }) }); if (VERBOSE) console.log(`match    ${fx.name}`); continue; }
   diffs++;
   const where = diffPaths(ts, want);
-  results.push({ name: fx.name, status: 'diff', where });
+  results.push({ name: fx.name, status: 'diff', where, ...(timing && { timing }) });
   console.log(`DIFF     ${fx.name}`);
   for (const w of where) console.log(`           ${w}`);
   if (VERBOSE) { console.log('           ts    ', JSON.stringify(show(ts)).slice(0, 600)); console.log('           oracle', JSON.stringify(show(want)).slice(0, 600)); }
 }
+}
 const matched = results.filter(r => r.status === 'match').length;
-console.log(`summary: ${matched} match, ${diffs} differ, ${errors} TS errors, ${skipped} skipped, of ${cases.length}`);
+console.log(`summary: ${matched} match, ${diffs} differ, ${errors} TS errors, ${skipped} skipped, of ${meta.count}`);
 if (OUT) fs.writeFileSync(OUT, JSON.stringify({ meta, results }, null, 1));
 fs.rmSync(mods.dir, { recursive: true, force: true });
 process.exit(diffs || errors ? 1 : 0);
