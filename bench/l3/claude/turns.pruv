@@ -3,8 +3,10 @@
 //   st  [4]    st[0] begun (ordinal counter), st[1] current present, st[2] lost_before, st[3] slot of the newest draft
 //   sl  [1600] 200 slots x 8: +0 prompt_len +1 reply_len +2 reply budget (saturating counter) +3 tools +4 clipped
 //              +5 created present +6 completed present +7 draft ordinal (-1 = never written)
-//   buf [13116800] prompt of slot s at 32768*s, reply at 6553600+32768*s, created stamp at 13107200+48*s,
-//              completed stamp 24 bytes after it.
+//   buf [65584 per slot in use] slot s at 65584*s: prompt +0, reply +32768, created stamp +65536, completed
+//              stamp +65560. The owner grows buf (grow) so that slot begun % 200 fits before every begin; begin
+//              requires that fit and answer requires the current slot to fit, so a small window zeroes only the
+//              slots it uses instead of all 200. new_buffer starts with 16 slots (1 MiB).
 // Draft k (0-based begin ordinal) lives in slot k % 200, so the ring always holds the newest min(begun,200)
 // drafts. Timestamps are `str` of length 0 (absent) or 24.
 //
@@ -41,9 +43,25 @@ pub fn new_slots() -> [i64] ! alloc
 }
 
 pub fn new_buffer() -> [u8] ! alloc
-  ensures len(result) == 13116800
+  ensures len(result) == 1049344
 {
-  return alloc(13116800, 0);
+  return alloc(1049344, 0);
+}
+
+// A copy of buf at least doubled (capped at 200 slots) and big enough for slot begun % 200; the old bytes are kept.
+pub fn grow(buf: [u8], begun: i64) -> [u8] ! alloc
+  requires 0 <= begun && len(buf) <= 13116800
+  ensures len(buf) <= len(result) && len(result) <= 13116800
+  ensures 65584 * (begun % 200) + 65584 <= len(result)
+  ensures forall k in 0..len(buf): result[k] == buf[k]
+{
+  let need: i64 = 65584 * (begun % 200) + 65584;
+  let mut n: i64 = 2 * len(buf);
+  if n < need { n = need; }
+  if n > 13116800 { n = 13116800; }
+  let mut nb: [u8] = alloc(n, 0);
+  crate::boundary::copy_span(inout nb, 0, buf, 0, len(buf));
+  return nb;
 }
 
 // dst[at..at+n) = src[0..n); everything else unchanged.
@@ -92,13 +110,13 @@ fn write_piece(inout dst: [u8], at: i64, sep: i64, text: str, n: i64) -> ()
 // whole-scalar prefix), clipped set when the original exceeded the cap or lost_before was set, lost_before
 // cleared, reply/budget/tools/completedAt reset, optional createdAt stored.
 pub fn begin(inout st: [i64], inout sl: [i64], inout buf: [u8], prompt: str, created: str) -> () ! alloc
-  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  requires len(st) == 4 && len(sl) == 1600 && 65584 * (st[0] % 200) + 65584 <= len(buf)
   requires 0 <= st[0] && st[0] < 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
   requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
   requires len(prompt) <= 100000000
   requires len(created) == 0 || len(created) == 24
-  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  ensures len(st) == 4 && len(sl) == 1600 && 65584 * st[3] + 65584 <= len(buf)
   ensures st[0] == old(st)[0] + 1 && st[1] == 1 && st[2] == 0 && st[3] == old(st)[0] % 200
   ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   ensures forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
@@ -108,22 +126,22 @@ pub fn begin(inout st: [i64], inout sl: [i64], inout buf: [u8], prompt: str, cre
   ensures len(prompt) <= 32768 ==> sl[8 * st[3]] == len(prompt)
   ensures is_char_boundary(prompt, sl[8 * st[3]])
   ensures sl[8 * st[3]] == len(prompt) || (forall t in sl[8 * st[3]] + 1..32769: !is_char_boundary(prompt, t))
-  ensures forall k in 0..sl[8 * st[3]]: buf[32768 * st[3] + k] == prompt[k]
+  ensures forall k in 0..sl[8 * st[3]]: buf[65584 * st[3] + k] == prompt[k]
   ensures (len(prompt) > 32768 || old(st)[2] == 1) ==> sl[8 * st[3] + 4] == 1
   ensures (len(prompt) <= 32768 && old(st)[2] == 0) ==> sl[8 * st[3] + 4] == 0
-  ensures len(created) == 24 ==> (sl[8 * st[3] + 5] == 1 && forall k in 0..24: buf[13107200 + 48 * st[3] + k] == created[k])
+  ensures len(created) == 24 ==> (sl[8 * st[3] + 5] == 1 && forall k in 0..24: buf[65584 * st[3] + 65536 + k] == created[k])
   ensures len(created) != 24 ==> sl[8 * st[3] + 5] == 0
   ensures forall k in 0..1600: (k < 8 * st[3] || k >= 8 * st[3] + 8) ==> sl[k] == old(sl)[k]
-  ensures forall k in 0..len(buf): ((k < 32768 * st[3] || k >= 32768 * st[3] + sl[8 * st[3]]) && (k < 13107200 + 48 * st[3] || k >= 13107200 + 48 * st[3] + 24 * sl[8 * st[3] + 5])) ==> buf[k] == old(buf)[k]
+  ensures forall k in 0..len(buf): ((k < 65584 * st[3] || k >= 65584 * st[3] + sl[8 * st[3]]) && (k < 65584 * st[3] + 65536 || k >= 65584 * st[3] + 65536 + 24 * sl[8 * st[3] + 5])) ==> buf[k] == old(buf)[k]
 {
   let k: i64 = st[0];
   let w: i64 = k % 200;
   let cp: str = crate::text::clip_bytes(prompt, 32768);
   let n: i64 = len(cp);
-  put_str(inout buf, 32768 * w, cp, n);
+  put_str(inout buf, 65584 * w, cp, n);
   let mut has: i64 = 0;
   if len(created) == 24 {
-    put_str(inout buf, 13107200 + 48 * w, created, 24);
+    put_str(inout buf, 65584 * w + 65536, created, 24);
     has = 1;
   }
   let mut cl: i64 = 0;
@@ -178,13 +196,13 @@ pub fn tool(inout st: [i64], inout sl: [i64]) -> ()
 // at 32768 and clipped is set. The counter is separate from the actual reply length (a multibyte cut leaves
 // unused bytes that later calls must not fill).
 pub fn answer(inout st: [i64], inout sl: [i64], inout buf: [u8], text: str, at: str) -> () ! alloc
-  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  requires len(st) == 4 && len(sl) == 1600 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf))
   requires 0 <= st[0] && st[0] <= 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
   requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
   requires len(text) <= 100000000
   requires len(at) == 0 || len(at) == 24
-  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  ensures len(st) == 4 && len(sl) == 1600
   ensures st[0] == old(st)[0] && st[1] == old(st)[1] && st[2] == old(st)[2] && st[3] == old(st)[3]
   ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   ensures forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
@@ -192,26 +210,26 @@ pub fn answer(inout st: [i64], inout sl: [i64], inout buf: [u8], text: str, at: 
   ensures st[1] == 0 ==> (forall k in 0..len(buf): buf[k] == old(buf)[k])
   ensures st[1] == 1 ==> (forall k in 0..1600: (k < 8 * st[3] || k >= 8 * st[3] + 8) ==> sl[k] == old(sl)[k])
   ensures st[1] == 1 ==> (sl[8 * st[3]] == old(sl)[8 * st[3]] && sl[8 * st[3] + 3] == old(sl)[8 * st[3] + 3] && sl[8 * st[3] + 5] == old(sl)[8 * st[3] + 5] && sl[8 * st[3] + 7] == old(sl)[8 * st[3] + 7])
-  ensures (st[1] == 1 && len(at) == 24) ==> (sl[8 * st[3] + 6] == 1 && forall k in 0..24: buf[13107200 + 48 * st[3] + 24 + k] == at[k])
+  ensures (st[1] == 1 && len(at) == 24) ==> (sl[8 * st[3] + 6] == 1 && forall k in 0..24: buf[65584 * st[3] + 65560 + k] == at[k])
   ensures (st[1] == 1 && len(at) != 24) ==> sl[8 * st[3] + 6] == old(sl)[8 * st[3] + 6]
   ensures (st[1] == 1 && (len(text) == 0 || old(sl)[8 * st[3] + 2] >= 32768)) ==> (sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4])
-  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] == 0 && len(text) <= 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 1] == len(text) && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] + len(text) && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4] && (forall k in 0..len(text): buf[6553600 + 32768 * st[3] + k] == text[k]))
-  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 <= 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] + 2 + len(text) && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] + 2 + len(text) && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4] && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1]] == 10 && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 1] == 10 && (forall k in 0..len(text): buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 2 + k] == text[k]))
-  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] == 0 && len(text) > 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] <= 32768 - old(sl)[8 * st[3] + 2] && sl[8 * st[3] + 1] <= len(text) && is_char_boundary(text, sl[8 * st[3] + 1]) && (forall t in sl[8 * st[3] + 1] + 1..32769 - old(sl)[8 * st[3] + 2]: !is_char_boundary(text, t)) && (forall k in 0..sl[8 * st[3] + 1]: buf[6553600 + 32768 * st[3] + k] == text[k]))
-  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 > 32768 - old(sl)[8 * st[3] + 2] && 32768 - old(sl)[8 * st[3] + 2] == 1) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] + 1 && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1]] == 10)
-  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 > 32768 - old(sl)[8 * st[3] + 2] && 32768 - old(sl)[8 * st[3] + 2] >= 2) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] >= old(sl)[8 * st[3] + 1] + 2 && sl[8 * st[3] + 1] <= old(sl)[8 * st[3] + 1] + (32768 - old(sl)[8 * st[3] + 2]) && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1]] == 10 && buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 1] == 10 && is_char_boundary(text, sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 2) && (forall k in 0..sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 2: buf[6553600 + 32768 * st[3] + old(sl)[8 * st[3] + 1] + 2 + k] == text[k]) && (forall t in sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 1..32767 - old(sl)[8 * st[3] + 2]: !is_char_boundary(text, t)))
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] == 0 && len(text) <= 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 1] == len(text) && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] + len(text) && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4] && (forall k in 0..len(text): buf[65584 * st[3] + 32768 + k] == text[k]))
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 <= 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] + 2 + len(text) && sl[8 * st[3] + 2] == old(sl)[8 * st[3] + 2] + 2 + len(text) && sl[8 * st[3] + 4] == old(sl)[8 * st[3] + 4] && buf[65584 * st[3] + 32768 + old(sl)[8 * st[3] + 1]] == 10 && buf[65584 * st[3] + 32768 + old(sl)[8 * st[3] + 1] + 1] == 10 && (forall k in 0..len(text): buf[65584 * st[3] + 32768 + old(sl)[8 * st[3] + 1] + 2 + k] == text[k]))
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] == 0 && len(text) > 32768 - old(sl)[8 * st[3] + 2]) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] <= 32768 - old(sl)[8 * st[3] + 2] && sl[8 * st[3] + 1] <= len(text) && is_char_boundary(text, sl[8 * st[3] + 1]) && (forall t in sl[8 * st[3] + 1] + 1..32769 - old(sl)[8 * st[3] + 2]: !is_char_boundary(text, t)) && (forall k in 0..sl[8 * st[3] + 1]: buf[65584 * st[3] + 32768 + k] == text[k]))
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 > 32768 - old(sl)[8 * st[3] + 2] && 32768 - old(sl)[8 * st[3] + 2] == 1) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] == old(sl)[8 * st[3] + 1] + 1 && buf[65584 * st[3] + 32768 + old(sl)[8 * st[3] + 1]] == 10)
+  ensures (st[1] == 1 && len(text) > 0 && old(sl)[8 * st[3] + 2] < 32768 && old(sl)[8 * st[3] + 1] > 0 && len(text) + 2 > 32768 - old(sl)[8 * st[3] + 2] && 32768 - old(sl)[8 * st[3] + 2] >= 2) ==> (sl[8 * st[3] + 2] == 32768 && sl[8 * st[3] + 4] == 1 && sl[8 * st[3] + 1] >= old(sl)[8 * st[3] + 1] + 2 && sl[8 * st[3] + 1] <= old(sl)[8 * st[3] + 1] + (32768 - old(sl)[8 * st[3] + 2]) && buf[65584 * st[3] + 32768 + old(sl)[8 * st[3] + 1]] == 10 && buf[65584 * st[3] + 32768 + old(sl)[8 * st[3] + 1] + 1] == 10 && is_char_boundary(text, sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 2) && (forall k in 0..sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 2: buf[65584 * st[3] + 32768 + old(sl)[8 * st[3] + 1] + 2 + k] == text[k]) && (forall t in sl[8 * st[3] + 1] - old(sl)[8 * st[3] + 1] - 1..32767 - old(sl)[8 * st[3] + 2]: !is_char_boundary(text, t)))
 {
   if st[1] == 0 { return; }
   let c: i64 = st[3];
   if len(at) == 24 {
-    put_str(inout buf, 13107200 + 48 * c + 24, at, 24);
+    put_str(inout buf, 65584 * c + 65560, at, 24);
     sl[8 * c + 6] = 1;
   }
   if len(text) == 0 { return; }
   let used: i64 = sl[8 * c + 2];
   if used >= 32768 { return; }
   let rl: i64 = sl[8 * c + 1];
-  let rb: i64 = 6553600 + 32768 * c + rl;
+  let rb: i64 = 65584 * c + 32768 + rl;
   let room: i64 = 32768 - used;
   let mut sep: i64 = 0;
   if rl > 0 { sep = 2; }
@@ -290,7 +308,7 @@ fn plan(st: [i64], sl: [i64]) -> [i64] ! alloc
 // starting at byte offset `base` of the caller's text; refs of the 10-slot records are absolute
 // (base + local) and absent stamps are (-1,0). trimmed = kept < begun (drafts evicted from the ring count).
 pub fn finish(st: [i64], sl: [i64], buf: [u8], base: i64) -> Collected ! alloc
-  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  requires len(st) == 4 && len(sl) == 1600
   requires 0 <= st[0] && st[0] <= 1000000000000 && 0 <= base && base <= 3500000
   requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
@@ -314,7 +332,7 @@ pub fn finish(st: [i64], sl: [i64], buf: [u8], base: i64) -> Collected ! alloc
   while j < kept
     invariant (tr == 0 && kept == b) || (tr == 1 && kept < b)
     invariant 0 <= j && j <= kept && 0 <= kept && kept <= 200 && kept <= b && 0 <= b && b <= 1000000000000
-    invariant len(turns) == 10 * kept && len(text) == tl && len(p) == 203 && len(sl) == 1600 && len(buf) == 13116800
+    invariant len(turns) == 10 * kept && len(text) == tl && len(p) == 203 && len(sl) == 1600
     invariant tl == p[2 + kept] && 0 <= tl && tl <= 2106752
     invariant forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
     decreases kept - j
@@ -324,19 +342,21 @@ pub fn finish(st: [i64], sl: [i64], buf: [u8], base: i64) -> Collected ! alloc
     let rlen: i64 = sl[8 * w + 1];
     let cp: i64 = sl[8 * w + 5];
     let dp: i64 = sl[8 * w + 6];
-    // plan lays draft j out at [tl - p[3+j], tl - p[2+j]); checked here instead of proved through plan.
+    // plan lays draft j out at [tl - p[3+j], tl - p[2+j]) and the owner grew buf over every written slot;
+    // both checked here instead of proved through plan.
     let e: i64 = p[3 + j];
-    if e < 0 || e > tl || plen + rlen + 24 * cp + 24 * dp > e {
+    if e < 0 || e > tl || plen + rlen + 24 * cp + 24 * dp > e || 65584 * w + 65584 > len(buf) {
       return Collected { turns: copy(turns), text: copy(text), kept: kept, trimmed: tr, total: p[1] };
     }
     let lo: i64 = tl - e;
-    crate::boundary::copy_span(inout text, lo, buf, 32768 * w, 32768 * w + plen);
-    crate::boundary::copy_span(inout text, lo + plen, buf, 6553600 + 32768 * w, 6553600 + 32768 * w + rlen);
+    let sb: i64 = 65584 * w;
+    crate::boundary::copy_span(inout text, lo, buf, sb, sb + plen);
+    crate::boundary::copy_span(inout text, lo + plen, buf, sb + 32768, sb + 32768 + rlen);
     if cp == 1 {
-      crate::boundary::copy_span(inout text, lo + plen + rlen, buf, 13107200 + 48 * w, 13107200 + 48 * w + 24);
+      crate::boundary::copy_span(inout text, lo + plen + rlen, buf, sb + 65536, sb + 65560);
     }
     if dp == 1 {
-      crate::boundary::copy_span(inout text, lo + plen + rlen + 24 * cp, buf, 13107200 + 48 * w + 24, 13107200 + 48 * w + 48);
+      crate::boundary::copy_span(inout text, lo + plen + rlen + 24 * cp, buf, sb + 65560, sb + 65584);
     }
     let t: i64 = kept - 1 - j;
     turns[10 * t] = base + lo;

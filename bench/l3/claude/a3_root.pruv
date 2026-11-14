@@ -73,12 +73,12 @@ fn read_text(prog: [i64], pos: i64) -> Txt ! alloc
 // One op at pos; the new position, or -1 for a malformed op (state untouched on every -1).
 fn step(prog: [i64], pos: i64, inout st: [i64], inout sl: [i64], inout buf: [u8], inout snaps: [i64]) -> i64 ! alloc
   requires 0 <= pos && pos < len(prog) && len(prog) <= 100000000
-  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && len(snaps) == 769
+  requires len(st) == 4 && len(sl) == 1600 && 65584 * (st[0] % 200) + 65584 <= len(buf) && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf)) && len(snaps) == 769
   requires 0 <= st[0] && st[0] <= pos && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
   requires 0 <= snaps[0] && snaps[0] <= 64
   requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
-  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && len(snaps) == 769
+  ensures len(st) == 4 && len(sl) == 1600 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf)) && len(snaps) == 769
   ensures result == -1 || (pos < result && result <= len(prog))
   ensures 0 <= st[0] && (result == -1 || st[0] <= result) && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
   ensures 0 <= snaps[0] && snaps[0] <= 64
@@ -146,13 +146,14 @@ pub fn run(prog: [i64]) -> [i64] ! alloc
   let mut pos: i64 = 1;
   while pos < len(prog)
     invariant 1 <= pos && pos <= len(prog) && len(prog) <= 100000000 && 0 <= base && base <= 3500000
-    invariant len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && len(snaps) == 769
+    invariant len(st) == 4 && len(sl) == 1600 && len(buf) <= 13116800 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf)) && len(snaps) == 769
     invariant 0 <= st[0] && st[0] <= pos && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
     invariant 0 <= snaps[0] && snaps[0] <= 64
     invariant forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
     invariant forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
     decreases len(prog) - pos
   {
+    if 65584 * (st[0] % 200) + 65584 > len(buf) { buf = crate::turns::grow(buf, st[0]); }
     let nx: i64 = step(prog, pos, inout st, inout sl, inout buf, inout snaps);
     if nx < 0 { return pair(1, pos); }
     pos = nx;

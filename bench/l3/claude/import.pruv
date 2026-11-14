@@ -314,7 +314,7 @@ pub fn tail_info(data: [u8], cut_before: bool) -> crate::boundary::ImportResult 
 
 // ---- window (A4) ----
 //
-// Collector state travels through three caller-owned arrays (see turns.pruv): st [4], sl [1600], buf [13116800].
+// Collector state travels through three caller-owned arrays (see turns.pruv): st [4], sl [1600], buf [65584 per slot in use, grown by read_window before each entry].
 // The invariant repeated in every contract below (`s` ranges over the 200 slots):
 //   ranges  lengths, 0 <= st[0] <= 1e12, 0 <= st[3] < 200, st[1] and st[2] are 0/1
 //   I3(s)   0 <= prompt <= 32768, 0 <= reply <= budget <= 32768, 0 <= tools <= 1e15, flags 0/1
@@ -348,10 +348,10 @@ fn stamp_of(doc: crate::json::JsonDocument) -> Stamp ! alloc
 fn answer_blocks(doc: crate::json::JsonDocument, c: i64, at: str, inout st: [i64], inout sl: [i64], inout buf: [u8]) -> i64 ! alloc
   requires 0 <= c && c < len(doc.tape) / 6
   requires len(at) == 0 || len(at) == 24
-  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && 0 <= st[0] && st[0] <= 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+  requires len(st) == 4 && len(sl) == 1600 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf)) && 0 <= st[0] && st[0] <= 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
   requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
-  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  ensures len(st) == 4 && len(sl) == 1600 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf))
   ensures st[0] == old(st)[0] && st[1] == old(st)[1] && st[2] == old(st)[2] && st[3] == old(st)[3]
   ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   ensures forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
@@ -364,7 +364,7 @@ fn answer_blocks(doc: crate::json::JsonDocument, c: i64, at: str, inout st: [i64
   while j < stop
     invariant 0 <= c && c < j && j <= stop && stop <= len(doc.tape) / 6 && len(doc.tape) <= 6291456
     invariant len(at) == 0 || len(at) == 24
-    invariant len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && 0 <= st[0] && st[0] <= 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+    invariant len(st) == 4 && len(sl) == 1600 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf)) && 0 <= st[0] && st[0] <= 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
     invariant st[0] == old(st)[0] && st[1] == old(st)[1] && st[2] == old(st)[2] && st[3] == old(st)[3]
     invariant forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
     invariant forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
@@ -411,10 +411,10 @@ fn answer_blocks(doc: crate::json::JsonDocument, c: i64, at: str, inout st: [i64
 //      string content calls answer once (also for ""), array content goes block by block (answer_blocks).
 // Collector state: at most one begin per call, so st[0] grows by at most 1.
 pub fn consume_entry(doc: crate::json::JsonDocument, inout st: [i64], inout sl: [i64], inout buf: [u8]) -> Effect ! alloc
-  requires len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && 0 <= st[0] && st[0] < 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+  requires len(st) == 4 && len(sl) == 1600 && 65584 * (st[0] % 200) + 65584 <= len(buf) && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf)) && 0 <= st[0] && st[0] < 1000000000000 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
   requires forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   requires forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
-  ensures len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800
+  ensures len(st) == 4 && len(sl) == 1600 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf))
   ensures old(st)[0] <= st[0] && st[0] <= old(st)[0] + 1 && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
   ensures forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
   ensures forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
@@ -533,7 +533,7 @@ pub fn read_window(data: [u8], cut_before: bool) -> crate::boundary::ImportResul
   while offset < len(data)
     invariant 0 <= offset && offset <= len(data) && len(data) <= 8388608
     invariant 0 <= best_rank && best_rank <= 3
-    invariant len(st) == 4 && len(sl) == 1600 && len(buf) == 13116800 && 0 <= st[0] && st[0] <= offset && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
+    invariant len(st) == 4 && len(sl) == 1600 && len(buf) <= 13116800 && (st[1] == 0 || 65584 * st[3] + 65584 <= len(buf)) && 0 <= st[0] && st[0] <= offset && 0 <= st[3] && st[3] < 200 && (st[1] == 0 || st[1] == 1) && (st[2] == 0 || st[2] == 1)
     invariant forall s in 0..200: (0 <= sl[8 * s] && sl[8 * s] <= 32768 && 0 <= sl[8 * s + 1] && sl[8 * s + 1] <= sl[8 * s + 2] && sl[8 * s + 2] <= 32768 && 0 <= sl[8 * s + 3] && sl[8 * s + 3] <= 1000000000000000 && (sl[8 * s + 4] == 0 || sl[8 * s + 4] == 1) && (sl[8 * s + 5] == 0 || sl[8 * s + 5] == 1) && (sl[8 * s + 6] == 0 || sl[8 * s + 6] == 1))
     invariant forall s in 0..200: ((st[0] <= s ==> sl[8 * s + 7] == -1) && (st[0] > s ==> (0 <= sl[8 * s + 7] && sl[8 * s + 7] < st[0] && st[0] - 200 <= sl[8 * s + 7] && sl[8 * s + 7] % 200 == s)))
     decreases len(data) - offset
@@ -545,6 +545,7 @@ pub fn read_window(data: [u8], cut_before: bool) -> crate::boundary::ImportResul
         let line: crate::entry::Line = crate::entry::parse_line(data, start, end);
         match line {
           crate::entry::Line::Object(d) => {
+            if 65584 * (st[0] % 200) + 65584 > len(buf) { buf = crate::turns::grow(buf, st[0]); }
             let eff: Effect = consume_entry(d, inout st, inout sl, inout buf);
             match eff {
               Effect::Done(rank, cand, mid) => {
