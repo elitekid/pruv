@@ -19,7 +19,7 @@ feature is built and the program ported later. Nothing is dropped for being hard
 | fannkuch-redux | Benchmarks Game | - | P1 |
 | binary-trees | Benchmarks Game | - | P1 |
 | reverse-complement | Benchmarks Game | - | P1 |
-| brainfuck | kostya | - | P1 |
+| brainfuck | kostya | - (flat opcode array; the published `Box<[Op]>` tree needs arrays of enum values) | P1 |
 | primes | kostya | - (trie as an arena with an i64 map) | P1 |
 | sudoku | plb2 | - (shifts by 16 written as `* 65536`, `/ 65536`, `% 65536` on non-negative values) | P1 |
 | nqueen | plb2 | bitwise `& \| ^ << >>` on i64 | P2 |
@@ -95,6 +95,8 @@ program's on the dev and timed inputs before any time is recorded.
 ## Layout
 
 `bench/perf/<program>/` holds the Pruv port (`<program>.pruv`), the matched Rust (`matched.rs`), the published Rust
-(`reference.rs`, when it builds standalone) and the input generator if one is needed. `bench/perf/run.py` builds all
+(`reference.rs`, when it builds standalone), the published algorithm behind the same `bench` interface
+(`secondary.rs`, when matched.rs had to change the algorithm; run.py times it and reports it without a verdict) and
+the input generator if one is needed. `bench/perf/run.py` builds all
 variants, checks outputs and runs the timing above; `bench/perf/run.py --dev` uses the dev inputs and 5 rounds for a
 quick check.

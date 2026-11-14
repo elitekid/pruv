@@ -1,0 +1,108 @@
+// Preorder arena: left child follows its parent; slots store right indices.
+fn power(exp: i64) -> i64
+  requires 0 <= exp && exp <= 25
+  ensures 1 <= result && result <= 33554432
+{
+  let mut p: i64 = 1;
+  let mut i: i64 = 0;
+  while i < exp
+    invariant 0 <= i && i <= exp
+    invariant 1 <= p && p <= 33554432
+    decreases exp - i
+  {
+    if p <= 16777216 { p = p * 2; }
+    i = i + 1;
+  }
+  return p;
+}
+
+fn build(inout a: [i64], root: i64, span: i64) -> ()
+  requires 1 <= span && span <= 33554431
+  requires 0 <= root && root + span <= len(a)
+  requires len(a) <= 33554431
+  decreases span
+{
+  if span >= 3 {
+    let half: i64 = (span - 1) / 2;
+    let right: i64 = root + 1 + half;
+    a[root] = right;
+    if half >= 3 {
+      build(inout a, root + 1, half);
+      build(inout a, right, half);
+    }
+  }
+}
+
+fn check(a: [i64], root: i64, span: i64) -> i64
+  requires 1 <= span && span <= 33554431
+  requires 0 <= root && root + span <= len(a)
+  requires len(a) <= 33554431
+  ensures 1 <= result && result <= span
+  decreases span
+{
+  if span >= 3 {
+    let half: i64 = (span - 1) / 2;
+    let right: i64 = a[root];
+    if right == root + 1 + half {
+      return 1 + check(a, root + 1, half) + check(a, right, half);
+    }
+  }
+  return 1;
+}
+
+fn tree(depth: i64) -> [i64] ! alloc
+  requires 0 <= depth && depth <= 22
+  ensures 1 <= len(result) && len(result) <= 33554431
+{
+  let nodes: i64 = power(depth + 1) - 1;
+  let mut count: i64 = 1;
+  if nodes > 0 { count = nodes; }
+  let mut a: [i64] = alloc(count, -1);
+  build(inout a, 0, count);
+  return a;
+}
+
+// Keep the stretch arena's lifetime separate from the long-lived tree.
+fn tree_check(depth: i64) -> i64 ! alloc
+  requires 0 <= depth && depth <= 22
+  ensures 1 <= result && result <= 33554431
+{
+  let a: [i64] = tree(depth);
+  return check(a, 0, len(a));
+}
+
+pub fn bench(data: [u8], n: i64) -> [i64] ! alloc
+  requires len(data) == 0
+  requires 6 <= n && n <= 21
+{
+  let mut out: [i64] = alloc((n - 4) / 2 + 3, 0);
+  out[0] = tree_check(n + 1);
+  let long: [i64] = tree(n);
+  let mut d: i64 = 4;
+  let mut slot: i64 = 1;
+  while d <= n
+    invariant len(out) == (n - 4) / 2 + 3
+    invariant 4 <= d && d <= n + 2
+    invariant 1 <= slot && slot <= (n - 4) / 2 + 2
+    invariant d == 4 + 2 * (slot - 1)
+    decreases n + 2 - d
+  {
+    let iterations: i64 = power(n - d + 4);
+    let mut i: i64 = 0;
+    let mut sum: i64 = 0;
+    while i < iterations
+      invariant 0 <= i && i <= iterations
+      invariant 0 <= sum && sum <= i * 33554431
+      decreases iterations - i
+    {
+      let a: [i64] = tree(d);
+      sum = sum + check(a, 0, len(a));
+      i = i + 1;
+    }
+    out[slot] = sum;
+    slot = slot + 1;
+    d = d + 2;
+  }
+  out[slot] = check(long, 0, len(long));
+  return out;
+}

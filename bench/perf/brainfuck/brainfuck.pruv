@@ -1,0 +1,130 @@
+// One opcode per source command, with paired bracket targets computed once.
+// Tape cells model the reference's signed, wrapping i32, not wrapping bytes.
+fn rem255(x: i64) -> i64
+  requires -2147483902 <= x && x <= 2147483901
+  ensures -254 <= result && result <= 254
+{
+  if x < 0 { return -((-x) % 255); }
+  return x % 255;
+}
+
+fn grow(tape: [i64 | -2147483648..=2147483647]) -> [i64 | -2147483648..=2147483647] ! alloc
+  requires 1 <= len(tape) && len(tape) <= 549755813888
+  ensures len(result) == len(tape) * 2
+{
+  let mut grown: [i64 | -2147483648..=2147483647] = alloc(len(tape) * 2, 0);
+  let mut j: i64 = 0;
+  while j < len(tape)
+    invariant 0 <= j && j <= len(tape)
+    invariant len(grown) == len(tape) * 2
+    decreases len(tape) - j
+  { grown[j] = tape[j]; j = j + 1; }
+  return grown;
+}
+
+pub fn bench(data: [u8], n: i64) -> [i64] ! alloc
+{
+  let size: i64 = len(data);
+  let mut ops: [u8] = alloc(size, 0);
+  let mut jumps: [i64] = alloc(size, 0);
+  let mut stack: [i64] = alloc(size, 0);
+  let mut top: i64 = 0;
+  let mut count: i64 = 0;
+  let mut i: i64 = 0;
+  while i < size
+    invariant 0 <= i && i <= size
+    invariant 0 <= count && count <= i
+    invariant 0 <= top && top <= count
+    invariant len(ops) == size && len(jumps) == size && len(stack) == size
+    invariant forall k in 0..size: 0 <= jumps[k] && jumps[k] <= count && (count == 0 || jumps[k] < count)
+    invariant forall k in 0..top: 0 <= stack[k] && stack[k] < count
+    decreases size - i
+  {
+    let c: i64 = data[i];
+    if c == 43 || c == 45 || c == 60 || c == 62 || c == 46 || c == 91 || c == 93 {
+      let mut code: i64 = 6;
+      if c == 43 { code = 0; } else if c == 45 { code = 1; } else if c == 60 { code = 2; } else if c == 62 { code = 3; } else if c == 46 { code = 4; } else if c == 91 { code = 5; }
+      ops[count] = code;
+      if c == 91 {
+        stack[top] = count;
+        top = top + 1;
+      }
+      if c == 93 {
+        if top == 0 { return alloc(2, 0); }
+        top = top - 1;
+        let start: i64 = stack[top];
+        jumps[start] = count;
+        jumps[count] = start;
+      }
+      count = count + 1;
+    }
+    i = i + 1;
+  }
+  if top != 0 { return alloc(2, 0); }
+  let mut tape: [i64 | -2147483648..=2147483647] = alloc(1, 0);
+  let mut cell: i64 = 0;
+  let mut pos: i64 = 0;
+  let mut pc: i64 = 0;
+  let mut fuel: i64 = 1000000000000;
+  let mut sum1: i64 = 0;
+  let mut sum2: i64 = 0;
+  let mut outlen: i64 = 0;
+  while pc < count && fuel > 0
+    invariant -2147483648 <= cell && cell <= 2147483647
+    invariant 0 <= pc && pc <= count
+    invariant 0 <= pos && pos < len(tape)
+    invariant 1 <= len(tape) && len(tape) <= 1099511627776
+    invariant 0 <= fuel && fuel <= 1000000000000
+    invariant 0 <= outlen
+    invariant -254 <= sum1 && sum1 <= 254
+    invariant -254 <= sum2 && sum2 <= 254
+    decreases fuel * (count + 1) + (count - pc)
+  {
+    let op: i64 = ops[pc];
+    if op == 0 {
+      let v: i64 = cell;
+      if v == 2147483647 { cell = -2147483648; }
+      else { cell = v + 1; }
+    } else if op == 1 {
+      let v: i64 = cell;
+      if v == -2147483648 { cell = 2147483647; }
+      else { cell = v - 1; }
+    } else if op == 2 {
+      if pos == 0 { return alloc(2, 0); }
+      tape[pos] = cell;
+      pos = pos - 1;
+      cell = tape[pos];
+    } else if op == 3 {
+      tape[pos] = cell;
+      if pos + 1 >= len(tape) {
+        if pos == 0 || pos < 549755813888 {
+          tape = grow(tape);
+        } else { return alloc(2, 0); }
+      }
+      pos = pos + 1;
+      cell = tape[pos];
+    } else if op == 4 {
+      sum1 = rem255(sum1 + cell);
+      sum2 = rem255(sum2 + sum1);
+      if outlen < 4611686018427387904 { outlen = outlen + 1; }
+    } else if op == 5 {
+      if cell <= 0 {
+        let target: i64 = jumps[pc];
+        if target <= pc { return alloc(2, 0); }
+        pc = target;
+      }
+    } else if op == 6 {
+      if cell > 0 {
+        let target: i64 = jumps[pc];
+        pc = target;
+        fuel = fuel - 1;
+      }
+    }
+    pc = pc + 1;
+  }
+  let mut out: [i64] = alloc(2, 0);
+  if sum1 < 0 { out[0] = sum1; }
+  else { out[0] = sum2 * 256 + sum1; }
+  out[1] = outlen;
+  return out;
+}

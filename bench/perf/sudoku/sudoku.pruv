@@ -1,0 +1,357 @@
+// Bounded wrap helpers avoid signed remainder correction in generated Rust.
+fn wrap256(x: i64) -> i64
+  requires 0 <= x && x <= 511
+  ensures 0 <= result && result <= 255
+{
+  if x >= 256 { return x-256; }
+  return x;
+}
+
+fn wrap65536(x: i64) -> i64
+  requires 0 <= x && x <= 131070
+  ensures 0 <= result && result <= 65535
+{
+  if x >= 65536 { return x-65536; }
+  return x;
+}
+
+// Flattened exact-cover incidence tables, in reference row/column order.
+// The nonnegative modulo operations express the reference's narrow counters.
+fn forward(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
+          inout sr: [i64 | 0..=65535], inout sc: [i64 | 0..=255],
+          r: i64) -> i64
+  requires len(rows) == 2916 && len(cols) == 2916
+  requires len(sr) == 729 && len(sc) == 324
+  requires 0 <= r && r < 729
+  ensures 0 <= result && result <= 655683
+  ensures result%65536 < 324
+  ensures forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+  ensures forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+{
+  let mut t: i64 = 0;
+  while t < 4
+    invariant 0 <= t && t <= 4
+    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+    decreases 4-t
+  {
+    let c: i64 = cols[r*4+t];
+    sc[c] = wrap256(sc[c]+128);
+    t = t+1;
+  }
+  let mut best: i64 = 10;
+  let mut bc: i64 = 0;
+  t = 0;
+  while t < 4
+    invariant 0 <= t && t <= 4
+    invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
+    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+    decreases 4-t
+  {
+    let c: i64 = cols[r*4+t];
+    let mut j: i64 = 0;
+    while j < 9
+      invariant 0 <= j && j <= 9
+      invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
+      invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+      invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+      decreases 9-j
+    {
+      let rr: i64 = rows[c*9+j];
+      sr[rr] = wrap65536(sr[rr]+1);
+      if sr[rr] == 1 {
+        let mut k: i64 = 0;
+        while k < 4
+          invariant 0 <= k && k <= 4
+          invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
+          invariant forall z in 0..324: 0 <= sc[z] && sc[z] <= 255
+          decreases 4-k
+        {
+          let cc: i64 = cols[rr*4+k];
+          sc[cc] = wrap256(sc[cc]+255);
+          if sc[cc] < best { best = sc[cc]; bc = cc; }
+          k = k+1;
+        }
+      }
+      j = j+1;
+    }
+    t = t+1;
+  }
+  return best*65536+bc;
+}
+
+// Flattened exact-cover incidence tables, in reference row/column order.
+// The nonnegative modulo operations express the reference's narrow counters.
+fn revert(rows: [i64 | 0..=728], cols: [i64 | 0..=323],
+          inout sr: [i64 | 0..=65535], inout sc: [i64 | 0..=255],
+          r: i64) -> i64
+  requires len(rows) == 2916 && len(cols) == 2916
+  requires len(sr) == 729 && len(sc) == 324
+  requires 0 <= r && r < 729
+  ensures 0 <= result && result <= 655683
+  ensures result%65536 < 324
+  ensures forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+  ensures forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+{
+  let mut t: i64 = 0;
+  while t < 4
+    invariant 0 <= t && t <= 4
+    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+    decreases 4-t
+  {
+    let c: i64 = cols[r*4+t];
+    sc[c] = wrap256(sc[c]+128);
+    t = t+1;
+  }
+  let mut best: i64 = 10;
+  let mut bc: i64 = 0;
+  t = 0;
+  while t < 4
+    invariant 0 <= t && t <= 4
+    invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
+    invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+    invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+    decreases 4-t
+  {
+    let c: i64 = cols[r*4+t];
+    let mut j: i64 = 0;
+    while j < 9
+      invariant 0 <= j && j <= 9
+      invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
+      invariant forall k in 0..729: 0 <= sr[k] && sr[k] <= 65535
+      invariant forall k in 0..324: 0 <= sc[k] && sc[k] <= 255
+      decreases 9-j
+    {
+      let rr: i64 = rows[c*9+j];
+      sr[rr] = wrap65536(sr[rr]+65535);
+      if sr[rr] == 0 {
+        let mut k: i64 = 0;
+        while k < 4
+          invariant 0 <= k && k <= 4
+          invariant 0 <= best && best <= 10 && 0 <= bc && bc < 324
+          invariant forall z in 0..324: 0 <= sc[z] && sc[z] <= 255
+          decreases 4-k
+        {
+          let cc: i64 = cols[rr*4+k];
+          sc[cc] = wrap256(sc[cc]+1);
+          
+          k = k+1;
+        }
+      }
+      j = j+1;
+    }
+    t = t+1;
+  }
+  return best*65536+bc;
+}
+
+struct Counts { solutions: i64, checksum: i64 }
+
+fn solve(rows: [i64 | 0..=728], cols: [i64 | 0..=323], data: [u8], offset: i64) -> Counts ! alloc
+  requires len(rows) == 2916 && len(cols) == 2916
+  requires 0 <= offset && offset <= len(data)-81
+  ensures 0 <= result.solutions && result.solutions <= 1000000000
+  ensures 0 <= result.checksum && result.checksum <= 100000000000000
+{
+  let mut sr: [i64 | 0..=65535] = alloc(729,0);
+  let mut sc: [i64 | 0..=255] = alloc(324,9);
+  let mut cr: [i64 | -1..=8] = alloc(81,-1);
+  let mut cc: [i64 | 0..=323] = alloc(81,0);
+  let mut grid: [i64 | 0..=9] = alloc(81,0);
+  let mut hints: i64 = 0;
+  let mut p: i64 = 0;
+  while p < 81
+    invariant len(sr) == 729
+    invariant len(sc) == 324
+    invariant len(cr) == 81
+    invariant len(cc) == 81
+    invariant len(grid) == 81
+    invariant 0 <= p && p <= 81 && 0 <= hints && hints <= p
+    decreases 81-p
+  {
+    let d: i64 = data[offset+p];
+    if d >= 49 && d <= 57 {
+      grid[p] = d-48;
+      let ignored: i64 = forward(rows,cols,inout sr,inout sc,p*9+d-49);
+      hints = hints+1;
+    }
+    p = p+1;
+  }
+  let mut depth: i64 = 0;
+  let mut forward: bool = true;
+  let mut cand: i64 = 655360;
+  let mut found: i64 = 0;
+  let mut checksum: i64 = 0;
+  // Explicit search budget is a termination witness; hard20 uses far fewer nodes.
+  let mut fuel: i64 = 1000000000;
+  while depth >= 0 && fuel > 0
+    invariant len(sr) == 729
+    invariant len(sc) == 324
+    invariant len(cr) == 81
+    invariant len(cc) == 81
+    invariant len(grid) == 81
+    invariant -1 <= depth && depth <= 81-hints
+    invariant 0 <= cand && cand <= 655683 && cand%65536 < 324
+    invariant 0 <= found && found <= 1000000000-fuel
+    invariant 0 <= checksum && checksum <= (1000000000-fuel)*100000
+    invariant 0 <= fuel && fuel <= 1000000000
+    decreases fuel
+  {
+    fuel = fuel-1;
+    if depth == 81-hints {
+      let mut j: i64 = 0;
+      while j < depth
+        invariant len(sr) == 729
+        invariant len(sc) == 324
+        invariant len(cr) == 81
+        invariant len(cc) == 81
+        invariant len(grid) == 81
+        invariant 0 <= j && j <= depth
+        decreases depth-j
+      {
+        let choice: i64 = cr[j];
+        if choice >= 0 {
+          let r: i64 = rows[cc[j]*9+choice];
+          grid[r/9] = r%9+1;
+        }
+        j = j+1;
+      }
+      let mut sum: i64 = 0;
+      j = 0;
+      while j < 81
+        invariant len(sr) == 729
+        invariant len(sc) == 324
+        invariant len(cr) == 81
+        invariant len(cc) == 81
+        invariant len(grid) == 81
+        invariant 0 <= j && j <= 81 && 0 <= sum && sum <= j*729
+        decreases 81-j
+      { sum = sum+grid[j]*(j+1); j = j+1; }
+      found = found+1;
+      checksum = checksum+sum;
+      depth = depth-1;
+      forward = false;
+    } else {
+      if forward {
+        let mut best: i64 = cand/65536;
+        cc[depth] = cand%65536;
+        if best > 1 {
+          let mut c: i64 = 0;
+          while c < 324 && best > 1
+            invariant len(sr) == 729
+            invariant len(sc) == 324
+            invariant len(cr) == 81
+            invariant len(cc) == 81
+            invariant len(grid) == 81
+            invariant 0 <= c && c <= 324 && 0 <= best && best <= 10
+            decreases 324-c
+          {
+            if sc[c] < best { best = sc[c]; cc[depth] = c; }
+            c = c+1;
+          }
+        }
+        if best == 0 || best == 10 {
+          cr[depth] = -1; depth = depth-1; forward = false;
+        }
+      }
+      if depth >= 0 {
+        let c: i64 = cc[depth];
+        let previous: i64 = cr[depth];
+        if !forward && previous >= 0 {
+          let r: i64 = rows[c*9+previous];
+          let ignored: i64 = revert(rows,cols,inout sr,inout sc,r);
+        }
+        let mut r2: i64 = previous+1;
+        while r2 < 9 && sr[rows[c*9+r2]] != 0
+          invariant len(sr) == 729
+          invariant len(sc) == 324
+          invariant len(cr) == 81
+          invariant len(cc) == 81
+          invariant len(grid) == 81
+          invariant 0 <= r2 && r2 <= 9
+          decreases 9-r2
+        {
+          r2 = r2+1;
+        }
+        if r2 < 9 {
+          let r: i64 = rows[c*9+r2];
+          cand = forward(rows,cols,inout sr,inout sc,r);
+          cr[depth] = r2; depth = depth+1; forward = true;
+        } else { cr[depth] = -1; depth = depth-1; forward = false; }
+      }
+    }
+  }
+  return Counts { solutions: found, checksum: checksum };
+}
+
+pub fn bench(data: [u8], n: i64) -> [i64] ! alloc {
+  let mut out: [i64] = alloc(2,0);
+  if n < 0 || n > 1000 || len(data) != 1640 { return out; }
+  let mut rows: [i64 | 0..=728] = alloc(2916,0);
+  let mut cols: [i64 | 0..=323] = alloc(2916,0);
+  let mut nr: [i64 | 0..=8] = alloc(324,0);
+  let mut r: i64 = 0;
+  while r < 729
+    invariant len(out) == 2
+    invariant len(rows) == 2916
+    invariant len(cols) == 2916
+    invariant len(nr) == 324
+    invariant 0 <= r && r <= 729
+    decreases 729-r
+  {
+    let i: i64 = r/81;
+    let j: i64 = r/9%9;
+    let k: i64 = r%9;
+    cols[r*4] = 9*i+j;
+    cols[r*4+1] = (i/3*3+j/3)*9+k+81;
+    cols[r*4+2] = 9*i+k+162;
+    cols[r*4+3] = 9*j+k+243;
+    let mut t: i64 = 0;
+    while t < 4
+      invariant len(out) == 2
+      invariant len(rows) == 2916
+      invariant len(cols) == 2916
+      invariant len(nr) == 324
+      invariant 0 <= t && t <= 4
+      decreases 4-t
+    {
+      let c: i64 = cols[r*4+t];
+      rows[c*9+nr[c]] = r;
+      nr[c] = (nr[c]+1)%9;
+      t = t+1;
+    }
+    r = r+1;
+  }
+  let mut rep: i64 = 0;
+  while rep < n
+    invariant len(out) == 2
+    invariant len(rows) == 2916
+    invariant len(cols) == 2916
+    invariant len(nr) == 324
+    invariant 0 <= rep && rep <= n
+    invariant 0 <= out[0] && out[0] <= rep*20000000000
+    invariant 0 <= out[1] && out[1] <= rep*2000000000000000
+    decreases n-rep
+  {
+    let mut p: i64 = 0;
+    while p < 20
+      invariant len(out) == 2
+      invariant len(rows) == 2916
+      invariant len(cols) == 2916
+      invariant len(nr) == 324
+      invariant 0 <= p && p <= 20
+      invariant 0 <= out[0] && out[0] <= (rep*20+p)*1000000000
+      invariant 0 <= out[1] && out[1] <= (rep*20+p)*100000000000000
+      decreases 20-p
+    {
+      let result: Counts = solve(rows,cols,data,p*82);
+      out[0] = out[0]+result.solutions;
+      out[1] = out[1]+result.checksum;
+      p = p+1;
+    }
+    rep = rep+1;
+  }
+  return out;
+}

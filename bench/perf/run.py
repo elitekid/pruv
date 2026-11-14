@@ -2,7 +2,8 @@
 """Pruv performance standard driver (docs/PERF_SPEC.md).
 
 Per program dir bench/perf/<p>/: <p>.pruv exports `pub fn bench(data: [u8], n: i64) -> [i64]` (or `-> [u8]`),
-matched.rs exports `pub fn bench(data: &[u8], n: i64) -> Vec<i64>` (same result type), and optionally gen.py, run as
+matched.rs exports `pub fn bench(data: &[u8], n: i64) -> Vec<i64>` (same result type), optionally secondary.rs (the
+published reference when matched.rs had to change its algorithm; timed and reported for information), and gen.py, run as
 `gen.py <dev|full> <out>` to make the input file (no gen.py: data is empty).
 
 Builds matched Rust and the four Pruv pairs (py/rust, py/llvm, rs/rust, rs/llvm), checks every variant prints the
@@ -91,6 +92,8 @@ def build(prog, pairs):
     work = WORK / prog
     work.mkdir(parents=True, exist_ok=True)
     exes = {'rust': build_harness(src / 'matched.rs', work / 'rust')}
+    if (src / 'secondary.rs').exists():
+        exes['secondary'] = build_harness(src / 'secondary.rs', work / 'secondary')
     for pair in pairs:
         compiler, backend = pair.split('/')
         w = work / f'{compiler}_{backend}'
@@ -114,7 +117,7 @@ def make_input(prog, mode):
 
 
 def once(exe, inp, n):
-    line = sh([exe, inp, n]).split()
+    line = sh([exe, inp, n]).strip().split(' ', 1)
     return float(line[0]), line[1]
 
 
@@ -182,10 +185,10 @@ def main():
         results[prog] = r
         cells = [f'rust {r["mean_ms"]["rust"]:.2f} ms']
         for v, (m, lo, hi) in r['ratio'].items():
-            cells.append(f'{v} {m:.3f} [{lo:.3f},{hi:.3f}] {verdict(hi)}')
+            cells.append(f'{v} {m:.3f} [{lo:.3f},{hi:.3f}]' + ('' if v == 'secondary' else f' {verdict(hi)}'))
         print(f'{prog}: ' + ' | '.join(cells), flush=True)
     for pair in pairs:
-        rs = [results[p]['ratio'][pair][0] for p in results if pair in results[p]['ratio']]
+        rs = [results[p]['ratio'][pair][0] for p in results if pair in results[p]['ratio']]  # matched baseline only
         if rs:
             print(f'geomean {pair}: {math.exp(statistics.mean(math.log(x) for x in rs)):.3f} over {len(rs)}')
     WORK.mkdir(exist_ok=True)

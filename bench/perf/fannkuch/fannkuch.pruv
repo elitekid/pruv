@@ -1,0 +1,122 @@
+// Sequential reference order. For a permutation p, the potential
+// sum(2^j for positions j with p[j] != j) strictly decreases on each flip:
+// flipping through k fixes position k and changes only smaller positions.
+// Thus 16 elements need at most 2^16-1 flips; 65536 is sufficient fuel.
+// The running checksum is bounded by index * 65536, with index <= 12!.
+pub fn bench(data: [u8], n: i64) -> [i64] ! alloc
+  requires 2 <= n && n <= 12
+{
+    let mut factorials: [i64] = alloc(16, 1);
+    let mut k: i64 = 1;
+    while k <= n
+      invariant 1 <= k && k <= n + 1
+      invariant len(factorials) == 16
+      invariant forall j in 0..16: 1 <= factorials[j] && factorials[j] <= 479001600
+      decreases n + 1 - k
+    {
+        // Always true for factorials through 12!.
+        if factorials[k - 1] <= 39916800 {
+            factorials[k] = factorials[k - 1] * k;
+        }
+        k = k + 1;
+    }
+    let perm_max: i64 = factorials[n];
+    let mut count: [i64] = alloc(16, 0);
+    let mut temp: [i64] = alloc(16, 0);
+    let mut current: [i64] = alloc(16, 0);
+    let mut j: i64 = 0;
+    while j < 16
+      invariant 0 <= j && j <= 16
+      invariant len(current) == 16
+      invariant forall t in 0..16: 0 <= current[t] && current[t] < 16
+      decreases 16 - j
+    { current[j] = j; j = j + 1; }
+    let mut checksum: i64 = 0;
+    let mut maxflips: i64 = 0;
+    let mut index: i64 = 0;
+    while index < perm_max
+      invariant 0 <= index && index <= perm_max
+      invariant -index * 65536 <= checksum && checksum <= index * 65536
+      invariant 0 <= maxflips && maxflips <= 65536
+      invariant len(current) == 16
+      invariant forall t in 0..16: 0 <= current[t] && current[t] < 16
+      invariant len(temp) == 16
+      invariant forall t in 0..16: 0 <= temp[t] && temp[t] < 16
+      invariant len(count) == 16
+      invariant forall t in 0..16: 0 <= count[t] && count[t] <= 16
+      decreases perm_max - index
+    {
+        if current[0] > 0 {
+            let mut c: i64 = 0;
+            while c < 16
+              invariant 0 <= c && c <= 16
+              invariant len(temp) == 16
+              invariant forall t in 0..16: 0 <= temp[t] && temp[t] < 16
+              decreases 16 - c
+            { temp[c] = current[c]; c = c + 1; }
+            let mut flips: i64 = 1;
+            let mut first: i64 = current[0];
+            while flips < 65536 && temp[first] != 0
+              invariant 1 <= flips && flips <= 65536
+              invariant 0 <= first && first < 16
+              invariant len(temp) == 16
+              invariant forall t in 0..16: 0 <= temp[t] && temp[t] < 16
+              decreases 65536 - flips
+            {
+                let next: i64 = temp[first];
+                temp[first] = first;
+                if first > 2 {
+                    let mut lo: i64 = 1;
+                    let mut hi: i64 = first - 1;
+                    while lo < hi
+                      invariant 1 <= lo && lo < 16
+                      invariant 0 <= hi && hi < 16
+                      invariant lo <= hi + 1
+                      invariant len(temp) == 16
+                      invariant forall t in 0..16: 0 <= temp[t] && temp[t] < 16
+                      decreases hi - lo + 1
+                    {
+                        let v: i64 = temp[lo];
+                        temp[lo] = temp[hi]; temp[hi] = v;
+                        lo = lo + 1; hi = hi - 1;
+                    }
+                }
+                first = next; flips = flips + 1;
+            }
+            if index % 2 == 0 { checksum = checksum + flips; }
+            else { checksum = checksum - flips; }
+            if flips > maxflips { maxflips = flips; }
+        }
+        index = index + 1;
+        if index < perm_max {
+            let mut first: i64 = current[1];
+            current[1] = current[0]; current[0] = first;
+            let mut i: i64 = 1;
+            while i < 15 && count[i] >= i
+              invariant 1 <= i && i <= 15
+              invariant 0 <= first && first < 16
+              invariant len(current) == 16
+              invariant forall t in 0..16: 0 <= current[t] && current[t] < 16
+              invariant len(count) == 16
+              invariant forall t in 0..16: 0 <= count[t] && count[t] <= 16
+              decreases 15 - i
+            {
+                count[i] = 0; i = i + 1;
+                let next: i64 = current[1];
+                current[0] = next;
+                let mut p: i64 = 1;
+                while p < i
+                  invariant 1 <= p && p <= i
+                  invariant len(current) == 16
+                  invariant forall t in 0..16: 0 <= current[t] && current[t] < 16
+                  decreases i - p
+                { current[p] = current[p + 1]; p = p + 1; }
+                current[i] = first; first = next;
+            }
+            if count[i] < 16 { count[i] = count[i] + 1; }
+        }
+    }
+    let mut out: [i64] = alloc(2, 0);
+    out[0] = checksum; out[1] = maxflips;
+    return out;
+}

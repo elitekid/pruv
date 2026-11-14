@@ -1,0 +1,78 @@
+// Sequential opposite-end chunk swaps, preserving 60-column FASTA lines.
+pub fn bench(data: [u8], n: i64) -> [u8] ! alloc {
+  let mut out: [u8] = copy(data);
+  let letters: str = "                                                                 TVGH  CD  M KN   YSAABW R       TVGH  CD  M KN   YSAABW R";
+  let mut table: [u8] = alloc(256, 32);
+  let mut t: i64 = 0;
+  while t < len(letters)
+    invariant len(table) == 256 && len(out) == len(data)
+    invariant 0 <= t && t <= len(letters) && len(letters) <= 256
+    decreases len(letters) - t
+  {
+    table[t] = letters[t];
+    t = t + 1;
+  }
+  let mut pos: i64 = 0;
+  while pos < len(data)
+    invariant len(table) == 256 && len(out) == len(data)
+    invariant 0 <= pos && pos <= len(data)
+    decreases len(data) - pos
+  {
+    let mut start: i64 = pos;
+    while start < len(data) && data[start] != 10
+      invariant len(table) == 256 && len(out) == len(data)
+      invariant pos <= start && start <= len(data)
+      decreases len(data) - start
+    { start = start + 1; }
+    if start == len(data) { return out; }
+    start = start + 1;
+    let mut end: i64 = start;
+    while end < len(data) && data[end] != 62
+      invariant len(table) == 256 && len(out) == len(data)
+      invariant start <= end && end <= len(data)
+      decreases len(data) - end
+    { end = end + 1; }
+    if start < end {
+      let mut left: i64 = start;
+      let mut right: i64 = end - 1;
+      let trailing: i64 = (right - left) % 61;
+      let mut phase: bool = true;
+      while left < right
+        invariant len(table) == 256 && len(out) == len(data)
+        invariant start <= left && left <= right && right < end && end <= len(out)
+        invariant 0 <= trailing && trailing <= 60
+        decreases right - left
+      {
+        let mut count: i64 = trailing;
+        if !phase { count = 60 - trailing; }
+        let wanted: i64 = count;
+        if count > (right - left) / 2 { count = (right - left) / 2; }
+        let mut k: i64 = 0;
+        while k < count
+          invariant len(table) == 256 && len(out) == len(data)
+          invariant 0 <= k && k <= count && 0 <= count && count <= (right - left) / 2
+          invariant 0 <= left && left <= right && right <= len(out)
+          decreases count - k
+        {
+          let a: i64 = out[left + k];
+          let b: i64 = out[right - 1 - k];
+          out[left + k] = table[b];
+          out[right - 1 - k] = table[a];
+          k = k + 1;
+        }
+        left = left + count;
+        right = right - count;
+        if right - left == 1 && count < wanted {
+          out[left] = table[out[left]];
+          left = left + 1;
+        }
+        if left < right {
+          if phase { right = right - 1; } else { left = left + 1; }
+        }
+        phase = !phase;
+      }
+    }
+    pos = end;
+  }
+  return out;
+}

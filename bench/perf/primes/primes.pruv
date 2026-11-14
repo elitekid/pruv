@@ -1,0 +1,157 @@
+// Atkin sieve, then a decimal trie: ten child indices and one terminal value.
+fn sieve(n: i64) -> [bool] ! alloc
+  requires 5 <= n && n <= 5000000
+  ensures len(result) == n + 1
+{
+  let mut prime: [bool] = alloc(n + 1, false);
+  let mut x: i64 = 1;
+  while x * x < n
+    invariant len(prime) == n + 1
+    invariant 1 <= x && x <= 2237
+    decreases 2237 - x
+  {
+    let xx: i64 = x * x;
+    let mut y: i64 = 1;
+    while y * y < n
+      invariant len(prime) == n + 1
+      invariant 1 <= y && y <= 2237
+      decreases 2237 - y
+    {
+      let yy: i64 = y * y;
+      let a: i64 = 4 * xx + yy;
+      if a <= n && (a % 12 == 1 || a % 12 == 5) { prime[a] = !prime[a]; }
+      let b: i64 = 3 * xx + yy;
+      if b <= n && b % 12 == 7 { prime[b] = !prime[b]; }
+      if x > y {
+        let c: i64 = 3 * xx - yy;
+        if c >= 0 && c <= n && c % 12 == 11 { prime[c] = !prime[c]; }
+      }
+      y = y + 1;
+    }
+    x = x + 1;
+  }
+  let mut r: i64 = 5;
+  while r * r < n
+    invariant len(prime) == n + 1
+    invariant 5 <= r && r <= 2237
+    decreases 2237 - r
+  {
+    if prime[r] {
+      let square: i64 = r * r;
+      let mut i: i64 = square;
+      while i < n
+        invariant len(prime) == n + 1
+        invariant square <= i && i <= n + square
+        decreases n + square - i
+      { prime[i] = false; i = i + square; }
+    }
+    r = r + 1;
+  }
+  return prime;
+}
+
+fn insert(inout arena: [i64], used: i64, value: i64) -> i64
+  requires 11 <= len(arena) && len(arena) <= 110000000
+  requires 1 <= used && used <= len(arena) / 11
+  requires 1 <= value && value <= 5000000
+  ensures used <= result && result <= len(arena) / 11
+{
+  let cap: i64 = len(arena) / 11;
+  let mut next: i64 = used;
+  let mut node: i64 = 0;
+  let mut divisor: i64 = 1;
+  while value / divisor >= 10
+    invariant 1 <= divisor && divisor <= 5000000
+    decreases 5000000 - divisor
+  { divisor = divisor * 10; }
+  while divisor > 0
+    invariant 0 <= divisor && divisor <= 5000000
+    invariant 0 <= node && node < cap
+    invariant used <= next && next <= cap
+    decreases divisor
+  {
+    let digit: i64 = (value / divisor) % 10;
+    let slot: i64 = node * 11 + digit;
+    let mut child: i64 = arena[slot];
+    if child == 0 {
+      if next >= cap { return next; }
+      child = next;
+      arena[slot] = child;
+      next = next + 1;
+    }
+    if child < 0 || child >= cap { return next; }
+    node = child;
+    divisor = divisor / 10;
+  }
+  arena[node * 11 + 10] = value;
+  return next;
+}
+
+pub fn bench(data: [u8], n: i64) -> [i64] ! alloc {
+  if n < 5 || n > 5000000 { return alloc(0, 0); }
+  let prime: [bool] = sieve(n);
+  let mut count: i64 = 2;
+  let mut p: i64 = 5;
+  while p <= n
+    invariant 5 <= p && p <= n + 1
+    invariant 2 <= count && count <= p
+    decreases n + 1 - p
+  { if prime[p] { count = count + 1; } p = p + 1; }
+  // Every proper prefix is <= n/10; each remaining node is a prime leaf.
+  let cap: i64 = n / 10 + count + 2;
+  let mut arena: [i64] = alloc(cap * 11, 0);
+  let mut used: i64 = insert(inout arena, 1, 2);
+  used = insert(inout arena, used, 3);
+  p = 5;
+  while p <= n
+    invariant 5 <= p && p <= n + 1
+    invariant 1 <= used && used <= cap
+    decreases n + 1 - p
+  { if prime[p] { used = insert(inout arena, used, p); } p = p + 1; }
+  let mut prefix: i64 = 323;
+  if n >= 5000000 { prefix = 32338; }
+  let mut divisor: i64 = 100;
+  if n >= 5000000 { divisor = 10000; }
+  let mut node: i64 = 0;
+  while divisor > 0
+    invariant 0 <= divisor && divisor <= 10000
+    invariant 0 <= node && node < cap
+    decreases divisor
+  {
+    let child: i64 = arena[node * 11 + (prefix / divisor) % 10];
+    if child <= 0 || child >= cap { return alloc(0, 0); }
+    node = child;
+    divisor = divisor / 10;
+  }
+  // Ascending-digit breadth-first traversal produces numeric sorted order.
+  let mut queue: [i64] = alloc(cap, 0);
+  queue[0] = node;
+  let mut head: i64 = 0;
+  let mut tail: i64 = 1;
+  let mut out: [i64] = alloc(count, 0);
+  let mut size: i64 = 0;
+  while head < tail
+    invariant len(queue) == cap && len(out) == count
+    invariant 0 <= head && head <= tail && tail <= cap
+    invariant 0 <= size && size <= count
+    decreases cap - head
+  {
+    let top: i64 = queue[head];
+    if top < 0 || top >= cap { return alloc(0, 0); }
+    let value: i64 = arena[top * 11 + 10];
+    if value > 0 && size < count { out[size] = value; size = size + 1; }
+    let mut digit: i64 = 0;
+    while digit < 10
+      invariant len(queue) == cap
+      invariant 0 <= digit && digit <= 10
+      invariant head < tail && tail <= cap
+      decreases 10 - digit
+    {
+      let child: i64 = arena[top * 11 + digit];
+      if child > 0 && tail < cap { queue[tail] = child; tail = tail + 1; }
+      digit = digit + 1;
+    }
+    head = head + 1;
+  }
+  return truncate(out, size);
+}

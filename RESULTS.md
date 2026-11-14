@@ -1811,3 +1811,21 @@ The second L3 feature: Lair's Claude transcript import (head scan, tail scan and
 - **After the speed pass (`q_measure.py`, rs/rust, median of 5; hand-written Rust in brackets):** 8 MiB window 46.4 ms [45], was 172; text near the line cap 1.6 [2.3]; block arrays 12.2 [17.9]; ring 2.36 [2.2]; depth 128 24.4 [26.7]. Pruv is level with or faster than the hand-written Rust on these five. The small window stays at 0.19 ms [0.02]: about 80% of it is zeroing the 13 MiB ring buffer (`turns::new_buffer`, 200 slots of fixed 32 KiB prompt and reply areas) on every call. Sizing the slots to the input would change the layout that the A3 collector proofs are written against, so it is left as is.
 - **Growing turn buffer:** the 13 MiB buffer is now grown on demand. Each slot is one 65,584-byte block (prompt, reply, two stamps); `turns::new_buffer` starts with 16 slots (1 MiB) and `turns::grow` takes it straight to all 200 slots before the first `begin` whose slot does not fit. `begin` requires the slot to fit and `answer` requires the current slot to fit, so the A3 proofs no longer state a fixed buffer length; the window reader and the A3 root call `grow` in their loops. All 134 A3 and 269 A4 fixtures and a 3,269-item corpus run (`q.py --count 3000`) match the oracle on the four pairs. rs/rust: small window 0.060 ms [0.02], was 0.19; 8 MiB window 47.4; ring wrapped 10 times 2.35, as before (doubling through 32, 64 and 128 slots instead measured 2.8, since it zeroes and copies about 40 MiB on the way; growing by four measured 2.5); the other inputs are unchanged. In one interleaved run on the ring input, the old fixed buffer, this version and the hand-written Rust all measured 2.3 ms.
 - **Not done:** wiring into Lair; the per-difference recomputation of policy effects described above.
+
+## 117. P1 performance standard: six programs against matched Rust (2026-11-15)
+
+First full run of `bench/perf/run.py` under `docs/PERF_SPEC.md`: rustc 1.99.1, macOS arm64, 30 interleaved rounds after 3 warm-ups, timed inputs. Each cell is the mean Pruv/Rust ratio with its 95% interval; every variant's output equals the matched Rust on the dev and timed inputs before timing.
+
+| Program | Rust ms | py/rust | py/llvm | rs/rust | rs/llvm |
+|---|---|---|---|---|---|
+| fannkuch-redux (n=12) | 14893 | 0.944 [0.942, 0.945] faster | 0.943 [0.940, 0.946] faster | 0.945 [0.944, 0.947] faster | 0.943 [0.941, 0.946] faster |
+| binary-trees (depth 21) | 693 | 0.993 [0.989, 0.997] faster | 1.011 [1.007, 1.015] equal | 0.995 [0.992, 0.999] faster | 1.008 [1.005, 1.011] equal |
+| reverse-complement (25M) | 150 | 0.897 [0.893, 0.902] faster | 0.877 [0.872, 0.882] faster | 0.897 [0.892, 0.903] faster | 0.879 [0.874, 0.884] faster |
+| brainfuck (bench.b) | 936 | 1.000 [0.991, 1.010] equal | 0.954 [0.941, 0.967] faster | 0.995 [0.991, 0.998] faster | 0.949 [0.943, 0.956] faster |
+| primes (5,000,000) | 17.2 | 0.957 [0.951, 0.963] faster | 0.922 [0.907, 0.937] faster | 0.955 [0.943, 0.968] faster | 0.917 [0.908, 0.927] faster |
+| sudoku (4000 puzzles) | 1296 | 1.045 [1.044, 1.046] equal | 1.029 [1.028, 1.030] equal | 1.045 [1.044, 1.046] equal | 1.029 [1.028, 1.030] equal |
+| geometric mean (6 programs; 26 listed programs wait for a feature) | | 0.972 | 0.955 | 0.971 | 0.953 |
+
+- **Pass rule:** all 24 program/pair cells pass (upper bound at most 1.05); 18 are faster.
+- **brainfuck baseline:** Pruv has no arrays of enum values, so the port is a flat dense-opcode interpreter (fuel spent only on taken backward jumps), and `matched.rs` is the same flat interpreter. The published tree-of-`Box<[Op]>` algorithm (`secondary.rs`) measures 0.878 [0.864, 0.893] of matched Rust, so Pruv is about 8–14% slower than the published Rust algorithm on this program. Closing it needs arrays of enum values (PERF_SPEC status table).
+- **sudoku:** equal but closest to the bound (1.045 on the rust backend). Not investigated in this batch.
