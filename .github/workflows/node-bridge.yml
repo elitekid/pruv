@@ -53,6 +53,8 @@ on:
       - "bench/l0/run_cell_str.py"
       - "bench/l0/run_cell_int.py"
       - "bench/l0/run_extract_version.py"
+      - "bench/l0/chunk_page.mjs"
+      - "bench/l0/run_chunk_page.py"
       - "bench/l0/clip_sheet.mjs"
       - "bench/l0/run_clip_sheet.py"
       - "bench/l0/kind_of.mjs"

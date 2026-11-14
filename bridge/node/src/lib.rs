@@ -64,6 +64,10 @@ mod cell_int_gen;
 #[allow(dead_code, clippy::all)]
 mod extract_version_gen;
 
+#[path = "../gen/chunk_page_gen.rs"]
+#[allow(dead_code, clippy::all)]
+mod chunk_page_gen;
+
 #[path = "../gen/doc_labels_gen.rs"]
 #[allow(dead_code, clippy::all)]
 mod doc_labels_gen;
@@ -681,6 +685,43 @@ pub fn extract_version_of(source_version: String, kind: String, variant: Option<
             "extractVersionOf: each part must be at most 134217728 UTF-8 bytes"));
     }
     Ok(extract_version_gen::extract_version_of(&source_version, &kind, &variant))
+}
+
+/// Lair chunkPage (src/documents/chunker.ts) without the draft objects: the splitText pieces of one PDF
+/// page. Pruv returns [page, start, end] records and proves each carries `page`; this slices them.
+/// `page` is a safe integer, `max` an integer in 2..=2^40, text at most 3e11 UTF-8 bytes.
+#[napi(js_name = "chunkPagePieces")]
+pub fn chunk_page_pieces(page: f64, text: String, max: f64) -> napi::Result<Vec<String>> {
+    if !page.is_finite() || page.fract() != 0.0 || page.abs() > 9_007_199_254_740_991.0 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "chunkPage: page must be an integer in -9007199254740991..=9007199254740991"));
+    }
+    if !max.is_finite() || max.fract() != 0.0 || !(2.0..=1_099_511_627_776.0).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "chunkPage: max must be an integer in 2..=1099511627776"));
+    }
+    if text.len() as u64 > 300_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "chunkPage: text must be at most 300000000000 UTF-8 bytes"));
+    }
+    let r = chunk_page_gen::chunk_page(page as i64, &text, max as i64);
+    Ok(r.chunks(3).map(|p| text[p[1] as usize..p[2] as usize].to_string()).collect())
+}
+
+/// Lair chunkImage (src/documents/chunker.ts) without the draft objects: the splitText pieces of one
+/// OCR image text. `max` is an integer in 2..=2^40, text at most 5e11 UTF-8 bytes.
+#[napi(js_name = "chunkImagePieces")]
+pub fn chunk_image_pieces(text: String, max: f64) -> napi::Result<Vec<String>> {
+    if !max.is_finite() || max.fract() != 0.0 || !(2.0..=1_099_511_627_776.0).contains(&max) {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "chunkImage: max must be an integer in 2..=1099511627776"));
+    }
+    if text.len() as u64 > 500_000_000_000 {
+        return Err(napi::Error::new(napi::Status::InvalidArg,
+            "chunkImage: text must be at most 500000000000 UTF-8 bytes"));
+    }
+    let r = chunk_page_gen::chunk_image(&text, max as i64);
+    Ok(r.chunks(2).map(|p| text[p[0] as usize..p[1] as usize].to_string()).collect())
 }
 
 /// Lair csvName: the file name after the last '/' or '\', without its extension; "표" if nothing is left.

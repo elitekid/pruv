@@ -81,6 +81,16 @@ export const sha256Hex = native.sha256Hex;
 
 /** Lair extractVersionOf (src/documents/versions.ts): extractVersionOf(sourceVersion, kind, variant = ''). */
 export const extractVersionOf = native.extractVersionOf;
+
+/** Lair chunkPage (src/documents/chunker.ts): one page's text as { loc: { kind: 'page', page }, text, ocr? } drafts. */
+export function chunkPage(page, text, max, ocr) {
+  return native.chunkPagePieces(page, text, max).map(piece => ({ loc: { kind: 'page', page }, text: piece, ...(ocr ? { ocr } : {}) }));
+}
+
+/** Lair chunkImage (src/documents/chunker.ts): one OCR image text as { loc: { kind: 'image' }, text, ocr? } drafts. */
+export function chunkImage(text, max, ocr) {
+  return native.chunkImagePieces(text, max).map(piece => ({ loc: { kind: 'image' }, text: piece, ...(ocr ? { ocr } : {}) }));
+}
 export const countListText = native.countListText;
 export const countListMore = native.countListMore;
 
